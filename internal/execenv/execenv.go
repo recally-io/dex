@@ -28,8 +28,8 @@ var ErrInvalidPath = errors.New("invalid project directory")
 // ErrInvalidConfig is returned when an execution environment configuration is invalid.
 var ErrInvalidConfig = errors.New("invalid execution environment configuration")
 
-// ErrUnavailable is returned when a selected environment was removed or is not allowed for the
-// agent. The caller must not run the work in another environment.
+// ErrUnavailable is returned when a selected environment was removed or a session cannot select
+// it. The caller must not run the work in another environment.
 var ErrUnavailable = errors.New("execution environment is unavailable")
 
 // LocalID selects the control host. The control host has no execution_environments row.
@@ -50,9 +50,8 @@ type Handle interface {
 }
 
 // Provider opens agent execution environment handles. An empty environmentID selects the
-// environment of the agent. LocalID or an environment ID selects that environment, which must be
-// the environment of the agent or on its allowlist; otherwise Open and Stamp fail with
-// ErrUnavailable.
+// environment of the agent. LocalID or a pi-env environment ID selects that environment; any
+// other selection fails Open and Stamp with ErrUnavailable.
 type Provider interface {
 	Open(ctx context.Context, agentID, environmentID string) (Handle, error)
 	// Stamp returns the current fingerprint of the selected environment.
@@ -86,8 +85,7 @@ type backend interface {
 	open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error)
 	// changed runs after the row changed. cur is nil when the row was deleted.
 	changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error
-	// release drops the agent's state in the environment: an allowlist or environment change, an
-	// archive, or a reset.
+	// release drops the agent's state in the environment: an environment switch, an archive, or a reset.
 	// sandboxID is the agent's stored sandbox reference, or empty.
 	release(ctx context.Context, agentID string, spec EnvironmentSpec, sandboxID string) error
 	// disposable reports that release discards the agent's files, so the user can reset the environment.

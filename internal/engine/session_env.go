@@ -66,7 +66,7 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 		vars, inherit := e.vars(e.own)
 		return sessionEnv{Handle: e.own, Vars: vars, Inherit: inherit}, nil
 	}
-	// The stamp check reads control storage at each call, so a removal or an allowlist change
+	// The stamp check reads control storage at each call, so a removed environment
 	// stops the next tool call. A changed stamp makes the agent stale; reload replaces the lease.
 	if _, err := e.provider.Stamp(ctx, e.agentID, id); err != nil {
 		return sessionEnv{}, err

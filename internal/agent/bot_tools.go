@@ -83,7 +83,7 @@ func (s *Service) patchAgent(ctx context.Context, id string, p Patch) (Agent, er
 		return Agent{}, err
 	}
 	if oldRow.EnvironmentID != out.EnvironmentID && s.OnEnvironmentChanged != nil {
-		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID)
+		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
 	}
 	return out, nil
 }

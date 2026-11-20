@@ -94,7 +94,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentNotAllowed):
+				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, artifact.ErrConflict):
 				status = http.StatusConflict
@@ -537,22 +537,11 @@ func (h *handler) SetChatEnvironment(ctx context.Context, req api.SetChatEnviron
 }
 
 func (h *handler) ListAgentEnvironments(ctx context.Context, _ api.ListAgentEnvironmentsRequestObject) (api.ListAgentEnvironmentsResponseObject, error) {
-	list, err := h.Settings.AllowedEnvironments(ctx, agentID(ctx))
+	list, err := h.Settings.SessionEnvironments(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
 	return api.ListAgentEnvironments200JSONResponse{Environments: list}, nil
-}
-
-func (h *handler) SetAgentEnvironments(ctx context.Context, req api.SetAgentEnvironmentsRequestObject) (api.SetAgentEnvironmentsResponseObject, error) {
-	if req.Body == nil {
-		return nil, errInvalid
-	}
-	list, err := h.Settings.SetAllowedEnvironments(ctx, agentID(ctx), req.Body.EnvironmentIds)
-	if err != nil {
-		return nil, err
-	}
-	return api.SetAgentEnvironments200JSONResponse{Environments: list}, nil
 }
 
 func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRequestObject) (api.SetChatSettingsResponseObject, error) {

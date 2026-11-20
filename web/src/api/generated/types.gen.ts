@@ -2532,53 +2532,12 @@ export type ListAgentEnvironmentsError = ListAgentEnvironmentsErrors[keyof ListA
 
 export type ListAgentEnvironmentsResponses = {
     /**
-     * The allowed environments.
+     * The session environments.
      */
     200: AgentEnvironments;
 };
 
 export type ListAgentEnvironmentsResponse = ListAgentEnvironmentsResponses[keyof ListAgentEnvironmentsResponses];
-
-export type SetAgentEnvironmentsData = {
-    body: {
-        environmentIds: Array<string>;
-    };
-    path: {
-        agentId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/environments';
-};
-
-export type SetAgentEnvironmentsErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    409: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SetAgentEnvironmentsError = SetAgentEnvironmentsErrors[keyof SetAgentEnvironmentsErrors];
-
-export type SetAgentEnvironmentsResponses = {
-    /**
-     * The allowed environments.
-     */
-    200: AgentEnvironments;
-};
-
-export type SetAgentEnvironmentsResponse = SetAgentEnvironmentsResponses[keyof SetAgentEnvironmentsResponses];
 
 export type ResetAgentEnvironmentData = {
     body?: never;

@@ -1757,11 +1757,6 @@ type SetChatProjectJSONBody struct {
 	Cwd string `json:"cwd"`
 }
 
-// SetAgentEnvironmentsJSONBody defines parameters for SetAgentEnvironments.
-type SetAgentEnvironmentsJSONBody struct {
-	EnvironmentIds []string `json:"environmentIds"`
-}
-
 // DeleteExtensionEnvParams defines parameters for DeleteExtensionEnv.
 type DeleteExtensionEnvParams struct {
 	Scope DeleteExtensionEnvParamsScope `form:"scope" json:"scope"`
@@ -1865,9 +1860,6 @@ type SetChatProjectJSONRequestBody SetChatProjectJSONBody
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
-
-// SetAgentEnvironmentsJSONRequestBody defines body for SetAgentEnvironments for application/json ContentType.
-type SetAgentEnvironmentsJSONRequestBody SetAgentEnvironmentsJSONBody
 
 // PutExtensionEnvJSONRequestBody defines body for PutExtensionEnv for application/json ContentType.
 type PutExtensionEnvJSONRequestBody PutExtensionEnvJSONBody
@@ -2550,9 +2542,6 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/environments)
 	ListAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string)
-
-	// (PUT /api/agents/{agentId}/environments)
-	SetAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string)
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(w http.ResponseWriter, r *http.Request, agentId string)
@@ -4330,32 +4319,6 @@ func (siw *ServerInterfaceWrapper) ListAgentEnvironments(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
-// SetAgentEnvironments operation middleware
-func (siw *ServerInterfaceWrapper) SetAgentEnvironments(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetAgentEnvironments(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetExtensions operation middleware
 func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.Request) {
 
@@ -5422,7 +5385,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/archived-agents", wrapper.ListArchivedAgents)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/environments", wrapper.ListAgentEnvironments)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/environments", wrapper.SetAgentEnvironments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/environment/reset", wrapper.ResetAgentEnvironment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/turns/{turnId}", wrapper.GetTurnChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
@@ -8649,88 +8611,6 @@ func (response ListAgentEnvironmentsdefaultJSONResponse) VisitListAgentEnvironme
 	return err
 }
 
-type SetAgentEnvironmentsRequestObject struct {
-	AgentId string `json:"agentId"`
-	Body    *SetAgentEnvironmentsJSONRequestBody
-}
-
-type SetAgentEnvironmentsResponseObject interface {
-	VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error
-}
-
-type SetAgentEnvironments200JSONResponse AgentEnvironments
-
-func (response SetAgentEnvironments200JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetAgentEnvironments400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SetAgentEnvironments400JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetAgentEnvironments404JSONResponse Error
-
-func (response SetAgentEnvironments404JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetAgentEnvironments409JSONResponse Error
-
-func (response SetAgentEnvironments409JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetAgentEnvironmentsdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetAgentEnvironmentsdefaultJSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetExtensionsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
@@ -10873,9 +10753,6 @@ type StrictServerInterface interface {
 	// (GET /api/agents/{agentId}/environments)
 	ListAgentEnvironments(ctx context.Context, request ListAgentEnvironmentsRequestObject) (ListAgentEnvironmentsResponseObject, error)
 
-	// (PUT /api/agents/{agentId}/environments)
-	SetAgentEnvironments(ctx context.Context, request SetAgentEnvironmentsRequestObject) (SetAgentEnvironmentsResponseObject, error)
-
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
 
@@ -12536,39 +12413,6 @@ func (sh *strictHandler) ListAgentEnvironments(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListAgentEnvironmentsResponseObject); ok {
 		if err := validResponse.VisitListAgentEnvironmentsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetAgentEnvironments operation middleware
-func (sh *strictHandler) SetAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request SetAgentEnvironmentsRequestObject
-
-	request.AgentId = agentId
-
-	var body SetAgentEnvironmentsJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetAgentEnvironments(ctx, request.(SetAgentEnvironmentsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetAgentEnvironments")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetAgentEnvironmentsResponseObject); ok {
-		if err := validResponse.VisitSetAgentEnvironmentsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

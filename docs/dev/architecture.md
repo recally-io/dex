@@ -1022,10 +1022,10 @@ Each unscoped session runs its command and file tools in one execution
 environment. `conversations.environment_id` in `control.sqlite` is the source
 of truth. Empty means that the session follows the bot's environment
 (`agents.environment_id`). `local` or an environment ID is an explicit
-selection, which does not change when the bot's environment changes. The bot's
-environment is always allowed. `agent_environments` is the allowlist of other
-environments. The `runner_one_agent_*` triggers keep one active bot for each
-runner environment, as the default or on the allowlist.
+selection, which does not change when the bot's environment changes. A session
+can select only `local` or an SSH (pi-env) environment. E2B and runner
+environments serve only the bot that has them as its own environment: an E2B
+sandbox (`agents.environment_sandbox_id`) and a runner belong to one bot.
 
 The engine resolves the environment of a session at each call, through the
 `SessionEnvironment` callback that chat provides. One resolver
@@ -1034,7 +1034,7 @@ serves the Harness `Env` hook, the `bash` tool, background commands, upload
 staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
 agent keeps one lease for each environment that its sessions use, and closes the
 leases on reload and close. Before each call the resolver checks the
-environment in control storage. A removed, disallowed, or offline environment
+environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. A changed stamp
 makes the agent stale, so the next idle reload opens a new lease.
@@ -1048,18 +1048,15 @@ A web chat selects its environment before its first message
 (`PUT /api/agents/{agentId}/chats/{chatId}/environment`); a started chat answers
 409. `session_new` takes `environment`. A child of the same bot runs in its
 parent's environment unless it selects another one. A child of another bot runs
-in that bot's environment. `environment_list` shows the allowed environments
-with ID, name, kind, and status, and no configuration or secrets. A fork keeps
+in that bot's environment. `environment_list` shows the bot's environment, `local`,
+and the SSH environments with ID, name, kind, and status, and no configuration or secrets. A fork keeps
 the environment of its source.
 
 A change of the bot's environment fails with 409 while sessions that follow it
 have queued input or running background commands. After the change, those
-sessions start in the new workspace with no cwd. When a session selects the
-earlier environment explicitly, the earlier environment goes on the allowlist.
-Otherwise the backend releases the bot's state in it. E2B keeps one sandbox for
-each (bot, environment) pair in `agent_sandboxes`. A bot reset resets only the
-sandbox of its default environment. A removal from the allowlist kills the
-sandbox of that pair.
+sessions start in the new workspace with no cwd. The backend releases the bot's
+state in the earlier environment. Explicit sessions keep their selection,
+because `local` and SSH keep no per-bot state.
 
 The migration `20261112120000_drop_tasks` drops the `tasks` and
 `task_steer_receipts` tables. An earlier migration copied the parent link and

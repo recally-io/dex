@@ -82,7 +82,7 @@ type SessionNewArgs struct {
 	Provider      string `json:"provider,omitempty"`
 	ModelID       string `json:"modelId,omitempty"`
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
-	// Environment is an execution environment ID from the allowlist of the child's bot. Empty
+	// Environment is "local" or an SSH environment ID from environment_list. Empty
 	// means the environment of the parent for this bot, else the environment of the other bot.
 	Environment string `json:"environment,omitempty"`
 }
@@ -244,7 +244,7 @@ func sessionExtension(agentID string, handlers TaskTools) *durable.Extension {
 				"provider":      map[string]any{"type": "string", "description": "Omit with modelId to use the model of this conversation. Supply both fields to change the model."},
 				"modelId":       map[string]any{"type": "string", "description": "Use an exact configured model ID. Never guess an ID."},
 				"thinkingLevel": map[string]any{"type": "string", "enum": []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}},
-				"environment":   map[string]any{"type": "string", "description": "An execution environment ID from environment_list. The command and file tools of the child run there. Omit it to use the environment of this conversation, or with bot the environment of that bot. A cwd from another environment is not inherited."},
+				"environment":   map[string]any{"type": "string", "description": "local or an SSH environment ID from environment_list. The command and file tools of the child run there. Omit it to use the environment of this conversation, or with bot the environment of that bot. A cwd from another environment is not inherited."},
 			}), sessions.New != nil, func(ctx context.Context, source TaskContext, args SessionNewArgs) (SessionRef, error) {
 				return sessions.New(ctx, source, args)
 			}),
@@ -270,7 +270,7 @@ func sessionExtension(agentID string, handlers TaskTools) *durable.Extension {
 			}), sessions.Fork != nil, func(ctx context.Context, source TaskContext, args SessionForkArgs) (SessionRef, error) {
 				return sessions.Fork(ctx, source, args)
 			}),
-		sessionTool(agentID, "environment_list", "List the execution environments that sessions of this bot can use, with their ID, name, kind, and status. The default one is the environment of this bot. Give an ID to session_new to run a child there.",
+		sessionTool(agentID, "environment_list", "List the execution environments that sessions of this bot can use, with their ID, name, kind, and status. The default one is the environment of this bot: omit environment in session_new to use it. Give the ID of another one to session_new to run a child there.",
 			objectSchema([]string{}, map[string]any{}), handlers.Environments != nil, func(ctx context.Context, source TaskContext, _ struct{}) (struct {
 				Environments []EnvironmentInfo `json:"environments"`
 			}, error) {

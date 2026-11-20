@@ -212,7 +212,7 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	// the environment of the parent.
 	environment := inherited.EnvironmentID
 	if a.Environment != "" {
-		if err := checkEnvironment(ctx, s.q, target.ID, a.Environment); err != nil {
+		if err := checkEnvironment(ctx, s.q, a.Environment); err != nil {
 			return engine.SessionRef{}, err
 		}
 		environment = a.Environment

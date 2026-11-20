@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -13,8 +12,9 @@ import (
 )
 
 var (
-	// ErrEnvironmentNotAllowed is a session environment that is not on the allowlist of its bot.
-	ErrEnvironmentNotAllowed = errors.New("execution environment is not allowed for this bot")
+	// ErrEnvironmentInvalid is a session environment that does not exist or that a session cannot
+	// select.
+	ErrEnvironmentInvalid = errors.New("invalid session environment")
 	// ErrEnvironmentLocked is an environment change of a chat that has started. Use Fork.
 	ErrEnvironmentLocked = errors.New("the environment of a chat is set before its first message")
 )
@@ -34,21 +34,24 @@ func (s *Service) SessionEnvironment(ctx context.Context, ref engine.Ref) (strin
 	return conv.EnvironmentID, nil
 }
 
-// checkEnvironment fails with ErrEnvironmentNotAllowed when environmentID is neither the
-// environment of agentID nor on its allowlist. The error names the allowed environments.
-func checkEnvironment(ctx context.Context, q *sqlc.Queries, agentID, environmentID string) error {
-	allowed, err := q.ListAllowedEnvironments(ctx, agentID)
+// checkEnvironment fails with ErrEnvironmentInvalid unless environmentID is LocalID or a saved
+// pi-env environment. E2B and runner environments serve only the bot that has them as its own
+// environment: an E2B sandbox and a runner belong to one bot.
+func checkEnvironment(ctx context.Context, q *sqlc.Queries, environmentID string) error {
+	if environmentID == execenv.LocalID {
+		return nil
+	}
+	row, err := q.GetEnvironment(ctx, environmentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: %s does not exist; call environment_list", ErrEnvironmentInvalid, environmentID)
+	}
 	if err != nil {
 		return err
 	}
-	names := make([]string, 0, len(allowed))
-	for _, e := range allowed {
-		if e.ID == environmentID {
-			return nil
-		}
-		names = append(names, fmt.Sprintf("%s (%s)", e.Name, e.ID))
+	if execenv.Kind(row.Kind) != execenv.KindPiEnv {
+		return fmt.Errorf("%w: %s is a %s environment; select local or an SSH environment", ErrEnvironmentInvalid, row.Name, row.Kind)
 	}
-	return fmt.Errorf("%w: %s; allowed: %s", ErrEnvironmentNotAllowed, environmentID, strings.Join(names, ", "))
+	return nil
 }
 
 // effectiveEnvironment is the environment that a session with selection id runs in: id, or the
@@ -78,7 +81,7 @@ func (s *Service) SetEnvironment(ctx context.Context, agentID string, id int64, 
 		return Chat{}, ErrProjectForbidden
 	}
 	if environmentID != "" {
-		if err := checkEnvironment(ctx, s.q, agentID, environmentID); err != nil {
+		if err := checkEnvironment(ctx, s.q, environmentID); err != nil {
 			return Chat{}, err
 		}
 	}

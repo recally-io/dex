@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -228,7 +227,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			},
 		},
 		Environments: func(ctx context.Context, c engine.TaskContext) ([]engine.EnvironmentInfo, error) {
-			return prefs.AllowedEnvironments(ctx, c.AgentID)
+			return prefs.SessionEnvironments(ctx, c.AgentID)
 		},
 		Timers: engine.TimerTools{
 			Set: func(ctx context.Context, c engine.TaskContext, a engine.TimerSetArgs) (engine.TimerInfo, error) {
@@ -340,18 +339,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
-	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID string) {
+	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseAgent(changeCtx, agentID)
-		// Sessions that select the earlier environment keep it on the allowlist, with its state.
-		allowed, err := q.ListAgentEnvironments(changeCtx, agentID)
-		if err != nil {
-			slog.Warn("read the allowlist of a bot", "agent", agentID, "err", err)
-			return
-		}
-		if slices.Contains(allowed, oldEnvID) {
-			return
-		}
-		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID); err != nil {
+		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
 			slog.Warn("release the earlier execution environment of a bot", "agent", agentID, "err", err)
 		}
 	}
@@ -366,13 +356,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		if err := envs.ResetAgent(runCtx, id); err != nil {
 			slog.Warn("cleanup sandbox of an archived bot", "agent", id, "err", err)
-		}
-		allowed, err := q.ListAgentEnvironments(runCtx, id)
-		for _, envID := range allowed {
-			err = errors.Join(err, envs.ReleaseAgent(runCtx, id, envID))
-		}
-		if err != nil {
-			slog.Warn("cleanup the allowlist sandboxes of an archived bot", "agent", id, "err", err)
 		}
 		if err := agentsService.StopChannels(runCtx, id); err != nil {
 			slog.Error("stop channels of an archived bot", "agent", id, "err", err)

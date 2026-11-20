@@ -13,11 +13,6 @@ type AccessToken struct {
 	Token string `json:"token"`
 }
 
-type ActiveRunnerRef struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
-}
-
 type Agent struct {
 	ID                          string         `json:"id"`
 	Name                        string         `json:"name"`
@@ -29,20 +24,9 @@ type Agent struct {
 	PrimaryNotificationTargetID sql.NullString `json:"primary_notification_target_id"`
 	ArchivedAt                  sql.NullInt64  `json:"archived_at"`
 	EnvironmentID               string         `json:"environment_id"`
+	EnvironmentSandboxID        string         `json:"environment_sandbox_id"`
 	FallbackProvider            string         `json:"fallback_provider"`
 	FallbackModelID             string         `json:"fallback_model_id"`
-}
-
-type AgentEnvironment struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
-	CreatedAt     int64  `json:"created_at"`
-}
-
-type AgentSandbox struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
-	SandboxID     string `json:"sandbox_id"`
 }
 
 type Artifact struct {

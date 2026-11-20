@@ -34,8 +34,8 @@ Main and ordinary Chat sessions default to the agent's model and thinking level.
 Saved session overrides apply from the next input, including channel input on Main.
 Ended task conversations can also use model and project overrides.
 New chat sends `POST /api/agents/{agentId}/chats` with no request body.
-A bot can allow more environments in Settings. When it allows more than one, a
-chat that has no message yet shows an environment picker, and the project
+When an SSH environment exists or the bot is not local, a chat that has no
+message yet shows an environment picker (`listAgentEnvironments`), and the project
 picker lists folders in the chosen environment. After the first message the
 header shows the environment name.
 See the [API contract](../api/openapi.yaml) for request and response schemas.

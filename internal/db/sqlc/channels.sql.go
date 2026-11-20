@@ -163,7 +163,7 @@ WITH active AS (
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
 )
-SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, a.primary_notification_target_id, a.archived_at, a.environment_id, a.fallback_provider, a.fallback_model_id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
+SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, a.primary_notification_target_id, a.archived_at, a.environment_id, a.environment_sandbox_id, a.fallback_provider, a.fallback_model_id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
     CAST(EXISTS (SELECT 1 FROM automations routine
         JOIN automation_runs r ON r.id = (SELECT latest.id FROM automation_runs latest
@@ -201,6 +201,7 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 			&i.Agent.PrimaryNotificationTargetID,
 			&i.Agent.ArchivedAt,
 			&i.Agent.EnvironmentID,
+			&i.Agent.EnvironmentSandboxID,
 			&i.Agent.FallbackProvider,
 			&i.Agent.FallbackModelID,
 			&i.ActiveSessions,

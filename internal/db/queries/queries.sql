@@ -12,6 +12,7 @@ UPDATE agents SET
     fallback_provider = @fallback_provider,
     fallback_model_id = @fallback_model_id,
     instructions = @instructions,
+    environment_sandbox_id = CASE WHEN environment_id = @environment_id THEN environment_sandbox_id ELSE '' END,
     environment_id = @environment_id
 WHERE id = @id;
 

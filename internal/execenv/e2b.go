@@ -3,7 +3,6 @@ package execenv
 import (
 	"cmp"
 	"context"
-	"database/sql"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -149,13 +148,10 @@ type e2bRuntime struct {
 	envdURL    string
 	httpClient *http.Client
 
-	mu sync.Mutex
-	// agentLocks and sessions are keyed by sandboxKey: one sandbox for each (agent, environment).
+	mu         sync.Mutex
 	agentLocks map[string]*sync.Mutex
 	sessions   map[string]cachedE2BSession
 }
-
-func sandboxKey(agentID, envID string) string { return agentID + "\x00" + envID }
 
 func newE2BRuntime(q *sqlc.Queries, apiURL, envdURL string) *e2bRuntime {
 	return &e2bRuntime{
@@ -210,12 +206,12 @@ func (r *e2bRuntime) probe(ctx context.Context, _ *EnvironmentSpec, spec Environ
 	return TestResult{OK: true, Platform: platform, Arch: arch, Home: home}, nil
 }
 
-func (r *e2bRuntime) lockSandbox(key string) func() {
+func (r *e2bRuntime) lockAgent(agentID string) func() {
 	r.mu.Lock()
-	mu := r.agentLocks[key]
+	mu := r.agentLocks[agentID]
 	if mu == nil {
 		mu = &sync.Mutex{}
-		r.agentLocks[key] = mu
+		r.agentLocks[agentID] = mu
 	}
 	r.mu.Unlock()
 	mu.Lock()
@@ -282,8 +278,8 @@ func reconnectSandbox(ctx context.Context, ctrl *e2bControlClient, sandboxID str
 	}
 }
 
-// acquire returns the live sandbox session of the agent in spec's environment. It reuses a recent
-// session, resumes the stored sandbox, or creates a new sandbox and stores its ID.
+// acquire returns the agent's live sandbox session. It reuses a recent session, resumes the stored
+// sandbox, or creates a new sandbox and stores its ID.
 func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec EnvironmentSpec) (cachedE2BSession, error) {
 	cfg, err := r.validate(spec)
 	if err != nil {
@@ -292,18 +288,20 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 	timeoutSec := *cfg.TimeoutSeconds
 	specKey := fmt.Sprintf("%s|%d|%s|%s", spec.ID, spec.UpdatedAt, spec.Config, spec.Secret)
 
-	key := sandboxKey(agentID, spec.ID)
-	unlock := r.lockSandbox(key)
+	unlock := r.lockAgent(agentID)
 	defer unlock()
 
-	persistedID, err := r.q.GetAgentSandbox(ctx, sqlc.GetAgentSandboxParams{AgentID: agentID, EnvironmentID: spec.ID})
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	row, err := r.q.GetAgent(ctx, agentID)
+	if err != nil {
 		return cachedE2BSession{}, err
 	}
-	persistedID = strings.TrimSpace(persistedID)
+	persistedID := ""
+	if row.EnvironmentID == spec.ID {
+		persistedID = strings.TrimSpace(row.EnvironmentSandboxID)
+	}
 
 	r.mu.Lock()
-	cached, hasCached := r.sessions[key]
+	cached, hasCached := r.sessions[agentID]
 	r.mu.Unlock()
 	if hasCached && cached.specKey == specKey && cached.sandboxID == persistedID && cached.sandboxID != "" && time.Since(cached.connectedAt) < e2bConnectCacheTTL {
 		return cached, nil
@@ -329,7 +327,7 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 		if err != nil {
 			return cachedE2BSession{}, err
 		}
-		if err := r.q.SetAgentSandbox(ctx, sqlc.SetAgentSandboxParams{
+		if err := r.q.SetAgentEnvironmentSandboxID(ctx, sqlc.SetAgentEnvironmentSandboxIDParams{
 			SandboxID:     sb.SandboxID,
 			AgentID:       agentID,
 			EnvironmentID: spec.ID,
@@ -365,7 +363,7 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 		connectedAt: time.Now(),
 	}
 	r.mu.Lock()
-	r.sessions[key] = session
+	r.sessions[agentID] = session
 	r.mu.Unlock()
 	return session, nil
 }
@@ -385,22 +383,8 @@ func (r *e2bRuntime) open(ctx context.Context, agentID string, spec EnvironmentS
 	}, nil
 }
 
-// changed kills the sandboxes of a deleted environment. An edit keeps them: acquire compares the
-// spec of each cached session.
-func (r *e2bRuntime) changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
-	if cur != nil {
-		return nil
-	}
-	rows, err := r.q.ListEnvironmentSandboxes(ctx, old.ID)
-	if err != nil {
-		return err
-	}
-	var errs []error
-	for _, row := range rows {
-		errs = append(errs, r.release(ctx, row.AgentID, old, row.SandboxID))
-	}
-	return errors.Join(errs...)
-}
+// changed keeps no per-environment state: acquire compares the spec of each cached session.
+func (*e2bRuntime) changed(context.Context, EnvironmentSpec, *EnvironmentSpec) error { return nil }
 
 func (*e2bRuntime) disposable() bool { return true }
 
@@ -410,20 +394,19 @@ func (*e2bRuntime) generation(string) uint64 { return 0 }
 // release kills the agent's sandbox in spec's environment. It clears the stored sandbox ID only
 // when the row still names that sandbox, so a sandbox that a later open stored stays.
 func (r *e2bRuntime) release(ctx context.Context, agentID string, spec EnvironmentSpec, sandboxID string) error {
-	key := sandboxKey(agentID, spec.ID)
-	unlock := r.lockSandbox(key)
+	unlock := r.lockAgent(agentID)
 	defer unlock()
 
 	r.mu.Lock()
-	if s, ok := r.sessions[key]; ok && (sandboxID == "" || s.sandboxID == sandboxID) {
+	if s, ok := r.sessions[agentID]; ok && s.envID == spec.ID && (sandboxID == "" || s.sandboxID == sandboxID) {
 		sandboxID = s.sandboxID
-		delete(r.sessions, key)
+		delete(r.sessions, agentID)
 	}
 	r.mu.Unlock()
 	if sandboxID == "" {
 		return nil
 	}
-	if err := r.q.ClearAgentSandbox(ctx, sqlc.ClearAgentSandboxParams{AgentID: agentID, EnvironmentID: spec.ID, SandboxID: sandboxID}); err != nil {
+	if err := r.q.ClearAgentEnvironmentSandboxID(ctx, sqlc.ClearAgentEnvironmentSandboxIDParams{AgentID: agentID, SandboxID: sandboxID}); err != nil {
 		return err
 	}
 	cfg, err := r.validate(spec)
@@ -469,7 +452,7 @@ func (h *e2bHandle) Env(ctx context.Context, cwd string, extraEnv map[string]str
 		resolvedCwd = resolveE2BTarget(h.home, h.workspace, trimmed)
 	}
 	return &e2bExecEnv{
-		id:         "e2b:" + h.agentID + ":" + h.spec.ID,
+		id:         "e2b:" + h.agentID,
 		cwd:        resolvedCwd,
 		home:       h.home,
 		timeoutSec: h.timeoutSec,

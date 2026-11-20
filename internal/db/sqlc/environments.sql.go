@@ -9,35 +9,19 @@ import (
 	"context"
 )
 
-const addAgentEnvironment = `-- name: AddAgentEnvironment :exec
-INSERT INTO agent_environments (agent_id, environment_id, created_at) VALUES (?, ?, ?)
-ON CONFLICT (agent_id, environment_id) DO NOTHING
+const clearAgentEnvironmentSandboxID = `-- name: ClearAgentEnvironmentSandboxID :exec
+UPDATE agents
+SET environment_sandbox_id = ''
+WHERE id = ?1 AND environment_sandbox_id = ?2
 `
 
-type AddAgentEnvironmentParams struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
-	CreatedAt     int64  `json:"created_at"`
+type ClearAgentEnvironmentSandboxIDParams struct {
+	AgentID   string `json:"agent_id"`
+	SandboxID string `json:"sandbox_id"`
 }
 
-func (q *Queries) AddAgentEnvironment(ctx context.Context, arg AddAgentEnvironmentParams) error {
-	_, err := q.db.ExecContext(ctx, addAgentEnvironment, arg.AgentID, arg.EnvironmentID, arg.CreatedAt)
-	return err
-}
-
-const clearAgentSandbox = `-- name: ClearAgentSandbox :exec
-DELETE FROM agent_sandboxes
-WHERE agent_id = ?1 AND environment_id = ?2 AND sandbox_id = ?3
-`
-
-type ClearAgentSandboxParams struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
-	SandboxID     string `json:"sandbox_id"`
-}
-
-func (q *Queries) ClearAgentSandbox(ctx context.Context, arg ClearAgentSandboxParams) error {
-	_, err := q.db.ExecContext(ctx, clearAgentSandbox, arg.AgentID, arg.EnvironmentID, arg.SandboxID)
+func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, arg ClearAgentEnvironmentSandboxIDParams) error {
+	_, err := q.db.ExecContext(ctx, clearAgentEnvironmentSandboxID, arg.AgentID, arg.SandboxID)
 	return err
 }
 
@@ -67,23 +51,6 @@ func (q *Queries) CountDefaultSessionWork(ctx context.Context, agentID string) (
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const countEnvironmentSessions = `-- name: CountEnvironmentSessions :one
-SELECT count(*) FROM conversations WHERE agent_id = ? AND environment_id = ?
-`
-
-type CountEnvironmentSessionsParams struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
-}
-
-// The sessions of agent_id that select environment_id explicitly.
-func (q *Queries) CountEnvironmentSessions(ctx context.Context, arg CountEnvironmentSessionsParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countEnvironmentSessions, arg.AgentID, arg.EnvironmentID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
 }
 
 const countPendingAgent = `-- name: CountPendingAgent :one
@@ -154,20 +121,44 @@ func (q *Queries) DeleteEnvironmentIfUnused(ctx context.Context, id string) (int
 	return result.RowsAffected()
 }
 
-const getAgentSandbox = `-- name: GetAgentSandbox :one
-SELECT sandbox_id FROM agent_sandboxes WHERE agent_id = ? AND environment_id = ?
+const getAgentBinding = `-- name: GetAgentBinding :one
+SELECT
+    a.environment_id,
+    a.environment_sandbox_id,
+    CAST(coalesce(e.id, '') AS TEXT) AS found_id,
+    CAST(coalesce(e.kind, '') AS TEXT) AS kind,
+    CAST(coalesce(e.config, '') AS TEXT) AS config,
+    CAST(coalesce(e.secret, '') AS TEXT) AS secret,
+    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at
+FROM agents a
+LEFT JOIN execution_environments e ON e.id = a.environment_id
+WHERE a.id = ?
 `
 
-type GetAgentSandboxParams struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
+type GetAgentBindingRow struct {
+	EnvironmentID        string `json:"environment_id"`
+	EnvironmentSandboxID string `json:"environment_sandbox_id"`
+	FoundID              string `json:"found_id"`
+	Kind                 string `json:"kind"`
+	Config               string `json:"config"`
+	Secret               string `json:"secret"`
+	UpdatedAt            int64  `json:"updated_at"`
 }
 
-func (q *Queries) GetAgentSandbox(ctx context.Context, arg GetAgentSandboxParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getAgentSandbox, arg.AgentID, arg.EnvironmentID)
-	var sandbox_id string
-	err := row.Scan(&sandbox_id)
-	return sandbox_id, err
+// found_id is empty when environment_id names a deleted environment.
+func (q *Queries) GetAgentBinding(ctx context.Context, id string) (GetAgentBindingRow, error) {
+	row := q.db.QueryRowContext(ctx, getAgentBinding, id)
+	var i GetAgentBindingRow
+	err := row.Scan(
+		&i.EnvironmentID,
+		&i.EnvironmentSandboxID,
+		&i.FoundID,
+		&i.Kind,
+		&i.Config,
+		&i.Secret,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getEnvironment = `-- name: GetEnvironment :one
@@ -185,69 +176,6 @@ func (q *Queries) GetEnvironment(ctx context.Context, id string) (ExecutionEnvir
 		&i.Secret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const getEnvironmentBinding = `-- name: GetEnvironmentBinding :one
-SELECT
-    CAST(selected.id AS TEXT) AS selected_id,
-    CAST(
-        selected.id = (CASE a.environment_id WHEN '' THEN 'local' ELSE a.environment_id END)
-        OR EXISTS (SELECT 1 FROM agent_environments ae WHERE ae.agent_id = a.id AND ae.environment_id = selected.id)
-        AS INTEGER
-    ) AS allowed,
-    CAST(coalesce(e.id, '') AS TEXT) AS found_id,
-    CAST(coalesce(e.name, '') AS TEXT) AS name,
-    CAST(coalesce(e.kind, '') AS TEXT) AS kind,
-    CAST(coalesce(e.config, '') AS TEXT) AS config,
-    CAST(coalesce(e.secret, '') AS TEXT) AS secret,
-    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at,
-    CAST(coalesce(s.sandbox_id, '') AS TEXT) AS sandbox_id
-FROM agents a
-JOIN (
-    SELECT d.id AS agent_id, CASE WHEN CAST(?1 AS TEXT) <> '' THEN CAST(?1 AS TEXT) WHEN d.environment_id = '' THEN 'local' ELSE d.environment_id END AS id
-    FROM agents d
-) selected ON selected.agent_id = a.id
-LEFT JOIN execution_environments e ON e.id = selected.id
-LEFT JOIN agent_sandboxes s ON s.agent_id = a.id AND s.environment_id = selected.id
-WHERE a.id = CAST(?2 AS TEXT)
-`
-
-type GetEnvironmentBindingParams struct {
-	EnvironmentID string `json:"environment_id"`
-	AgentID       string `json:"agent_id"`
-}
-
-type GetEnvironmentBindingRow struct {
-	SelectedID string `json:"selected_id"`
-	Allowed    int64  `json:"allowed"`
-	FoundID    string `json:"found_id"`
-	Name       string `json:"name"`
-	Kind       string `json:"kind"`
-	Config     string `json:"config"`
-	Secret     string `json:"secret"`
-	UpdatedAt  int64  `json:"updated_at"`
-	SandboxID  string `json:"sandbox_id"`
-}
-
-// The environment that a session of agent_id selects, or the environment of the agent when
-// environment_id is empty. selected_id is 'local' for the control host. allowed is 1 when the
-// selection is the agent's environment or is on its allowlist. found_id is empty when
-// selected_id names a deleted environment.
-func (q *Queries) GetEnvironmentBinding(ctx context.Context, arg GetEnvironmentBindingParams) (GetEnvironmentBindingRow, error) {
-	row := q.db.QueryRowContext(ctx, getEnvironmentBinding, arg.EnvironmentID, arg.AgentID)
-	var i GetEnvironmentBindingRow
-	err := row.Scan(
-		&i.SelectedID,
-		&i.Allowed,
-		&i.FoundID,
-		&i.Name,
-		&i.Kind,
-		&i.Config,
-		&i.Secret,
-		&i.UpdatedAt,
-		&i.SandboxID,
 	)
 	return i, err
 }
@@ -273,122 +201,6 @@ func (q *Queries) ListActiveAgentsByEnvironment(ctx context.Context, environment
 	for rows.Next() {
 		var i ListActiveAgentsByEnvironmentRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listAgentEnvironments = `-- name: ListAgentEnvironments :many
-SELECT environment_id FROM agent_environments WHERE agent_id = ? ORDER BY created_at, environment_id
-`
-
-func (q *Queries) ListAgentEnvironments(ctx context.Context, agentID string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listAgentEnvironments, agentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []string{}
-	for rows.Next() {
-		var environment_id string
-		if err := rows.Scan(&environment_id); err != nil {
-			return nil, err
-		}
-		items = append(items, environment_id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listAllowedEnvironments = `-- name: ListAllowedEnvironments :many
-SELECT
-    CAST(x.id AS TEXT) AS id,
-    CAST(coalesce(e.name, x.id) AS TEXT) AS name,
-    CAST(coalesce(e.kind, 'local') AS TEXT) AS kind,
-    CAST(x.is_default AS INTEGER) AS is_default
-FROM (
-    SELECT CASE d.environment_id WHEN '' THEN 'local' ELSE d.environment_id END AS id, 1 AS is_default, 0 AS created_at
-    FROM agents d WHERE d.id = ?1
-    UNION ALL
-    SELECT ae.environment_id, 0, ae.created_at
-    FROM agent_environments ae JOIN agents d ON d.id = ae.agent_id
-    WHERE ae.agent_id = ?1
-      AND ae.environment_id <> CASE d.environment_id WHEN '' THEN 'local' ELSE d.environment_id END
-) x
-LEFT JOIN execution_environments e ON e.id = x.id
-WHERE x.id = 'local' OR e.id IS NOT NULL
-ORDER BY x.is_default DESC, x.created_at, x.id
-`
-
-type ListAllowedEnvironmentsRow struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	IsDefault int64  `json:"is_default"`
-}
-
-// The environments that sessions of agent_id can select: the environment of the agent first, then
-// its allowlist. 'local' is the control host.
-func (q *Queries) ListAllowedEnvironments(ctx context.Context, agentID string) ([]ListAllowedEnvironmentsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAllowedEnvironments, agentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListAllowedEnvironmentsRow{}
-	for rows.Next() {
-		var i ListAllowedEnvironmentsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.Kind,
-			&i.IsDefault,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listEnvironmentSandboxes = `-- name: ListEnvironmentSandboxes :many
-SELECT agent_id, sandbox_id FROM agent_sandboxes WHERE environment_id = ?
-`
-
-type ListEnvironmentSandboxesRow struct {
-	AgentID   string `json:"agent_id"`
-	SandboxID string `json:"sandbox_id"`
-}
-
-func (q *Queries) ListEnvironmentSandboxes(ctx context.Context, environmentID string) ([]ListEnvironmentSandboxesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listEnvironmentSandboxes, environmentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListEnvironmentSandboxesRow{}
-	for rows.Next() {
-		var i ListEnvironmentSandboxesRow
-		if err := rows.Scan(&i.AgentID, &i.SandboxID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -437,34 +249,20 @@ func (q *Queries) ListEnvironments(ctx context.Context) ([]ExecutionEnvironment,
 	return items, nil
 }
 
-const removeAgentEnvironment = `-- name: RemoveAgentEnvironment :exec
-DELETE FROM agent_environments WHERE agent_id = ? AND environment_id = ?
+const setAgentEnvironmentSandboxID = `-- name: SetAgentEnvironmentSandboxID :exec
+UPDATE agents
+SET environment_sandbox_id = ?1
+WHERE id = ?2 AND environment_id = ?3
 `
 
-type RemoveAgentEnvironmentParams struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
-}
-
-func (q *Queries) RemoveAgentEnvironment(ctx context.Context, arg RemoveAgentEnvironmentParams) error {
-	_, err := q.db.ExecContext(ctx, removeAgentEnvironment, arg.AgentID, arg.EnvironmentID)
-	return err
-}
-
-const setAgentSandbox = `-- name: SetAgentSandbox :exec
-INSERT INTO agent_sandboxes (agent_id, environment_id, sandbox_id)
-VALUES (?1, ?2, ?3)
-ON CONFLICT (agent_id, environment_id) DO UPDATE SET sandbox_id = excluded.sandbox_id
-`
-
-type SetAgentSandboxParams struct {
-	AgentID       string `json:"agent_id"`
-	EnvironmentID string `json:"environment_id"`
+type SetAgentEnvironmentSandboxIDParams struct {
 	SandboxID     string `json:"sandbox_id"`
+	AgentID       string `json:"agent_id"`
+	EnvironmentID string `json:"environment_id"`
 }
 
-func (q *Queries) SetAgentSandbox(ctx context.Context, arg SetAgentSandboxParams) error {
-	_, err := q.db.ExecContext(ctx, setAgentSandbox, arg.AgentID, arg.EnvironmentID, arg.SandboxID)
+func (q *Queries) SetAgentEnvironmentSandboxID(ctx context.Context, arg SetAgentEnvironmentSandboxIDParams) error {
+	_, err := q.db.ExecContext(ctx, setAgentEnvironmentSandboxID, arg.SandboxID, arg.AgentID, arg.EnvironmentID)
 	return err
 }
 

@@ -45,7 +45,7 @@ type Service struct {
 	onWechat             func(string, *wechat.Config)
 	wechatDB             *sql.DB
 	ChannelStatus        func(string, string) channel.Status
-	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID string)
+	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID, oldSandboxID string)
 	apiURL               string
 	onTelegram           func(string, *telegram.Config)
 	feishuAPIURL         string
@@ -169,7 +169,7 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 		return err
 	}
 	if oldRow.EnvironmentID != a.EnvironmentID && s.OnEnvironmentChanged != nil {
-		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID)
+		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
 	}
 	return nil
 }
