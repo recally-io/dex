@@ -27,17 +27,6 @@ SELECT id, name FROM agents
 WHERE environment_id = ? AND archived_at IS NULL
 ORDER BY created_at, id;
 
--- name: GetAgentEnvironmentStamp :one
-SELECT
-    a.environment_id,
-    CAST(coalesce(e.kind, '') AS TEXT) AS kind,
-    CAST(coalesce(e.config, '') AS TEXT) AS config,
-    CAST(coalesce(e.secret, '') AS TEXT) AS secret,
-    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at
-FROM agents a
-LEFT JOIN execution_environments e ON e.id = a.environment_id
-WHERE a.id = ?;
-
 -- name: SetAgentEnvironmentSandboxID :exec
 UPDATE agents
 SET environment_sandbox_id = @sandbox_id
@@ -46,7 +35,7 @@ WHERE id = @agent_id AND environment_id = @environment_id;
 -- name: ClearAgentEnvironmentSandboxID :exec
 UPDATE agents
 SET environment_sandbox_id = ''
-WHERE id = @agent_id;
+WHERE id = @agent_id AND environment_sandbox_id = @sandbox_id;
 
 -- name: CountPendingAgent :one
 SELECT count(*)

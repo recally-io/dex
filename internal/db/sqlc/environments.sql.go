@@ -12,11 +12,16 @@ import (
 const clearAgentEnvironmentSandboxID = `-- name: ClearAgentEnvironmentSandboxID :exec
 UPDATE agents
 SET environment_sandbox_id = ''
-WHERE id = ?1
+WHERE id = ?1 AND environment_sandbox_id = ?2
 `
 
-func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, clearAgentEnvironmentSandboxID, agentID)
+type ClearAgentEnvironmentSandboxIDParams struct {
+	AgentID   string `json:"agent_id"`
+	SandboxID string `json:"sandbox_id"`
+}
+
+func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, arg ClearAgentEnvironmentSandboxIDParams) error {
+	_, err := q.db.ExecContext(ctx, clearAgentEnvironmentSandboxID, arg.AgentID, arg.SandboxID)
 	return err
 }
 
@@ -86,39 +91,6 @@ func (q *Queries) DeleteEnvironmentIfUnused(ctx context.Context, id string) (int
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const getAgentEnvironmentStamp = `-- name: GetAgentEnvironmentStamp :one
-SELECT
-    a.environment_id,
-    CAST(coalesce(e.kind, '') AS TEXT) AS kind,
-    CAST(coalesce(e.config, '') AS TEXT) AS config,
-    CAST(coalesce(e.secret, '') AS TEXT) AS secret,
-    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at
-FROM agents a
-LEFT JOIN execution_environments e ON e.id = a.environment_id
-WHERE a.id = ?
-`
-
-type GetAgentEnvironmentStampRow struct {
-	EnvironmentID string `json:"environment_id"`
-	Kind          string `json:"kind"`
-	Config        string `json:"config"`
-	Secret        string `json:"secret"`
-	UpdatedAt     int64  `json:"updated_at"`
-}
-
-func (q *Queries) GetAgentEnvironmentStamp(ctx context.Context, id string) (GetAgentEnvironmentStampRow, error) {
-	row := q.db.QueryRowContext(ctx, getAgentEnvironmentStamp, id)
-	var i GetAgentEnvironmentStampRow
-	err := row.Scan(
-		&i.EnvironmentID,
-		&i.Kind,
-		&i.Config,
-		&i.Secret,
-		&i.UpdatedAt,
-	)
-	return i, err
 }
 
 const getEnvironment = `-- name: GetEnvironment :one

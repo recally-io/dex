@@ -60,7 +60,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
 	// Probe creates and cleans up a temporary probe sandbox.
-	probe, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	probe, err := mgr.Probe(t.Context(), new(execenv.SpecFromRow(envRow)), execenv.SpecFromRow(envRow))
 	if err != nil || !probe.OK || probe.Home != "/home/user" {
 		t.Fatalf("probe=%+v err=%v", probe, err)
 	}
@@ -158,6 +158,14 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	if agentRecovered.EnvironmentSandboxID != "sbx-4" {
 		t.Fatalf("expected transparent 404 recovery sbx-4, got %q", agentRecovered.EnvironmentSandboxID)
 	}
+
+	// Releasing the earlier sandbox keeps the reference to the sandbox that a later open stored.
+	if err := mgr3.ReleaseAgent(t.Context(), "bot-e2b", envRow.ID, "sbx-3"); err != nil {
+		t.Fatal(err)
+	}
+	if agentKept, _ := q.GetAgent(t.Context(), "bot-e2b"); agentKept.EnvironmentSandboxID != "sbx-4" {
+		t.Fatalf("release of sbx-3 cleared the later sandbox reference, got %q", agentKept.EnvironmentSandboxID)
+	}
 }
 
 func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testing.T) {
@@ -244,7 +252,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 	mgr := newMgr()
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
-	probe, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	probe, err := mgr.Probe(t.Context(), new(execenv.SpecFromRow(envRow)), execenv.SpecFromRow(envRow))
 	if err != nil || !probe.OK || probe.Home != "/home/user" {
 		t.Fatalf("custom e2b probe=%+v err=%v", probe, err)
 	}
@@ -300,7 +308,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 	}
 	_ = h2.Close(t.Context())
 
-	// ResetAgent and CleanupSandbox must still DELETE the sandbox even when Secret is empty.
+	// ResetAgent and ReleaseAgent must still DELETE the sandbox even when Secret is empty.
 	killsBeforeReset := fake.Counts().Killed
 	if err := mgr2.ResetAgent(t.Context(), "bot-custom-e2b"); err != nil {
 		t.Fatal(err)
@@ -316,9 +324,11 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 	_ = h3.Close(t.Context())
 	agentRow, _ := q.GetAgent(t.Context(), "bot-custom-e2b")
 	killsBeforeCleanup := fake.Counts().Killed
-	mgr2.CleanupSandbox(t.Context(), "bot-custom-e2b", envRow.ID, agentRow.EnvironmentSandboxID)
+	if err := mgr2.ReleaseAgent(t.Context(), "bot-custom-e2b", envRow.ID, agentRow.EnvironmentSandboxID); err != nil {
+		t.Fatal(err)
+	}
 	if fake.Counts().Killed <= killsBeforeCleanup {
-		t.Fatalf("expected CleanupSandbox to delete custom keyless sandbox, counts=%+v", fake.Counts())
+		t.Fatalf("expected ReleaseAgent to delete custom keyless sandbox, counts=%+v", fake.Counts())
 	}
 }
 
@@ -331,7 +341,7 @@ func TestUserConnectsLocalhostSubdomainE2BViaLoopbackDialer(t *testing.T) {
 	mgr := execenv.NewManager(execenv.ManagerConfig{DataDir: t.TempDir()})
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
-	probe, err := mgr.TestEnvironment(t.Context(), execenv.EnvironmentSpec{
+	probe, err := mgr.Probe(t.Context(), nil, execenv.EnvironmentSpec{
 		ID:     "env-localhost",
 		Kind:   execenv.KindE2B,
 		Config: fmt.Sprintf(`{"apiUrl":%q}`, localhostAPI),

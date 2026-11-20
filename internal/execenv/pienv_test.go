@@ -54,7 +54,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
 	// First TestEnvironment trusts host key via TOFU and succeeds.
-	probe, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	probe, err := mgr.Probe(t.Context(), new(execenv.SpecFromRow(envRow)), execenv.SpecFromRow(envRow))
 	if err != nil || !probe.OK || probe.Home != sshFix.RemoteHome {
 		t.Fatalf("probe=%+v err=%v", probe, err)
 	}
@@ -85,14 +85,14 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 
 	// Rotating the remote host key fails verification with HostKeyChanged=true until forgotten (e.g. on host change).
 	sshFix.RotateHostKey(t)
-	probeChanged, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	probeChanged, err := mgr.Probe(t.Context(), new(execenv.SpecFromRow(envRow)), execenv.SpecFromRow(envRow))
 	if err != nil || probeChanged.OK || !probeChanged.HostKeyChanged {
 		t.Fatalf("expected changed host key probe failure with HostKeyChanged=true, got %+v err=%v", probeChanged, err)
 	}
 	if err := mgr.ForgetHostKey(execenv.SpecFromRow(envRow)); err != nil {
 		t.Fatal(err)
 	}
-	probeReset, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	probeReset, err := mgr.Probe(t.Context(), new(execenv.SpecFromRow(envRow)), execenv.SpecFromRow(envRow))
 	if err != nil || !probeReset.OK || probeReset.HostKeyChanged {
 		t.Fatalf("expected probe recovery after forget, got %+v err=%v", probeReset, err)
 	}
@@ -111,7 +111,7 @@ func TestUserProbesUnsavedPiEnvWithoutPollutingKnownHosts(t *testing.T) {
 
 	// When probing an unsaved SSH environment (saved == nil), connectivity succeeds
 	// without writing into <dataDir>/ssh_known_hosts.
-	probe, err := mgr.ProbeEnvironment(t.Context(), nil, execenv.EnvironmentSpec{
+	probe, err := mgr.Probe(t.Context(), nil, execenv.EnvironmentSpec{
 		Kind:   execenv.KindPiEnv,
 		Config: `{"host":"preview.internal","workspaceDir":"~/work"}`,
 	})
@@ -207,6 +207,98 @@ func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
 	}
 }
 
+func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	sshFix := execenvtest.NewFakeSSH(t)
+	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := sqlc.New(conn)
+
+	// Given two bots on one SSH environment.
+	now := time.Now().UnixMilli()
+	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+		ID: "env-shared", Name: "Shared SSH", Kind: string(execenv.KindPiEnv),
+		Config: `{"host":"shared.internal","workspaceDir":"~/one"}`, CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"bot-a", "bot-b"} {
+		if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: id, Name: id, ThinkingLevel: "off", EnvironmentID: envRow.ID, CreatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mgr := execenv.NewManager(execenv.ManagerConfig{DataDir: dataDir, Queries: q, SSHProgram: sshFix.SSHProgram})
+	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
+	run := func(h execenv.Handle) {
+		t.Helper()
+		env, err := h.Env(t.Context(), "", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res, err := env.Exec(t.Context(), "true", nil); err != nil || res.ExitCode != 0 {
+			t.Fatalf("exec res=%+v err=%v", res, err)
+		}
+	}
+
+	// When both bots open the environment.
+	hA, err := mgr.Open(t.Context(), "bot-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hA.Close(context.Background()) }()
+	run(hA)
+	afterFirst := sshFix.Invocations(t)
+	hB, err := mgr.Open(t.Context(), "bot-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(hB)
+	_ = hB.Close(context.Background())
+
+	// Then the second bot reuses the SSH connection, and each handle carries the current stamp.
+	if got := sshFix.Invocations(t); got != afterFirst {
+		t.Fatalf("second bot ran ssh %d more times, want 0", got-afterFirst)
+	}
+	if stamp, ok := mgr.Stamp(t.Context(), "bot-a"); !ok || stamp != hA.Stamp() || hA.Stamp() == "" {
+		t.Fatalf("stamp=%q ok=%v handle=%q", stamp, ok, hA.Stamp())
+	}
+
+	// When the environment changes.
+	updated, err := q.UpdateEnvironment(t.Context(), sqlc.UpdateEnvironmentParams{
+		Name: envRow.Name, Kind: envRow.Kind, Config: `{"host":"shared.internal","workspaceDir":"~/two"}`, UpdatedAt: now + 1, ID: envRow.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Changed(t.Context(), execenv.SpecFromRow(envRow), new(execenv.SpecFromRow(updated))); err != nil {
+		t.Fatal(err)
+	}
+
+	// Then the open lease still works but is stale, and the next open connects with the new configuration.
+	run(hA)
+	if stamp, _ := mgr.Stamp(t.Context(), "bot-a"); stamp == hA.Stamp() {
+		t.Fatal("stamp did not change after the environment changed")
+	}
+	beforeReopen := sshFix.Invocations(t)
+	hA2, err := mgr.Open(t.Context(), "bot-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hA2.Close(context.Background()) }()
+	run(hA2)
+	if sshFix.Invocations(t) == beforeReopen {
+		t.Fatal("open after a configuration change reused the retired connection")
+	}
+	if want := filepath.Join(sshFix.RemoteHome, "two", "bot-a", "workspace"); hA2.Workspace() != want {
+		t.Fatalf("workspace=%q want=%q", hA2.Workspace(), want)
+	}
+}
+
 func TestUserPiEnvBuildsDaemonOutsideModuleCheckout(t *testing.T) {
 	// Given a standalone dex process running in a directory without go.mod (like launchd/systemd WorkingDirectory=$HOME),
 	// a relative DataDir (like DEX_DATA_DIR=.local/dev-data), and no network access to sum.golang.org.
@@ -242,7 +334,7 @@ func TestUserPiEnvBuildsDaemonOutsideModuleCheckout(t *testing.T) {
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
 	// When the user tests the pi-env SSH connection without any pre-built daemon cache.
-	probe, err := mgr.TestEnvironment(t.Context(), execenv.SpecFromRow(envRow))
+	probe, err := mgr.Probe(t.Context(), new(execenv.SpecFromRow(envRow)), execenv.SpecFromRow(envRow))
 	// Then dex builds and deploys the real pi-env daemon binary and reports OK.
 	if err != nil || !probe.OK || probe.Home != sshFix.RemoteHome {
 		t.Fatalf("standalone probe=%+v err=%v", probe, err)

@@ -38,9 +38,8 @@ func TestUserLocalProviderManagesWorkspaceAndEnv(t *testing.T) {
 	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
 		t.Fatalf("workspace stat err=%v mode=%v", err, info.Mode())
 	}
-	home, err := h.Home(t.Context())
-	if err != nil || home != homeDir {
-		t.Fatalf("home=%q err=%v want=%q", home, err, homeDir)
+	if h.Home() != homeDir || h.Stamp() != "local" {
+		t.Fatalf("home=%q stamp=%q want home=%q stamp=local", h.Home(), h.Stamp(), homeDir)
 	}
 	env, err := h.Env(t.Context(), "", map[string]string{"DEX_FROM_HANDLE": "h1"})
 	if err != nil {
@@ -87,7 +86,7 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 	if err := execenv.StageUpload(t.Context(), env, localWS, h.Workspace(), "uploads/u1/note.txt"); err != nil {
 		t.Fatal(err)
 	}
-	data, err := execenv.ReadWorkspaceFile(t.Context(), env, h.Workspace(), "uploads/u1/note.txt", 1024)
+	data, err := execenv.ReadWorkspaceFile(t.Context(), h, "uploads/u1/note.txt", 1024)
 	if err != nil || string(data) != "hello remote upload" {
 		t.Fatalf("read staged upload=%q err=%v", data, err)
 	}
@@ -99,19 +98,19 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(h.Workspace(), "link.txt")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execenv.ReadWorkspaceFile(t.Context(), env, h.Workspace(), "link.txt", 1024); err == nil {
+	if _, err := execenv.ReadWorkspaceFile(t.Context(), h, "link.txt", 1024); err == nil {
 		t.Fatal("expected final symlink rejection")
 	}
 	if err := os.Symlink(filepath.Dir(outside), filepath.Join(h.Workspace(), "dirlink")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := execenv.ReadWorkspaceFile(t.Context(), env, h.Workspace(), "dirlink/secret.txt", 1024); err == nil {
+	if _, err := execenv.ReadWorkspaceFile(t.Context(), h, "dirlink/secret.txt", 1024); err == nil {
 		t.Fatal("expected parent dir symlink escape rejection")
 	}
-	if _, err := execenv.ReadWorkspaceFile(t.Context(), env, h.Workspace(), "uploads/u1/note.txt", 5); err == nil {
+	if _, err := execenv.ReadWorkspaceFile(t.Context(), h, "uploads/u1/note.txt", 5); err == nil {
 		t.Fatal("expected maxBytes rejection")
 	}
-	if _, err := execenv.ReadWorkspaceFile(t.Context(), env, h.Workspace(), "../outside", 1024); err == nil {
+	if _, err := execenv.ReadWorkspaceFile(t.Context(), h, "../outside", 1024); err == nil {
 		t.Fatal("expected path traversal rejection")
 	}
 
@@ -180,7 +179,7 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	tilde := "~/./"
-	listing, err := execenv.ListDirectories(t.Context(), env, remoteHome, &tilde)
+	listing, err := execenv.ListDirectories(t.Context(), h, &tilde)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +194,7 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 		t.Fatalf("unexpected remote listing: %+v", listing)
 	}
 	for _, bad := range []string{"relative", filepath.Join(remoteHome, "missing"), filepath.Join(remoteHome, "file")} {
-		if _, err := execenv.ResolveProjectPath(t.Context(), env, remoteHome, bad); !errors.Is(err, execenv.ErrInvalidPath) {
+		if _, err := execenv.ResolveProjectPath(t.Context(), h, bad); !errors.Is(err, execenv.ErrInvalidPath) {
 			t.Fatalf("bad path %q err=%v", bad, err)
 		}
 	}

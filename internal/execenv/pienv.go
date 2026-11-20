@@ -137,9 +137,44 @@ type piEnvRuntime struct {
 	dataDir    string
 	sshProgram string
 	buildMu    sync.Mutex
+
+	mu     sync.Mutex
+	closed bool
+	// conns holds one shared connection for each environment ID. PiG multiplexes the requests
+	// of all leases on it. A connection stays open until its environment changes or dex stops;
+	// add an idle close if many environments stay idle.
+	conns map[string]*piEnvConn
 }
 
-func (r *piEnvRuntime) normalizeAndValidate(_ context.Context, spec EnvironmentSpec) (string, error) {
+func newPiEnvRuntime(dataDir, sshProgram string) *piEnvRuntime {
+	return &piEnvRuntime{dataDir: dataDir, sshProgram: sshProgram, conns: map[string]*piEnvConn{}}
+}
+
+// piEnvSession is what one SSH connection learned about its remote host.
+type piEnvSession struct {
+	conn     *pienv.Connection
+	home     string
+	sep      string
+	base     string
+	loginEnv map[string]string
+}
+
+// piEnvConn is the shared connection of one environment. r.mu guards all fields except ready.
+type piEnvConn struct {
+	key   string
+	ready chan struct{} // closed when the dial ends
+	err   error
+	piEnvSession
+	refs int
+	// retired connections are no longer in conns; the last lease closes them.
+	retired bool
+}
+
+func piEnvKey(spec EnvironmentSpec) string {
+	return fmt.Sprintf("%d|%s|%s", spec.UpdatedAt, spec.Config, spec.Secret)
+}
+
+func (r *piEnvRuntime) normalize(spec EnvironmentSpec) (string, error) {
 	cfg, err := parsePiEnvConfig(spec.Config)
 	if err != nil {
 		return "", err
@@ -154,22 +189,148 @@ func (r *piEnvRuntime) normalizeAndValidate(_ context.Context, spec EnvironmentS
 	return string(encoded), nil
 }
 
-func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec EnvironmentSpec) (Handle, error) {
-	cfg, err := parsePiEnvConfig(spec.Config)
+func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error) {
+	c, err := r.acquire(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePiEnvConfig(r.dataDir, spec.ID, cfg, r.sshProgram); err != nil {
+	h := &piEnvHandle{rt: r, c: c, id: agentID, workspace: joinRemoteSegments(c.base, c.sep, agentID, "workspace")}
+	env, err := h.Env(ctx, h.workspace, nil)
+	if err == nil {
+		err = env.CreateDir(ctx, h.workspace, &durableenv.CreateDirOptions{Recursive: new(true)})
+	}
+	if err != nil {
+		_ = h.Close(context.WithoutCancel(ctx))
 		return nil, err
+	}
+	return h, nil
+}
+
+// acquire returns the shared connection of spec's environment with one more lease. The first
+// caller dials; concurrent callers wait for that dial.
+func (r *piEnvRuntime) acquire(ctx context.Context, spec EnvironmentSpec) (*piEnvConn, error) {
+	key := piEnvKey(spec)
+	r.mu.Lock()
+	if r.closed {
+		r.mu.Unlock()
+		return nil, errors.New("execution environment manager is closed")
+	}
+	c := r.conns[spec.ID]
+	var stale *pienv.Connection
+	if c != nil && c.key != key {
+		stale = r.retireLocked(spec.ID)
+		c = nil
+	}
+	dial := c == nil
+	if dial {
+		c = &piEnvConn{key: key, ready: make(chan struct{})}
+		r.conns[spec.ID] = c
+	}
+	c.refs++
+	r.mu.Unlock()
+	if stale != nil {
+		stale.Close()
+	}
+
+	if dial {
+		session, err := r.dial(ctx, spec)
+		r.mu.Lock()
+		c.piEnvSession, c.err = session, err
+		if err != nil && r.conns[spec.ID] == c {
+			// A failed dial is not kept: the next open tries again.
+			delete(r.conns, spec.ID)
+		}
+		r.mu.Unlock()
+		close(c.ready)
+	}
+	select {
+	case <-c.ready:
+	case <-ctx.Done():
+		r.drop(c)
+		return nil, ctx.Err()
+	}
+	r.mu.Lock()
+	err := c.err
+	r.mu.Unlock()
+	if err != nil {
+		r.drop(c)
+		return nil, err
+	}
+	return c, nil
+}
+
+// drop releases one lease and closes a retired connection after its last lease.
+func (r *piEnvRuntime) drop(c *piEnvConn) {
+	r.mu.Lock()
+	c.refs--
+	var conn *pienv.Connection
+	if c.refs == 0 && c.retired {
+		conn = c.conn
+	}
+	r.mu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
+}
+
+// retireLocked removes the connection of envID from conns. It returns the connection to close
+// now, or nil when leases still use it or its dial has not ended. r.mu must be held.
+func (r *piEnvRuntime) retireLocked(envID string) *pienv.Connection {
+	c := r.conns[envID]
+	if c == nil {
+		return nil
+	}
+	delete(r.conns, envID)
+	c.retired = true
+	if c.refs > 0 {
+		return nil
+	}
+	return c.conn
+}
+
+func (r *piEnvRuntime) retire(envID string) {
+	r.mu.Lock()
+	conn := r.retireLocked(envID)
+	r.mu.Unlock()
+	if conn != nil {
+		conn.Close()
+	}
+}
+
+func (r *piEnvRuntime) close() {
+	r.mu.Lock()
+	r.closed = true
+	var conns []*pienv.Connection
+	for _, c := range r.conns {
+		c.retired = true
+		if c.conn != nil {
+			conns = append(conns, c.conn)
+		}
+	}
+	clear(r.conns)
+	r.mu.Unlock()
+	for _, conn := range conns {
+		conn.Close()
+	}
+}
+
+// dial connects to spec's host, starts the daemon, and reads the workspace base and the login environment.
+func (r *piEnvRuntime) dial(ctx context.Context, spec EnvironmentSpec) (piEnvSession, error) {
+	cfg, err := parsePiEnvConfig(spec.Config)
+	if err != nil {
+		return piEnvSession{}, err
+	}
+	if err := validatePiEnvConfig(r.dataDir, spec.ID, cfg, r.sshProgram); err != nil {
+		return piEnvSession{}, err
 	}
 	target := sshTarget(r.dataDir, spec.ID, cfg, r.sshProgram)
 	remote, err := r.detectWithTOFU(ctx, target)
 	if err != nil {
-		return nil, err
+		return piEnvSession{}, err
 	}
 	binary, err := r.resolveDaemon(ctx, remote)
 	if err != nil {
-		return nil, err
+		return piEnvSession{}, err
 	}
 	loginShell := cfg.loginShellEnabled()
 	conn, detected, err := pienv.ConnectSsh(ctx, pienv.SshConnectOptions{
@@ -178,39 +339,22 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec Environmen
 		LoginShell: loginShell,
 	})
 	if err != nil {
-		return nil, err
+		return piEnvSession{}, err
 	}
 	sep := "/"
 	if detected.Platform == "windows" {
 		sep = `\`
 	}
-	baseWS, err := resolveRemoteWorkspaceBase(detected.Home, sep, cfg.WorkspaceDir)
+	base, err := resolveRemoteWorkspaceBase(detected.Home, sep, cfg.WorkspaceDir)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return piEnvSession{}, err
 	}
-	workspace := joinRemoteSegments(baseWS, sep, agentID, "workspace")
 	var loginEnv map[string]string
 	if loginShell && detected.Platform != "windows" {
 		loginEnv = captureRemoteLoginEnv(ctx, conn, detected.Home)
 	}
-	h := &piEnvHandle{
-		id:        agentID,
-		workspace: workspace,
-		home:      detected.Home,
-		conn:      conn,
-		loginEnv:  loginEnv,
-	}
-	env, err := h.Env(ctx, workspace, nil)
-	if err != nil {
-		_ = h.Close(context.WithoutCancel(ctx))
-		return nil, err
-	}
-	if err := env.CreateDir(ctx, workspace, &durableenv.CreateDirOptions{Recursive: new(true)}); err != nil {
-		_ = h.Close(context.WithoutCancel(ctx))
-		return nil, err
-	}
-	return h, nil
+	return piEnvSession{conn: conn, home: detected.Home, sep: sep, base: base, loginEnv: loginEnv}, nil
 }
 
 func (r *piEnvRuntime) probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
@@ -296,27 +440,30 @@ func (r *piEnvRuntime) probe(ctx context.Context, saved *EnvironmentSpec, spec E
 	}, nil
 }
 
-func (r *piEnvRuntime) onUpdated(oldSpec, newSpec EnvironmentSpec) error {
-	if r.dataDir == "" || newSpec.ID == "" {
+// changed forgets the saved host key when the endpoint changed or the row was deleted, and
+// retires the shared connection, so the next open uses the new configuration.
+func (r *piEnvRuntime) changed(_ context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
+	r.retire(old.ID)
+	if r.dataDir == "" || old.ID == "" {
 		return nil
 	}
-	oldCfg, err := parsePiEnvConfig(oldSpec.Config)
+	if cur == nil {
+		return forgetPiEnvHostKey(r.dataDir, old.ID)
+	}
+	oldCfg, err := parsePiEnvConfig(old.Config)
 	if err != nil {
 		return nil //nolint:nilerr // malformed prior config should still clear host key on endpoint update.
 	}
-	newCfg, err := parsePiEnvConfig(newSpec.Config)
+	newCfg, err := parsePiEnvConfig(cur.Config)
 	if err != nil || !samePiEnvEndpoint(oldCfg, newCfg) {
-		return forgetPiEnvHostKey(r.dataDir, newSpec.ID)
+		return forgetPiEnvHostKey(r.dataDir, old.ID)
 	}
 	return nil
 }
 
-func (r *piEnvRuntime) onDeleted(spec EnvironmentSpec) error {
-	if r.dataDir == "" || spec.ID == "" {
-		return nil
-	}
-	return forgetPiEnvHostKey(r.dataDir, spec.ID)
-}
+// release keeps the remote workspace: the SSH host belongs to the user.
+func (*piEnvRuntime) release(context.Context, string, EnvironmentSpec, string) error { return nil }
+func (*piEnvRuntime) disposable() bool                                               { return false }
 
 func (r *piEnvRuntime) forgetHostKey(spec EnvironmentSpec) error {
 	if r.dataDir == "" || strings.TrimSpace(spec.ID) == "" {
@@ -570,23 +717,22 @@ func cleanRemoteAbsPath(p, sep string) string {
 }
 
 type piEnvHandle struct {
+	rt        *piEnvRuntime
+	c         *piEnvConn
 	id        string
 	workspace string
-	home      string
-	conn      *pienv.Connection
-	loginEnv  map[string]string
 	closeOnce sync.Once
 }
 
-func (h *piEnvHandle) Kind() Kind                               { return KindPiEnv }
-func (h *piEnvHandle) Workspace() string                        { return h.workspace }
-func (h *piEnvHandle) Home(ctx context.Context) (string, error) { return h.home, ctx.Err() }
+func (h *piEnvHandle) Kind() Kind        { return KindPiEnv }
+func (h *piEnvHandle) Workspace() string { return h.workspace }
+func (h *piEnvHandle) Home() string      { return h.c.home }
 
 func (h *piEnvHandle) Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	merged := maps.Clone(h.loginEnv)
+	merged := maps.Clone(h.c.loginEnv)
 	if len(extraEnv) > 0 {
 		if merged == nil {
 			merged = make(map[string]string, len(extraEnv))
@@ -594,14 +740,15 @@ func (h *piEnvHandle) Env(ctx context.Context, cwd string, extraEnv map[string]s
 		maps.Copy(merged, extraEnv)
 	}
 	return pienv.NewRemoteExecutionEnv(pienv.RemoteExecutionEnvOptions{
-		Connection: h.conn,
+		Connection: h.c.conn,
 		ID:         "pi-env:" + h.id,
 		Cwd:        cmp.Or(cwd, h.workspace),
 		ShellEnv:   merged,
 	}), nil
 }
 
+// Close releases the lease. The runtime closes the connection after the last lease of a retired connection.
 func (h *piEnvHandle) Close(context.Context) error {
-	h.closeOnce.Do(h.conn.Close)
+	h.closeOnce.Do(func() { h.rt.drop(h.c) })
 	return nil
 }

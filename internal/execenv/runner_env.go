@@ -14,16 +14,54 @@ import (
 	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
+// runnerBackend opens leases on the live session of an enrolled machine.
+type runnerBackend struct{ runners *Runners }
+
+func (runnerBackend) normalize(spec EnvironmentSpec) (string, error) {
+	if spec.Secret != "" {
+		return "", fmt.Errorf("%w: a remote machine has no secret", ErrInvalidConfig)
+	}
+	return "{}", nil
+}
+
+func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+	session := b.runners.online(spec.ID)
+	if session == nil {
+		return TestResult{Error: "Runner is offline"}, nil
+	}
+	meta := session.Info()
+	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil
+}
+
+func (b runnerBackend) open(_ context.Context, _ string, spec EnvironmentSpec) (lease, error) {
+	session := b.runners.online(spec.ID)
+	if session == nil {
+		return nil, runner.ErrOffline
+	}
+	return &runnerHandle{id: spec.ID, client: session}, nil
+}
+
+func (b runnerBackend) changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
+	if cur != nil {
+		return nil
+	}
+	return b.runners.Revoke(ctx, old.ID)
+}
+
+// release keeps the machine workspace: the machine belongs to the user.
+func (runnerBackend) release(context.Context, string, EnvironmentSpec, string) error { return nil }
+func (runnerBackend) disposable() bool                                               { return false }
+
 type runnerHandle struct {
 	id     string
 	client *runner.Client
 }
 
-func (h *runnerHandle) Kind() Kind                           { return KindRunner }
-func (h *runnerHandle) Workspace() string                    { return h.client.Info().Workspace }
-func (h *runnerHandle) Home(context.Context) (string, error) { return h.client.Info().Home, nil }
+func (h *runnerHandle) Kind() Kind        { return KindRunner }
+func (h *runnerHandle) Workspace() string { return h.client.Info().Workspace }
+func (h *runnerHandle) Home() string      { return h.client.Info().Home }
 
-// Close releases a borrowed handle. The runner runtime owns the connection.
+// Close releases the lease. Runners owns the connection.
 func (h *runnerHandle) Close(context.Context) error { return nil }
 func (h *runnerHandle) Env(_ context.Context, cwd string, extra map[string]string) (env.ExecutionEnv, error) {
 	e := &runnerEnv{handle: h, extra: extra}

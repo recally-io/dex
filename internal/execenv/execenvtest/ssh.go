@@ -71,9 +71,27 @@ func (f *FakeSSHFixture) RotateHostKey(t *testing.T) {
 	}
 }
 
+// Invocations returns how many times dex ran the fake ssh program.
+func (f *FakeSSHFixture) Invocations(t *testing.T) int {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(f.stateDir, "invocations"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(raw)
+}
+
 func runFakeSSH(stateDir string, sshArgs []string) int {
 	if len(sshArgs) == 0 {
 		return 255
+	}
+	// One byte per run: O_APPEND writes are atomic, so concurrent runs count correctly.
+	if f, err := os.OpenFile(filepath.Join(stateDir, "invocations"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil { //nolint:gosec // test fixture directory.
+		_, _ = f.Write([]byte{'.'})
+		_ = f.Close()
 	}
 	var strict, knownHosts, alias string
 	cmdStart := len(sshArgs) - 1

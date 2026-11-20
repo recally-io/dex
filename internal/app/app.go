@@ -335,7 +335,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
 	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseAgent(changeCtx, agentID)
-		envs.CleanupSandbox(changeCtx, agentID, oldEnvID, oldSandboxID)
+		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
+			slog.Warn("release the earlier execution environment of a bot", "agent", agentID, "err", err)
+		}
 	}
 	*botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
 	// An approved archive commits in a chat receipt; the channels stop right after it.
@@ -393,9 +395,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 
 	a.handler = server.New(server.Config{
-		Engine: native,
-		Envs:   envs,
-		Chats:  chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		Engine:  native,
+		Envs:    envs,
+		Runners: envs.Runners(),
+		Chats:   chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
 	a.wg.Go(func() {
