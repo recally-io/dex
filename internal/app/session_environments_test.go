@@ -228,6 +228,20 @@ func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
 	if results := waitResults(t, sessionDB(t, d), src, 2); !strings.Contains(results[1].content, "ssh-fake-ok") {
 		t.Fatalf("forked child result=%+v", results[1])
 	}
+
+	// When the owner deletes remote-box, then a fork moves the chat on it back to local.
+	fw.until(t, "fork remote answer", answered("bash: ssh-fake-ok"))
+	remoteAnswer := findItem(t, &fw.tr, "assistant", "bash: ssh-fake-ok").EntryID
+	d.must(t, http.MethodDelete, "/api/settings/environments/"+remoteEnv.ID, nil, nil)
+	d.must(t, http.MethodPost, chatPath(fork.ID, "fork"), map[string]any{"entryId": remoteAnswer, "environmentId": "local"}, &created, http.StatusCreated)
+	rescued := d.watch(t, created.ChatID)
+	rescued.until(t, "rescued notice", func(tr *transcript) bool {
+		last := lastItem(tr)
+		return last.Kind == "boundary" && last.Boundary == "environment" && strings.HasPrefix(last.Text, "This chat moved from `"+remoteEnv.ID+"` to `local`.")
+	})
+	if out := taskTurn(t, d, created.ChatID, marker); out != "bash: local" {
+		t.Fatalf("rescued bash=%q", out)
+	}
 }
 
 // Given sessions that follow the bot's environment, when the owner changes that environment,
