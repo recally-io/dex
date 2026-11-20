@@ -36,12 +36,14 @@ export function detectSandboxPreset(cfg: EnvironmentConfig): SandboxPreset {
   return "custom";
 }
 
+// environmentKindBadge names how Dex reaches the environment. It never shows the stored
+// kind, because a kind names our transport and the user thinks in machines.
 export function environmentKindBadge(env: Pick<Environment, "kind" | "config">): string {
   if (env.kind === "pi-env") return "SSH";
 
   if (env.kind === "runner") return "Dex service";
 
-  return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "Sandbox";
+  return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "E2B sandbox";
 }
 
 export function environmentOptionLabel(env: Pick<Environment, "name" | "kind" | "config">): string {
@@ -50,16 +52,16 @@ export function environmentOptionLabel(env: Pick<Environment, "name" | "kind" | 
 
 export function environmentBotHint(env: Pick<Environment, "name" | "kind" | "config">): string {
   if (env.kind === "pi-env") {
-    return `Runs tools on SSH machine ${env.name} (${formatSshTarget(env.config)}).`;
+    return `Runs tools on ${env.name} over SSH (${formatSshTarget(env.config)}).`;
   }
 
-  if (env.kind === "runner") return `Runs tools on remote machine ${env.name}.`;
+  if (env.kind === "runner") return `Runs tools on ${env.name} through the Dex service.`;
 
   if (detectSandboxPreset(env.config) === "local") {
-    return `Runs tools in local sandbox ${env.name}.`;
+    return `Runs tools in ${env.name}, a local sandbox.`;
   }
 
-  return `Runs tools in isolated sandbox ${env.name}.`;
+  return `Runs tools in ${env.name}, an E2B sandbox.`;
 }
 
 // machineAddress returns the canonical HTTPS origin of a machine listener, or null when the

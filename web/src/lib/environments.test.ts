@@ -25,13 +25,13 @@ test("environment labels avoid internal pi-env jargon and distinguish local sand
   };
 
   expect(environmentKindBadge(ssh)).toBe("SSH");
-  expect(environmentKindBadge(cloud)).toBe("Sandbox");
+  expect(environmentKindBadge(cloud)).toBe("E2B sandbox");
   expect(environmentKindBadge(localDocker)).toBe("Local sandbox");
-  expect(environmentKindBadge(remoteCustom)).toBe("Sandbox");
+  expect(environmentKindBadge(remoteCustom)).toBe("E2B sandbox");
 
   expect(environmentOptionLabel(ssh)).toBe("MacMini (SSH)");
   expect(environmentOptionLabel(localDocker)).toBe("Docker Gateway (Local sandbox)");
-  expect(environmentBotHint(ssh)).toBe("Runs tools on SSH machine MacMini (ops@macmini).");
+  expect(environmentBotHint(ssh)).toBe("Runs tools on MacMini over SSH (ops@macmini).");
 
   expect(detectSandboxPreset(cloud.config)).toBe("cloud");
   expect(detectSandboxPreset(localDocker.config)).toBe("local");

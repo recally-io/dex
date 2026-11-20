@@ -271,7 +271,7 @@ export const forgetEnvironmentHostKey = <ThrowOnError extends boolean = false>(o
 });
 
 /**
- * Revokes the runner credential and ends the active connection.
+ * Revokes the machine certificate and ends the active connection.
  */
 export const revokeRunner = <ThrowOnError extends boolean = false>(options: Options<RevokeRunnerData, ThrowOnError>): RequestResult<RevokeRunnerResponses, RevokeRunnerErrors, ThrowOnError> => (options.client ?? client).delete<RevokeRunnerResponses, RevokeRunnerErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {
@@ -284,7 +284,7 @@ export const revokeRunner = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Creates a one-time pairing code for an unpaired runner.
+ * Creates a one-time enrollment code for a remote machine.
  */
 export const issueRunnerCode = <ThrowOnError extends boolean = false>(options: Options<IssueRunnerCodeData, ThrowOnError>): RequestResult<IssueRunnerCodeResponses, IssueRunnerCodeErrors, ThrowOnError> => (options.client ?? client).post<IssueRunnerCodeResponses, IssueRunnerCodeErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

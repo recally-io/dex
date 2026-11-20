@@ -360,7 +360,7 @@ export const forgetEnvironmentHostKeyMutation = (options?: Partial<Options<Forge
 };
 
 /**
- * Revokes the runner credential and ends the active connection.
+ * Revokes the machine certificate and ends the active connection.
  */
 export const revokeRunnerMutation = (options?: Partial<Options<RevokeRunnerData>>): UseMutationOptions<RevokeRunnerResponse, RevokeRunnerError, Options<RevokeRunnerData>> => {
     const mutationOptions: UseMutationOptions<RevokeRunnerResponse, RevokeRunnerError, Options<RevokeRunnerData>> = {
@@ -377,7 +377,7 @@ export const revokeRunnerMutation = (options?: Partial<Options<RevokeRunnerData>
 };
 
 /**
- * Creates a one-time pairing code for an unpaired runner.
+ * Creates a one-time enrollment code for a remote machine.
  */
 export const issueRunnerCodeMutation = (options?: Partial<Options<IssueRunnerCodeData>>): UseMutationOptions<IssueRunnerCodeResponse, IssueRunnerCodeError, Options<IssueRunnerCodeData>> => {
     const mutationOptions: UseMutationOptions<IssueRunnerCodeResponse, IssueRunnerCodeError, Options<IssueRunnerCodeData>> = {

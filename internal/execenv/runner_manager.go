@@ -16,8 +16,8 @@ import (
 	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
-var ErrRunnerCredential = errors.New("runner credential is not valid")
-var ErrRunnerConflict = errors.New("runner already paired or connected; revoke it before pairing another device")
+var ErrRunnerCredential = errors.New("the machine certificate is not valid")
+var ErrRunnerConflict = errors.New("this environment already has a machine; revoke it before connecting another machine")
 
 type runnerRuntime struct {
 	q        *sqlc.Queries
@@ -31,7 +31,7 @@ func runnerDigest(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// IssueRunnerCode creates a ten-minute pairing code for a saved runner environment.
+// IssueRunnerCode creates a ten-minute enrollment code for a saved remote machine.
 func (m *Manager) IssueRunnerCode(ctx context.Context, id string) (string, error) {
 	code := rand.Text()
 	rt := m.runner
@@ -48,7 +48,7 @@ func (m *Manager) IssueRunnerCode(ctx context.Context, id string) (string, error
 }
 
 // EnrollRunner consumes a one-time code and registers the machine identity. The identity is
-// the SHA-256 digest of the machine client certificate key.
+// the SHA-256 digest of the machine certificate key.
 func (m *Manager) EnrollRunner(ctx context.Context, id, code, identity string) error {
 	rt := m.runner
 	rt.mu.Lock()
@@ -60,7 +60,7 @@ func (m *Manager) EnrollRunner(ctx context.Context, id, code, identity string) e
 	return err
 }
 
-func (rt *runnerRuntime) verify(ctx context.Context, id, credential string) error {
+func (rt *runnerRuntime) verify(ctx context.Context, id, identity string) error {
 	digest, err := rt.q.GetRunnerCredential(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrRunnerCredential
@@ -68,19 +68,19 @@ func (rt *runnerRuntime) verify(ctx context.Context, id, credential string) erro
 	if err != nil {
 		return err
 	}
-	if subtle.ConstantTimeCompare([]byte(digest), []byte(runnerDigest(credential))) != 1 {
+	if subtle.ConstantTimeCompare([]byte(digest), []byte(runnerDigest(identity))) != 1 {
 		return ErrRunnerCredential
 	}
 	return nil
 }
 
-// VerifyRunner checks a device credential before the HTTP upgrade.
-func (m *Manager) VerifyRunner(ctx context.Context, id, credential string) error {
-	return m.runner.verify(ctx, id, credential)
+// VerifyRunner checks the machine certificate before the HTTP upgrade.
+func (m *Manager) VerifyRunner(ctx context.Context, id, identity string) error {
+	return m.runner.verify(ctx, id, identity)
 }
 
-// AcceptRunner installs a ready connection after checking that its credential is still valid.
-func (m *Manager) AcceptRunner(ctx context.Context, id, credential string, socket *websocket.Conn) error {
+// AcceptRunner installs a ready connection after checking that its certificate is still valid.
+func (m *Manager) AcceptRunner(ctx context.Context, id, identity string, socket *websocket.Conn) error {
 	session, err := runner.Connect(ctx, socket)
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func (m *Manager) AcceptRunner(ctx context.Context, id, credential string, socke
 	defer session.Close()
 	rt := m.runner
 	rt.mu.Lock()
-	err = rt.verify(ctx, id, credential)
+	err = rt.verify(ctx, id, identity)
 	if err == nil && rt.closed {
 		err = runner.ErrOffline
 	}
@@ -117,7 +117,7 @@ func (m *Manager) AcceptRunner(ctx context.Context, id, credential string, socke
 	}
 }
 
-// RevokeRunner removes pairing state and disconnects the current device.
+// RevokeRunner removes the enrollment and disconnects the machine.
 func (m *Manager) RevokeRunner(ctx context.Context, id string) error {
 	rt := m.runner
 	rt.mu.Lock()

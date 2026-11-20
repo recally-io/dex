@@ -309,7 +309,7 @@ paths:
       - $ref: "#/components/parameters/EnvironmentId"
     post:
       operationId: issueRunnerCode
-      description: Creates a one-time pairing code for an unpaired runner.
+      description: Creates a one-time enrollment code for a remote machine.
       responses:
         "200":
           description: Pairing code. It expires after ten minutes.
@@ -323,7 +323,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: revokeRunner
-      description: Revokes the runner credential and ends the active connection.
+      description: Revokes the machine certificate and ends the active connection.
       responses:
         "200":
           description: Credential revoked.

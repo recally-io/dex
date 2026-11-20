@@ -161,7 +161,7 @@ func (e *runnerEnv) OpenDirReader(ctx context.Context, p string) (env.DirReader,
 	return &sliceDirReader{entries: entries}, nil
 }
 func (e *runnerEnv) Watch(context.Context, []env.WatchTarget, func(env.FileChange)) (env.FileWatcher, error) {
-	return nil, env.NewFileError(env.FileErrorNotSupported, "runner does not support watches", e.Cwd(), nil)
+	return nil, env.NewFileError(env.FileErrorNotSupported, "this machine does not support file watches", e.Cwd(), nil)
 }
 func (e *runnerEnv) ListFiles(context.Context, string, *env.ListFilesOptions) (env.FileListing, error) {
 	return env.FileListing{}, env.NewFileError(env.FileErrorNotSupported, "use directory traversal", e.Cwd(), nil)
