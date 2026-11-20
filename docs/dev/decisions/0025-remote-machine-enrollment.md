@@ -8,13 +8,9 @@ Status: Accepted
 Some machines cannot accept SSH: a laptop behind NAT, a VM on a home network, or
 a host that must not open an inbound port. ADR 0022 covers execution kinds, but
 an outbound machine still needs an address, a transport identity, and an
-install path.
-
-The first implementation required an HTTPS reverse proxy with a trusted
-certificate, a downloaded binary, a one-time pairing code, and a second `pair`
-step with a shareable URL and environment ID. Users had to decide things Dex
-can decide: which certificate to trust and how to identify the machine. The
-code and the manual pairing step also duplicated the same one-time secret.
+install path. A reverse proxy, a trusted certificate, a downloaded binary, and a
+manual pairing step would ask the user to decide what Dex can decide: which
+certificate to trust and how to identify the machine.
 
 ## Decision
 
@@ -41,7 +37,7 @@ code and the manual pairing step also duplicated the same one-time secret.
   minutes. The installer fetches `install-machine.sh` from Dex, checks release
   checksums, creates the `dex-agent` system account, enrolls the certificate,
   and starts the systemd unit. The code passes to the binary on stdin, so it
-  stays out of the process list. The user never runs `pair`.
+  stays out of the process list.
 - **Names.** The shipped binary, system account, systemd unit, and state
   directory use `dex-agent`. The UI calls the environment **dex runner** and
   the page **Execution environments**, because the machine, not the service

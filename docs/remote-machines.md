@@ -1,9 +1,8 @@
 # Connect a remote machine
 
 dex runner runs tools on a machine that Dex cannot reach over SSH. The machine opens an
-outbound TLS connection to Dex, so the machine needs no `sshd` and no inbound port. Dex serves
-this connection on its own TLS listener, and the install command pins the Dex public key. The
-machine therefore needs no CA bundle, no public domain, and no reverse proxy.
+outbound TLS connection to Dex, so the machine needs no `sshd` and no inbound port, and the
+install command pins the Dex public key, so it needs no CA bundle and no public domain.
 
 Use a machine environment only with bots you trust. A bot can read the files and credentials
 that the service account can read.
