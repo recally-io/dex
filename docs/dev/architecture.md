@@ -72,6 +72,11 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 
 ## Sources of truth
 
+The Task Inbox reads `work_tasks` and `work_task_entries` from `control.sqlite`.
+Each Task belongs to an agent. Its lifecycle and notes do not change the state
+of a Session. The Inbox hides closed Tasks by default and keeps Routine results
+in a separate section.
+
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |

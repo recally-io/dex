@@ -34,6 +34,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/wechat"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 // DefaultAgentID is the agent that the web UI talks to.
@@ -401,10 +402,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 
 	a.handler = server.New(server.Config{
-		Engine:  native,
-		Envs:    envs,
-		Runners: envs.Runners(),
-		Chats:   chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		WorkTasks: worktask.New(conn),
+		Engine:    native,
+		Envs:      envs,
+		Runners:   envs.Runners(),
+		Chats:     chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
 	a.wg.Go(func() {

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Plus, Search, Settings } from "lucide-react";
+import { Inbox, Plus, Search, Settings } from "lucide-react";
 import type { Agent } from "../api/generated/types.gen";
 import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { AgentContext } from "../lib/agent-scope";
@@ -56,6 +56,16 @@ export function Sidebar({
           <span>Search</span>
           <kbd className="ml-auto text-[10px]">⌘K</kbd>
         </Button>
+      </div>
+      <div className="px-2 pb-2">
+        <Link
+          to="/inbox"
+          aria-current={a === "inbox" || path.includes("/inbox/") ? "page" : undefined}
+          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), row, "w-full")}
+        >
+          <Inbox size={15} aria-hidden />
+          Inbox
+        </Link>
       </div>
       <nav aria-label="Bots" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
         {(agents.data?.agents ?? []).map((agent) => (

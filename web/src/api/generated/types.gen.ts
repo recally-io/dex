@@ -4,6 +4,23 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type WorkTaskLifecycle = 'open' | 'completed' | 'cancelled';
+
+export type WorkTask = {
+    id: string;
+    agentId: string;
+    title: string;
+    lifecycle: WorkTaskLifecycle;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type WorkTaskEntry = {
+    id: number;
+    content: string;
+    createdAt: number;
+};
+
 export type Error = {
     /**
      * A message for the user.
@@ -1183,6 +1200,155 @@ export type AutomationId = string;
 export type ChatId = number;
 
 export type EnvironmentId = string;
+
+export type ListWorkTasksData = {
+    body?: never;
+    path?: never;
+    query?: {
+        includeClosed?: boolean;
+    };
+    url: '/api/inbox/tasks';
+};
+
+export type ListWorkTasksErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListWorkTasksError = ListWorkTasksErrors[keyof ListWorkTasksErrors];
+
+export type ListWorkTasksResponses = {
+    /**
+     * Tasks across agents.
+     */
+    200: {
+        tasks: Array<WorkTask>;
+    };
+};
+
+export type ListWorkTasksResponse = ListWorkTasksResponses[keyof ListWorkTasksResponses];
+
+export type CreateWorkTaskData = {
+    body: {
+        title: string;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/inbox/tasks';
+};
+
+export type CreateWorkTaskErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CreateWorkTaskError = CreateWorkTaskErrors[keyof CreateWorkTaskErrors];
+
+export type CreateWorkTaskResponses = {
+    /**
+     * Created Task.
+     */
+    201: WorkTask;
+};
+
+export type CreateWorkTaskResponse = CreateWorkTaskResponses[keyof CreateWorkTaskResponses];
+
+export type GetWorkTaskData = {
+    body?: never;
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/inbox/tasks/{taskId}';
+};
+
+export type GetWorkTaskErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetWorkTaskError = GetWorkTaskErrors[keyof GetWorkTaskErrors];
+
+export type GetWorkTaskResponses = {
+    /**
+     * Task and recent timeline.
+     */
+    200: {
+        task: WorkTask;
+        entries: Array<WorkTaskEntry>;
+    };
+};
+
+export type GetWorkTaskResponse = GetWorkTaskResponses[keyof GetWorkTaskResponses];
+
+export type SetWorkTaskLifecycleData = {
+    body: {
+        lifecycle: WorkTaskLifecycle;
+    };
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/inbox/tasks/{taskId}';
+};
+
+export type SetWorkTaskLifecycleErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetWorkTaskLifecycleError = SetWorkTaskLifecycleErrors[keyof SetWorkTaskLifecycleErrors];
+
+export type SetWorkTaskLifecycleResponses = {
+    /**
+     * Updated Task.
+     */
+    200: WorkTask;
+};
+
+export type SetWorkTaskLifecycleResponse = SetWorkTaskLifecycleResponses[keyof SetWorkTaskLifecycleResponses];
+
+export type AppendWorkTaskNoteData = {
+    body: {
+        content: string;
+    };
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/inbox/tasks/{taskId}';
+};
+
+export type AppendWorkTaskNoteErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AppendWorkTaskNoteError = AppendWorkTaskNoteErrors[keyof AppendWorkTaskNoteErrors];
+
+export type AppendWorkTaskNoteResponses = {
+    /**
+     * Added note. Does not start a run.
+     */
+    201: WorkTaskEntry;
+};
+
+export type AppendWorkTaskNoteResponse = AppendWorkTaskNoteResponses[keyof AppendWorkTaskNoteResponses];
 
 export type GetWorkData = {
     body?: never;
