@@ -520,11 +520,13 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	if row.Session == "new" {
 		key += ":" + run.ID
 	}
-	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, EnvironmentID: row.EnvironmentID, Target: pre.ID, Skip: pre.Skip}
-	if due.Valid {
-		input.Expected = &row
-	}
+	// The input stores row only while row is current: the preflight gives an edit time to commit.
+	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, EnvironmentID: row.EnvironmentID, Target: pre.ID, Skip: pre.Skip, Expected: &row}
 	chatID, created, err := s.enqueue(ctx, input)
+	if !due.Valid && errors.Is(err, chat.ErrAutomationChanged) {
+		// A scheduled run checks again next minute; a manual run tells the caller.
+		err = fmt.Errorf("%w: the routine changed during its check; run it again", engine.ErrBusy)
+	}
 	switch {
 	case created && chatID == 0:
 		run.Status, run.Reason = "skipped", pre.Skip

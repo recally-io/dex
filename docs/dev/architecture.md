@@ -534,8 +534,9 @@ effective environment and checks it: a removed target skips the run, and an SSH
 target is opened with a 15-second timeout, so a host that does not answer skips
 the run. E2B and runner targets are not opened, because that starts the work.
 The input transaction resolves the environment again under the writer lock and
-stores the run or the skip only when it is still the checked one; otherwise the
-run fails with 409 and can run again. `run_routine` uses the same preflight
+stores the run or the skip only when it is still the checked one and the routine
+row did not change, also for a manual run; otherwise a manual run fails with 409
+and can run again, and a scheduled run is checked again next minute. `run_routine` uses the same preflight
 before its tool transaction. The skip reason names the environment. A change of
 the environment without a new cwd clears the cwd. A change of the bot's
 environment clears the cwd of the routines that follow the bot.
