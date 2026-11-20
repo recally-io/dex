@@ -1,7 +1,7 @@
 -- name: CreateChildConversation :one
 -- A child session is a Chat with a parent. Its first turn is stored in the same transaction.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: CreateParentTurn :execrows

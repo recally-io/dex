@@ -748,6 +748,54 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/environments:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+    get:
+      operationId: listAgentEnvironments
+      description: >
+        Lists the execution environments that sessions of the agent can select: the environment of
+        the agent first, then its allowlist. It has no configuration and no secrets.
+      responses:
+        "200":
+          description: The allowed environments.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentEnvironments" }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setAgentEnvironments
+      description: >
+        Replaces the allowlist of the agent. "local" is the control host. The environment of the
+        agent is always allowed and need not be listed. A removed environment stops the tools of
+        the sessions that select it, and an E2B sandbox of the agent in it is killed. A runner
+        environment serves one active agent only (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [environmentIds]
+              properties:
+                environmentIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        "200":
+          description: The allowed environments.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentEnvironments" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/environment/reset:
     parameters:
       - in: path
@@ -918,6 +966,10 @@ paths:
         - in: query
           name: agentId
           schema: { type: string }
+        - in: query
+          name: environmentId
+          description: An execution environment of the agent. Absent selects the environment of the agent.
+          schema: { type: string }
       responses:
         "200":
           description: The current directory and its visible subdirectories.
@@ -954,7 +1006,14 @@ paths:
         schema: { type: string }
     get:
       operationId: listRecentProjects
-      description: Returns up to eight distinct existing project directories, newest activity first.
+      description: >
+        Returns up to eight distinct project directories that exist in the execution environment,
+        newest activity first.
+      parameters:
+        - in: query
+          name: environmentId
+          description: An execution environment of the agent. Absent selects the environment of the agent.
+          schema: { type: string }
       responses:
         "200":
           description: Recent project paths for this agent.
@@ -968,6 +1027,42 @@ paths:
                     type: array
                     items: { type: string }
         "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/chats/{chatId}/environment:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - $ref: "#/components/parameters/ChatId"
+    put:
+      operationId: setChatEnvironment
+      description: >
+        Selects the execution environment of a Chat session before its first message. The command
+        and file tools of the chat run there. Empty environmentId makes the chat follow the
+        environment of the agent. The selection clears the project directory. The environment must
+        be the environment of the agent or on its allowlist (400). A chat that has started answers
+        409: fork it instead. Read-only conversations return 403.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [environmentId]
+              properties:
+                environmentId: { type: string }
+      responses:
+        "200":
+          description: The Chat session with its environment.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chat" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/agents/{agentId}/chats/{chatId}/project:
@@ -1881,6 +1976,29 @@ components:
         dataDir: { type: string }
         runtimeReady: { type: boolean }
 
+    AgentEnvironments:
+      type: object
+      required: [environments]
+      properties:
+        environments:
+          type: array
+          items:
+            type: object
+            x-go-type: engine.EnvironmentInfo
+            x-go-type-import:
+              path: github.com/recally-io/dex/internal/engine
+            required: [id, name, kind, default, status]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              kind: { type: string }
+              default: {
+                type: boolean,
+                description: This is the environment of the agent.,
+              }
+              status:
+                type: string
+                description: "available, offline, or unavailable: <reason>."
     Chat:
       type: object
       required: [
@@ -1911,7 +2029,12 @@ components:
           description: The automation that created the chat.
         cwd:
           type: string
-          description: The saved project directory. Empty means the agent workspace.
+          description: The saved project directory. Empty means the workspace of the environment.
+        environmentId:
+          type: string
+          description: >-
+            The execution environment that the chat selects: "local" or an environment ID. Empty
+            means the environment of the agent.
         title: { type: string }
         createdAt: { type: integer, format: int64 }
         updatedAt:

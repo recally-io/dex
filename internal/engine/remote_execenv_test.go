@@ -181,7 +181,7 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 	if !strings.Contains(readOut, "hello v2") {
 		t.Fatalf("remote read=%q", readOut)
 	}
-	artifactBytes, err := a.ReadWorkspaceFile(t.Context(), "a", "sub/artifact.txt", 1024)
+	artifactBytes, err := a.ReadWorkspaceFile(t.Context(), TaskContext{AgentID: "a"}, "sub/artifact.txt", 1024)
 	if err != nil || string(artifactBytes) != "hello v2\n" {
 		t.Fatalf("ReadWorkspaceFile=%q err=%v", artifactBytes, err)
 	}
@@ -198,11 +198,11 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 	}
 
 	// Verify ResolveProjectPath and ListDirectories route through the remote pipe handle.
-	resolvedProj, err := a.ResolveProjectPath(t.Context(), "a", "~/repo")
+	resolvedProj, err := a.ResolveProjectPath(t.Context(), "a", "", "~/repo")
 	if err != nil || resolvedProj != remoteProject {
 		t.Fatalf("ResolveProjectPath=%q err=%v want=%q", resolvedProj, err, remoteProject)
 	}
-	listing, err := a.ListDirectories(t.Context(), "a", nil)
+	listing, err := a.ListDirectories(t.Context(), "a", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

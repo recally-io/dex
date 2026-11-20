@@ -12,8 +12,8 @@ import (
 )
 
 func localWorkspaceReader(dataDir string) artifact.WorkspaceReader {
-	return func(_ context.Context, agentID, relPath string, maxBytes int64) ([]byte, error) {
-		root, err := os.OpenRoot(filepath.Join(dataDir, "agents", agentID, "workspace"))
+	return func(_ context.Context, caller engine.TaskContext, relPath string, maxBytes int64) ([]byte, error) {
+		root, err := os.OpenRoot(filepath.Join(dataDir, "agents", caller.AgentID, "workspace"))
 		if err != nil {
 			return nil, err
 		}

@@ -4,6 +4,7 @@ package execenvtest
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -15,9 +16,12 @@ import (
 
 // NewProvider returns a Provider of kind rooted at rootDir/agents/<id>/workspace with homeDir and isolated baseEnv.
 func NewProvider(kind execenv.Kind, rootDir, homeDir string, baseEnv map[string]string) execenv.Provider {
-	return providerFunc(func(ctx context.Context, agentID string) (execenv.Handle, error) {
+	return providerFunc(func(ctx context.Context, agentID, environmentID string) (execenv.Handle, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		if environmentID != "" {
+			return nil, fmt.Errorf("%w: the test provider has only the bot environment", execenv.ErrUnavailable)
 		}
 		ws := filepath.Join(rootDir, "agents", agentID, "workspace")
 		if err := os.MkdirAll(ws, 0o700); err != nil {
@@ -29,14 +33,14 @@ func NewProvider(kind execenv.Kind, rootDir, homeDir string, baseEnv map[string]
 	})
 }
 
-type providerFunc func(ctx context.Context, agentID string) (execenv.Handle, error)
+type providerFunc func(ctx context.Context, agentID, environmentID string) (execenv.Handle, error)
 
-func (f providerFunc) Open(ctx context.Context, agentID string) (execenv.Handle, error) {
-	return f(ctx, agentID)
+func (f providerFunc) Open(ctx context.Context, agentID, environmentID string) (execenv.Handle, error) {
+	return f(ctx, agentID, environmentID)
 }
 
-func (f providerFunc) Stamp(context.Context, string) (string, bool) { return "", true }
-func (f providerFunc) Close(context.Context) error                  { return nil }
+func (f providerFunc) Stamp(context.Context, string, string) (string, error) { return "", nil }
+func (f providerFunc) Close(context.Context) error                           { return nil }
 
 type isolatedHandle struct {
 	kind    execenv.Kind

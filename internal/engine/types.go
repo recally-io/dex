@@ -98,6 +98,9 @@ type Config struct {
 	LoginEnv func(ctx context.Context, base map[string]string) (map[string]string, error)
 	// ExecEnv configures agent workspace and execution backends. Nil defaults to a host-local provider.
 	ExecEnv execenv.Provider
+	// SessionEnvironment returns the explicit execution environment of an unscoped session, or
+	// empty when the session follows its agent. Nil makes every session follow its agent.
+	SessionEnvironment func(ctx context.Context, ref Ref) (string, error)
 	// FallbackModel returns the current fallback model for an agent, or an empty ModelRef.
 	FallbackModel func(ctx context.Context, agentID string) ModelRef
 	FakeModel     bool

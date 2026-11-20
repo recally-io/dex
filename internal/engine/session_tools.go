@@ -45,6 +45,19 @@ type TaskTools struct {
 	Timers           TimerTools
 	Sessions         SessionTools
 	Background       BackgroundTools
+	// Environments lists the execution environments that the sessions of the caller's bot can select.
+	Environments func(context.Context, TaskContext) ([]EnvironmentInfo, error)
+}
+
+// EnvironmentInfo is an execution environment that a session can select. It has no secrets.
+type EnvironmentInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind"`
+	// Default marks the environment of the bot. A session without a selection runs in it.
+	Default bool `json:"default"`
+	// Status is "available", "offline", or "unavailable: <reason>".
+	Status string `json:"status"`
 }
 
 // SessionTools are the operations of the session tools. Send, Stop, and Fork act on the children of
@@ -69,6 +82,9 @@ type SessionNewArgs struct {
 	Provider      string `json:"provider,omitempty"`
 	ModelID       string `json:"modelId,omitempty"`
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
+	// Environment is an execution environment ID from the allowlist of the child's bot. Empty
+	// means the environment of the parent for this bot, else the environment of the other bot.
+	Environment string `json:"environment,omitempty"`
 }
 
 type SessionListArgs struct {
@@ -228,6 +244,7 @@ func sessionExtension(agentID string, handlers TaskTools) *durable.Extension {
 				"provider":      map[string]any{"type": "string", "description": "Omit with modelId to use the model of this conversation. Supply both fields to change the model."},
 				"modelId":       map[string]any{"type": "string", "description": "Use an exact configured model ID. Never guess an ID."},
 				"thinkingLevel": map[string]any{"type": "string", "enum": []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}},
+				"environment":   map[string]any{"type": "string", "description": "An execution environment ID from environment_list. The command and file tools of the child run there. Omit it to use the environment of this conversation, or with bot the environment of that bot. A cwd from another environment is not inherited."},
 			}), sessions.New != nil, func(ctx context.Context, source TaskContext, args SessionNewArgs) (SessionRef, error) {
 				return sessions.New(ctx, source, args)
 			}),
@@ -252,6 +269,15 @@ func sessionExtension(agentID string, handlers TaskTools) *durable.Extension {
 				"message": map[string]any{"type": "string", "minLength": 1},
 			}), sessions.Fork != nil, func(ctx context.Context, source TaskContext, args SessionForkArgs) (SessionRef, error) {
 				return sessions.Fork(ctx, source, args)
+			}),
+		sessionTool(agentID, "environment_list", "List the execution environments that sessions of this bot can use, with their ID, name, kind, and status. The default one is the environment of this bot. Give an ID to session_new to run a child there.",
+			objectSchema([]string{}, map[string]any{}), handlers.Environments != nil, func(ctx context.Context, source TaskContext, _ struct{}) (struct {
+				Environments []EnvironmentInfo `json:"environments"`
+			}, error) {
+				list, err := handlers.Environments(ctx, source)
+				return struct {
+					Environments []EnvironmentInfo `json:"environments"`
+				}{Environments: list}, err
 			}),
 	}
 	tools = append(tools, &durable.ToolRegistration{

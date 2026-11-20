@@ -32,8 +32,9 @@ type Info struct {
 	ModifiedAt string
 }
 
-// WorkspaceReader reads up to maxBytes of a workspace-relative regular non-symlink file.
-type WorkspaceReader func(ctx context.Context, agentID, relPath string, maxBytes int64) ([]byte, error)
+// WorkspaceReader reads up to maxBytes of a workspace-relative regular non-symlink file in the
+// execution environment of the calling session.
+type WorkspaceReader func(ctx context.Context, caller engine.TaskContext, relPath string, maxBytes int64) ([]byte, error)
 
 // Service has no artifact index. The mutex only orders concurrent file mutations.
 type Service struct {
@@ -242,7 +243,7 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 	if reader == nil {
 		return engine.ArtifactInfo{}, errors.New("workspace reader is not configured")
 	}
-	data, err := reader(ctx, caller.AgentID, path, MaxSize)
+	data, err := reader(ctx, caller, path, MaxSize)
 	if err != nil {
 		return engine.ArtifactInfo{}, err
 	}

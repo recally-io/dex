@@ -39,6 +39,7 @@ type agentResources struct {
 	loaded         *loadedExtensions
 	execHandle     execenv.Handle
 	execStamp      string
+	envs           *environments
 	groupRoot      *os.Root
 	groupExtension *durable.Extension
 }
@@ -296,7 +297,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	execHandle, err := a.config.ExecEnv.Open(ctx, agentID)
+	execHandle, err := a.config.ExecEnv.Open(ctx, agentID, "")
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +307,6 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, execHandle.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	workspace := execHandle.Workspace()
 	files := a.files(agentID, execHandle)
 	loaded, err := files.Load(ctx)
 	if err != nil {
@@ -320,17 +320,28 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	inheritEnv := execHandle.Kind() != execenv.KindLocal
-	toolEnv := loaded.Env
-	if inheritEnv {
-		toolEnv = loaded.ExplicitEnv
+	envs := &environments{agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, own: execHandle, loaded: loaded}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
+		}
+	}()
+	session := func(ctx context.Context, id durable.ConversationId) (sessionEnv, error) {
+		return envs.session(ctx, int64(id))
 	}
-	bgOutputDir := filepath.Join(dir, "background")
-	if inheritEnv {
-		bgOutputDir = execenv.JoinTargetPath(workspace, ".dex", "background")
+	background := func(ctx context.Context, id durable.ConversationId) (backgroundEnv, error) {
+		s, err := envs.session(ctx, int64(id))
+		if err != nil {
+			return backgroundEnv{}, err
+		}
+		outputDir := filepath.Join(dir, "background")
+		if s.Inherit {
+			outputDir = execenv.JoinTargetPath(s.Handle.Workspace(), ".dex", "background")
+		}
+		return backgroundEnv{EnvironmentID: s.ID, Env: s.Vars, InheritEnv: s.Inherit, Kind: s.Handle.Kind(), OutputDir: outputDir, Workspace: s.Handle.Workspace()}, nil
 	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(toolEnv, inheritEnv, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, toolEnv, inheritEnv, execHandle.Kind(), bgOutputDir, workspace), workLoopExtension(), artifactExtension(agentID, workspace, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), loaded.Extension}
 	if loaded.HasTools {
@@ -377,11 +388,15 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll, FollowUpMode: durable.QueueAll}
 		},
 		Env: func(envCtx context.Context, target harness.EnvTarget) (durableenv.ExecutionEnv, error) {
-			cwd := workspace
+			s, err := envs.session(envCtx, int64(target.ConversationId))
+			if err != nil {
+				return nil, err
+			}
+			cwd := s.Handle.Workspace()
 			if target.Cwd != nil {
 				cwd = *target.Cwd
 			}
-			return execHandle.Env(envCtx, cwd, toolEnv)
+			return s.Handle.Env(envCtx, cwd, s.Vars)
 		},
 		OnReport: func(report durable.Report) {
 			slog.Error("agent execution", "agent", agentID, "type", report.Kind, "error", report.Error)
@@ -390,7 +405,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, store: store, loaded: loaded, execHandle: execHandle, execStamp: execStamp}, nil
+	return &agentResources{harness: h, store: store, loaded: loaded, execHandle: execHandle, execStamp: execStamp, envs: envs}, nil
 }
 
 // Withdrawal and abort marks commit before the paused Harness can run saved work.
@@ -449,8 +464,18 @@ func agentChange(options Options) harness.AgentChange {
 
 // agentChange adds the AGENTS.md text to the instructions. It reads the files at each admission,
 // so an edit applies from the next input of a conversation.
-func (a *Agents) agentChange(ctx context.Context, agentID string, options Options) harness.AgentChange {
-	options.Instructions = a.files(agentID, a.execHandle(agentID)).instructionsContext(ctx, options.Cwd, options.Instructions)
+// agentChange reads the project AGENTS.md in the environment of the session ref.
+func (a *Agents) agentChange(ctx context.Context, ref Ref, options Options) harness.AgentChange {
+	handle := a.execHandle(ref.AgentID)
+	if envs := a.environments(ref.AgentID); envs != nil {
+		// An unavailable environment has no project AGENTS.md to read; its tools fail at the call.
+		s, err := envs.session(ctx, ref.ID)
+		if err != nil {
+			return agentChange(options)
+		}
+		handle = s.Handle
+	}
+	options.Instructions = a.files(ref.AgentID, handle).instructionsContext(ctx, options.Cwd, options.Instructions)
 	return agentChange(options)
 }
 
@@ -1037,29 +1062,15 @@ func (a *Agents) execHandle(agentID string) execenv.Handle {
 	return nil
 }
 
-func (a *Agents) withHandle(ctx context.Context, agentID string, fn func(execenv.Handle) error) error {
-	if !agentIDPattern.MatchString(agentID) {
-		return ErrInvalidInput
-	}
-	if err := a.begin(); err != nil {
-		return err
-	}
-	defer a.end()
-	if h := a.execHandle(agentID); h != nil {
-		return fn(h)
-	}
-	h, err := a.config.ExecEnv.Open(ctx, agentID)
+// ReadWorkspaceFile reads up to maxBytes of a workspace-relative regular non-symlink file in the
+// environment of the calling session.
+func (a *Agents) ReadWorkspaceFile(ctx context.Context, caller TaskContext, relPath string, maxBytes int64) ([]byte, error) {
+	environmentID, err := a.sessionEnvironmentID(ctx, Ref{AgentID: caller.AgentID, Scope: caller.Scope, ID: caller.ConversationID})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() { _ = h.Close(context.WithoutCancel(ctx)) }()
-	return fn(h)
-}
-
-// ReadWorkspaceFile reads up to maxBytes of a workspace-relative regular non-symlink file.
-func (a *Agents) ReadWorkspaceFile(ctx context.Context, agentID, relPath string, maxBytes int64) ([]byte, error) {
 	var data []byte
-	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+	err = a.withEnvironment(ctx, caller.AgentID, environmentID, func(h execenv.Handle) error {
 		var readErr error
 		data, readErr = execenv.ReadWorkspaceFile(ctx, h, relPath, maxBytes)
 		return readErr
@@ -1067,13 +1078,14 @@ func (a *Agents) ReadWorkspaceFile(ctx context.Context, agentID, relPath string,
 	return data, err
 }
 
-// ResolveProjectPath validates and normalizes a project path inside the agent's execution environment.
-func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, raw string) (string, error) {
+// ResolveProjectPath validates and normalizes a project path inside an execution environment of
+// the agent. An empty environmentID selects the agent's own environment.
+func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, environmentID, raw string) (string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return "", nil
 	}
 	var resolved string
-	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
 		var err error
 		resolved, err = execenv.ResolveProjectPath(ctx, h, raw)
 		return err
@@ -1081,13 +1093,13 @@ func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, raw string) (s
 	return resolved, err
 }
 
-// FilterProjectPaths keeps up to limit existing directory paths from paths inside the agent's environment.
-func (a *Agents) FilterProjectPaths(ctx context.Context, agentID string, paths []string, limit int) ([]string, error) {
+// FilterProjectPaths keeps up to limit existing directory paths from paths inside an environment of the agent.
+func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, environmentID string, paths []string, limit int) ([]string, error) {
 	if len(paths) == 0 || limit <= 0 {
 		return []string{}, nil
 	}
 	var existing []string
-	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
 		for _, p := range paths {
 			if _, resErr := execenv.ResolveProjectPath(ctx, h, p); resErr == nil {
 				existing = append(existing, p)
@@ -1104,10 +1116,10 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID string, paths [
 	return existing, err
 }
 
-// ListDirectories lists browsable directories for the agent's execution environment.
-func (a *Agents) ListDirectories(ctx context.Context, agentID string, path *string) (execenv.DirectoryListing, error) {
+// ListDirectories lists browsable directories in an execution environment of the agent.
+func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID string, path *string) (execenv.DirectoryListing, error) {
 	var listing execenv.DirectoryListing
-	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
 		var listErr error
 		listing, listErr = execenv.ListDirectories(ctx, h, path)
 		return listErr
@@ -1115,9 +1127,9 @@ func (a *Agents) ListDirectories(ctx context.Context, agentID string, path *stri
 	return listing, err
 }
 
-// ExecEnv opens an ExecutionEnv for background or ad-hoc execution in the agent's environment.
-// Callers must invoke release (when non-nil) once finished.
-func (a *Agents) ExecEnv(ctx context.Context, agentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
+// ExecEnv opens an ExecutionEnv for background or ad-hoc execution in an environment of the agent.
+// An empty environmentID selects the agent's own environment. Callers must invoke release once finished.
+func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, "", "", nil, ErrInvalidInput
 	}
@@ -1125,14 +1137,18 @@ func (a *Agents) ExecEnv(ctx context.Context, agentID, cwd string, extraEnv map[
 		return nil, "", "", nil, err
 	}
 	defer a.end()
-	if h := a.execHandle(agentID); h != nil {
-		env, err := h.Env(ctx, cwd, extraEnv)
+	if envs := a.environments(agentID); envs != nil {
+		s, err := envs.byID(ctx, environmentID)
 		if err != nil {
 			return nil, "", "", nil, err
 		}
-		return env, h.Workspace(), h.Kind(), func() {}, nil
+		env, err := s.Handle.Env(ctx, cwd, extraEnv)
+		if err != nil {
+			return nil, "", "", nil, err
+		}
+		return env, s.Handle.Workspace(), s.Handle.Kind(), func() {}, nil
 	}
-	h, err := a.config.ExecEnv.Open(ctx, agentID)
+	h, err := a.config.ExecEnv.Open(ctx, agentID, environmentID)
 	if err != nil {
 		return nil, "", "", nil, err
 	}
@@ -1163,20 +1179,21 @@ func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
 	type loadedState struct {
 		extStamp  string
 		execStamp string
+		envs      *environments
 	}
 	loaded := map[string]loadedState{}
 	for id, resource := range a.resources {
 		if resource.loaded == nil {
 			continue
 		}
-		loaded[id] = loadedState{extStamp: resource.loaded.stamp, execStamp: resource.execStamp}
+		loaded[id] = loadedState{extStamp: resource.loaded.stamp, execStamp: resource.execStamp, envs: resource.envs}
 	}
 	a.mu.Unlock()
 	stale := map[string]string{}
 	for id, state := range loaded {
 		currentExt := a.files(id, nil).stamp()
-		currentExec, ok := a.config.ExecEnv.Stamp(ctx, id)
-		if currentExt != state.extStamp || (ok && currentExec != state.execStamp) {
+		currentExec, err := a.config.ExecEnv.Stamp(ctx, id, "")
+		if currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
 			stale[id] = currentExt + "|" + currentExec
 		}
 	}
@@ -1187,7 +1204,7 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 		return ExtensionInfo{}, ErrInvalidInput
 	}
 	var info ExtensionInfo
-	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, "", func(h execenv.Handle) error {
 		var infoErr error
 		info, infoErr = a.files(agentID, h).Info(ctx)
 		return infoErr
@@ -1200,8 +1217,8 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	a.mu.Unlock()
 	if resource != nil {
 		info.Servers = resource.loaded.serverInfo()
-		currentExec, ok := a.config.ExecEnv.Stamp(ctx, agentID)
-		info.ReloadPending = a.files(agentID, nil).stamp() != resource.loaded.stamp || (ok && currentExec != resource.execStamp)
+		currentExec, stampErr := a.config.ExecEnv.Stamp(ctx, agentID, "")
+		info.ReloadPending = a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
 	}
 	return info, nil
 }

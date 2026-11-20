@@ -12,6 +12,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/execenv"
 )
 
@@ -292,4 +293,69 @@ func environmentView(row sqlc.ExecutionEnvironment) (Environment, error) {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}, nil
+}
+
+// AllowedEnvironments lists the execution environments that sessions of agentID can select: its
+// environment first, then its allowlist. It has no configuration and no secrets.
+func (s *Service) AllowedEnvironments(ctx context.Context, agentID string) ([]engine.EnvironmentInfo, error) {
+	rows, err := s.q.ListAllowedEnvironments(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]engine.EnvironmentInfo, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, engine.EnvironmentInfo{ID: r.ID, Name: r.Name, Kind: r.Kind, Default: r.IsDefault == 1, Status: s.envs.Status(ctx, agentID, r.ID)})
+	}
+	return out, nil
+}
+
+// SetAllowedEnvironments replaces the allowlist of agentID. A removed environment stops the tools
+// of the sessions that select it, and the backend releases the state of the agent in it.
+func (s *Service) SetAllowedEnvironments(ctx context.Context, agentID string, ids []string) ([]engine.EnvironmentInfo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	want := map[string]bool{}
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id != execenv.LocalID {
+			if _, err := s.q.GetEnvironment(ctx, id); errors.Is(err, sql.ErrNoRows) {
+				return nil, fmt.Errorf("%w: execution environment %q does not exist", ErrInvalid, id)
+			} else if err != nil {
+				return nil, err
+			}
+		}
+		want[id] = true
+	}
+	agent, err := s.q.GetAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	current, err := s.q.ListAgentEnvironments(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UnixMilli()
+	for id := range want {
+		if err := s.q.AddAgentEnvironment(ctx, sqlc.AddAgentEnvironmentParams{AgentID: agentID, EnvironmentID: id, CreatedAt: now}); err != nil {
+			if strings.Contains(err.Error(), "runner environment already has an active bot") {
+				return nil, fmt.Errorf("%w: execution environment %q already serves another bot", ErrConflict, id)
+			}
+			return nil, err
+		}
+	}
+	for _, id := range current {
+		if want[id] {
+			continue
+		}
+		if err := s.q.RemoveAgentEnvironment(ctx, sqlc.RemoveAgentEnvironmentParams{AgentID: agentID, EnvironmentID: id}); err != nil {
+			return nil, err
+		}
+		if id == agent.EnvironmentID {
+			continue // the environment of the agent stays in use
+		}
+		if err := s.envs.ReleaseAgent(ctx, agentID, id); err != nil {
+			return nil, fmt.Errorf("release execution environment %q: %w", id, err)
+		}
+	}
+	return s.AllowedEnvironments(ctx, agentID)
 }

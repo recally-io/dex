@@ -12,7 +12,7 @@ import (
 
 const getConversationByExecution = `-- name: GetConversationByExecution :one
 
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context FROM conversations WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?
 `
 
 type GetConversationByExecutionParams struct {
@@ -43,6 +43,7 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
@@ -87,7 +88,7 @@ func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID strin
 }
 
 const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context FROM conversations
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations
 WHERE (conversations.id = ?1 AND conversations.agent_id = ?2)
 OR (conversations.parent_id = ?1 AND EXISTS (
     SELECT 1 FROM conversations parent WHERE parent.id = conversations.parent_id
@@ -137,6 +138,7 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 			&i.ParentID,
 			&i.ExecutionScope,
 			&i.ScopeContext,
+			&i.EnvironmentID,
 		); err != nil {
 			return nil, err
 		}

@@ -29,6 +29,22 @@ export type Health = {
     runtimeReady: boolean;
 };
 
+export type AgentEnvironments = {
+    environments: Array<{
+        id: string;
+        name: string;
+        kind: string;
+        /**
+         * This is the environment of the agent.
+         */
+        default: boolean;
+        /**
+         * available, offline, or unavailable: <reason>.
+         */
+        status: string;
+    }>;
+};
+
 export type Chat = {
     id: number;
     /**
@@ -48,9 +64,13 @@ export type Chat = {
      */
     automationId?: string;
     /**
-     * The saved project directory. Empty means the agent workspace.
+     * The saved project directory. Empty means the workspace of the environment.
      */
     cwd: string;
+    /**
+     * The execution environment that the chat selects: "local" or an environment ID. Empty means the environment of the agent.
+     */
+    environmentId?: string;
     title: string;
     createdAt: number;
     /**
@@ -2488,6 +2508,78 @@ export type RestoreAgentResponses = {
 
 export type RestoreAgentResponse = RestoreAgentResponses[keyof RestoreAgentResponses];
 
+export type ListAgentEnvironmentsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/environments';
+};
+
+export type ListAgentEnvironmentsErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListAgentEnvironmentsError = ListAgentEnvironmentsErrors[keyof ListAgentEnvironmentsErrors];
+
+export type ListAgentEnvironmentsResponses = {
+    /**
+     * The allowed environments.
+     */
+    200: AgentEnvironments;
+};
+
+export type ListAgentEnvironmentsResponse = ListAgentEnvironmentsResponses[keyof ListAgentEnvironmentsResponses];
+
+export type SetAgentEnvironmentsData = {
+    body: {
+        environmentIds: Array<string>;
+    };
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/environments';
+};
+
+export type SetAgentEnvironmentsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetAgentEnvironmentsError = SetAgentEnvironmentsErrors[keyof SetAgentEnvironmentsErrors];
+
+export type SetAgentEnvironmentsResponses = {
+    /**
+     * The allowed environments.
+     */
+    200: AgentEnvironments;
+};
+
+export type SetAgentEnvironmentsResponse = SetAgentEnvironmentsResponses[keyof SetAgentEnvironmentsResponses];
+
 export type ResetAgentEnvironmentData = {
     body?: never;
     path: {
@@ -2762,6 +2854,10 @@ export type ListDirectoriesData = {
     query?: {
         path?: string;
         agentId?: string;
+        /**
+         * An execution environment of the agent. Absent selects the environment of the agent.
+         */
+        environmentId?: string;
     };
     url: '/api/directories';
 };
@@ -2803,7 +2899,12 @@ export type ListRecentProjectsData = {
     path: {
         agentId: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * An execution environment of the agent. Absent selects the environment of the agent.
+         */
+        environmentId?: string;
+    };
     url: '/api/agents/{agentId}/projects';
 };
 
@@ -2830,6 +2931,52 @@ export type ListRecentProjectsResponses = {
 };
 
 export type ListRecentProjectsResponse = ListRecentProjectsResponses[keyof ListRecentProjectsResponses];
+
+export type SetChatEnvironmentData = {
+    body: {
+        environmentId: string;
+    };
+    path: {
+        agentId: string;
+        chatId: number;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/chats/{chatId}/environment';
+};
+
+export type SetChatEnvironmentErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetChatEnvironmentError = SetChatEnvironmentErrors[keyof SetChatEnvironmentErrors];
+
+export type SetChatEnvironmentResponses = {
+    /**
+     * The Chat session with its environment.
+     */
+    200: Chat;
+};
+
+export type SetChatEnvironmentResponse = SetChatEnvironmentResponses[keyof SetChatEnvironmentResponses];
 
 export type SetChatProjectData = {
     body: {

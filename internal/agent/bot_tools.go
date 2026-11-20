@@ -62,11 +62,17 @@ func (s *Service) patchAgent(ctx context.Context, id string, p Patch) (Agent, er
 		if cleanErr != nil {
 			return cleanErr
 		}
+		if err := s.checkEnvironmentChange(ctx, oldRow, a.EnvironmentID); err != nil {
+			return err
+		}
 		if err := s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
 			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
 			FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
 			Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
 		}); err != nil {
+			return err
+		}
+		if err := s.environmentChanged(ctx, oldRow, a.EnvironmentID); err != nil {
 			return err
 		}
 		a.ArchivedAt = 0
@@ -77,7 +83,7 @@ func (s *Service) patchAgent(ctx context.Context, id string, p Patch) (Agent, er
 		return Agent{}, err
 	}
 	if oldRow.EnvironmentID != out.EnvironmentID && s.OnEnvironmentChanged != nil {
-		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID)
 	}
 	return out, nil
 }

@@ -234,7 +234,7 @@ func (a *Agents) authorizeGroupRun(ctx context.Context, ref Ref, store durable.S
 // changeFor keeps group configuration outside the private resource loader.
 func (a *Agents) changeFor(ctx context.Context, ref Ref, options Options) harness.AgentChange {
 	if ref.Scope == "" {
-		return a.agentChange(ctx, ref.AgentID, options)
+		return a.agentChange(ctx, ref, options)
 	}
 	options.Instructions = ""
 	options.Cwd = ""
@@ -365,6 +365,9 @@ func (r *agentResources) closeExtras(ctx context.Context) error {
 	var errs []error
 	if r.loaded != nil {
 		errs = append(errs, r.loaded.Close(ctx))
+	}
+	if r.envs != nil {
+		errs = append(errs, r.envs.close(ctx))
 	}
 	if r.execHandle != nil {
 		errs = append(errs, r.execHandle.Close(ctx))

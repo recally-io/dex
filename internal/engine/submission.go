@@ -80,7 +80,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		change := a.changeFor(ctx, ref, input.Options)
 		if ref.Scope == "" {
 			if input.Automation {
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, false, "", "", "")}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
 			}
 			// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
 			// so a child, an automation or a dream never gets the tool and needs no removal.
@@ -102,7 +102,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				// before the upgrade loses the same extensions.
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines), outboxExtension(ref.AgentID, a.config.Tasks.Outbox)}, Add: []*durable.Extension{childExtension(), childOutboxExtension(ref.AgentID, a.config.Tasks.Outbox)}}})
 			case dream:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil, false, "", "", ""), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, "", a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 			}
 		}
 		if err := a.groupAttachments(ref, input.Attachments); err != nil {
@@ -117,7 +117,17 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		inputDirectory := a.inputDirectory(ref)
 		if ref.Scope != "" {
 			inputDirectory = ""
-		} else if h := a.execHandle(ref.AgentID); h != nil {
+		} else if envs := a.environments(ref.AgentID); envs != nil {
+			// An unavailable environment fails only an input with attachments: its tool calls report
+			// the reason, and the chat stays usable.
+			s, envErr := envs.session(ctx, ref.ID)
+			if envErr != nil && len(input.Attachments) > 0 {
+				return nil, envErr
+			}
+			h := s.Handle
+			if h == nil {
+				h = a.execHandle(ref.AgentID)
+			}
 			inputDirectory = h.Workspace()
 			if h.Kind() != execenv.KindLocal && len(input.Attachments) > 0 {
 				remoteEnv, envErr := h.Env(ctx, inputDirectory, nil)

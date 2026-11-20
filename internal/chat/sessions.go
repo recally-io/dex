@@ -157,7 +157,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a en
 }
 
 func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-	if r.Scope != "" && (a.Bot != "" || a.Cwd != "" || a.Provider != "" || a.ModelID != "" || a.ThinkingLevel != "" || !strings.HasPrefix(r.Key, r.AgentID+"/"+r.Scope+"/")) {
+	if r.Scope != "" && (a.Bot != "" || a.Cwd != "" || a.Environment != "" || a.Provider != "" || a.ModelID != "" || a.ThinkingLevel != "" || !strings.HasPrefix(r.Key, r.AgentID+"/"+r.Scope+"/")) {
 		return engine.SessionRef{}, errSessionInvalid
 	}
 	parent, err := s.sessionParent(ctx, r)
@@ -207,9 +207,24 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 			return engine.SessionRef{}, err
 		}
 	}
+	// A child in the same bot runs in the environment of its parent unless it selects another one;
+	// a child in another bot runs in the environment of that bot. The cwd of the parent stays in
+	// the environment of the parent.
+	environment := inherited.EnvironmentID
+	if a.Environment != "" {
+		if err := checkEnvironment(ctx, s.q, target.ID, a.Environment); err != nil {
+			return engine.SessionRef{}, err
+		}
+		environment = a.Environment
+	}
 	cwd := inherited.Cwd
+	if source, err := s.q.GetAgent(ctx, r.AgentID); err != nil {
+		return engine.SessionRef{}, err
+	} else if effectiveEnvironment(target, environment) != effectiveEnvironment(source, parent.EnvironmentID) {
+		cwd = ""
+	}
 	if a.Cwd != "" {
-		if cwd, err = s.resolveProjectPath(ctx, target.ID, a.Cwd); err != nil {
+		if cwd, err = s.resolveProjectPath(ctx, target.ID, environment, a.Cwd); err != nil {
 			return engine.SessionRef{}, err
 		}
 	}
@@ -232,7 +247,7 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	now := s.now().UnixMilli()
 	child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{
 		AgentID: target.ID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: a.Title,
-		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd,
+		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd, EnvironmentID: environment,
 		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now, ExecutionScope: parent.ExecutionScope, ScopeContext: parent.ScopeContext,
 	})
 	if err != nil {

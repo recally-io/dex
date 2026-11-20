@@ -28,6 +28,10 @@ import (
 // ErrInvalid means that a requested agent or channel change is invalid.
 var ErrInvalid = errors.New("invalid settings")
 
+// ErrEnvironmentBusy is a change of the bot's environment while sessions that follow it have
+// queued input or running background commands.
+var ErrEnvironmentBusy = errors.New("sessions that use the environment of the bot have queued input or running background commands")
+
 // ErrNotFound means that the agent does not exist.
 var ErrNotFound = errors.New("bot not found")
 
@@ -41,7 +45,7 @@ type Service struct {
 	onWechat             func(string, *wechat.Config)
 	wechatDB             *sql.DB
 	ChannelStatus        func(string, string) channel.Status
-	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID, oldSandboxID string)
+	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID string)
 	apiURL               string
 	onTelegram           func(string, *telegram.Config)
 	feishuAPIURL         string
@@ -149,17 +153,23 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 		if cleanErr != nil {
 			return cleanErr
 		}
-		return s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
+		if err := s.checkEnvironmentChange(ctx, oldRow, a.EnvironmentID); err != nil {
+			return err
+		}
+		if err := s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
 			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
 			FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
 			Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
-		})
+		}); err != nil {
+			return err
+		}
+		return s.environmentChanged(ctx, oldRow, a.EnvironmentID)
 	}()
 	if err != nil {
 		return err
 	}
 	if oldRow.EnvironmentID != a.EnvironmentID && s.OnEnvironmentChanged != nil {
-		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID, oldRow.EnvironmentSandboxID)
+		s.OnEnvironmentChanged(ctx, id, oldRow.EnvironmentID)
 	}
 	return nil
 }

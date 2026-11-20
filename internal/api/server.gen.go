@@ -746,6 +746,11 @@ type Agent = agent.Agent
 // AgentActivity defines model for AgentActivity.
 type AgentActivity = agent.Activity
 
+// AgentEnvironments defines model for AgentEnvironments.
+type AgentEnvironments struct {
+	Environments []engine.EnvironmentInfo `json:"environments"`
+}
+
 // AgentInput defines model for AgentInput.
 type AgentInput = agent.Agent
 
@@ -860,8 +865,11 @@ type Chat struct {
 	Channel   ChatChannel `json:"channel"`
 	CreatedAt int64       `json:"createdAt"`
 
-	// Cwd The saved project directory. Empty means the agent workspace.
+	// Cwd The saved project directory. Empty means the workspace of the environment.
 	Cwd string `json:"cwd"`
+
+	// EnvironmentId The execution environment that the chat selects: "local" or an environment ID. Empty means the environment of the agent.
+	EnvironmentId *string `json:"environmentId,omitempty"`
 
 	// ForkedFrom The session that a Chat was forked from. Only on a single chat.
 	ForkedFrom *ChatOrigin `json:"forkedFrom,omitempty"`
@@ -1717,6 +1725,11 @@ type ContinueChatJSONBody struct {
 	Id string `json:"id"`
 }
 
+// SetChatEnvironmentJSONBody defines parameters for SetChatEnvironment.
+type SetChatEnvironmentJSONBody struct {
+	EnvironmentId string `json:"environmentId"`
+}
+
 // ForkChatJSONBody defines parameters for ForkChat.
 type ForkChatJSONBody struct {
 	// Before End the history just before the entry.
@@ -1744,6 +1757,11 @@ type SetChatProjectJSONBody struct {
 	Cwd string `json:"cwd"`
 }
 
+// SetAgentEnvironmentsJSONBody defines parameters for SetAgentEnvironments.
+type SetAgentEnvironmentsJSONBody struct {
+	EnvironmentIds []string `json:"environmentIds"`
+}
+
 // DeleteExtensionEnvParams defines parameters for DeleteExtensionEnv.
 type DeleteExtensionEnvParams struct {
 	Scope DeleteExtensionEnvParamsScope `form:"scope" json:"scope"`
@@ -1769,6 +1787,12 @@ type SetPrimaryNotificationTargetJSONBody struct {
 	TargetId string `json:"targetId"`
 }
 
+// ListRecentProjectsParams defines parameters for ListRecentProjects.
+type ListRecentProjectsParams struct {
+	// EnvironmentId An execution environment of the agent. Absent selects the environment of the agent.
+	EnvironmentId *string `form:"environmentId,omitempty" json:"environmentId,omitempty"`
+}
+
 // CreateUploadMultipartBody defines parameters for CreateUpload.
 type CreateUploadMultipartBody struct {
 	File openapi_types.File `json:"file"`
@@ -1778,6 +1802,9 @@ type CreateUploadMultipartBody struct {
 type ListDirectoriesParams struct {
 	Path    *string `form:"path,omitempty" json:"path,omitempty"`
 	AgentId *string `form:"agentId,omitempty" json:"agentId,omitempty"`
+
+	// EnvironmentId An execution environment of the agent. Absent selects the environment of the agent.
+	EnvironmentId *string `form:"environmentId,omitempty" json:"environmentId,omitempty"`
 }
 
 // ListInboxParams defines parameters for ListInbox.
@@ -1824,6 +1851,9 @@ type CompactChatJSONRequestBody CompactChatJSONBody
 // ContinueChatJSONRequestBody defines body for ContinueChat for application/json ContentType.
 type ContinueChatJSONRequestBody ContinueChatJSONBody
 
+// SetChatEnvironmentJSONRequestBody defines body for SetChatEnvironment for application/json ContentType.
+type SetChatEnvironmentJSONRequestBody SetChatEnvironmentJSONBody
+
 // ForkChatJSONRequestBody defines body for ForkChat for application/json ContentType.
 type ForkChatJSONRequestBody ForkChatJSONBody
 
@@ -1835,6 +1865,9 @@ type SetChatProjectJSONRequestBody SetChatProjectJSONBody
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
+
+// SetAgentEnvironmentsJSONRequestBody defines body for SetAgentEnvironments for application/json ContentType.
+type SetAgentEnvironmentsJSONRequestBody SetAgentEnvironmentsJSONBody
 
 // PutExtensionEnvJSONRequestBody defines body for PutExtensionEnv for application/json ContentType.
 type PutExtensionEnvJSONRequestBody PutExtensionEnvJSONBody
@@ -2476,6 +2509,9 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
 	ContinueChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
+	// (PUT /api/agents/{agentId}/chats/{chatId}/environment)
+	SetChatEnvironment(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
@@ -2512,6 +2548,12 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/environment/reset)
 	ResetAgentEnvironment(w http.ResponseWriter, r *http.Request, agentId string)
 
+	// (GET /api/agents/{agentId}/environments)
+	ListAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (PUT /api/agents/{agentId}/environments)
+	SetAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string)
+
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(w http.ResponseWriter, r *http.Request, agentId string)
 
@@ -2531,7 +2573,7 @@ type ServerInterface interface {
 	SetPrimaryNotificationTarget(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
 	// (GET /api/agents/{agentId}/projects)
-	ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string)
+	ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string, params ListRecentProjectsParams)
 
 	// (GET /api/agents/{agentId}/turns/{turnId})
 	GetTurnChat(w http.ResponseWriter, r *http.Request, agentId string, turnId string)
@@ -3744,6 +3786,41 @@ func (siw *ServerInterfaceWrapper) ContinueChat(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// SetChatEnvironment operation middleware
+func (siw *ServerInterfaceWrapper) SetChatEnvironment(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "chatId" -------------
+	var chatId ChatId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "chatId", r.PathValue("chatId"), &chatId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "chatId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetChatEnvironment(w, r, agentId, chatId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // WatchChat operation middleware
 func (siw *ServerInterfaceWrapper) WatchChat(w http.ResponseWriter, r *http.Request) {
 
@@ -4227,6 +4304,58 @@ func (siw *ServerInterfaceWrapper) ResetAgentEnvironment(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// ListAgentEnvironments operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentEnvironments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentEnvironments(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetAgentEnvironments operation middleware
+func (siw *ServerInterfaceWrapper) SetAgentEnvironments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetAgentEnvironments(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetExtensions operation middleware
 func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.Request) {
 
@@ -4427,8 +4556,24 @@ func (siw *ServerInterfaceWrapper) ListRecentProjects(w http.ResponseWriter, r *
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRecentProjectsParams
+
+	// ------------- Optional query parameter "environmentId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "environmentId", r.URL.Query(), &params.EnvironmentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "environmentId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListRecentProjects(w, r, agentId)
+		siw.Handler.ListRecentProjects(w, r, agentId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4593,6 +4738,19 @@ func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentId"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "environmentId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "environmentId", r.URL.Query(), &params.EnvironmentId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "environmentId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
 		}
 		return
 	}
@@ -5263,6 +5421,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}", wrapper.UpdateAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/archived-agents", wrapper.ListArchivedAgents)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/environments", wrapper.ListAgentEnvironments)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/environments", wrapper.SetAgentEnvironments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/environment/reset", wrapper.ResetAgentEnvironment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/turns/{turnId}", wrapper.GetTurnChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
@@ -5273,6 +5433,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/archive", wrapper.ArchiveChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/projects", wrapper.ListRecentProjects)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/environment", wrapper.SetChatEnvironment)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/project", wrapper.SetChatProject)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/settings", wrapper.SetChatSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats/{chatId}/messages", wrapper.SendMessage)
@@ -7439,6 +7600,103 @@ func (response ContinueChatdefaultJSONResponse) VisitContinueChatResponse(w http
 	return err
 }
 
+type SetChatEnvironmentRequestObject struct {
+	AgentId string `json:"agentId"`
+	ChatId  ChatId `json:"chatId"`
+	Body    *SetChatEnvironmentJSONRequestBody
+}
+
+type SetChatEnvironmentResponseObject interface {
+	VisitSetChatEnvironmentResponse(w http.ResponseWriter) error
+}
+
+type SetChatEnvironment200JSONResponse Chat
+
+func (response SetChatEnvironment200JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatEnvironment400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetChatEnvironment400JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatEnvironment403JSONResponse Error
+
+func (response SetChatEnvironment403JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatEnvironment404JSONResponse Error
+
+func (response SetChatEnvironment404JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatEnvironment409JSONResponse Error
+
+func (response SetChatEnvironment409JSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetChatEnvironmentdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetChatEnvironmentdefaultJSONResponse) VisitSetChatEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type WatchChatRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
@@ -8338,6 +8596,141 @@ func (response ResetAgentEnvironmentdefaultJSONResponse) VisitResetAgentEnvironm
 	return err
 }
 
+type ListAgentEnvironmentsRequestObject struct {
+	AgentId string `json:"agentId"`
+}
+
+type ListAgentEnvironmentsResponseObject interface {
+	VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error
+}
+
+type ListAgentEnvironments200JSONResponse AgentEnvironments
+
+func (response ListAgentEnvironments200JSONResponse) VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentEnvironments404JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListAgentEnvironments404JSONResponse) VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgentEnvironmentsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListAgentEnvironmentsdefaultJSONResponse) VisitListAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentEnvironmentsRequestObject struct {
+	AgentId string `json:"agentId"`
+	Body    *SetAgentEnvironmentsJSONRequestBody
+}
+
+type SetAgentEnvironmentsResponseObject interface {
+	VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error
+}
+
+type SetAgentEnvironments200JSONResponse AgentEnvironments
+
+func (response SetAgentEnvironments200JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentEnvironments400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SetAgentEnvironments400JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentEnvironments404JSONResponse Error
+
+func (response SetAgentEnvironments404JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentEnvironments409JSONResponse Error
+
+func (response SetAgentEnvironments409JSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetAgentEnvironmentsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetAgentEnvironmentsdefaultJSONResponse) VisitSetAgentEnvironmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetExtensionsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
@@ -8689,6 +9082,7 @@ func (response SetPrimaryNotificationTargetdefaultJSONResponse) VisitSetPrimaryN
 
 type ListRecentProjectsRequestObject struct {
 	AgentId string `json:"agentId"`
+	Params  ListRecentProjectsParams
 }
 
 type ListRecentProjectsResponseObject interface {
@@ -10437,6 +10831,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/chats/{chatId}/continue)
 	ContinueChat(ctx context.Context, request ContinueChatRequestObject) (ContinueChatResponseObject, error)
 
+	// (PUT /api/agents/{agentId}/chats/{chatId}/environment)
+	SetChatEnvironment(ctx context.Context, request SetChatEnvironmentRequestObject) (SetChatEnvironmentResponseObject, error)
+
 	// (GET /api/agents/{agentId}/chats/{chatId}/events)
 	WatchChat(ctx context.Context, request WatchChatRequestObject) (WatchChatResponseObject, error)
 
@@ -10472,6 +10869,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/agents/{agentId}/environment/reset)
 	ResetAgentEnvironment(ctx context.Context, request ResetAgentEnvironmentRequestObject) (ResetAgentEnvironmentResponseObject, error)
+
+	// (GET /api/agents/{agentId}/environments)
+	ListAgentEnvironments(ctx context.Context, request ListAgentEnvironmentsRequestObject) (ListAgentEnvironmentsResponseObject, error)
+
+	// (PUT /api/agents/{agentId}/environments)
+	SetAgentEnvironments(ctx context.Context, request SetAgentEnvironmentsRequestObject) (SetAgentEnvironmentsResponseObject, error)
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
@@ -11724,6 +12127,40 @@ func (sh *strictHandler) ContinueChat(w http.ResponseWriter, r *http.Request, ag
 	}
 }
 
+// SetChatEnvironment operation middleware
+func (sh *strictHandler) SetChatEnvironment(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+	var request SetChatEnvironmentRequestObject
+
+	request.AgentId = agentId
+	request.ChatId = chatId
+
+	var body SetChatEnvironmentJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetChatEnvironment(ctx, request.(SetChatEnvironmentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetChatEnvironment")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetChatEnvironmentResponseObject); ok {
+		if err := validResponse.VisitSetChatEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // WatchChat operation middleware
 func (sh *strictHandler) WatchChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
 	var request WatchChatRequestObject
@@ -12080,6 +12517,65 @@ func (sh *strictHandler) ResetAgentEnvironment(w http.ResponseWriter, r *http.Re
 	}
 }
 
+// ListAgentEnvironments operation middleware
+func (sh *strictHandler) ListAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request ListAgentEnvironmentsRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAgentEnvironments(ctx, request.(ListAgentEnvironmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAgentEnvironments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAgentEnvironmentsResponseObject); ok {
+		if err := validResponse.VisitListAgentEnvironmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetAgentEnvironments operation middleware
+func (sh *strictHandler) SetAgentEnvironments(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request SetAgentEnvironmentsRequestObject
+
+	request.AgentId = agentId
+
+	var body SetAgentEnvironmentsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetAgentEnvironments(ctx, request.(SetAgentEnvironmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetAgentEnvironments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetAgentEnvironmentsResponseObject); ok {
+		if err := validResponse.VisitSetAgentEnvironmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetExtensions operation middleware
 func (sh *strictHandler) GetExtensions(w http.ResponseWriter, r *http.Request, agentId string) {
 	var request GetExtensionsRequestObject
@@ -12252,10 +12748,11 @@ func (sh *strictHandler) SetPrimaryNotificationTarget(w http.ResponseWriter, r *
 }
 
 // ListRecentProjects operation middleware
-func (sh *strictHandler) ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string) {
+func (sh *strictHandler) ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string, params ListRecentProjectsParams) {
 	var request ListRecentProjectsRequestObject
 
 	request.AgentId = agentId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListRecentProjects(ctx, request.(ListRecentProjectsRequestObject))

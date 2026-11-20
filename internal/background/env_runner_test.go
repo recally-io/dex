@@ -23,14 +23,14 @@ func TestUserRunsBackgroundCommandsInRemoteEnv(t *testing.T) {
 	provider := execenvtest.NewProvider(execenv.KindPiEnv, remoteRoot, remoteHome, map[string]string{
 		"REMOTE_BG_MARKER": "remote-bg-ok",
 	})
-	handle, err := provider.Open(t.Context(), "bot")
+	handle, err := provider.Open(t.Context(), "bot", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = handle.Close(context.Background()) })
 
 	f := newFixture(t, background.Limits{Batch: 50 * time.Millisecond})
-	f.m.ConfigureEnvOpener(func(ctx context.Context, _ string, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
+	f.m.ConfigureEnvOpener(func(ctx context.Context, _, _ string, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
 		env, err := handle.Env(ctx, cwd, extraEnv)
 		if err != nil {
 			return nil, "", "", nil, err

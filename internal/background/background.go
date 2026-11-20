@@ -136,15 +136,18 @@ type StartParams struct {
 	Cwd        string
 	DefaultCwd string
 	Label      string
-	Env        map[string]string
-	InheritEnv bool
-	EnvKind    execenv.Kind
+	// EnvironmentID is the explicit environment of the session, or empty for the environment of the agent.
+	EnvironmentID string
+	Env           map[string]string
+	InheritEnv    bool
+	EnvKind       execenv.Kind
 	// OutputDir holds the output file.
 	OutputDir string
 }
 
-// ExecEnvOpener acquires an execution environment for a non-local background command.
-type ExecEnvOpener func(ctx context.Context, agentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error)
+// ExecEnvOpener acquires an execution environment for a non-local background command. An empty
+// environmentID selects the environment of the agent.
+type ExecEnvOpener func(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error)
 
 // outputHooks receive live command output chunks and events from a runner.
 type outputHooks struct {
@@ -946,7 +949,7 @@ func newEnvRunner(openEnv ExecEnvOpener, limits Limits) *envRunner {
 }
 
 func (r *envRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
-	execEnv, _, _, release, err := r.openEnv(ctx, p.AgentID, cwd, p.Env)
+	execEnv, _, _, release, err := r.openEnv(ctx, p.AgentID, p.EnvironmentID, cwd, p.Env)
 	if err != nil {
 		return err
 	}
@@ -961,7 +964,7 @@ func (r *envRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) 
 }
 
 func (r *envRunner) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
-	execEnv, workspace, _, release, err := r.openEnv(ctx, p.AgentID, p.DefaultCwd, p.Env)
+	execEnv, workspace, _, release, err := r.openEnv(ctx, p.AgentID, p.EnvironmentID, p.DefaultCwd, p.Env)
 	if err != nil {
 		return "", err
 	}
@@ -981,7 +984,7 @@ func (r *envRunner) PrepareOutput(ctx context.Context, p StartParams, id string)
 
 func (r *envRunner) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error) {
 	baseCtx := context.WithoutCancel(ctx)
-	execEnv, _, _, release, err := r.openEnv(baseCtx, p.AgentID, cwd, p.Env)
+	execEnv, _, _, release, err := r.openEnv(baseCtx, p.AgentID, p.EnvironmentID, cwd, p.Env)
 	if err != nil {
 		return nil, err
 	}

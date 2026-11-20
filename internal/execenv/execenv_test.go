@@ -21,7 +21,7 @@ func TestUserLocalProviderManagesWorkspaceAndEnv(t *testing.T) {
 	provider := execenv.NewLocalProvider(dataDir, homeDir)
 	t.Cleanup(func() { _ = provider.Close(context.Background()) })
 
-	h, err := provider.Open(t.Context(), "default")
+	h, err := provider.Open(t.Context(), "default", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 	localWS := t.TempDir()
 	provider := execenvtest.NewProvider(execenv.KindPiEnv, remoteRoot, remoteHome, nil)
 
-	h, err := provider.Open(t.Context(), "bot1")
+	h, err := provider.Open(t.Context(), "bot1", "")
 	if err != nil {
 		t.Fatal(err)
 	}

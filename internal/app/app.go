@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -226,6 +227,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				return chats.ToolRecentOutbox(ctx, ref)
 			},
 		},
+		Environments: func(ctx context.Context, c engine.TaskContext) ([]engine.EnvironmentInfo, error) {
+			return prefs.AllowedEnvironments(ctx, c.AgentID)
+		},
 		Timers: engine.TimerTools{
 			Set: func(ctx context.Context, c engine.TaskContext, a engine.TimerSetArgs) (engine.TimerInfo, error) {
 				return chats.ToolTimerSet(ctx, c, a)
@@ -270,11 +274,14 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		execProvider = envs
 	}
 	native, err := engine.New(engine.Config{
-		DataDir:   cfg.DataDir,
-		Home:      cfg.Home,
-		BaseEnv:   cfg.ToolEnv,
-		LoginEnv:  cfg.LoginEnv,
-		ExecEnv:   execProvider,
+		DataDir:  cfg.DataDir,
+		Home:     cfg.Home,
+		BaseEnv:  cfg.ToolEnv,
+		LoginEnv: cfg.LoginEnv,
+		ExecEnv:  execProvider,
+		SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) {
+			return chats.SessionEnvironment(ctx, ref)
+		},
 		FakeModel: cfg.FakeModel,
 		Tasks:     tools,
 		Routines:  routines,
@@ -333,9 +340,18 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
-	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
+	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID string) {
 		_ = native.CloseAgent(changeCtx, agentID)
-		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
+		// Sessions that select the earlier environment keep it on the allowlist, with its state.
+		allowed, err := q.ListAgentEnvironments(changeCtx, agentID)
+		if err != nil {
+			slog.Warn("read the allowlist of a bot", "agent", agentID, "err", err)
+			return
+		}
+		if slices.Contains(allowed, oldEnvID) {
+			return
+		}
+		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID); err != nil {
 			slog.Warn("release the earlier execution environment of a bot", "agent", agentID, "err", err)
 		}
 	}
@@ -350,6 +366,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		if err := envs.ResetAgent(runCtx, id); err != nil {
 			slog.Warn("cleanup sandbox of an archived bot", "agent", id, "err", err)
+		}
+		allowed, err := q.ListAgentEnvironments(runCtx, id)
+		for _, envID := range allowed {
+			err = errors.Join(err, envs.ReleaseAgent(runCtx, id, envID))
+		}
+		if err != nil {
+			slog.Warn("cleanup the allowlist sandboxes of an archived bot", "agent", id, "err", err)
 		}
 		if err := agentsService.StopChannels(runCtx, id); err != nil {
 			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
