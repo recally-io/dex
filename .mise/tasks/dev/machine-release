@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="Build the development machine service archives that the dev server serves"
+set -euo pipefail
+
+data_dir="${DEX_DATA_DIR:-$HOME/.dex-dev}"
+out="$data_dir/machine-release"
+version=v0.0.0-dev
+
+mkdir -p "$out"
+stamp="$out/.stamp"
+if [[ -f "$stamp" ]] && [[ -z "$(find cmd/dex-runner internal -newer "$stamp" -print -quit)" ]]; then
+  exit 0
+fi
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+for arch in arm64 amd64; do
+  CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags '-s -w' -o "$tmp/dex-runner" ./cmd/dex-runner
+  cp contrib/dex-runner.service "$tmp/dex-runner.service"
+  COPYFILE_DISABLE=1 tar --no-xattrs -czf "$out/dex-runner_${version}_linux_${arch}.tar.gz" -C "$tmp" dex-runner dex-runner.service
+  rm -f "$tmp/dex-runner" "$tmp/dex-runner.service"
+done
+(cd "$out" && sha256sum dex-runner_*.tar.gz >checksums.txt)
+touch "$stamp"
+echo "machine release payloads refreshed in $out"
