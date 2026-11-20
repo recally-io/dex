@@ -66,7 +66,7 @@ func (h *handler) GetWorkTask(ctx context.Context, req api.GetWorkTaskRequestObj
 		}
 		questions = append(questions, api.WorkTaskQuestion{Id: question.ID, Text: question.Text, Options: options, Queued: question.Queued != 0})
 	}
-	return api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions}, nil
+	return api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions, GithubPulls: taskGitHubPulls(detail)}, nil
 }
 
 func (h *handler) SetWorkTaskLifecycle(ctx context.Context, req api.SetWorkTaskLifecycleRequestObject) (api.SetWorkTaskLifecycleResponseObject, error) {

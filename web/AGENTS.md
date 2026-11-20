@@ -47,6 +47,9 @@ The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
 Bot links open Main. The right Chats sidebar starts closed. The global sidebar
 links to `/inbox`, which lists Tasks and Routine results across bots.
 `/a/{agentId}/inbox/{taskId}` opens a Task only under the bot that owns it.
+On an open Task, the owner can link a GitHub PR by repository ID and PR number.
+An optional commit SHA sets a wait for a review submitted after the form is
+submitted. The Task shows its linked PRs and wait states above the timeline.
 Routine history links to run transcripts and saved results.
 The routine dialog offers "Follow bot", `local`, and the SSH environments. It
 keeps a saved environment that the list no longer shows, and a change of the

@@ -20,6 +20,7 @@ import { Empty, FramedPage, Section } from "../components/page";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
+import { TaskGitHubPulls } from "../components/task-github-pulls";
 import { inboxOptions } from "../lib/inbox";
 import { newId } from "../lib/utils";
 
@@ -252,6 +253,12 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
               {answer.error ? <Failure title="Could not answer question" error={answer.error} /> : null}
             </Section>
           ) : null}
+          <TaskGitHubPulls
+            key={taskId}
+            path={path}
+            pulls={detail.data.githubPulls}
+            open={detail.data.task.lifecycle === "open"}
+          />
           <Section title="Timeline">
             <form
               className="space-y-2"

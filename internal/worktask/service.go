@@ -30,6 +30,8 @@ type Detail struct {
 	Task      sqlc.WorkTask
 	Entries   []sqlc.WorkTaskEntry
 	Questions []sqlc.Question
+	Objects   []sqlc.WorkTaskObject
+	Waits     []sqlc.WorkTaskWait
 }
 
 // Create starts tracking work without starting a session.
@@ -66,7 +68,15 @@ func (s *Service) Detail(ctx context.Context, agentID, id string) (Detail, error
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Task: task, Entries: entries, Questions: questions}, tx.Commit()
+	objects, err := q.ListWorkTaskObjects(ctx, task.ID)
+	if err != nil {
+		return Detail{}, err
+	}
+	waits, err := q.ListWorkTaskWaits(ctx, sqlc.ListWorkTaskWaitsParams{AgentID: agentID, TaskID: task.ID})
+	if err != nil {
+		return Detail{}, err
+	}
+	return Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits}, tx.Commit()
 }
 
 // SetLifecycle applies an explicit owner decision without changing run state.
