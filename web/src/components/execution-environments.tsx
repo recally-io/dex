@@ -5,7 +5,6 @@ import {
   deleteEnvironmentMutation,
   discoverSshConfigOptions,
   forgetEnvironmentHostKeyMutation,
-  getHealthOptions,
   revokeRunnerMutation,
   listAgentsOptions,
   listEnvironmentsOptions,
@@ -161,8 +160,6 @@ function EnvironmentCard({
   const isRunner = env.kind === "runner";
 
   const [address, setAddress] = useState("");
-  const machineUrls = useQuery({ ...getHealthOptions(), enabled: isRunner }).data?.machineUrls ?? [];
-  const target = address || machineUrls.at(0) || "";
 
   const revoke = useMutation({
     ...revokeRunnerMutation(),
@@ -289,7 +286,7 @@ function EnvironmentCard({
         <div className="flex flex-col gap-2 border-t border-border p-3">
           <DexAddressField address={address} onChange={setAddress} />
           <RemoteMachinesOff />
-          <RunnerInstall environmentId={env.id} address={target} />
+          <RunnerInstall environmentId={env.id} address={address} />
           <div className="flex flex-wrap gap-2">
             <Button
               size="xs"
