@@ -47,20 +47,17 @@ func (m *Manager) IssueRunnerCode(ctx context.Context, id string) (string, error
 	return code, nil
 }
 
-// PairRunner consumes a one-time code and returns a new device credential.
-func (m *Manager) PairRunner(ctx context.Context, id, code string) (string, error) {
-	token := rand.Text()
+// EnrollRunner consumes a one-time code and registers the machine identity. The identity is
+// the SHA-256 digest of the machine client certificate key.
+func (m *Manager) EnrollRunner(ctx context.Context, id, code, identity string) error {
 	rt := m.runner
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	n, err := rt.q.RedeemRunnerCode(ctx, sqlc.RedeemRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), CredentialDigest: runnerDigest(token), Now: time.Now().UnixMilli()})
+	n, err := rt.q.RedeemRunnerCode(ctx, sqlc.RedeemRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), CredentialDigest: runnerDigest(identity), Now: time.Now().UnixMilli()})
 	if err == nil && n != 1 {
 		err = ErrRunnerCredential
 	}
-	if err != nil {
-		return "", err
-	}
-	return token, nil
+	return err
 }
 
 func (rt *runnerRuntime) verify(ctx context.Context, id, credential string) error {
