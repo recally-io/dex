@@ -37,7 +37,7 @@ The command does four things:
 - It downloads `install-machine.sh` from Dex and verifies the pinned Dex public key.
 - It downloads the release archive for the machine architecture, and checks the release
   SHA-256 checksum.
-- It creates the `dex-runner` system account, installs the binary and the systemd unit, and
+- It creates the `dex-agent` system account, installs the binary and the systemd unit, and
   enrolls the machine certificate with the one-time code from the command.
 - It starts the service. The machine comes online in Dex within a few seconds.
 
@@ -47,21 +47,21 @@ The command does four things:
 The target needs Linux, systemd, curl, tar, and sha256sum. Debian 12 or later, Ubuntu 22.04 or
 later, and equivalent distributions work.
 
-If the service does not start, run `sudo journalctl -u dex-runner -n 30` on the target.
+If the service does not start, run `sudo journalctl -u dex-agent -n 30` on the target.
 
 ## Replace, revoke, or remove a machine
 
 Select **Revoke machine** in Dex to close the active connection and to refuse the old machine
 certificate. Then generate a new install command. To connect the same machine again, stop the
-service and remove `/var/lib/dex-runner/device.json` after the revocation. The workspace stays in
+service and remove `/var/lib/dex-agent/device.json` after the revocation. The workspace stays in
 the state directory. Workspaces do not move between machines.
 
 To uninstall, first revoke the machine and move the bot to another environment. On the target,
-disable the systemd unit, then remove `/usr/local/bin/dex-runner` and
-`/etc/systemd/system/dex-runner.service`. Keep the state directory until you have copied the work
+disable the systemd unit, then remove `/usr/local/bin/dex-agent` and
+`/etc/systemd/system/dex-agent.service`. Keep the state directory until you have copied the work
 you need. The state directory holds the machine key and the workspace.
 
-For foreground use, run `dex-runner run -state /var/lib/dex-runner` as the `dex-runner` account.
+For foreground use, run `dex-agent run -state /var/lib/dex-agent` as the `dex-agent` account.
 
 ## Limits
 

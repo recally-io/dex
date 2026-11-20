@@ -27,9 +27,9 @@ main() {
 	pin=$3
 	code=$4
 	version=${5:-}
-	state=/var/lib/dex-runner
-	binary=/usr/local/bin/dex-runner
-	unit=/etc/systemd/system/dex-runner.service
+	state=/var/lib/dex-agent
+	binary=/usr/local/bin/dex-agent
+	unit=/etc/systemd/system/dex-agent.service
 	repo=https://github.com/recally-io/dex
 
 	case $origin in https://?*) ;; *) fail 'the Dex address must start with https://' ;; esac
@@ -61,7 +61,7 @@ main() {
 	fi
 	case $version in *[!a-zA-Z0-9.+-]*) fail 'invalid release tag' ;; v[0-9]*) ;; *) fail 'no Dex release found' ;; esac
 
-	archive="dex-runner_${version}_linux_${arch}.tar.gz"
+	archive="dex-agent_${version}_linux_${arch}.tar.gz"
 	tmp=$(mktemp -d)
 	trap 'rm -rf "$tmp"' EXIT
 	printf 'Downloading the Dex machine service (%s, %s)…\n' "$version" "$arch"
@@ -75,19 +75,19 @@ main() {
 	want=$(awk -v file="$archive" '$2 == file { print $1 }' "$tmp/checksums.txt")
 	[ -n "$want" ] || fail 'the release checksum is missing'
 	printf '%s  %s\n' "$want" "$archive" | (cd "$tmp" && sha256sum -c --status) || fail 'the archive checksum does not match'
-	tar -xzf "$tmp/$archive" -C "$tmp" dex-runner dex-runner.service
+	tar -xzf "$tmp/$archive" -C "$tmp" dex-agent dex-agent.service
 
-	if ! getent passwd dex-runner >/dev/null; then
-		as_root useradd --system --user-group --home-dir "$state" --shell /usr/sbin/nologin dex-runner
+	if ! getent passwd dex-agent >/dev/null; then
+		as_root useradd --system --user-group --home-dir "$state" --shell /usr/sbin/nologin dex-agent
 	fi
-	as_root install -d -m 0700 -o dex-runner -g dex-runner "$state"
-	as_root install -m 0755 "$tmp/dex-runner" "$binary"
-	as_root install -m 0644 "$tmp/dex-runner.service" "$unit"
+	as_root install -d -m 0700 -o dex-agent -g dex-agent "$state"
+	as_root install -m 0755 "$tmp/dex-agent" "$binary"
+	as_root install -m 0644 "$tmp/dex-agent.service" "$unit"
 	# The code goes through stdin, so it stays out of the process list.
-	printf '%s\n' "$code" | as_root runuser -u dex-runner -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" -server-pin "$pin" || fail 'Dex refused the enrollment; get a fresh install command'
+	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" -server-pin "$pin" || fail 'Dex refused the enrollment; get a fresh install command'
 	unset code
 	as_root systemctl daemon-reload
-	as_root systemctl enable --now dex-runner.service || fail 'the machine service did not start; read its log with: sudo journalctl -u dex-runner'
+	as_root systemctl enable --now dex-agent.service || fail 'the machine service did not start; read its log with: sudo journalctl -u dex-agent'
 	printf 'Connected. The machine comes online in Dex within a few seconds.\n'
 }
 

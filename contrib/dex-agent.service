@@ -1,14 +1,14 @@
 [Unit]
-Description=Dex outbound runner
+Description=Dex remote machine agent
 Wants=network-online.target
 After=network-online.target
 
 [Service]
-User=dex-runner
-Group=dex-runner
-StateDirectory=dex-runner
+User=dex-agent
+Group=dex-agent
+StateDirectory=dex-agent
 StateDirectoryMode=0700
-ExecStart=/usr/local/bin/dex-runner run -state /var/lib/dex-runner
+ExecStart=/usr/local/bin/dex-agent run -state /var/lib/dex-agent
 Restart=on-failure
 RestartSec=10
 KillMode=control-group

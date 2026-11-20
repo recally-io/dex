@@ -1,4 +1,4 @@
-// dex-runner connects a dedicated execution host to Dex.
+// dex-agent connects a dedicated execution host to Dex.
 package main
 
 import (
@@ -45,14 +45,14 @@ func main() {
 
 func command(ctx context.Context, args []string, input io.Reader) error {
 	if len(args) == 0 {
-		return errors.New("usage: dex-runner enroll -url https://dex:8788 -id ENVIRONMENT_ID -code CODE | dex-runner run")
+		return errors.New("usage: dex-agent enroll -url https://dex:8788 -id ENVIRONMENT_ID -code CODE | dex-agent run")
 	}
 	data, err := os.UserConfigDir()
 	if err != nil {
 		return err
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	state := flags.String("state", filepath.Join(data, "dex-runner"), "private machine state directory")
+	state := flags.String("state", filepath.Join(data, "dex-agent"), "private machine state directory")
 	origin, id := new(string), new(string)
 	pin, code := new(string), new(string)
 	if args[0] == "enroll" {

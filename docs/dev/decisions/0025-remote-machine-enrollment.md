@@ -30,19 +30,23 @@ code and the manual pairing step also duplicated the same one-time secret.
   the server identity.
 - **The machine key is its credential.** The installer creates an ed25519 key
   pair, presents the certificate in the pairing request, and stores the PEM in
-  `/var/lib/dex-runner/device.json`. Dex stores the SHA-256 digest of the
+  `/var/lib/dex-agent/device.json`. Dex stores the SHA-256 digest of the
   public key in `runner_pairing` and verifies the certificate on every
   connection. No bearer credential exists, so no credential can leak from a
   command line or a log.
 - **One command, one secret.** The install command carries the Dex address,
   the environment ID, the pin, and a single-use code that expires in ten
   minutes. The installer fetches `install-machine.sh` from Dex, checks release
-  checksums, creates the `dex-runner` system account, enrolls the certificate,
+  checksums, creates the `dex-agent` system account, enrolls the certificate,
   and starts the systemd unit. The code passes to the binary on stdin, so it
   stays out of the process list. The user never runs `pair`.
-- **User-facing name.** The UI calls the environment a **Dex service** and the
-  page **Execution environments**. `dex-runner` stays the binary and account
-  name, because it names the target process, not the concept.
+- **Names.** The shipped binary, system account, systemd unit, and state
+  directory use `dex-agent`. The UI calls the environment a **Dex service** and
+  the page **Execution environments**, because the machine, not the service
+  name, is what the user chooses. The internal Go package and the
+  `/api/runner/` route keep the `runner` name: they carry the execution
+  session, and a rename would touch the database and the generated API without
+  a user-visible gain.
 - **Development builds serve their own payload.** A `dev` version tag makes
   the installer fetch the archive from the listener, so a development UI works
   without a published release.

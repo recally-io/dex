@@ -64,7 +64,7 @@ func ListenMachineTLS(ctx context.Context, address, dataDir string, envs *execen
 	// Development builds have no published archive, so Dex serves the local payload instead.
 	mux.HandleFunc("GET /machine-release/{file}", func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("file")
-		if name != "checksums.txt" && !strings.HasPrefix(name, "dex-runner_v0.0.0-dev_linux_") {
+		if name != "checksums.txt" && !strings.HasPrefix(name, "dex-agent_v0.0.0-dev_linux_") {
 			http.NotFound(w, r)
 			return
 		}

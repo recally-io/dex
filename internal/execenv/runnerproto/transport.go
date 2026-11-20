@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	Version       = "dex-runner.v1"
+	Version       = "dex-agent.v1"
 	MaxChunkBytes = 256 << 10
 	// MaxMessageBytes includes JSON overhead and base64 expansion.
 	MaxMessageBytes = 512 << 10

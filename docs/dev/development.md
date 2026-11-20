@@ -51,7 +51,7 @@ Use other ports when two dev servers run at once, and set `DEX_API_URL` for
 `dev:web`. The machine listener binds `0.0.0.0`, so a test machine on the same
 network can reach it. It serves only the machine protocol, and the install
 command pins its certificate. `mise run dev:machine-release` refreshes the
-development archives after a change to `cmd/dex-runner`; see
+development archives after a change to `cmd/dex-agent`; see
 [remote machines](../remote-machines.md). Outside `dev:server`, dex reads `DEX_DATA_DIR` (default `~/.dex`)
 and `DEX_ADDR` (default `127.0.0.1:8787`).
 
