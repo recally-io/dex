@@ -22,7 +22,9 @@ type runnerHandle struct {
 func (h *runnerHandle) Kind() Kind                           { return KindRunner }
 func (h *runnerHandle) Workspace() string                    { return h.client.Info().Workspace }
 func (h *runnerHandle) Home(context.Context) (string, error) { return h.client.Info().Home, nil }
-func (h *runnerHandle) Close(context.Context) error          { h.client.Close(); return nil }
+
+// Close releases a borrowed handle. The runner runtime owns the connection.
+func (h *runnerHandle) Close(context.Context) error { return nil }
 func (h *runnerHandle) Env(_ context.Context, cwd string, extra map[string]string) (env.ExecutionEnv, error) {
 	e := &runnerEnv{handle: h, extra: extra}
 	e.SetCwd(cwd)
@@ -223,7 +225,7 @@ func (e *runnerEnv) Exec(ctx context.Context, command any, opts *env.ShellExecOp
 	})
 	return env.ShellExecResult{ExitCode: code}, err
 }
-func (e *runnerEnv) Cleanup(context.Context) error { e.handle.client.Close(); return nil }
+func (e *runnerEnv) Cleanup(context.Context) error { return nil }
 
 type runnerText struct{ remaining string }
 

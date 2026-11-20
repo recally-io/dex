@@ -20,8 +20,8 @@ func Serve(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv) 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() { _ = local.Cleanup(context.WithoutCancel(ctx)) }()
-	m := &machine{local: local, cancels: map[uint64]context.CancelFunc{}}
-	conn := jsonrpc2.NewConn(ctx, NewStream(ctx, socket), jsonrpc2.AsyncHandler(m))
+	m := &machine{local: local}
+	conn := jsonrpc2.NewConn(ctx, NewStream(ctx, socket), m)
 	defer func() { _ = conn.Close() }()
 	home, _ := os.UserHomeDir()
 	ready, readyCancel := context.WithTimeout(ctx, messageTimeout)
@@ -37,45 +37,46 @@ func Serve(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv) 
 
 // machine answers the calls of one session.
 type machine struct {
-	local   env.ExecutionEnv
-	mu      sync.Mutex
-	cancels map[uint64]context.CancelFunc
+	local  env.ExecutionEnv
+	mu     sync.Mutex
+	tag    uint64
+	cancel context.CancelFunc
 }
 
 func (m *machine) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
-	var tag Identity
-	_ = decode(req.Params, &tag)
+	var id Identity
+	_ = decode(req.Params, &id)
+	m.mu.Lock()
 	if req.Notif {
-		if req.Method == MethodCancel {
-			m.stop(tag.Tag)
+		if req.Method == MethodCancel && m.cancel != nil && m.tag == id.Tag {
+			m.cancel()
 		}
+		m.mu.Unlock()
 		return
 	}
-	callCtx, stop := context.WithCancel(ctx)
-	m.mu.Lock()
-	m.cancels[tag.Tag] = stop
-	m.mu.Unlock()
-	defer func() {
-		m.mu.Lock()
-		delete(m.cancels, tag.Tag)
+	if m.cancel != nil {
 		m.mu.Unlock()
-		stop()
-	}()
-	value, err := m.run(callCtx, conn, req, req.Method, tag.Tag)
+		_ = conn.ReplyWithError(ctx, req.ID, machineError(ctx, errors.New("the machine is busy")))
+		return
+	}
+	// Register the operation in the read loop before the next cancel can arrive.
+	callCtx, stop := context.WithCancel(ctx)
+	m.tag, m.cancel = id.Tag, stop
+	m.mu.Unlock()
+	go m.reply(callCtx, ctx, conn, req, id.Tag, stop)
+}
+
+func (m *machine) reply(callCtx, ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, tag uint64, stop context.CancelFunc) {
+	defer stop()
+	value, err := m.run(callCtx, conn, req, req.Method, tag)
+	m.mu.Lock()
+	m.cancel = nil
+	m.mu.Unlock()
 	if err != nil {
 		_ = conn.ReplyWithError(ctx, req.ID, machineError(callCtx, err))
 		return
 	}
 	_ = conn.Reply(ctx, req.ID, value)
-}
-
-func (m *machine) stop(tag uint64) {
-	m.mu.Lock()
-	stop := m.cancels[tag]
-	m.mu.Unlock()
-	if stop != nil {
-		stop()
-	}
 }
 
 func (m *machine) run(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, method string, tag uint64) (any, error) {

@@ -61,6 +61,45 @@ func TestUserCancelsCommandWithoutDisconnectingRunner(t *testing.T) {
 	}
 }
 
+func TestUserWaitsForTheMachineBeforeRunningAnotherCommand(t *testing.T) {
+	client, _ := connect(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	firstCtx, stopFirst := context.WithCancel(ctx)
+	defer stopFirst()
+	started := make(chan struct{})
+	finished := make(chan error, 1)
+	go func() {
+		_, err := client.Exec(firstCtx, "printf started; exec sleep 60", runner.ExecParams{}, func(_ string, _ env.ShellStream) {
+			close(started)
+		})
+		finished <- err
+	}()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("first command did not start")
+	}
+
+	// The second command cannot start while the first holds the machine.
+	queued, stopQueued := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer stopQueued()
+	if _, err := client.Exec(queued, "touch queued", runner.ExecParams{}, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("queued command should time out without running, got %v", err)
+	}
+	stopFirst()
+	if err := <-finished; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first command did not cancel: %v", err)
+	}
+	var output strings.Builder
+	code, err := client.Exec(ctx, "test ! -e queued && printf next", runner.ExecParams{}, func(text string, _ env.ShellStream) {
+		output.WriteString(text)
+	})
+	if err != nil || code != 0 || output.String() != "next" {
+		t.Fatalf("next command returned (%d, %q, %v)", code, output.String(), err)
+	}
+}
+
 func TestUserSeesUnknownResultAfterRunnerDisconnects(t *testing.T) {
 	client, stopped := connect(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

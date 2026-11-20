@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/MichaelKinsy/PiG/durable/env"
@@ -31,7 +30,8 @@ type Client struct {
 	done   chan struct{}
 	stop   context.CancelFunc
 	once   sync.Once
-	nextID atomic.Uint64
+	gate   chan struct{}
+	nextID uint64 // guarded by gate
 	mu     sync.Mutex
 	output func(tag uint64, text string, stream env.ShellStream)
 }
@@ -39,7 +39,7 @@ type Client struct {
 // Connect takes ownership of socket and waits for the machine to report ready.
 func Connect(ctx context.Context, socket *websocket.Conn) (*Client, error) {
 	ready := make(chan Ready, 1)
-	c := &Client{done: make(chan struct{})}
+	c := &Client{done: make(chan struct{}), gate: make(chan struct{}, 1)}
 	lifetime, stop := context.WithCancel(context.WithoutCancel(ctx))
 	c.stop = stop
 	// The handler runs in the read loop, so output arrives before the reply that ends its call.
@@ -80,25 +80,59 @@ func (c *Client) Info() Ready { return c.info }
 // Call runs one method and returns the machine answer. A canceled context stops the call on
 // the machine, and a lost session reports an unknown result.
 func (c *Client) Call(ctx context.Context, method string, params Tagger, result any) error {
+	return c.run(ctx, method, params, result, nil)
+}
+
+func (c *Client) run(ctx context.Context, method string, params Tagger, result any, onOutput func(string, env.ShellStream)) error {
+	select {
+	case <-c.done:
+		return ErrOffline
+	case <-ctx.Done():
+		return ctx.Err()
+	case c.gate <- struct{}{}:
+	}
+	defer func() { <-c.gate }()
 	select {
 	case <-c.done:
 		return ErrOffline
 	default:
 	}
-	tag := c.nextID.Add(1)
-	params.SetTag(tag)
-	return c.run(ctx, method, tag, params, result)
-}
-
-func (c *Client) run(ctx context.Context, method string, tag uint64, params, result any) error {
-	err := c.conn.Call(ctx, method, params, result)
-	if err == nil {
-		return nil
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	if ctx.Err() != nil {
-		// The machine keeps running the call until it hears the cancel.
-		_ = c.conn.Notify(context.WithoutCancel(ctx), MethodCancel, CancelParams{Identity: IdentityOf(tag)})
-		return ctx.Err()
+
+	c.nextID++
+	tag := c.nextID
+	params.SetTag(tag)
+	if onOutput != nil {
+		c.mu.Lock()
+		c.output = func(call uint64, text string, stream env.ShellStream) {
+			if call == tag && ctx.Err() == nil {
+				onOutput(text, stream)
+			}
+		}
+		c.mu.Unlock()
+		defer func() {
+			c.mu.Lock()
+			c.output = nil
+			c.mu.Unlock()
+		}()
+	}
+
+	waiter, err := c.conn.DispatchCall(ctx, method, params)
+	if err == nil {
+		err = waiter.Wait(ctx, result)
+		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
+			// Hold the execution slot until the machine stops the canceled operation.
+			settle, cancel := context.WithTimeout(context.WithoutCancel(ctx), messageTimeout)
+			defer cancel()
+			if notifyErr := c.conn.Notify(settle, MethodCancel, CancelParams{Identity: IdentityOf(tag)}); notifyErr != nil {
+				c.Close()
+			} else if waitErr := waiter.Wait(settle, nil); errors.Is(waitErr, context.DeadlineExceeded) {
+				c.Close()
+			}
+			return err
+		}
 	}
 	if errors.Is(err, jsonrpc2.ErrClosed) {
 		c.Close()
@@ -128,29 +162,8 @@ func (c *Client) Exec(ctx context.Context, command any, opts ExecParams, onOutpu
 	case []string:
 		opts.Argv = value
 	}
-	select {
-	case <-c.done:
-		return 0, ErrOffline
-	default:
-	}
-	tag := c.nextID.Add(1)
-	opts.SetTag(tag)
-	if onOutput != nil {
-		c.mu.Lock()
-		c.output = func(call uint64, text string, stream env.ShellStream) {
-			if call == tag {
-				onOutput(text, stream)
-			}
-		}
-		c.mu.Unlock()
-		defer func() {
-			c.mu.Lock()
-			c.output = nil
-			c.mu.Unlock()
-		}()
-	}
 	var result ExecResult
-	if err := c.run(ctx, MethodExec, tag, &opts, &result); err != nil {
+	if err := c.run(ctx, MethodExec, &opts, &result, onOutput); err != nil {
 		return 0, err
 	}
 	return result.ExitCode, nil

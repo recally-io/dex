@@ -131,10 +131,15 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	bot.ThinkingLevel = "off"
 	bot.EnvironmentID = created.ID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
+	// Open the bot, then replace its resources without disconnecting the machine.
+	for range 2 {
+		d.must(t, http.MethodPost, "/api/agents/default/extensions/reload", nil, nil)
+	}
 	chat := d.newSession(t).ID
 	if got := taskTurn(t, d, chat, `printf 'machine-ok'`); !strings.Contains(got, "machine-ok") {
-		t.Fatalf("remote command returned %q", got)
+		t.Fatalf("remote command after reloading the bot returned %q", got)
 	}
+
 	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)
 	select {
 	case <-stop:

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,7 @@ import (
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/execenv/runner"
+	"golang.org/x/mod/semver"
 )
 
 func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRequestObject) (api.IssueRunnerCodeResponseObject, error) {
@@ -97,13 +99,17 @@ func machineBearer(r *http.Request) string {
 
 // machineFile serves the installer and, for a development build, its own archives. These
 // files are public: a machine reads them before it has a token.
-func (h *handler) machineFile(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+func (h *handler) machineFile(w http.ResponseWriter, _ *http.Request) {
+	tag := h.Version
+	switch {
+	case tag == "dev" || tag == "":
+		tag = "v0.0.0-dev"
+	case !semver.IsValid(tag):
+		writeError(w, http.StatusServiceUnavailable, "this Dex build has no matching machine archive")
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(machineInstaller)
+	_, _ = w.Write(bytes.ReplaceAll(machineInstaller, []byte("__DEX_MACHINE_TAG__"), []byte(tag)))
 }
 
 // devArchive matches the names of the development archives, so no other file is readable.

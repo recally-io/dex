@@ -50,8 +50,8 @@ can read the traffic can read that token.
 The command does four things:
 
 - It downloads `install-machine.sh` from Dex.
-- It downloads the release archive for the machine architecture, and checks the release
-  SHA-256 checksum.
+- It downloads the archive for the machine's platform and the running Dex version. It checks
+  the SHA-256 checksum. Development builds serve their own archives.
 - It creates the `dex-agent` system account, installs the binary and the systemd unit, and
   trades the one-time code for the machine token. Dex stores only the SHA-256 digest of that
   token, and the token goes to `/var/lib/dex-agent/device.json` with mode `0600`.

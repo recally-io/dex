@@ -26,16 +26,13 @@ main() {
 		*) fail "unsupported architecture: $(uname -m)" ;;
 	esac
 
-	# A development build serves its own archives; a release publishes them on GitHub.
-	if curl -fsSL -o /dev/null "$origin/machine-release/checksums.txt"; then
-		version=v0.0.0-dev
+	# Dex sets this tag when it serves the installer.
+	version='__DEX_MACHINE_TAG__'
+	if [ "$version" = v0.0.0-dev ]; then
 		base="$origin/machine-release"
 	else
-		url=$(curl -fsSLo /dev/null -w '%{url_effective}' "$repo/releases/latest") || fail 'cannot find the latest Dex release'
-		version=${url##*/}
 		base="$repo/releases/download/$version"
 	fi
-	case $version in *[!a-zA-Z0-9.+-]*) fail 'invalid release tag' ;; v[0-9]*) ;; *) fail 'no Dex release found' ;; esac
 
 	archive="dex-agent_${version}_${os}_${arch}.tar.gz"
 	tmp=$(mktemp -d)
@@ -128,7 +125,7 @@ install_darwin() {
 	}
 	[ ! -e "$state/device.json" ] || fail 'this machine is already connected; revoke it in Dex before connecting again'
 	tar -xzf "$tmp/$archive" -C "$tmp" dex-agent com.recally.dex-agent.plist
-	run_as_user install -d -m 0700 "$state" "$target_home/.local/bin" "$target_home/Library/Logs"
+	run_as_user install -d -m 0700 "$state" "$target_home/.local/bin" "$target_home/Library/Logs" "${plist%/*}"
 	run_as_user install -m 0755 "$tmp/dex-agent" "$binary"
 	run_as_user install -m 0644 "$tmp/com.recally.dex-agent.plist" "$plist"
 	run_as_user sed -i '' -e "s|__BINARY__|$binary|g" -e "s|__STATE__|$state|g" -e "s|__LOG__|$log|g" "$plist"
