@@ -14,9 +14,10 @@ Check: `mise run check` passes.
 
 ## Run
 
-1. Run `mise run dev:server`. It builds the web UI, then runs
-   `dex --port 18787 --data-dir ~/.dex-dev`, so it does not touch an installed
-   dex on port 8787 or its data in `~/.dex`.
+1. Run `mise run dev:server`. It builds the web UI and the development machine
+   archives, then runs `dex --port 18787 --machine-listen 0.0.0.0:18788
+   --data-dir ~/.dex-dev`. It does not touch an installed dex on port 8787 or
+   its data in `~/.dex`.
 2. Open <http://127.0.0.1:18787>. The default agent timeline opens.
 3. On Providers, add a built-in provider with its API key, or a custom one with its
    API (OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages), base
@@ -43,11 +44,15 @@ win:
 
 ```sh
 mise run dev:server -- --data-dir ~/.dex-dev-settings
-mise run dev:server -- --data-dir "$(mktemp -d)" --port 18788
+mise run dev:server -- --data-dir "$(mktemp -d)" --port 18789 --machine-listen 0.0.0.0:18790
 ```
 
-Use another `--port` when two dev servers run at once, and set `DEX_API_URL`
-for `dev:web`. Outside `dev:server`, dex reads `DEX_DATA_DIR` (default `~/.dex`)
+Use other ports when two dev servers run at once, and set `DEX_API_URL` for
+`dev:web`. The machine listener binds `0.0.0.0`, so a test machine on the same
+network can reach it. It serves only the machine protocol, and the install
+command pins its certificate. `mise run dev:machine-release` refreshes the
+development archives after a change to `cmd/dex-runner`; see
+[remote machines](../remote-machines.md). Outside `dev:server`, dex reads `DEX_DATA_DIR` (default `~/.dex`)
 and `DEX_ADDR` (default `127.0.0.1:8787`).
 
 ## Legacy checkout cleanup

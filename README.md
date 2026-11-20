@@ -94,7 +94,8 @@ it uses the resolved path. If that path changes, run install from the new
 binary. Temporary builds, including `go run`, cannot install a service.
 Other operating systems are not supported.
 
-For a dedicated Linux machine that cannot accept SSH, see [Set up an outbound runner](docs/runner.md).
+For a dedicated Linux machine that cannot accept SSH, see
+[Connect a remote machine](docs/remote-machines.md).
 
 ## Skills and MCP servers
 

@@ -983,13 +983,14 @@ turn, the parent must check artifacts and prior actions.
 
 Tools run through [`internal/execenv`](../../internal/execenv) using the
 built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
-sandbox endpoint, or an outbound `runner` connection
+sandbox endpoint, or a machine service connection
 ([ADR 0022](decisions/0022-execution-environments.md)). The
-[runner](../runner.md) opens an authenticated WebSocket to Dex and uses the
-public PiG execution API on the target. Dex stores credential digests in
-`control.sqlite` and keeps live connections in memory. A session does not
-replay requests after connection loss. Dex reports a missing final result as
-unknown.
+[remote machine](../remote-machines.md) opens an outbound WebSocket to a
+separate Dex TLS listener and uses the public PiG execution API on the target.
+Dex pins its own certificate in the install command, stores the SHA-256 digest
+of the machine public key in `control.sqlite`, and keeps live connections in
+memory. A session does not replay requests after connection loss. Dex reports a
+missing final result as unknown.
 `execenv.Manager` owns per-kind driver dispatch and lifecycle
 (`NormalizeAndValidate`, `ProbeEnvironment`, `OnEnvironmentUpdated`,
 `OnEnvironmentDeleted`, `ForgetHostKey`, `CanResetAgent`, `ResetAgent`,

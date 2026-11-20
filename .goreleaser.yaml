@@ -37,8 +37,8 @@ archives:
     name_template: dex-runner_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
     formats: [tar.gz]
     files:
-      - src: docs/runner.md
-        dst: runner.md
+      - src: docs/remote-machines.md
+        dst: remote-machines.md
       - src: contrib/dex-runner.service
         dst: dex-runner.service
 
