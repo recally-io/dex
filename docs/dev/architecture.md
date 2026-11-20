@@ -87,6 +87,14 @@ answer it before channel delivery. When no question remains active, settlement
 promotes the oldest unanswered question from a settled turn and writes its
 Outbox entry in the same transaction. Stop and Clear close all such questions.
 
+The Task event store accepts normalized events. It stores receipt keys and
+upstream change keys separately. A receipt, its routing result, the timeline
+entry, and any wait resolutions commit in one transaction. Object links use a
+source namespace, object type, and object key. If links point to different
+Tasks, Dex records the conflict without changing a Task. An event resolves a
+wait only on an open Task, when the object, event type, time boundary, and any
+specified revision match. This store does not call the model.
+
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |

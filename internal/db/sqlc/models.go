@@ -428,6 +428,27 @@ type WechatSetting struct {
 	Owner   string `json:"owner"`
 }
 
+type WorkSourceEvent struct {
+	ID          string         `json:"id"`
+	Namespace   string         `json:"namespace"`
+	ChangeKey   sql.NullString `json:"change_key"`
+	EventType   string         `json:"event_type"`
+	Objects     string         `json:"objects"`
+	Revision    string         `json:"revision"`
+	Content     string         `json:"content"`
+	SourceUrl   string         `json:"source_url"`
+	OccurredAt  int64          `json:"occurred_at"`
+	ReceivedAt  int64          `json:"received_at"`
+	TaskID      sql.NullString `json:"task_id"`
+	Disposition string         `json:"disposition"`
+}
+
+type WorkSourceReceipt struct {
+	Namespace  string `json:"namespace"`
+	ReceiptKey string `json:"receipt_key"`
+	EventID    string `json:"event_id"`
+}
+
 type WorkTask struct {
 	ID        string `json:"id"`
 	AgentID   string `json:"agent_id"`
@@ -447,4 +468,23 @@ type WorkTaskEntry struct {
 type WorkTaskInput struct {
 	SubmissionID string `json:"submission_id"`
 	TaskID       string `json:"task_id"`
+}
+
+type WorkTaskObject struct {
+	Namespace  string `json:"namespace"`
+	ObjectType string `json:"object_type"`
+	ObjectKey  string `json:"object_key"`
+	TaskID     string `json:"task_id"`
+}
+
+type WorkTaskWait struct {
+	ID         int64          `json:"id"`
+	TaskID     string         `json:"task_id"`
+	Namespace  string         `json:"namespace"`
+	ObjectType string         `json:"object_type"`
+	ObjectKey  string         `json:"object_key"`
+	EventType  string         `json:"event_type"`
+	Revision   string         `json:"revision"`
+	AfterAt    int64          `json:"after_at"`
+	ResolvedBy sql.NullString `json:"resolved_by"`
 }
