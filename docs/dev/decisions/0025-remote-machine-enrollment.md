@@ -32,6 +32,12 @@ certificate to trust and how to identify the machine.
   public key in `runner_pairing` and verifies the certificate on every
   connection. No bearer credential exists, so no credential can leak from a
   command line or a log.
+- **One RPC per operation.** The session is a JSON-RPC 2.0 connection inside
+  the pinned TLS WebSocket. `sourcegraph/jsonrpc2` owns call correlation, reply
+  routing, and session loss; Dex owns one method per operation (`exec`, `read`,
+  `write`, and the other file operations) and one `cancel` notification. A
+  hand-written message protocol would re-implement the parts that are hardest to
+  review and easiest to get wrong.
 - **One command, one secret.** The install command carries the Dex address,
   the environment ID, the pin, and a single-use code that expires in ten
   minutes. The installer fetches `install-machine.sh` from Dex, checks release

@@ -989,8 +989,12 @@ sandbox endpoint, or a machine service connection
 separate Dex TLS listener and uses the public PiG execution API on the target.
 Dex pins its own certificate in the install command, stores the SHA-256 digest
 of the machine public key in `control.sqlite`, and keeps live connections in
-memory. A session does not replay requests after connection loss. Dex reports a
-missing final result as unknown.
+memory. The socket carries JSON-RPC 2.0 calls from
+[`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
+operation, one operation at a time, and a `cancel` notification for the call
+that the user stopped. The library owns call correlation, reply routing, and
+session loss, so Dex owns only the operations. A session does not replay calls
+after connection loss. Dex reports a missing final result as unknown.
 `execenv.Manager` owns per-kind driver dispatch and lifecycle
 (`NormalizeAndValidate`, `ProbeEnvironment`, `OnEnvironmentUpdated`,
 `OnEnvironmentDeleted`, `ForgetHostKey`, `CanResetAgent`, `ResetAgent`,

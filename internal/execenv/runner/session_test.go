@@ -21,7 +21,7 @@ func TestUserRunsToolsOnConnectedRunner(t *testing.T) {
 	client, _ := connect(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	payload := bytes.Repeat([]byte{0, 255, 10}, runnerproto.MaxChunkBytes)
+	payload := bytes.Repeat([]byte{0, 255, 10}, 1<<20)
 	if err := client.WriteFile(ctx, "file", payload); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestUserRunsToolsOnConnectedRunner(t *testing.T) {
 		t.Fatalf("read returned %d bytes: %v", len(got), err)
 	}
 	var stdout, stderr strings.Builder
-	result, err := client.Exec(ctx, "printf out; printf err >&2; exit 7", func(text string, stream env.ShellStream) {
+	result, err := client.Exec(ctx, "printf out; printf err >&2; exit 7", runnerproto.ExecParams{}, func(text string, stream env.ShellStream) {
 		if stream == env.ShellStdout {
 			stdout.WriteString(text)
 		} else {
@@ -48,7 +48,7 @@ func TestUserCancelsCommandWithoutDisconnectingRunner(t *testing.T) {
 	defer cancel()
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	_, err := client.Exec(runCtx, "printf started; exec sleep 60", func(text string, _ env.ShellStream) {
+	_, err := client.Exec(runCtx, "printf started; exec sleep 60", runnerproto.ExecParams{}, func(text string, _ env.ShellStream) {
 		if strings.Contains(text, "started") {
 			stop()
 		}
@@ -56,7 +56,7 @@ func TestUserCancelsCommandWithoutDisconnectingRunner(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel returned %v", err)
 	}
-	result, err := client.Exec(ctx, "exit 3", nil)
+	result, err := client.Exec(ctx, "exit 3", runnerproto.ExecParams{}, nil)
 	if err != nil || result != 3 {
 		t.Fatalf("next exec returned (%d, %v)", result, err)
 	}
@@ -66,7 +66,7 @@ func TestUserSeesUnknownResultAfterRunnerDisconnects(t *testing.T) {
 	client, stopped := connect(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	_, err := client.Exec(ctx, "printf started; exec sleep 60", func(text string, _ env.ShellStream) {
+	_, err := client.Exec(ctx, "printf started; exec sleep 60", runnerproto.ExecParams{}, func(text string, _ env.ShellStream) {
 		if strings.Contains(text, "started") {
 			client.Close()
 		}
@@ -79,7 +79,7 @@ func TestUserSeesUnknownResultAfterRunnerDisconnects(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("runner did not finish cleanup")
 	}
-	_, err = client.Exec(ctx, "exit 0", nil)
+	_, err = client.Exec(ctx, "exit 0", runnerproto.ExecParams{}, nil)
 	if !errors.Is(err, runner.ErrOffline) {
 		t.Fatalf("new command on old session returned %v", err)
 	}

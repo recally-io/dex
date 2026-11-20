@@ -224,10 +224,7 @@ func run(ctx context.Context, state string) error {
 		}
 		if dialErr == nil {
 			log.Print("connected to Dex")
-			err = runner.Serve(ctx, c, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: workspace}))
-			if errors.Is(err, runnerproto.ErrVersion) {
-				return err
-			}
+			_ = runner.Serve(ctx, c, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: workspace}))
 			delay = time.Second
 		}
 		timer := time.NewTimer(delay)
