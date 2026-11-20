@@ -315,6 +315,15 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 	if conv.ParentID.Valid {
 		return "", nil
 	}
+	if sub.ExitAction == "ask_user" {
+		question, err := q.GetQuestionBySource(ctx, sub.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		if question.Queued != 0 {
+			return "", nil
+		}
+	}
 	isUserInput := sub.Kind == "message" && isUserOrigin(sub.Origin)
 	peer := peerFromOrigin(sub.Origin)
 

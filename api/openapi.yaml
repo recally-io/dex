@@ -82,12 +82,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [task, entries]
+                required: [task, entries, questions]
                 properties:
                   task: { $ref: "#/components/schemas/WorkTask" }
                   entries: {
                     type: array,
                     items: { $ref: "#/components/schemas/WorkTaskEntry" },
+                  }
+                  questions: {
+                    type: array,
+                    items: { $ref: "#/components/schemas/WorkTaskQuestion" },
                   }
         default: { $ref: "#/components/responses/Error" }
     patch:
@@ -2052,6 +2056,14 @@ components:
         lifecycle: { $ref: "#/components/schemas/WorkTaskLifecycle" }
         createdAt: { type: integer, format: int64 }
         updatedAt: { type: integer, format: int64 }
+    WorkTaskQuestion:
+      type: object
+      required: [id, text, options, queued]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        options: { type: array, items: { type: string } }
+        queued: { type: boolean }
     WorkTaskEntry:
       type: object
       required: [id, content, createdAt]

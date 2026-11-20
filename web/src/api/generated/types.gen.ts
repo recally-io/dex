@@ -15,6 +15,13 @@ export type WorkTask = {
     updatedAt: number;
 };
 
+export type WorkTaskQuestion = {
+    id: string;
+    text: string;
+    options: Array<string>;
+    queued: boolean;
+};
+
 export type WorkTaskEntry = {
     id: number;
     content: string;
@@ -1310,6 +1317,7 @@ export type GetWorkTaskResponses = {
     200: {
         task: WorkTask;
         entries: Array<WorkTaskEntry>;
+        questions: Array<WorkTaskQuestion>;
     };
 };
 

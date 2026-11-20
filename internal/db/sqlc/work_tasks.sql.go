@@ -142,6 +142,54 @@ func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]Wor
 	return items, nil
 }
 
+const listWorkTaskQuestions = `-- name: ListWorkTaskQuestions :many
+SELECT q.id, q.agent_id, q.conversation_id, q.source_submission_id, q.tool_operation_key, q.text, q.options_json, q.status, q.answer_submission_id, q.created_at, q.settled_at, q."action", q.action_agent_id, q.approve_text, q.outcome, q.queued FROM questions q
+JOIN work_task_inputs i ON i.submission_id = q.source_submission_id
+JOIN submissions s ON s.id = q.source_submission_id
+WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
+ORDER BY q.rowid
+`
+
+func (q *Queries) ListWorkTaskQuestions(ctx context.Context, taskID string) ([]Question, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkTaskQuestions, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Question{}
+	for rows.Next() {
+		var i Question
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ConversationID,
+			&i.SourceSubmissionID,
+			&i.ToolOperationKey,
+			&i.Text,
+			&i.OptionsJson,
+			&i.Status,
+			&i.AnswerSubmissionID,
+			&i.CreatedAt,
+			&i.SettledAt,
+			&i.Action,
+			&i.ActionAgentID,
+			&i.ApproveText,
+			&i.Outcome,
+			&i.Queued,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkTasks = `-- name: ListWorkTasks :many
 SELECT t.id, t.agent_id, t.title, t.lifecycle, t.created_at, t.updated_at FROM work_tasks t JOIN agents a ON a.id = t.agent_id
 WHERE a.archived_at IS NULL AND (t.lifecycle = 'open' OR ?1)
