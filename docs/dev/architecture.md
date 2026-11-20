@@ -81,7 +81,11 @@ question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
 message from Main uses the original channel peer. If the input has no channel
 peer, Dex uses the bot's primary notification target when one is configured.
-Ordinary replies stay on the input's original route.
+Ordinary replies stay on the input's original route. If Main already has a
+question, a new ordinary Task question waits in the queue. The Task detail can
+answer it before channel delivery. When no question remains active, settlement
+promotes the oldest unanswered question from a settled turn and writes its
+Outbox entry in the same transaction. Stop and Clear close all such questions.
 
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |

@@ -1726,6 +1726,14 @@ type WorkTaskEntry struct {
 // WorkTaskLifecycle defines model for WorkTaskLifecycle.
 type WorkTaskLifecycle string
 
+// WorkTaskQuestion defines model for WorkTaskQuestion.
+type WorkTaskQuestion struct {
+	Id      string   `json:"id"`
+	Options []string `json:"options"`
+	Queued  bool     `json:"queued"`
+	Text    string   `json:"text"`
+}
+
 // AgentId defines model for AgentId.
 type AgentId = string
 
@@ -9194,8 +9202,9 @@ type GetWorkTaskResponseObject interface {
 }
 
 type GetWorkTask200JSONResponse struct {
-	Entries []WorkTaskEntry `json:"entries"`
-	Task    WorkTask        `json:"task"`
+	Entries   []WorkTaskEntry    `json:"entries"`
+	Questions []WorkTaskQuestion `json:"questions"`
+	Task      WorkTask           `json:"task"`
 }
 
 func (response GetWorkTask200JSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {

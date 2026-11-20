@@ -271,6 +271,7 @@ type Question struct {
 	ActionAgentID      sql.NullString `json:"action_agent_id"`
 	ApproveText        sql.NullString `json:"approve_text"`
 	Outcome            sql.NullString `json:"outcome"`
+	Queued             int64          `json:"queued"`
 }
 
 type QuestionMessage struct {

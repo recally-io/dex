@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 // ErrWorkTaskConflict means the selected Task does not match the question.
@@ -37,6 +38,23 @@ func workTaskForMessage(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversa
 		return "", ErrWorkTaskConflict
 	}
 	return linked, nil
+}
+
+// promoteTaskQuestion opens the oldest settled Task question and queues its delivery in the same transaction.
+func promoteTaskQuestion(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, now int64) error {
+	question, err := q.PromoteQueuedQuestion(ctx, conv.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	source, err := q.GetSubmission(ctx, question.SourceSubmissionID)
+	if err != nil {
+		return err
+	}
+	_, err = writeOutboxOnSettle(ctx, q, source, conv, engine.Outcome{Status: "done", Answer: source.Answer.String}, now)
+	return err
 }
 
 func recordWorkTaskMessage(ctx context.Context, q *sqlc.Queries, agentID, taskID string, m Message, now int64) error {

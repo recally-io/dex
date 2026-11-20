@@ -180,6 +180,19 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
     },
   });
 
+  const answer = useMutation({
+    mutationFn: async ({ questionId, text }: { questionId: string; text: string }) => {
+      const main = await getMainChat({ path: { agentId }, throwOnError: true });
+
+      await sendMessage({
+        path: { agentId, chatId: main.data.id },
+        body: { id: newId(), text, workTaskId: taskId, answersQuestionId: questionId },
+        throwOnError: true,
+      });
+    },
+    onSuccess: () => client.invalidateQueries({ queryKey: options.queryKey }),
+  });
+
   const task = detail.data?.task;
 
   return (
@@ -214,6 +227,31 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
             )}
             {lifecycle.error ? <Failure title="Could not update task" error={lifecycle.error} /> : null}
           </Section>
+          {detail.data.questions.length ? (
+            <Section title="Needs you">
+              <ul className="divide-y divide-border">
+                {detail.data.questions.map((question) => (
+                  <li key={question.id} className="space-y-2 py-3">
+                    <p>{question.text}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {Array.from(new Set(question.options)).map((text) => (
+                        <Button
+                          key={text}
+                          variant="secondary"
+                          size="sm"
+                          disabled={answer.isPending}
+                          onClick={() => answer.mutate({ questionId: question.id, text })}
+                        >
+                          {text}
+                        </Button>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {answer.error ? <Failure title="Could not answer question" error={answer.error} /> : null}
+            </Section>
+          ) : null}
           <Section title="Timeline">
             <form
               className="space-y-2"

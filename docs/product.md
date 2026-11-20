@@ -262,7 +262,9 @@ is not a Needs you item. Mark handled applies to a failed routine run only.
 The Inbox lists Tasks across bots. A Task tracks one piece of work. It has a title,
 notes, and a status. Creating a Task or adding a note does not start a Session.
 Send to Main starts a Main turn with the selected Task title and ID. A reply to
-a linked question keeps the Task of that question.
+a linked question keeps the Task of that question. Task detail shows questions
+that need an answer, including queued questions. The owner can answer any of
+these questions from its Task. Channels send one Main question at a time.
 The owner can complete, cancel, or reopen a Task. The default list hides closed Tasks.
 The Inbox also links to Routine results.
 Routine result records include settled `changed` or `failed` outcomes without a

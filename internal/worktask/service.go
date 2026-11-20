@@ -27,8 +27,9 @@ func New(conn *sql.DB) *Service { return &Service{db: conn, q: sqlc.New(conn)} }
 
 // Detail holds the current Task and its most recent timeline entries.
 type Detail struct {
-	Task    sqlc.WorkTask
-	Entries []sqlc.WorkTaskEntry
+	Task      sqlc.WorkTask
+	Entries   []sqlc.WorkTaskEntry
+	Questions []sqlc.Question
 }
 
 // Create starts tracking work without starting a session.
@@ -61,7 +62,11 @@ func (s *Service) Detail(ctx context.Context, agentID, id string) (Detail, error
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Task: task, Entries: entries}, tx.Commit()
+	questions, err := q.ListWorkTaskQuestions(ctx, task.ID)
+	if err != nil {
+		return Detail{}, err
+	}
+	return Detail{Task: task, Entries: entries, Questions: questions}, tx.Commit()
 }
 
 // SetLifecycle applies an explicit owner decision without changing run state.
