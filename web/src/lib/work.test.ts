@@ -94,6 +94,8 @@ test("needsItems keeps open questions, unhandled failed runs, and setup automati
         createdAt: 1,
         read: false,
         dismissed: false,
+        environmentId: "local",
+        cwd: "",
       },
       {
         runId: "r2",
@@ -107,6 +109,8 @@ test("needsItems keeps open questions, unhandled failed runs, and setup automati
         createdAt: 1,
         read: true,
         dismissed: true,
+        environmentId: "local",
+        cwd: "",
       },
     ],
   };

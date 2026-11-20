@@ -205,14 +205,18 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
         {choices.length > 0 || environmentId ? (
           <Field
             label="Environment"
-            hint="Runs use only this environment. A run is skipped when it is removed."
+            hint="Runs use only this environment. A run is skipped when it is removed or unreachable. Changing it clears the project directory."
           >
             {({ id, describedBy }) => (
               <Select
                 id={id}
                 aria-describedby={describedBy}
                 value={environmentId}
-                onChange={(event) => setEnvironmentId(event.target.value)}
+                onChange={(event) => {
+                  // A project path belongs to one machine, so another environment starts without one.
+                  if (event.target.value !== environmentId) setCwd("");
+                  setEnvironmentId(event.target.value);
+                }}
               >
                 <option value="">Follow bot ({own?.name ?? "default"})</option>
                 {choices.map((env) => (

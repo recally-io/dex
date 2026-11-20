@@ -83,3 +83,11 @@ UPDATE conversations SET channel_key = @channel_key WHERE id = @id;
 SELECT count(*)
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE c.agent_id = ? AND s.status = 'pending';
+
+-- name: LastAutomationRunEnvironment :one
+-- The effective environment of the newest run in a routine chat.
+SELECT r.environment_id FROM automation_runs r
+JOIN submissions s ON s.id = r.id
+WHERE s.conversation_id = ?
+ORDER BY s.created_at DESC, s.id DESC
+LIMIT 1;

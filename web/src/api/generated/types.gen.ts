@@ -347,6 +347,14 @@ export type InboxItem = {
     outcome: 'changed' | 'failed';
     read: boolean;
     dismissed: boolean;
+    /**
+     * The effective execution environment that the run started in. Empty for a run with no message.
+     */
+    environmentId: string;
+    /**
+     * The cwd that the run started with, in its environment.
+     */
+    cwd: string;
 };
 
 export type AutomationRun = {
@@ -374,6 +382,14 @@ export type AutomationRun = {
     duplicate: boolean;
     reason?: string;
     chatId?: number;
+    /**
+     * The effective execution environment that the run started in. Empty for a run with no message.
+     */
+    environmentId?: string;
+    /**
+     * The cwd that the run started with, in its environment.
+     */
+    cwd?: string;
 };
 
 export type AutomationRunList = {

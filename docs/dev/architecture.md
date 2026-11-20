@@ -528,14 +528,20 @@ past now. The message uses the normal durable delivery.
 A routine selects its execution environment with `environmentId`: empty follows
 the bot, and `local` or an SSH environment pins the routine. E2B and runner
 environments are refused, as for sessions. `create_routine` takes the
-environment and the cwd of the chat that calls it. A run of a routine whose
-selected environment was removed is skipped with a reason that names the
-environment, so it never runs on another machine. A change of the environment
+environment and the cwd of the chat that calls it. A run never falls back to
+another machine: a removed target skips the run, and before each run Dex opens
+an SSH target with a 15-second timeout and skips the run when the host does not
+answer. The skip reason names the environment. A change of the environment
 without a new cwd clears the cwd. A change of the bot's environment clears the
-cwd of the routines that follow the bot. A reused chat (`automation:<id>`) never
-changes its environment after its first input. When the next run needs another
-environment, the old chat gets the key `automation:<id>:<run id>` and stays
-readable, and the run starts a new reused chat in the new environment.
+cwd of the routines that follow the bot.
+
+Each run stores its effective environment and its cwd
+(`automation_runs.environment_id`, `cwd`), read under the writer lock with the
+input. A reused chat (`automation:<id>`) continues only in the effective
+environment of its last run, so a routine that follows the bot also gets a new
+chat after the bot's environment changes. The old chat gets the key
+`automation:<id>:<run id>` and stays readable. A chat that continues a result
+uses the environment and the cwd of that run, not the current routine settings.
 
 A user can select a primary notification target for each agent. Each routine can
 turn notifications off, follow the primary target, or select another authorized

@@ -1,5 +1,14 @@
 import { listInboxOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { InboxItem } from "../api/generated/types.gen";
+import {
+  createChat,
+  listAgentEnvironments,
+  sendMessage,
+  setChatEnvironment,
+  setChatProject,
+} from "../api/generated/sdk.gen";
+import type { AgentEnvironments, InboxItem } from "../api/generated/types.gen";
+import { refreshChats } from "./queries";
+import { newId } from "./utils";
 
 export const inboxOptions = () => listInboxOptions({ query: { includeDismissed: true } });
 
@@ -21,4 +30,54 @@ export function resultQuote(
     .join("\n");
 
   return `Follow up on the ${item.automationName} result (${item.outcome}).\n\n${quote}`;
+}
+
+// continuationEnvironment returns the environment that a chat about a run selects: "" follows the
+// bot. The run's paths and files exist only where it ran, so a run in an environment that a chat
+// cannot select stops the continuation instead of using another machine.
+export function continuationEnvironment(ranIn: string, environments: AgentEnvironments["environments"]) {
+  // A run without a message has no environment; it follows the bot.
+  if (!ranIn) return "";
+
+  const env = environments.find((e) => e.id === ranIn);
+
+  if (env?.default) return "";
+
+  if (env && (env.kind === "local" || env.kind === "pi-env")) return env.id;
+
+  throw new Error(
+    `This result ran in ${env?.name ?? ranIn}, which a new chat cannot use. Start a chat and select an environment.`,
+  );
+}
+
+// A retry after a partial failure reuses the chat and the message ID, so the quote is sent once.
+export type Continuation = { chatId: number; messageId: string; environmentId: string };
+
+// continueResult starts a chat in the environment and the cwd of the run, and sends text. It
+// checks the environment before it creates the chat. It returns the chat ID.
+export async function continueResult(
+  agentId: string,
+  run: { environmentId?: string; cwd?: string },
+  text: string,
+  continuation: { current: Continuation | null },
+) {
+  if (!continuation.current) {
+    const list = await listAgentEnvironments({ path: { agentId }, throwOnError: true });
+    const environmentId = continuationEnvironment(run.environmentId ?? "", list.data.environments);
+    const chat = await createChat({ path: { agentId }, throwOnError: true });
+
+    continuation.current = { chatId: chat.data.id, messageId: newId(), environmentId };
+  }
+
+  const { chatId, messageId, environmentId } = continuation.current;
+  const path = { agentId, chatId };
+
+  // The project is a path in the run's environment, so select that environment first.
+  if (environmentId) await setChatEnvironment({ path, body: { environmentId }, throwOnError: true });
+
+  await setChatProject({ path, body: { cwd: run.cwd ?? "" }, throwOnError: true });
+  await sendMessage({ path, body: { id: messageId, text }, throwOnError: true });
+  await refreshChats(agentId);
+
+  return chatId;
 }

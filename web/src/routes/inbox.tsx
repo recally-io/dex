@@ -2,18 +2,9 @@ import { useEffect, useRef } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { InboxItem } from "../api/generated/types.gen";
-import {
-  createChat,
-  getAutomation,
-  setChatEnvironment,
-  setChatProject,
-  sendMessage,
-  readInboxItem,
-  dismissInboxItem,
-} from "../api/generated/sdk.gen";
-import { refreshChats, refreshWork } from "../lib/queries";
-import { inboxOptions, resultQuote } from "../lib/inbox";
-import { newId } from "../lib/utils";
+import { readInboxItem, dismissInboxItem } from "../api/generated/sdk.gen";
+import { refreshWork } from "../lib/queries";
+import { type Continuation, continueResult, inboxOptions, resultQuote } from "../lib/inbox";
 import { Empty, FramedPage, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
 import { Button, buttonVariants } from "../components/ui/button";
@@ -35,7 +26,7 @@ export function InboxResultPage({ runId }: { runId: string }) {
 function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: boolean; error: unknown }) {
   const navigate = useNavigate();
   const opened = useRef(false);
-  const continuation = useRef<{ chatId: number; messageId: string } | null>(null);
+  const continuation = useRef<Continuation | null>(null);
 
   const read = useMutation({
     mutationFn: async (runId: string) => {
@@ -63,31 +54,8 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
   const next = useMutation({
     mutationFn: async (result: InboxItem) => {
       const agentId = result.agentId;
+      const chatId = await continueResult(agentId, result, resultQuote(result), continuation);
 
-      const routine = await getAutomation({
-        path: { agentId, automationId: result.automationId },
-        throwOnError: true,
-      });
-
-      if (!continuation.current) {
-        const chat = await createChat({ path: { agentId }, throwOnError: true });
-        continuation.current = { chatId: chat.data.id, messageId: newId() };
-      }
-
-      const { chatId, messageId } = continuation.current;
-      const path = { agentId, chatId };
-
-      // The project is a path in the routine's environment, so select that environment first.
-      if (routine.data.environmentId)
-        await setChatEnvironment({
-          path,
-          body: { environmentId: routine.data.environmentId },
-          throwOnError: true,
-        });
-
-      await setChatProject({ path, body: { cwd: routine.data.cwd ?? "" }, throwOnError: true });
-      await sendMessage({ path, body: { id: messageId, text: resultQuote(result) }, throwOnError: true });
-      await refreshChats(agentId);
       await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chatId) } });
     },
   });

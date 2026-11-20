@@ -190,6 +190,22 @@ func (q *Queries) GetEnvironment(ctx context.Context, id string) (ExecutionEnvir
 	return i, err
 }
 
+const lastAutomationRunEnvironment = `-- name: LastAutomationRunEnvironment :one
+SELECT r.environment_id FROM automation_runs r
+JOIN submissions s ON s.id = r.id
+WHERE s.conversation_id = ?
+ORDER BY s.created_at DESC, s.id DESC
+LIMIT 1
+`
+
+// The effective environment of the newest run in a routine chat.
+func (q *Queries) LastAutomationRunEnvironment(ctx context.Context, conversationID int64) (string, error) {
+	row := q.db.QueryRowContext(ctx, lastAutomationRunEnvironment, conversationID)
+	var environment_id string
+	err := row.Scan(&environment_id)
+	return environment_id, err
+}
+
 const listActiveAgentsByEnvironment = `-- name: ListActiveAgentsByEnvironment :many
 SELECT id, name FROM agents
 WHERE environment_id = ? AND archived_at IS NULL

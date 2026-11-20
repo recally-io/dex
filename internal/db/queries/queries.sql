@@ -378,8 +378,8 @@ DELETE FROM automations WHERE id = ? AND agent_id = ?;
 
 -- name: CreateAutomationRun :execrows
 -- A run for a scheduled time that has a run already is not stored again.
-INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at, environment_id, cwd)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING;
 
 -- name: ListAutomationRuns :many
@@ -389,7 +389,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id,

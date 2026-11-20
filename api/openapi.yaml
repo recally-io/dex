@@ -2377,6 +2377,8 @@ components:
         createdAt,
         read,
         dismissed,
+        environmentId,
+        cwd,
       ]
       properties:
         runId: { type: string }
@@ -2390,6 +2392,12 @@ components:
         outcome: { type: string, enum: [changed, failed] }
         read: { type: boolean }
         dismissed: { type: boolean }
+        environmentId:
+          type: string
+          description: The effective execution environment that the run started in. Empty for a run with no message.
+        cwd:
+          type: string
+          description: The cwd that the run started with, in its environment.
 
     AutomationRun:
       x-go-type: automation.Run
@@ -2421,6 +2429,12 @@ components:
           description: An earlier completed report has the same change key. Actions are not suppressed.
         reason: { type: string }
         chatId: { type: integer, format: int64 }
+        environmentId:
+          type: string
+          description: The effective execution environment that the run started in. Empty for a run with no message.
+        cwd:
+          type: string
+          description: The cwd that the run started with, in its environment.
 
     AutomationRunList:
       type: object

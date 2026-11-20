@@ -51,9 +51,12 @@ a model. Work shows sessions and routine runs across bots. Result details can
 create a writable Chat with the routine project and a quoted result through
 existing APIs. Routine history links to run transcripts and saved results.
 The routine dialog offers "Follow bot", `local`, and the SSH environments. It
-keeps a saved environment that the list no longer shows. A routine update sends
-`environmentId`, because a PUT replaces the routine. The continuation flow sets
-the chat environment before the project.
+keeps a saved environment that the list no longer shows, and a change of the
+environment clears the project directory. A routine update sends
+`environmentId`, because a PUT replaces the routine. Routines and Inbox continue
+a result through `continueResult` (`lib/inbox.ts`): the new chat uses the
+environment and the cwd of the run, and a run in an environment that a chat
+cannot select stops before any chat is created.
 Each child session reads like a thread. The transcript shows one card at a
 `session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
 call, and one "replied · View thread" line at each result mark. A click opens the

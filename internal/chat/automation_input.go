@@ -44,16 +44,29 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 	return convID, true, nil
 }
 
-// bindAutomationEnvironment selects the environment of the routine for its chat. A chat cannot
-// change its environment after its first message, so a reused chat that started in another one
-// moves to the key of this run, where it stays readable, and the run starts a new chat.
-func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, in AutomationInput) (sqlc.Conversation, error) {
-	if conv.EnvironmentID == in.EnvironmentID {
-		return conv, nil
+// bindAutomationEnvironment selects the environment of the routine for its chat. A reused chat
+// continues only in the effective environment (ranIn) of its last run, because its history, paths,
+// and tool results belong to that machine. A chat cannot change its environment after its first
+// message, so a reused chat from another environment moves to the key of this run, where it stays
+// readable, and the run starts a new chat. This also covers a routine that follows the bot after
+// the bot's environment changed.
+func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, in AutomationInput, ranIn string) (sqlc.Conversation, error) {
+	last, err := q.LastAutomationRunEnvironment(ctx, conv.ID)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
 	}
-	n, err := q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID})
-	if err != nil || n == 1 {
+	if err != nil {
 		return conv, err
+	}
+	moved := last != "" && last != ranIn
+	if !moved {
+		if conv.EnvironmentID == in.EnvironmentID {
+			return conv, nil
+		}
+		n, err := q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID})
+		if err != nil || n == 1 {
+			return conv, err
+		}
 	}
 	if err := q.RetireAutomationChat(ctx, sqlc.RetireAutomationChatParams{ChannelKey: in.ChannelKey + ":" + in.Run.ID, ID: conv.ID}); err != nil {
 		return conv, err
@@ -62,7 +75,8 @@ func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.C
 	if err != nil {
 		return conv, err
 	}
-	if n, err = q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID}); err == nil && n != 1 {
+	n, err := q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID})
+	if err == nil && n != 1 {
 		err = fmt.Errorf("routine chat %d did not take environment %q", conv.ID, in.EnvironmentID)
 	}
 	return conv, err
@@ -87,6 +101,14 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 			return 0, false, err
 		}
 	}
+	// The bot is read under the writer lock, so a change of its environment cannot come between
+	// this read and the input.
+	bot, err := q.GetAgent(ctx, in.AgentID)
+	if err != nil {
+		return 0, false, err
+	}
+	ranIn := effectiveEnvironment(bot, in.EnvironmentID)
+	in.Run.EnvironmentID, in.Run.Cwd = ranIn, in.Cwd
 	created, err := q.CreateAutomationRun(ctx, in.Run)
 	if err != nil || created == 0 {
 		return 0, false, err
@@ -95,7 +117,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 	if err != nil {
 		return 0, false, err
 	}
-	if conv, err = bindAutomationEnvironment(ctx, q, conv, in); err != nil {
+	if conv, err = bindAutomationEnvironment(ctx, q, conv, in, ranIn); err != nil {
 		return 0, false, err
 	}
 	if err = q.SetConversationCwd(ctx, sqlc.SetConversationCwdParams{ID: conv.ID, AgentID: in.AgentID, Cwd: in.Cwd}); err != nil {

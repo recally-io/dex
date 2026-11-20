@@ -59,18 +59,20 @@ type Automation struct {
 }
 
 type AutomationRun struct {
-	ID           string         `json:"id"`
-	AutomationID string         `json:"automation_id"`
-	DueAt        sql.NullInt64  `json:"due_at"`
-	Status       string         `json:"status"`
-	Reason       sql.NullString `json:"reason"`
-	CreatedAt    int64          `json:"created_at"`
-	Outcome      string         `json:"outcome"`
-	Summary      string         `json:"summary"`
-	ChangeKey    string         `json:"change_key"`
-	Duplicate    int64          `json:"duplicate"`
-	ReadAt       sql.NullInt64  `json:"read_at"`
-	DismissedAt  sql.NullInt64  `json:"dismissed_at"`
+	ID            string         `json:"id"`
+	AutomationID  string         `json:"automation_id"`
+	DueAt         sql.NullInt64  `json:"due_at"`
+	Status        string         `json:"status"`
+	Reason        sql.NullString `json:"reason"`
+	CreatedAt     int64          `json:"created_at"`
+	Outcome       string         `json:"outcome"`
+	Summary       string         `json:"summary"`
+	ChangeKey     string         `json:"change_key"`
+	Duplicate     int64          `json:"duplicate"`
+	ReadAt        sql.NullInt64  `json:"read_at"`
+	DismissedAt   sql.NullInt64  `json:"dismissed_at"`
+	EnvironmentID string         `json:"environment_id"`
+	Cwd           string         `json:"cwd"`
 }
 
 type BackgroundCommand struct {

@@ -8,6 +8,7 @@
 package automation
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -81,6 +82,10 @@ type Run struct {
 	Status     string `json:"status"` // running, done, failed, or skipped
 	Reason     string `json:"reason,omitempty"`
 	ChatID     int64  `json:"chatId,omitzero"` // 0 when the run has no message
+	// EnvironmentID and Cwd are where the run started: the effective environment, never empty
+	// for a run with a message.
+	EnvironmentID string `json:"environmentId,omitempty"`
+	Cwd           string `json:"cwd,omitempty"`
 }
 
 // Service manages automations for all agents.
@@ -88,6 +93,14 @@ type Service struct {
 	q       *sqlc.Queries
 	enqueue func(context.Context, chat.AutomationInput) (int64, bool, error)
 	now     func() time.Time
+	// probe opens an SSH environment of a run before its input; nil skips the check.
+	probe func(ctx context.Context, agentID, environmentID string) error
+}
+
+// ConfigureProbe sets the check that an SSH environment is reachable before a run. A run on an
+// unreachable host is skipped, so it never starts a chat that cannot use its machine.
+func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, environmentID string) error) {
+	s.probe = probe
 }
 
 // New returns a Service. Call Check every minute.
@@ -377,7 +390,7 @@ func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int
 	}
 	out := make([]Run, len(rows))
 	for i, r := range rows {
-		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64}
+		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64, EnvironmentID: r.EnvironmentID, Cwd: r.Cwd}
 		if r.AdmittedAt.Valid {
 			out[i].AdmittedAt = new(r.AdmittedAt.Int64)
 		}
@@ -486,15 +499,10 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 			skip = "the bot has no model"
 		case busy > 0:
 			skip = "the chat of the automation is busy"
-		}
-	}
-	// A run never falls back to another machine. A pi-env environment is unavailable only when it
-	// was removed: dex does not probe the host before a run, so a host that is down fails the run.
-	if skip == "" && row.EnvironmentID != "" && row.EnvironmentID != execenv.LocalID {
-		if _, err := s.q.GetEnvironment(ctx, row.EnvironmentID); errors.Is(err, sql.ErrNoRows) {
-			skip = "the environment " + row.EnvironmentID + " was removed"
-		} else if err != nil {
-			return Run{}, err
+		default:
+			if skip, err = s.unavailable(ctx, row, cmp.Or(row.EnvironmentID, agent.EnvironmentID)); err != nil {
+				return Run{}, err
+			}
 		}
 	}
 	run := Run{ID: uuid.NewV7().String(), DueAt: due.Int64, CreatedAt: s.now().UnixMilli(), Status: "started", Reason: skip}
@@ -522,4 +530,24 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 		run.Status, run.ChatID = "running", chatID
 	}
 	return run, err
+}
+
+// unavailable returns the skip reason when the environment target of a run cannot be used, so a
+// run never falls back to another machine. Only an SSH host is probed: local is always there, and
+// opening an E2B sandbox or a runner would start the work that the run does.
+func (s *Service) unavailable(ctx context.Context, row sqlc.Automation, target string) (string, error) {
+	if target == "" || target == execenv.LocalID {
+		return "", nil
+	}
+	env, err := s.q.GetEnvironment(ctx, target)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "the environment " + target + " was removed", nil
+	}
+	if err != nil || execenv.Kind(env.Kind) != execenv.KindPiEnv || s.probe == nil {
+		return "", err
+	}
+	if err := s.probe(ctx, row.AgentID, row.EnvironmentID); err != nil {
+		return fmt.Sprintf("the environment %s is unavailable: %v", env.Name, err), nil
+	}
+	return "", nil
 }

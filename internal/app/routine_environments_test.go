@@ -66,7 +66,33 @@ func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
 	// Then a routine that selects nothing runs on the bot's local environment.
 	var local routineEnvironment
 	d.must(t, http.MethodPost, "/api/agents/default/automations", routine("Local", ""), &local, http.StatusCreated)
-	runIn(local.ID, "bash: local")
+	firstLocal := runIn(local.ID, "bash: local")
+
+	// When the owner moves the bot to remote-box, then the next run of the following routine starts
+	// a new chat there, although nobody edited the routine. Its runs tell where each one ran.
+	setBotEnvironment := func(id string) {
+		t.Helper()
+		var bot apiAgent
+		d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+		bot.EnvironmentID = id
+		d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+	}
+	setBotEnvironment(remoteEnv.ID)
+	followed := runIn(local.ID, "bash: ssh-fake-ok")
+	if followed.ChatID == firstLocal.ChatID {
+		t.Fatalf("the following routine reused chat %d after the bot moved", followed.ChatID)
+	}
+	d.watch(t, firstLocal.ChatID).until(t, "old local chat", answered("bash: local"))
+	var runs struct {
+		Runs []struct {
+			EnvironmentID string `json:"environmentId"`
+		} `json:"runs"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/default/automations/"+local.ID+"/runs", nil, &runs)
+	if len(runs.Runs) != 2 || runs.Runs[0].EnvironmentID != remoteEnv.ID || runs.Runs[1].EnvironmentID != "local" {
+		t.Fatalf("runs=%+v", runs.Runs)
+	}
+	setBotEnvironment("")
 
 	// When the reused routine moves to local and back, then each move starts a new chat, and the
 	// earlier chats stay readable.
@@ -92,6 +118,19 @@ func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
 	routineToolJSON(t, d, chatID, "create_routine", map[string]any{"name": "From chat", "prompt": marker, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
 	if created.EnvironmentID != remoteEnv.ID {
 		t.Fatalf("created routine=%+v", created)
+	}
+
+	// When the host of a routine's SSH environment is down, then the run is skipped with a reason
+	// that names it, and no chat starts.
+	var deadEnv apiEnvironment
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+		"name": "dead-box", "kind": "pi-env", "config": map[string]any{"host": "dead.internal", "user": "dev"},
+	}, &deadEnv, http.StatusCreated)
+	sshFix.Refuse(t, "dead.internal")
+	var dead routineEnvironment
+	d.must(t, http.MethodPost, "/api/agents/default/automations", routine("Dead", deadEnv.ID), &dead, http.StatusCreated)
+	if run := d.runNow(t, dead.ID); run.Status != "skipped" || run.ChatID != 0 || !strings.Contains(run.Reason, "dead-box is unavailable") {
+		t.Fatalf("run on a dead host=%+v", run)
 	}
 
 	// When the owner removes remote-box, then a run is skipped with a reason that names it, and

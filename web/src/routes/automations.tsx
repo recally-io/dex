@@ -11,20 +11,12 @@ import {
   deleteAutomationMutation,
   runAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { inboxOptions, resultQuote } from "../lib/inbox";
-import {
-  createChat,
-  dismissInboxItem,
-  readInboxItem,
-  sendMessage,
-  setChatEnvironment,
-  setChatProject,
-} from "../api/generated/sdk.gen";
-import { refreshAutomations, refreshChats, refreshWork } from "../lib/queries";
+import { type Continuation, continueResult, inboxOptions, resultQuote } from "../lib/inbox";
+import { dismissInboxItem, readInboxItem } from "../api/generated/sdk.gen";
+import { refreshAutomations, refreshWork } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { formatDuration } from "../lib/sessions";
-import { newId } from "../lib/utils";
 import { Failure, Loading, Spinner } from "../components/feedback";
 import { Confirm } from "../components/confirm";
 import { AutomationDialog } from "../components/automation-dialog";
@@ -222,21 +214,12 @@ function ReplyComposer({
   const agentId = useAgentId();
   const navigate = useNavigate();
   const [text, setText] = useState("");
-  // A retry after a partial failure reuses the chat and the message ID, so the quote is sent once.
-  const continuation = useRef<{ chatId: number; messageId: string } | null>(null);
+  const continuation = useRef<Continuation | null>(null);
   const outcome = run.outcome || (run.status === "failed" ? "failed" : "unknown");
   const summary = run.summary || run.reason || "";
 
   const start = useMutation({
     mutationFn: async () => {
-      if (!continuation.current) {
-        const chat = await createChat({ path: { agentId }, throwOnError: true });
-        continuation.current = { chatId: chat.data.id, messageId: newId() };
-      }
-
-      const { chatId, messageId } = continuation.current;
-      const path = { agentId, chatId };
-
       // The quote comes first: the chat takes its title from the start of the message.
       const quote = resultQuote({
         agentId,
@@ -247,23 +230,13 @@ function ReplyComposer({
         outcome,
       });
 
-      // The project is a path in the routine's environment, so select that environment first.
-      if (automation.environmentId)
-        await setChatEnvironment({
-          path,
-          body: { environmentId: automation.environmentId },
-          throwOnError: true,
-        });
+      const chatId = await continueResult(
+        agentId,
+        run,
+        text.trim() ? `${quote}\n\n${text.trim()}` : quote,
+        continuation,
+      );
 
-      await setChatProject({ path, body: { cwd: automation.cwd ?? "" }, throwOnError: true });
-
-      await sendMessage({
-        path,
-        body: { id: messageId, text: text.trim() ? `${quote}\n\n${text.trim()}` : quote },
-        throwOnError: true,
-      });
-
-      await refreshChats(agentId);
       await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chatId) } });
     },
   });
@@ -273,7 +246,7 @@ function ReplyComposer({
       <div className="flex items-center gap-2">
         <span className="flex-1 text-[11px] font-bold tracking-wide uppercase">
           New chat with {botName}
-          {automation.cwd ? ` · ${automation.cwd}` : ""}
+          {run.cwd ? ` · ${run.cwd}` : ""}
         </span>
         <Button size="xs" variant="outline" onClick={onCancel} disabled={start.isPending}>
           Cancel

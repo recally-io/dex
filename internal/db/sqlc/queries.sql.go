@@ -302,18 +302,20 @@ func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationPara
 }
 
 const createAutomationRun = `-- name: CreateAutomationRun :execrows
-INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at, environment_id, cwd)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING
 `
 
 type CreateAutomationRunParams struct {
-	ID           string         `json:"id"`
-	AutomationID string         `json:"automation_id"`
-	DueAt        sql.NullInt64  `json:"due_at"`
-	Status       string         `json:"status"`
-	Reason       sql.NullString `json:"reason"`
-	CreatedAt    int64          `json:"created_at"`
+	ID            string         `json:"id"`
+	AutomationID  string         `json:"automation_id"`
+	DueAt         sql.NullInt64  `json:"due_at"`
+	Status        string         `json:"status"`
+	Reason        sql.NullString `json:"reason"`
+	CreatedAt     int64          `json:"created_at"`
+	EnvironmentID string         `json:"environment_id"`
+	Cwd           string         `json:"cwd"`
 }
 
 // A run for a scheduled time that has a run already is not stored again.
@@ -325,6 +327,8 @@ func (q *Queries) CreateAutomationRun(ctx context.Context, arg CreateAutomationR
 		arg.Status,
 		arg.Reason,
 		arg.CreatedAt,
+		arg.EnvironmentID,
+		arg.Cwd,
 	)
 	if err != nil {
 		return 0, err
@@ -747,7 +751,7 @@ func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (A
 }
 
 const getAutomationRun = `-- name: GetAutomationRun :one
-SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate, read_at, dismissed_at FROM automation_runs WHERE id = ?
+SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate, read_at, dismissed_at, environment_id, cwd FROM automation_runs WHERE id = ?
 `
 
 func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRun, error) {
@@ -766,6 +770,8 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 		&i.Duplicate,
 		&i.ReadAt,
 		&i.DismissedAt,
+		&i.EnvironmentID,
+		&i.Cwd,
 	)
 	return i, err
 }
@@ -1188,7 +1194,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id,
@@ -1215,6 +1221,8 @@ type ListAutomationRunsRow struct {
 	Summary       string         `json:"summary"`
 	ChangeKey     string         `json:"change_key"`
 	Duplicate     int64          `json:"duplicate"`
+	EnvironmentID string         `json:"environment_id"`
+	Cwd           string         `json:"cwd"`
 	MessageStatus sql.NullString `json:"message_status"`
 	MessageReason sql.NullString `json:"message_reason"`
 	ChatID        sql.NullInt64  `json:"chat_id"`
@@ -1242,6 +1250,8 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 			&i.Summary,
 			&i.ChangeKey,
 			&i.Duplicate,
+			&i.EnvironmentID,
+			&i.Cwd,
 			&i.MessageStatus,
 			&i.MessageReason,
 			&i.ChatID,
