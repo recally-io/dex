@@ -129,6 +129,8 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
+	mux.HandleFunc("POST /hooks/github/{repositoryId}", h.receiveGitHubWebhook)
+	mux.HandleFunc("/hooks/", http.NotFound)
 	mux.Handle("/", web.Handler())
 	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
 	// multipart headers.

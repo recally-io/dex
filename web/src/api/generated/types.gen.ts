@@ -1233,6 +1233,62 @@ export type ChatId = number;
 
 export type EnvironmentId = string;
 
+export type DeleteGitHubWebhookData = {
+    body?: never;
+    path: {
+        repositoryId: number;
+    };
+    query?: never;
+    url: '/api/settings/github-webhooks/{repositoryId}';
+};
+
+export type DeleteGitHubWebhookErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteGitHubWebhookError = DeleteGitHubWebhookErrors[keyof DeleteGitHubWebhookErrors];
+
+export type DeleteGitHubWebhookResponses = {
+    /**
+     * Webhook disabled.
+     */
+    204: void;
+};
+
+export type DeleteGitHubWebhookResponse = DeleteGitHubWebhookResponses[keyof DeleteGitHubWebhookResponses];
+
+export type SaveGitHubWebhookData = {
+    body: {
+        secret: string;
+    };
+    path: {
+        repositoryId: number;
+    };
+    query?: never;
+    url: '/api/settings/github-webhooks/{repositoryId}';
+};
+
+export type SaveGitHubWebhookErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SaveGitHubWebhookError = SaveGitHubWebhookErrors[keyof SaveGitHubWebhookErrors];
+
+export type SaveGitHubWebhookResponses = {
+    /**
+     * Secret saved.
+     */
+    204: void;
+};
+
+export type SaveGitHubWebhookResponse = SaveGitHubWebhookResponses[keyof SaveGitHubWebhookResponses];
+
 export type ListWorkTasksData = {
     body?: never;
     path?: never;
