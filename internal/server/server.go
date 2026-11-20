@@ -44,8 +44,12 @@ type Config struct {
 	DataDir     string
 	Version     string
 	// Engine owns native execution and extensions.
-	Engine *engine.Agents
-	Envs   *execenv.Manager
+	Engine      *engine.Agents
+	Envs        *execenv.Manager
+	MachineUrls *[]string
+	MachinePin  *string
+	// machine marks the listener of the remote machine protocol, which has no admin UI.
+	machine bool
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
@@ -128,7 +132,7 @@ func New(cfg Config) http.Handler {
 			small.ServeHTTP(w, r)
 		}
 	})
-	return http.NewCrossOriginProtection().Handler(h.runnerRoutes(requireToken(cfg.Token, limited)))
+	return http.NewCrossOriginProtection().Handler(requireToken(cfg.Token, limited))
 }
 
 type responseWriter struct {
@@ -218,7 +222,7 @@ func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	ready := h.Engine != nil && h.Engine.Health(ctx) == nil
-	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready}, nil
+	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready, MachineUrls: h.MachineUrls, MachinePin: h.MachinePin}, nil
 }
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

@@ -27,6 +27,8 @@ type Config struct {
 	Path       string `json:"path"`
 	AutoUpdate bool   `json:"autoUpdate"`
 	Channel    string `json:"channel"`
+	// MachineListen is the separate TLS address for remote machines. Empty disables them.
+	MachineListen string `json:"machineListen,omitempty"`
 }
 
 // EnvironmentPath keeps service commands separate from the agent's login shell environment.
@@ -104,6 +106,23 @@ func (c *Config) Validate() error {
 	if err != nil {
 		return err
 	}
+	if c.MachineListen != "" {
+		host, port, err := net.SplitHostPort(c.MachineListen)
+		if err != nil {
+			return errors.New("machine listener must be an address such as 0.0.0.0:8788")
+		}
+		ip, err := netip.ParseAddr(host)
+		if err != nil || ip.Zone() != "" {
+			return errors.New("machine listener host must be an IP address")
+		}
+		if number, err := strconv.Atoi(port); err != nil || number < 1 || number > 65535 {
+			return errors.New("machine listener port must be between 1 and 65535")
+		}
+		if number, err := strconv.Atoi(port); err == nil && number == c.Port {
+			return errors.New("machine listener must use a different port than the web UI")
+		}
+		c.MachineListen = net.JoinHostPort(ip.String(), port)
+	}
 	if c.Channel != "stable" && c.Channel != "prerelease" {
 		return errors.New("channel must be stable or prerelease")
 	}
@@ -134,7 +153,11 @@ func (c Config) URL() string {
 // args select the stored token, so a DEX_TOKEN that the service manager passes on has no effect
 // and local clients always know the token.
 func (c Config) args() []string {
-	return []string{c.Executable, "serve", "--host", c.Host, "--port", strconv.Itoa(c.Port), "--data-dir", c.DataDir, "--stored-token"}
+	args := []string{c.Executable, "serve", "--host", c.Host, "--port", strconv.Itoa(c.Port), "--data-dir", c.DataDir, "--stored-token"}
+	if c.MachineListen != "" {
+		args = append(args, "--machine-listen", c.MachineListen)
+	}
+	return args
 }
 func (c Config) record() string { // Validate guarantees that all strings can be encoded.
 	b, _ := json.Marshal(c)

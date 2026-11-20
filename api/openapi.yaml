@@ -1880,6 +1880,13 @@ components:
         version: { type: string }
         dataDir: { type: string }
         runtimeReady: { type: boolean }
+        machineUrls:
+          type: array
+          items: { type: string }
+          description: HTTPS addresses of the machine listener. Absent when the listener is off.
+        machinePin:
+          type: string
+          description: SHA-256 pin of the machine listener public key, in base64. Absent when the listener is off.
 
     Chat:
       type: object

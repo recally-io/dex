@@ -27,6 +27,14 @@ export type Health = {
     version: string;
     dataDir: string;
     runtimeReady: boolean;
+    /**
+     * HTTPS addresses of the machine listener. Absent when the listener is off.
+     */
+    machineUrls?: Array<string>;
+    /**
+     * SHA-256 pin of the machine listener public key, in base64. Absent when the listener is off.
+     */
+    machinePin?: string;
 };
 
 export type Chat = {

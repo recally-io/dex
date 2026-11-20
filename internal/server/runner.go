@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
-	json "encoding/json/v2"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
@@ -15,8 +17,8 @@ import (
 )
 
 func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRequestObject) (api.IssueRunnerCodeResponseObject, error) {
-	if h.Token == "" {
-		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusForbidden, Body: api.Error{Error: "Configure a Dex access token before pairing a runner."}}, nil
+	if h.Envs == nil {
+		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: api.Error{Error: "Remote machines are unavailable in this build."}}, nil
 	}
 	code, err := h.Envs.IssueRunnerCode(ctx, req.EnvironmentId)
 	if errors.Is(err, execenv.ErrRunnerConflict) {
@@ -29,8 +31,8 @@ func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRe
 }
 
 func (h *handler) RevokeRunner(ctx context.Context, req api.RevokeRunnerRequestObject) (api.RevokeRunnerResponseObject, error) {
-	if h.Token == "" {
-		return api.RevokeRunnerdefaultJSONResponse{StatusCode: http.StatusForbidden, Body: api.Error{Error: "Configure a Dex access token before managing a runner."}}, nil
+	if h.Envs == nil {
+		return api.RevokeRunnerdefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: api.Error{Error: "Remote machines are unavailable in this build."}}, nil
 	}
 	if err := h.Envs.RevokeRunner(ctx, req.EnvironmentId); err != nil {
 		return nil, err
@@ -38,61 +40,67 @@ func (h *handler) RevokeRunner(ctx context.Context, req api.RevokeRunnerRequestO
 	return api.RevokeRunner200JSONResponse(ok), nil
 }
 
-func (h *handler) runnerRoutes(admin http.Handler) http.Handler {
-	if h.Envs == nil || h.Token == "" {
-		return admin
-	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/runner/{id}/pair", h.pairRunner)
-	mux.HandleFunc("GET /api/runner/{id}/connect", h.connectRunner)
-	mux.Handle("/", admin)
-	return mux
-}
-
-func runnerBearer(r *http.Request) string {
-	credential, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok || len(credential) < 26 || len(credential) > 128 || r.Header.Get("Origin") != "" {
+// machinePeer returns the identity of the machine certificate on a machine listener request.
+// The machine listener asks for a client certificate, and the install command uses the same
+// key for its first and later connections.
+func machinePeer(r *http.Request) string {
+	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 || r.Header.Get("Origin") != "" {
 		return ""
 	}
-	return credential
+	cert := r.TLS.PeerCertificates[0]
+	now := time.Now()
+	if now.Before(cert.NotBefore) || now.After(cert.NotAfter) {
+		return ""
+	}
+	key := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
+	return "mtls:" + base64.StdEncoding.EncodeToString(key[:])
 }
 
 func (h *handler) pairRunner(w http.ResponseWriter, r *http.Request) {
 	code := runnerBearer(r)
 	if code == "" {
-		writeError(w, http.StatusUnauthorized, "runner pairing code is required")
+		writeError(w, http.StatusUnauthorized, "the one-time enrollment code is required")
 		return
 	}
-	token, err := h.Envs.PairRunner(r.Context(), r.PathValue("id"), code)
-	if errors.Is(err, execenv.ErrRunnerCredential) {
-		writeError(w, http.StatusUnauthorized, "runner pairing code is invalid or expired")
+	identity := machinePeer(r)
+	if identity == "" {
+		writeError(w, http.StatusUnauthorized, "the machine client certificate is required")
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusServiceUnavailable, "pairing is temporarily unavailable")
+	if err := h.Envs.EnrollRunner(r.Context(), r.PathValue("id"), code, identity); errors.Is(err, execenv.ErrRunnerCredential) {
+		writeError(w, http.StatusUnauthorized, "the enrollment code is invalid or expired")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "enrollment is temporarily unavailable")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.MarshalWrite(w, struct {
-		Credential string `json:"credential"`
-	}{Credential: token})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *handler) connectRunner(w http.ResponseWriter, r *http.Request) {
-	token := runnerBearer(r)
 	id := r.PathValue("id")
-	if token == "" || h.Envs.VerifyRunner(r.Context(), id, token) != nil {
-		writeError(w, http.StatusUnauthorized, "runner credential is invalid")
+	identity := machinePeer(r)
+	if identity == "" || h.Envs.VerifyRunner(r.Context(), id, identity) != nil {
+		writeError(w, http.StatusUnauthorized, "the machine certificate is not enrolled; install the machine again")
 		return
 	}
 	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), runnerproto.Version) {
-		writeError(w, http.StatusUpgradeRequired, "runner protocol is incompatible")
+		writeError(w, http.StatusUpgradeRequired, "the machine protocol is incompatible")
 		return
 	}
 	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{runnerproto.Version}})
 	if err != nil {
 		return
 	}
-	_ = h.Envs.AcceptRunner(r.Context(), id, token, conn)
+	_ = h.Envs.AcceptRunner(r.Context(), id, identity, conn)
+}
+
+// runnerBearer reads the one-time enrollment code. It refuses a browser request.
+func runnerBearer(r *http.Request) string {
+	code, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || len(code) < 26 || len(code) > 128 || r.Header.Get("Origin") != "" {
+		return ""
+	}
+	return code
 }

@@ -1163,7 +1163,13 @@ type FollowupTimerList struct {
 
 // Health defines model for Health.
 type Health struct {
-	DataDir      string       `json:"dataDir"`
+	DataDir string `json:"dataDir"`
+
+	// MachinePin SHA-256 pin of the machine listener public key, in base64. Absent when the listener is off.
+	MachinePin *string `json:"machinePin,omitempty"`
+
+	// MachineUrls HTTPS addresses of the machine listener. Absent when the listener is off.
+	MachineUrls  *[]string    `json:"machineUrls,omitempty"`
 	RuntimeReady bool         `json:"runtimeReady"`
 	Status       HealthStatus `json:"status"`
 	Version      string       `json:"version"`
