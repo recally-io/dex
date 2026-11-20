@@ -67,7 +67,7 @@ func runFlags(f *flag.FlagSet, c *service.Config) {
 	f.StringVar(&c.Host, "host", c.Host, "Host IP; a host that is not loopback requires the access token")
 	f.IntVar(&c.Port, "port", c.Port, "HTTP port")
 	f.StringVar(&c.DataDir, "data-dir", c.DataDir, "Data directory (does not move existing data)")
-	f.StringVar(&c.MachineListen, "machine-listen", c.MachineListen, "TLS address for remote machines, for example 0.0.0.0:8788 (empty disables them)")
+	f.StringVar(&c.MachineListen, "machine-listen", c.MachineListen, "TLS address for remote machines, for example 0.0.0.0:8788; port 0 asks the OS, empty disables them")
 }
 func configured(f *flag.FlagSet, args []string, c *service.Config) error {
 	runFlags(f, c)

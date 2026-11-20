@@ -20,7 +20,7 @@ import { SandboxEnvironmentFields, useSandboxEnvironmentForm } from "./environme
 import { SshEnvironmentFields, useSshEnvironmentForm } from "./environment-ssh-fields";
 import { Failure, Spinner } from "./feedback";
 import { ProbeResultPanel } from "./probe-result-panel";
-import { RunnerInstall } from "./runner-install";
+import { DexAddressField, RemoteMachinesOff, RunnerInstall } from "./runner-install";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Field } from "./form";
@@ -86,6 +86,7 @@ export function EnvironmentDialog({
 
   const [tried, setTried] = useState(false);
   const [serviceName, setServiceName] = useState(existing?.kind === "runner" ? existing.name : "");
+  const [address, setAddress] = useState("");
   const [probeResult, setProbeResult] = useState<EnvironmentTestResult | null>(null);
 
   // A dex runner environment must exist before Dex can issue its install command, so the
@@ -217,7 +218,7 @@ export function EnvironmentDialog({
           submit();
         }}
       >
-        {!existing && !created ? (
+        {!existing ? (
           <div role="radiogroup" aria-label="Where the bot runs" className="grid gap-2.5 sm:grid-cols-2">
             {environmentPlaces.map((choice) => {
               const selected = place === choice.place;
@@ -229,6 +230,7 @@ export function EnvironmentDialog({
                   role="radio"
                   aria-checked={selected}
                   aria-label={choice.title}
+                  disabled={!!created}
                   onClick={() => {
                     setKind(choice.place === "sandbox" ? "e2b" : machineKind);
                     setTried(false);
@@ -253,7 +255,7 @@ export function EnvironmentDialog({
           </div>
         ) : null}
 
-        {!existing && !created && place === "machine" ? (
+        {!existing && place === "machine" ? (
           <div
             role="radiogroup"
             aria-label="How Dex reaches the machine"
@@ -269,6 +271,7 @@ export function EnvironmentDialog({
                   role="radio"
                   aria-checked={selected}
                   aria-label={choice.title}
+                  disabled={!!created}
                   onClick={() => {
                     setKind(choice.kind);
                     setMachineKind(choice.kind);
@@ -313,7 +316,9 @@ export function EnvironmentDialog({
                 />
               )}
             </Field>
-            {created ? <RunnerInstall environmentId={created.id} autoIssue /> : null}
+            <DexAddressField address={address} onChange={setAddress} />
+            <RemoteMachinesOff />
+            {created ? <RunnerInstall environmentId={created.id} address={address} autoIssue /> : null}
           </>
         )}
 

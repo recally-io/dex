@@ -19,6 +19,8 @@ export default {
             "127.0.0.1",
             "--port",
             "{port}",
+            "--machine-listen",
+            "0.0.0.0:0",
             "--data-dir",
             "web/.e2e/data",
           ],

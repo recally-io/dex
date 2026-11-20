@@ -10,25 +10,105 @@ import { Spinner } from "./feedback";
 
 const customOption = "__custom__";
 
-// RunnerInstall shows the one command that connects a machine to Dex. Dex offers every
-// address a machine might reach, so the operator picks the network instead of typing a URL.
+// DexAddressField picks the address a machine uses for Dex. One host can have several
+// networks, so Dex offers each address it detects and keeps a free text option.
+export function DexAddressField({
+  address,
+  onChange,
+}: {
+  address: string;
+  onChange: (value: string) => void;
+}) {
+  const health = useQuery(getHealthOptions());
+  const [typed, setTyped] = useState(false);
+
+  const machineUrls = health.data?.machineUrls ?? [];
+  const target = address || machineUrls.at(0) || "";
+
+  if (typed || !machineUrls.length) {
+    return (
+      <Field
+        label="Address the machine uses for Dex"
+        hint="Use an address the machine can reach."
+        error={
+          target && !machineAddress(target)
+            ? "Enter an HTTPS address without a path. Do not use localhost."
+            : undefined
+        }
+      >
+        {(ids) => (
+          <Input
+            {...ids}
+            value={target}
+            placeholder="https://192.0.2.10:8788"
+            onChange={(event) => onChange(event.target.value)}
+          />
+        )}
+      </Field>
+    );
+  }
+
+  return (
+    <Field label="Address the machine uses for Dex" hint="Choose the network the machine shares.">
+      {(ids) => (
+        <Select
+          {...ids}
+          value={target}
+          onChange={(event) => {
+            if (event.target.value === customOption) {
+              setTyped(true);
+
+              return;
+            }
+
+            onChange(event.target.value);
+          }}
+        >
+          {machineUrls.map((url) => (
+            <option key={url} value={url}>
+              {url}
+            </option>
+          ))}
+          <option value={customOption}>Other address…</option>
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+// RemoteMachinesOff explains an empty address list. A loopback-only Dex has no address
+// that another machine can reach.
+export function RemoteMachinesOff() {
+  const health = useQuery(getHealthOptions());
+
+  if (health.data?.machineUrls?.length) return null;
+
+  return (
+    <p className="text-sm text-orange">
+      Remote machines are off: this Dex listens on loopback only. Start it with a reachable host, or set{" "}
+      <Mono>--machine-listen</Mono>.
+    </p>
+  );
+}
+
+// RunnerInstall shows the one command that connects a machine to Dex. Dex issues the code
+// only for a saved environment, so the caller renders this after the save.
 export function RunnerInstall({
   environmentId,
+  address,
   autoIssue = false,
 }: {
   environmentId: string;
+  address: string;
   // autoIssue creates the first command without another click, for a new environment.
   autoIssue?: boolean;
 }) {
   const { notify } = useApp();
   const health = useQuery(getHealthOptions());
-  const [address, setAddress] = useState("");
-  const [typed, setTyped] = useState(false);
   const [issued, setIssued] = useState<{ code: string } | null>(null);
 
   const machineUrls = health.data?.machineUrls ?? [];
   const pin = health.data?.machinePin;
-
   const target = address || machineUrls.at(0) || "";
 
   const command =
@@ -48,82 +128,23 @@ export function RunnerInstall({
     issue.mutate({ path: { environmentId } });
   }, [autoIssue, environmentId, pin, machineUrls.length, issue]);
 
-  const reset = (value: string) => {
-    setAddress(value);
-    setIssued(null);
-    issue.reset();
-  };
-
-  const addressField = typed || !machineUrls.length;
-
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
-        Run one command on the machine. It needs sudo, and it connects the machine to Dex without an inbound
-        port.
-      </p>
-      {addressField ? (
-        <Field
-          label="Address the machine uses for Dex"
-          hint="Use an address the machine can reach."
-          error={
-            target && !machineAddress(target)
-              ? "Enter an HTTPS address without a path. Do not use localhost."
-              : undefined
-          }
-        >
-          {(ids) => (
-            <Input
-              {...ids}
-              value={target}
-              placeholder="https://192.0.2.10:8788"
-              onChange={(event) => reset(event.target.value)}
-            />
-          )}
-        </Field>
-      ) : (
-        <Field label="Address the machine uses for Dex" hint="Choose the network the machine shares.">
-          {(ids) => (
-            <Select
-              {...ids}
-              value={target}
-              onChange={(event) => {
-                if (event.target.value === customOption) {
-                  setTyped(true);
-                  reset("");
-
-                  return;
-                }
-
-                reset(event.target.value);
-              }}
-            >
-              {machineUrls.map((url) => (
-                <option key={url} value={url}>
-                  {url}
-                </option>
-              ))}
-              <option value={customOption}>Other address…</option>
-            </Select>
-          )}
-        </Field>
-      )}
-      {machineUrls.length ? null : (
-        <p className="text-sm text-orange">
-          Remote machines are off: this Dex listens on loopback only. Start it with a reachable host, or set{" "}
-          <Mono>--machine-listen</Mono>.
-        </p>
-      )}
-      <div>
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           size="xs"
           variant="outline"
-          disabled={(!machineUrls.length && !target) || issue.isPending}
-          onClick={() => issue.mutate({ path: { environmentId } })}
+          disabled={!machineUrls.length || issue.isPending}
+          onClick={() => {
+            setIssued(null);
+            issue.reset();
+            issue.mutate({ path: { environmentId } });
+          }}
         >
           {issue.isPending ? <Spinner /> : null}
           {issued ? "New install command" : "Get install command"}
         </Button>
+        <span className="text-[12px] text-muted-foreground">Run the command on the machine with sudo.</span>
       </div>
       {command ? (
         <div className="flex flex-col gap-2 text-sm">
