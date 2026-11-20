@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getHealthOptions, issueRunnerCodeMutation } from "../api/generated/@tanstack/react-query.gen";
 import { useApp } from "../lib/app-state";
@@ -15,9 +15,12 @@ const customOption = "__custom__";
 export function DexAddressField({
   address,
   onChange,
+  action,
 }: {
   address: string;
   onChange: (value: string) => void;
+  // action sits next to the control, so a caller can offer its own button there.
+  action?: ReactNode;
 }) {
   const health = useQuery(getHealthOptions());
   const [typed, setTyped] = useState(false);
@@ -37,12 +40,16 @@ export function DexAddressField({
         }
       >
         {(ids) => (
-          <Input
-            {...ids}
-            value={target}
-            placeholder="https://192.0.2.10:8788"
-            onChange={(event) => onChange(event.target.value)}
-          />
+          <div className="flex gap-2">
+            <Input
+              {...ids}
+              className="min-w-0 flex-1"
+              value={target}
+              placeholder="https://192.0.2.10:8788"
+              onChange={(event) => onChange(event.target.value)}
+            />
+            {action}
+          </div>
         )}
       </Field>
     );
@@ -51,26 +58,30 @@ export function DexAddressField({
   return (
     <Field label="Address the machine uses for Dex" hint="Choose the network the machine shares.">
       {(ids) => (
-        <Select
-          {...ids}
-          value={target}
-          onChange={(event) => {
-            if (event.target.value === customOption) {
-              setTyped(true);
+        <div className="flex gap-2">
+          <Select
+            {...ids}
+            className="min-w-0 flex-1"
+            value={target}
+            onChange={(event) => {
+              if (event.target.value === customOption) {
+                setTyped(true);
 
-              return;
-            }
+                return;
+              }
 
-            onChange(event.target.value);
-          }}
-        >
-          {machineUrls.map((url) => (
-            <option key={url} value={url}>
-              {url}
-            </option>
-          ))}
-          <option value={customOption}>Other address…</option>
-        </Select>
+              onChange(event.target.value);
+            }}
+          >
+            {machineUrls.map((url) => (
+              <option key={url} value={url}>
+                {url}
+              </option>
+            ))}
+            <option value={customOption}>Other address…</option>
+          </Select>
+          {action}
+        </div>
       )}
     </Field>
   );

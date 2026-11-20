@@ -200,12 +200,14 @@ export function EnvironmentDialog({
             <Button variant="secondary" onClick={onClose} disabled={pending}>
               Cancel
             </Button>
-            <Button onClick={submit} disabled={pending}>
-              {pending ? (
-                <Spinner className="border-primary-foreground/40 border-t-primary-foreground" />
-              ) : null}
-              {pending ? "Saving…" : existing ? "Save changes" : "Add environment"}
-            </Button>
+            {kind === "runner" && !existing ? null : (
+              <Button onClick={submit} disabled={pending}>
+                {pending ? (
+                  <Spinner className="border-primary-foreground/40 border-t-primary-foreground" />
+                ) : null}
+                {pending ? "Saving…" : existing ? "Save changes" : "Add environment"}
+              </Button>
+            )}
           </>
         )
       }
@@ -316,7 +318,18 @@ export function EnvironmentDialog({
                 />
               )}
             </Field>
-            <DexAddressField address={address} onChange={setAddress} />
+            <DexAddressField
+              address={address}
+              onChange={setAddress}
+              action={
+                created ? undefined : (
+                  <Button type="button" size="xs" disabled={pending || !serviceName.trim()} onClick={submit}>
+                    {pending ? <Spinner /> : null}
+                    Get install command
+                  </Button>
+                )
+              }
+            />
             <RemoteMachinesOff />
             {created ? <RunnerInstall environmentId={created.id} address={address} autoIssue /> : null}
           </>
