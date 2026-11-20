@@ -123,6 +123,12 @@ only after all entries are accepted and the result fits on one non-full page.
 A failed pull leaves the checkpoint unchanged. A retry does not duplicate
 previously committed reviews.
 
+The owner can bind a PR to a Task with
+`PUT /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull`. Dex stores the
+PR link and optional review wait in one transaction. Reviews on the linked
+PR go to the Task timeline. Only a review of the specified revision, submitted
+after the wait boundary, resolves that wait. Binding does not start a run.
+
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |

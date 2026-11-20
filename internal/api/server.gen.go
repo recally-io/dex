@@ -1849,6 +1849,17 @@ type AppendWorkTaskNoteJSONBody struct {
 	Content string `json:"content"`
 }
 
+// BindTaskGitHubPullJSONBody defines parameters for BindTaskGitHubPull.
+type BindTaskGitHubPullJSONBody struct {
+	PullNumber   int64 `json:"pullNumber"`
+	RepositoryId int64 `json:"repositoryId"`
+	Wait         *struct {
+		// AfterAt Reviews must be submitted strictly after this Unix time in milliseconds.
+		AfterAt  int64  `json:"afterAt"`
+		Revision string `json:"revision"`
+	} `json:"wait,omitempty"`
+}
+
 // SetPrimaryNotificationTargetJSONBody defines parameters for SetPrimaryNotificationTarget.
 type SetPrimaryNotificationTargetJSONBody struct {
 	// TargetId Empty clears the default.
@@ -1962,6 +1973,9 @@ type SetWorkTaskLifecycleJSONRequestBody SetWorkTaskLifecycleJSONBody
 
 // AppendWorkTaskNoteJSONRequestBody defines body for AppendWorkTaskNote for application/json ContentType.
 type AppendWorkTaskNoteJSONRequestBody AppendWorkTaskNoteJSONBody
+
+// BindTaskGitHubPullJSONRequestBody defines body for BindTaskGitHubPull for application/json ContentType.
+type BindTaskGitHubPullJSONRequestBody BindTaskGitHubPullJSONBody
 
 // SetPrimaryNotificationTargetJSONRequestBody defines body for SetPrimaryNotificationTarget for application/json ContentType.
 type SetPrimaryNotificationTargetJSONRequestBody SetPrimaryNotificationTargetJSONBody
@@ -2671,6 +2685,9 @@ type ServerInterface interface {
 
 	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
 	AppendWorkTaskNote(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
+
+	// (PUT /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull)
+	BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, agentId AgentId, taskId string)
 
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId)
@@ -4715,6 +4732,41 @@ func (siw *ServerInterfaceWrapper) AppendWorkTaskNote(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// BindTaskGitHubPull operation middleware
+func (siw *ServerInterfaceWrapper) BindTaskGitHubPull(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BindTaskGitHubPull(w, r, agentId, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNotificationTargets operation middleware
 func (siw *ServerInterfaceWrapper) GetNotificationTargets(w http.ResponseWriter, r *http.Request) {
 
@@ -5756,6 +5808,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}/github-pull", wrapper.BindTaskGitHubPull)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/github-review-pulls/{repositoryId}/{pullNumber}", wrapper.DeleteGitHubReviewPull)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/github-review-pulls/{repositoryId}/{pullNumber}", wrapper.SaveGitHubReviewPull)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/github-webhooks/{repositoryId}", wrapper.DeleteGitHubWebhook)
@@ -9474,6 +9527,41 @@ func (response AppendWorkTaskNotedefaultJSONResponse) VisitAppendWorkTaskNoteRes
 	return err
 }
 
+type BindTaskGitHubPullRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	TaskId  string  `json:"taskId"`
+	Body    *BindTaskGitHubPullJSONRequestBody
+}
+
+type BindTaskGitHubPullResponseObject interface {
+	VisitBindTaskGitHubPullResponse(w http.ResponseWriter) error
+}
+
+type BindTaskGitHubPull204Response struct {
+}
+
+func (response BindTaskGitHubPull204Response) VisitBindTaskGitHubPullResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type BindTaskGitHubPulldefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BindTaskGitHubPulldefaultJSONResponse) VisitBindTaskGitHubPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNotificationTargetsRequestObject struct {
 	AgentId AgentId `json:"agentId"`
 }
@@ -11547,6 +11635,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
 	AppendWorkTaskNote(ctx context.Context, request AppendWorkTaskNoteRequestObject) (AppendWorkTaskNoteResponseObject, error)
 
+	// (PUT /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull)
+	BindTaskGitHubPull(ctx context.Context, request BindTaskGitHubPullRequestObject) (BindTaskGitHubPullResponseObject, error)
+
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(ctx context.Context, request GetNotificationTargetsRequestObject) (GetNotificationTargetsResponseObject, error)
 
@@ -13450,6 +13541,40 @@ func (sh *strictHandler) AppendWorkTaskNote(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AppendWorkTaskNoteResponseObject); ok {
 		if err := validResponse.VisitAppendWorkTaskNoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BindTaskGitHubPull operation middleware
+func (sh *strictHandler) BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, agentId AgentId, taskId string) {
+	var request BindTaskGitHubPullRequestObject
+
+	request.AgentId = agentId
+	request.TaskId = taskId
+
+	var body BindTaskGitHubPullJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BindTaskGitHubPull(ctx, request.(BindTaskGitHubPullRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BindTaskGitHubPull")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BindTaskGitHubPullResponseObject); ok {
+		if err := validResponse.VisitBindTaskGitHubPullResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
