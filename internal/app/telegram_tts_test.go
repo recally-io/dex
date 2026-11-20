@@ -87,38 +87,46 @@ func TestUserTelegramSpeechBudgetRefusesOversizeOrLongAudioBeforeProviderUpload(
 
 func TestUserInvalidTelegramSpeechOutputKeepsReadableText(t *testing.T) {
 	t.Parallel()
-	// Given an explicitly configured provider that returns an HTML page instead of audio.
-	data := t.TempDir()
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, data, 42)
-	var calls atomic.Int64
-	boundary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
-			_ = json.MarshalWrite(w, map[string]any{"data": []any{}})
-			return
-		}
-		calls.Add(1)
-		_, _ = w.Write([]byte("<html>not audio</html>"))
-	}))
-	t.Cleanup(boundary.Close)
-	configureTelegramSpeech(t, d, boundary.URL, nil, map[string]any{"enabled": true, "allowSending": true, "provider": "missing", "model": "tts-explicit", "voice": "explicit-voice"})
-	d.setModel(t, "tool")
-	f.message(1, 42, 42, `telegram_message {"action":"speak","text":"missing provider words"}`)
-	if got := f.next(t).Text; !strings.Contains(got, "missing provider words") || !strings.Contains(got, "provider is not configured") {
-		t.Fatalf("missing TTS provider fallback=%q", got)
-	}
-	configureTelegramSpeech(t, d, boundary.URL, nil, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "tts-explicit", "voice": "explicit-voice"})
-	f.message(2, 42, 42, `telegram_message {"action":"speak","text":"keep these readable words"}`)
-	// Then the native result retains the words and explains the failure, without sending a fake audio file.
-	if got := f.next(t).Text; !strings.Contains(got, "keep these readable words") || !strings.Contains(got, "did not return audio") {
-		t.Fatalf("speech fallback=%q", got)
-	}
-	if calls.Load() != 1 {
-		t.Fatalf("invalid speech retried: %d", calls.Load())
-	}
-	select {
-	case audio := <-f.mediaAttempts:
-		t.Fatalf("invalid speech became a file: %+v", audio)
-	default:
+	for _, tc := range []struct {
+		name, provider, reason string
+		calls                  int64
+	}{
+		{"missing_provider", "missing", "provider is not configured", 0},
+		{"invalid_audio", "speech", "did not return audio", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			// Given a separate bot and chat for each speech failure, with no earlier replies.
+			f := newFakeTelegram(t)
+			d := startTelegram(t, f, t.TempDir(), 42)
+			var calls atomic.Int64
+			boundary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/v1/models" {
+					_ = json.MarshalWrite(w, map[string]any{"data": []any{}})
+					return
+				}
+				calls.Add(1)
+				_, _ = w.Write([]byte("<html>not audio</html>"))
+			}))
+			t.Cleanup(boundary.Close)
+			configureTelegramSpeech(t, d, boundary.URL, nil, map[string]any{"enabled": true, "allowSending": true, "provider": tc.provider, "model": "tts-explicit", "voice": "explicit-voice"})
+			d.setModel(t, "tool")
+
+			// When speech fails, the reply keeps the words and explains the failure.
+			f.message(1, 42, 42, `telegram_message {"action":"speak","text":"keep these readable words"}`)
+			if got := f.next(t).Text; !strings.Contains(got, "keep these readable words") || !strings.Contains(got, tc.reason) {
+				t.Fatalf("speech fallback=%q", got)
+			}
+
+			// Then no invalid audio is sent, and the provider is not retried.
+			if got := calls.Load(); got != tc.calls {
+				t.Fatalf("speech provider calls=%d want=%d", got, tc.calls)
+			}
+			select {
+			case audio := <-f.mediaAttempts:
+				t.Fatalf("invalid speech became a file: %+v", audio)
+			default:
+			}
+		})
 	}
 }

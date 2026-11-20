@@ -162,6 +162,8 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE conversation_id=?", old).Scan(&n); err != nil || n != 0 {
 				t.Fatalf("old context got input: %d %v", n, err)
 			}
+			// A reply can be a preview. Clear needs the preceding turn to be idle.
+			d.awaitIdle(t, main)
 			// A channel clear does not reach the separate Chat. Earlier input keeps its entry mark.
 			e.send("/new")
 			e.wait(t, "Context cleared.")
