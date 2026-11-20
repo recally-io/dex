@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 const settingsSegments = ["agent", "instructions", "channels", "extensions"];
 
-/** Opens a task with the current project. The server reuses the newest empty task. */
+/** Opens a session with the current project. The server reuses the newest empty session. */
 function useNewChat(cwd: string, created: (chat: Chat) => void) {
   const agentId = useAgentId();
   const navigate = useNavigate();
@@ -35,7 +35,7 @@ function useNewChat(cwd: string, created: (chat: Chat) => void) {
       await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(chat.id) } });
       created(chat);
     },
-    onError: (cause) => notify(`Could not open a new task. ${errorText(cause)}`),
+    onError: (cause) => notify(`Could not open a new session. ${errorText(cause)}`),
   });
 }
 
