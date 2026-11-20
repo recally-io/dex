@@ -95,6 +95,12 @@ Tasks, Dex records the conflict without changing a Task. An event resolves a
 wait only on an open Task, when the object, event type, time boundary, and any
 specified revision match. This store does not call the model.
 
+The GitHub review adapter accepts a signed Webhook body or a page from the
+GitHub REST API. Both use the repository ID as the namespace and the review
+ID as the change key. A submitted review identifies the PR, the commit, and
+the submission time. The adapter skips pending and dismissed reviews. It does
+not register a public route or fetch pages on a schedule.
+
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |
