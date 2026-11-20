@@ -134,6 +134,29 @@ type binding struct {
 	sandboxID string
 }
 
+// binding resolves environmentID for agentID. Empty selects the environment of the agent, with
+// its sandbox. An explicit selection is LocalID or a pi-env environment: E2B and runner
+// environments keep per-bot state or one bot per machine, so only their own bot uses them.
+func (m *Manager) binding(ctx context.Context, agentID, environmentID string) (binding, error) {
+	switch environmentID {
+	case "":
+		return m.agentBinding(ctx, agentID)
+	case LocalID:
+		return binding{}, nil
+	}
+	row, err := m.q.GetEnvironment(ctx, environmentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, environmentID)
+	}
+	if err != nil {
+		return binding{}, err
+	}
+	if Kind(row.Kind) != KindPiEnv {
+		return binding{}, fmt.Errorf("%w: %s is a %s environment; a session can select only local or an SSH environment", ErrUnavailable, row.Name, row.Kind)
+	}
+	return binding{spec: SpecFromRow(row)}, nil
+}
+
 func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, error) {
 	row, err := m.q.GetAgentBinding(ctx, agentID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -146,7 +169,7 @@ func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, er
 		return binding{}, nil
 	}
 	if row.FoundID == "" {
-		return binding{}, fmt.Errorf("execution environment %q not found", row.EnvironmentID)
+		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, row.EnvironmentID)
 	}
 	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt}
 	return binding{spec: spec, sandboxID: row.EnvironmentSandboxID}, nil
@@ -164,15 +187,15 @@ func (m *Manager) stamp(b backend, spec EnvironmentSpec) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// Open resolves agentID's environment from control storage and opens a lease on it.
-func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
+// Open resolves the selected environment of agentID from control storage and opens a lease on it.
+func (m *Manager) Open(ctx context.Context, agentID, environmentID string) (Handle, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if err := validateAgentID(agentID); err != nil {
 		return nil, err
 	}
-	bound, err := m.agentBinding(ctx, agentID)
+	bound, err := m.binding(ctx, agentID, environmentID)
 	if err != nil {
 		return nil, err
 	}
@@ -196,20 +219,33 @@ func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
 	return stampedHandle{lease: l, stamp: stamp}, nil
 }
 
-// Stamp returns the fingerprint of agentID's configured execution environment.
-func (m *Manager) Stamp(ctx context.Context, agentID string) (string, bool) {
-	bound, err := m.agentBinding(ctx, agentID)
+// Stamp returns the fingerprint of the selected execution environment of agentID.
+func (m *Manager) Stamp(ctx context.Context, agentID, environmentID string) (string, error) {
+	bound, err := m.binding(ctx, agentID, environmentID)
 	if err != nil {
-		return "", false
+		return "", err
 	}
 	if bound.spec.ID == "" {
-		return localStamp, true
+		return localStamp, nil
 	}
 	b, err := m.backend(bound.spec.Kind)
 	if err != nil {
-		return "", false
+		return "", err
 	}
-	return m.stamp(b, bound.spec), true
+	return m.stamp(b, bound.spec), nil
+}
+
+// Status reports whether agentID can use environmentID now: "available", "offline" for a
+// disconnected machine, or "unavailable: <reason>".
+func (m *Manager) Status(ctx context.Context, agentID, environmentID string) string {
+	bound, err := m.binding(ctx, agentID, environmentID)
+	if err != nil {
+		return "unavailable: " + err.Error()
+	}
+	if bound.spec.Kind == KindRunner && m.runners.online(bound.spec.ID) == nil {
+		return "offline"
+	}
+	return "available"
 }
 
 // CanResetAgent reports whether agentID's environment discards its files on reset.

@@ -20,6 +20,7 @@ export async function refreshSettings() {
 export async function refreshEnvironments() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: [{ _id: "listEnvironments" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAgentEnvironments" }] }),
     queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
     queryClient.invalidateQueries({ queryKey: [{ _id: "getAgent" }] }),
   ]);

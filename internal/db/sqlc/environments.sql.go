@@ -25,6 +25,34 @@ func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, arg ClearA
 	return err
 }
 
+const clearDefaultSessionCwd = `-- name: ClearDefaultSessionCwd :exec
+UPDATE conversations SET cwd = '' WHERE agent_id = ? AND environment_id = ''
+`
+
+// The sessions that follow the environment of the agent start in the workspace of the new one.
+func (q *Queries) ClearDefaultSessionCwd(ctx context.Context, agentID string) error {
+	_, err := q.db.ExecContext(ctx, clearDefaultSessionCwd, agentID)
+	return err
+}
+
+const countDefaultSessionWork = `-- name: CountDefaultSessionWork :one
+SELECT
+    (SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+     WHERE c.agent_id = ?1 AND c.environment_id = '' AND s.status = 'pending')
+    + (SELECT count(*) FROM background_commands b JOIN conversations c ON c.id = b.conversation_id
+       WHERE c.agent_id = ?1 AND c.environment_id = '' AND b.state IN ('starting', 'running'))
+`
+
+// Unsettled input and running background commands in the sessions of agent_id that follow the
+// environment of the agent. A change of that environment waits until they end. Admitted input
+// counts too: PiG can accept input and keep it queued.
+func (q *Queries) CountDefaultSessionWork(ctx context.Context, agentID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countDefaultSessionWork, agentID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countPendingAgent = `-- name: CountPendingAgent :one
 SELECT count(*)
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
@@ -236,6 +264,27 @@ type SetAgentEnvironmentSandboxIDParams struct {
 func (q *Queries) SetAgentEnvironmentSandboxID(ctx context.Context, arg SetAgentEnvironmentSandboxIDParams) error {
 	_, err := q.db.ExecContext(ctx, setAgentEnvironmentSandboxID, arg.SandboxID, arg.AgentID, arg.EnvironmentID)
 	return err
+}
+
+const setChatEnvironment = `-- name: SetChatEnvironment :execrows
+UPDATE conversations SET environment_id = ?1, cwd = ''
+WHERE conversations.id = ?2 AND conversations.agent_id = ?3 AND conversations.execution_id IS NULL AND conversations.forked_from IS NULL
+  AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id)
+`
+
+type SetChatEnvironmentParams struct {
+	EnvironmentID string `json:"environment_id"`
+	ID            int64  `json:"id"`
+	AgentID       string `json:"agent_id"`
+}
+
+// A chat selects its environment before its first message only.
+func (q *Queries) SetChatEnvironment(ctx context.Context, arg SetChatEnvironmentParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setChatEnvironment, arg.EnvironmentID, arg.ID, arg.AgentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateEnvironment = `-- name: UpdateEnvironment :one

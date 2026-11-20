@@ -69,7 +69,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	}
 
 	// First Open creates persistent sandbox sbx-2 and stores sandbox_id on agents.
-	h, err := mgr.Open(t.Context(), "bot-e2b")
+	h, err := mgr.Open(t.Context(), "bot-e2b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	mgr2 := newMgr()
 	t.Cleanup(func() { _ = mgr2.Close(context.Background()) })
 
-	h2, err := mgr2.Open(t.Context(), "bot-e2b")
+	h2, err := mgr2.Open(t.Context(), "bot-e2b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 		t.Fatalf("expected cleared sandbox_id, got %q", agentAfterReset.EnvironmentSandboxID)
 	}
 
-	h3, err := mgr2.Open(t.Context(), "bot-e2b")
+	h3, err := mgr2.Open(t.Context(), "bot-e2b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	fake.SimulateExpire("sbx-3")
 	mgr3 := newMgr()
 	t.Cleanup(func() { _ = mgr3.Close(context.Background()) })
-	h4, err := mgr3.Open(t.Context(), "bot-e2b")
+	h4, err := mgr3.Open(t.Context(), "bot-e2b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 		t.Fatalf("expected autoPause/autoResume omitted when autoPause=false, got ap=%v ar=%v", ap, ar)
 	}
 
-	h, err := mgr.Open(t.Context(), "bot-custom-e2b")
+	h, err := mgr.Open(t.Context(), "bot-custom-e2b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 	t.Cleanup(func() { _ = mgr2.Close(context.Background()) })
 	createdBefore := fake.Counts().Created
 	renewedBefore := fake.Counts().Renewed
-	h2, err := mgr2.Open(t.Context(), "bot-custom-e2b")
+	h2, err := mgr2.Open(t.Context(), "bot-custom-e2b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 		t.Fatalf("expected ResetAgent to delete custom keyless sandbox, counts=%+v", fake.Counts())
 	}
 
-	h3, err := mgr2.Open(t.Context(), "bot-custom-e2b")
+	h3, err := mgr2.Open(t.Context(), "bot-custom-e2b", "")
 	if err != nil {
 		t.Fatal(err)
 	}

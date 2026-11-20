@@ -94,7 +94,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
-				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid):
+				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, artifact.ErrConflict):
 				status = http.StatusConflict
@@ -106,7 +106,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -298,7 +298,7 @@ func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRe
 func chatView(c chat.Chat) api.Chat {
 	out := api.Chat{
 		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
-		Cwd: c.Cwd, Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !c.Writable,
+		Cwd: c.Cwd, EnvironmentId: optional(c.EnvironmentID), Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !c.Writable,
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
 		out.Channel = api.ChatChannelTelegram
@@ -523,6 +523,25 @@ func (h *handler) SetChatProject(ctx context.Context, req api.SetChatProjectRequ
 		return nil, err
 	}
 	return api.SetChatProject200JSONResponse(chatView(c)), nil
+}
+
+func (h *handler) SetChatEnvironment(ctx context.Context, req api.SetChatEnvironmentRequestObject) (api.SetChatEnvironmentResponseObject, error) {
+	if req.Body == nil {
+		return nil, errInvalid
+	}
+	c, err := h.Chats.SetEnvironment(ctx, agentID(ctx), req.ChatId, strings.TrimSpace(req.Body.EnvironmentId))
+	if err != nil {
+		return nil, err
+	}
+	return api.SetChatEnvironment200JSONResponse(chatView(c)), nil
+}
+
+func (h *handler) ListAgentEnvironments(ctx context.Context, _ api.ListAgentEnvironmentsRequestObject) (api.ListAgentEnvironmentsResponseObject, error) {
+	list, err := h.Settings.SessionEnvironments(ctx, agentID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	return api.ListAgentEnvironments200JSONResponse{Environments: list}, nil
 }
 
 func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRequestObject) (api.SetChatSettingsResponseObject, error) {
@@ -1053,15 +1072,15 @@ func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRe
 			return nil, err
 		}
 	}
-	listing, err := h.Chats.ListDirectories(ctx, id, req.Params.Path)
+	listing, err := h.Chats.ListDirectories(ctx, id, deref(req.Params.EnvironmentId), req.Params.Path)
 	if err != nil {
 		return nil, err
 	}
 	return api.ListDirectories200JSONResponse(listing), nil
 }
 
-func (h *handler) ListRecentProjects(ctx context.Context, _ api.ListRecentProjectsRequestObject) (api.ListRecentProjectsResponseObject, error) {
-	projects, err := h.Chats.RecentProjects(ctx, agentID(ctx))
+func (h *handler) ListRecentProjects(ctx context.Context, req api.ListRecentProjectsRequestObject) (api.ListRecentProjectsResponseObject, error) {
+	projects, err := h.Chats.RecentProjects(ctx, agentID(ctx), deref(req.Params.EnvironmentId))
 	if err != nil {
 		return nil, err
 	}

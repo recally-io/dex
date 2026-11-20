@@ -60,7 +60,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 	}
 
 	// Open creates per-agent workspace and runs remote commands over PiG/env.
-	h, err := mgr.Open(t.Context(), "bot-ssh")
+	h, err := mgr.Open(t.Context(), "bot-ssh", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,7 +169,7 @@ func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
 	// Default loginShell (omitted -> true) captures login & interactive shell exports.
-	hLogin, err := mgr.Open(t.Context(), "bot-login")
+	hLogin, err := mgr.Open(t.Context(), "bot-login", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
 	}
 
 	// Explicit loginShell=false skips login and interactive rc startup.
-	hNoLogin, err := mgr.Open(t.Context(), "bot-nologin")
+	hNoLogin, err := mgr.Open(t.Context(), "bot-nologin", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,14 +246,14 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 	}
 
 	// When both bots open the environment.
-	hA, err := mgr.Open(t.Context(), "bot-a")
+	hA, err := mgr.Open(t.Context(), "bot-a", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = hA.Close(context.Background()) }()
 	run(hA)
 	afterFirst := sshFix.Invocations(t)
-	hB, err := mgr.Open(t.Context(), "bot-b")
+	hB, err := mgr.Open(t.Context(), "bot-b", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,8 +264,8 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 	if got := sshFix.Invocations(t); got != afterFirst {
 		t.Fatalf("second bot ran ssh %d more times, want 0", got-afterFirst)
 	}
-	if stamp, ok := mgr.Stamp(t.Context(), "bot-a"); !ok || stamp != hA.Stamp() || hA.Stamp() == "" {
-		t.Fatalf("stamp=%q ok=%v handle=%q", stamp, ok, hA.Stamp())
+	if stamp, err := mgr.Stamp(t.Context(), "bot-a", ""); err != nil || stamp != hA.Stamp() || hA.Stamp() == "" {
+		t.Fatalf("stamp=%q err=%v handle=%q", stamp, err, hA.Stamp())
 	}
 
 	// When the environment changes.
@@ -281,11 +281,11 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 
 	// Then the open lease still works but is stale, and the next open connects with the new configuration.
 	run(hA)
-	if stamp, _ := mgr.Stamp(t.Context(), "bot-a"); stamp == hA.Stamp() {
+	if stamp, _ := mgr.Stamp(t.Context(), "bot-a", ""); stamp == hA.Stamp() {
 		t.Fatal("stamp did not change after the environment changed")
 	}
 	beforeReopen := sshFix.Invocations(t)
-	hA2, err := mgr.Open(t.Context(), "bot-a")
+	hA2, err := mgr.Open(t.Context(), "bot-a", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,11 +302,11 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 	if err := mgr.ForgetHostKey(execenv.SpecFromRow(updated)); err != nil {
 		t.Fatal(err)
 	}
-	if stamp, _ := mgr.Stamp(t.Context(), "bot-a"); stamp == hA2.Stamp() {
+	if stamp, _ := mgr.Stamp(t.Context(), "bot-a", ""); stamp == hA2.Stamp() {
 		t.Fatal("stamp did not change after the host key was forgotten")
 	}
 	beforeForgetOpen := sshFix.Invocations(t)
-	hA3, err := mgr.Open(t.Context(), "bot-a")
+	hA3, err := mgr.Open(t.Context(), "bot-a", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,7 +346,7 @@ func TestUserPiEnvOpenFailsWhenDexStopsDuringTheFirstConnect(t *testing.T) {
 	}
 	result := make(chan opened, 1)
 	go func() {
-		h, err := mgr.Open(t.Context(), "bot-slow")
+		h, err := mgr.Open(t.Context(), "bot-slow", "")
 		result <- opened{h, err}
 	}()
 	deadline := time.Now().Add(20 * time.Second)

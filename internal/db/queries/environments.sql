@@ -51,6 +51,26 @@ UPDATE agents
 SET environment_sandbox_id = ''
 WHERE id = @agent_id AND environment_sandbox_id = @sandbox_id;
 
+-- name: SetChatEnvironment :execrows
+-- A chat selects its environment before its first message only.
+UPDATE conversations SET environment_id = @environment_id, cwd = ''
+WHERE conversations.id = @id AND conversations.agent_id = @agent_id AND conversations.execution_id IS NULL AND conversations.forked_from IS NULL
+  AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id);
+
+-- name: CountDefaultSessionWork :one
+-- Unsettled input and running background commands in the sessions of agent_id that follow the
+-- environment of the agent. A change of that environment waits until they end. Admitted input
+-- counts too: PiG can accept input and keep it queued.
+SELECT
+    (SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+     WHERE c.agent_id = @agent_id AND c.environment_id = '' AND s.status = 'pending')
+    + (SELECT count(*) FROM background_commands b JOIN conversations c ON c.id = b.conversation_id
+       WHERE c.agent_id = @agent_id AND c.environment_id = '' AND b.state IN ('starting', 'running'));
+
+-- name: ClearDefaultSessionCwd :exec
+-- The sessions that follow the environment of the agent start in the workspace of the new one.
+UPDATE conversations SET cwd = '' WHERE agent_id = ? AND environment_id = '';
+
 -- name: CountPendingAgent :one
 SELECT count(*)
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id

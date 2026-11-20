@@ -226,6 +226,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				return chats.ToolRecentOutbox(ctx, ref)
 			},
 		},
+		Environments: func(ctx context.Context, c engine.TaskContext) ([]engine.EnvironmentInfo, error) {
+			return prefs.SessionEnvironments(ctx, c.AgentID)
+		},
 		Timers: engine.TimerTools{
 			Set: func(ctx context.Context, c engine.TaskContext, a engine.TimerSetArgs) (engine.TimerInfo, error) {
 				return chats.ToolTimerSet(ctx, c, a)
@@ -270,11 +273,14 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		execProvider = envs
 	}
 	native, err := engine.New(engine.Config{
-		DataDir:   cfg.DataDir,
-		Home:      cfg.Home,
-		BaseEnv:   cfg.ToolEnv,
-		LoginEnv:  cfg.LoginEnv,
-		ExecEnv:   execProvider,
+		DataDir:  cfg.DataDir,
+		Home:     cfg.Home,
+		BaseEnv:  cfg.ToolEnv,
+		LoginEnv: cfg.LoginEnv,
+		ExecEnv:  execProvider,
+		SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) {
+			return chats.SessionEnvironment(ctx, ref)
+		},
 		FakeModel: cfg.FakeModel,
 		Tasks:     tools,
 		Routines:  routines,

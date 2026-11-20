@@ -11,10 +11,19 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
-func artifactExtension(agentID, workspace string, deliver func(context.Context, TaskContext, string) (ArtifactInfo, error)) *durable.Extension {
-	rules := fmt.Sprintf("To deliver a report or file to the user in Dex, copy it into your workspace at %s, then call deliver_file with its workspace-relative path. This also applies when the project directory is elsewhere. Do the copy yourself; do not ask the user to move files. Files go into this bot’s artifacts directory under their actual names. Existing names are conflicts; choose a different file name rather than overwrite. Share the returned URL, including when reporting to a parent in another bot. Never deliver secrets.", workspace)
+// artifactExtension has deliver_file. Its rules name the workspace of the session's environment;
+// when that environment is unavailable, they omit the path, and deliver_file reports the reason.
+func artifactExtension(agentID string, session func(context.Context, durable.ConversationId) (sessionEnv, error), deliver func(context.Context, TaskContext, string) (ArtifactInfo, error)) *durable.Extension {
+	const format = "To deliver a report or file to the user in Dex, copy it into your workspace at %s, then call deliver_file with its workspace-relative path. This also applies when the project directory is elsewhere. Do the copy yourself; do not ask the user to move files. Files go into this bot’s artifacts directory under their actual names. Existing names are conflicts; choose a different file name rather than overwrite. Share the returned URL, including when reporting to a parent in another bot. Never deliver secrets."
 	return &durable.Extension{Name: "artifact-delivery", Sections: []*durable.PromptSection{
-		harness.Section("artifact-delivery", func(context.Context, durable.PromptInput) (*string, error) { return &rules, nil }, harness.SectionOptions{Tag: new(false)}),
+		harness.Section("artifact-delivery", func(ctx context.Context, input durable.PromptInput) (*string, error) {
+			workspace := "the workspace of this session"
+			if s, err := session(ctx, input.ConversationId); err == nil {
+				workspace = s.Handle.Workspace()
+			}
+			rules := fmt.Sprintf(format, workspace)
+			return &rules, nil
+		}, harness.SectionOptions{Tag: new(false)}),
 	}, Tools: []*durable.ToolRegistration{{
 		Name: "deliver_file", Description: "Copy a workspace file into this bot's artifacts directory and return its URL. For a Telegram Main input, also queue the file for the original recipient. Existing names are conflicts.",
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string", "minLength": 1}}, "required": []string{"path"}, "additionalProperties": false},

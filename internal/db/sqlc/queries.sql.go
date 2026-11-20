@@ -355,9 +355,9 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createFork = `-- name: CreateFork :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
 `
 
 type CreateForkParams struct {
@@ -368,6 +368,7 @@ type CreateForkParams struct {
 	ModelID        string        `json:"model_id"`
 	ThinkingLevel  string        `json:"thinking_level"`
 	Cwd            string        `json:"cwd"`
+	EnvironmentID  string        `json:"environment_id"`
 	ExecutionID    sql.NullInt64 `json:"execution_id"`
 	ForkedFrom     sql.NullInt64 `json:"forked_from"`
 	ParentID       sql.NullInt64 `json:"parent_id"`
@@ -387,6 +388,7 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.Cwd,
+		arg.EnvironmentID,
 		arg.ExecutionID,
 		arg.ForkedFrom,
 		arg.ParentID,
@@ -412,6 +414,7 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
@@ -525,7 +528,7 @@ const ensureConversation = `-- name: EnsureConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at, execution_scope, scope_context)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, coalesce(nullif(CAST(? AS TEXT), ''), '{}'))
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
 `
 
 type EnsureConversationParams struct {
@@ -571,6 +574,7 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
@@ -589,7 +593,7 @@ VALUES (
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
 `
 
 type EnsureEmptyChatParams struct {
@@ -619,6 +623,7 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
@@ -773,6 +778,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
+    c.environment_id,
     c.created_at,
     c.archived_at,
     c.parent_id,
@@ -811,6 +817,7 @@ type GetChatRow struct {
 	ModelID         string         `json:"model_id"`
 	ThinkingLevel   string         `json:"thinking_level"`
 	Cwd             string         `json:"cwd"`
+	EnvironmentID   string         `json:"environment_id"`
 	CreatedAt       int64          `json:"created_at"`
 	ArchivedAt      sql.NullInt64  `json:"archived_at"`
 	ParentID        sql.NullInt64  `json:"parent_id"`
@@ -836,6 +843,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ModelID,
 		&i.ThinkingLevel,
 		&i.Cwd,
+		&i.EnvironmentID,
 		&i.CreatedAt,
 		&i.ArchivedAt,
 		&i.ParentID,
@@ -851,7 +859,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE id = ?
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -874,12 +882,13 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND channel_key = ?
 `
 
 type GetConversationByKeyParams struct {
@@ -907,6 +916,7 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.ParentID,
 		&i.ExecutionScope,
 		&i.ScopeContext,
+		&i.EnvironmentID,
 	)
 	return i, err
 }
@@ -1303,6 +1313,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
+    c.environment_id,
     c.created_at,
     c.archived_at,
     c.parent_id,
@@ -1338,6 +1349,7 @@ type ListChatsRow struct {
 	ModelID         string         `json:"model_id"`
 	ThinkingLevel   string         `json:"thinking_level"`
 	Cwd             string         `json:"cwd"`
+	EnvironmentID   string         `json:"environment_id"`
 	CreatedAt       int64          `json:"created_at"`
 	ArchivedAt      sql.NullInt64  `json:"archived_at"`
 	ParentID        sql.NullInt64  `json:"parent_id"`
@@ -1367,6 +1379,7 @@ func (q *Queries) ListChats(ctx context.Context, agentID string) ([]ListChatsRow
 			&i.ModelID,
 			&i.ThinkingLevel,
 			&i.Cwd,
+			&i.EnvironmentID,
 			&i.CreatedAt,
 			&i.ArchivedAt,
 			&i.ParentID,

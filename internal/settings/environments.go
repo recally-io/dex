@@ -12,6 +12,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/execenv"
 )
 
@@ -292,4 +293,33 @@ func environmentView(row sqlc.ExecutionEnvironment) (Environment, error) {
 		CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt,
 	}, nil
+}
+
+// SessionEnvironments lists the execution environments for the sessions of agentID: the
+// environment of the bot first, then local and the SSH environments that a session can select.
+// It has no configuration and no secrets.
+func (s *Service) SessionEnvironments(ctx context.Context, agentID string) ([]engine.EnvironmentInfo, error) {
+	agent, err := s.q.GetAgent(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListEnvironments(ctx)
+	if err != nil {
+		return nil, err
+	}
+	own := engine.EnvironmentInfo{ID: execenv.LocalID, Name: execenv.LocalID, Kind: string(execenv.KindLocal), Default: true, Status: s.envs.Status(ctx, agentID, "")}
+	out := []engine.EnvironmentInfo{own}
+	if agent.EnvironmentID != "" {
+		out = append(out, engine.EnvironmentInfo{ID: execenv.LocalID, Name: execenv.LocalID, Kind: string(execenv.KindLocal), Status: "available"})
+	}
+	for _, r := range rows {
+		if r.ID == agent.EnvironmentID {
+			out[0].ID, out[0].Name, out[0].Kind = r.ID, r.Name, r.Kind
+			continue
+		}
+		if execenv.Kind(r.Kind) == execenv.KindPiEnv {
+			out = append(out, engine.EnvironmentInfo{ID: r.ID, Name: r.Name, Kind: r.Kind, Status: s.envs.Status(ctx, agentID, r.ID)})
+		}
+	}
+	return out, nil
 }

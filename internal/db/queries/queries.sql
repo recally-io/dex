@@ -102,8 +102,8 @@ RETURNING *;
 -- name: CreateFork :one
 -- A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
 -- the fork starts empty, so the first message creates the native conversation.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
@@ -195,6 +195,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
+    c.environment_id,
     c.created_at,
     c.archived_at,
     c.parent_id,
@@ -228,6 +229,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
+    c.environment_id,
     c.created_at,
     c.archived_at,
     c.parent_id,

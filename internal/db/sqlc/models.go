@@ -141,6 +141,7 @@ type Conversation struct {
 	ParentID       sql.NullInt64 `json:"parent_id"`
 	ExecutionScope string        `json:"execution_scope"`
 	ScopeContext   string        `json:"scope_context"`
+	EnvironmentID  string        `json:"environment_id"`
 }
 
 type Dream struct {

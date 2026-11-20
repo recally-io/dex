@@ -33,15 +33,17 @@ type Reply struct {
 
 // Chat is one conversation on one channel.
 type Chat struct {
-	Cwd        string
-	ID         int64
-	ChannelKey string
-	Title      string
-	CreatedAt  int64
-	UpdatedAt  int64 // latest conversation or input activity
-	Busy       bool  // a message has no answer yet
-	ArchivedAt int64 // zero when the Chat session is not archived
-	Settings   Settings
+	Cwd string
+	// EnvironmentID is the explicit environment of the session, or empty when it follows its bot.
+	EnvironmentID string
+	ID            int64
+	ChannelKey    string
+	Title         string
+	CreatedAt     int64
+	UpdatedAt     int64 // latest conversation or input activity
+	Busy          bool  // a message has no answer yet
+	ArchivedAt    int64 // zero when the Chat session is not archived
+	Settings      Settings
 	// Writable is true when the web UI can send input to the session now. Main, Chat and child
 	// sessions are always writable.
 	Writable bool
@@ -627,7 +629,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	chats := make([]Chat, len(rows))
 	for i, r := range rows {
 		chats[i] = Chat{
-			Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			Cwd: r.Cwd, EnvironmentID: r.EnvironmentID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID], StoppedByParent: stoppedByParent[r.ID],
 		}
@@ -702,7 +704,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 		return Chat{}, err
 	}
 	c := Chat{
-		Cwd: r.Cwd, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Cwd: r.Cwd, EnvironmentID: r.EnvironmentID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, ExecutionScope: r.ExecutionScope, Question: question,
 		ForkedFrom: forkOrigin(r),

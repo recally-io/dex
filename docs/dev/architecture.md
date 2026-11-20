@@ -406,8 +406,10 @@ the engine adds it around the bot's instructions at each admission.
 Skills have a fourth, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
 execution environment, so it follows the conversation. Chat sessions store
-their `cwd` in `control.sqlite`. Empty uses the agent workspace. Every submit sets or clears the native cwd from that row. Child sessions
-copy the parent's cwd when they are created. The `project` prompt section
+their `cwd` in `control.sqlite`. Empty uses the workspace of the session's
+execution environment. Every submit sets or clears the native cwd from that row.
+Child sessions copy the parent's cwd when they are created, but only when the
+child runs in the same execution environment as its parent. The `project` prompt section
 states the current execution directory.
 
 `GET /api/directories` lists visible host directories with the same path validation
@@ -1013,6 +1015,48 @@ timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
 external actions occurred once.
+
+### Session environments
+
+Each unscoped session runs its command and file tools in one execution
+environment. `conversations.environment_id` in `control.sqlite` is the source
+of truth. Empty means that the session follows the bot's environment
+(`agents.environment_id`). `local` or an environment ID is an explicit
+selection, which does not change when the bot's environment changes. A session
+can select only `local` or an SSH (pi-env) environment. E2B and runner
+environments serve only the bot that has them as its own environment: an E2B
+sandbox (`agents.environment_sandbox_id`) and a runner belong to one bot.
+
+The engine resolves the environment of a session at each call, through the
+`SessionEnvironment` callback that chat provides. One resolver
+([`internal/engine/session_env.go`](../../internal/engine/session_env.go))
+serves the Harness `Env` hook, the `bash` tool, background commands, upload
+staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
+agent keeps one lease for each environment that its sessions use, and closes the
+leases on reload and close. Before each call the resolver checks the
+environment in control storage. A removed, unselectable, or offline environment
+fails the call with a reason. The resolver never falls back to another
+environment, and dex does not replay an interrupted command. A changed stamp
+makes the agent stale, so the next idle reload opens a new lease.
+
+A local session gets the full bot tool environment. A remote session gets only
+the explicit `.env` values. Skills, MCP servers, and `.env` stay at bot level:
+MCP servers run in the bot's environment. Scoped (group) sessions always use the
+bot's environment.
+
+A web chat selects its environment before its first message
+(`PUT /api/agents/{agentId}/chats/{chatId}/environment`); a started chat answers
+409. `session_new` takes `environment`. A child of the same bot runs in its
+parent's environment unless it selects another one. A child of another bot runs
+in that bot's environment. `environment_list` shows the bot's environment, `local`,
+and the SSH environments with ID, name, kind, and status, and no configuration or secrets. A fork keeps
+the environment of its source.
+
+A change of the bot's environment fails with 409 while sessions that follow it
+have queued input or running background commands. After the change, those
+sessions start in the new workspace with no cwd. The backend releases the bot's
+state in the earlier environment. Explicit sessions keep their selection,
+because `local` and SSH keep no per-bot state.
 
 The migration `20261112120000_drop_tasks` drops the `tasks` and
 `task_steer_receipts` tables. An earlier migration copied the parent link and

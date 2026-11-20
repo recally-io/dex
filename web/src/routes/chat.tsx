@@ -27,6 +27,7 @@ import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
 import { SessionSettings } from "../components/session-settings";
+import { useEnvironmentSendBlock } from "../components/chat-environment";
 import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
 import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
@@ -399,11 +400,13 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 
+  const environmentBlock = useEnvironmentSendBlock(chatId);
+
   const reason = !modelReady
     ? "Choose an available model before you send."
     : connection !== "ready"
       ? "dex is reconnecting to the bot…"
-      : undefined;
+      : environmentBlock;
 
   const continueRun = useMutation({ ...continueChatMutation(), onSuccess: () => void refreshChats(agentId) });
   const compact = useMutation(compactChatMutation());
@@ -605,7 +608,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       ) : null}
       <Composer
         controls={
-          chat.data && !chat.data.main ? <SessionSettings chat={chat.data} settings={settings} /> : undefined
+          chat.data && !chat.data.main ? (
+            <SessionSettings chat={chat.data} settings={settings} started={!blank} />
+          ) : undefined
         }
         commands={commands}
         fix={

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -34,7 +35,10 @@ func newLocalProvider(dataDir, home string) *localProvider {
 	return &localProvider{dataDir: filepath.Clean(dataDir), home: cleanHome}
 }
 
-func (p *localProvider) Open(ctx context.Context, agentID string) (Handle, error) {
+func (p *localProvider) Open(ctx context.Context, agentID, environmentID string) (Handle, error) {
+	if err := localOnly(environmentID); err != nil {
+		return nil, err
+	}
 	l, err := p.open(ctx, agentID)
 	if err != nil {
 		return nil, err
@@ -63,8 +67,19 @@ func (p *localProvider) open(ctx context.Context, agentID string) (lease, error)
 	return &localHandle{workspace: workspace, home: home}, nil
 }
 
-func (p *localProvider) Stamp(context.Context, string) (string, bool) {
-	return localStamp, true
+func (p *localProvider) Stamp(_ context.Context, _, environmentID string) (string, error) {
+	if err := localOnly(environmentID); err != nil {
+		return "", err
+	}
+	return localStamp, nil
+}
+
+// localOnly accepts the selections that the provider without control storage can serve.
+func localOnly(environmentID string) error {
+	if environmentID != "" && environmentID != LocalID {
+		return fmt.Errorf("%w: %s is not configured", ErrUnavailable, environmentID)
+	}
+	return nil
 }
 
 func (p *localProvider) Close(context.Context) error { return nil }

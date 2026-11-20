@@ -28,6 +28,13 @@ var ErrInvalidPath = errors.New("invalid project directory")
 // ErrInvalidConfig is returned when an execution environment configuration is invalid.
 var ErrInvalidConfig = errors.New("invalid execution environment configuration")
 
+// ErrUnavailable is returned when a selected environment was removed or a session cannot select
+// it. The caller must not run the work in another environment.
+var ErrUnavailable = errors.New("execution environment is unavailable")
+
+// LocalID selects the control host. The control host has no execution_environments row.
+const LocalID = "local"
+
 // Handle is one agent's lease on an opened execution environment.
 // The backend owns the connection; Close releases only the lease.
 type Handle interface {
@@ -42,11 +49,13 @@ type Handle interface {
 	Close(ctx context.Context) error
 }
 
-// Provider opens agent execution environment handles.
+// Provider opens agent execution environment handles. An empty environmentID selects the
+// environment of the agent. LocalID or a pi-env environment ID selects that environment; any
+// other selection fails Open and Stamp with ErrUnavailable.
 type Provider interface {
-	Open(ctx context.Context, agentID string) (Handle, error)
-	// Stamp returns the current fingerprint of agentID's environment. ok is false when it cannot be read.
-	Stamp(ctx context.Context, agentID string) (stamp string, ok bool)
+	Open(ctx context.Context, agentID, environmentID string) (Handle, error)
+	// Stamp returns the current fingerprint of the selected environment.
+	Stamp(ctx context.Context, agentID, environmentID string) (string, error)
 	Close(ctx context.Context) error
 }
 
