@@ -24,13 +24,12 @@ import (
 	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
-// device is the enrolled state. Dex identifies this machine by the certificate key, so no
-// bearer credential is stored.
+// device is the enrolled state. Dex identifies this machine by the token that enrollment
+// returned, and stores only its digest.
 type device struct {
 	Origin      string `json:"origin"`
 	Environment string `json:"environmentId"`
-	ServerPin   string `json:"serverPin"`
-	Identity    string `json:"identity"`
+	Token       string `json:"token"`
 }
 
 func main() {
@@ -44,7 +43,7 @@ func main() {
 
 func command(ctx context.Context, args []string, input io.Reader) error {
 	if len(args) == 0 {
-		return errors.New("usage: dex-agent enroll -url https://dex:8788 -id ENVIRONMENT_ID -code CODE | dex-agent run")
+		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE | dex-agent run")
 	}
 	data, err := os.UserConfigDir()
 	if err != nil {
@@ -52,12 +51,10 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	state := flags.String("state", filepath.Join(data, "dex-agent"), "private machine state directory")
-	origin, id := new(string), new(string)
-	pin, code := new(string), new(string)
+	origin, id, code := new(string), new(string), new(string)
 	if args[0] == "enroll" {
-		origin = flags.String("url", "", "Dex machine address, for example https://192.0.2.10:8788")
+		origin = flags.String("url", "", "Dex address, for example https://dex.example.com")
 		id = flags.String("id", "", "environment ID")
-		pin = flags.String("server-pin", "", "Dex machine public key pin from the install command")
 		code = flags.String("code", "", "one-time enrollment code from the install command")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
@@ -75,7 +72,7 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 			}
 			*code = strings.TrimSpace(line)
 		}
-		return enroll(ctx, *state, *origin, *id, *pin, *code)
+		return enroll(ctx, *state, *origin, *id, *code)
 	case "run":
 		return run(ctx, *state)
 	default:
@@ -83,37 +80,30 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 	}
 }
 
-func endpoint(origin, id, action, scheme string) (string, error) {
+// endpoint builds one machine route. A session uses the WebSocket scheme of the origin.
+func endpoint(origin, id, action string) (string, error) {
 	u, err := url.Parse(origin)
-	if err != nil || u.Scheme != "https" || u.User != nil || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
+	// A loopback address may use plain HTTP, so a developer can test the flow without a proxy.
+	secure := u != nil && (u.Scheme == "https" || u.Scheme == "http" && u.Hostname() == "127.0.0.1")
+	if err != nil || !secure || u.User != nil || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
 		return "", errors.New("the machine address must be an HTTPS origin without a path or query")
 	}
 	if id == "" || strings.ContainsAny(id, "/\\?#.%") {
 		return "", errors.New("invalid environment ID")
 	}
-	u.Scheme = scheme
-	return u.JoinPath("api", "runner", id, action).String(), nil
+	if action == "connect" {
+		u.Scheme = map[string]string{"https": "wss", "http": "ws"}[u.Scheme]
+	}
+	return u.JoinPath("machine", id, action).String(), nil
 }
 
-func enroll(ctx context.Context, state, origin, id, pin, code string) error {
-	address, err := endpoint(origin, id, "pair", "https")
+func enroll(ctx context.Context, state, origin, id, code string) error {
+	address, err := endpoint(origin, id, "pair")
 	if err != nil {
 		return err
 	}
 	if code == "" {
 		return errors.New("the enrollment code is required")
-	}
-	identityPEM, err := runner.NewMachineIdentity()
-	if err != nil {
-		return err
-	}
-	identity, err := runner.ParseMachineIdentity(identityPEM)
-	if err != nil {
-		return err
-	}
-	client, err := runner.MachineClient(pin, identity)
-	if err != nil {
-		return err
 	}
 	if err := os.MkdirAll(state, 0700); err != nil { //nolint:gosec // The local operator chooses the state directory.
 		return err
@@ -135,14 +125,13 @@ func enroll(ctx context.Context, state, origin, id, pin, code string) error {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+code)
-	res, err := client.Do(req) //nolint:gosec // The operator choses the validated Dex address from the install command.
+	res, err := http.DefaultClient.Do(req) //nolint:gosec // The operator chooses the validated Dex address.
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
-	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 4096))
 	switch res.StatusCode {
-	case http.StatusNoContent, http.StatusOK:
+	case http.StatusOK:
 	case http.StatusUnauthorized:
 		return errors.New("the enrollment code is invalid or expired; get a fresh install command")
 	case http.StatusConflict:
@@ -150,7 +139,13 @@ func enroll(ctx context.Context, state, origin, id, pin, code string) error {
 	default:
 		return fmt.Errorf("the enrollment was refused (%s)", res.Status)
 	}
-	if err := json.MarshalWrite(file, device{Origin: origin, Environment: id, ServerPin: pin, Identity: identityPEM}); err != nil {
+	var issued struct {
+		Token string `json:"token"`
+	}
+	if err := json.UnmarshalRead(io.LimitReader(res.Body, 4096), &issued); err != nil || issued.Token == "" {
+		return errors.New("the enrollment returned no machine token")
+	}
+	if err := json.MarshalWrite(file, device{Origin: origin, Environment: id, Token: issued.Token}); err != nil {
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -187,10 +182,10 @@ func run(ctx context.Context, state string) error {
 	if err := json.UnmarshalRead(io.LimitReader(file, 1<<16), &cfg); err != nil {
 		return errors.New("invalid machine state file")
 	}
-	if cfg.Identity == "" || cfg.ServerPin == "" {
+	if cfg.Token == "" {
 		return errors.New("the machine state is incomplete; run the install command again")
 	}
-	address, err := endpoint(cfg.Origin, cfg.Environment, "connect", "wss")
+	address, err := endpoint(cfg.Origin, cfg.Environment, "connect")
 	if err != nil {
 		return err
 	}
@@ -201,22 +196,15 @@ func run(ctx context.Context, state string) error {
 	if err := root.MkdirAll("workspace", 0700); err != nil {
 		return err
 	}
-	identity, err := runner.ParseMachineIdentity(cfg.Identity)
-	if err != nil {
-		return err
-	}
-	client, err := runner.MachineClient(cfg.ServerPin, identity)
-	if err != nil {
-		return err
-	}
+	header := http.Header{"Authorization": []string{"Bearer " + cfg.Token}}
 	delay := time.Second
 	for ctx.Err() == nil {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
 		// websocket.Dial takes ownership of the response on a successful upgrade.
-		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPClient: client, Subprotocols: []string{runner.Version}}) //nolint:bodyclose
+		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}}) //nolint:bodyclose
 		cancel()
 		if res != nil && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden) {
-			return errors.New("the machine certificate was rejected; install the machine again")
+			return errors.New("the machine token was rejected; install the machine again")
 		}
 		if res != nil && res.StatusCode == http.StatusUpgradeRequired {
 			return errors.New("the machine protocol is incompatible; install the matching Dex version")
