@@ -499,9 +499,11 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 // Fork copies the committed history of ref into a new native conversation, which keeps the
 // source's configuration until the next admission configures it. Without before, the copy ends
 // at entryID, which must be an answer that waits for no tool result. With before, the copy ends
-// just before entryID; ok is false when nothing comes before it. A non-empty notice ends the copy
-// as a context entry, so the transcript shows it and the model reads it before the next input.
-func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, notice string) (forked Ref, ok bool, err error) {
+// just before entryID; ok is false when nothing comes before it. A non-nil move gets the
+// environment that the copied history last ran in, or "" when that is the environment of ref. A
+// non-empty Move.Text ends the copy as a context entry, so the transcript shows it and the model
+// reads it before the next input.
+func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, move func(ranIn string) (Move, error)) (forked Ref, ok bool, err error) {
 	if err := a.begin(); err != nil {
 		return Ref{}, false, err
 	}
@@ -557,14 +559,28 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, 
 	} else if !finishedAnswer(*entry) {
 		return Ref{}, false, fmt.Errorf("%w: a fork must start from a finished answer", ErrInvalidInput)
 	}
+	var m Move
+	if move != nil {
+		ranIn, err := excludedMove(ctx, conversation, at)
+		if err != nil {
+			return Ref{}, false, err
+		}
+		if m, err = move(ranIn); err != nil {
+			return Ref{}, false, err
+		}
+	}
 	copied, err := conversation.Fork(ctx, at, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}})
 	if err != nil {
 		return Ref{}, false, err
 	}
-	if notice != "" {
+	if m.Text != "" {
+		data, err := durable.ToJsonValue(environmentMove{From: m.From})
+		if err != nil {
+			return Ref{}, false, err
+		}
 		// The copy has no owner yet, so no input can come before the notice.
-		_, err := copied.Commit(ctx, func(tx durable.Tx) (any, error) {
-			return tx.AppendEntry(copied.Id(), durable.EntryDraft{Kind: environmentNoticeKind, Model: []ai.Message{ai.UserMessage{Content: ai.UserText(notice), Timestamp: time.Now().UnixMilli()}}})
+		_, err = copied.Commit(ctx, func(tx durable.Tx) (any, error) {
+			return tx.AppendEntry(copied.Id(), durable.EntryDraft{Kind: environmentNoticeKind, Data: data, Model: []ai.Message{ai.UserMessage{Content: ai.UserText(m.Text), Timestamp: time.Now().UnixMilli()}}})
 		})
 		if err != nil {
 			return Ref{}, false, err
@@ -573,9 +589,48 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, 
 	return Ref{AgentID: ref.AgentID, Scope: ref.Scope, ID: int64(copied.Id())}, true, nil
 }
 
+// Move is the environment change at a fork. From is the environment that the copied history last
+// ran in. A non-empty Text is the notice that ends the copied history.
+type Move struct {
+	From, Text string
+}
+
 // environmentNoticeKind is the context entry that tells the user and the model that a fork runs
 // in another execution environment than its source.
 const environmentNoticeKind = "dex.environment"
+
+// environmentMove is the data of an environment notice.
+type environmentMove struct {
+	From string `json:"from"`
+}
+
+// excludedMove returns the environment that the history up to at last ran in, when a later
+// environment notice of the conversation is not in that history. The oldest such notice tells it.
+// It returns "" when the history ran in the environment of the conversation.
+func excludedMove(ctx context.Context, conversation harness.Conversation, at durable.EntryId) (string, error) {
+	ranIn := ""
+	var cursor durable.Cursor
+	for {
+		page, err := conversation.Entries(ctx, durable.EntryQuery{MinEntryId: new(at + 1)}, 100, cursor)
+		if err != nil {
+			return "", err
+		}
+		for _, e := range page.Items {
+			if e.Kind != environmentNoticeKind {
+				continue
+			}
+			notice, err := durable.FromJsonValue[environmentMove](e.Data)
+			if err != nil {
+				return "", fmt.Errorf("environment notice %d: %w", e.Id, err)
+			}
+			ranIn = notice.From
+		}
+		if page.Next == nil {
+			return ranIn, nil
+		}
+		cursor = *page.Next
+	}
+}
 
 // finishedAnswer reports an assistant message without tool calls. A fork after a tool call would
 // copy a call whose result never comes.

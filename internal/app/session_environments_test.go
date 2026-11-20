@@ -239,9 +239,47 @@ func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
 		last := lastItem(tr)
 		return last.Kind == "boundary" && last.Boundary == "environment" && strings.HasPrefix(last.Text, "This chat moved from `"+remoteEnv.ID+"` to `local`.")
 	})
-	if out := taskTurn(t, d, created.ChatID, marker); out != "bash: local" {
+	rescuedID := created.ChatID
+	if out := taskTurn(t, d, rescuedID, marker); out != "bash: local" {
 		t.Fatalf("rescued bash=%q", out)
 	}
+
+	// Then a retry of the first fork still returns its chat, although remote-box is gone.
+	d.must(t, http.MethodPost, chatPath(src, "fork"), body, &again, http.StatusCreated)
+	if again.ChatID != fork.ID {
+		t.Fatalf("fork retry after removal=%d, want %d", again.ChatID, fork.ID)
+	}
+
+	// When the user forks the local chat at an answer before its move notice, then the fork gets
+	// its own notice, because that history last ran on remote-box.
+	rescued.until(t, "rescued local answer", func(tr *transcript) bool {
+		last := lastItem(tr)
+		return countKind(tr, "boundary") == 2 && last.Kind == "assistant" && last.Text == "bash: local"
+	})
+	afterMove := lastItem(&rescued.tr).EntryID
+	beforeMove := findItem(t, &rescued.tr, "assistant", "bash: ssh-fake-ok").EntryID
+	d.must(t, http.MethodPost, chatPath(rescuedID, "fork"), map[string]any{"entryId": beforeMove}, &created, http.StatusCreated)
+	back := "This chat moved from `" + remoteEnv.ID + "` to `local`. Chat history was kept. Files and background tasks were not moved. Check that the files you need exist before continuing."
+	second := d.watch(t, created.ChatID)
+	second.until(t, "second fork notice", func(tr *transcript) bool {
+		last := lastItem(tr)
+		return countKind(tr, "boundary") == 2 && last.Kind == "boundary" && last.Boundary == "environment" && last.Text == back
+	})
+	d.must(t, http.MethodPut, chatPath(created.ChatID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.send(t, created.ChatID, "check")
+	if want, err = json.Marshal([]string{marker, notice, "where am I", marker, back, "check"}); err != nil {
+		t.Fatal(err)
+	}
+	second.until(t, "second fork answer", answered("context: "+string(want)))
+
+	// When the user forks the local chat after its move notice, then no notice is added.
+	d.must(t, http.MethodPost, chatPath(rescuedID, "fork"), map[string]any{"entryId": afterMove}, &created, http.StatusCreated)
+	d.must(t, http.MethodPut, chatPath(created.ChatID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.send(t, created.ChatID, "check")
+	if want, err = json.Marshal([]string{marker, notice, "where am I", marker, back, marker, "check"}); err != nil {
+		t.Fatal(err)
+	}
+	d.watch(t, created.ChatID).until(t, "third fork answer", answered("context: "+string(want)))
 }
 
 // Given sessions that follow the bot's environment, when the owner changes that environment,
