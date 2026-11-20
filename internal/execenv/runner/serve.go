@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"os"
 	"runtime"
 	"sync"
 
@@ -24,9 +25,11 @@ func Serve(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv) 
 	}
 	s := executor{wire: wire, local: local, cancel: cancel}
 	defer func() { cancel(); s.work.Wait() }()
-	if err := write(ctx, wire, runnerproto.Message{Ready: &runnerproto.Ready{OS: runtime.GOOS, Arch: runtime.GOARCH}}); err != nil {
+	home, _ := os.UserHomeDir()
+	if err := write(ctx, wire, runnerproto.Message{Ready: &runnerproto.Ready{OS: runtime.GOOS, Arch: runtime.GOARCH, Home: home, Workspace: local.Cwd()}}); err != nil {
 		return err
 	}
+	go heartbeat(ctx, socket, cancel)
 	for {
 		msg, err := wire.Read(ctx)
 		if err != nil {
@@ -75,7 +78,7 @@ func (s *executor) start(ctx context.Context, id uint64, request runnerproto.Req
 	}
 	s.last = id
 	runCtx, stop := context.WithCancel(ctx)
-	op := &operation{id: id, request: request, ctx: runCtx, stop: stop, collecting: request.Op == "write"}
+	op := &operation{id: id, request: request, ctx: runCtx, stop: stop, collecting: request.Op == "write" || request.Op == "append"}
 	s.active = op
 	if !op.collecting {
 		s.work.Go(func() { s.run(ctx, op) })
@@ -116,6 +119,9 @@ func (s *executor) run(ctx context.Context, op *operation) {
 		if errors.Is(op.ctx.Err(), context.Canceled) {
 			code = "canceled"
 		}
+		if failure, ok := errors.AsType[*env.FileError](err); ok {
+			code = string(failure.Code)
+		}
 		result.Error = &runnerproto.Failure{Code: code, Message: err.Error()}
 	}
 	s.mu.Lock()
@@ -129,7 +135,11 @@ func (s *executor) run(ctx context.Context, op *operation) {
 func (s *executor) execute(ctx context.Context, op *operation, result *runnerproto.Result) error {
 	switch op.request.Op {
 	case "read":
-		reader, err := s.local.OpenBinaryReader(ctx, op.request.Path, nil)
+		options, err := readOptions[*env.OpenBinaryReaderOptions](op.request)
+		if err != nil {
+			return err
+		}
+		reader, err := s.local.OpenBinaryReader(ctx, op.request.Path, options)
 		if err != nil {
 			return err
 		}
@@ -160,8 +170,18 @@ func (s *executor) execute(ctx context.Context, op *operation, result *runnerpro
 		}
 	case "write":
 		return s.local.WriteFile(ctx, op.request.Path, op.data)
+	case "append":
+		return s.local.AppendFile(ctx, op.request.Path, op.data)
 	case "exec":
-		ret, err := s.local.Exec(ctx, op.request.Command, &env.ShellExecOptions{OnOutput: func(outputCtx context.Context, text string, info env.ShellOutputInfo) {
+		config, err := readOptions[CommandOptions](op.request)
+		if err != nil {
+			return err
+		}
+		var command any = op.request.Command
+		if len(op.request.Argv) != 0 {
+			command = op.request.Argv
+		}
+		ret, err := s.local.Exec(ctx, command, &env.ShellExecOptions{Cwd: config.Cwd, Env: config.Env, InheritEnv: config.InheritEnv, Timeout: config.Timeout, OnOutput: func(outputCtx context.Context, text string, info env.ShellOutputInfo) {
 			if outputCtx.Err() != nil {
 				return
 			}
@@ -172,7 +192,7 @@ func (s *executor) execute(ctx context.Context, op *operation, result *runnerpro
 		result.ExitCode = ret.ExitCode
 		return err
 	default:
-		return errProtocol
+		return s.files(ctx, op)
 	}
 	return nil
 }

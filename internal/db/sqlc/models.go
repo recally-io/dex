@@ -307,6 +307,13 @@ type RoutineToolOperation struct {
 	Result          string `json:"result"`
 }
 
+type RunnerPairing struct {
+	EnvironmentID    string `json:"environment_id"`
+	CodeDigest       string `json:"code_digest"`
+	ExpiresAt        int64  `json:"expires_at"`
+	CredentialDigest string `json:"credential_digest"`
+}
+
 type Submission struct {
 	ID                   string         `json:"id"`
 	ConversationID       int64          `json:"conversation_id"`

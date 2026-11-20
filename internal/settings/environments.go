@@ -152,7 +152,7 @@ func (s *Service) DeleteEnvironment(ctx context.Context, id string) error {
 		return fmt.Errorf("%w: execution environment %q is used by %d active bot(s)", ErrConflict, saved.Name, max(1, len(users)))
 	}
 	if s.envs != nil {
-		_ = s.envs.OnEnvironmentDeleted(execenv.SpecFromRow(saved))
+		_ = s.envs.OnEnvironmentDeleted(ctx, execenv.SpecFromRow(saved))
 	}
 	return nil
 }

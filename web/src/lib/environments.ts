@@ -39,6 +39,8 @@ export function detectSandboxPreset(cfg: EnvironmentConfig): SandboxPreset {
 export function environmentKindBadge(env: Pick<Environment, "kind" | "config">): string {
   if (env.kind === "pi-env") return "SSH";
 
+  if (env.kind === "runner") return "Outbound runner";
+
   return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "Sandbox";
 }
 
@@ -50,6 +52,8 @@ export function environmentBotHint(env: Pick<Environment, "name" | "kind" | "con
   if (env.kind === "pi-env") {
     return `Runs tools on SSH machine ${env.name} (${formatSshTarget(env.config)}).`;
   }
+
+  if (env.kind === "runner") return `Runs tools on outbound runner ${env.name}.`;
 
   if (detectSandboxPreset(env.config) === "local") {
     return `Runs tools in local sandbox ${env.name}.`;

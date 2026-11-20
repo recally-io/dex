@@ -5,6 +5,8 @@ import {
   deleteEnvironmentMutation,
   discoverSshConfigOptions,
   forgetEnvironmentHostKeyMutation,
+  issueRunnerCodeMutation,
+  revokeRunnerMutation,
   listAgentsOptions,
   listEnvironmentsOptions,
   testEnvironmentMutation,
@@ -155,6 +157,20 @@ function EnvironmentCard({
   const { notify } = useApp();
   const [probe, setProbe] = useState<EnvironmentTestResult | null>(null);
   const isE2B = env.kind === "e2b";
+  const isRunner = env.kind === "runner";
+  const pairing = useMutation(issueRunnerCodeMutation());
+
+  const revoke = useMutation({
+    ...revokeRunnerMutation(),
+    onSuccess: () => {
+      pairing.reset();
+      setProbe(null);
+      notify(`Revoked ${env.name}.`);
+    },
+  });
+
+  const request = { path: { environmentId: env.id } };
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
   const isCustomEndpoint = isE2B && detectSandboxPreset(env.config) !== "cloud";
 
   const test = useMutation({
@@ -190,6 +206,8 @@ function EnvironmentCard({
     }
 
     rows.push(["Disk", <Mono key="disk">{formatSandboxDiskSummary(env.config)}</Mono>]);
+  } else if (isRunner) {
+    rows.push(["Connection", probe?.ok ? "Online" : probe ? "Offline" : "Select Test to check status"]);
   } else {
     rows.push(["Target", <Mono key="target">{formatSshTarget(env.config)}</Mono>]);
 
@@ -260,6 +278,63 @@ function EnvironmentCard({
       </div>
 
       <Facts rows={rows} />
+
+      {isRunner ? (
+        <div className="flex flex-col gap-2 border-t border-border p-3">
+          <p className="text-sm text-muted-foreground">
+            Install the matching dex-runner binary on a dedicated Linux account. The target must reach the Dex
+            HTTPS address.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={pairing.isPending || revoke.isPending}
+              onClick={() => pairing.mutate(request)}
+            >
+              Generate pairing code
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={revoke.isPending}
+              onClick={() => setConfirmRevoke(true)}
+            >
+              Revoke device
+            </Button>
+          </div>
+          {confirmRevoke ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="xs"
+                variant="destructive"
+                onClick={() => {
+                  revoke.mutate(request);
+                  setConfirmRevoke(false);
+                }}
+              >
+                Disconnect and revoke
+              </Button>
+              <Button size="xs" variant="ghost" onClick={() => setConfirmRevoke(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : null}
+          {pairing.data ? (
+            <div className="flex flex-col gap-1 text-sm">
+              <p>Run on the target, then paste the one-time code. It expires after 10 minutes.</p>
+              <Mono>{`sudo -u dex-runner dex-runner pair -state /var/lib/dex-runner -url ${globalThis.location.protocol === "https:" ? globalThis.location.origin : "https://dex.example"} -id ${env.id}`}</Mono>
+              <Mono>{pairing.data.code}</Mono>
+              <p>
+                Start <Mono>sudo systemctl enable --now dex-runner</Mono>, then select Test. Assign this
+                environment in the bot settings.
+              </p>
+            </div>
+          ) : null}
+          {pairing.isError ? <Failure title="Could not issue pairing code" error={pairing.error} /> : null}
+          {revoke.isError ? <Failure title="Could not revoke device" error={revoke.error} /> : null}
+        </div>
+      ) : null}
 
       {test.isError ? (
         <div className="border-t border-border p-3">

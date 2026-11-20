@@ -35,14 +35,18 @@ type Message struct {
 }
 
 type Ready struct {
-	OS   string `json:"os"`
-	Arch string `json:"arch"`
+	OS        string `json:"os"`
+	Arch      string `json:"arch"`
+	Home      string `json:"home,omitempty"`
+	Workspace string `json:"workspace,omitempty"`
 }
 
 type Request struct {
-	Op      string `json:"op"`
-	Path    string `json:"path,omitempty"`
-	Command string `json:"command,omitempty"`
+	Op      string   `json:"op"`
+	Path    string   `json:"path,omitempty"`
+	Command string   `json:"command,omitempty"`
+	Argv    []string `json:"argv,omitempty"`
+	Options []byte   `json:"options,omitempty"`
 }
 
 type Chunk struct {
@@ -56,8 +60,9 @@ type Output struct {
 }
 
 type Result struct {
-	ExitCode int      `json:"exitCode,omitzero"`
-	Error    *Failure `json:"error,omitempty"`
+	ExitCode  int      `json:"exitCode,omitzero"`
+	SpillPath string   `json:"spillPath,omitempty"`
+	Error     *Failure `json:"error,omitempty"`
 }
 
 type Failure struct {
@@ -135,7 +140,9 @@ func (m Message) valid() bool {
 		case "read", "write":
 			return request.Path != "" && request.Command == ""
 		case "exec":
-			return request.Path == "" && request.Command != ""
+			return request.Path == "" && (request.Command != "") != (len(request.Argv) != 0)
+		case "append", "stat", "list", "canonical", "mkdir", "remove", "rename", "truncate", "flush", "temp-dir", "temp-file", "text":
+			return request.Command == "" && len(request.Argv) == 0
 		default:
 			return false
 		}

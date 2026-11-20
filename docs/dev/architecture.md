@@ -982,8 +982,14 @@ cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
 Tools run through [`internal/execenv`](../../internal/execenv) using the
-built-in `local` provider, a remote `pi-env` SSH connection, or an `e2b`
-sandbox endpoint ([ADR 0022](decisions/0022-execution-environments.md)).
+built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
+sandbox endpoint, or an outbound `runner` connection
+([ADR 0022](decisions/0022-execution-environments.md)). The
+[runner](../runner.md) opens an authenticated WebSocket to Dex and uses the
+public PiG execution API on the target. Dex stores credential digests in
+`control.sqlite` and keeps live connections in memory. A session does not
+replay requests after connection loss. Dex reports a missing final result as
+unknown.
 `execenv.Manager` owns per-kind driver dispatch and lifecycle
 (`NormalizeAndValidate`, `ProbeEnvironment`, `OnEnvironmentUpdated`,
 `OnEnvironmentDeleted`, `ForgetHostKey`, `CanResetAgent`, `ResetAgent`,

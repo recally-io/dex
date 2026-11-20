@@ -6,7 +6,8 @@ before:
     - mise run build:web
 
 builds:
-  - main: ./cmd/dex
+  - id: dex
+    main: ./cmd/dex
     binary: dex
     env:
       - CGO_ENABLED=0
@@ -16,10 +17,30 @@ builds:
     # dex reads its version from the VCS tag, not from -X.
     ldflags: [-s, -w]
 
+  - id: dex-runner
+    main: ./cmd/dex-runner
+    binary: dex-runner
+    env:
+      - CGO_ENABLED=0
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: [-s, -w]
+
 archives:
-  - name_template: dex_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
+  - ids: [dex]
+    name_template: dex_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
     formats: [tar.gz]
     files: [README.md]
+  - id: dex-runner
+    ids: [dex-runner]
+    name_template: dex-runner_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    files:
+      - src: docs/runner.md
+        dst: runner.md
+      - src: contrib/dex-runner.service
+        dst: dex-runner.service
 
 checksum:
   name_template: checksums.txt

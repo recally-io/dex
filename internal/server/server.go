@@ -128,7 +128,7 @@ func New(cfg Config) http.Handler {
 			small.ServeHTTP(w, r)
 		}
 	})
-	return http.NewCrossOriginProtection().Handler(requireToken(cfg.Token, limited))
+	return http.NewCrossOriginProtection().Handler(h.runnerRoutes(requireToken(cfg.Token, limited)))
 }
 
 type responseWriter struct {

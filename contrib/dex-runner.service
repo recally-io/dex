@@ -1,0 +1,19 @@
+[Unit]
+Description=Dex outbound runner
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=dex-runner
+Group=dex-runner
+StateDirectory=dex-runner
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/dex-runner run -state /var/lib/dex-runner
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

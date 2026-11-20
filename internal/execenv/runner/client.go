@@ -34,6 +34,7 @@ type Client struct {
 	closeOnce sync.Once
 	cancel    context.CancelFunc
 	next      uint64
+	info      runnerproto.Ready
 }
 
 // Connect takes ownership of socket and waits for the runner to become ready.
@@ -52,8 +53,9 @@ func Connect(ctx context.Context, socket *websocket.Conn) (*Client, error) {
 		return nil, errors.Join(errProtocol, err)
 	}
 	lifetime, stop := context.WithCancel(context.WithoutCancel(ctx))
-	c := &Client{socket: socket, wire: wire, gate: make(chan struct{}, 1), inbox: make(chan runnerproto.Message, 16), done: make(chan struct{}), cancel: stop}
+	c := &Client{socket: socket, wire: wire, gate: make(chan struct{}, 1), inbox: make(chan runnerproto.Message, 16), done: make(chan struct{}), cancel: stop, info: *msg.Ready}
 	go c.receive(lifetime)
+	go heartbeat(lifetime, socket, c.Close)
 	return c, nil
 }
 
@@ -78,6 +80,19 @@ func (c *Client) Close() {
 	c.closeOnce.Do(func() { close(c.done); c.cancel(); _ = c.socket.CloseNow() })
 }
 
+// Done closes when the session can no longer accept work.
+func (c *Client) Done() <-chan struct{} { return c.done }
+
+func (c *Client) Info() runnerproto.Ready { return c.info }
+
+func (c *Client) FileOperation(ctx context.Context, request runnerproto.Request, input []byte) ([]byte, error) {
+	if len(input) > maxFileBytes {
+		return nil, errFileLimit
+	}
+	data, _, err := c.call(ctx, request, input, nil)
+	return data, err
+}
+
 func (c *Client) ReadFile(ctx context.Context, path string) ([]byte, error) {
 	data, _, err := c.call(ctx, runnerproto.Request{Op: "read", Path: path}, nil, nil)
 	return data, err
@@ -92,7 +107,11 @@ func (c *Client) WriteFile(ctx context.Context, path string, data []byte) error 
 }
 
 func (c *Client) Exec(ctx context.Context, command string, onOutput func(string, env.ShellStream)) (int, error) {
-	_, code, err := c.call(ctx, runnerproto.Request{Op: "exec", Command: command}, nil, onOutput)
+	return c.RunCommand(ctx, runnerproto.Request{Op: "exec", Command: command}, onOutput)
+}
+
+func (c *Client) RunCommand(ctx context.Context, request runnerproto.Request, onOutput func(string, env.ShellStream)) (int, error) {
+	_, code, err := c.call(ctx, request, nil, onOutput)
 	return code, err
 }
 
@@ -122,16 +141,17 @@ func (c *Client) call(ctx context.Context, request runnerproto.Request, data []b
 		c.Close()
 		return nil, 0, errors.Join(ErrUnknown, err)
 	}
-	if request.Op == "write" {
+	if request.Op == "write" || request.Op == "append" {
 		if err := writeChunks(ctx, c.wire, id, data); err != nil {
 			c.Close()
 			return nil, 0, errors.Join(ErrUnknown, err)
 		}
 	}
-	return c.result(ctx, id, request.Op, onOutput)
+	return c.result(ctx, id, request, onOutput)
 }
 
-func (c *Client) result(ctx context.Context, id uint64, op string, onOutput func(string, env.ShellStream)) ([]byte, int, error) {
+func (c *Client) result(ctx context.Context, id uint64, request runnerproto.Request, onOutput func(string, env.ShellStream)) ([]byte, int, error) {
+	op := request.Op
 	var data []byte
 	var ended bool
 	ctxDone := ctx.Done()
@@ -152,12 +172,15 @@ func (c *Client) result(ctx context.Context, id uint64, op string, onOutput func
 					if failure.Code == "canceled" && ctx.Err() != nil {
 						return nil, 0, ctx.Err()
 					}
+					if op != "exec" {
+						return nil, 0, env.NewFileError(env.FileErrorCode(failure.Code), failure.Message, request.Path, nil)
+					}
 					return nil, 0, errors.New(failure.Message)
 				}
-				if op != "read" || ended {
+				if (op != "read" && len(data) == 0) || ended {
 					return data, msg.Result.ExitCode, nil
 				}
-			case msg.Chunk != nil && op == "read" && !ended && len(data)+len(msg.Chunk.Data) <= maxFileBytes:
+			case msg.Chunk != nil && op != "exec" && op != "write" && op != "append" && !ended && len(data)+len(msg.Chunk.Data) <= maxFileBytes:
 				data = append(data, msg.Chunk.Data...)
 				ended = msg.Chunk.End
 				continue

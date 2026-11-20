@@ -21,6 +21,8 @@ import { SshEnvironmentFields, useSshEnvironmentForm } from "./environment-ssh-f
 import { Failure, Spinner } from "./feedback";
 import { ProbeResultPanel } from "./probe-result-panel";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Field } from "./form";
 
 const environmentChoices: readonly {
   kind: EnvironmentKind;
@@ -40,6 +42,12 @@ const environmentChoices: readonly {
     subtitle: "Isolated E2B Cloud, Docker, or microVM",
     traits: "Isolated disk · Disposable per bot",
   },
+  {
+    kind: "runner",
+    title: "Outbound runner",
+    subtitle: "Linux host that connects to Dex over HTTPS",
+    traits: "Persistent disk · No inbound port",
+  },
 ];
 
 export function EnvironmentDialog({
@@ -56,6 +64,7 @@ export function EnvironmentDialog({
   const { notify } = useApp();
   const [kind, setKind] = useState<EnvironmentKind>(existing?.kind ?? "pi-env");
   const [tried, setTried] = useState(false);
+  const [runnerName, setRunnerName] = useState(existing?.kind === "runner" ? existing.name : "");
   const [probeResult, setProbeResult] = useState<EnvironmentTestResult | null>(null);
 
   const resetProbe = () => {
@@ -119,9 +128,9 @@ export function EnvironmentDialog({
   function submit() {
     setTried(true);
 
-    if (active.hasErrors || pending) return;
+    if (pending || (kind === "runner" ? !runnerName.trim() : active.hasErrors)) return;
 
-    const body = active.submitBody();
+    const body = kind === "runner" ? { name: runnerName.trim(), kind, config: {} } : active.submitBody();
 
     if (existing) {
       update.mutate({ path: { environmentId: existing.id }, body });
@@ -138,16 +147,18 @@ export function EnvironmentDialog({
       onClose={onClose}
       footer={
         <>
-          <Button
-            type="button"
-            variant="outline"
-            className="mr-auto"
-            onClick={runProbe}
-            disabled={pending || probe.isPending}
-          >
-            {probe.isPending ? <Spinner /> : null}
-            {probe.isPending ? "Testing…" : "Test connection"}
-          </Button>
+          {kind !== "runner" ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="mr-auto"
+              onClick={runProbe}
+              disabled={pending || probe.isPending}
+            >
+              {probe.isPending ? <Spinner /> : null}
+              {probe.isPending ? "Testing…" : "Test connection"}
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={onClose} disabled={pending}>
             Cancel
           </Button>
@@ -211,8 +222,19 @@ export function EnvironmentDialog({
             identityFiles={identityFiles}
             show={showSsh}
           />
-        ) : (
+        ) : kind === "e2b" ? (
           <SandboxEnvironmentFields controller={sandbox} show={showSandbox} />
+        ) : (
+          <Field label="Name" error={tried && !runnerName.trim() ? "Enter a name." : undefined}>
+            {(ids) => (
+              <Input
+                {...ids}
+                maxLength={60}
+                value={runnerName}
+                onChange={(event) => setRunnerName(event.target.value)}
+              />
+            )}
+          </Field>
         )}
 
         <button type="submit" hidden />
