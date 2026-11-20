@@ -5,6 +5,7 @@ import {
   deleteEnvironmentMutation,
   discoverSshConfigOptions,
   forgetEnvironmentHostKeyMutation,
+  getHealthOptions,
   issueRunnerCodeMutation,
   revokeRunnerMutation,
   listAgentsOptions,
@@ -22,6 +23,8 @@ import {
   formatSandboxRuntimeSummary,
   formatSshDiskSummary,
   formatSshTarget,
+  machineAddress,
+  machineInstallCommand,
 } from "../lib/environments";
 import { errorText, refreshEnvironments } from "../lib/queries";
 import { Confirm } from "./confirm";
@@ -33,6 +36,7 @@ import { ProbeResultPanel } from "./probe-result-panel";
 import { ImportSshConfigDialog } from "./ssh-import-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 
 export function ExecutionEnvironments() {
   const query = useQuery(listEnvironmentsOptions());
@@ -158,12 +162,29 @@ function EnvironmentCard({
   const [probe, setProbe] = useState<EnvironmentTestResult | null>(null);
   const isE2B = env.kind === "e2b";
   const isRunner = env.kind === "runner";
-  const pairing = useMutation(issueRunnerCodeMutation());
+  const health = useQuery({ ...getHealthOptions(), enabled: isRunner });
+
+  const [address, setAddress] = useState("");
+  const [issued, setIssued] = useState<{ code: string } | null>(null);
+
+  const machineUrls = health.data?.machineUrls ?? [];
+
+  const target = address || machineUrls.at(0) || "";
+
+  const installCommand = issued
+    ? machineInstallCommand(target, env.id, health.data?.machinePin ?? "", issued.code, health.data?.version)
+    : null;
+
+  const pairing = useMutation({
+    ...issueRunnerCodeMutation(),
+    onSuccess: (result) => setIssued(result),
+  });
 
   const revoke = useMutation({
     ...revokeRunnerMutation(),
     onSuccess: () => {
       pairing.reset();
+      setIssued(null);
       setProbe(null);
       notify(`Revoked ${env.name}.`);
     },
@@ -207,7 +228,10 @@ function EnvironmentCard({
 
     rows.push(["Disk", <Mono key="disk">{formatSandboxDiskSummary(env.config)}</Mono>]);
   } else if (isRunner) {
-    rows.push(["Connection", probe?.ok ? "Online" : probe ? "Offline" : "Select Test to check status"]);
+    rows.push([
+      "Connection",
+      probe?.ok ? "Online" : probe ? "Offline" : "Select Test to check the connection",
+    ]);
   } else {
     rows.push(["Target", <Mono key="target">{formatSshTarget(env.config)}</Mono>]);
 
@@ -282,17 +306,45 @@ function EnvironmentCard({
       {isRunner ? (
         <div className="flex flex-col gap-2 border-t border-border p-3">
           <p className="text-sm text-muted-foreground">
-            Install the matching dex-runner binary on a dedicated Linux account. The target must reach the Dex
-            HTTPS address.
+            Copy one command to the machine, then run it in a terminal. It needs sudo, and it installs the Dex
+            service without opening any inbound port.
           </p>
+          {machineUrls.length ? (
+            <Field
+              label="Address the machine uses for Dex"
+              hint="Change it when the machine reaches Dex through another network."
+              error={
+                target && !machineAddress(target)
+                  ? "Enter an HTTPS address without a path. Do not use localhost."
+                  : undefined
+              }
+            >
+              {(ids) => (
+                <Input
+                  id={ids.id}
+                  aria-describedby={ids.describedBy}
+                  value={target}
+                  onChange={(event) => {
+                    setAddress(event.target.value);
+                    setIssued(null);
+                    pairing.reset();
+                  }}
+                />
+              )}
+            </Field>
+          ) : (
+            <p className="text-sm text-orange">
+              Remote machines are off. Start Dex with <Mono>--machine-listen 0.0.0.0:8788</Mono>.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button
               size="xs"
               variant="outline"
-              disabled={pairing.isPending || revoke.isPending}
+              disabled={!machineUrls.length || pairing.isPending || revoke.isPending}
               onClick={() => pairing.mutate(request)}
             >
-              Generate pairing code
+              {issued ? "New install command" : "Get install command"}
             </Button>
             <Button
               size="xs"
@@ -300,7 +352,7 @@ function EnvironmentCard({
               disabled={revoke.isPending}
               onClick={() => setConfirmRevoke(true)}
             >
-              Revoke device
+              Revoke machine
             </Button>
           </div>
           {confirmRevoke ? (
@@ -320,19 +372,36 @@ function EnvironmentCard({
               </Button>
             </div>
           ) : null}
-          {pairing.data ? (
-            <div className="flex flex-col gap-1 text-sm">
-              <p>Run on the target, then paste the one-time code. It expires after 10 minutes.</p>
-              <Mono>{`sudo -u dex-runner dex-runner pair -state /var/lib/dex-runner -url ${globalThis.location.protocol === "https:" ? globalThis.location.origin : "https://dex.example"} -id ${env.id}`}</Mono>
-              <Mono>{pairing.data.code}</Mono>
-              <p>
-                Start <Mono>sudo systemctl enable --now dex-runner</Mono>, then select Test. Assign this
-                environment in the bot settings.
-              </p>
+          {installCommand ? (
+            <div className="flex flex-col gap-2 text-sm">
+              <div className="overflow-x-auto rounded-md border border-border p-2">
+                <Mono>{installCommand}</Mono>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="xs"
+                  variant="outline"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(installCommand).then(
+                      () => notify("Copied install command."),
+                      () => notify("Copy the command from the text above."),
+                    )
+                  }
+                >
+                  Copy install command
+                </Button>
+              </div>
+              <p>The command enrolls this machine once and expires in 10 minutes.</p>
+              <p>Select Test when the machine is online.</p>
             </div>
           ) : null}
-          {pairing.isError ? <Failure title="Could not issue pairing code" error={pairing.error} /> : null}
-          {revoke.isError ? <Failure title="Could not revoke device" error={revoke.error} /> : null}
+          {issued && !installCommand ? (
+            <p className="text-sm text-red">Check the address: it must be reachable from the machine.</p>
+          ) : null}
+          {pairing.isError ? (
+            <Failure title="Could not issue an install command" error={pairing.error} />
+          ) : null}
+          {revoke.isError ? <Failure title="Could not revoke the machine" error={revoke.error} /> : null}
         </div>
       ) : null}
 

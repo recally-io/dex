@@ -44,9 +44,9 @@ const environmentChoices: readonly {
   },
   {
     kind: "runner",
-    title: "Outbound runner",
-    subtitle: "Linux host that connects to Dex over HTTPS",
-    traits: "Persistent disk · No inbound port",
+    title: "Dex service",
+    subtitle: "Linux machine that connects out to Dex. No inbound port or SSH.",
+    traits: "Persistent disk · One install command",
   },
 ];
 

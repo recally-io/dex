@@ -39,7 +39,7 @@ export function detectSandboxPreset(cfg: EnvironmentConfig): SandboxPreset {
 export function environmentKindBadge(env: Pick<Environment, "kind" | "config">): string {
   if (env.kind === "pi-env") return "SSH";
 
-  if (env.kind === "runner") return "Outbound runner";
+  if (env.kind === "runner") return "Dex service";
 
   return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "Sandbox";
 }
@@ -53,13 +53,68 @@ export function environmentBotHint(env: Pick<Environment, "name" | "kind" | "con
     return `Runs tools on SSH machine ${env.name} (${formatSshTarget(env.config)}).`;
   }
 
-  if (env.kind === "runner") return `Runs tools on outbound runner ${env.name}.`;
+  if (env.kind === "runner") return `Runs tools on remote machine ${env.name}.`;
 
   if (detectSandboxPreset(env.config) === "local") {
     return `Runs tools in local sandbox ${env.name}.`;
   }
 
   return `Runs tools in isolated sandbox ${env.name}.`;
+}
+
+// machineAddress returns the canonical HTTPS origin of a machine listener, or null when the
+// target machine cannot use the address.
+export function machineAddress(address: string): string | null {
+  let url: URL;
+
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return null;
+  }
+
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash ||
+    isLocalHostname(host) ||
+    host === "0.0.0.0" ||
+    host === "::" ||
+    url.origin.includes("'")
+  ) {
+    return null;
+  }
+
+  return url.origin;
+}
+
+export function machineInstallCommand(
+  address: string,
+  id: string,
+  pin: string,
+  code: string,
+  version?: string,
+): string | null {
+  const origin = machineAddress(address);
+
+  if (
+    !origin ||
+    !/^[a-z\d-]+$/i.test(id) ||
+    !/^[A-Za-z\d+/]{43}=?=?$/.test(pin) ||
+    !/^[A-Z\d]{20,64}$/i.test(code)
+  ) {
+    return null;
+  }
+
+  // A tagged build downloads its archive from GitHub; a development build serves it from Dex.
+  const release = /^v\d+\.\d+\.\d+$/.test(version ?? "") ? ` '${version}'` : " 'dev'";
+
+  return `curl -fsSk --pinnedpubkey 'sha256//${pin}' '${origin}/install-machine.sh' | sudo sh -s -- '${origin}' '${id}' '${pin}' '${code}'${release}`;
 }
 
 export function formatSshTarget(cfg: EnvironmentConfig): string {
