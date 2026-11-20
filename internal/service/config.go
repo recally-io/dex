@@ -115,10 +115,11 @@ func (c *Config) Validate() error {
 		if err != nil || ip.Zone() != "" {
 			return errors.New("machine listener host must be an IP address")
 		}
-		if number, err := strconv.Atoi(port); err != nil || number < 0 || number > 65535 {
+		number, err := strconv.Atoi(port)
+		if err != nil || number < 0 || number > 65535 {
 			return errors.New("machine listener port must be between 0 and 65535, where 0 asks the OS")
 		}
-		if number, err := strconv.Atoi(port); err == nil && number == c.Port {
+		if number == c.Port {
 			return errors.New("machine listener must use a different port than the web UI")
 		}
 		c.MachineListen = net.JoinHostPort(ip.String(), port)

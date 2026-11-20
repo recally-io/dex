@@ -402,7 +402,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return nil, listenErr
 		}
 		a.machines = machines
-		machineConfig.MachinePin, machineConfig.MachineUrls = &machines.Pin, &machines.URLs
+		machineConfig.Machines = machines
 		a.wg.Go(func() {
 			if err := machines.Serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.Error("machine listener", "err", err)

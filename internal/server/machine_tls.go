@@ -54,7 +54,7 @@ func ListenMachineTLS(ctx context.Context, address, dataDir string, envs *execen
 	}
 	m := &MachineTLS{Pin: base64.StdEncoding.EncodeToString(digest[:])}
 	m.addr = listener.Addr().String()
-	h := &handler{Envs: envs, machine: true}
+	h := &handler{Envs: envs}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/runner/{id}/pair", h.pairRunner)
 	mux.HandleFunc("GET /api/runner/{id}/connect", h.connectRunner)
@@ -69,8 +69,8 @@ func ListenMachineTLS(ctx context.Context, address, dataDir string, envs *execen
 			http.NotFound(w, r)
 			return
 		}
-		// name matches the fixed development archive names above.
-		http.ServeFile(w, r, filepath.Join(dataDir, "machine-release", name)) //nolint:gosec // name is one of the fixed development archives. //nolint:gosec // The names above are fixed literals.
+		// The name matched one of the fixed development archive names above.
+		http.ServeFile(w, r, filepath.Join(dataDir, "machine-release", name)) //nolint:gosec // The name is one of the fixed development archives.
 	})
 	m.server = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	m.listener = listener
@@ -102,11 +102,15 @@ func machineURLs(addr string) []string {
 	default:
 		addrs, _ := net.InterfaceAddrs()
 		for _, item := range addrs {
-			ipnet, ok := item.(*net.IPNet)
-			ip, err := netip.ParseAddr(ipnet.IP.String())
-			if ok && err == nil && ip.Is4() && !ip.IsLoopback() && !ip.IsLinkLocalUnicast() {
-				hosts = append(hosts, ip)
+			network, ok := item.(*net.IPNet)
+			if !ok {
+				continue
 			}
+			ip, ok := netip.AddrFromSlice(network.IP)
+			if ip = ip.Unmap(); !ok || !ip.Is4() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			hosts = append(hosts, ip)
 		}
 	}
 	// A private address is usually the one that a machine on the same network can reach.
@@ -131,7 +135,7 @@ func machineURLs(addr string) []string {
 // rotation requires a fresh install command.
 func machineIdentity(dataDir string) (tls.Certificate, error) {
 	filename := filepath.Join(dataDir, "machine-tls.pem")
-	data, err := os.ReadFile(filename) //nolint:gosec // The data directory comes from the operator. //nolint:gosec // The data directory is the operator's choice.
+	data, err := os.ReadFile(filename) //nolint:gosec // The data directory is the operator's choice.
 	if err == nil {
 		return tls.X509KeyPair(data, data)
 	}

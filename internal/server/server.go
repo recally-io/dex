@@ -44,12 +44,10 @@ type Config struct {
 	DataDir     string
 	Version     string
 	// Engine owns native execution and extensions.
-	Engine      *engine.Agents
-	Envs        *execenv.Manager
-	MachineUrls *[]string
-	MachinePin  *string
-	// machine marks the listener of the remote machine protocol, which has no admin UI.
-	machine bool
+	Engine *engine.Agents
+	Envs   *execenv.Manager
+	// Machines is the remote machine listener, or nil when Dex does not serve machines.
+	Machines *MachineTLS
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
@@ -222,7 +220,11 @@ func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	ready := h.Engine != nil && h.Engine.Health(ctx) == nil
-	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready, MachineUrls: h.MachineUrls, MachinePin: h.MachinePin}, nil
+	health := api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready}
+	if h.Machines != nil {
+		health.MachineUrls, health.MachinePin = &h.Machines.URLs, &h.Machines.Pin
+	}
+	return health, nil
 }
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

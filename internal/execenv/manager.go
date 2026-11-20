@@ -73,7 +73,7 @@ func NewManager(cfg ManagerConfig) *Manager {
 		local:   NewLocalProvider(dataDir, ""),
 		pienv:   &piEnvRuntime{dataDir: dataDir, sshProgram: cfg.SSHProgram},
 		e2b:     newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL),
-		runner:  &runnerRuntime{q: cfg.Queries, sessions: map[string]*runner.Client{}},
+		runner:  &runnerRuntime{q: cfg.Queries, sessions: map[string]*runner.Client{}, generation: map[string]uint64{}},
 		handles: map[Handle]struct{}{},
 	}
 }
@@ -304,7 +304,7 @@ func (m *Manager) Stamp(ctx context.Context, agentID string) (string, bool) {
 		_, _ = h.Write([]byte{0})
 	}
 	if Kind(row.Kind) == KindRunner {
-		_, _ = fmt.Fprintf(h, "%p", m.runner.online(row.EnvironmentID))
+		_, _ = h.Write([]byte(m.runner.sessionStamp(row.EnvironmentID)))
 	}
 	return hex.EncodeToString(h.Sum(nil)), true
 }

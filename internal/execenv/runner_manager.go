@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"sync"
 	"time"
 
@@ -23,7 +24,9 @@ type runnerRuntime struct {
 	q        *sqlc.Queries
 	mu       sync.Mutex
 	sessions map[string]*runner.Client
-	closed   bool
+	// generation counts the sessions of one environment, so a reconnect changes its stamp.
+	generation map[string]uint64
+	closed     bool
 }
 
 func runnerDigest(value string) string {
@@ -97,6 +100,7 @@ func (m *Manager) AcceptRunner(ctx context.Context, id, identity string, socket 
 	}
 	if err == nil {
 		rt.sessions[id] = session
+		rt.generation[id]++
 	}
 	rt.mu.Unlock()
 	if err != nil {
@@ -126,6 +130,7 @@ func (m *Manager) RevokeRunner(ctx context.Context, id string) error {
 	if err == nil {
 		session = rt.sessions[id]
 		delete(rt.sessions, id)
+		delete(rt.generation, id)
 	}
 	rt.mu.Unlock()
 	if session != nil {
@@ -138,6 +143,14 @@ func (rt *runnerRuntime) online(id string) *runner.Client {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	return rt.sessions[id]
+}
+
+// sessionStamp identifies the live session of an environment. A reconnect changes the stamp,
+// so cached work from the earlier session cannot match it.
+func (rt *runnerRuntime) sessionStamp(id string) string {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return strconv.FormatUint(rt.generation[id], 10)
 }
 
 func (rt *runnerRuntime) close() {

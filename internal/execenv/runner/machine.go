@@ -71,7 +71,6 @@ func NewMachineIdentity() (string, error) {
 }
 
 // ParseMachineIdentity loads the PEM key pair that NewMachineIdentity returned.
-// ParseMachineIdentity loads the PEM key pair that NewMachineIdentity returned.
 func ParseMachineIdentity(pemData string) (tls.Certificate, error) {
 	if pemData == "" {
 		return tls.Certificate{}, nil
