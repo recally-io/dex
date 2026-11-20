@@ -114,6 +114,7 @@ func TestUserRestartSendsInterruptedResultForEachPlacedParentInput(t *testing.T)
 	waitTaskFile(t, filepath.Join(dir, "first-interrupted.pid"))
 	var ref childRef
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": taskGate(t, dir, "steer-interrupted"), "mode": "steer"}), &ref)
+	d.watch(t, child.conversation(t)).until(t, "steer queued", anySteerQueued)
 	releaseResultGate(t, dir, "first-interrupted")
 	waitTaskFile(t, filepath.Join(dir, "steer-interrupted.pid"))
 	for _, message := range []string{"echo queued-one", "echo queued-two"} {
@@ -152,6 +153,7 @@ func TestUserRestartKeepsDoneAnswerSeparateFromInterruptedRun(t *testing.T) {
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": taskGate(t, dir, "separate-first")}), &ref)
 	waitTaskFile(t, filepath.Join(dir, "separate-first.pid"))
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": taskGate(t, dir, "separate-steer"), "mode": "steer"}), &ref)
+	d.watch(t, child.conversation(t)).until(t, "steer queued", anySteerQueued)
 	releaseResultGate(t, dir, "separate-first")
 	waitTaskFile(t, filepath.Join(dir, "separate-steer.pid"))
 	for _, message := range []string{"echo queued-one", "echo queued-two"} {
