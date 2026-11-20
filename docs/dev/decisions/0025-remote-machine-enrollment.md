@@ -43,7 +43,7 @@ code and the manual pairing step also duplicated the same one-time secret.
   and starts the systemd unit. The code passes to the binary on stdin, so it
   stays out of the process list. The user never runs `pair`.
 - **Names.** The shipped binary, system account, systemd unit, and state
-  directory use `dex-agent`. The UI calls the environment a **Dex service** and
+  directory use `dex-agent`. The UI calls the environment **dex runner** and
   the page **Execution environments**, because the machine, not the service
   name, is what the user chooses. The internal Go package and the
   `/api/runner/` route keep the `runner` name: they carry the execution

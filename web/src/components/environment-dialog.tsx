@@ -20,6 +20,7 @@ import { SandboxEnvironmentFields, useSandboxEnvironmentForm } from "./environme
 import { SshEnvironmentFields, useSshEnvironmentForm } from "./environment-ssh-fields";
 import { Failure, Spinner } from "./feedback";
 import { ProbeResultPanel } from "./probe-result-panel";
+import { RunnerInstall } from "./runner-install";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Field } from "./form";
@@ -60,7 +61,7 @@ const machineAccess: readonly {
   },
   {
     kind: "runner",
-    title: "Dex service",
+    title: "dex runner",
     subtitle: "The machine connects out to Dex. No sshd, no inbound port.",
   },
 ];
@@ -87,6 +88,10 @@ export function EnvironmentDialog({
   const [serviceName, setServiceName] = useState(existing?.kind === "runner" ? existing.name : "");
   const [probeResult, setProbeResult] = useState<EnvironmentTestResult | null>(null);
 
+  // A dex runner environment must exist before Dex can issue its install command, so the
+  // dialog stays open after the save and shows that command.
+  const [created, setCreated] = useState<Environment | null>(null);
+
   const resetProbe = () => {
     setProbeResult(null);
   };
@@ -99,8 +104,16 @@ export function EnvironmentDialog({
     ...createEnvironmentMutation(),
     onSuccess: async (saved) => {
       await refreshEnvironments();
-      onClose();
+
       notify(`Added ${saved.name}.`);
+
+      if (saved.kind === "runner") {
+        setCreated(saved);
+
+        return;
+      }
+
+      onClose();
     },
   });
 
@@ -158,6 +171,19 @@ export function EnvironmentDialog({
     } else {
       create.mutate({ body });
     }
+  }
+
+  if (created) {
+    return (
+      <Modal
+        title={`${created.name} is ready to connect`}
+        description="Copy the command, run it on the machine, then select Test in the environment list."
+        onClose={onClose}
+        footer={<Button onClick={onClose}>Done</Button>}
+      >
+        <RunnerInstall environmentId={created.id} autoIssue />
+      </Modal>
+    );
   }
 
   return (

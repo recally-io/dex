@@ -5,8 +5,6 @@ import {
   deleteEnvironmentMutation,
   discoverSshConfigOptions,
   forgetEnvironmentHostKeyMutation,
-  getHealthOptions,
-  issueRunnerCodeMutation,
   revokeRunnerMutation,
   listAgentsOptions,
   listEnvironmentsOptions,
@@ -23,12 +21,11 @@ import {
   formatSandboxRuntimeSummary,
   formatSshDiskSummary,
   formatSshTarget,
-  machineAddress,
-  machineInstallCommand,
 } from "../lib/environments";
 import { errorText, refreshEnvironments } from "../lib/queries";
 import { Confirm } from "./confirm";
 import { EnvironmentDialog } from "./environment-dialog";
+import { RunnerInstall } from "./runner-install";
 import { Failure, Loading, Spinner } from "./feedback";
 import { Field, Select } from "./form";
 import { Facts, Mono, Panel, Section } from "./page";
@@ -36,7 +33,6 @@ import { ProbeResultPanel } from "./probe-result-panel";
 import { ImportSshConfigDialog } from "./ssh-import-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 
 export function ExecutionEnvironments() {
   const query = useQuery(listEnvironmentsOptions());
@@ -162,29 +158,10 @@ function EnvironmentCard({
   const [probe, setProbe] = useState<EnvironmentTestResult | null>(null);
   const isE2B = env.kind === "e2b";
   const isRunner = env.kind === "runner";
-  const health = useQuery({ ...getHealthOptions(), enabled: isRunner });
-
-  const [address, setAddress] = useState("");
-  const [issued, setIssued] = useState<{ code: string } | null>(null);
-
-  const machineUrls = health.data?.machineUrls ?? [];
-
-  const target = address || machineUrls.at(0) || "";
-
-  const installCommand = issued
-    ? machineInstallCommand(target, env.id, health.data?.machinePin ?? "", issued.code, health.data?.version)
-    : null;
-
-  const pairing = useMutation({
-    ...issueRunnerCodeMutation(),
-    onSuccess: (result) => setIssued(result),
-  });
 
   const revoke = useMutation({
     ...revokeRunnerMutation(),
     onSuccess: () => {
-      pairing.reset();
-      setIssued(null);
       setProbe(null);
       notify(`Revoked ${env.name}.`);
     },
@@ -305,48 +282,8 @@ function EnvironmentCard({
 
       {isRunner ? (
         <div className="flex flex-col gap-2 border-t border-border p-3">
-          <p className="text-sm text-muted-foreground">
-            Copy one command to the machine, then run it in a terminal. It needs sudo, and it installs the Dex
-            service without opening any inbound port.
-          </p>
-          {machineUrls.length ? (
-            <Field
-              label="Address the machine uses for Dex"
-              hint="Change it when the machine reaches Dex through another network."
-              error={
-                target && !machineAddress(target)
-                  ? "Enter an HTTPS address without a path. Do not use localhost."
-                  : undefined
-              }
-            >
-              {(ids) => (
-                <Input
-                  id={ids.id}
-                  aria-describedby={ids.describedBy}
-                  value={target}
-                  onChange={(event) => {
-                    setAddress(event.target.value);
-                    setIssued(null);
-                    pairing.reset();
-                  }}
-                />
-              )}
-            </Field>
-          ) : (
-            <p className="text-sm text-orange">
-              Remote machines are off: this Dex listens on loopback only. Start it with a reachable host, or
-              set <Mono>--machine-listen</Mono>.
-            </p>
-          )}
+          <RunnerInstall environmentId={env.id} />
           <div className="flex flex-wrap gap-2">
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={!machineUrls.length || pairing.isPending || revoke.isPending}
-              onClick={() => pairing.mutate(request)}
-            >
-              {issued ? "New install command" : "Get install command"}
-            </Button>
             <Button
               size="xs"
               variant="ghost"
@@ -372,35 +309,6 @@ function EnvironmentCard({
                 Cancel
               </Button>
             </div>
-          ) : null}
-          {installCommand ? (
-            <div className="flex flex-col gap-2 text-sm">
-              <div className="overflow-x-auto rounded-md border border-border p-2">
-                <Mono>{installCommand}</Mono>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() =>
-                    void navigator.clipboard.writeText(installCommand).then(
-                      () => notify("Copied install command."),
-                      () => notify("Copy the command from the text above."),
-                    )
-                  }
-                >
-                  Copy install command
-                </Button>
-              </div>
-              <p>The command enrolls this machine once and expires in 10 minutes.</p>
-              <p>Select Test when the machine is online.</p>
-            </div>
-          ) : null}
-          {issued && !installCommand ? (
-            <p className="text-sm text-red">Check the address: it must be reachable from the machine.</p>
-          ) : null}
-          {pairing.isError ? (
-            <Failure title="Could not issue an install command" error={pairing.error} />
           ) : null}
           {revoke.isError ? <Failure title="Could not revoke the machine" error={revoke.error} /> : null}
         </div>
@@ -496,7 +404,7 @@ function DeleteEnvironmentDialog({
                 disabled={pending}
                 onChange={(event) => setTargetEnvId(event.target.value)}
               >
-                <option value="">This computer (local)</option>
+                <option value="">This computer</option>
                 {others.map((item) => (
                   <option key={item.id} value={item.id}>
                     {environmentOptionLabel(item)}

@@ -1,6 +1,6 @@
 # Connect a remote machine
 
-A Dex service runs tools on a machine that Dex cannot reach over SSH. The machine opens an
+dex runner runs tools on a machine that Dex cannot reach over SSH. The machine opens an
 outbound TLS connection to Dex, so the machine needs no `sshd` and no inbound port. Dex serves
 this connection on its own TLS listener, and the install command pins the Dex public key. The
 machine therefore needs no CA bundle, no public domain, and no reverse proxy.
@@ -31,7 +31,7 @@ checks the Dex certificate pin, and that proxy has a different certificate.
 
 ## Install a machine
 
-1. In Dex, open **Settings → Execution environments** and add a **Dex service**.
+1. In Dex, open **Settings → Execution environments** and add a **dex runner**.
 2. Select **Get install command**. Dex shows the address it offers to machines. Change this
    address when the machine reaches Dex through another network.
 3. Copy the command and run it in a terminal on the target machine. The account needs `sudo`.
