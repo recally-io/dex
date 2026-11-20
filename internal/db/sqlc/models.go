@@ -200,6 +200,11 @@ type ForkReceipt struct {
 	ForkID      int64  `json:"fork_id"`
 }
 
+type GithubWebhookSetting struct {
+	RepositoryID int64  `json:"repository_id"`
+	Secret       string `json:"secret"`
+}
+
 type OnePassword struct {
 	ID                  int64  `json:"id"`
 	Mode                string `json:"mode"`

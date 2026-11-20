@@ -98,8 +98,17 @@ specified revision match. This store does not call the model.
 The GitHub review adapter accepts a signed Webhook body or a page from the
 GitHub REST API. Both use the repository ID as the namespace and the review
 ID as the change key. A submitted review identifies the PR, the commit, and
-the submission time. The adapter skips pending and dismissed reviews. It does
-not register a public route or fetch pages on a schedule.
+the submission time. The adapter skips pending and dismissed reviews.
+
+The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
+An administrator saves or rotates a write-only secret with
+`PUT /api/settings/github-webhooks/{repositoryId}` and disables the hook with
+`DELETE` on the same path. The hook does not accept the management token as a signature. It accepts a
+request body of at most 256 KiB and returns `204` after the event commits or
+when a signed delivery needs no action. A failed write returns `503`. To
+receive deliveries from GitHub, expose only the hook path through a public
+HTTPS proxy. Keep the management routes private. Dex does not fetch pages on
+a schedule.
 
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |

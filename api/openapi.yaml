@@ -18,6 +18,38 @@ security:
   - bearer: []
   - session: []
 paths:
+  /api/settings/github-webhooks/{repositoryId}:
+    parameters:
+      - in: path
+        name: repositoryId
+        required: true
+        schema: { type: integer, format: int64, minimum: 1 }
+    put:
+      operationId: saveGitHubWebhook
+      description: Save or rotate a write-only GitHub Webhook secret.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [secret]
+              properties:
+                secret: {
+                  type: string,
+                  minLength: 32,
+                  maxLength: 256,
+                  writeOnly: true,
+                }
+      responses:
+        "204": { description: Secret saved. }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteGitHubWebhook
+      description: Disable the Webhook for this repository.
+      responses:
+        "204": { description: Webhook disabled. }
+        default: { $ref: "#/components/responses/Error" }
   /api/inbox/tasks:
     get:
       operationId: listWorkTasks
