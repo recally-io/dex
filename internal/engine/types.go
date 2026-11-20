@@ -68,6 +68,8 @@ type Input struct {
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string
+	// WorkTaskContext is model context. It is not part of the owner's message.
+	WorkTaskContext string
 	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
 	// waits for the run to end, "steer" joins the run after its current tool step, and "reject"
 	// returns ErrBusy.
@@ -77,6 +79,7 @@ type inputMetadata struct {
 	Scope       string       `json:"scope,omitempty"`
 	RequestID   string       `json:"requestId"`
 	Content     string       `json:"content"`
+	HasWorkTask bool         `json:"hasWorkTask,omitzero"`
 	Kind        string       `json:"kind,omitempty"`
 	Origin      string       `json:"origin"`
 	Source      string       `json:"source"`

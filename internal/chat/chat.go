@@ -801,7 +801,11 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			return err
 		}
 		if taskID != "" {
-			input.Content = "Dex Task ID: " + taskID + "\n\n" + input.Content
+			task, err := s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID})
+			if err != nil {
+				return err
+			}
+			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", task.Title, task.ID)
 		}
 	}
 	if input.Child {

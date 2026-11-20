@@ -162,7 +162,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					}
 				}
 			}
-			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
+			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
@@ -247,12 +247,16 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 }
 
 func inputText(input Input, workspace string) string {
+	content := input.Content
+	if input.WorkTaskContext != "" {
+		content = "Dex Task: " + input.WorkTaskContext + "\n\n" + content
+	}
 	if len(input.Attachments) == 0 {
-		return input.Content
+		return content
 	}
 	var text strings.Builder
-	if input.Content != "" {
-		text.WriteString(input.Content)
+	if content != "" {
+		text.WriteString(content)
 		text.WriteString("\n\n")
 	}
 	text.WriteString("Attached files:")
