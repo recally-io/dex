@@ -27,7 +27,7 @@ var verifyDigits = regexp.MustCompile(`^[0-9]{1,16}$`)
 // ConfigureWechat connects the runtime before the HTTP server starts.
 func (s *Service) ConfigureWechat(options wechat.Options, conn *sql.DB, onChange func(string, *wechat.Config)) {
 	s.wechatOptions = options
-	s.wechatDB = conn
+	s.db = conn
 	s.onWechat = onChange
 }
 
@@ -130,7 +130,7 @@ func (s *Service) activateWechat(ctx context.Context, agentID string, cfg *wecha
 			s.onWechat(agentID, previous)
 		}
 	}()
-	tx, err := s.wechatDB.BeginTx(ctx, nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}

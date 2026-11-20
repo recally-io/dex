@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQuery } from "@tanstack/react-query";
 import {
   listAgentEnvironmentsOptions,
   setChatEnvironmentMutation,
@@ -7,6 +7,31 @@ import type { Chat } from "../api/generated/types.gen";
 import { useAgentId } from "../lib/agent-scope";
 import { errorText, refreshChats } from "../lib/queries";
 import { Select } from "./form";
+
+const saveKey = ["setChatEnvironment"];
+
+// The first message must not run before the selection is saved: it would run in the default
+// environment, and the selection would then fail with 409. This returns why sending waits, from
+// the latest selection of the chat.
+export function useEnvironmentSendBlock(chatId: number | undefined): string | undefined {
+  const states = useMutationState({
+    filters: { mutationKey: saveKey },
+    select: (m) => {
+      // SAFETY: only ChatEnvironment uses saveKey, and it passes the setChatEnvironment options.
+      const variables = m.state.variables as { path: { chatId: number } } | undefined;
+
+      return { chatId: variables?.path.chatId, status: m.state.status };
+    },
+  });
+
+  const latest = states.filter((s) => s.chatId === chatId).at(-1);
+
+  if (latest?.status === "pending") return "Saving the environment…";
+
+  if (latest?.status === "error") return "The environment was not saved. Choose it again before you send.";
+
+  return undefined;
+}
 
 // A chat picks its environment before the first message. After that the name is read-only.
 export function ChatEnvironment({ chat, started }: { chat: Chat; started: boolean }) {
@@ -18,6 +43,7 @@ export function ChatEnvironment({ chat, started }: { chat: Chat; started: boolea
 
   const save = useMutation({
     ...setChatEnvironmentMutation(),
+    mutationKey: saveKey,
     onSuccess: () => refreshChats(agentId),
   });
 

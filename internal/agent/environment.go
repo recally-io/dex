@@ -2,35 +2,47 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// checkEnvironmentChange refuses a change of the bot's environment while sessions that follow it
-// have queued input or running background commands: they must not continue in another
-// environment. Input that arrives between this check and the save runs in the new environment;
-// a transaction around both is the fix if that window matters.
-func (s *Service) checkEnvironmentChange(ctx context.Context, old sqlc.Agent, environmentID string) error {
-	if old.EnvironmentID == environmentID {
-		return nil
+// saveSettings stores the settings of the agent old. A change of its environment runs in one
+// write transaction with the work check and the cwd reset: input and background commands that
+// commit first block the change, and input that commits later runs in the new environment. The
+// sessions that select an environment explicitly keep it, because a session selects only local
+// or SSH, which keep no per-bot state.
+func (s *Service) saveSettings(ctx context.Context, old sqlc.Agent, p sqlc.UpdateAgentSettingsParams) (err error) {
+	if old.EnvironmentID == p.EnvironmentID {
+		return s.q.UpdateAgentSettings(ctx, p)
 	}
-	n, err := s.q.CountDefaultSessionWork(ctx, old.ID)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, tx.Rollback())
+		}
+	}()
+	// Take the write lock first, so no input commits between the count and the update.
+	if _, err := tx.ExecContext(ctx, "UPDATE agents SET id = id WHERE 0"); err != nil {
+		return err
+	}
+	q := s.q.WithTx(tx)
+	n, err := q.CountDefaultSessionWork(ctx, old.ID)
 	if err != nil {
 		return err
 	}
 	if n > 0 {
 		return fmt.Errorf("%w: wait for %d items to end, or stop them", ErrEnvironmentBusy, n)
 	}
-	return nil
-}
-
-// environmentChanged runs after a change of the bot's environment. The sessions that follow the
-// bot start in the workspace of the new environment. A session that selects an environment
-// explicitly keeps it: a session selects only local or SSH, which keep no per-bot state.
-func (s *Service) environmentChanged(ctx context.Context, old sqlc.Agent, environmentID string) error {
-	if old.EnvironmentID == environmentID {
-		return nil
+	if err := q.UpdateAgentSettings(ctx, p); err != nil {
+		return err
 	}
-	return s.q.ClearDefaultSessionCwd(ctx, old.ID)
+	if err := q.ClearDefaultSessionCwd(ctx, old.ID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

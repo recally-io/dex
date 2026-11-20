@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -149,8 +150,26 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 	pinned := d.newSession(t).ID
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", pinned), map[string]any{"environmentId": "local"}, nil)
 
-	// When the command ends, then the change succeeds and the session starts in the new workspace.
 	callSessionTool(t, d, chatID, "background_stop", map[string]any{"id": bg.ID})
+
+	// When PiG has accepted input that has not started, then the change fails too.
+	d.setModel(t, "bash")
+	d.send(t, chatID, "sleep 2")
+	queued := d.send(t, chatID, `printf %s "${REMOTE_E2B_MARKER:-local}"`)
+	db := sessionDB(t, d)
+	eventually(t, "admitted queued input", func() (bool, any) {
+		var admitted sql.NullInt64
+		err := db.QueryRowContext(t.Context(), "SELECT admitted_at FROM submissions WHERE id = ?", queued).Scan(&admitted)
+		return err == nil && admitted.Valid, err
+	})
+	d.must(t, http.MethodPut, "/api/agents/default", bot, nil, http.StatusConflict)
+
+	// When the input settles, then the change succeeds and the session starts in the new workspace.
+	eventually(t, "settled input", func() (bool, any) {
+		var n int
+		err := db.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE status = 'pending'").Scan(&n)
+		return err == nil && n == 0, n
+	})
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
 	assertProject(t, d, chatID, "")
 	d.setModel(t, "bash")

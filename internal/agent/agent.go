@@ -43,7 +43,7 @@ type Service struct {
 	checkModel           func(context.Context, string, string) error
 	wechatOptions        wechat.Options
 	onWechat             func(string, *wechat.Config)
-	wechatDB             *sql.DB
+	db                   *sql.DB
 	ChannelStatus        func(string, string) channel.Status
 	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID, oldSandboxID string)
 	apiURL               string
@@ -153,17 +153,14 @@ func (s *Service) SaveAgent(ctx context.Context, id string, a Agent) error {
 		if cleanErr != nil {
 			return cleanErr
 		}
-		if err := s.checkEnvironmentChange(ctx, oldRow, a.EnvironmentID); err != nil {
-			return err
-		}
-		if err := s.q.UpdateAgentSettings(ctx, sqlc.UpdateAgentSettingsParams{
+		if err := s.saveSettings(ctx, oldRow, sqlc.UpdateAgentSettingsParams{
 			ModelProvider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
 			FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
 			Instructions: a.Instructions, EnvironmentID: a.EnvironmentID, ID: id, Name: a.Name,
 		}); err != nil {
 			return err
 		}
-		return s.environmentChanged(ctx, oldRow, a.EnvironmentID)
+		return nil
 	}()
 	if err != nil {
 		return err

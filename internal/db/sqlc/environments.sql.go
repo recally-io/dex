@@ -38,14 +38,14 @@ func (q *Queries) ClearDefaultSessionCwd(ctx context.Context, agentID string) er
 const countDefaultSessionWork = `-- name: CountDefaultSessionWork :one
 SELECT
     (SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-     WHERE c.agent_id = ?1 AND c.environment_id = '' AND s.status = 'pending' AND s.admitted_at IS NULL)
+     WHERE c.agent_id = ?1 AND c.environment_id = '' AND s.status = 'pending')
     + (SELECT count(*) FROM background_commands b JOIN conversations c ON c.id = b.conversation_id
        WHERE c.agent_id = ?1 AND c.environment_id = '' AND b.state IN ('starting', 'running'))
 `
 
-// Queued input and running background commands in the sessions of agent_id that follow the
+// Unsettled input and running background commands in the sessions of agent_id that follow the
 // environment of the agent. A change of that environment waits until they end. Admitted input
-// is not counted: its run started in the earlier environment.
+// counts too: PiG can accept input and keep it queued.
 func (q *Queries) CountDefaultSessionWork(ctx context.Context, agentID string) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countDefaultSessionWork, agentID)
 	var column_1 int64
