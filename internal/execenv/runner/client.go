@@ -10,7 +10,6 @@ import (
 
 	"github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/coder/websocket"
-	"github.com/recally-io/dex/internal/execenv/runnerproto"
 	"github.com/sourcegraph/jsonrpc2"
 )
 
@@ -28,7 +27,7 @@ var (
 // call at a time.
 type Client struct {
 	conn   *jsonrpc2.Conn
-	info   runnerproto.Ready
+	info   Ready
 	done   chan struct{}
 	stop   context.CancelFunc
 	once   sync.Once
@@ -39,12 +38,12 @@ type Client struct {
 
 // Connect takes ownership of socket and waits for the machine to report ready.
 func Connect(ctx context.Context, socket *websocket.Conn) (*Client, error) {
-	ready := make(chan runnerproto.Ready, 1)
+	ready := make(chan Ready, 1)
 	c := &Client{done: make(chan struct{})}
 	lifetime, stop := context.WithCancel(context.WithoutCancel(ctx))
 	c.stop = stop
 	// The handler runs in the read loop, so output arrives before the reply that ends its call.
-	c.conn = jsonrpc2.NewConn(lifetime, runnerproto.NewStream(lifetime, socket), &clientHandler{client: c, ready: ready})
+	c.conn = jsonrpc2.NewConn(lifetime, NewStream(lifetime, socket), &clientHandler{client: c, ready: ready})
 	select {
 	case c.info = <-ready:
 	case <-c.conn.DisconnectNotify():
@@ -76,11 +75,11 @@ func (c *Client) Close() {
 func (c *Client) Done() <-chan struct{} { return c.done }
 
 // Info reports the platform and the workspace of the machine.
-func (c *Client) Info() runnerproto.Ready { return c.info }
+func (c *Client) Info() Ready { return c.info }
 
 // Call runs one method and returns the machine answer. A canceled context stops the call on
 // the machine, and a lost session reports an unknown result.
-func (c *Client) Call(ctx context.Context, method string, params runnerproto.Tagger, result any) error {
+func (c *Client) Call(ctx context.Context, method string, params Tagger, result any) error {
 	select {
 	case <-c.done:
 		return ErrOffline
@@ -98,7 +97,7 @@ func (c *Client) run(ctx context.Context, method string, tag uint64, params, res
 	}
 	if ctx.Err() != nil {
 		// The machine keeps running the call until it hears the cancel.
-		_ = c.conn.Notify(context.WithoutCancel(ctx), runnerproto.MethodCancel, runnerproto.CancelParams{Identity: runnerproto.IdentityOf(tag)})
+		_ = c.conn.Notify(context.WithoutCancel(ctx), MethodCancel, CancelParams{Identity: IdentityOf(tag)})
 		return ctx.Err()
 	}
 	if errors.Is(err, jsonrpc2.ErrClosed) {
@@ -114,7 +113,7 @@ func machineFailure(err error) error {
 	if !errors.As(err, &rpcErr) {
 		return err
 	}
-	var detail runnerproto.Failure
+	var detail Failure
 	if rpcErr.Data != nil {
 		_ = decode(rpcErr.Data, &detail)
 	}
@@ -122,7 +121,7 @@ func machineFailure(err error) error {
 }
 
 // Exec runs one command and streams its output to onOutput.
-func (c *Client) Exec(ctx context.Context, command any, opts runnerproto.ExecParams, onOutput func(string, env.ShellStream)) (int, error) {
+func (c *Client) Exec(ctx context.Context, command any, opts ExecParams, onOutput func(string, env.ShellStream)) (int, error) {
 	switch value := command.(type) {
 	case string:
 		opts.Shell = value
@@ -150,8 +149,8 @@ func (c *Client) Exec(ctx context.Context, command any, opts runnerproto.ExecPar
 			c.mu.Unlock()
 		}()
 	}
-	var result runnerproto.ExecResult
-	if err := c.run(ctx, runnerproto.MethodExec, tag, &opts, &result); err != nil {
+	var result ExecResult
+	if err := c.run(ctx, MethodExec, tag, &opts, &result); err != nil {
 		return 0, err
 	}
 	return result.ExitCode, nil
@@ -159,8 +158,8 @@ func (c *Client) Exec(ctx context.Context, command any, opts runnerproto.ExecPar
 
 // ReadFile reads one file from the machine.
 func (c *Client) ReadFile(ctx context.Context, path string) ([]byte, error) {
-	var result runnerproto.DataResult
-	if err := c.Call(ctx, runnerproto.MethodRead, &runnerproto.PathParams{Path: path}, &result); err != nil {
+	var result DataResult
+	if err := c.Call(ctx, MethodRead, &PathParams{Path: path}, &result); err != nil {
 		return nil, err
 	}
 	return result.Data, nil
@@ -171,19 +170,19 @@ func (c *Client) WriteFile(ctx context.Context, path string, data []byte) error 
 	if len(data) > maxFileBytes {
 		return errFileLimit
 	}
-	return c.Call(ctx, runnerproto.MethodWrite, &runnerproto.WriteParams{Path: path, Data: data}, nil)
+	return c.Call(ctx, MethodWrite, &WriteParams{Path: path, Data: data}, nil)
 }
 
 // clientHandler receives the messages that the machine sends on its own.
 type clientHandler struct {
 	client *Client
-	ready  chan<- runnerproto.Ready
+	ready  chan<- Ready
 }
 
 func (h *clientHandler) Handle(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) {
 	switch req.Method {
-	case runnerproto.MethodReady:
-		var info runnerproto.Ready
+	case MethodReady:
+		var info Ready
 		if req.Params == nil || decode(req.Params, &info) != nil {
 			return
 		}
@@ -191,8 +190,8 @@ func (h *clientHandler) Handle(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc
 		case h.ready <- info:
 		default:
 		}
-	case runnerproto.MethodOutput:
-		var output runnerproto.OutputParams
+	case MethodOutput:
+		var output OutputParams
 		if req.Params == nil || decode(req.Params, &output) != nil {
 			return
 		}

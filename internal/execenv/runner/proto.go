@@ -1,5 +1,4 @@
-// Package runnerproto defines the JSON-RPC messages between Dex and a remote machine.
-package runnerproto
+package runner
 
 import (
 	"context"

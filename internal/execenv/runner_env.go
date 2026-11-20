@@ -12,7 +12,6 @@ import (
 
 	env "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/execenv/runner"
-	"github.com/recally-io/dex/internal/execenv/runnerproto"
 )
 
 type runnerHandle struct {
@@ -67,32 +66,32 @@ func (e *runnerEnv) JoinPath(ctx context.Context, p []string) (string, error) {
 }
 
 // call runs one method on the machine.
-func (e *runnerEnv) call(ctx context.Context, method string, params runnerproto.Tagger, result any) error {
+func (e *runnerEnv) call(ctx context.Context, method string, params runner.Tagger, result any) error {
 	return e.handle.client.Call(ctx, method, params, result)
 }
-func runnerValue[T any, P runnerproto.Tagger](ctx context.Context, e *runnerEnv, method string, params P) (T, error) {
+func runnerValue[T any, P runner.Tagger](ctx context.Context, e *runnerEnv, method string, params P) (T, error) {
 	var value T
 	err := e.call(ctx, method, params, &value)
 	return value, err
 }
 func (e *runnerEnv) ReadBinaryFile(ctx context.Context, p string) ([]byte, error) {
-	var result runnerproto.DataResult
-	err := e.call(ctx, runnerproto.MethodRead, &runnerproto.PathParams{Path: e.resolve(p)}, &result)
+	var result runner.DataResult
+	err := e.call(ctx, runner.MethodRead, &runner.PathParams{Path: e.resolve(p)}, &result)
 	return result.Data, err
 }
 func (e *runnerEnv) ReadTextFile(ctx context.Context, p string) (string, error) {
-	result, err := runnerValue[runnerproto.TextResult](ctx, e, runnerproto.MethodText, &runnerproto.PathParams{Path: e.resolve(p)})
+	result, err := runnerValue[runner.TextResult](ctx, e, runner.MethodText, &runner.PathParams{Path: e.resolve(p)})
 	return result.Text, err
 }
 func (e *runnerEnv) FileInfo(ctx context.Context, p string) (env.FileInfo, error) {
-	return runnerValue[env.FileInfo](ctx, e, runnerproto.MethodStat, &runnerproto.PathParams{Path: e.resolve(p)})
+	return runnerValue[env.FileInfo](ctx, e, runner.MethodStat, &runner.PathParams{Path: e.resolve(p)})
 }
 func (e *runnerEnv) CanonicalPath(ctx context.Context, p string) (string, error) {
-	result, err := runnerValue[runnerproto.PathResult](ctx, e, runnerproto.MethodCanonical, &runnerproto.PathParams{Path: e.resolve(p)})
+	result, err := runnerValue[runner.PathResult](ctx, e, runner.MethodCanonical, &runner.PathParams{Path: e.resolve(p)})
 	return result.Path, err
 }
 func (e *runnerEnv) ListDir(ctx context.Context, p string) ([]env.FileInfo, error) {
-	return runnerValue[[]env.FileInfo](ctx, e, runnerproto.MethodList, &runnerproto.PathParams{Path: e.resolve(p)})
+	return runnerValue[[]env.FileInfo](ctx, e, runner.MethodList, &runner.PathParams{Path: e.resolve(p)})
 }
 func (e *runnerEnv) Exists(ctx context.Context, p string) (bool, error) {
 	_, err := e.FileInfo(ctx, p)
@@ -102,38 +101,38 @@ func (e *runnerEnv) Exists(ctx context.Context, p string) (bool, error) {
 	return err == nil, err
 }
 func (e *runnerEnv) CreateDir(ctx context.Context, p string, opts *env.CreateDirOptions) error {
-	params := runnerproto.MakeDirParams{Path: e.resolve(p)}
+	params := runner.MakeDirParams{Path: e.resolve(p)}
 	if opts != nil {
 		params.Recursive = opts.Recursive
 	}
-	return e.call(ctx, runnerproto.MethodMakeDir, &params, nil)
+	return e.call(ctx, runner.MethodMakeDir, &params, nil)
 }
 func (e *runnerEnv) Remove(ctx context.Context, p string, opts *env.RemoveOptions) error {
-	params := runnerproto.RemoveParams{Path: e.resolve(p)}
+	params := runner.RemoveParams{Path: e.resolve(p)}
 	if opts != nil {
 		params.Recursive, params.Force = opts.Recursive, opts.Force
 	}
-	return e.call(ctx, runnerproto.MethodRemove, &params, nil)
+	return e.call(ctx, runner.MethodRemove, &params, nil)
 }
 func (e *runnerEnv) RenameFile(ctx context.Context, from, to string) error {
-	return e.call(ctx, runnerproto.MethodRename, &runnerproto.RenameParams{Path: e.resolve(from), Dest: e.resolve(to)}, nil)
+	return e.call(ctx, runner.MethodRename, &runner.RenameParams{Path: e.resolve(from), Dest: e.resolve(to)}, nil)
 }
 func (e *runnerEnv) TruncateFile(ctx context.Context, p string, size int64) error {
-	return e.call(ctx, runnerproto.MethodTruncate, &runnerproto.TruncateParams{Path: e.resolve(p), Size: size}, nil)
+	return e.call(ctx, runner.MethodTruncate, &runner.TruncateParams{Path: e.resolve(p), Size: size}, nil)
 }
 func (e *runnerEnv) FlushFile(ctx context.Context, p string) error {
-	return e.call(ctx, runnerproto.MethodFlush, &runnerproto.PathParams{Path: e.resolve(p)}, nil)
+	return e.call(ctx, runner.MethodFlush, &runner.PathParams{Path: e.resolve(p)}, nil)
 }
 func (e *runnerEnv) CreateTempDir(ctx context.Context, prefix *string) (string, error) {
-	result, err := runnerValue[runnerproto.PathResult](ctx, e, runnerproto.MethodTempDir, &runnerproto.TempDirParams{Prefix: prefix})
+	result, err := runnerValue[runner.PathResult](ctx, e, runner.MethodTempDir, &runner.TempDirParams{Prefix: prefix})
 	return result.Path, err
 }
 func (e *runnerEnv) CreateTempFile(ctx context.Context, opts *env.CreateTempFileOptions) (string, error) {
-	params := runnerproto.TempFileParams{}
+	params := runner.TempFileParams{}
 	if opts != nil {
 		params.Prefix, params.Suffix = &opts.Prefix, &opts.Suffix
 	}
-	result, err := runnerValue[runnerproto.PathResult](ctx, e, runnerproto.MethodTempFile, &params)
+	result, err := runnerValue[runner.PathResult](ctx, e, runner.MethodTempFile, &params)
 	return result.Path, err
 }
 func (e *runnerEnv) write(ctx context.Context, method, p string, content any) error {
@@ -146,13 +145,13 @@ func (e *runnerEnv) write(ctx context.Context, method, p string, content any) er
 	default:
 		return env.NewFileError(env.FileErrorInvalid, "expected string or bytes", p, nil)
 	}
-	return e.call(ctx, method, &runnerproto.WriteParams{Path: e.resolve(p), Data: data}, nil)
+	return e.call(ctx, method, &runner.WriteParams{Path: e.resolve(p), Data: data}, nil)
 }
 func (e *runnerEnv) WriteFile(ctx context.Context, p string, v any) error {
-	return e.write(ctx, runnerproto.MethodWrite, p, v)
+	return e.write(ctx, runner.MethodWrite, p, v)
 }
 func (e *runnerEnv) AppendFile(ctx context.Context, p string, v any) error {
-	return e.write(ctx, runnerproto.MethodAppend, p, v)
+	return e.write(ctx, runner.MethodAppend, p, v)
 }
 func (e *runnerEnv) OpenDirReader(ctx context.Context, p string) (env.DirReader, error) {
 	entries, err := e.ListDir(ctx, p)
@@ -198,8 +197,8 @@ func (e *runnerEnv) OpenBinaryReader(ctx context.Context, p string, opts *env.Op
 	if err != nil {
 		return nil, err
 	}
-	var result runnerproto.DataResult
-	if err := e.call(ctx, runnerproto.MethodRead, &runnerproto.PathParams{Path: e.resolve(p), NoFollow: opts != nil && opts.NoFollow}, &result); err != nil {
+	var result runner.DataResult
+	if err := e.call(ctx, runner.MethodRead, &runner.PathParams{Path: e.resolve(p), NoFollow: opts != nil && opts.NoFollow}, &result); err != nil {
 		return nil, err
 	}
 	info.Size = int64(len(result.Data))
@@ -214,7 +213,7 @@ func (e *runnerEnv) Exec(ctx context.Context, command any, opts *env.ShellExecOp
 	default:
 		return env.ShellExecResult{}, fmt.Errorf("invalid command type %T", command)
 	}
-	params := runnerproto.ExecParams{Cwd: e.resolve(opts.Cwd), InheritEnv: opts.InheritEnv, Timeout: opts.Timeout, Env: map[string]string{}}
+	params := runner.ExecParams{Cwd: e.resolve(opts.Cwd), InheritEnv: opts.InheritEnv, Timeout: opts.Timeout, Env: map[string]string{}}
 	maps.Copy(params.Env, e.extra)
 	maps.Copy(params.Env, opts.Env)
 	code, err := e.handle.client.Exec(ctx, command, params, func(text string, stream env.ShellStream) {

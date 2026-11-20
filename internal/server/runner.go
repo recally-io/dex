@@ -13,7 +13,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/execenv"
-	"github.com/recally-io/dex/internal/execenv/runnerproto"
+	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
 func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRequestObject) (api.IssueRunnerCodeResponseObject, error) {
@@ -85,11 +85,11 @@ func (h *handler) connectRunner(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "the machine certificate is not enrolled; install the machine again")
 		return
 	}
-	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), runnerproto.Version) {
+	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), runner.Version) {
 		writeError(w, http.StatusUpgradeRequired, "the machine protocol is incompatible")
 		return
 	}
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{runnerproto.Version}})
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{runner.Version}})
 	if err != nil {
 		return
 	}

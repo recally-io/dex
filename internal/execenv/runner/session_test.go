@@ -14,7 +14,6 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/execenv/runner"
-	"github.com/recally-io/dex/internal/execenv/runnerproto"
 )
 
 func TestUserRunsToolsOnConnectedRunner(t *testing.T) {
@@ -30,7 +29,7 @@ func TestUserRunsToolsOnConnectedRunner(t *testing.T) {
 		t.Fatalf("read returned %d bytes: %v", len(got), err)
 	}
 	var stdout, stderr strings.Builder
-	result, err := client.Exec(ctx, "printf out; printf err >&2; exit 7", runnerproto.ExecParams{}, func(text string, stream env.ShellStream) {
+	result, err := client.Exec(ctx, "printf out; printf err >&2; exit 7", runner.ExecParams{}, func(text string, stream env.ShellStream) {
 		if stream == env.ShellStdout {
 			stdout.WriteString(text)
 		} else {
@@ -48,7 +47,7 @@ func TestUserCancelsCommandWithoutDisconnectingRunner(t *testing.T) {
 	defer cancel()
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
-	_, err := client.Exec(runCtx, "printf started; exec sleep 60", runnerproto.ExecParams{}, func(text string, _ env.ShellStream) {
+	_, err := client.Exec(runCtx, "printf started; exec sleep 60", runner.ExecParams{}, func(text string, _ env.ShellStream) {
 		if strings.Contains(text, "started") {
 			stop()
 		}
@@ -56,7 +55,7 @@ func TestUserCancelsCommandWithoutDisconnectingRunner(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancel returned %v", err)
 	}
-	result, err := client.Exec(ctx, "exit 3", runnerproto.ExecParams{}, nil)
+	result, err := client.Exec(ctx, "exit 3", runner.ExecParams{}, nil)
 	if err != nil || result != 3 {
 		t.Fatalf("next exec returned (%d, %v)", result, err)
 	}
@@ -66,7 +65,7 @@ func TestUserSeesUnknownResultAfterRunnerDisconnects(t *testing.T) {
 	client, stopped := connect(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	_, err := client.Exec(ctx, "printf started; exec sleep 60", runnerproto.ExecParams{}, func(text string, _ env.ShellStream) {
+	_, err := client.Exec(ctx, "printf started; exec sleep 60", runner.ExecParams{}, func(text string, _ env.ShellStream) {
 		if strings.Contains(text, "started") {
 			client.Close()
 		}
@@ -79,7 +78,7 @@ func TestUserSeesUnknownResultAfterRunnerDisconnects(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("runner did not finish cleanup")
 	}
-	_, err = client.Exec(ctx, "exit 0", runnerproto.ExecParams{}, nil)
+	_, err = client.Exec(ctx, "exit 0", runner.ExecParams{}, nil)
 	if !errors.Is(err, runner.ErrOffline) {
 		t.Fatalf("new command on old session returned %v", err)
 	}
@@ -91,7 +90,7 @@ func connect(t *testing.T) (*runner.Client, <-chan struct{}) {
 	t.Cleanup(cancel)
 	accepted := make(chan *runner.Client, 1)
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{runnerproto.Version}})
+		c, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{runner.Version}})
 		if err != nil {
 			t.Error(err)
 			return
@@ -105,7 +104,7 @@ func connect(t *testing.T) (*runner.Client, <-chan struct{}) {
 	}))
 	t.Cleanup(server.Close)
 	// Dial takes ownership of the socket and clears the HTTP response body.
-	socket, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(server.URL, "https"), &websocket.DialOptions{HTTPClient: server.Client(), Subprotocols: []string{runnerproto.Version}}) //nolint:bodyclose
+	socket, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(server.URL, "https"), &websocket.DialOptions{HTTPClient: server.Client(), Subprotocols: []string{runner.Version}}) //nolint:bodyclose
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -22,7 +22,6 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/execenv/runner"
-	"github.com/recally-io/dex/internal/execenv/runnerproto"
 )
 
 // device is the enrolled state. Dex identifies this machine by the certificate key, so no
@@ -214,7 +213,7 @@ func run(ctx context.Context, state string) error {
 	for ctx.Err() == nil {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
 		// websocket.Dial takes ownership of the response on a successful upgrade.
-		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPClient: client, Subprotocols: []string{runnerproto.Version}}) //nolint:bodyclose
+		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPClient: client, Subprotocols: []string{runner.Version}}) //nolint:bodyclose
 		cancel()
 		if res != nil && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden) {
 			return errors.New("the machine certificate was rejected; install the machine again")

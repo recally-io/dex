@@ -20,7 +20,6 @@ import (
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/execenv/runner"
-	"github.com/recally-io/dex/internal/execenv/runnerproto"
 )
 
 // TestUserEnrollsRemoteMachine installs a machine with one command. Dex publishes a pinned TLS
@@ -107,7 +106,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 
 	dial := func() (*websocket.Conn, error) {
 		u := url.URL{Scheme: "wss", Host: origin.Host, Path: devicePath + "/connect"}
-		ws, res, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPClient: client, Subprotocols: []string{runnerproto.Version}})
+		ws, res, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPClient: client, Subprotocols: []string{runner.Version}})
 		if res != nil && res.Body != nil {
 			_ = res.Body.Close()
 		}
