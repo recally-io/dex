@@ -15,6 +15,19 @@ export type WorkTask = {
     updatedAt: number;
 };
 
+export type WorkTaskGitHubPull = {
+    repositoryId: number;
+    pullNumber: number;
+    waits: Array<WorkTaskReviewWait>;
+};
+
+export type WorkTaskReviewWait = {
+    id: number;
+    revision: string;
+    afterAt: number;
+    resolved: boolean;
+};
+
 export type WorkTaskQuestion = {
     id: string;
     text: string;
@@ -1474,6 +1487,7 @@ export type GetWorkTaskResponses = {
         task: WorkTask;
         entries: Array<WorkTaskEntry>;
         questions: Array<WorkTaskQuestion>;
+        githubPulls: Array<WorkTaskGitHubPull>;
     };
 };
 

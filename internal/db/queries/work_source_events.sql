@@ -24,6 +24,9 @@ WHERE t.id = @task_id AND t.agent_id = @agent_id AND a.archived_at IS NULL
 ON CONFLICT (namespace, object_type, object_key) DO UPDATE SET task_id = excluded.task_id
 WHERE work_task_objects.task_id = excluded.task_id;
 
+-- name: ListWorkTaskObjects :many
+SELECT * FROM work_task_objects WHERE task_id = ? ORDER BY namespace, object_type, object_key;
+
 -- name: HasWorkTaskObject :one
 SELECT count(*) FROM work_task_objects WHERE namespace = ? AND object_type = ? AND object_key = ?;
 

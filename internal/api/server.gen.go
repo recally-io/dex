@@ -1723,6 +1723,13 @@ type WorkTaskEntry struct {
 	Id        int64  `json:"id"`
 }
 
+// WorkTaskGitHubPull defines model for WorkTaskGitHubPull.
+type WorkTaskGitHubPull struct {
+	PullNumber   int64                `json:"pullNumber"`
+	RepositoryId int64                `json:"repositoryId"`
+	Waits        []WorkTaskReviewWait `json:"waits"`
+}
+
 // WorkTaskLifecycle defines model for WorkTaskLifecycle.
 type WorkTaskLifecycle string
 
@@ -1732,6 +1739,14 @@ type WorkTaskQuestion struct {
 	Options []string `json:"options"`
 	Queued  bool     `json:"queued"`
 	Text    string   `json:"text"`
+}
+
+// WorkTaskReviewWait defines model for WorkTaskReviewWait.
+type WorkTaskReviewWait struct {
+	AfterAt  int64  `json:"afterAt"`
+	Id       int64  `json:"id"`
+	Resolved bool   `json:"resolved"`
+	Revision string `json:"revision"`
 }
 
 // AgentId defines model for AgentId.
@@ -9411,9 +9426,10 @@ type GetWorkTaskResponseObject interface {
 }
 
 type GetWorkTask200JSONResponse struct {
-	Entries   []WorkTaskEntry    `json:"entries"`
-	Questions []WorkTaskQuestion `json:"questions"`
-	Task      WorkTask           `json:"task"`
+	Entries     []WorkTaskEntry      `json:"entries"`
+	GithubPulls []WorkTaskGitHubPull `json:"githubPulls"`
+	Questions   []WorkTaskQuestion   `json:"questions"`
+	Task        WorkTask             `json:"task"`
 }
 
 func (response GetWorkTask200JSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {

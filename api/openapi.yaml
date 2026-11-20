@@ -186,7 +186,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [task, entries, questions]
+                required: [task, entries, questions, githubPulls]
                 properties:
                   task: { $ref: "#/components/schemas/WorkTask" }
                   entries: {
@@ -197,6 +197,9 @@ paths:
                     type: array,
                     items: { $ref: "#/components/schemas/WorkTaskQuestion" },
                   }
+                  githubPulls:
+                    type: array
+                    items: { $ref: "#/components/schemas/WorkTaskGitHubPull" }
         default: { $ref: "#/components/responses/Error" }
     patch:
       operationId: setWorkTaskLifecycle
@@ -2160,6 +2163,23 @@ components:
         lifecycle: { $ref: "#/components/schemas/WorkTaskLifecycle" }
         createdAt: { type: integer, format: int64 }
         updatedAt: { type: integer, format: int64 }
+    WorkTaskGitHubPull:
+      type: object
+      required: [repositoryId, pullNumber, waits]
+      properties:
+        repositoryId: { type: integer, format: int64 }
+        pullNumber: { type: integer, format: int64 }
+        waits:
+          type: array
+          items: { $ref: "#/components/schemas/WorkTaskReviewWait" }
+    WorkTaskReviewWait:
+      type: object
+      required: [id, revision, afterAt, resolved]
+      properties:
+        id: { type: integer, format: int64 }
+        revision: { type: string }
+        afterAt: { type: integer, format: int64 }
+        resolved: { type: boolean }
     WorkTaskQuestion:
       type: object
       required: [id, text, options, queued]

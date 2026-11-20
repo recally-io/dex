@@ -197,6 +197,38 @@ func (q *Queries) LinkWorkTaskObject(ctx context.Context, arg LinkWorkTaskObject
 	return result.RowsAffected()
 }
 
+const listWorkTaskObjects = `-- name: ListWorkTaskObjects :many
+SELECT namespace, object_type, object_key, task_id FROM work_task_objects WHERE task_id = ? ORDER BY namespace, object_type, object_key
+`
+
+func (q *Queries) ListWorkTaskObjects(ctx context.Context, taskID string) ([]WorkTaskObject, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkTaskObjects, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkTaskObject{}
+	for rows.Next() {
+		var i WorkTaskObject
+		if err := rows.Scan(
+			&i.Namespace,
+			&i.ObjectType,
+			&i.ObjectKey,
+			&i.TaskID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkTaskWaits = `-- name: ListWorkTaskWaits :many
 SELECT w.id, w.task_id, w.namespace, w.object_type, w.object_key, w.event_type, w.revision, w.after_at, w.resolved_by FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.agent_id
 WHERE w.task_id = ?1 AND t.agent_id = ?2 AND a.archived_at IS NULL ORDER BY w.id
