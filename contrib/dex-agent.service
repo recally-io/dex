@@ -1,0 +1,19 @@
+[Unit]
+Description=Dex remote machine agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=dex-agent
+Group=dex-agent
+StateDirectory=dex-agent
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/dex-agent run -state /var/lib/dex-agent
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

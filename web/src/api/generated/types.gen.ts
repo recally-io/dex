@@ -623,7 +623,7 @@ export type OnePasswordInput = {
     serviceAccountToken?: string;
 };
 
-export type EnvironmentKind = 'pi-env' | 'e2b';
+export type EnvironmentKind = 'pi-env' | 'e2b' | 'runner';
 
 export type EnvironmentConfig = {
     host?: string;
@@ -1713,6 +1713,62 @@ export type ForgetEnvironmentHostKeyResponses = {
 };
 
 export type ForgetEnvironmentHostKeyResponse = ForgetEnvironmentHostKeyResponses[keyof ForgetEnvironmentHostKeyResponses];
+
+export type RevokeRunnerData = {
+    body?: never;
+    path: {
+        environmentId: string;
+    };
+    query?: never;
+    url: '/api/settings/environments/{environmentId}/runner-pairing';
+};
+
+export type RevokeRunnerErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RevokeRunnerError = RevokeRunnerErrors[keyof RevokeRunnerErrors];
+
+export type RevokeRunnerResponses = {
+    /**
+     * Credential revoked.
+     */
+    200: Ok;
+};
+
+export type RevokeRunnerResponse = RevokeRunnerResponses[keyof RevokeRunnerResponses];
+
+export type IssueRunnerCodeData = {
+    body?: never;
+    path: {
+        environmentId: string;
+    };
+    query?: never;
+    url: '/api/settings/environments/{environmentId}/runner-pairing';
+};
+
+export type IssueRunnerCodeErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type IssueRunnerCodeError = IssueRunnerCodeErrors[keyof IssueRunnerCodeErrors];
+
+export type IssueRunnerCodeResponses = {
+    /**
+     * Pairing code. It expires after ten minutes.
+     */
+    200: {
+        code: string;
+    };
+};
+
+export type IssueRunnerCodeResponse = IssueRunnerCodeResponses[keyof IssueRunnerCodeResponses];
 
 export type ListModelsData = {
     body?: never;

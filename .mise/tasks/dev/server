@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run dex for development on port 18787 with data in ~/.dex-dev"
-#MISE depends=["build:web"]
+#MISE depends=["build:web", "dev:machine-release"]
 set -euo pipefail
 
 # Later flags win: `mise run dev:server -- --data-dir <dir>` uses other data.

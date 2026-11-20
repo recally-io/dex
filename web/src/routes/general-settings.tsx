@@ -249,11 +249,11 @@ export function GeneralSettingsPage() {
                       { environmentId: nextId },
                       target
                         ? `Default execution environment is now ${target.name}.`
-                        : "Default execution environment is now Local.",
+                        : "Default execution environment is now this computer.",
                     ).catch(() => {});
                   }}
                 >
-                  <option value="">This computer (local)</option>
+                  <option value="">This computer</option>
                   {missingEnv ? (
                     <option value={defaults.environmentId}>Missing ({defaults.environmentId})</option>
                   ) : null}

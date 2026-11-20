@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -56,6 +57,9 @@ const (
 	maxMessage     = 32000
 	maxAttachments = 10
 )
+
+//go:embed install-machine.sh
+var machineInstaller []byte
 
 // errInvalid is a request that the handler refuses with 400.
 var errInvalid = errors.New("invalid request")
@@ -115,6 +119,12 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
+	// A machine reads these paths before it has a token, and it authenticates with its own
+	// token afterwards, so they sit outside the admin API.
+	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
+	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
+	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
+	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	mux.Handle("/", web.Handler())
 	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
 	// multipart headers.

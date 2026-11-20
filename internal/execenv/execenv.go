@@ -18,6 +18,8 @@ const (
 	KindPiEnv Kind = "pi-env"
 	// KindE2B runs tools and shell commands inside an E2B sandbox.
 	KindE2B Kind = "e2b"
+	// KindRunner runs tools on a host that connects to Dex.
+	KindRunner Kind = "runner"
 )
 
 // ErrInvalidPath is returned when a requested project or directory path fails validation.

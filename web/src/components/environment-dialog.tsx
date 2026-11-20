@@ -20,25 +20,49 @@ import { SandboxEnvironmentFields, useSandboxEnvironmentForm } from "./environme
 import { SshEnvironmentFields, useSshEnvironmentForm } from "./environment-ssh-fields";
 import { Failure, Spinner } from "./feedback";
 import { ProbeResultPanel } from "./probe-result-panel";
+import { RunnerInstall } from "./runner-install";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Field } from "./form";
 
-const environmentChoices: readonly {
-  kind: EnvironmentKind;
+// A place is what the user picks first: where the bot runs. The access method is a
+// property of a machine, so it comes second and only when the place is a machine.
+type Place = "machine" | "sandbox";
+
+const environmentPlaces: readonly {
+  place: Place;
   title: string;
   subtitle: string;
   traits: string;
 }[] = [
   {
-    kind: "pi-env",
-    title: "SSH Machine",
-    subtitle: "Remote server, Mac, or local VM over SSH",
-    traits: "Persistent disk · Login shell",
+    place: "machine",
+    title: "Another machine",
+    subtitle: "A Linux or macOS machine that you own",
+    traits: "Persistent disk · Your files",
   },
   {
-    kind: "e2b",
+    place: "sandbox",
     title: "Sandbox",
-    subtitle: "Isolated E2B Cloud, Docker, or microVM",
-    traits: "Isolated disk · Disposable per bot",
+    subtitle: "An isolated cloud VM that Dex creates for one bot",
+    traits: "Isolated disk · Disposable",
+  },
+];
+
+const machineAccess: readonly {
+  kind: EnvironmentKind;
+  title: string;
+  subtitle: string;
+}[] = [
+  {
+    kind: "pi-env",
+    title: "Over SSH",
+    subtitle: "The machine runs sshd and Dex can reach it",
+  },
+  {
+    kind: "runner",
+    title: "dex runner",
+    subtitle: "The machine connects out to Dex. No sshd, no inbound port.",
   },
 ];
 
@@ -55,8 +79,18 @@ export function EnvironmentDialog({
 }) {
   const { notify } = useApp();
   const [kind, setKind] = useState<EnvironmentKind>(existing?.kind ?? "pi-env");
+
+  const [machineKind, setMachineKind] = useState<EnvironmentKind>(
+    existing?.kind === "runner" ? "runner" : "pi-env",
+  );
+
   const [tried, setTried] = useState(false);
+  const [serviceName, setServiceName] = useState(existing?.kind === "runner" ? existing.name : "");
   const [probeResult, setProbeResult] = useState<EnvironmentTestResult | null>(null);
+
+  // A dex runner environment must exist before Dex can issue its install command, so the
+  // dialog stays open after the save and shows that command.
+  const [created, setCreated] = useState<Environment | null>(null);
 
   const resetProbe = () => {
     setProbeResult(null);
@@ -70,8 +104,16 @@ export function EnvironmentDialog({
     ...createEnvironmentMutation(),
     onSuccess: async (saved) => {
       await refreshEnvironments();
-      onClose();
+
       notify(`Added ${saved.name}.`);
+
+      if (saved.kind === "runner") {
+        setCreated(saved);
+
+        return;
+      }
+
+      onClose();
     },
   });
 
@@ -104,6 +146,7 @@ export function EnvironmentDialog({
   const pending = create.isPending || update.isPending;
   const mutationError = create.error ?? update.error;
   const active = kind === "pi-env" ? ssh : sandbox;
+  const place: Place = kind === "e2b" ? "sandbox" : "machine";
 
   const showSsh = (key: keyof typeof ssh.errors) => (tried ? ssh.errors[key] : undefined);
   const showSandbox = (key: keyof typeof sandbox.errors) => (tried ? sandbox.errors[key] : undefined);
@@ -119,9 +162,9 @@ export function EnvironmentDialog({
   function submit() {
     setTried(true);
 
-    if (active.hasErrors || pending) return;
+    if (pending || (kind === "runner" ? !serviceName.trim() : active.hasErrors)) return;
 
-    const body = active.submitBody();
+    const body = kind === "runner" ? { name: serviceName.trim(), kind, config: {} } : active.submitBody();
 
     if (existing) {
       update.mutate({ path: { environmentId: existing.id }, body });
@@ -137,27 +180,35 @@ export function EnvironmentDialog({
       pending={pending}
       onClose={onClose}
       footer={
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            className="mr-auto"
-            onClick={runProbe}
-            disabled={pending || probe.isPending}
-          >
-            {probe.isPending ? <Spinner /> : null}
-            {probe.isPending ? "Testing…" : "Test connection"}
-          </Button>
-          <Button variant="secondary" onClick={onClose} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending}>
-            {pending ? (
-              <Spinner className="border-primary-foreground/40 border-t-primary-foreground" />
+        created ? (
+          <Button onClick={onClose}>Done</Button>
+        ) : (
+          <>
+            {kind !== "runner" ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mr-auto"
+                onClick={runProbe}
+                disabled={pending || probe.isPending}
+              >
+                {probe.isPending ? <Spinner /> : null}
+                {probe.isPending ? "Testing…" : "Test connection"}
+              </Button>
             ) : null}
-            {pending ? "Saving…" : existing ? "Save changes" : "Add environment"}
-          </Button>
-        </>
+            <Button variant="secondary" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            {kind === "runner" && !existing ? null : (
+              <Button onClick={submit} disabled={pending}>
+                {pending ? (
+                  <Spinner className="border-primary-foreground/40 border-t-primary-foreground" />
+                ) : null}
+                {pending ? "Saving…" : existing ? "Save changes" : "Add environment"}
+              </Button>
+            )}
+          </>
+        )
       }
     >
       <form
@@ -169,19 +220,20 @@ export function EnvironmentDialog({
         }}
       >
         {!existing ? (
-          <div role="radiogroup" aria-label="Environment type" className="grid gap-2.5 sm:grid-cols-2">
-            {environmentChoices.map((choice) => {
-              const selected = kind === choice.kind;
+          <div role="radiogroup" aria-label="Where the bot runs" className="grid gap-2.5 sm:grid-cols-2">
+            {environmentPlaces.map((choice) => {
+              const selected = place === choice.place;
 
               return (
                 <button
-                  key={choice.kind}
+                  key={choice.place}
                   type="button"
                   role="radio"
                   aria-checked={selected}
                   aria-label={choice.title}
+                  disabled={!!created}
                   onClick={() => {
-                    setKind(choice.kind);
+                    setKind(choice.place === "sandbox" ? "e2b" : machineKind);
                     setTried(false);
                     setProbeResult(null);
                     probe.reset();
@@ -204,6 +256,45 @@ export function EnvironmentDialog({
           </div>
         ) : null}
 
+        {!existing && place === "machine" ? (
+          <div
+            role="radiogroup"
+            aria-label="How Dex reaches the machine"
+            className="grid gap-2 sm:grid-cols-2"
+          >
+            {machineAccess.map((choice) => {
+              const selected = kind === choice.kind;
+
+              return (
+                <button
+                  key={choice.kind}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  aria-label={choice.title}
+                  disabled={!!created}
+                  onClick={() => {
+                    setKind(choice.kind);
+                    setMachineKind(choice.kind);
+                    setTried(false);
+                    setProbeResult(null);
+                    probe.reset();
+                  }}
+                  className={cn(
+                    "rounded-md border px-3 py-2 text-left transition-colors",
+                    selected ? "border-foreground bg-accent/40" : "border-border hover:bg-accent/30",
+                  )}
+                >
+                  <span className="text-[13px] font-medium text-foreground">{choice.title}</span>
+                  <span className="mt-0.5 block text-[11.5px] leading-snug text-muted-foreground">
+                    {choice.subtitle}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
         {kind === "pi-env" ? (
           <SshEnvironmentFields
             controller={ssh}
@@ -211,8 +302,36 @@ export function EnvironmentDialog({
             identityFiles={identityFiles}
             show={showSsh}
           />
-        ) : (
+        ) : kind === "e2b" ? (
           <SandboxEnvironmentFields controller={sandbox} show={showSandbox} />
+        ) : (
+          <>
+            <Field label="Name" error={tried && !serviceName.trim() ? "Enter a name." : undefined}>
+              {(ids) => (
+                <Input
+                  {...ids}
+                  maxLength={60}
+                  value={created?.name ?? serviceName}
+                  disabled={!!created}
+                  onChange={(event) => setServiceName(event.target.value)}
+                />
+              )}
+            </Field>
+            {created ? (
+              <RunnerInstall environmentId={created.id} autoIssue />
+            ) : (
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={pending || !serviceName.trim()}
+                onClick={submit}
+              >
+                {pending ? <Spinner /> : null}
+                Get install command
+              </Button>
+            )}
+          </>
         )}
 
         <button type="submit" hidden />

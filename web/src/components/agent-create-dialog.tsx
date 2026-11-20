@@ -197,7 +197,7 @@ function CreateForm({
                 value={environmentId}
                 onChange={(event) => setEnvironmentId(event.target.value)}
               >
-                <option value="">This computer (local)</option>
+                <option value="">This computer</option>
                 {environments.map((env) => (
                   <option key={env.id} value={env.id}>
                     {environmentOptionLabel(env)}

@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
 // EnvironmentSpec holds the stored configuration and secret for one execution environment.
@@ -53,6 +54,7 @@ type Manager struct {
 	local   Provider
 	pienv   *piEnvRuntime
 	e2b     *e2bRuntime
+	runner  *runnerRuntime
 
 	mu      sync.Mutex
 	closed  bool
@@ -71,6 +73,7 @@ func NewManager(cfg ManagerConfig) *Manager {
 		local:   NewLocalProvider(dataDir, ""),
 		pienv:   &piEnvRuntime{dataDir: dataDir, sshProgram: cfg.SSHProgram},
 		e2b:     newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL),
+		runner:  &runnerRuntime{q: cfg.Queries, sessions: map[string]*runner.Client{}, generation: map[string]uint64{}},
 		handles: map[Handle]struct{}{},
 	}
 }
@@ -104,6 +107,11 @@ func (m *Manager) NormalizeAndValidate(ctx context.Context, spec EnvironmentSpec
 		return m.pienv.normalizeAndValidate(ctx, spec)
 	case KindE2B:
 		return m.e2b.normalizeAndValidate(ctx, spec)
+	case KindRunner:
+		if spec.Secret != "" {
+			return "", ErrInvalidConfig
+		}
+		return "{}", nil
 	case KindLocal:
 		return "", unsupportedKindErr(spec.Kind)
 	default:
@@ -123,6 +131,12 @@ func (m *Manager) ProbeEnvironment(ctx context.Context, saved *EnvironmentSpec, 
 		return m.pienv.probe(ctx, saved, spec)
 	case KindE2B:
 		return m.e2b.probe(ctx, saved, spec)
+	case KindRunner:
+		if s := m.runner.online(spec.ID); s != nil {
+			meta := s.Info()
+			return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil
+		}
+		return TestResult{Error: "Runner is offline"}, nil
 	case KindLocal:
 		return TestResult{}, unsupportedKindErr(spec.Kind)
 	default:
@@ -135,7 +149,7 @@ func (m *Manager) OnEnvironmentUpdated(oldSpec, newSpec EnvironmentSpec) error {
 	switch newSpec.Kind {
 	case KindPiEnv:
 		return m.pienv.onUpdated(oldSpec, newSpec)
-	case KindE2B:
+	case KindE2B, KindRunner:
 		return nil
 	case KindLocal:
 		return unsupportedKindErr(newSpec.Kind)
@@ -145,10 +159,12 @@ func (m *Manager) OnEnvironmentUpdated(oldSpec, newSpec EnvironmentSpec) error {
 }
 
 // OnEnvironmentDeleted runs backend-specific cleanup after an environment row is removed.
-func (m *Manager) OnEnvironmentDeleted(spec EnvironmentSpec) error {
+func (m *Manager) OnEnvironmentDeleted(ctx context.Context, spec EnvironmentSpec) error {
 	switch spec.Kind {
 	case KindPiEnv:
 		return m.pienv.onDeleted(spec)
+	case KindRunner:
+		return m.RevokeRunner(ctx, spec.ID)
 	case KindE2B:
 		return nil
 	case KindLocal:
@@ -240,6 +256,12 @@ func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
 		h, err = m.pienv.open(ctx, agentID, spec)
 	case KindE2B:
 		h, err = m.e2b.open(ctx, agentID, spec)
+	case KindRunner:
+		if session := m.runner.online(spec.ID); session != nil {
+			h = &runnerHandle{id: spec.ID, client: session}
+		} else {
+			err = runner.ErrOffline
+		}
 	case KindLocal:
 		err = unsupportedKindErr(spec.Kind)
 	default:
@@ -281,11 +303,15 @@ func (m *Manager) Stamp(ctx context.Context, agentID string) (string, bool) {
 		_, _ = h.Write([]byte(s))
 		_, _ = h.Write([]byte{0})
 	}
+	if Kind(row.Kind) == KindRunner {
+		_, _ = h.Write([]byte(m.runner.sessionStamp(row.EnvironmentID)))
+	}
 	return hex.EncodeToString(h.Sum(nil)), true
 }
 
 // Close closes all active handles.
 func (m *Manager) Close(ctx context.Context) error {
+	m.runner.close()
 	m.mu.Lock()
 	m.closed = true
 	handles := make([]Handle, 0, len(m.handles))

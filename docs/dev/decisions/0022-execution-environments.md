@@ -20,7 +20,8 @@ that persist across turns and pause automatically when idle, while keeping
 
 - `Provider` opens an agent `Handle` (`Workspace`, `Home`, `Env`, `Close`).
 - `Manager` resolves `agents.environment_id` from `control.sqlite` (empty
-  selects built-in `local`) and dispatches to `local`, `pi-env`, or `e2b`.
+  selects built-in `local`) and dispatches to `local`, `pi-env`, `e2b`, or a
+  remote machine ([ADR 0025](0025-remote-machine-enrollment.md)).
 - Changing an agent's environment or updating an environment row changes the
   agent stamp so idle sessions reload automatically.
 

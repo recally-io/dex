@@ -982,8 +982,21 @@ cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
 Tools run through [`internal/execenv`](../../internal/execenv) using the
-built-in `local` provider, a remote `pi-env` SSH connection, or an `e2b`
-sandbox endpoint ([ADR 0022](decisions/0022-execution-environments.md)).
+built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
+sandbox endpoint, or a machine service connection
+([ADR 0022](decisions/0022-execution-environments.md)). The
+[remote machine](../remote-machines.md) opens an outbound WebSocket to Dex
+behind the same HTTPS front as the web UI, and uses the public PiG execution API
+on the target. Enrollment trades a one-time code for a machine token; Dex stores
+the SHA-256 digest of that token in `control.sqlite` and keeps live connections
+in memory. A bot borrows the connection, so reloading the bot does not disconnect
+its machine. The socket carries JSON-RPC 2.0 calls from
+[`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
+operation, one operation at a time, and a `cancel` notification for the call
+that the user stopped. Dex waits for the canceled operation to finish before it
+sends the next call. The library owns call correlation, reply routing, and
+session loss, so Dex owns only the operations. A session does not replay calls
+after connection loss. Dex reports a missing final result as unknown.
 `execenv.Manager` owns per-kind driver dispatch and lifecycle
 (`NormalizeAndValidate`, `ProbeEnvironment`, `OnEnvironmentUpdated`,
 `OnEnvironmentDeleted`, `ForgetHostKey`, `CanResetAgent`, `ResetAgent`,

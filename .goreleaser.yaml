@@ -6,7 +6,8 @@ before:
     - mise run build:web
 
 builds:
-  - main: ./cmd/dex
+  - id: dex
+    main: ./cmd/dex
     binary: dex
     env:
       - CGO_ENABLED=0
@@ -16,10 +17,32 @@ builds:
     # dex reads its version from the VCS tag, not from -X.
     ldflags: [-s, -w]
 
+  - id: dex-agent
+    main: ./cmd/dex-agent
+    binary: dex-agent
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: [-s, -w]
+
 archives:
-  - name_template: dex_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
+  - ids: [dex]
+    name_template: dex_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
     formats: [tar.gz]
     files: [README.md]
+  - id: dex-agent
+    ids: [dex-agent]
+    name_template: dex-agent_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    files:
+      - src: docs/remote-machines.md
+        dst: remote-machines.md
+      - src: contrib/dex-agent.service
+        dst: dex-agent.service
+      - src: contrib/com.recally.dex-agent.plist
+        dst: com.recally.dex-agent.plist
 
 checksum:
   name_template: checksums.txt

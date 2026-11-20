@@ -214,8 +214,9 @@ func (e ChildEventType) Valid() bool {
 
 // Defines values for EnvironmentKind.
 const (
-	E2b   EnvironmentKind = "e2b"
-	PiEnv EnvironmentKind = "pi-env"
+	E2b    EnvironmentKind = "e2b"
+	PiEnv  EnvironmentKind = "pi-env"
+	Runner EnvironmentKind = "runner"
 )
 
 // Valid indicates whether the value is a known member of the EnvironmentKind enum.
@@ -224,6 +225,8 @@ func (e EnvironmentKind) Valid() bool {
 	case E2b:
 		return true
 	case PiEnv:
+		return true
+	case Runner:
 		return true
 	default:
 		return false
@@ -2596,6 +2599,12 @@ type ServerInterface interface {
 	// (POST /api/settings/environments/{environmentId}/forget-host-key)
 	ForgetEnvironmentHostKey(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
 
+	// (DELETE /api/settings/environments/{environmentId}/runner-pairing)
+	RevokeRunner(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
+
+	// (POST /api/settings/environments/{environmentId}/runner-pairing)
+	IssueRunnerCode(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
+
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
 
@@ -4902,6 +4911,58 @@ func (siw *ServerInterfaceWrapper) ForgetEnvironmentHostKey(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// RevokeRunner operation middleware
+func (siw *ServerInterfaceWrapper) RevokeRunner(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "environmentId" -------------
+	var environmentId EnvironmentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeRunner(w, r, environmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueRunnerCode operation middleware
+func (siw *ServerInterfaceWrapper) IssueRunnerCode(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "environmentId" -------------
+	var environmentId EnvironmentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environmentId", r.PathValue("environmentId"), &environmentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environmentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueRunnerCode(w, r, environmentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // TestEnvironment operation middleware
 func (siw *ServerInterfaceWrapper) TestEnvironment(w http.ResponseWriter, r *http.Request) {
 
@@ -5175,6 +5236,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/environments/{environmentId}", wrapper.UpdateEnvironment)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/test", wrapper.TestEnvironment)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/forget-host-key", wrapper.ForgetEnvironmentHostKey)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/environments/{environmentId}/runner-pairing", wrapper.RevokeRunner)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/environments/{environmentId}/runner-pairing", wrapper.IssueRunnerCode)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/provider-models", wrapper.ListProviderModels)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/providers/{providerId}", wrapper.DeleteProvider)
@@ -9835,6 +9898,86 @@ func (response ForgetEnvironmentHostKeydefaultJSONResponse) VisitForgetEnvironme
 	return err
 }
 
+type RevokeRunnerRequestObject struct {
+	EnvironmentId EnvironmentId `json:"environmentId"`
+}
+
+type RevokeRunnerResponseObject interface {
+	VisitRevokeRunnerResponse(w http.ResponseWriter) error
+}
+
+type RevokeRunner200JSONResponse Ok
+
+func (response RevokeRunner200JSONResponse) VisitRevokeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeRunnerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RevokeRunnerdefaultJSONResponse) VisitRevokeRunnerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueRunnerCodeRequestObject struct {
+	EnvironmentId EnvironmentId `json:"environmentId"`
+}
+
+type IssueRunnerCodeResponseObject interface {
+	VisitIssueRunnerCodeResponse(w http.ResponseWriter) error
+}
+
+type IssueRunnerCode200JSONResponse struct {
+	Code string `json:"code"`
+}
+
+func (response IssueRunnerCode200JSONResponse) VisitIssueRunnerCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueRunnerCodedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response IssueRunnerCodedefaultJSONResponse) VisitIssueRunnerCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type TestEnvironmentRequestObject struct {
 	EnvironmentId EnvironmentId `json:"environmentId"`
 }
@@ -10416,6 +10559,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/settings/environments/{environmentId}/forget-host-key)
 	ForgetEnvironmentHostKey(ctx context.Context, request ForgetEnvironmentHostKeyRequestObject) (ForgetEnvironmentHostKeyResponseObject, error)
+
+	// (DELETE /api/settings/environments/{environmentId}/runner-pairing)
+	RevokeRunner(ctx context.Context, request RevokeRunnerRequestObject) (RevokeRunnerResponseObject, error)
+
+	// (POST /api/settings/environments/{environmentId}/runner-pairing)
+	IssueRunnerCode(ctx context.Context, request IssueRunnerCodeRequestObject) (IssueRunnerCodeResponseObject, error)
 
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(ctx context.Context, request TestEnvironmentRequestObject) (TestEnvironmentResponseObject, error)
@@ -12713,6 +12862,58 @@ func (sh *strictHandler) ForgetEnvironmentHostKey(w http.ResponseWriter, r *http
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ForgetEnvironmentHostKeyResponseObject); ok {
 		if err := validResponse.VisitForgetEnvironmentHostKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeRunner operation middleware
+func (sh *strictHandler) RevokeRunner(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
+	var request RevokeRunnerRequestObject
+
+	request.EnvironmentId = environmentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeRunner(ctx, request.(RevokeRunnerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeRunner")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeRunnerResponseObject); ok {
+		if err := validResponse.VisitRevokeRunnerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueRunnerCode operation middleware
+func (sh *strictHandler) IssueRunnerCode(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId) {
+	var request IssueRunnerCodeRequestObject
+
+	request.EnvironmentId = environmentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueRunnerCode(ctx, request.(IssueRunnerCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueRunnerCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueRunnerCodeResponseObject); ok {
+		if err := validResponse.VisitIssueRunnerCodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

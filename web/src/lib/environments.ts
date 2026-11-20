@@ -36,10 +36,14 @@ export function detectSandboxPreset(cfg: EnvironmentConfig): SandboxPreset {
   return "custom";
 }
 
+// environmentKindBadge names how Dex reaches the environment. It never shows the stored
+// kind, because a kind names our transport and the user thinks in machines.
 export function environmentKindBadge(env: Pick<Environment, "kind" | "config">): string {
   if (env.kind === "pi-env") return "SSH";
 
-  return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "Sandbox";
+  if (env.kind === "runner") return "dex runner";
+
+  return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "E2B sandbox";
 }
 
 export function environmentOptionLabel(env: Pick<Environment, "name" | "kind" | "config">): string {
@@ -48,14 +52,59 @@ export function environmentOptionLabel(env: Pick<Environment, "name" | "kind" | 
 
 export function environmentBotHint(env: Pick<Environment, "name" | "kind" | "config">): string {
   if (env.kind === "pi-env") {
-    return `Runs tools on SSH machine ${env.name} (${formatSshTarget(env.config)}).`;
+    return `Runs tools on ${env.name} over SSH (${formatSshTarget(env.config)}).`;
   }
+
+  if (env.kind === "runner") return `Runs tools on ${env.name} through dex runner.`;
 
   if (detectSandboxPreset(env.config) === "local") {
-    return `Runs tools in local sandbox ${env.name}.`;
+    return `Runs tools in ${env.name}, a local sandbox.`;
   }
 
-  return `Runs tools in isolated sandbox ${env.name}.`;
+  return `Runs tools in ${env.name}, an E2B sandbox.`;
+}
+
+// machineAddress returns the canonical HTTPS origin of a machine listener, or null when the
+// target machine cannot use the address.
+export function machineAddress(address: string): string | null {
+  let url: URL;
+
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return null;
+  }
+
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash ||
+    isLocalHostname(host) ||
+    host === "0.0.0.0" ||
+    host === "::" ||
+    url.origin.includes("'")
+  ) {
+    return null;
+  }
+
+  return url.origin;
+}
+
+// machineInstallCommand builds the one command that enrolls a machine. The machine trades the
+// code for a token, so the command carries no certificate and no pin.
+export function machineInstallCommand(address: string, id: string, code: string): string | null {
+  const origin = machineAddress(address);
+
+  if (!origin || !/^[a-z\d-]+$/i.test(id) || !/^[A-Z\d]{20,64}$/i.test(code)) {
+    return null;
+  }
+
+  return `curl -fsSL '${origin}/install-machine.sh' | sudo sh -s -- '${origin}' '${id}' '${code}'`;
 }
 
 export function formatSshTarget(cfg: EnvironmentConfig): string {

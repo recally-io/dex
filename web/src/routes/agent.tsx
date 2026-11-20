@@ -448,7 +448,7 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
             disabled={save.isPending || environments.isPending}
             onChange={(event) => save.mutate(event.target.value)}
           >
-            <option value="">This computer (local)</option>
+            <option value="">This computer</option>
             {missingSelection ? <option value={environmentId}>Missing ({environmentId})</option> : null}
             {list.map((env) => (
               <option key={env.id} value={env.id}>

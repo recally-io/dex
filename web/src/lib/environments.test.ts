@@ -5,6 +5,7 @@ import {
   environmentKindBadge,
   environmentOptionLabel,
   formatSandboxDiskSummary,
+  machineInstallCommand,
 } from "./environments";
 
 test("environment labels avoid internal pi-env jargon and distinguish local sandboxes", () => {
@@ -24,17 +25,28 @@ test("environment labels avoid internal pi-env jargon and distinguish local sand
   };
 
   expect(environmentKindBadge(ssh)).toBe("SSH");
-  expect(environmentKindBadge(cloud)).toBe("Sandbox");
+  expect(environmentKindBadge(cloud)).toBe("E2B sandbox");
   expect(environmentKindBadge(localDocker)).toBe("Local sandbox");
-  expect(environmentKindBadge(remoteCustom)).toBe("Sandbox");
+  expect(environmentKindBadge(remoteCustom)).toBe("E2B sandbox");
 
   expect(environmentOptionLabel(ssh)).toBe("MacMini (SSH)");
   expect(environmentOptionLabel(localDocker)).toBe("Docker Gateway (Local sandbox)");
-  expect(environmentBotHint(ssh)).toBe("Runs tools on SSH machine MacMini (ops@macmini).");
+  expect(environmentBotHint(ssh)).toBe("Runs tools on MacMini over SSH (ops@macmini).");
 
   expect(detectSandboxPreset(cloud.config)).toBe("cloud");
   expect(detectSandboxPreset(localDocker.config)).toBe("local");
   expect(detectSandboxPreset(remoteCustom.config)).toBe("custom");
   expect(formatSandboxDiskSummary(localDocker.config)).toContain("Ephemeral");
   expect(formatSandboxDiskSummary(cloud.config)).toContain("Snapshot-persisted");
+});
+
+test("machine setup uses one install command", () => {
+  const code = "ABCDEFGH23456789ABCDEFGH";
+  expect(machineInstallCommand("http://192.0.2.10", "env-id", code)).toBeNull();
+  expect(machineInstallCommand("https://127.0.0.1", "env-id", code)).toBeNull();
+  expect(machineInstallCommand("https://user@192.0.2.10", "env-id", code)).toBeNull();
+  expect(machineInstallCommand("https://192.0.2.10", "env-id", "short")).toBeNull();
+  expect(machineInstallCommand("https://192.0.2.10/", "env-id", code)).toBe(
+    `curl -fsSL 'https://192.0.2.10/install-machine.sh' | sudo sh -s -- 'https://192.0.2.10' 'env-id' '${code}'`,
+  );
 });
