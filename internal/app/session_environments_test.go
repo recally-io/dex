@@ -280,6 +280,16 @@ func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.watch(t, created.ChatID).until(t, "third fork answer", answered("context: "+string(want)))
+
+	// When the user forks the local chat before both notices, then the oldest one tells where the
+	// history ran. That was local, so no notice is added.
+	d.must(t, http.MethodPost, chatPath(rescuedID, "fork"), map[string]any{"entryId": entry}, &created, http.StatusCreated)
+	d.must(t, http.MethodPut, chatPath(created.ChatID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.send(t, created.ChatID, "check")
+	if want, err = json.Marshal([]string{marker, "check"}); err != nil {
+		t.Fatal(err)
+	}
+	d.watch(t, created.ChatID).until(t, "fourth fork answer", answered("context: "+string(want)))
 }
 
 // Given sessions that follow the bot's environment, when the owner changes that environment,
