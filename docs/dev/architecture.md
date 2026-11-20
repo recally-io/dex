@@ -78,7 +78,10 @@ of a Session. The Inbox hides closed Tasks by default and keeps Routine results
 in a separate section. An owner can send a message from a Task to Main. The
 Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
-Task selection does not consume the question.
+Task selection does not consume the question. A Task question or `notify_user`
+message from Main uses the original channel peer. If the input has no channel
+peer, Dex uses the bot's primary notification target when one is configured.
+Ordinary replies stay on the input's original route.
 
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |

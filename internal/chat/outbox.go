@@ -54,19 +54,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 	if source.ConversationID != conv.ID {
 		return "", errors.New("notify_user source belongs to another conversation")
 	}
-	peer := peerFromOrigin(source.Origin)
 	now := s.now().UnixMilli()
-	status := "delivered"
-	deliveredAt := sql.NullInt64{Int64: now, Valid: true}
-	if peer != "" {
-		if source.ChannelRevoked != 0 {
-			status = "revoked"
-			deliveredAt = sql.NullInt64{}
-		} else {
-			status = "pending"
-			deliveredAt = sql.NullInt64{}
-		}
-	}
 	dedupKey := "tool:" + r.Key
 	outboxID := uuid.NewV7().String()
 	final := boolPtrOrTrue(a.Final)
@@ -77,6 +65,11 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+	peer, identity, err := taskNotificationRoute(ctx, q, conv, source)
+	if err != nil {
+		return "", err
+	}
+	status, deliveredAt := outboxInitialStatus(peer, source.ChannelRevoked, now)
 
 	if a.TopicKey != "" {
 		if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
@@ -95,7 +88,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 		SourceSubmissionID: sql.NullString{String: source.ID, Valid: true},
 		Kind:               "proactive",
 		Peer:               peer,
-		ChannelContext:     source.ChannelContext,
+		ChannelContext:     identity,
 		TopicKey:           a.TopicKey,
 		Body:               a.Content,
 		Reason:             "",
@@ -338,6 +331,14 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			} else if !errors.Is(err, sql.ErrNoRows) {
 				return "", err
 			}
+			identity := sub.ChannelContext
+			if kind == "question" {
+				var err error
+				peer, identity, err = taskNotificationRoute(ctx, q, conv, sub)
+				if err != nil {
+					return "", err
+				}
+			}
 			dedupKey := "reply:" + sub.ID
 			if event.AnswerID > 0 {
 				dedupKey = fmt.Sprintf("reply:%d:%d:%s", conv.ID, event.AnswerID, peer)
@@ -351,7 +352,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 				SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
 				Kind:               kind,
 				Peer:               peer,
-				ChannelContext:     sub.ChannelContext,
+				ChannelContext:     identity,
 				TopicKey:           "",
 				Body:               event.Answer,
 				Reason:             "",
@@ -424,6 +425,10 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			// Fail-quiet by default: internal trace only unless notify_user or ask_user was called.
 			return "", nil
 		}
+		peer, identity, err := taskNotificationRoute(ctx, q, conv, sub)
+		if err != nil {
+			return "", err
+		}
 		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
 		if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 			ID:                 sub.ID,
@@ -433,7 +438,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
 			Kind:               "question",
 			Peer:               peer,
-			ChannelContext:     sub.ChannelContext,
+			ChannelContext:     identity,
 			TopicKey:           "",
 			Body:               event.Answer,
 			Reason:             "",
@@ -485,6 +490,27 @@ func outboxInitialStatus(peer string, channelRevoked int64, now int64) (string, 
 		return "revoked", sql.NullInt64{}
 	}
 	return "pending", sql.NullInt64{}
+}
+
+// taskNotificationRoute keeps the original peer. Only Task-related Main turns use the primary target.
+func taskNotificationRoute(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, sub sqlc.Submission) (string, string, error) {
+	peer := peerFromOrigin(sub.Origin)
+	if peer != "" || conv.ChannelKey != MainKey || sub.ChannelRevoked != 0 {
+		return peer, sub.ChannelContext, nil
+	}
+	taskID, err := workTaskForInput(ctx, q, sub.ID)
+	if err != nil || taskID == "" {
+		return "", sub.ChannelContext, err
+	}
+	target, err := q.GetPrimaryNotificationTarget(ctx, conv.AgentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", sub.ChannelContext, nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	identity, err := json.Marshal(ChannelContext{AccountID: target.AccountID})
+	return target.Peer, string(identity), err
 }
 
 func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, convID int64, now int64) error {
