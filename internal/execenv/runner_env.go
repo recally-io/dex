@@ -279,37 +279,10 @@ func (r *runnerBinary) ScanLines(ctx context.Context, opts env.ScanLinesOptions)
 	if _, err := r.Info(ctx); err != nil {
 		return env.LineScan{}, err
 	}
-	data := r.data
-	end := int64(len(data))
-	startLine := max(opts.StartLine, 0)
-	endLine := int64(1 << 62)
-	if opts.EndLine != nil {
-		endLine = max(*opts.EndLine, startLine)
+	scanner, err := env.NewLineScanner(opts.StartLine, opts.EndLine)
+	if err != nil {
+		return env.LineScan{}, env.NewFileError(env.FileErrorInvalid, "invalid line range", r.info.Path, nil)
 	}
-	scan := env.LineScan{Start: end, End: end, FirstLineEnd: end, LastLineStart: end}
-	var line, offset int64
-	for {
-		next := bytes.IndexByte(data[offset:], '\n')
-		lineEnd := end
-		if next >= 0 {
-			lineEnd = offset + int64(next)
-		}
-		if line >= startLine && line < endLine {
-			if line == startLine {
-				scan.Start = offset
-				scan.FirstLineEnd = lineEnd
-			}
-			scan.End = lineEnd
-			scan.LastLineStart = offset
-		}
-		if next < 0 {
-			break
-		}
-		offset = lineEnd + 1
-		line++
-	}
-	scan.Newlines = line
-	scan.SelectedBytes = int64(len(strings.ToValidUTF8(string(data[scan.Start:scan.End]), "\uFFFD")))
-	scan.FirstLineBytes = int64(len(strings.ToValidUTF8(string(data[scan.Start:scan.FirstLineEnd]), "\uFFFD")))
-	return scan, ctx.Err()
+	scanner.Push(r.data)
+	return scanner.Finish(), ctx.Err()
 }
