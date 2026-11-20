@@ -171,3 +171,37 @@ func TestUserIntervalCatchUpKeepsScheduleAlignment(t *testing.T) {
 		})
 	}
 }
+
+// Given a routine that follows a bot on an SSH environment, when the bot moves to another
+// environment during the reachability check, then no run is stored for the environment that was
+// not checked, and the caller is told to run it again.
+func TestUserRoutineRunsOnlyOnTheCheckedEnvironment(t *testing.T) {
+	f := newRoutineFixture(t)
+	ctx := t.Context()
+	if _, err := f.conn.ExecContext(ctx, `INSERT INTO execution_environments (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.conn.ExecContext(ctx, `UPDATE agents SET environment_id = 'box' WHERE id = 'a'`); err != nil {
+		t.Fatal(err)
+	}
+	a, err := f.routines.Create(ctx, "a", routineInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var probed []string
+	f.routines.ConfigureProbe(func(ctx context.Context, agentID, environmentID string) error {
+		probed = append(probed, environmentID)
+		_, err := f.conn.ExecContext(ctx, `UPDATE agents SET environment_id = '' WHERE id = ?`, agentID)
+		return err
+	})
+	if _, err := f.routines.RunNow(ctx, "a", a.ID); !errors.Is(err, engine.ErrBusy) {
+		t.Fatalf("run after the bot moved: err=%v", err)
+	}
+	runs, err := f.routines.Runs(ctx, "a", a.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 0 || len(probed) != 1 || probed[0] != "box" {
+		t.Fatalf("runs=%+v probed=%v", runs, probed)
+	}
+}

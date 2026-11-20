@@ -421,11 +421,7 @@ func (s *Service) RunNow(ctx context.Context, agentID string, id string) (Run, e
 	if err != nil {
 		return Run{}, err
 	}
-	run, err := s.admit(ctx, row, sql.NullInt64{}, "")
-	if err != nil {
-		return Run{}, err
-	}
-	return run, nil
+	return s.admit(ctx, row, sql.NullInt64{}, "", nil)
 }
 
 // Check runs each automation whose next time has come, and moves its next time past now.
@@ -461,7 +457,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	}
 	// The run comes before the next time: a crash between them repeats the check, which finds the
 	// run and does not store it again.
-	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip)
+	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip, nil)
 	// An archived bot keeps the due time; restore runs it if the grace period allows.
 	if errors.Is(err, chat.ErrAutomationChanged) || errors.Is(err, db.ErrAgentArchived) {
 		return nil
@@ -482,9 +478,11 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	return nil
 }
 
-// admit stores a run for due, skipped with the reason skip, or when the bot has no model or a
-// run of the automation is busy. An existing scheduled run creates no new input.
-func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string) (Run, error) {
+// admit stores a run for due, skipped with the reason skip, or when the bot has no model, a run
+// of the automation is busy, or its environment cannot be used. An existing scheduled run creates
+// no new input. A nil pre checks the environment here; the check does network I/O, so it never
+// runs in a transaction.
+func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string, pre *Target) (Run, error) {
 	if skip == "" {
 		agent, err := s.q.GetAgent(ctx, row.AgentID)
 		if err != nil {
@@ -499,54 +497,77 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 			skip = "the bot has no model"
 		case busy > 0:
 			skip = "the chat of the automation is busy"
-		default:
-			if skip, err = s.unavailable(ctx, row, cmp.Or(row.EnvironmentID, agent.EnvironmentID)); err != nil {
-				return Run{}, err
-			}
 		}
 	}
 	run := Run{ID: uuid.NewV7().String(), DueAt: due.Int64, CreatedAt: s.now().UnixMilli(), Status: "started", Reason: skip}
-	if skip != "" {
-		run.Status = "skipped"
-	}
 	params := sqlc.CreateAutomationRunParams{
 		ID: run.ID, AutomationID: row.ID, DueAt: due, Status: run.Status,
 		Reason: sql.NullString{String: skip, Valid: skip != ""}, CreatedAt: run.CreatedAt,
 	}
 	if skip != "" {
+		run.Status, params.Status = "skipped", "skipped"
 		_, err := s.q.CreateAutomationRun(ctx, params)
 		return run, err
+	}
+	if pre == nil {
+		t, err := s.Preflight(ctx, row)
+		if err != nil {
+			return Run{}, err
+		}
+		pre = &t
 	}
 	key := Channel + row.ID
 	if row.Session == "new" {
 		key += ":" + run.ID
 	}
-	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, EnvironmentID: row.EnvironmentID}
+	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, EnvironmentID: row.EnvironmentID, Target: pre.ID, Skip: pre.Skip}
 	if due.Valid {
 		input.Expected = &row
 	}
 	chatID, created, err := s.enqueue(ctx, input)
-	if created {
+	switch {
+	case created && chatID == 0:
+		run.Status, run.Reason = "skipped", pre.Skip
+	case created:
 		run.Status, run.ChatID = "running", chatID
 	}
 	return run, err
 }
 
-// unavailable returns the skip reason when the environment target of a run cannot be used, so a
-// run never falls back to another machine. Only an SSH host is probed: local is always there, and
-// opening an E2B sandbox or a runner would start the work that the run does.
-func (s *Service) unavailable(ctx context.Context, row sqlc.Automation, target string) (string, error) {
-	if target == "" || target == execenv.LocalID {
+// Target is the effective environment of a run, checked before the run is stored. Skip is the
+// reason when the run cannot use it.
+type Target struct {
+	ID, Skip string
+}
+
+// Preflight resolves the effective environment of a run of row and checks that it can be used.
+// The input transaction compares the environment again, so a change in between does not admit a
+// run on an environment that was not checked.
+func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, error) {
+	agent, err := s.q.GetAgent(ctx, row.AgentID)
+	if err != nil {
+		return Target{}, err
+	}
+	id := cmp.Or(row.EnvironmentID, agent.EnvironmentID, execenv.LocalID)
+	skip, err := s.unavailable(ctx, row.AgentID, id)
+	return Target{ID: id, Skip: skip}, err
+}
+
+// unavailable returns the skip reason when a run cannot use environment id, so a run never falls
+// back to another machine. Only an SSH host is probed: local is always there, and opening an E2B
+// sandbox or a runner would start the work that the run does.
+func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, error) {
+	if id == execenv.LocalID {
 		return "", nil
 	}
-	env, err := s.q.GetEnvironment(ctx, target)
+	env, err := s.q.GetEnvironment(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "the environment " + target + " was removed", nil
+		return "the environment " + id + " was removed", nil
 	}
 	if err != nil || execenv.Kind(env.Kind) != execenv.KindPiEnv || s.probe == nil {
 		return "", err
 	}
-	if err := s.probe(ctx, row.AgentID, row.EnvironmentID); err != nil {
+	if err := s.probe(ctx, agentID, id); err != nil {
 		return fmt.Sprintf("the environment %s is unavailable: %v", env.Name, err), nil
 	}
 	return "", nil

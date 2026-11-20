@@ -348,7 +348,7 @@ export type InboxItem = {
     read: boolean;
     dismissed: boolean;
     /**
-     * The effective execution environment that the run started in. Empty for a run with no message.
+     * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
      */
     environmentId: string;
     /**
@@ -383,7 +383,7 @@ export type AutomationRun = {
     reason?: string;
     chatId?: number;
     /**
-     * The effective execution environment that the run started in. Empty for a run with no message.
+     * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
      */
     environmentId?: string;
     /**

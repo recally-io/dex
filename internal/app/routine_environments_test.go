@@ -107,8 +107,17 @@ func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
 	}
 	d.watch(t, onRemote.ChatID).until(t, "old chat history", answered("bash: ssh-fake-ok"))
 	// A run in the same environment continues the same chat.
-	if again := runIn(remote.ID, "bash: ssh-fake-ok"); again.ChatID != back.ChatID {
+	again := runIn(remote.ID, "bash: ssh-fake-ok")
+	if again.ChatID != back.ChatID {
 		t.Fatalf("same environment chat=%d, want %d", again.ChatID, back.ChatID)
+	}
+	// When the last run has no stored environment, as a run from before the upgrade, then where it
+	// ran is not known, and the next run starts a new chat.
+	if _, err := sessionDB(t, d).ExecContext(t.Context(), `UPDATE automation_runs SET environment_id = '', cwd = '' WHERE id = ?`, again.ID); err != nil {
+		t.Fatal(err)
+	}
+	if fresh := runIn(remote.ID, "bash: ssh-fake-ok"); fresh.ChatID == back.ChatID {
+		t.Fatalf("a run after an unknown binding reused chat %d", fresh.ChatID)
 	}
 
 	// When the bot creates a routine in a chat on remote-box, then the routine runs there too.
@@ -131,6 +140,12 @@ func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
 	d.must(t, http.MethodPost, "/api/agents/default/automations", routine("Dead", deadEnv.ID), &dead, http.StatusCreated)
 	if run := d.runNow(t, dead.ID); run.Status != "skipped" || run.ChatID != 0 || !strings.Contains(run.Reason, "dead-box is unavailable") {
 		t.Fatalf("run on a dead host=%+v", run)
+	}
+	// Then run_routine skips it the same way.
+	var toolRun runInfo
+	routineToolJSON(t, d, chatID, "run_routine", map[string]any{"id": dead.ID}, &toolRun)
+	if toolRun.Status != "skipped" || toolRun.ChatID != 0 || !strings.Contains(toolRun.Reason, "dead-box is unavailable") {
+		t.Fatalf("run_routine on a dead host=%+v", toolRun)
 	}
 
 	// When the owner removes remote-box, then a run is skipped with a reason that names it, and

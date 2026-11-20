@@ -6,11 +6,8 @@ ALTER TABLE automations ADD COLUMN environment_id TEXT NOT NULL DEFAULT '';
 -- the environment of its last run, and a result continues where its run ran.
 ALTER TABLE automation_runs ADD COLUMN environment_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE automation_runs ADD COLUMN cwd TEXT NOT NULL DEFAULT '';
--- Before this migration, every run used the environment of its agent and the cwd of its routine.
-UPDATE automation_runs SET
-    environment_id = coalesce((SELECT CASE WHEN g.environment_id = '' THEN 'local' ELSE g.environment_id END
-        FROM automations a JOIN agents g ON g.id = a.agent_id WHERE a.id = automation_runs.automation_id), ''),
-    cwd = coalesce((SELECT a.cwd FROM automations a WHERE a.id = automation_runs.automation_id), '');
+-- Runs before this migration keep an empty binding: their environment and cwd are not known.
+-- A reused chat with such a run starts again, and its results cannot be continued from the run.
 
 -- +goose Down
 ALTER TABLE automation_runs DROP COLUMN cwd;

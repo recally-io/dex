@@ -54,9 +54,9 @@ The routine dialog offers "Follow bot", `local`, and the SSH environments. It
 keeps a saved environment that the list no longer shows, and a change of the
 environment clears the project directory. A routine update sends
 `environmentId`, because a PUT replaces the routine. Routines and Inbox continue
-a result through `continueResult` (`lib/inbox.ts`): the new chat uses the
-environment and the cwd of the run, and a run in an environment that a chat
-cannot select stops before any chat is created.
+a result through `continueResult` (`lib/inbox.ts`): the new chat pins `local` or
+the SSH environment of the run and uses its cwd. A run in an E2B or runner
+environment, or with no recorded environment, stops before any chat is created.
 Each child session reads like a thread. The transcript shows one card at a
 `session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
 call, and one "replied · View thread" line at each result mark. A click opens the

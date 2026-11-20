@@ -28,22 +28,20 @@ test("Continue quotes the stored result and identifies the exact run transcript"
   );
 });
 
-test("a continuation chat runs where the result ran", () => {
+test("a continuation chat pins the environment where the result ran", () => {
   const environments = [
-    { id: "sandbox", name: "sandbox", kind: "e2b", default: true, status: "available" },
+    { id: "box", name: "box", kind: "pi-env", default: true, status: "available" },
     { id: "local", name: "local", kind: "local", default: false, status: "available" },
-    { id: "box", name: "box", kind: "pi-env", default: false, status: "available" },
   ];
 
-  expect(continuationEnvironment("sandbox", environments)).toBe("");
   expect(continuationEnvironment("box", environments)).toBe("box");
   expect(continuationEnvironment("local", environments)).toBe("local");
-  expect(continuationEnvironment("", environments)).toBe("");
+  expect(() => continuationEnvironment("", environments)).toThrow("has no recorded environment");
   expect(() => continuationEnvironment("gone", environments)).toThrow("This result ran in gone");
   expect(() =>
-    continuationEnvironment("other-sandbox", [
+    continuationEnvironment("sandbox", [
+      { id: "sandbox", name: "sandbox", kind: "e2b", default: true, status: "available" },
       ...environments,
-      { id: "other-sandbox", name: "other", kind: "e2b", default: false, status: "available" },
     ]),
-  ).toThrow("ran in other");
+  ).toThrow("ran in sandbox, which a new chat cannot use");
 });

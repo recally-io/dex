@@ -9,6 +9,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 // ErrAutomationChanged means a scheduled snapshot is no longer current.
@@ -21,6 +22,9 @@ type AutomationInput struct {
 	AgentID, ChannelKey, Title, Content, Cwd string
 	// EnvironmentID is the environment of the routine: empty follows the bot.
 	EnvironmentID string
+	// Target is the effective environment that the preflight checked, and Skip is its reason to
+	// skip the run. The input is stored only when the environment is still Target.
+	Target, Skip string
 }
 
 // EnqueueAutomation commits both records before it wakes native delivery.
@@ -40,7 +44,9 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 	if err = tx.Commit(); err != nil {
 		return 0, false, err
 	}
-	s.WakeConversation(convID)
+	if convID != 0 {
+		s.WakeConversation(convID)
+	}
 	return convID, true, nil
 }
 
@@ -51,14 +57,16 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 // readable, and the run starts a new chat. This also covers a routine that follows the bot after
 // the bot's environment changed.
 func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, in AutomationInput, ranIn string) (sqlc.Conversation, error) {
+	// A chat with no run stays. A last run with an empty binding is from before runs stored their
+	// environment, so where it ran is not known, and the chat starts again.
 	last, err := q.LastAutomationRunEnvironment(ctx, conv.ID)
+	moved := err == nil && last != ranIn
 	if errors.Is(err, sql.ErrNoRows) {
 		err = nil
 	}
 	if err != nil {
 		return conv, err
 	}
-	moved := last != "" && last != ranIn
 	if !moved {
 		if conv.EnvironmentID == in.EnvironmentID {
 			return conv, nil
@@ -83,7 +91,8 @@ func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.C
 }
 
 // StoreAutomationInput stores a run and input in the caller's control transaction.
-// The caller must wake delivery after commit.
+// The caller must wake delivery after commit. A run skipped for its environment has no input,
+// and its chat ID is 0.
 func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (int64, bool, error) {
 	// Take the SQLite writer before reading, so an edit or an archive cannot pass a check before the insert.
 	if err := q.LockRoutineTools(ctx); err != nil {
@@ -108,6 +117,15 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		return 0, false, err
 	}
 	ranIn := effectiveEnvironment(bot, in.EnvironmentID)
+	if in.Target != "" && ranIn != in.Target {
+		return 0, false, fmt.Errorf("%w: the environment of the routine changed during its check; run it again", engine.ErrBusy)
+	}
+	if in.Skip != "" {
+		// The run is skipped for an environment that is still the one that was checked.
+		in.Run.Status, in.Run.Reason = "skipped", sql.NullString{String: in.Skip, Valid: true}
+		created, err := q.CreateAutomationRun(ctx, in.Run)
+		return 0, created == 1, err
+	}
 	in.Run.EnvironmentID, in.Run.Cwd = ranIn, in.Cwd
 	created, err := q.CreateAutomationRun(ctx, in.Run)
 	if err != nil || created == 0 {

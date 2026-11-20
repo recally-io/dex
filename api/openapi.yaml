@@ -2394,7 +2394,7 @@ components:
         dismissed: { type: boolean }
         environmentId:
           type: string
-          description: The effective execution environment that the run started in. Empty for a run with no message.
+          description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
         cwd:
           type: string
           description: The cwd that the run started with, in its environment.
@@ -2431,7 +2431,7 @@ components:
         chatId: { type: integer, format: int64 }
         environmentId:
           type: string
-          description: The effective execution environment that the run started in. Empty for a run with no message.
+          description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
         cwd:
           type: string
           description: The cwd that the run started with, in its environment.

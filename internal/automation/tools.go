@@ -255,8 +255,23 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p engine
 
 func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) (engine.RoutineRun, error) {
 	var out engine.RoutineRun
+	// The environment check does network I/O, so it comes before the tool transaction. The input
+	// transaction compares the environment again.
+	// A missing routine is left to the transaction, so a retry of a stored call still replays.
+	var pre *Target
+	if row, err := s.service.get(ctx, c.AgentID, id); err == nil {
+		t, err := s.service.Preflight(ctx, row)
+		if err != nil {
+			return out, err
+		}
+		pre = &t
+	}
 	err := s.mutate(ctx, c, "run", func(local *Service, _ sqlc.Conversation) (any, error) {
-		r, err := local.RunNow(ctx, c.AgentID, id)
+		row, err := local.get(ctx, c.AgentID, id)
+		if err != nil {
+			return nil, err
+		}
+		r, err := local.admit(ctx, row, sql.NullInt64{}, "", pre)
 		return toolRun(r), err
 	}, &out)
 	return out, err

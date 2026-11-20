@@ -32,22 +32,21 @@ export function resultQuote(
   return `Follow up on the ${item.automationName} result (${item.outcome}).\n\n${quote}`;
 }
 
-// continuationEnvironment returns the environment that a chat about a run selects: "" follows the
-// bot. The run's paths and files exist only where it ran, so a run in an environment that a chat
-// cannot select stops the continuation instead of using another machine.
+// continuationEnvironment returns the environment that a chat about a run selects. The run's
+// paths and files exist only where it ran, so the chat pins local or the SSH environment of the
+// run, even when the bot uses it now. A chat cannot pin an E2B or runner environment, and a run
+// from before Dex stored the environment of runs has none, so the continuation stops instead of
+// guessing a machine.
 export function continuationEnvironment(ranIn: string, environments: AgentEnvironments["environments"]) {
-  // A run without a message has no environment; it follows the bot.
-  if (!ranIn) return "";
-
   const env = environments.find((e) => e.id === ranIn);
-
-  if (env?.default) return "";
 
   if (env && (env.kind === "local" || env.kind === "pi-env")) return env.id;
 
-  throw new Error(
-    `This result ran in ${env?.name ?? ranIn}, which a new chat cannot use. Start a chat and select an environment.`,
-  );
+  const where = ranIn
+    ? `ran in ${env?.name ?? ranIn}, which a new chat cannot use`
+    : "has no recorded environment";
+
+  throw new Error(`This result ${where}. Start a chat and select an environment.`);
 }
 
 // A retry after a partial failure reuses the chat and the message ID, so the quote is sent once.
@@ -73,7 +72,7 @@ export async function continueResult(
   const path = { agentId, chatId };
 
   // The project is a path in the run's environment, so select that environment first.
-  if (environmentId) await setChatEnvironment({ path, body: { environmentId }, throwOnError: true });
+  await setChatEnvironment({ path, body: { environmentId }, throwOnError: true });
 
   await setChatProject({ path, body: { cwd: run.cwd ?? "" }, throwOnError: true });
   await sendMessage({ path, body: { id: messageId, text }, throwOnError: true });

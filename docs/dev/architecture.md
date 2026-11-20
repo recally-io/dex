@@ -529,19 +529,28 @@ A routine selects its execution environment with `environmentId`: empty follows
 the bot, and `local` or an SSH environment pins the routine. E2B and runner
 environments are refused, as for sessions. `create_routine` takes the
 environment and the cwd of the chat that calls it. A run never falls back to
-another machine: a removed target skips the run, and before each run Dex opens
-an SSH target with a 15-second timeout and skips the run when the host does not
-answer. The skip reason names the environment. A change of the environment
-without a new cwd clears the cwd. A change of the bot's environment clears the
-cwd of the routines that follow the bot.
+another machine. Before a run, outside any transaction, `Preflight` resolves the
+effective environment and checks it: a removed target skips the run, and an SSH
+target is opened with a 15-second timeout, so a host that does not answer skips
+the run. E2B and runner targets are not opened, because that starts the work.
+The input transaction resolves the environment again under the writer lock and
+stores the run or the skip only when it is still the checked one; otherwise the
+run fails with 409 and can run again. `run_routine` uses the same preflight
+before its tool transaction. The skip reason names the environment. A change of
+the environment without a new cwd clears the cwd. A change of the bot's
+environment clears the cwd of the routines that follow the bot.
 
 Each run stores its effective environment and its cwd
-(`automation_runs.environment_id`, `cwd`), read under the writer lock with the
-input. A reused chat (`automation:<id>`) continues only in the effective
-environment of its last run, so a routine that follows the bot also gets a new
-chat after the bot's environment changes. The old chat gets the key
-`automation:<id>:<run id>` and stays readable. A chat that continues a result
-uses the environment and the cwd of that run, not the current routine settings.
+(`automation_runs.environment_id`, `cwd`). Runs from before this column have an
+empty binding, because where they ran is not known. A reused chat
+(`automation:<id>`) continues only when its last run has the same effective
+environment, so a routine that follows the bot also gets a new chat after the
+bot's environment changes, and a chat whose last run has an empty binding starts
+again. The old chat gets the key `automation:<id>:<run id>` and stays readable.
+A chat that continues a result pins `local` or the SSH environment of that run
+and uses its cwd. A run in an E2B or runner environment, or with an empty
+binding, cannot be continued that way, because a chat cannot pin that
+environment.
 
 A user can select a primary notification target for each agent. Each routine can
 turn notifications off, follow the primary target, or select another authorized
