@@ -58,7 +58,7 @@ export const deleteGitHubWebhookMutation = (options?: Partial<Options<DeleteGitH
 };
 
 /**
- * Save or rotate a write-only GitHub Webhook secret.
+ * Save a GitHub Webhook secret and optional destination for new Issues.
  */
 export const saveGitHubWebhookMutation = (options?: Partial<Options<SaveGitHubWebhookData>>): UseMutationOptions<SaveGitHubWebhookResponse, SaveGitHubWebhookError, Options<SaveGitHubWebhookData>> => {
     const mutationOptions: UseMutationOptions<SaveGitHubWebhookResponse, SaveGitHubWebhookError, Options<SaveGitHubWebhookData>> = {

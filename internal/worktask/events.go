@@ -83,6 +83,19 @@ func (s *Service) ListWaits(ctx context.Context, agentID, taskID string) ([]sqlc
 // Accept commits the receipt, event, timeline entry, and wait changes together.
 // A successful return is safe to acknowledge. A conflict stays recorded but takes no action.
 func (s *Service) Accept(ctx context.Context, event Event) (Receipt, error) {
+	return s.accept(ctx, event, "", "")
+}
+
+// AcceptCreating links an unmatched event to a new Task under an explicitly selected agent.
+// The event must provide exactly one creation reference. Existing links always win.
+func (s *Service) AcceptCreating(ctx context.Context, event Event, agentID, title string) (Receipt, error) {
+	if agentID == "" || title == "" || utf8.RuneCountInString(title) > 160 || len(event.Objects) != 1 {
+		return Receipt{}, ErrInvalid
+	}
+	return s.accept(ctx, event, agentID, title)
+}
+
+func (s *Service) accept(ctx context.Context, event Event, agentID, title string) (Receipt, error) {
 	if !eventKey(event.Namespace) || !eventKey(event.ReceiptKey) || !eventKey(event.Type) ||
 		event.ChangeKey != "" && !eventKey(event.ChangeKey) || event.OccurredAt <= 0 ||
 		len(event.Objects) > 16 || len(event.Revision) > 512 || len(event.SourceURL) > 4096 ||
@@ -132,6 +145,15 @@ func (s *Service) Accept(ctx context.Context, event Event) (Receipt, error) {
 		return Receipt{}, err
 	}
 	now := time.Now().UnixMilli()
+	if disposition == "unmatched" && agentID != "" {
+		task, err = createEventTask(ctx, q, event, agentID, title, now)
+		if err != nil {
+			return Receipt{}, err
+		}
+		if task.ID != "" {
+			disposition = "attached"
+		}
+	}
 	row := sqlc.StoreWorkSourceEventParams{
 		ID: id, Namespace: event.Namespace, ChangeKey: change, EventType: event.Type, Objects: string(refs),
 		Revision: event.Revision, Content: event.Content, SourceUrl: event.SourceURL, OccurredAt: event.OccurredAt, ReceivedAt: now,
@@ -148,6 +170,27 @@ func (s *Service) Accept(ctx context.Context, event Event) (Receipt, error) {
 		}
 	}
 	return Receipt{EventID: id, TaskID: task.ID, Disposition: disposition, ResolvedWaits: resolved}, tx.Commit()
+}
+
+func createEventTask(ctx context.Context, q *sqlc.Queries, event Event, agentID, title string, now int64) (sqlc.WorkTask, error) {
+	object := event.Objects[0]
+	// A link to an archived Task still owns the reference. Do not take it over.
+	bound, err := q.HasWorkTaskObject(ctx, sqlc.HasWorkTaskObjectParams{Namespace: event.Namespace, ObjectType: object.Type, ObjectKey: object.Key})
+	if err != nil || bound != 0 {
+		return sqlc.WorkTask{}, err
+	}
+	task, err := q.CreateWorkTask(ctx, sqlc.CreateWorkTaskParams{ID: uuid.NewV7().String(), AgentID: agentID, Title: title, At: now})
+	if errors.Is(err, sql.ErrNoRows) {
+		return sqlc.WorkTask{}, nil
+	}
+	if err != nil {
+		return sqlc.WorkTask{}, err
+	}
+	n, err := q.LinkWorkTaskObject(ctx, sqlc.LinkWorkTaskObjectParams{AgentID: agentID, TaskID: task.ID, Namespace: event.Namespace, ObjectType: object.Type, ObjectKey: object.Key})
+	if err == nil && n == 0 {
+		return sqlc.WorkTask{}, ErrObjectConflict
+	}
+	return task, err
 }
 
 func duplicateReceipt(event sqlc.WorkSourceEvent) Receipt {

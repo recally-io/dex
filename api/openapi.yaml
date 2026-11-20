@@ -62,7 +62,7 @@ paths:
         schema: { type: integer, format: int64, minimum: 1 }
     put:
       operationId: saveGitHubWebhook
-      description: Save or rotate a write-only GitHub Webhook secret.
+      description: Save a GitHub Webhook secret and optional destination for new Issues.
       requestBody:
         required: true
         content:
@@ -77,8 +77,11 @@ paths:
                   maxLength: 256,
                   writeOnly: true,
                 }
+                issueAgentId:
+                  type: string
+                  description: Create Tasks for opened Issues under this agent. Omit to disable creation.
       responses:
-        "204": { description: Secret saved. }
+        "204": { description: Webhook configuration saved. }
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteGitHubWebhook

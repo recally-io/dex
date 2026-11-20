@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -18,7 +19,7 @@ func (h *handler) SaveGitHubWebhook(ctx context.Context, req api.SaveGitHubWebho
 	if req.Body == nil || req.Body.Secret == nil {
 		return nil, errInvalid
 	}
-	if err := h.Settings.SaveGitHubWebhook(ctx, req.RepositoryId, *req.Body.Secret); err != nil {
+	if err := h.Settings.SaveGitHubWebhook(ctx, req.RepositoryId, *req.Body.Secret, *cmp.Or(req.Body.IssueAgentId, new(""))); err != nil {
 		return nil, err
 	}
 	return api.SaveGitHubWebhook204Response{}, nil
@@ -37,7 +38,7 @@ func (h *handler) receiveGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	secret, err := h.Settings.GitHubWebhookSecret(r.Context(), id)
+	config, err := h.Settings.GitHubWebhook(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -56,7 +57,7 @@ func (h *handler) receiveGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot read delivery", status)
 		return
 	}
-	_, err = github.AcceptWebhook(r.Context(), h.WorkTasks, id, []byte(secret), r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-GitHub-Event"), r.Header.Get("X-Hub-Signature-256"), body)
+	_, err = github.AcceptWebhook(r.Context(), h.WorkTasks, id, []byte(config.Secret), r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-GitHub-Event"), r.Header.Get("X-Hub-Signature-256"), body, config.IssueAgentID.String)
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)

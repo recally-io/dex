@@ -43,7 +43,11 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 		}
 		if strings.HasPrefix(path, "/hooks/") {
 			req.Header.Set("X-GitHub-Delivery", "delivery-1")
-			req.Header.Set("X-GitHub-Event", "pull_request_review")
+			kind := "pull_request_review"
+			if path == "/hooks/github/11" {
+				kind = "issues"
+			}
+			req.Header.Set("X-GitHub-Event", kind)
 			req.Header.Set("X-Hub-Signature-256", signed)
 		}
 		response, err := d.srv.Client().Do(req)
@@ -96,4 +100,47 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	}
 	request(http.MethodDelete, settings, "", adminToken, "", http.StatusNoContent)
 	request(http.MethodPost, hook, payload, "", signature, http.StatusNotFound)
+
+	const issueSettings = "/api/settings/github-webhooks/11"
+	const issueHook = "/hooks/github/11"
+	const issue = `{"action":"opened","repository":{"id":11},"issue":{"id":73,"number":3,"title":"Login fails","body":"Please check the logs.","created_at":"2026-11-21T03:00:00Z"}}`
+	mac.Reset()
+	_, _ = mac.Write([]byte(issue))
+	issueSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	listTasks := func(want int) []api.WorkTask {
+		t.Helper()
+		var list api.ListWorkTasks200JSONResponse
+		if err := json.Unmarshal(request(http.MethodGet, "/api/inbox/tasks", "", adminToken, "", http.StatusOK), &list); err != nil {
+			t.Fatal(err)
+		}
+		if len(list.Tasks) != want {
+			t.Fatalf("Inbox has %d tasks, want %d", len(list.Tasks), want)
+		}
+		return list.Tasks
+	}
+
+	// A signed Issue needs an explicit creation destination.
+	request(http.MethodPut, issueSettings, settingsBody, adminToken, "", http.StatusNoContent)
+	request(http.MethodPost, issueHook, issue, "", issueSignature, http.StatusNoContent)
+	listTasks(1)
+	request(http.MethodPut, issueSettings, `{"secret":"`+secret+`","issueAgentId":"missing"}`, adminToken, "", http.StatusBadRequest)
+	request(http.MethodPut, issueSettings, `{"secret":"`+secret+`","issueAgentId":"default"}`, adminToken, "", http.StatusNoContent)
+	request(http.MethodPost, issueHook, issue, "", issueSignature, http.StatusNoContent)
+	request(http.MethodPost, issueHook, issue, "", issueSignature, http.StatusNoContent)
+	var created api.WorkTask
+	for _, row := range listTasks(2) {
+		if row.Title == "GitHub issue #3" {
+			created = row
+		}
+	}
+	if created.Id == "" {
+		t.Fatal("Issue did not create a Task")
+	}
+	result, err := store.Accept(t.Context(), worktask.Event{
+		Namespace: github.Namespace(11), ReceiptKey: "follow-up", Type: "issue.follow_up",
+		Objects: []worktask.Object{{Type: "issue", Key: "3"}}, Content: "Follow-up", OccurredAt: 1,
+	})
+	if err != nil || result.TaskID != created.Id {
+		t.Fatalf("Issue link did not route the follow-up: %+v, %v", result, err)
+	}
 }
