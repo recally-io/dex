@@ -47,7 +47,7 @@ export function SessionsPage() {
 
   return (
     <FramedPage
-      title="Tasks"
+      title="Sessions"
       description={`Conversations of ${name} apart from the main timeline. Each session has its own context. Chat sessions and the sessions that ${name} started take messages. Automation runs are read-only.`}
     >
       <Section
@@ -88,8 +88,8 @@ export function SessionsPage() {
           <Empty title="No sessions of this kind">Choose All kinds to see every session.</Empty>
         ) : (
           <Empty title="No sessions yet">
-            Automation runs, sessions that {name} started and your Chat sessions show here. Use New task for
-            work that needs a clean context.
+            Automation runs, sessions that {name} started and your Chat sessions show here. Use New session
+            for work that needs a clean context.
           </Empty>
         )}
       </Section>

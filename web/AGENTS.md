@@ -56,7 +56,7 @@ call, and one "replied · View thread" line at each result mark. A click opens t
 child as a read-only panel on the right, which covers the transcript on a narrow
 screen. Task conversations are read-only while queued or running and writable
 after they end.
-There is no Sessions tab. Legacy Sessions and transcript URLs remain readable.
+The bot header opens the Sessions page and creates new sessions. Legacy Sessions and transcript URLs remain readable.
 
 The old `/settings/<section>` addresses redirect to the new pages.
 

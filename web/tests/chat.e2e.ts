@@ -28,11 +28,12 @@ describe("chat", () => {
     await expect(screen.getByText(`echo: ${prompt}`, { exact: true })).toBeVisible();
   });
 
-  test("opens a new task session from the main timeline", async ({ screen, browser }) => {
-    const newTask = screen.getByRole("button", "New task");
-    await newTask.waitFor();
+  test("opens the Sessions list and creates a session from Main", async ({ screen, browser }) => {
+    await screen.getByRole("link", "Sessions").tap();
+    await expect(browser).toHaveURL(/\/a\/default\/sessions/);
+    await expect(screen.getByRole("heading", "Sessions")).toBeVisible();
 
-    await newTask.tap();
+    await screen.getByRole("button", "New session").tap();
     const closeDialog = screen.getByRole("button", "Close");
 
     if (await closeDialog.isVisible().catch(() => false)) {

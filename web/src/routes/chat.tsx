@@ -164,7 +164,7 @@ export function ChatTitle({
         tabIndex={-1}
         className="min-w-0 truncate text-[13px] font-medium outline-none"
       >
-        {chat.main ? mainTitle : chat.title || (switchable ? "New task" : "New session")}
+        {chat.main ? mainTitle : chat.title || "New session"}
       </h1>
       {switchable ? null : <OriginPill chat={chat} />}
       {!chat.main && switchable && chat.parentId !== undefined ? (
