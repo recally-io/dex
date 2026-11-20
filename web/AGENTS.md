@@ -44,12 +44,12 @@ See the [API contract](../api/openapi.yaml) for request and response schemas.
 it; a message sends only upload IDs.
 
 The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
-Bot links open Main. The right Chats sidebar starts closed. Global navigation
-links to Needs you, Work, and the automation list. Needs you shows open questions,
-unhandled failed or blocked tasks, failed routine runs, and routines that need
-a model. Work shows sessions and routine runs across bots. Result details can
-create a writable Chat with the routine project and a quoted result through
-existing APIs. Routine history links to run transcripts and saved results.
+Bot links open Main. The right Chats sidebar starts closed. The global sidebar
+links to `/inbox`, which lists Tasks and Routine results across bots.
+`/a/{agentId}/inbox/{taskId}` opens a Task only under the bot that owns it.
+Routine result details can create a writable Chat with the routine project and
+a quoted result through existing APIs. Routine history links to run transcripts
+and saved results.
 Each child session reads like a thread. The transcript shows one card at a
 `session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
 call, and one "replied · View thread" line at each result mark. A click opens the

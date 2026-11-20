@@ -84,8 +84,9 @@ to read in an afternoon.
   menu button shows an orange dot when another bot needs the user.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
-  URLs open the default agent. `/needs-you`, `/work`, and `/inbox` open the
-  default bot. `/automations` opens its Routines page. An unknown agent shows a not-found page.
+  URLs open the default agent. `/needs-you` and `/work` open the default bot.
+  `/automations` opens its Routines page. `/inbox` opens the Inbox across bots.
+  An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
   Each run requires an explicit changed, unchanged or failed report. Missing
