@@ -5,6 +5,7 @@ import type { InboxItem } from "../api/generated/types.gen";
 import {
   createChat,
   getAutomation,
+  setChatEnvironment,
   setChatProject,
   sendMessage,
   readInboxItem,
@@ -75,6 +76,15 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
 
       const { chatId, messageId } = continuation.current;
       const path = { agentId, chatId };
+
+      // The project is a path in the routine's environment, so select that environment first.
+      if (routine.data.environmentId)
+        await setChatEnvironment({
+          path,
+          body: { environmentId: routine.data.environmentId },
+          throwOnError: true,
+        });
+
       await setChatProject({ path, body: { cwd: routine.data.cwd ?? "" }, throwOnError: true });
       await sendMessage({ path, body: { id: messageId, text: resultQuote(result) }, throwOnError: true });
       await refreshChats(agentId);

@@ -50,7 +50,7 @@ func toolRun(r Run) engine.RoutineRun {
 }
 
 func routineView(a Automation) engine.RoutineInfo {
-	out := engine.RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: engine.RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, Enabled: a.Enabled, Cwd: a.Cwd, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
+	out := engine.RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: engine.RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, Enabled: a.Enabled, Cwd: a.Cwd, EnvironmentID: a.EnvironmentID, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	if a.LastRun != nil {
 		out.LastRun = new(toolRun(*a.LastRun))
 	}
@@ -174,6 +174,13 @@ func applyPatch(in *Input, p engine.RoutinePatch) {
 	if p.Enabled != nil {
 		in.Enabled = *p.Enabled
 	}
+	// A cwd of one environment means nothing in another, so a new environment drops it.
+	if p.EnvironmentID != nil {
+		if *p.EnvironmentID != in.EnvironmentID {
+			in.Cwd = ""
+		}
+		in.EnvironmentID = *p.EnvironmentID
+	}
 	if p.Cwd != nil {
 		in.Cwd = *p.Cwd
 	}
@@ -185,7 +192,8 @@ func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p engine
 		if p.ID != "" || p.Name == nil || p.Prompt == nil || p.Schedule == nil || p.TimeZone == nil {
 			return nil, invalid("name, prompt, schedule and explicit timeZone are required")
 		}
-		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, Notification: &engine.RoutineNotification{Mode: "default"}}
+		// The routine runs where this conversation runs, with its cwd.
+		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, EnvironmentID: conv.EnvironmentID, Notification: &engine.RoutineNotification{Mode: "default"}}
 		applyPatch(&in, p)
 		a, err := local.Create(ctx, c.AgentID, in)
 		return routineView(a), err
@@ -224,12 +232,15 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p engine
 			if err := local.applyNotification(ctx, &row, cleanIn.Notification); err != nil {
 				return nil, err
 			}
-			row.Cwd = cleanIn.Cwd
+			if err := local.checkEnvironment(ctx, cleanIn.EnvironmentID, row.EnvironmentID); err != nil {
+				return nil, err
+			}
+			row.Cwd, row.EnvironmentID = cleanIn.Cwd, cleanIn.EnvironmentID
 			row.Name = cleanIn.Name
 			row.Prompt = cleanIn.Prompt
 			row.Session = cleanIn.Session
 			row.UpdatedAt = local.now().UnixMilli()
-			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: row.AgentID})
+			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, EnvironmentID: row.EnvironmentID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: row.AgentID})
 			if err != nil {
 				return nil, err
 			}

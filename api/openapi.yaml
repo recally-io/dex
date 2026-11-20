@@ -2289,6 +2289,14 @@ components:
             new: each run starts a new chat. reuse: all runs use one chat; a
             run is skipped while that chat is busy.
         enabled: { type: boolean }
+        environmentId:
+          type: string
+          description: >
+            local or an SSH environment ID for the runs. Empty follows the
+            bot's environment. A run never uses another environment: when
+            this one was removed, the run is skipped with a reason. A reused
+            chat that ran in another environment stays readable, and the
+            run starts a new chat. An update can keep a removed environment.
         notification:
           type: object
           description: Omit on update to retain the current route. New routines default to none.

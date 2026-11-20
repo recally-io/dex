@@ -55,6 +55,7 @@ type Automation struct {
 	Cwd                  string         `json:"cwd"`
 	NotificationRoute    string         `json:"notification_route"`
 	NotificationTargetID sql.NullString `json:"notification_target_id"`
+	EnvironmentID        string         `json:"environment_id"`
 }
 
 type AutomationRun struct {

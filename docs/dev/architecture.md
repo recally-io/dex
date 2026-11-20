@@ -525,6 +525,18 @@ automations and their runs in `control.sqlite`. One scheduler job calls its
 `automation:<id>:<run id>` for a new chat each run), and moves `next_due_at`
 past now. The message uses the normal durable delivery.
 
+A routine selects its execution environment with `environmentId`: empty follows
+the bot, and `local` or an SSH environment pins the routine. E2B and runner
+environments are refused, as for sessions. `create_routine` takes the
+environment and the cwd of the chat that calls it. A run of a routine whose
+selected environment was removed is skipped with a reason that names the
+environment, so it never runs on another machine. A change of the environment
+without a new cwd clears the cwd. A change of the bot's environment clears the
+cwd of the routines that follow the bot. A reused chat (`automation:<id>`) never
+changes its environment after its first input. When the next run needs another
+environment, the old chat gets the key `automation:<id>:<run id>` and stays
+readable, and the run starts a new reused chat in the new environment.
+
 A user can select a primary notification target for each agent. Each routine can
 turn notifications off, follow the primary target, or select another authorized
 recipient of that agent. Existing routines keep notifications off. The API keeps

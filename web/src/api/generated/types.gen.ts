@@ -287,6 +287,11 @@ export type AutomationInput = {
     session: 'new' | 'reuse';
     enabled: boolean;
     /**
+     * local or an SSH environment ID for the runs. Empty follows the bot's environment. A run never uses another environment: when this one was removed, the run is skipped with a reason. A reused chat that ran in another environment stays readable, and the run starts a new chat. An update can keep a removed environment.
+     *
+     */
+    environmentId?: string;
+    /**
      * Omit on update to retain the current route. New routines default to none.
      */
     notification?: {

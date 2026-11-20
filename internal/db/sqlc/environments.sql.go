@@ -25,6 +25,16 @@ func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, arg ClearA
 	return err
 }
 
+const clearDefaultRoutineCwd = `-- name: ClearDefaultRoutineCwd :exec
+UPDATE automations SET cwd = '' WHERE agent_id = ? AND environment_id = ''
+`
+
+// The routines that follow the environment of the agent run in the workspace of the new one.
+func (q *Queries) ClearDefaultRoutineCwd(ctx context.Context, agentID string) error {
+	_, err := q.db.ExecContext(ctx, clearDefaultRoutineCwd, agentID)
+	return err
+}
+
 const clearDefaultSessionCwd = `-- name: ClearDefaultSessionCwd :exec
 UPDATE conversations SET cwd = '' WHERE agent_id = ? AND environment_id = ''
 `
@@ -247,6 +257,21 @@ func (q *Queries) ListEnvironments(ctx context.Context) ([]ExecutionEnvironment,
 		return nil, err
 	}
 	return items, nil
+}
+
+const retireAutomationChat = `-- name: RetireAutomationChat :exec
+UPDATE conversations SET channel_key = ?1 WHERE id = ?2
+`
+
+type RetireAutomationChatParams struct {
+	ChannelKey string `json:"channel_key"`
+	ID         int64  `json:"id"`
+}
+
+// A reused routine chat that ran in another environment moves off the reuse key and stays readable.
+func (q *Queries) RetireAutomationChat(ctx context.Context, arg RetireAutomationChatParams) error {
+	_, err := q.db.ExecContext(ctx, retireAutomationChat, arg.ChannelKey, arg.ID)
+	return err
 }
 
 const setAgentEnvironmentSandboxID = `-- name: SetAgentEnvironmentSandboxID :exec

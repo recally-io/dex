@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/recally-io/dex/internal/db"
 
@@ -18,6 +19,8 @@ type AutomationInput struct {
 	Expected                                 *sqlc.Automation
 	Run                                      sqlc.CreateAutomationRunParams
 	AgentID, ChannelKey, Title, Content, Cwd string
+	// EnvironmentID is the environment of the routine: empty follows the bot.
+	EnvironmentID string
 }
 
 // EnqueueAutomation commits both records before it wakes native delivery.
@@ -39,6 +42,30 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 	}
 	s.WakeConversation(convID)
 	return convID, true, nil
+}
+
+// bindAutomationEnvironment selects the environment of the routine for its chat. A chat cannot
+// change its environment after its first message, so a reused chat that started in another one
+// moves to the key of this run, where it stays readable, and the run starts a new chat.
+func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, in AutomationInput) (sqlc.Conversation, error) {
+	if conv.EnvironmentID == in.EnvironmentID {
+		return conv, nil
+	}
+	n, err := q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID})
+	if err != nil || n == 1 {
+		return conv, err
+	}
+	if err := q.RetireAutomationChat(ctx, sqlc.RetireAutomationChatParams{ChannelKey: in.ChannelKey + ":" + in.Run.ID, ID: conv.ID}); err != nil {
+		return conv, err
+	}
+	conv, err = q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: in.AgentID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
+	if err != nil {
+		return conv, err
+	}
+	if n, err = q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{EnvironmentID: in.EnvironmentID, ID: conv.ID, AgentID: in.AgentID}); err == nil && n != 1 {
+		err = fmt.Errorf("routine chat %d did not take environment %q", conv.ID, in.EnvironmentID)
+	}
+	return conv, err
 }
 
 // StoreAutomationInput stores a run and input in the caller's control transaction.
@@ -66,6 +93,9 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 	}
 	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: in.AgentID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
 	if err != nil {
+		return 0, false, err
+	}
+	if conv, err = bindAutomationEnvironment(ctx, q, conv, in); err != nil {
 		return 0, false, err
 	}
 	if err = q.SetConversationCwd(ctx, sqlc.SetConversationCwdParams{ID: conv.ID, AgentID: in.AgentID, Cwd: in.Cwd}); err != nil {

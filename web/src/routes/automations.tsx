@@ -17,6 +17,7 @@ import {
   dismissInboxItem,
   readInboxItem,
   sendMessage,
+  setChatEnvironment,
   setChatProject,
 } from "../api/generated/sdk.gen";
 import { refreshAutomations, refreshChats, refreshWork } from "../lib/queries";
@@ -87,6 +88,8 @@ function useAutomationUpdate(automation: Automation) {
           session: automation.session,
           enabled: automation.enabled,
           cwd: automation.cwd,
+          // A PUT replaces the routine, so an omitted environment would make it follow the bot.
+          environmentId: automation.environmentId,
           ...patch,
         },
       }),
@@ -243,6 +246,14 @@ function ReplyComposer({
         summary,
         outcome,
       });
+
+      // The project is a path in the routine's environment, so select that environment first.
+      if (automation.environmentId)
+        await setChatEnvironment({
+          path,
+          body: { environmentId: automation.environmentId },
+          throwOnError: true,
+        });
 
       await setChatProject({ path, body: { cwd: automation.cwd ?? "" }, throwOnError: true });
 
