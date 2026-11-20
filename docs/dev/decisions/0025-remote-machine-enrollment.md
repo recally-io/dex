@@ -18,11 +18,13 @@ code and the manual pairing step also duplicated the same one-time secret.
 
 ## Decision
 
-- **A separate TLS listener.** `--machine-listen 0.0.0.0:8788` starts a listener
-  that serves only the machine protocol. The web UI keeps its own listener, so
-  a local `http://127.0.0.1:8787` UI works while machines connect over TLS. Dex
-  creates a self-signed certificate in `<data dir>/machine-tls.pem` on the first
-  start.
+- **A separate TLS listener.** Dex serves the machine protocol on its own
+  socket, because the web UI socket is plain HTTP and because a machine must
+  reach Dex directly, without the TLS proxy that may front the web UI. A host
+  that a machine can reach opens the listener on the port after the web UI port,
+  so no flag is needed; `--machine-listen` overrides the address, and a
+  loopback-only Dex keeps it off. Dex creates a self-signed certificate in
+  `<data dir>/machine-tls.pem` on the first start.
 - **The install command pins the Dex key.** Dex publishes the base64 SHA-256
   digest of its certificate public key, and the command passes it to `curl
   --pinnedpubkey` and to the machine binary. A machine therefore needs no CA

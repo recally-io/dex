@@ -334,7 +334,8 @@ function EnvironmentCard({
             </Field>
           ) : (
             <p className="text-sm text-orange">
-              Remote machines are off. Start Dex with <Mono>--machine-listen 0.0.0.0:8788</Mono>.
+              Remote machines are off: this Dex listens on loopback only. Start it with a reachable host, or
+              set <Mono>--machine-listen</Mono>.
             </p>
           )}
           <div className="flex flex-wrap gap-2">

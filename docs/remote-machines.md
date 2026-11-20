@@ -8,21 +8,26 @@ machine therefore needs no CA bundle, no public domain, and no reverse proxy.
 Use a machine environment only with bots you trust. A bot can read the files and credentials
 that the service account can read.
 
-## Enable the machine listener
+## The machine listener
 
-Dex accepts remote machines only when you start it with a separate listener:
+Dex opens the machine listener by itself when its host is not loopback: the port is the port
+after the web UI port, so `dex serve --host 0.0.0.0 --port 8787` accepts machines on
+`8788`. The web UI keeps its own socket, and Dex keeps its certificate in
+`<data dir>/machine-tls.pem`. Dex creates the certificate on the first start.
+
+A loopback-only Dex has no address that a machine can reach, so it does not open the listener.
+Set the address yourself when you need another port, another interface, or a loopback UI with
+a reachable machine port:
 
 ```sh
-dex serve --machine-listen 0.0.0.0:8788
+dex serve --host 127.0.0.1 --port 8787 --machine-listen 0.0.0.0:8788
 ```
 
 `dex service install --machine-listen 0.0.0.0:8788` writes the flag into the service definition.
-The listener uses a different port than the web UI, and Dex keeps its own certificate in
-`<data dir>/machine-tls.pem`. Dex creates this certificate on the first start.
 
-The listener must be reachable from the target machine. A firewall or a NAT rule can forward the
-port. The web UI stays on its own address, so a local `http://127.0.0.1:8787` UI still works
-while machines connect over TLS.
+The machine port must be reachable from the target machine. A firewall rule or a NAT rule can
+forward the port. A TLS proxy in front of the web UI does not serve machines: the machine
+checks the Dex certificate pin, and that proxy has a different certificate.
 
 ## Install a machine
 
