@@ -196,7 +196,6 @@ func (s *Stream) Close() error {
 // Tagger gives each call a tag, so a cancel notification can name it.
 type Tagger interface {
 	SetTag(id uint64)
-	CallTag() uint64
 }
 
 // IdentityOf names one call with its tag.
@@ -204,9 +203,6 @@ func IdentityOf(tag uint64) Identity { return Identity{Tag: tag} }
 
 // SetTag names the call. Callers do not set it.
 func (i *Identity) SetTag(id uint64) { i.Tag = id }
-
-// CallTag returns the tag of the call.
-func (i Identity) CallTag() uint64 { return i.Tag }
 
 // CodeExecutionError marks a machine error that carries a Failure payload.
 const CodeExecutionError = -32000
