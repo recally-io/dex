@@ -30,7 +30,8 @@ although it is a credential concern of the HTTP routes.
 
 - **One private backend contract.** Each remote kind (`pi-env`, `e2b`,
   `runner`) implements one package-private `backend` interface:
-  `normalize`, `probe`, `open`, `changed`, `release`, and `disposable`. The
+  `normalize`, `probe`, `open`, `changed`, `release`, `disposable`, and
+  `generation`. The
   Manager keeps one map from kind to backend. `local` is not a backend: it has
   no stored configuration, so an agent without `environment_id` uses the local
   provider directly. A kind-specific operation that has no meaning for other
@@ -39,13 +40,18 @@ although it is a credential concern of the HTTP routes.
   releases the lease. `pi-env` keeps one shared connection for each
   environment. PiG `env.Connection` multiplexes requests by ID and
   serializes writes, so concurrent leases are safe. A configuration change
-  retires the connection; the last lease to close it closes the connection.
+  or a forgotten host key retires the connection; the last lease to close it
+  closes the connection. A connect that completes after `Close` fails its
+  opens and closes its connection.
   E2B keeps its session for each agent, and the machine runtime keeps the
   session of each machine.
 - **A handle carries its stamp.** `Handle.Stamp()` returns the fingerprint of
-  the configuration that `Open` read. The Manager computes it from the same
-  read. `Provider.Stamp` returns the current fingerprint, so a difference
-  shows that the handle is stale.
+  the configuration that `Open` read and of the backend generation. The
+  Manager computes it from the same read, before the backend opens.
+  `Provider.Stamp` returns the current fingerprint, so a difference shows that
+  the handle is stale. The generation covers state outside the row: a machine
+  session number that dex never reuses, and a `pi-env` epoch that a forgotten
+  host key advances.
 - **`Handle.Home()` returns a value.** Each backend knows the home directory
   when `Open` returns. Local resolves it at `Open`. An empty home means that
   the host has no home directory.
@@ -73,4 +79,5 @@ although it is a credential concern of the HTTP routes.
   reload the agent.
 - `internal/settings`, `internal/app`, `internal/server`, and `internal/engine`
   change call sites. The HTTP contract and the stored data do not change. The
-  one query change makes the sandbox clear conditional.
+  query changes make the sandbox clear conditional and read the agent and its
+  environment in one statement.

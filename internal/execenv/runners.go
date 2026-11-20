@@ -24,14 +24,20 @@ var ErrRunnerConflict = errors.New("this environment already has a machine; revo
 type Runners struct {
 	q        *sqlc.Queries
 	mu       sync.Mutex
-	sessions map[string]*runner.Client
-	// generations counts the sessions of one environment, so a reconnect changes its stamp.
-	generations map[string]uint64
-	closed      bool
+	sessions map[string]liveRunner
+	// lastGeneration numbers sessions for the whole process. A number is never reused, so a
+	// session after a revoke and a new enrollment cannot match a stamp from the earlier session.
+	lastGeneration uint64
+	closed         bool
+}
+
+type liveRunner struct {
+	client     *runner.Client
+	generation uint64
 }
 
 func newRunners(q *sqlc.Queries) *Runners {
-	return &Runners{q: q, sessions: map[string]*runner.Client{}, generations: map[string]uint64{}}
+	return &Runners{q: q, sessions: map[string]liveRunner{}}
 }
 
 func runnerDigest(value string) string {
@@ -98,12 +104,12 @@ func (rt *Runners) Accept(ctx context.Context, id, token string, socket *websock
 	if err == nil && rt.closed {
 		err = runner.ErrOffline
 	}
-	if err == nil && rt.sessions[id] != nil {
+	if _, live := rt.sessions[id]; err == nil && live {
 		err = ErrRunnerConflict
 	}
 	if err == nil {
-		rt.sessions[id] = session
-		rt.generations[id]++
+		rt.lastGeneration++
+		rt.sessions[id] = liveRunner{client: session, generation: rt.lastGeneration}
 	}
 	rt.mu.Unlock()
 	if err != nil {
@@ -112,7 +118,7 @@ func (rt *Runners) Accept(ctx context.Context, id, token string, socket *websock
 	defer func() {
 		rt.mu.Lock()
 		defer rt.mu.Unlock()
-		if rt.sessions[id] == session {
+		if rt.sessions[id].client == session {
 			delete(rt.sessions, id)
 		}
 	}()
@@ -130,9 +136,8 @@ func (rt *Runners) Revoke(ctx context.Context, id string) error {
 	err := rt.q.RevokeRunnerCredential(ctx, id)
 	var session *runner.Client
 	if err == nil {
-		session = rt.sessions[id]
+		session = rt.sessions[id].client
 		delete(rt.sessions, id)
-		delete(rt.generations, id)
 	}
 	rt.mu.Unlock()
 	if session != nil {
@@ -144,15 +149,15 @@ func (rt *Runners) Revoke(ctx context.Context, id string) error {
 func (rt *Runners) online(id string) *runner.Client {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	return rt.sessions[id]
+	return rt.sessions[id].client
 }
 
-// generation counts the sessions of a machine. A reconnect changes it, so a stamp from the
-// earlier session cannot match.
+// generation identifies the live session of a machine, or is 0 when the machine is offline.
+// A reconnect changes it, so a stamp from the earlier session cannot match.
 func (rt *Runners) generation(id string) uint64 {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	return rt.generations[id]
+	return rt.sessions[id].generation
 }
 
 func (rt *Runners) close() {
@@ -162,6 +167,6 @@ func (rt *Runners) close() {
 	rt.sessions = nil
 	rt.mu.Unlock()
 	for _, session := range sessions {
-		session.Close()
+		session.client.Close()
 	}
 }

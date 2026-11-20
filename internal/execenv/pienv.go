@@ -144,11 +144,16 @@ type piEnvRuntime struct {
 	// of all leases on it. A connection stays open until its environment changes or dex stops;
 	// add an idle close if many environments stay idle.
 	conns map[string]*piEnvConn
+	// epochs counts explicit retirements of each environment's connection, so a forgotten host
+	// key makes the stamps of loaded bots stale although the stored spec did not change.
+	epochs map[string]uint64
 }
 
 func newPiEnvRuntime(dataDir, sshProgram string) *piEnvRuntime {
-	return &piEnvRuntime{dataDir: dataDir, sshProgram: sshProgram, conns: map[string]*piEnvConn{}}
+	return &piEnvRuntime{dataDir: dataDir, sshProgram: sshProgram, conns: map[string]*piEnvConn{}, epochs: map[string]uint64{}}
 }
+
+var errPiEnvClosed = errors.New("execution environment manager is closed")
 
 // piEnvSession is what one SSH connection learned about its remote host.
 type piEnvSession struct {
@@ -213,7 +218,7 @@ func (r *piEnvRuntime) acquire(ctx context.Context, spec EnvironmentSpec) (*piEn
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		return nil, errors.New("execution environment manager is closed")
+		return nil, errPiEnvClosed
 	}
 	c := r.conns[spec.ID]
 	var stale *pienv.Connection
@@ -234,7 +239,12 @@ func (r *piEnvRuntime) acquire(ctx context.Context, spec EnvironmentSpec) (*piEn
 
 	if dial {
 		session, err := r.dial(ctx, spec)
+		var late *pienv.Connection
 		r.mu.Lock()
+		if err == nil && r.closed {
+			// close ran during the dial and found no connection to close: close it here and fail every waiter.
+			late, session, err = session.conn, piEnvSession{}, errPiEnvClosed
+		}
 		c.piEnvSession, c.err = session, err
 		if err != nil && r.conns[spec.ID] == c {
 			// A failed dial is not kept: the next open tries again.
@@ -242,6 +252,9 @@ func (r *piEnvRuntime) acquire(ctx context.Context, spec EnvironmentSpec) (*piEn
 		}
 		r.mu.Unlock()
 		close(c.ready)
+		if late != nil {
+			late.Close()
+		}
 	}
 	select {
 	case <-c.ready:
@@ -288,9 +301,11 @@ func (r *piEnvRuntime) retireLocked(envID string) *pienv.Connection {
 	return c.conn
 }
 
+// retire drops the shared connection of envID and advances its epoch, so loaded bots reload.
 func (r *piEnvRuntime) retire(envID string) {
 	r.mu.Lock()
 	conn := r.retireLocked(envID)
+	r.epochs[envID]++
 	r.mu.Unlock()
 	if conn != nil {
 		conn.Close()
@@ -465,11 +480,23 @@ func (r *piEnvRuntime) changed(_ context.Context, old EnvironmentSpec, cur *Envi
 func (*piEnvRuntime) release(context.Context, string, EnvironmentSpec, string) error { return nil }
 func (*piEnvRuntime) disposable() bool                                               { return false }
 
+func (r *piEnvRuntime) generation(envID string) uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.epochs[envID]
+}
+
+// forgetHostKey removes the saved trust and retires the shared connection, so the next open
+// makes a new SSH handshake and loaded bots reload.
 func (r *piEnvRuntime) forgetHostKey(spec EnvironmentSpec) error {
 	if r.dataDir == "" || strings.TrimSpace(spec.ID) == "" {
 		return nil
 	}
-	return forgetPiEnvHostKey(r.dataDir, spec.ID)
+	if err := forgetPiEnvHostKey(r.dataDir, spec.ID); err != nil {
+		return err
+	}
+	r.retire(spec.ID)
+	return nil
 }
 
 func captureRemoteLoginEnv(ctx context.Context, conn *pienv.Connection, home string) map[string]string {

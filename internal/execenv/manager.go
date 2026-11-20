@@ -135,7 +135,7 @@ type binding struct {
 }
 
 func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, error) {
-	row, err := m.q.GetAgent(ctx, agentID)
+	row, err := m.q.GetAgentBinding(ctx, agentID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return binding{}, fmt.Errorf("agent %q not found", agentID)
 	}
@@ -145,30 +145,22 @@ func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, er
 	if row.EnvironmentID == "" {
 		return binding{}, nil
 	}
-	envRow, err := m.q.GetEnvironment(ctx, row.EnvironmentID)
-	if errors.Is(err, sql.ErrNoRows) {
+	if row.FoundID == "" {
 		return binding{}, fmt.Errorf("execution environment %q not found", row.EnvironmentID)
 	}
-	if err != nil {
-		return binding{}, err
-	}
-	return binding{spec: SpecFromRow(envRow), sandboxID: row.EnvironmentSandboxID}, nil
+	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt}
+	return binding{spec: spec, sandboxID: row.EnvironmentSandboxID}, nil
 }
 
-// stamp fingerprints spec. A machine session also adds its generation, so a reconnect makes
-// earlier handles stale.
-func (m *Manager) stamp(spec EnvironmentSpec) string {
-	if spec.ID == "" {
-		return localStamp
-	}
+// stamp fingerprints spec and the backend generation, so a reconnect or a forgotten host key
+// makes earlier handles stale.
+func (m *Manager) stamp(b backend, spec EnvironmentSpec) string {
 	h := sha256.New()
 	for _, s := range []string{spec.ID, string(spec.Kind), spec.Config, spec.Secret, strconv.FormatInt(spec.UpdatedAt, 10)} {
 		_, _ = h.Write([]byte(s))
 		_, _ = h.Write([]byte{0})
 	}
-	if spec.Kind == KindRunner {
-		_, _ = h.Write([]byte(strconv.FormatUint(m.runners.generation(spec.ID), 10)))
-	}
+	_, _ = h.Write([]byte(strconv.FormatUint(b.generation(spec.ID), 10)))
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -195,8 +187,8 @@ func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Stamp before the open: a machine that reconnects during the open makes this handle stale, never fresh.
-	stamp := m.stamp(bound.spec)
+	// Stamp before the open: a reconnect during the open makes this handle stale, never fresh.
+	stamp := m.stamp(b, bound.spec)
 	l, err := b.open(ctx, agentID, bound.spec)
 	if err != nil {
 		return nil, err
@@ -210,7 +202,14 @@ func (m *Manager) Stamp(ctx context.Context, agentID string) (string, bool) {
 	if err != nil {
 		return "", false
 	}
-	return m.stamp(bound.spec), true
+	if bound.spec.ID == "" {
+		return localStamp, true
+	}
+	b, err := m.backend(bound.spec.Kind)
+	if err != nil {
+		return "", false
+	}
+	return m.stamp(b, bound.spec), true
 }
 
 // CanResetAgent reports whether agentID's environment discards its files on reset.

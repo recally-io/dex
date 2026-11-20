@@ -51,6 +51,7 @@ func (b runnerBackend) changed(ctx context.Context, old EnvironmentSpec, cur *En
 // release keeps the machine workspace: the machine belongs to the user.
 func (runnerBackend) release(context.Context, string, EnvironmentSpec, string) error { return nil }
 func (runnerBackend) disposable() bool                                               { return false }
+func (b runnerBackend) generation(envID string) uint64                               { return b.runners.generation(envID) }
 
 type runnerHandle struct {
 	id     string

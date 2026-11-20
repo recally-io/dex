@@ -297,6 +297,82 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 	if want := filepath.Join(sshFix.RemoteHome, "two", "bot-a", "workspace"); hA2.Workspace() != want {
 		t.Fatalf("workspace=%q want=%q", hA2.Workspace(), want)
 	}
+
+	// When the user forgets the host key, the loaded bot is stale and the next open makes a new handshake.
+	if err := mgr.ForgetHostKey(execenv.SpecFromRow(updated)); err != nil {
+		t.Fatal(err)
+	}
+	if stamp, _ := mgr.Stamp(t.Context(), "bot-a"); stamp == hA2.Stamp() {
+		t.Fatal("stamp did not change after the host key was forgotten")
+	}
+	beforeForgetOpen := sshFix.Invocations(t)
+	hA3, err := mgr.Open(t.Context(), "bot-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = hA3.Close(context.Background()) }()
+	if sshFix.Invocations(t) == beforeForgetOpen {
+		t.Fatal("open after forgetting the host key reused the trusted connection")
+	}
+}
+
+func TestUserPiEnvOpenFailsWhenDexStopsDuringTheFirstConnect(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	sshFix := execenvtest.NewFakeSSH(t)
+	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	q := sqlc.New(conn)
+	now := time.Now().UnixMilli()
+	if _, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+		ID: "env-slow", Name: "Slow SSH", Kind: string(execenv.KindPiEnv), Config: `{"host":"slow.internal"}`, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: "bot-slow", Name: "Slow", ThinkingLevel: "off", EnvironmentID: "env-slow", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	mgr := execenv.NewManager(execenv.ManagerConfig{DataDir: dataDir, Queries: q, SSHProgram: sshFix.SSHProgram})
+
+	// Given a first open that waits inside its SSH connect.
+	sshFix.Hold(t)
+	t.Cleanup(func() { sshFix.Resume(t) })
+	type opened struct {
+		h   execenv.Handle
+		err error
+	}
+	result := make(chan opened, 1)
+	go func() {
+		h, err := mgr.Open(t.Context(), "bot-slow")
+		result <- opened{h, err}
+	}()
+	deadline := time.Now().Add(20 * time.Second)
+	for sshFix.Invocations(t) == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the open did not start ssh")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// When dex stops and the connect then completes.
+	if err := mgr.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	sshFix.Resume(t)
+
+	// Then the open fails instead of returning a lease on a closed manager.
+	select {
+	case got := <-result:
+		if got.err == nil {
+			_ = got.h.Close(context.Background())
+			t.Fatal("open returned a lease after the manager closed")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the open did not return after the connect completed")
+	}
 }
 
 func TestUserPiEnvBuildsDaemonOutsideModuleCheckout(t *testing.T) {

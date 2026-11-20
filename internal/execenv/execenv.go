@@ -81,4 +81,7 @@ type backend interface {
 	release(ctx context.Context, agentID string, spec EnvironmentSpec, sandboxID string) error
 	// disposable reports that release discards the agent's files, so the user can reset the environment.
 	disposable() bool
+	// generation identifies the live connection state of an environment beyond its stored spec.
+	// A change makes the stamp of every earlier handle stale.
+	generation(envID string) uint64
 }
