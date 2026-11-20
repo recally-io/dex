@@ -106,11 +106,11 @@ func machineURLs(addr string) []string {
 			if !ok {
 				continue
 			}
-			ip, ok := netip.AddrFromSlice(network.IP)
-			if ip = ip.Unmap(); !ok || !ip.Is4() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			reachable, ok := netip.AddrFromSlice(network.IP)
+			if !ok || !reachable.Unmap().Is4() || reachable.IsLoopback() || reachable.IsLinkLocalUnicast() {
 				continue
 			}
-			hosts = append(hosts, ip)
+			hosts = append(hosts, reachable.Unmap())
 		}
 	}
 	// A private address is usually the one that a machine on the same network can reach.
