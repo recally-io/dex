@@ -44,5 +44,8 @@ func (s *Service) saveSettings(ctx context.Context, old sqlc.Agent, p sqlc.Updat
 	if err := q.ClearDefaultSessionCwd(ctx, old.ID); err != nil {
 		return err
 	}
+	if err := q.ClearDefaultRoutineCwd(ctx, old.ID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }

@@ -71,7 +71,23 @@ SELECT
 -- The sessions that follow the environment of the agent start in the workspace of the new one.
 UPDATE conversations SET cwd = '' WHERE agent_id = ? AND environment_id = '';
 
+-- name: ClearDefaultRoutineCwd :exec
+-- The routines that follow the environment of the agent run in the workspace of the new one.
+UPDATE automations SET cwd = '' WHERE agent_id = ? AND environment_id = '';
+
+-- name: RetireAutomationChat :exec
+-- A reused routine chat that ran in another environment moves off the reuse key and stays readable.
+UPDATE conversations SET channel_key = @channel_key WHERE id = @id;
+
 -- name: CountPendingAgent :one
 SELECT count(*)
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE c.agent_id = ? AND s.status = 'pending';
+
+-- name: LastAutomationRunEnvironment :one
+-- The effective environment of the newest run in a routine chat.
+SELECT r.environment_id FROM automation_runs r
+JOIN submissions s ON s.id = r.id
+WHERE s.conversation_id = ?
+ORDER BY s.created_at DESC, s.id DESC
+LIMIT 1;

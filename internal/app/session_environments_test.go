@@ -309,6 +309,15 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 		t.Fatalf("set_project=%q", out)
 	}
 	bg := bgStart(t, d, chatID, map[string]any{"command": "sleep 30", "wake": "none"})
+	routine := func(name, environmentID string) routineEnvironment {
+		var r routineEnvironment
+		d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
+			"name": name, "prompt": "pwd", "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC",
+			"session": "reuse", "enabled": true, "cwd": project, "environmentId": environmentID,
+		}, &r, http.StatusCreated)
+		return r
+	}
+	following, pinnedRoutine := routine("Following", ""), routine("Pinned", "local")
 
 	// When a background command runs in a following session, then the change fails.
 	var bot apiAgent
@@ -341,6 +350,14 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 	})
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
 	assertProject(t, d, chatID, "")
+	// Then a routine that follows the bot drops its project, and a routine on local keeps it.
+	for _, want := range []routineEnvironment{{ID: following.ID}, {ID: pinnedRoutine.ID, EnvironmentID: "local", Cwd: project}} {
+		var got routineEnvironment
+		d.must(t, http.MethodGet, "/api/agents/default/automations/"+want.ID, nil, &got)
+		if got != want {
+			t.Fatalf("routine after change=%+v, want %+v", got, want)
+		}
+	}
 	d.setModel(t, "bash")
 	if out := taskTurn(t, d, chatID, `printf %s "${REMOTE_E2B_MARKER:-local}"`); out != "bash: e2b-fake-ok" {
 		t.Fatalf("bash after change=%q", out)

@@ -8,6 +8,7 @@
 package automation
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -24,6 +25,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/execenv"
 )
 
 // Channel starts the channel key of an automation's chats: automation:<id> for an automation
@@ -52,6 +54,8 @@ type Input struct {
 	TimeZone     string                      `json:"timeZone"`
 	Session      string                      `json:"session"` // new or reuse
 	Enabled      bool                        `json:"enabled"`
+	// EnvironmentID is local or an SSH environment ID. Empty follows the environment of the bot.
+	EnvironmentID string `json:"environmentId"`
 }
 
 // Automation is an automation with its next times and its last run.
@@ -78,6 +82,10 @@ type Run struct {
 	Status     string `json:"status"` // running, done, failed, or skipped
 	Reason     string `json:"reason,omitempty"`
 	ChatID     int64  `json:"chatId,omitzero"` // 0 when the run has no message
+	// EnvironmentID and Cwd are where the run started: the effective environment, never empty
+	// for a run with a message.
+	EnvironmentID string `json:"environmentId,omitempty"`
+	Cwd           string `json:"cwd,omitempty"`
 }
 
 // Service manages automations for all agents.
@@ -85,6 +93,14 @@ type Service struct {
 	q       *sqlc.Queries
 	enqueue func(context.Context, chat.AutomationInput) (int64, bool, error)
 	now     func() time.Time
+	// probe opens an SSH environment of a run before its input; nil skips the check.
+	probe func(ctx context.Context, agentID, environmentID string) error
+}
+
+// ConfigureProbe sets the check that an SSH environment is reachable before a run. A run on an
+// unreachable host is skipped, so it never starts a chat that cannot use its machine.
+func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, environmentID string) error) {
+	s.probe = probe
 }
 
 // New returns a Service. Call Check every minute.
@@ -182,6 +198,9 @@ func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automat
 	if err != nil {
 		return Automation{}, err
 	}
+	if err := s.checkEnvironment(ctx, in.EnvironmentID, ""); err != nil {
+		return Automation{}, err
+	}
 	now := s.now()
 	row := sqlc.Automation{
 		ID: uuid.NewV7().String(), AgentID: agentID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(), NotificationRoute: "none",
@@ -209,6 +228,9 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	if err != nil {
 		return Automation{}, err
 	}
+	if err := s.checkEnvironment(ctx, in.EnvironmentID, row.EnvironmentID); err != nil {
+		return Automation{}, err
+	}
 	if err := s.applyNotification(ctx, &row, in.Notification); err != nil {
 		return Automation{}, err
 	}
@@ -219,13 +241,33 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	}
 	_, err = s.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{
 		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
-		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, UpdatedAt: row.UpdatedAt,
-		ID: row.ID, AgentID: agentID,
+		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID,
+		EnvironmentID: row.EnvironmentID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: agentID,
 	})
 	if err != nil {
 		return Automation{}, err
 	}
 	return s.view(ctx, row)
+}
+
+// checkEnvironment fails with ErrInvalid unless id is empty, LocalID, or a saved pi-env
+// environment. E2B and runner environments belong to one bot. The current value of a routine
+// passes, so the owner can still edit or pause a routine whose environment was removed.
+func (s *Service) checkEnvironment(ctx context.Context, id, current string) error {
+	if id == "" || id == current || id == execenv.LocalID {
+		return nil
+	}
+	row, err := s.q.GetEnvironment(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return invalid("the environment " + id + " does not exist")
+	}
+	if err != nil {
+		return err
+	}
+	if execenv.Kind(row.Kind) != execenv.KindPiEnv {
+		return invalid(fmt.Sprintf("%s is a %s environment; select local or an SSH environment", row.Name, row.Kind))
+	}
+	return nil
 }
 
 func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *engine.RoutineNotification) error {
@@ -254,7 +296,7 @@ func fill(row *sqlc.Automation, in Input, loc *time.Location, now time.Time) err
 	if in.Enabled && in.Schedule.Kind == "once" && !time.UnixMilli(in.Schedule.At).After(now) {
 		return invalid("the time is in the past")
 	}
-	row.Cwd = in.Cwd
+	row.Cwd, row.EnvironmentID = in.Cwd, in.EnvironmentID
 	row.Name, row.Prompt, row.Schedule, row.TimeZone, row.Session = in.Name, in.Prompt, string(sched), in.TimeZone, in.Session
 	row.Enabled, row.NextDueAt = 0, sql.NullInt64{}
 	if in.Enabled {
@@ -312,7 +354,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
 		Notification: &engine.RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
-		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1,
+		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, EnvironmentID: row.EnvironmentID,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.Schedule), &a.Schedule); err != nil {
@@ -348,7 +390,7 @@ func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int
 	}
 	out := make([]Run, len(rows))
 	for i, r := range rows {
-		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64}
+		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64, EnvironmentID: r.EnvironmentID, Cwd: r.Cwd}
 		if r.AdmittedAt.Valid {
 			out[i].AdmittedAt = new(r.AdmittedAt.Int64)
 		}
@@ -379,11 +421,7 @@ func (s *Service) RunNow(ctx context.Context, agentID string, id string) (Run, e
 	if err != nil {
 		return Run{}, err
 	}
-	run, err := s.admit(ctx, row, sql.NullInt64{}, "")
-	if err != nil {
-		return Run{}, err
-	}
-	return run, nil
+	return s.admit(ctx, row, sql.NullInt64{}, "", nil)
 }
 
 // Check runs each automation whose next time has come, and moves its next time past now.
@@ -419,7 +457,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	}
 	// The run comes before the next time: a crash between them repeats the check, which finds the
 	// run and does not store it again.
-	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip)
+	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip, nil)
 	// An archived bot keeps the due time; restore runs it if the grace period allows.
 	if errors.Is(err, chat.ErrAutomationChanged) || errors.Is(err, db.ErrAgentArchived) {
 		return nil
@@ -440,9 +478,11 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	return nil
 }
 
-// admit stores a run for due, skipped with the reason skip, or when the bot has no model or a
-// run of the automation is busy. An existing scheduled run creates no new input.
-func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string) (Run, error) {
+// admit stores a run for due, skipped with the reason skip, or when the bot has no model, a run
+// of the automation is busy, or its environment cannot be used. An existing scheduled run creates
+// no new input. A nil pre checks the environment here; the check does network I/O, so it never
+// runs in a transaction.
+func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string, pre *Target) (Run, error) {
 	if skip == "" {
 		agent, err := s.q.GetAgent(ctx, row.AgentID)
 		if err != nil {
@@ -460,28 +500,77 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 		}
 	}
 	run := Run{ID: uuid.NewV7().String(), DueAt: due.Int64, CreatedAt: s.now().UnixMilli(), Status: "started", Reason: skip}
-	if skip != "" {
-		run.Status = "skipped"
-	}
 	params := sqlc.CreateAutomationRunParams{
 		ID: run.ID, AutomationID: row.ID, DueAt: due, Status: run.Status,
 		Reason: sql.NullString{String: skip, Valid: skip != ""}, CreatedAt: run.CreatedAt,
 	}
 	if skip != "" {
+		run.Status, params.Status = "skipped", "skipped"
 		_, err := s.q.CreateAutomationRun(ctx, params)
 		return run, err
+	}
+	if pre == nil {
+		t, err := s.Preflight(ctx, row)
+		if err != nil {
+			return Run{}, err
+		}
+		pre = &t
 	}
 	key := Channel + row.ID
 	if row.Session == "new" {
 		key += ":" + run.ID
 	}
-	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd}
-	if due.Valid {
-		input.Expected = &row
-	}
+	// The input stores row only while row is current: the preflight gives an edit time to commit.
+	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, EnvironmentID: row.EnvironmentID, Target: pre.ID, Skip: pre.Skip, Expected: &row}
 	chatID, created, err := s.enqueue(ctx, input)
-	if created {
+	if !due.Valid && errors.Is(err, chat.ErrAutomationChanged) {
+		// A scheduled run checks again next minute; a manual run tells the caller.
+		err = fmt.Errorf("%w: the routine changed during its check; run it again", engine.ErrBusy)
+	}
+	switch {
+	case created && chatID == 0:
+		run.Status, run.Reason = "skipped", pre.Skip
+	case created:
 		run.Status, run.ChatID = "running", chatID
 	}
 	return run, err
+}
+
+// Target is the effective environment of a run, checked before the run is stored. Skip is the
+// reason when the run cannot use it.
+type Target struct {
+	ID, Skip string
+}
+
+// Preflight resolves the effective environment of a run of row and checks that it can be used.
+// The input transaction compares the environment again, so a change in between does not admit a
+// run on an environment that was not checked.
+func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, error) {
+	agent, err := s.q.GetAgent(ctx, row.AgentID)
+	if err != nil {
+		return Target{}, err
+	}
+	id := cmp.Or(row.EnvironmentID, agent.EnvironmentID, execenv.LocalID)
+	skip, err := s.unavailable(ctx, row.AgentID, id)
+	return Target{ID: id, Skip: skip}, err
+}
+
+// unavailable returns the skip reason when a run cannot use environment id, so a run never falls
+// back to another machine. Only an SSH host is probed: local is always there, and opening an E2B
+// sandbox or a runner would start the work that the run does.
+func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, error) {
+	if id == execenv.LocalID {
+		return "", nil
+	}
+	env, err := s.q.GetEnvironment(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "the environment " + id + " was removed", nil
+	}
+	if err != nil || execenv.Kind(env.Kind) != execenv.KindPiEnv || s.probe == nil {
+		return "", err
+	}
+	if err := s.probe(ctx, agentID, id); err != nil {
+		return fmt.Sprintf("the environment %s is unavailable: %v", env.Name, err), nil
+	}
+	return "", nil
 }

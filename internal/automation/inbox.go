@@ -20,6 +20,9 @@ type InboxItem struct {
 	CreatedAt      int64  `json:"createdAt"`
 	Read           bool   `json:"read"`
 	Dismissed      bool   `json:"dismissed"`
+	// EnvironmentID and Cwd are where the run started.
+	EnvironmentID string `json:"environmentId"`
+	Cwd           string `json:"cwd"`
 }
 
 // Inbox reads all bots in one query. Dismissed results are optional for direct links.
@@ -30,7 +33,7 @@ func (s *Service) Inbox(ctx context.Context, includeDismissed bool) ([]InboxItem
 	}
 	items := make([]InboxItem, len(rows))
 	for i, r := range rows {
-		items[i] = InboxItem{RunID: r.RunID, AgentID: r.AgentID, AgentName: r.AgentName, AutomationID: r.AutomationID, AutomationName: r.AutomationName, ChatID: r.ChatID, Outcome: r.Outcome, Summary: r.Summary, CreatedAt: r.CreatedAt, Read: r.ReadAt.Valid, Dismissed: r.DismissedAt.Valid}
+		items[i] = InboxItem{RunID: r.RunID, AgentID: r.AgentID, AgentName: r.AgentName, AutomationID: r.AutomationID, AutomationName: r.AutomationName, ChatID: r.ChatID, Outcome: r.Outcome, Summary: r.Summary, CreatedAt: r.CreatedAt, Read: r.ReadAt.Valid, Dismissed: r.DismissedAt.Valid, EnvironmentID: r.EnvironmentID, Cwd: r.Cwd}
 	}
 	return items, nil
 }

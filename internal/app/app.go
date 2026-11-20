@@ -304,6 +304,17 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
+	// Check admits due routines one at a time, so a dead host delays the others by this timeout;
+	// probe in parallel if many routines use SSH hosts.
+	automations.ConfigureProbe(func(ctx context.Context, agentID, environmentID string) error {
+		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		h, err := envs.Open(ctx, agentID, environmentID)
+		if err != nil {
+			return err
+		}
+		return h.Close(context.WithoutCancel(ctx))
+	})
 	routineTools = automation.NewToolService(conn, automations, chats.WakeConversation)
 	hub = live.New(chats, native)
 	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
