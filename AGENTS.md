@@ -19,15 +19,16 @@ references here.
 
 - [Product](docs/product.md): users, scope, and non-goals.
 - [Architecture](docs/dev/architecture.md): business services and native engine.
-  It is the single source of truth for the current design.
 - [Development](docs/dev/development.md): local setup, tasks, tests, and debug.
 - [Releasing](docs/dev/releasing.md): CI shards and release workflow.
 - [Web UI](web/AGENTS.md): frontend routes, state, and shadcn conventions.
 
-Do not add architecture decision records (ADRs) or other decision logs. Do not
-commit them. Write the current design in `docs/dev/architecture.md`, and update
-it in the same commit as the change. Put the reason for a decision in the
-commit message or the PR body.
+The architecture docs are the single source of truth for the current design:
+`docs/dev/architecture.md`, `web/AGENTS.md`, and the figures in `assets/`.
+When a change makes any of them wrong, update it in the same commit. Do not
+add architecture decision records (ADRs) or other decision logs, and do not
+commit them. Put the reason for a decision in the commit message or the PR
+body.
 
 ## Skills
 
