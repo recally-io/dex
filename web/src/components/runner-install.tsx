@@ -3,14 +3,15 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { getHealthOptions, issueRunnerCodeMutation } from "../api/generated/@tanstack/react-query.gen";
 import { useApp } from "../lib/app-state";
 import { machineAddress, machineInstallCommand } from "../lib/environments";
-import { Field } from "./form";
+import { Field, Input, Select } from "./form";
 import { Mono } from "./page";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import { Spinner } from "./feedback";
 
-// RunnerInstall shows the one command that connects a machine to Dex. It creates a
-// fresh single-use code on demand, so the command is always safe to copy.
+const customOption = "__custom__";
+
+// RunnerInstall shows the one command that connects a machine to Dex. Dex offers every
+// address a machine might reach, so the operator picks the network instead of typing a URL.
 export function RunnerInstall({
   environmentId,
   autoIssue = false,
@@ -22,15 +23,16 @@ export function RunnerInstall({
   const { notify } = useApp();
   const health = useQuery(getHealthOptions());
   const [address, setAddress] = useState("");
+  const [typed, setTyped] = useState(false);
   const [issued, setIssued] = useState<{ code: string } | null>(null);
 
   const machineUrls = health.data?.machineUrls ?? [];
+  const pin = health.data?.machinePin;
 
   const target = address || machineUrls.at(0) || "";
 
-  const command = issued
-    ? machineInstallCommand(target, environmentId, health.data?.machinePin ?? "", issued.code)
-    : null;
+  const command =
+    issued && pin !== undefined ? machineInstallCommand(target, environmentId, pin, issued.code) : null;
 
   const issue = useMutation({
     ...issueRunnerCodeMutation(),
@@ -38,7 +40,6 @@ export function RunnerInstall({
   });
 
   const autoIssued = useRef(false);
-  const pin = health.data?.machinePin;
 
   useEffect(() => {
     if (!autoIssue || autoIssued.current || !machineUrls.length || pin === undefined) return;
@@ -47,16 +48,24 @@ export function RunnerInstall({
     issue.mutate({ path: { environmentId } });
   }, [autoIssue, environmentId, pin, machineUrls.length, issue]);
 
+  const reset = (value: string) => {
+    setAddress(value);
+    setIssued(null);
+    issue.reset();
+  };
+
+  const addressField = typed || !machineUrls.length;
+
   return (
     <div className="flex flex-col gap-2">
       <p className="text-sm text-muted-foreground">
         Run one command on the machine. It needs sudo, and it connects the machine to Dex without an inbound
         port.
       </p>
-      {machineUrls.length ? (
+      {addressField ? (
         <Field
           label="Address the machine uses for Dex"
-          hint="Change it when the machine reaches Dex through another network."
+          hint="Use an address the machine can reach."
           error={
             target && !machineAddress(target)
               ? "Enter an HTTPS address without a path. Do not use localhost."
@@ -65,18 +74,41 @@ export function RunnerInstall({
         >
           {(ids) => (
             <Input
-              id={ids.id}
-              aria-describedby={ids.describedBy}
+              {...ids}
               value={target}
-              onChange={(event) => {
-                setAddress(event.target.value);
-                setIssued(null);
-                issue.reset();
-              }}
+              placeholder="https://192.0.2.10:8788"
+              onChange={(event) => reset(event.target.value)}
             />
           )}
         </Field>
       ) : (
+        <Field label="Address the machine uses for Dex" hint="Choose the network the machine shares.">
+          {(ids) => (
+            <Select
+              {...ids}
+              value={target}
+              onChange={(event) => {
+                if (event.target.value === customOption) {
+                  setTyped(true);
+                  reset("");
+
+                  return;
+                }
+
+                reset(event.target.value);
+              }}
+            >
+              {machineUrls.map((url) => (
+                <option key={url} value={url}>
+                  {url}
+                </option>
+              ))}
+              <option value={customOption}>Other address…</option>
+            </Select>
+          )}
+        </Field>
+      )}
+      {machineUrls.length ? null : (
         <p className="text-sm text-orange">
           Remote machines are off: this Dex listens on loopback only. Start it with a reachable host, or set{" "}
           <Mono>--machine-listen</Mono>.
@@ -86,7 +118,7 @@ export function RunnerInstall({
         <Button
           size="xs"
           variant="outline"
-          disabled={!machineUrls.length || issue.isPending}
+          disabled={(!machineUrls.length && !target) || issue.isPending}
           onClick={() => issue.mutate({ path: { environmentId } })}
         >
           {issue.isPending ? <Spinner /> : null}

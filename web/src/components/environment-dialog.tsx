@@ -173,19 +173,6 @@ export function EnvironmentDialog({
     }
   }
 
-  if (created) {
-    return (
-      <Modal
-        title={`${created.name} is ready to connect`}
-        description="Copy the command, run it on the machine, then select Test in the environment list."
-        onClose={onClose}
-        footer={<Button onClick={onClose}>Done</Button>}
-      >
-        <RunnerInstall environmentId={created.id} autoIssue />
-      </Modal>
-    );
-  }
-
   return (
     <Modal
       title={existing ? `Edit ${existing.name}` : "Add execution environment"}
@@ -193,29 +180,33 @@ export function EnvironmentDialog({
       pending={pending}
       onClose={onClose}
       footer={
-        <>
-          {kind !== "runner" ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="mr-auto"
-              onClick={runProbe}
-              disabled={pending || probe.isPending}
-            >
-              {probe.isPending ? <Spinner /> : null}
-              {probe.isPending ? "Testing…" : "Test connection"}
-            </Button>
-          ) : null}
-          <Button variant="secondary" onClick={onClose} disabled={pending}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={pending}>
-            {pending ? (
-              <Spinner className="border-primary-foreground/40 border-t-primary-foreground" />
+        created ? (
+          <Button onClick={onClose}>Done</Button>
+        ) : (
+          <>
+            {kind !== "runner" ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mr-auto"
+                onClick={runProbe}
+                disabled={pending || probe.isPending}
+              >
+                {probe.isPending ? <Spinner /> : null}
+                {probe.isPending ? "Testing…" : "Test connection"}
+              </Button>
             ) : null}
-            {pending ? "Saving…" : existing ? "Save changes" : "Add environment"}
-          </Button>
-        </>
+            <Button variant="secondary" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button onClick={submit} disabled={pending}>
+              {pending ? (
+                <Spinner className="border-primary-foreground/40 border-t-primary-foreground" />
+              ) : null}
+              {pending ? "Saving…" : existing ? "Save changes" : "Add environment"}
+            </Button>
+          </>
+        )
       }
     >
       <form
@@ -226,7 +217,7 @@ export function EnvironmentDialog({
           submit();
         }}
       >
-        {!existing ? (
+        {!existing && !created ? (
           <div role="radiogroup" aria-label="Where the bot runs" className="grid gap-2.5 sm:grid-cols-2">
             {environmentPlaces.map((choice) => {
               const selected = place === choice.place;
@@ -262,7 +253,7 @@ export function EnvironmentDialog({
           </div>
         ) : null}
 
-        {!existing && place === "machine" ? (
+        {!existing && !created && place === "machine" ? (
           <div
             role="radiogroup"
             aria-label="How Dex reaches the machine"
@@ -310,16 +301,20 @@ export function EnvironmentDialog({
         ) : kind === "e2b" ? (
           <SandboxEnvironmentFields controller={sandbox} show={showSandbox} />
         ) : (
-          <Field label="Name" error={tried && !serviceName.trim() ? "Enter a name." : undefined}>
-            {(ids) => (
-              <Input
-                {...ids}
-                maxLength={60}
-                value={serviceName}
-                onChange={(event) => setServiceName(event.target.value)}
-              />
-            )}
-          </Field>
+          <>
+            <Field label="Name" error={tried && !serviceName.trim() ? "Enter a name." : undefined}>
+              {(ids) => (
+                <Input
+                  {...ids}
+                  maxLength={60}
+                  value={created?.name ?? serviceName}
+                  disabled={!!created}
+                  onChange={(event) => setServiceName(event.target.value)}
+                />
+              )}
+            </Field>
+            {created ? <RunnerInstall environmentId={created.id} autoIssue /> : null}
+          </>
         )}
 
         <button type="submit" hidden />
