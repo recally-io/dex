@@ -264,6 +264,7 @@ func TestUserSteeredChildInputSendsNoSecondResult(t *testing.T) {
 	// When the parent steers a second message into the running turn.
 	var ref childRef
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo steered", "mode": "steer"}), &ref)
+	d.watch(t, child.conversation(t)).until(t, "steer queued", anySteerQueued)
 	releaseResultGate(t, dir, "steer")
 	// Then the first parent input to settle owns the shared run's one result.
 	waitDoneChildTurns(t, conn, child.conversation(t), 2)

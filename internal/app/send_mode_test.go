@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"uuid"
@@ -29,6 +30,13 @@ func queuedSteer(id string) func(*transcript) bool {
 		}
 		return false
 	}
+}
+
+// anySteerQueued reports a steer that waits in the native queue. A test that releases the running
+// tool after a session_send steer waits for it: delivery is asynchronous, and a run that ends
+// first makes the steer a separate run.
+func anySteerQueued(tr *transcript) bool {
+	return slices.ContainsFunc(tr.items, func(it item) bool { return it.Queued && it.Steer })
 }
 
 func assistantTexts(tr *transcript) []string {
