@@ -5,6 +5,7 @@ import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../ap
 import {
   createAutomationMutation,
   getNotificationTargetsOptions,
+  listAgentEnvironmentsOptions,
   updateAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { previewSchedule } from "../api/generated/sdk.gen";
@@ -35,6 +36,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   const browserZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState(existing?.name ?? "");
   const [cwd, setCwd] = useState(existing?.cwd ?? "");
+  const [environmentId, setEnvironmentId] = useState(existing?.environmentId ?? "");
   const [prompt, setPrompt] = useState(existing?.prompt ?? "");
   const [kind, setKind] = useState<Schedule["kind"]>(existing?.schedule.kind ?? "daily");
   const [minutes, setMinutes] = useState(existing?.schedule.minutes ?? 30);
@@ -52,6 +54,20 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   );
 
   const targets = useQuery(getNotificationTargetsOptions({ path: { agentId } }));
+  const environments = useQuery(listAgentEnvironmentsOptions({ path: { agentId } }));
+  const environmentList = environments.data?.environments ?? [];
+  const own = environmentList.find((env) => env.default);
+
+  // A routine can select only local or an SSH environment. A saved selection that is not a choice
+  // (the bot's own environment, or a removed one) stays listed, so an edit does not move the routine.
+  const choices = environmentList.filter(
+    (env) => !env.default && (env.kind === "local" || env.kind === "pi-env"),
+  );
+
+  const kept = environmentId !== "" && !choices.some((env) => env.id === environmentId);
+
+  const keptName =
+    environmentList.find((env) => env.id === environmentId)?.name ?? `${environmentId} (removed)`;
 
   const schedule = useMemo<Schedule>(() => {
     switch (kind) {
@@ -154,6 +170,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             name: name.trim(),
             prompt: prompt.trim(),
             cwd: cwd.trim(),
+            environmentId,
             schedule,
             timeZone,
             session,
@@ -185,9 +202,36 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             />
           )}
         </Field>
+        {choices.length > 0 || environmentId ? (
+          <Field
+            label="Environment"
+            hint="Runs use only this environment. A run is skipped when it is removed or unreachable. Changing it clears the project directory."
+          >
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={environmentId}
+                onChange={(event) => {
+                  // A project path belongs to one machine, so another environment starts without one.
+                  if (event.target.value !== environmentId) setCwd("");
+                  setEnvironmentId(event.target.value);
+                }}
+              >
+                <option value="">Follow bot ({own?.name ?? "default"})</option>
+                {choices.map((env) => (
+                  <option key={env.id} value={env.id}>
+                    {env.name}
+                  </option>
+                ))}
+                {kept ? <option value={environmentId}>{keptName}</option> : null}
+              </Select>
+            )}
+          </Field>
+        ) : null}
         <Field
           label="Project directory"
-          hint="Use an absolute directory on the server. Leave empty to use the bot workspace."
+          hint="Use an absolute directory in the environment of the routine. Leave empty to use its workspace."
         >
           {({ id, describedBy }) => (
             <Input

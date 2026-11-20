@@ -346,13 +346,13 @@ SELECT id FROM agents WHERE archived_at IS NULL ORDER BY id;
 
 -- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, environment_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateAutomation :execrows
 UPDATE automations SET
     cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
-    notification_route = ?, notification_target_id = ?, updated_at = ?
+    notification_route = ?, notification_target_id = ?, environment_id = ?, updated_at = ?
 WHERE id = ? AND agent_id = ?;
 
 -- name: GetAutomation :one
@@ -378,8 +378,8 @@ DELETE FROM automations WHERE id = ? AND agent_id = ?;
 
 -- name: CreateAutomationRun :execrows
 -- A run for a scheduled time that has a run already is not stored again.
-INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at, environment_id, cwd)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING;
 
 -- name: ListAutomationRuns :many
@@ -389,7 +389,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id,

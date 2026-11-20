@@ -304,6 +304,11 @@ export type AutomationInput = {
     session: 'new' | 'reuse';
     enabled: boolean;
     /**
+     * local or an SSH environment ID for the runs. Empty follows the bot's environment. A run never uses another environment: when this one was removed, the run is skipped with a reason. A reused chat that ran in another environment stays readable, and the run starts a new chat. An update can keep a removed environment.
+     *
+     */
+    environmentId?: string;
+    /**
      * Omit on update to retain the current route. New routines default to none.
      */
     notification?: {
@@ -359,6 +364,14 @@ export type InboxItem = {
     outcome: 'changed' | 'failed';
     read: boolean;
     dismissed: boolean;
+    /**
+     * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+     */
+    environmentId: string;
+    /**
+     * The cwd that the run started with, in its environment.
+     */
+    cwd: string;
 };
 
 export type AutomationRun = {
@@ -386,6 +399,14 @@ export type AutomationRun = {
     duplicate: boolean;
     reason?: string;
     chatId?: number;
+    /**
+     * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+     */
+    environmentId?: string;
+    /**
+     * The cwd that the run started with, in its environment.
+     */
+    cwd?: string;
 };
 
 export type AutomationRunList = {

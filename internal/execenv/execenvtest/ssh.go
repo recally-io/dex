@@ -101,9 +101,27 @@ func (f *FakeSSHFixture) Resume(t *testing.T) {
 	}
 }
 
+// Refuse makes each later ssh run to host fail as a host that is down does.
+func (f *FakeSSHFixture) Refuse(t *testing.T, host string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.stateDir, "refuse-"+host), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func runFakeSSH(stateDir string, sshArgs []string) int {
 	if len(sshArgs) == 0 {
 		return 255
+	}
+	for _, arg := range sshArgs {
+		host := arg[strings.LastIndex(arg, "@")+1:]
+		if host == "" || strings.ContainsAny(host, "/ ") {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(stateDir, "refuse-"+host)); err == nil { //nolint:gosec // test fixture directory.
+			fmt.Fprintf(os.Stderr, "ssh: connect to host %s port 22: Connection refused\n", host)
+			return 255
+		}
 	}
 	// One byte per run: O_APPEND writes are atomic, so concurrent runs count correctly.
 	if f, err := os.OpenFile(filepath.Join(stateDir, "invocations"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil { //nolint:gosec // test fixture directory.

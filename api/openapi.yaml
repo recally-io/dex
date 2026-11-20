@@ -2417,6 +2417,14 @@ components:
             new: each run starts a new chat. reuse: all runs use one chat; a
             run is skipped while that chat is busy.
         enabled: { type: boolean }
+        environmentId:
+          type: string
+          description: >
+            local or an SSH environment ID for the runs. Empty follows the
+            bot's environment. A run never uses another environment: when
+            this one was removed, the run is skipped with a reason. A reused
+            chat that ran in another environment stays readable, and the
+            run starts a new chat. An update can keep a removed environment.
         notification:
           type: object
           description: Omit on update to retain the current route. New routines default to none.
@@ -2497,6 +2505,8 @@ components:
         createdAt,
         read,
         dismissed,
+        environmentId,
+        cwd,
       ]
       properties:
         runId: { type: string }
@@ -2510,6 +2520,12 @@ components:
         outcome: { type: string, enum: [changed, failed] }
         read: { type: boolean }
         dismissed: { type: boolean }
+        environmentId:
+          type: string
+          description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+        cwd:
+          type: string
+          description: The cwd that the run started with, in its environment.
 
     AutomationRun:
       x-go-type: automation.Run
@@ -2541,6 +2557,12 @@ components:
           description: An earlier completed report has the same change key. Actions are not suppressed.
         reason: { type: string }
         chatId: { type: integer, format: int64 }
+        environmentId:
+          type: string
+          description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+        cwd:
+          type: string
+          description: The cwd that the run started with, in its environment.
 
     AutomationRunList:
       type: object
