@@ -1233,6 +1233,64 @@ export type ChatId = number;
 
 export type EnvironmentId = string;
 
+export type DeleteGitHubReviewPullData = {
+    body?: never;
+    path: {
+        repositoryId: number;
+        pullNumber: number;
+    };
+    query?: never;
+    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}';
+};
+
+export type DeleteGitHubReviewPullErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteGitHubReviewPullError = DeleteGitHubReviewPullErrors[keyof DeleteGitHubReviewPullErrors];
+
+export type DeleteGitHubReviewPullResponses = {
+    /**
+     * Pull disabled.
+     */
+    204: void;
+};
+
+export type DeleteGitHubReviewPullResponse = DeleteGitHubReviewPullResponses[keyof DeleteGitHubReviewPullResponses];
+
+export type SaveGitHubReviewPullData = {
+    body: {
+        token: string;
+    };
+    path: {
+        repositoryId: number;
+        pullNumber: number;
+    };
+    query?: never;
+    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}';
+};
+
+export type SaveGitHubReviewPullErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SaveGitHubReviewPullError = SaveGitHubReviewPullErrors[keyof SaveGitHubReviewPullErrors];
+
+export type SaveGitHubReviewPullResponses = {
+    /**
+     * Pull configuration saved.
+     */
+    204: void;
+};
+
+export type SaveGitHubReviewPullResponse = SaveGitHubReviewPullResponses[keyof SaveGitHubReviewPullResponses];
+
 export type DeleteGitHubWebhookData = {
     body?: never;
     path: {

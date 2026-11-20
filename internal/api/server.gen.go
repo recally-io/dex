@@ -1885,6 +1885,11 @@ type ListWorkTasksParams struct {
 	IncludeClosed *bool `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
 }
 
+// SaveGitHubReviewPullJSONBody defines parameters for SaveGitHubReviewPull.
+type SaveGitHubReviewPullJSONBody struct {
+	Token *string `json:"token,omitempty"`
+}
+
 // SaveGitHubWebhookJSONBody defines parameters for SaveGitHubWebhook.
 type SaveGitHubWebhookJSONBody struct {
 	Secret *string `json:"secret,omitempty"`
@@ -1976,6 +1981,9 @@ type ProbeEnvironmentJSONRequestBody = EnvironmentProbeInput
 
 // UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
 type UpdateEnvironmentJSONRequestBody = EnvironmentInput
+
+// SaveGitHubReviewPullJSONRequestBody defines body for SaveGitHubReviewPull for application/json ContentType.
+type SaveGitHubReviewPullJSONRequestBody SaveGitHubReviewPullJSONBody
 
 // SaveGitHubWebhookJSONRequestBody defines body for SaveGitHubWebhook for application/json ContentType.
 type SaveGitHubWebhookJSONRequestBody SaveGitHubWebhookJSONBody
@@ -2748,6 +2756,12 @@ type ServerInterface interface {
 
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
+
+	// (DELETE /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
+	DeleteGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64)
+
+	// (PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
+	SaveGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64)
 
 	// (DELETE /api/settings/github-webhooks/{repositoryId})
 	DeleteGitHubWebhook(w http.ResponseWriter, r *http.Request, repositoryId int64)
@@ -5390,6 +5404,76 @@ func (siw *ServerInterfaceWrapper) TestEnvironment(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteGitHubReviewPull operation middleware
+func (siw *ServerInterfaceWrapper) DeleteGitHubReviewPull(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "repositoryId" -------------
+	var repositoryId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "repositoryId", r.PathValue("repositoryId"), &repositoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repositoryId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pullNumber" -------------
+	var pullNumber int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pullNumber", r.PathValue("pullNumber"), &pullNumber, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pullNumber", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteGitHubReviewPull(w, r, repositoryId, pullNumber)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SaveGitHubReviewPull operation middleware
+func (siw *ServerInterfaceWrapper) SaveGitHubReviewPull(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "repositoryId" -------------
+	var repositoryId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "repositoryId", r.PathValue("repositoryId"), &repositoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repositoryId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pullNumber" -------------
+	var pullNumber int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pullNumber", r.PathValue("pullNumber"), &pullNumber, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pullNumber", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SaveGitHubReviewPull(w, r, repositoryId, pullNumber)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DeleteGitHubWebhook operation middleware
 func (siw *ServerInterfaceWrapper) DeleteGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 
@@ -5670,6 +5754,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/github-review-pulls/{repositoryId}/{pullNumber}", wrapper.DeleteGitHubReviewPull)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/github-review-pulls/{repositoryId}/{pullNumber}", wrapper.SaveGitHubReviewPull)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/github-webhooks/{repositoryId}", wrapper.DeleteGitHubWebhook)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/github-webhooks/{repositoryId}", wrapper.SaveGitHubWebhook)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/tasks", wrapper.ListWorkTasks)
@@ -10865,6 +10951,75 @@ func (response TestEnvironmentdefaultJSONResponse) VisitTestEnvironmentResponse(
 	return err
 }
 
+type DeleteGitHubReviewPullRequestObject struct {
+	RepositoryId int64 `json:"repositoryId"`
+	PullNumber   int64 `json:"pullNumber"`
+}
+
+type DeleteGitHubReviewPullResponseObject interface {
+	VisitDeleteGitHubReviewPullResponse(w http.ResponseWriter) error
+}
+
+type DeleteGitHubReviewPull204Response struct {
+}
+
+func (response DeleteGitHubReviewPull204Response) VisitDeleteGitHubReviewPullResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteGitHubReviewPulldefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteGitHubReviewPulldefaultJSONResponse) VisitDeleteGitHubReviewPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveGitHubReviewPullRequestObject struct {
+	RepositoryId int64 `json:"repositoryId"`
+	PullNumber   int64 `json:"pullNumber"`
+	Body         *SaveGitHubReviewPullJSONRequestBody
+}
+
+type SaveGitHubReviewPullResponseObject interface {
+	VisitSaveGitHubReviewPullResponse(w http.ResponseWriter) error
+}
+
+type SaveGitHubReviewPull204Response struct {
+}
+
+func (response SaveGitHubReviewPull204Response) VisitSaveGitHubReviewPullResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SaveGitHubReviewPulldefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SaveGitHubReviewPulldefaultJSONResponse) VisitSaveGitHubReviewPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DeleteGitHubWebhookRequestObject struct {
 	RepositoryId int64 `json:"repositoryId"`
 }
@@ -11476,6 +11631,12 @@ type StrictServerInterface interface {
 
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(ctx context.Context, request TestEnvironmentRequestObject) (TestEnvironmentResponseObject, error)
+
+	// (DELETE /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
+	DeleteGitHubReviewPull(ctx context.Context, request DeleteGitHubReviewPullRequestObject) (DeleteGitHubReviewPullResponseObject, error)
+
+	// (PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
+	SaveGitHubReviewPull(ctx context.Context, request SaveGitHubReviewPullRequestObject) (SaveGitHubReviewPullResponseObject, error)
 
 	// (DELETE /api/settings/github-webhooks/{repositoryId})
 	DeleteGitHubWebhook(ctx context.Context, request DeleteGitHubWebhookRequestObject) (DeleteGitHubWebhookResponseObject, error)
@@ -14069,6 +14230,67 @@ func (sh *strictHandler) TestEnvironment(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TestEnvironmentResponseObject); ok {
 		if err := validResponse.VisitTestEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteGitHubReviewPull operation middleware
+func (sh *strictHandler) DeleteGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64) {
+	var request DeleteGitHubReviewPullRequestObject
+
+	request.RepositoryId = repositoryId
+	request.PullNumber = pullNumber
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteGitHubReviewPull(ctx, request.(DeleteGitHubReviewPullRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteGitHubReviewPull")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteGitHubReviewPullResponseObject); ok {
+		if err := validResponse.VisitDeleteGitHubReviewPullResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SaveGitHubReviewPull operation middleware
+func (sh *strictHandler) SaveGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64) {
+	var request SaveGitHubReviewPullRequestObject
+
+	request.RepositoryId = repositoryId
+	request.PullNumber = pullNumber
+
+	var body SaveGitHubReviewPullJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SaveGitHubReviewPull(ctx, request.(SaveGitHubReviewPullRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SaveGitHubReviewPull")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SaveGitHubReviewPullResponseObject); ok {
+		if err := validResponse.VisitSaveGitHubReviewPullResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

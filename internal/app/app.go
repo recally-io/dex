@@ -35,6 +35,7 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worktask"
+	"github.com/recally-io/dex/internal/worktask/github"
 )
 
 // DefaultAgentID is the agent that the web UI talks to.
@@ -412,8 +413,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		token = stored
 	}
 
+	workTasks := worktask.New(conn)
 	a.handler = server.New(server.Config{
-		WorkTasks: worktask.New(conn),
+		WorkTasks: workTasks,
 		Engine:    native,
 		Envs:      envs,
 		Runners:   envs.Runners(),
@@ -444,6 +446,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	// Polling keeps one mechanism for page saves and hand edits; use file events if 3 s is slow.
 	if err := jobs.Every("extensions", 3*time.Second, reloadStale(native, chats)); err != nil {
+		return nil, err
+	}
+	pull := github.NewPuller(q, workTasks)
+	if err := jobs.Every("github-review-pull", time.Minute, pull.Check); err != nil {
 		return nil, err
 	}
 	jobs.Start(runCtx)

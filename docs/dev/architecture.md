@@ -107,8 +107,16 @@ An administrator saves or rotates a write-only secret with
 request body of at most 256 KiB and returns `204` after the event commits or
 when a signed delivery needs no action. A failed write returns `503`. To
 receive deliveries from GitHub, expose only the hook path through a public
-HTTPS proxy. Keep the management routes private. Dex does not fetch pages on
-a schedule.
+HTTPS proxy. Keep the management routes private.
+
+The controller polls each PR configured through
+`PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber}` once per
+minute. This API accepts a write-only GitHub token. `DELETE` on the same path
+removes the configuration. The poller resolves the repository ID, reads up to
+20 review pages, and uses the same event store as the hook. It saves an ETag
+only after all entries are accepted and the result fits on one non-full page.
+A failed pull leaves the checkpoint unchanged. A retry does not duplicate
+previously committed reviews.
 
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |

@@ -96,24 +96,32 @@ func validSignature(secret []byte, signature string, body []byte) bool {
 // AcceptReviewPage stores a page from the authenticated List Reviews API for the given PR.
 // A caller can advance its cursor only after this returns successfully. A retry is safe after a partial write.
 func AcceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID, pullNumber int64, body []byte) ([]worktask.Receipt, error) {
+	receipts, _, err := acceptReviewPage(ctx, store, repositoryID, pullNumber, body)
+	return receipts, err
+}
+
+func acceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID, pullNumber int64, body []byte) ([]worktask.Receipt, int, error) {
 	if len(body) > maxPayload || repositoryID <= 0 || pullNumber <= 0 {
-		return nil, ErrPayload
+		return nil, 0, ErrPayload
 	}
 	var reviews []review
 	if err := json.Unmarshal(body, &reviews); err != nil {
-		return nil, errors.Join(ErrPayload, err)
+		return nil, 0, errors.Join(ErrPayload, err)
+	}
+	if reviews == nil {
+		return nil, 0, ErrPayload
 	}
 	var receipts []worktask.Receipt
 	for _, item := range reviews {
 		receipt, err := acceptReview(ctx, store, repositoryID, pullNumber, "pull:"+reviewKey(item.ID), item)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if receipt != nil {
 			receipts = append(receipts, *receipt)
 		}
 	}
-	return receipts, nil
+	return receipts, len(reviews), nil
 }
 
 func reviewKey(id int64) string { return "review:" + strconv.FormatInt(id, 10) }
