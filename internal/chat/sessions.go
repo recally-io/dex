@@ -374,7 +374,12 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a e
 		}
 		return s.ref(ctx, s.q, c)
 	}
-	fork, err := s.fork(ctx, child, a.Entry, false, func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
+	if a.Environment != "" {
+		if err := checkEnvironment(ctx, s.q, a.Environment); err != nil {
+			return engine.SessionRef{}, err
+		}
+	}
+	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.EnvironmentID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
 		if _, err := sessionSource(ctx, q, r); err != nil {
 			return err
 		}

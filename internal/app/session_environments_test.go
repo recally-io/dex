@@ -2,10 +2,12 @@ package app_test
 
 import (
 	"database/sql"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/execenv/execenvtest"
@@ -120,6 +122,111 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	d.setModel(t, "bash")
 	if out := taskTurn(t, d, remote, `printf %s "${REMOTE_SSH_MARKER:-local}"`); !strings.Contains(out, "was removed") || out == "bash: local" {
 		t.Fatalf("bash after removal=%q", out)
+	}
+}
+
+// Given a local chat with a project, when the owner forks it to an SSH environment, then the fork
+// keeps the history, starts in the SSH workspace, and tells the user and the bot that it moved.
+func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
+	sshFix := execenvtest.NewFakeSSH(t)
+	fake := execenvtest.NewFakeE2B(t, "e2b_fork_secret")
+	d := startDexWith(t, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
+	var remoteEnv, sandbox apiEnvironment
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+		"name": "remote-box", "kind": "pi-env", "config": map[string]any{"host": "remote.internal", "user": "dev"},
+	}, &remoteEnv, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/settings/environments/"+remoteEnv.ID+"/test", nil, nil)
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+		"name": "sandbox-f", "kind": "e2b", "config": map[string]any{"template": "base", "timeoutSeconds": 300}, "secret": "e2b_fork_secret",
+	}, &sandbox, http.StatusCreated)
+	const marker = `printf %s "${REMOTE_SSH_MARKER:-local}"`
+
+	d.setModel(t, "bash")
+	src := d.newSession(t).ID
+	project := t.TempDir()
+	d.must(t, http.MethodPut, projectURL(src), map[string]string{"cwd": project}, nil)
+	if out := taskTurn(t, d, src, marker); out != "bash: local" {
+		t.Fatalf("source bash=%q", out)
+	}
+	w := d.watch(t, src)
+	w.until(t, "source answer", answered("bash: local"))
+	entry := findItem(t, &w.tr, "assistant", "bash: local").EntryID
+
+	// When the target is an E2B or a missing environment, then the fork fails and creates no chat.
+	chats := len(d.chats(t))
+	for _, env := range []string{sandbox.ID, "missing"} {
+		d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "environmentId": env}, nil, http.StatusBadRequest)
+	}
+	if n := len(d.chats(t)); n != chats {
+		t.Fatalf("refused forks created chats: %d, want %d", n, chats)
+	}
+
+	// When the owner forks to remote-box, then a retry returns the same chat, and the same ID for
+	// another environment is refused.
+	var created, again struct {
+		ChatID int64 `json:"chatId"`
+	}
+	body := map[string]any{"id": uuid.NewV7().String(), "entryId": entry, "environmentId": remoteEnv.ID}
+	d.must(t, http.MethodPost, chatPath(src, "fork"), body, &created, http.StatusCreated)
+	d.must(t, http.MethodPost, chatPath(src, "fork"), body, &again, http.StatusCreated)
+	if again.ChatID != created.ChatID {
+		t.Fatalf("fork retry=%d, want %d", again.ChatID, created.ChatID)
+	}
+	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"id": body["id"], "entryId": entry, "environmentId": "local"}, nil, http.StatusConflict)
+
+	// Then the fork selects remote-box, has no project, and shows the notice once after the history.
+	var fork struct {
+		forkInfo
+		EnvironmentID string `json:"environmentId"`
+	}
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", created.ChatID), nil, &fork)
+	if fork.EnvironmentID != remoteEnv.ID || fork.Cwd != "" || fork.ForkedFrom == nil || fork.ForkedFrom.ID != src {
+		t.Fatalf("fork=%+v", fork)
+	}
+	notice := "This chat moved from `local` to `remote-box`. Chat history was kept. Files and background tasks were not moved. Check that the files you need exist before continuing."
+	fw := d.watch(t, fork.ID)
+	fw.until(t, "fork notice", func(tr *transcript) bool {
+		last := lastItem(tr)
+		return countKind(tr, "boundary") == 1 && last.Kind == "boundary" && last.Boundary == "environment" && last.Text == notice
+	})
+
+	// When the user sends in the fork, then the bot gets the notice before the new message.
+	d.must(t, http.MethodPut, chatPath(fork.ID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.send(t, fork.ID, "where am I")
+	want, err := json.Marshal([]string{marker, notice, "where am I"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fw.until(t, "fork answer", answered("context: "+string(want)))
+
+	// Then the commands of the fork run on remote-box, and the source still runs locally.
+	d.must(t, http.MethodPut, chatPath(fork.ID, "settings"), map[string]string{"provider": "faux", "modelId": "bash"}, nil)
+	if out := taskTurn(t, d, fork.ID, marker); out != "bash: ssh-fake-ok" {
+		t.Fatalf("fork bash=%q", out)
+	}
+	assertProject(t, d, src, project)
+	if out := taskTurn(t, d, src, marker); out != "bash: local" {
+		t.Fatalf("source bash after fork=%q", out)
+	}
+
+	// When the owner forks to the environment that the chat runs in, then nothing moves.
+	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "environmentId": "local"}, &created, http.StatusCreated)
+	same := d.watch(t, created.ChatID)
+	same.until(t, "same environment fork", answered("bash: local"))
+	if n := countKind(&same.tr, "boundary"); n != 0 {
+		t.Fatalf("same environment fork has %d boundaries: %+v", n, same.tr.items)
+	}
+	assertProject(t, d, created.ChatID, project)
+
+	// When the bot forks a child session to remote-box, then the forked child runs there.
+	var child childRef
+	toolJSON(t, callSessionTool(t, d, src, "session_new", map[string]any{"title": "Child", "message": marker, "provider": "faux", "modelId": "bash"}), &child)
+	if results := waitResults(t, sessionDB(t, d), src, 1); !strings.Contains(results[0].content, "bash: local") {
+		t.Fatalf("child result=%+v", results[0])
+	}
+	toolJSON(t, callSessionTool(t, d, src, "session_fork", map[string]any{"id": child.ID, "message": marker, "environment": remoteEnv.ID}), &child)
+	if results := waitResults(t, sessionDB(t, d), src, 2); !strings.Contains(results[1].content, "ssh-fake-ok") {
+		t.Fatalf("forked child result=%+v", results[1])
 	}
 }
 

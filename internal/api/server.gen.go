@@ -58,16 +58,19 @@ func (e AssistantItemKind) Valid() bool {
 
 // Defines values for BoundaryItemBoundary.
 const (
-	Compaction BoundaryItemBoundary = "compaction"
-	Reset      BoundaryItemBoundary = "reset"
+	BoundaryItemBoundaryCompaction  BoundaryItemBoundary = "compaction"
+	BoundaryItemBoundaryEnvironment BoundaryItemBoundary = "environment"
+	BoundaryItemBoundaryReset       BoundaryItemBoundary = "reset"
 )
 
 // Valid indicates whether the value is a known member of the BoundaryItemBoundary enum.
 func (e BoundaryItemBoundary) Valid() bool {
 	switch e {
-	case Compaction:
+	case BoundaryItemBoundaryCompaction:
 		return true
-	case Reset:
+	case BoundaryItemBoundaryEnvironment:
+		return true
+	case BoundaryItemBoundaryReset:
 		return true
 	default:
 		return false
@@ -825,7 +828,7 @@ type BoundaryItem struct {
 	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 	Status *BoundaryItemStatus `json:"status,omitempty"`
 
-	// Text The handoff of a reset, or the summary of a compaction. Absent when there is none.
+	// Text The handoff of a reset, the summary of a compaction, or the notice of a fork to another environment. Absent when there is none.
 	Text *string `json:"text,omitempty"`
 }
 
@@ -1735,6 +1738,9 @@ type ForkChatJSONBody struct {
 	// Before End the history just before the entry.
 	Before  *bool `json:"before,omitempty"`
 	EntryId int64 `json:"entryId"`
+
+	// EnvironmentId The execution environment of the new Chat.
+	EnvironmentId *string `json:"environmentId,omitempty"`
 
 	// Id Optional client UUID for safe retries.
 	Id *string `json:"id,omitempty"`

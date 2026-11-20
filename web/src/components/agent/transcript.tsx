@@ -22,6 +22,12 @@ import { blocks, describeTool, seconds, stepTitle, type ContentBlock, type Step 
 import { remarkStrong, strongText } from "../../lib/strong";
 import { retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { Spinner } from "../feedback";
 import { ResultLine, ThreadEntry } from "./thread";
 import { threadCall } from "../../lib/threads";
@@ -420,6 +426,45 @@ function StepsRow({
   );
 }
 
+// With other environments, Fork from here asks where the new chat runs.
+function ForkAction({ actions, entryId }: { actions: MessageActions; entryId: number }) {
+  const targets = actions.forkTargets ?? [];
+
+  if (targets.length === 0)
+    return (
+      <MessageAction
+        label="Fork from here"
+        disabled={actions.pending}
+        onClick={() => actions.fork(entryId, false)}
+      >
+        <GitBranch size={14} aria-hidden />
+      </MessageAction>
+    );
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Fork from here"
+        title="Fork from here"
+        disabled={actions.pending}
+        className="grid size-7 shrink-0 place-items-center rounded-control text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+      >
+        <GitBranch size={14} aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onClick={() => actions.fork(entryId, false)}>
+          Fork in this environment
+        </DropdownMenuItem>
+        {targets.map((env) => (
+          <DropdownMenuItem key={env.id} onClick={() => actions.fork(entryId, false, undefined, env.id)}>
+            Fork to {env.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function MessageAction({
   label,
   disabled,
@@ -531,7 +576,9 @@ function splitAnswer(text: string): { question: string; answer: string } | null 
 /** Starts a new Chat from a message. before ends the copy just before the entry; text prefills the new composer. */
 export type MessageActions = {
   pending: boolean;
-  fork: (entryId: number, before: boolean, text?: string) => void;
+  /** Environments other than the current one that a fork can move to. */
+  forkTargets?: { id: string; name: string }[];
+  fork: (entryId: number, before: boolean, text?: string, environmentId?: string) => void;
 };
 
 export type QueuedActions = {
@@ -566,6 +613,16 @@ function Divider({ label }: { label: string }) {
 }
 
 function BoundaryItem({ item }: { item: Extract<Item, { kind: "boundary" }> }) {
+  if (item.boundary === "environment")
+    return (
+      <div className="flex flex-col gap-1">
+        <Divider label="Environment changed" />
+        <p className="mx-auto max-w-[560px] rounded-md bg-muted px-3 py-2 text-[12.5px] text-foreground [overflow-wrap:anywhere]">
+          {item.text}
+        </p>
+      </div>
+    );
+
   if (item.boundary === "reset")
     return (
       <div className="flex flex-col gap-1">
@@ -785,13 +842,7 @@ function TranscriptItem({
               ) : null}
               {live ? null : <CopyText text={item.text} label="Copy answer" />}
               {actions && item.entryId && forkable && !live ? (
-                <MessageAction
-                  label="Fork from here"
-                  disabled={actions.pending}
-                  onClick={() => actions.fork(item.entryId!, false)}
-                >
-                  <GitBranch size={14} aria-hidden />
-                </MessageAction>
+                <ForkAction actions={actions} entryId={item.entryId} />
               ) : null}
             </footer>
           ) : null}

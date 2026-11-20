@@ -18,6 +18,7 @@ import {
   listModelsOptions,
   listChatsOptions,
   listAgentsOptions,
+  listAgentEnvironmentsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
@@ -414,18 +415,37 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const pending = send.isPending || abort.isPending || continueRun.isPending || compact.isPending;
   const navigate = useNavigate();
   const fork = useMutation(forkChatMutation());
-  const failedFork = useRef<{ chatId: number; entryId: number; before: boolean; id: string } | null>(null);
+
+  const failedFork = useRef<{
+    chatId: number;
+    entryId: number;
+    before: boolean;
+    environmentId?: string;
+    id: string;
+  } | null>(null);
+
+  const environments = useQuery(listAgentEnvironmentsOptions({ path: { agentId } }));
+  const environmentList = environments.data?.environments ?? [];
+  const runsIn = chat.data?.environmentId || environmentList.find((env) => env.default)?.id;
 
   // A fork opens as its own Chat. Edit in new chat carries the message text, not its attachments.
   const messageActions: MessageActions = {
     pending: fork.isPending,
-    fork: (entryId, before, text) => {
+    forkTargets: environmentList
+      .filter((env) => env.id !== runsIn && env.status === "available")
+      .map((env) => ({ id: env.id, name: env.name })),
+    fork: (entryId, before, text, environmentId) => {
       const prior = failedFork.current;
 
       const id =
-        prior?.chatId === chatId && prior.entryId === entryId && prior.before === before ? prior.id : newId();
+        prior?.chatId === chatId &&
+        prior.entryId === entryId &&
+        prior.before === before &&
+        prior.environmentId === environmentId
+          ? prior.id
+          : newId();
 
-      const body = { id, entryId, before };
+      const body = { id, entryId, before, environmentId };
       failedFork.current = { ...body, chatId };
 
       fork.mutate(

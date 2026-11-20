@@ -273,6 +273,13 @@ func (p projection) render() []Item {
 				text = strings.TrimSuffix(strings.TrimPrefix(text, summaryPrefix), summarySuffix)
 			}
 			rendered = []Item{{Kind: "boundary", ID: key, Boundary: strings.TrimPrefix(e.Kind, "pi."), At: at, Text: text}}
+		case environmentNoticeKind:
+			if len(e.Model) == 0 {
+				break
+			}
+			if user, ok := e.Model[0].(ai.UserMessage); ok {
+				rendered = []Item{{Kind: "boundary", ID: key, Boundary: "environment", At: user.Timestamp, Text: userText(user.Content)}}
+			}
 		case compactionNoteKind:
 			note, err := durable.FromJsonValue[compactionNote](e.Data)
 			if err != nil {

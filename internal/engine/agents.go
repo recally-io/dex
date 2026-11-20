@@ -499,8 +499,9 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 // Fork copies the committed history of ref into a new native conversation, which keeps the
 // source's configuration until the next admission configures it. Without before, the copy ends
 // at entryID, which must be an answer that waits for no tool result. With before, the copy ends
-// just before entryID; ok is false when nothing comes before it.
-func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool) (forked Ref, ok bool, err error) {
+// just before entryID; ok is false when nothing comes before it. A non-empty notice ends the copy
+// as a context entry, so the transcript shows it and the model reads it before the next input.
+func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, notice string) (forked Ref, ok bool, err error) {
 	if err := a.begin(); err != nil {
 		return Ref{}, false, err
 	}
@@ -560,8 +561,21 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool) 
 	if err != nil {
 		return Ref{}, false, err
 	}
+	if notice != "" {
+		// The copy has no owner yet, so no input can come before the notice.
+		_, err := copied.Commit(ctx, func(tx durable.Tx) (any, error) {
+			return tx.AppendEntry(copied.Id(), durable.EntryDraft{Kind: environmentNoticeKind, Model: []ai.Message{ai.UserMessage{Content: ai.UserText(notice), Timestamp: time.Now().UnixMilli()}}})
+		})
+		if err != nil {
+			return Ref{}, false, err
+		}
+	}
 	return Ref{AgentID: ref.AgentID, Scope: ref.Scope, ID: int64(copied.Id())}, true, nil
 }
+
+// environmentNoticeKind is the context entry that tells the user and the model that a fork runs
+// in another execution environment than its source.
+const environmentNoticeKind = "dex.environment"
 
 // finishedAnswer reports an assistant message without tool calls. A fork after a tool call would
 // copy a call whose result never comes.

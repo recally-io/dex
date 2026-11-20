@@ -106,6 +106,8 @@ type SessionForkArgs struct {
 	// Entry is a transcript entry that ends a finished answer. Zero forks at the latest one.
 	Entry   int64  `json:"entry,omitempty"`
 	Message string `json:"message"`
+	// Environment is local or an SSH environment ID. Empty keeps the environment of the source.
+	Environment string `json:"environment,omitempty"`
 }
 
 // SessionReadArgs selects a page of turns (Before and Limit) or the rest of one cut text (Turn,
@@ -264,13 +266,14 @@ func sessionExtension(agentID string, handlers TaskTools) *durable.Extension {
 			}),
 		sessionTool(agentID, "session_fork", "Fork a child session into a new child with a copy of its context up to a finished answer, then send the new child a message. Use it to branch from a child that already has the context.",
 			objectSchema([]string{"id", "message"}, map[string]any{
-				"id":      idProperty,
-				"entry":   map[string]any{"type": "integer", "minimum": 1, "description": "A transcript entry that ends a finished answer. Omit it to fork at the latest one."},
-				"message": map[string]any{"type": "string", "minLength": 1},
+				"id":          idProperty,
+				"entry":       map[string]any{"type": "integer", "minimum": 1, "description": "A transcript entry that ends a finished answer. Omit it to fork at the latest one."},
+				"message":     map[string]any{"type": "string", "minLength": 1},
+				"environment": map[string]any{"type": "string", "description": "local or an SSH environment ID from environment_list. The command and file tools of the new child run there. Omit it to keep the environment of the source. Files and background commands do not move to another environment, and the cwd is not inherited."},
 			}), sessions.Fork != nil, func(ctx context.Context, source TaskContext, args SessionForkArgs) (SessionRef, error) {
 				return sessions.Fork(ctx, source, args)
 			}),
-		sessionTool(agentID, "environment_list", "List the execution environments that sessions of this bot can use, with their ID, name, kind, and status. The default one is the environment of this bot: omit environment in session_new to use it. Give the ID of another one to session_new to run a child there.",
+		sessionTool(agentID, "environment_list", "List the execution environments that sessions of this bot can use, with their ID, name, kind, and status. The default one is the environment of this bot: omit environment in session_new to use it. Give the ID of another one to session_new or session_fork to run a child there.",
 			objectSchema([]string{}, map[string]any{}), handlers.Environments != nil, func(ctx context.Context, source TaskContext, _ struct{}) (struct {
 				Environments []EnvironmentInfo `json:"environments"`
 			}, error) {
