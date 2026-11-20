@@ -18,6 +18,39 @@ security:
   - bearer: []
   - session: []
 paths:
+  /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+      - in: path
+        name: taskId
+        required: true
+        schema: { type: string }
+    put:
+      operationId: bindTaskGitHubPull
+      description: Bind a GitHub PR to one Task. Optionally add a wait for a review of a specific commit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repositoryId, pullNumber]
+              properties:
+                repositoryId: { type: integer, format: int64, minimum: 1 }
+                pullNumber: { type: integer, format: int64, minimum: 1 }
+                wait:
+                  type: object
+                  required: [revision, afterAt]
+                  properties:
+                    revision: { type: string, minLength: 1, maxLength: 512 }
+                    afterAt:
+                      type: integer
+                      format: int64
+                      minimum: 1
+                      description: Reviews must be submitted strictly after this Unix time in milliseconds.
+      responses:
+        "204": { description: PR bound. }
+        default: { $ref: "#/components/responses/Error" }
   /api/settings/github-review-pulls/{repositoryId}/{pullNumber}:
     parameters:
       - in: path

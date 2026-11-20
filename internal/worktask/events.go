@@ -59,7 +59,11 @@ func (s *Service) LinkObject(ctx context.Context, agentID, taskID, namespace str
 	if !eventKey(namespace) || !validObject(object) {
 		return ErrInvalid
 	}
-	n, err := s.q.LinkWorkTaskObject(ctx, sqlc.LinkWorkTaskObjectParams{AgentID: agentID, TaskID: taskID, Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key})
+	return linkObject(ctx, s.q, agentID, taskID, namespace, object)
+}
+
+func linkObject(ctx context.Context, q *sqlc.Queries, agentID, taskID, namespace string, object Object) error {
+	n, err := q.LinkWorkTaskObject(ctx, sqlc.LinkWorkTaskObjectParams{AgentID: agentID, TaskID: taskID, Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key})
 	if err == nil && n == 0 {
 		return ErrObjectConflict
 	}
@@ -71,11 +75,42 @@ func (s *Service) AddWait(ctx context.Context, agentID, taskID string, wait Wait
 	if !eventKey(wait.Namespace) || !eventKey(wait.Type) || !validObject(wait.Object) || wait.AfterAt <= 0 || len(wait.Revision) > 512 {
 		return ErrInvalid
 	}
-	n, err := s.q.AddWorkTaskWait(ctx, sqlc.AddWorkTaskWaitParams{AgentID: agentID, TaskID: taskID, Namespace: wait.Namespace, EventType: wait.Type, ObjectType: wait.Object.Type, ObjectKey: wait.Object.Key, Revision: wait.Revision, AfterAt: wait.AfterAt})
+	return addWait(ctx, s.q, agentID, taskID, wait)
+}
+
+func addWait(ctx context.Context, q *sqlc.Queries, agentID, taskID string, wait Wait) error {
+	n, err := q.AddWorkTaskWait(ctx, sqlc.AddWorkTaskWaitParams{AgentID: agentID, TaskID: taskID, Namespace: wait.Namespace, EventType: wait.Type, ObjectType: wait.Object.Type, ObjectKey: wait.Object.Key, Revision: wait.Revision, AfterAt: wait.AfterAt})
 	if err == nil && n == 0 {
 		return ErrObjectConflict
 	}
 	return err
+}
+
+// BindObject saves an object link and its optional initial wait in one transaction.
+func (s *Service) BindObject(ctx context.Context, agentID, taskID, namespace string, object Object, wait *Wait) error {
+	if !eventKey(namespace) || !validObject(object) || wait != nil && (wait.Namespace != namespace || wait.Object != object || !eventKey(wait.Type) || wait.AfterAt <= 0 || len(wait.Revision) > 512) {
+		return ErrInvalid
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	if err := linkObject(ctx, q, agentID, taskID, namespace, object); err != nil {
+		if errors.Is(err, ErrObjectConflict) {
+			if _, lookupErr := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: agentID}); lookupErr != nil {
+				return lookupErr
+			}
+		}
+		return err
+	}
+	if wait != nil {
+		if err := addWait(ctx, q, agentID, taskID, *wait); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // ListWaits returns the open and resolved waits for this Task.

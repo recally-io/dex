@@ -1237,6 +1237,44 @@ export type ChatId = number;
 
 export type EnvironmentId = string;
 
+export type BindTaskGitHubPullData = {
+    body: {
+        repositoryId: number;
+        pullNumber: number;
+        wait?: {
+            revision: string;
+            /**
+             * Reviews must be submitted strictly after this Unix time in milliseconds.
+             */
+            afterAt: number;
+        };
+    };
+    path: {
+        agentId: string;
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/inbox/tasks/{taskId}/github-pull';
+};
+
+export type BindTaskGitHubPullErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type BindTaskGitHubPullError = BindTaskGitHubPullErrors[keyof BindTaskGitHubPullErrors];
+
+export type BindTaskGitHubPullResponses = {
+    /**
+     * PR bound.
+     */
+    204: void;
+};
+
+export type BindTaskGitHubPullResponse = BindTaskGitHubPullResponses[keyof BindTaskGitHubPullResponses];
+
 export type DeleteGitHubReviewPullData = {
     body?: never;
     path: {
