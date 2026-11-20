@@ -531,7 +531,7 @@ func TestUserSessionReadReturnsOnlyInputsAndAnswers(t *testing.T) {
 	if got := readSession(t, d, reader, map[string]any{"id": fmt.Sprint(main)}); len(got.Turns) != 1 || got.Turns[0].Input != "main only" {
 		t.Fatalf("main: %+v", got)
 	}
-	// And a session of another bot is readable (ADR 0016), but a dream is not found.
+	// And a session of another bot is readable, but a dream is not found.
 	if got := readSession(t, d, reader, map[string]any{"id": fmt.Sprint(otherMain.ID)}); len(got.Turns) != 1 || got.Turns[0].Input != "other bot secret" || got.BotID != other.ID {
 		t.Fatalf("session of another bot: %+v", got)
 	}

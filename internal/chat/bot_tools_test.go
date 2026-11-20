@@ -300,7 +300,7 @@ func TestBotToolCallerNeedsAPersonInMainOrAChat(t *testing.T) {
 	}
 }
 
-// A child session has a Chat key (ADR 0015), so only its stored parent tells it from a Chat.
+// A child session has a Chat key, so only its stored parent tells it from a Chat.
 func TestBotToolCallerRefusesAChildSessionWithAChatKey(t *testing.T) {
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)

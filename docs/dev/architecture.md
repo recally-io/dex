@@ -32,17 +32,16 @@ Other tools do not receive the bash or background timeout defaults. MCP calls ha
 a 600-second timeout, but remote work can continue after cancellation. A generic
 deadline cannot safely stop a tool that ignores cancellation.
 Agent execution itself stays in dex. There is no backend subprocess or serialized internal protocol.
-See [ADR 0011](decisions/0011-native-pig-runtime.md).
 
 ## Service and updates
 
 `cmd/dex` runs the foreground server or manages a per-user launchd or systemd
-service. A host that is not loopback makes the API require the access token
-([ADR 0007](decisions/0007-network-access-token.md)). Definitions store serve
+service. A host that is not loopback makes the API require the access token.
+Definitions store serve
 arguments, a small service PATH, and a configuration record that permits partial
 reinstall across template changes. Install does not copy the shell PATH. Daily
 updates add only the selected `gh` directory. Agent tools use the login shell
-environment separately. See [ADR 0024](decisions/0024-service-environment.md).
+environment separately.
 
 `internal/update` verifies GitHub release assets, stages beside the executable,
 and retains `dex.previous`. `chat.Service` owns a two-minute maintenance lease.
@@ -69,23 +68,20 @@ Shutdown cancels discovery and waits for its work to end. Startup failure and
 shutdown use one cleanup path. Cleanup stops scheduler jobs and channel bots
 before the chat consumer, then closes execution resources and business storage.
 
-See [service commands and recovery](../../README.md#run-and-manage-dex) and
-[ADR 0006](decisions/0006-service-and-update.md) for service and update
-decisions. [ADR 0011](decisions/0011-native-pig-runtime.md) replaces the
-backend readiness and maintenance lifecycle.
+See [service commands and recovery](../../README.md#run-and-manage-dex).
 
 ## Sources of truth
 
-| Data                                 | Owner             | Location                                                                                                                                   |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                                                                  |
-| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                                                                                      |
-| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/` (or remote `pi-env` / `e2b` workspace)                                                                 |
-| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                                                                                  |
-| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>` (staged to remote workspace when remote)                                     |
-| Memory (git repo)                    | control / tools   | `<data dir>/memory/` (`memory_*` tools)                                                                                                    |
-| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                                                                                   |
-| Outbox messages and follow-up timers | control           | `outbox_messages`, `outbox_files`, `followup_timers` in `control.sqlite` ([ADR 0023](decisions/0023-always-on-inbox-outbox-and-timers.md)) |
+| Data                                 | Owner             | Location                                                                                               |
+| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |
+| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                                                  |
+| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/` (or remote `pi-env` / `e2b` workspace)                             |
+| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                                              |
+| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>` (staged to remote workspace when remote) |
+| Memory (git repo)                    | control / tools   | `<data dir>/memory/` (`memory_*` tools)                                                                |
+| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                                               |
+| Outbox messages and follow-up timers | control           | `outbox_messages`, `outbox_files`, `followup_timers` in `control.sqlite`                               |
 
 Control stores the parent of a child session in `conversations.parent_id` and the
 turn that created work for it in `submissions.parent_request_id`. A child session is a
@@ -315,7 +311,7 @@ agent or a resource owned by another agent returns `404`. Upload storage uses
 Each live stream uses `engine.Ref{AgentID, ID}` for watches and history.
 Execution IDs can be equal in different agents.
 
-An agent can be archived (ADR 0016). `agents.archived_at` holds the time. The
+An agent can be archived. `agents.archived_at` holds the time. The
 filter is in SQL, not in the `enabled` flags: `ListAgents`, startup channel
 start, dreams, `ListDueAutomations`, the activity query and the inbox all skip an
 archived agent, so a restore needs no state to rebuild. `GET /api/archived-agents`
@@ -362,7 +358,7 @@ return 404.
 The memory is a git repo in the
 [Agent Memory Repo](https://github.com/AgentMemoryRepo/agentmemoryrepo) format
 at `<data dir>/memory/`. It belongs to the user, so all agents and channels
-share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
+share it.
 
 - **Read.** The [`memory` extension](../../internal/engine/memory.go) adds three
   system prompt sections: the memory rules (the repo path, the entry format,
@@ -404,9 +400,7 @@ share it. See [ADR 0004](decisions/0004-agent-memory-repo.md).
 Skills, MCP servers, and `.env` come from two levels: dex
 (`<resolved data dir>/.agents/`) and agent (`<data dir>/agents/<id>/.agents/`).
 dex does not read the user home. Narrower levels win. Paths are fixed before
-`.env` is read. Equal real paths are read once as the narrower level. See
-[ADR 0010](decisions/0010-extension-levels.md) and
-[ADR 0017](decisions/0017-drop-home-level-and-agents-md.md).
+`.env` is read. Equal real paths are read once as the narrower level.
 `AGENTS.md` comes from the dex level, the agent level, and the conversation cwd;
 the engine adds it around the bot's instructions at each admission.
 Skills have a fourth, narrowest level: `.agents/skills` under the
@@ -445,12 +439,11 @@ Each agent has its own environment snapshot for tools and stdio MCP servers.
 It starts from the login shell environment, then the `.env` levels, then the
 1Password credentials of the settings. When `op` exists, the prompt tells the
 agent to read secrets with `op read`. Optional speech can resolve an explicitly
-selected provider key reference in memory through the same CLI and credentials;
-see [ADR 0020](decisions/0020-explicit-speech-provider-credentials.md). Other
+selected provider key reference in memory through the same CLI and credentials.
+Other
 references remain under agent control. A scheduler job
 reloads an open agent after its extension files, shell rc files, or
-1Password settings change, when all agents are idle. See
-[ADR 0013](decisions/0013-tool-environment-sources.md).
+1Password settings change, when all agents are idle.
 Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
 `.env` also removes all file environment values from that snapshot.
 The [engine extension loader](../../internal/engine/extensions.go) connects
@@ -460,8 +453,7 @@ the extension guide and current skills. MCP tools use the names
 file formats, environment use, secrecy, and Reload. It contains no environment
 key names or values, except the names of keys whose value has a shape hint
 (an assignment, empty, whitespace, or an `op://` reference). It also says that
-`.env` values reach only the tools that dex starts. See
-[ADR 0014](decisions/0014-env-scope-and-value-hints.md).
+`.env` values reach only the tools that dex starts.
 
 `PUT` and `DELETE /api/agents/{agentId}/extensions/env` call the engine's
 write-only environment methods. Edits are serialized per path and replace
@@ -487,8 +479,6 @@ reloads before resource work starts. Maintenance fails busy during an active
 reload, and confirmed maintenance blocks Reload. Close waits for tracked
 resource work and cannot leave replacement resources open. Recovery isolation
 must be registered before a Harness resumes.
-See [ADR 0012](decisions/0012-agent-lifecycle-isolation.md) for this lifecycle
-change and [ADR 0011](decisions/0011-native-pig-runtime.md) for native execution.
 
 The session extension adds the session tools and the `session-rules` section to
 foreground conversations, including main, Chat and automation sessions.
@@ -501,7 +491,6 @@ the descriptions of the tools. Examples are the continue-in-context rule of
 `session_send`, the concurrency of children in `session_new`, and the no-retry
 rule. A `coding` skill that the user writes is an ordinary skill and is listed
 with the others.
-See [ADR 0018](decisions/0018-no-builtin-coding-skill-and-supervised-processes.md).
 
 ## Automations
 
@@ -525,8 +514,7 @@ routine change or run input. Replay returns the saved result. It does not
 repeat the write or advance the schedule. A new mutation requires an active
 user input; a saved receipt can still be read after that input settles.
 
-An automation runs a prompt on a schedule; see
-[ADR 0005](decisions/0005-automations.md).
+An automation runs a prompt on a schedule.
 [`automation.Service`](../../internal/automation/automation.go) stores
 automations and their runs in `control.sqlite`. One scheduler job calls its
 `Check` every minute for all agents. Each row supplies its owning agent ID.
@@ -599,7 +587,7 @@ message request IDs.
 
 ## Settings
 
-The web UI edits all settings; see [ADR 0002](decisions/0002-settings-in-control-db.md).
+The web UI edits all settings.
 [`settings.Service`](../../internal/settings/settings.go) owns providers, model
 checks, and the access token. [`agent.Service`](../../internal/agent/agent.go)
 owns agent settings, activity, and channel configuration. `chat.Service` saves
@@ -765,8 +753,8 @@ model reads `dex: Approved. Bot "X" is archived.`, `dex: Not approved. ...` or
 after the commit through `Service.OnBotArchived`, so a slow channel cannot hold
 the admission gate. A decided action question cannot be withdrawn or reopened.
 The archived bot's workspace, `state.sqlite`, memory and conversations stay on
-disk. Cross-bot child sessions, read and search belong to ADR 0016 and are not
-part of this section.
+disk. [Cross-bot sessions](#cross-bot-sessions) describes cross-bot child
+sessions, read, and search.
 
 ## Internal delegation
 
@@ -808,7 +796,6 @@ main answers first and stops or steers a child whose goal changed.
 Each Chat and automation session runs one main agent loop. The loop does
 ordinary work itself. It uses child sessions only for independent parallel work,
 long commands whose output would flood its context, and independent review.
-See [ADR 0015](decisions/0015-child-sessions.md).
 
 A child session is a Chat with `conversations.parent_id`. It has its own context
 and runs at once. There is no count limit and no cwd lock. Children in one
@@ -849,7 +836,7 @@ A conversation that was a task before the upgrade is a child in the same way.
 
 ### Cross-bot sessions
 
-[ADR 0016](decisions/0016-cross-bot-sessions.md) lets a child belong to another
+A child can belong to another
 bot. Control keeps these rules, and a reviewer must check each new cross-bot path
 against them:
 
@@ -918,8 +905,7 @@ title, the outcome and the failure reason, and never the answer text. A failed
 result reply cannot retry the user message before the mark.
 Neither layer uses message text or an ID pattern to hide results.
 
-The web shows a child as a thread
-([ADR 0019](decisions/0019-show-child-sessions-as-threads.md)). The main
+The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
 line at each `session_send` call. A result mark is one line with a "View thread"
 action. The card, the line and the action open a read-only side panel that
@@ -983,15 +969,14 @@ turn, the parent must check artifacts and prior actions.
 
 Tools run through [`internal/execenv`](../../internal/execenv) using the
 built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
-sandbox endpoint, or a machine service connection
-([ADR 0022](decisions/0022-execution-environments.md)). The
+sandbox endpoint, or a machine service connection. The
 [remote machine](../remote-machines.md) opens an outbound WebSocket to Dex
 behind the same HTTPS front as the web UI, and uses the public PiG execution API
 on the target. Enrollment trades a one-time code for a machine token; Dex stores
 the SHA-256 digest of that token in `control.sqlite` and keeps live connections
 in memory. A bot borrows the connection, so reloading the bot does not disconnect
 its machine. Each backend owns its connections, and a `Handle` is one lease on
-them ([ADR 0026](decisions/0026-execution-environment-backends.md)): all bots on
+them: all bots on
 one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
 operation, one operation at a time, and a `cancel` notification for the call
@@ -1023,8 +1008,7 @@ when `/connect` is unsupported, and `uname -sm` platform detection. Memory tools
 logged in and run in the foreground with non-interactive options. Long work
 uses [background commands](#background-commands), which dex tracks. Any other
 process must not outlive its turn. A turn can start and supervise a process,
-such as a worker in a Rex tab, but must stop it before the final answer
-([ADR 0018](decisions/0018-no-builtin-coding-skill-and-supervised-processes.md)). Bash has no default
+such as a worker in a Rex tab, but must stop it before the final answer. Bash has no default
 timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
@@ -1155,8 +1139,7 @@ Stop, restart and limits:
 ## Transcript subscriptions and history
 
 The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
-`Item` and `ChatEvent`. [ADR 0011](decisions/0011-native-pig-runtime.md)
-updates the backend implementation of ADR 0003.
+`Item` and `ChatEvent`.
 
 - The [Go projection](../../internal/engine/view.go) renders immutable native
   conversation revisions. Each revision includes entries, the live partial,
@@ -1333,8 +1316,7 @@ buttons. A stale Question button cannot become ordinary model input.
 
 Group speech does not borrow private consent or provider settings. Original audio
 stays attached. Group drafts/previews stay off. This code and its local fake-platform tests
-do not authorize a real group deployment. See
-[proposed ADR 0021](decisions/0021-isolated-telegram-group-resources.md).
+do not authorize a real group deployment.
 
 ## Telegram
 
@@ -1509,8 +1491,6 @@ Delivery is at least once: a crash between platform success and the local
 commit can duplicate one part. Migration marks old settled replies as delivered
 because earlier versions did not record delivery success.
 
-See [ADR 0009](decisions/0009-channel-layer.md).
-
 ## Feishu and Lark
 
 [`feishu.Bot`](../../internal/channel/feishu/bot.go) receives private messages through
@@ -1680,7 +1660,7 @@ Bots bound to `pi-env` or `e2b` execute tools inside that remote host or cloud
 sandbox with explicit `.env` variables only (never host secrets). The HTTP server listens on
 `127.0.0.1:8787` by default. On loopback without DEX_TOKEN it has no
 authentication. On any other host, or with DEX_TOKEN, every `/api/` request
-needs the access token ([ADR 0007](decisions/0007-network-access-token.md)).
+needs the access token.
 A chat channel must allow only known user IDs: the settings refuse a
 Telegram bot without allowed users. WeChat captures the owner ID from QR
 confirmation and rejects a login without that ID. Other WeChat senders never

@@ -1,4 +1,4 @@
--- Stop of a conversation and of its child sessions (ADR 0015). The file keeps its name from the
+-- Stop of a conversation and of its child sessions. The file keeps its name from the
 -- task layer that child sessions replaced.
 
 -- name: GetConversationByExecution :one

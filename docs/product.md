@@ -170,7 +170,7 @@ to read in an afternoon.
   the current project directory unless the owner selects another directory.
   Replaying one tool call does not create another routine, start another run,
   or move the schedule again. There is no routine deletion tool.
-- Cross-bot sessions ([ADR 0016](dev/decisions/0016-cross-bot-sessions.md)). One
+- Cross-bot sessions. One
   owner has all the bots, so a bot can give work to another bot. `session_new`
   with `bot` (an ID or a name) creates a child session in that bot. The child
   runs with the instructions, model, memory section, skills, MCP servers, `.env`,
@@ -402,8 +402,7 @@ reach a bot. Both directories can hold `AGENTS.md`, and a project can hold
 dex, agent, the bot's own instructions, project. A line `@path` in these files
 imports another file; a project file can import only files inside the project.
 A bot can opt in to personal rules with a symlink to `~/.agents/AGENTS.md` in
-its own `.agents/`. See
-[ADR 0017](dev/decisions/0017-drop-home-level-and-agents-md.md). Tools start
+its own `.agents/`. Tools start
 in the agent workspace by default. Task sessions can select an existing project
 in the header. Main and Chat sessions can also use `set_project` or the project
 API. A directory change keeps the existing model context. The header picker
