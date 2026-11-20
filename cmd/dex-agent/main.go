@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -45,12 +46,12 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 	if len(args) == 0 {
 		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE | dex-agent run")
 	}
-	data, err := os.UserConfigDir()
+	private, err := defaultState()
 	if err != nil {
 		return err
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	state := flags.String("state", filepath.Join(data, "dex-agent"), "private machine state directory")
+	state := flags.String("state", private, "private machine state directory")
 	origin, id, code := new(string), new(string), new(string)
 	if args[0] == "enroll" {
 		origin = flags.String("url", "", "Dex address, for example https://dex.example.com")
@@ -81,6 +82,23 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 }
 
 // endpoint builds one machine route. A session uses the WebSocket scheme of the origin.
+// defaultState returns the directory that holds the machine token and its workspace. It follows
+// XDG_STATE_HOME, and falls back to the platform directory for private state.
+func defaultState() (string, error) {
+	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
+		return filepath.Join(dir, "dex-agent"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if runtime.GOOS == "darwin" {
+		// macOS has no XDG directory; Application Support is its home for private user state.
+		return filepath.Join(home, "Library", "Application Support", "dex-agent"), nil
+	}
+	return filepath.Join(home, ".local", "state", "dex-agent"), nil
+}
+
 func endpoint(origin, id, action string) (string, error) {
 	u, err := url.Parse(origin)
 	// A loopback address may use plain HTTP, so a developer can test the flow without a proxy.

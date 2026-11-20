@@ -113,7 +113,7 @@ install_darwin() {
 	done
 	target_home=$(eval echo "~$target_user")
 	[ -d "$target_home" ] || fail "cannot find the home directory of $target_user"
-	state="$target_home/.dex-agent"
+	state="$target_home/Library/Application Support/dex-agent"
 	binary="$target_home/.local/bin/dex-agent"
 	plist="$target_home/Library/LaunchAgents/com.recally.dex-agent.plist"
 	log="$target_home/Library/Logs/dex-agent.log"

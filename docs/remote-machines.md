@@ -70,12 +70,12 @@ If the service does not start, run `sudo journalctl -u dex-agent -n 30` on the t
 The same install command works on a Mac. A Mac is a single-user machine, so the agent runs in
 your login session instead of as a system service:
 
-|                 | Linux                             | macOS                                 |
-| --------------- | --------------------------------- | ------------------------------------- |
-| Binary          | `/usr/local/bin/dex-agent`        | `~/.local/bin/dex-agent`              |
-| State and token | `/var/lib/dex-agent`              | `~/.dex-agent`                        |
-| Supervisor      | `dex-agent.service` under systemd | `com.recally.dex-agent` under launchd |
-| Log             | `journalctl -u dex-agent`         | `~/Library/Logs/dex-agent.log`        |
+|                 | Linux                             | macOS                                     |
+| --------------- | --------------------------------- | ----------------------------------------- |
+| Binary          | `/usr/local/bin/dex-agent`        | `~/.local/bin/dex-agent`                  |
+| State and token | `/var/lib/dex-agent`              | `~/Library/Application Support/dex-agent` |
+| Supervisor      | `dex-agent.service` under systemd | `com.recally.dex-agent` under launchd     |
+| Log             | `journalctl -u dex-agent`         | `~/Library/Logs/dex-agent.log`            |
 
 The command in the UI starts with `sudo`. On macOS you can drop it. With `sudo`, the installer
 uses the account that ran `sudo`, because the agent refuses to run as root.
@@ -84,6 +84,10 @@ uses the account that ran `sudo`, because the agent refuses to run as root.
 launchctl print gui/$(id -u)/com.recally.dex-agent   # state of the agent
 tail -f ~/Library/Logs/dex-agent.log                 # what it does
 ```
+
+The state directory holds two things: `device.json`, which contains the Dex origin, the
+environment ID, and the machine token, and `workspace/`, which is the directory that every
+command runs in.
 
 To stop the agent without removing the machine:
 
@@ -111,7 +115,10 @@ launchctl bootout gui/$(id -u)/com.recally.dex-agent
 rm ~/Library/LaunchAgents/com.recally.dex-agent.plist ~/.local/bin/dex-agent
 ```
 
-For foreground use, run `dex-agent run -state /var/lib/dex-agent` as the `dex-agent` account.
+For foreground use, run `dex-agent run -state /var/lib/dex-agent` as the `dex-agent` account on
+Linux, or `dex-agent run` as your own account on macOS. Without `-state`, the agent uses
+`$XDG_STATE_HOME/dex-agent`, `~/.local/state/dex-agent` on Linux, or
+`~/Library/Application Support/dex-agent` on macOS.
 
 ## Limits
 

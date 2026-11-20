@@ -50,20 +50,24 @@ func (m *Manager) IssueRunnerCode(ctx context.Context, id string) (string, error
 	return code, nil
 }
 
-// EnrollRunner consumes a one-time code and registers the machine identity. The identity is
-// the SHA-256 digest of the machine certificate key.
-func (m *Manager) EnrollRunner(ctx context.Context, id, code, identity string) error {
+// EnrollRunner consumes a one-time code and returns the token of the machine. Dex stores only
+// the SHA-256 digest of the token.
+func (m *Manager) EnrollRunner(ctx context.Context, id, code string) (string, error) {
+	token := rand.Text()
 	rt := m.runner
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	n, err := rt.q.RedeemRunnerCode(ctx, sqlc.RedeemRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), CredentialDigest: runnerDigest(identity), Now: time.Now().UnixMilli()})
+	n, err := rt.q.RedeemRunnerCode(ctx, sqlc.RedeemRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), CredentialDigest: runnerDigest(token), Now: time.Now().UnixMilli()})
 	if err == nil && n != 1 {
 		err = ErrRunnerCredential
 	}
-	return err
+	if err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
-func (rt *runnerRuntime) verify(ctx context.Context, id, identity string) error {
+func (rt *runnerRuntime) verify(ctx context.Context, id, token string) error {
 	digest, err := rt.q.GetRunnerCredential(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrRunnerCredential
@@ -71,19 +75,19 @@ func (rt *runnerRuntime) verify(ctx context.Context, id, identity string) error 
 	if err != nil {
 		return err
 	}
-	if subtle.ConstantTimeCompare([]byte(digest), []byte(runnerDigest(identity))) != 1 {
+	if subtle.ConstantTimeCompare([]byte(digest), []byte(runnerDigest(token))) != 1 {
 		return ErrRunnerCredential
 	}
 	return nil
 }
 
-// VerifyRunner checks the machine certificate before the HTTP upgrade.
-func (m *Manager) VerifyRunner(ctx context.Context, id, identity string) error {
-	return m.runner.verify(ctx, id, identity)
+// VerifyRunner checks the machine token before the HTTP upgrade.
+func (m *Manager) VerifyRunner(ctx context.Context, id, token string) error {
+	return m.runner.verify(ctx, id, token)
 }
 
-// AcceptRunner installs a ready connection after checking that its certificate is still valid.
-func (m *Manager) AcceptRunner(ctx context.Context, id, identity string, socket *websocket.Conn) error {
+// AcceptRunner installs a ready connection after checking that its token is still valid.
+func (m *Manager) AcceptRunner(ctx context.Context, id, token string, socket *websocket.Conn) error {
 	session, err := runner.Connect(ctx, socket)
 	if err != nil {
 		return err
@@ -91,7 +95,7 @@ func (m *Manager) AcceptRunner(ctx context.Context, id, identity string, socket 
 	defer session.Close()
 	rt := m.runner
 	rt.mu.Lock()
-	err = rt.verify(ctx, id, identity)
+	err = rt.verify(ctx, id, token)
 	if err == nil && rt.closed {
 		err = runner.ErrOffline
 	}
