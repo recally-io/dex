@@ -95,28 +95,16 @@ export function machineAddress(address: string): string | null {
   return url.origin;
 }
 
-export function machineInstallCommand(
-  address: string,
-  id: string,
-  pin: string,
-  code: string,
-  version?: string,
-): string | null {
+// machineInstallCommand builds the one command that enrolls a machine. The machine trades the
+// code for a token, so the command carries no certificate and no pin.
+export function machineInstallCommand(address: string, id: string, code: string): string | null {
   const origin = machineAddress(address);
 
-  if (
-    !origin ||
-    !/^[a-z\d-]+$/i.test(id) ||
-    !/^[A-Za-z\d+/]{43}=?=?$/.test(pin) ||
-    !/^[A-Z\d]{20,64}$/i.test(code)
-  ) {
+  if (!origin || !/^[a-z\d-]+$/i.test(id) || !/^[A-Z\d]{20,64}$/i.test(code)) {
     return null;
   }
 
-  // A tagged build downloads its archive from GitHub; a development build serves it from Dex.
-  const release = /^v\d+\.\d+\.\d+$/.test(version ?? "") ? ` '${version}'` : " 'dev'";
-
-  return `curl -fsSk --pinnedpubkey 'sha256//${pin}' '${origin}/install-machine.sh' | sudo sh -s -- '${origin}' '${id}' '${pin}' '${code}'${release}`;
+  return `curl -fsSL '${origin}/install-machine.sh' | sudo sh -s -- '${origin}' '${id}' '${code}'`;
 }
 
 export function formatSshTarget(cfg: EnvironmentConfig): string {

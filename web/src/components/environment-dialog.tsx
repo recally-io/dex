@@ -20,7 +20,7 @@ import { SandboxEnvironmentFields, useSandboxEnvironmentForm } from "./environme
 import { SshEnvironmentFields, useSshEnvironmentForm } from "./environment-ssh-fields";
 import { Failure, Spinner } from "./feedback";
 import { ProbeResultPanel } from "./probe-result-panel";
-import { DexAddressField, RemoteMachinesOff, RunnerInstall } from "./runner-install";
+import { RunnerInstall } from "./runner-install";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Field } from "./form";
@@ -86,7 +86,6 @@ export function EnvironmentDialog({
 
   const [tried, setTried] = useState(false);
   const [serviceName, setServiceName] = useState(existing?.kind === "runner" ? existing.name : "");
-  const [address, setAddress] = useState("");
   const [probeResult, setProbeResult] = useState<EnvironmentTestResult | null>(null);
 
   // A dex runner environment must exist before Dex can issue its install command, so the
@@ -318,20 +317,20 @@ export function EnvironmentDialog({
                 />
               )}
             </Field>
-            <DexAddressField
-              address={address}
-              onChange={setAddress}
-              action={
-                created ? undefined : (
-                  <Button type="button" size="xs" disabled={pending || !serviceName.trim()} onClick={submit}>
-                    {pending ? <Spinner /> : null}
-                    Get install command
-                  </Button>
-                )
-              }
-            />
-            <RemoteMachinesOff />
-            {created ? <RunnerInstall environmentId={created.id} address={address} autoIssue /> : null}
+            {created ? (
+              <RunnerInstall environmentId={created.id} autoIssue />
+            ) : (
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={pending || !serviceName.trim()}
+                onClick={submit}
+              >
+                {pending ? <Spinner /> : null}
+                Get install command
+              </Button>
+            )}
           </>
         )}
 

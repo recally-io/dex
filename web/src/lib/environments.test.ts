@@ -40,17 +40,13 @@ test("environment labels avoid internal pi-env jargon and distinguish local sand
   expect(formatSandboxDiskSummary(cloud.config)).toContain("Snapshot-persisted");
 });
 
-test("machine setup uses one pinned install command", () => {
-  const pin = "kZ0P1Q2r3S4t5U6v7W8x9Y0z1A2b3C4d5E6f7G8h9I0=";
+test("machine setup uses one install command", () => {
   const code = "ABCDEFGH23456789ABCDEFGH";
-  expect(machineInstallCommand("http://192.0.2.10:8788", "env-id", pin, code, "v1.2.3")).toBeNull();
-  expect(machineInstallCommand("https://127.0.0.1:8788", "env-id", pin, code, "v1.2.3")).toBeNull();
-  expect(machineInstallCommand("https://user@192.0.2.10:8788", "env-id", pin, code, "v1.2.3")).toBeNull();
-  expect(machineInstallCommand("https://192.0.2.10:8788", "env-id", "", code, "v1.2.3")).toBeNull();
-  expect(machineInstallCommand("https://192.0.2.10:8788", "env-id", pin, "short", "v1.2.3")).toBeNull();
-  expect(machineInstallCommand("https://192.0.2.10:8788/", "env-id", pin, code, "v1.2.3")).toBe(
-    `curl -fsSk --pinnedpubkey 'sha256//${pin}' 'https://192.0.2.10:8788/install-machine.sh' | ` +
-      `sudo sh -s -- 'https://192.0.2.10:8788' 'env-id' '${pin}' '${code}' 'v1.2.3'`,
+  expect(machineInstallCommand("http://192.0.2.10", "env-id", code)).toBeNull();
+  expect(machineInstallCommand("https://127.0.0.1", "env-id", code)).toBeNull();
+  expect(machineInstallCommand("https://user@192.0.2.10", "env-id", code)).toBeNull();
+  expect(machineInstallCommand("https://192.0.2.10", "env-id", "short")).toBeNull();
+  expect(machineInstallCommand("https://192.0.2.10/", "env-id", code)).toBe(
+    `curl -fsSL 'https://192.0.2.10/install-machine.sh' | sudo sh -s -- 'https://192.0.2.10' 'env-id' '${code}'`,
   );
-  expect(machineInstallCommand("https://192.0.2.10:8788", "env-id", pin, code, "dev")).toContain("'dev'");
 });
