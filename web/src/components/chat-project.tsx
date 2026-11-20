@@ -23,11 +23,13 @@ import {
 export function ChatProject({
   chatId,
   cwd,
+  environmentId,
   initialOpen = false,
   onClose,
 }: {
   chatId: number;
   cwd: string;
+  environmentId?: string;
   initialOpen?: boolean;
   onClose?: () => void;
 }) {
@@ -44,13 +46,13 @@ export function ChatProject({
   const [draft, setDraft] = useState(cwd || "~");
 
   const listing = useQuery({
-    ...listDirectoriesOptions({ query: { path, agentId } }),
+    ...listDirectoriesOptions({ query: { path, agentId, environmentId } }),
     enabled: open,
     retry: false,
   });
 
   const recent = useQuery({
-    ...listRecentProjectsOptions({ path: { agentId } }),
+    ...listRecentProjectsOptions({ path: { agentId }, query: { environmentId } }),
     enabled: open,
   });
 

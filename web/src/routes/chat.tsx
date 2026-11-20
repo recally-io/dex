@@ -605,7 +605,9 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       ) : null}
       <Composer
         controls={
-          chat.data && !chat.data.main ? <SessionSettings chat={chat.data} settings={settings} /> : undefined
+          chat.data && !chat.data.main ? (
+            <SessionSettings chat={chat.data} settings={settings} started={!blank} />
+          ) : undefined
         }
         commands={commands}
         fix={

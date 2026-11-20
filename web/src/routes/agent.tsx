@@ -5,9 +5,11 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getMainChatOptions,
+  listAgentEnvironmentsOptions,
   listEnvironmentsOptions,
   listModelsOptions,
   resetAgentEnvironmentMutation,
+  setAgentEnvironmentsMutation,
   setChatSettingsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { errorText, refreshChats, refreshEnvironments } from "../lib/queries";
@@ -287,6 +289,7 @@ function Agent({ settings }: { settings: Settings }) {
             />
           </div>
           <ExecutionEnvironmentRow environmentId={settings.agent.environmentId} />
+          <AllowedEnvironmentsRow environmentId={settings.agent.environmentId} />
         </Panel>
       </Section>
     </>
@@ -471,6 +474,82 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
       {resetSandbox.isError ? (
         <div className="mt-3">
           <Failure title="Could not reset sandbox" error={resetSandbox.error} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// The bot's own environment is always allowed, so it is not a choice here.
+function AllowedEnvironmentsRow({ environmentId }: { environmentId: string }) {
+  const agentId = useAgentId();
+  const { notify } = useApp();
+  const saved = useQuery(listAgentEnvironmentsOptions({ path: { agentId } }));
+  const all = useQuery(listEnvironmentsOptions());
+  const [draft, setDraft] = useState<string[]>();
+  const own = environmentId || "local";
+
+  const choices = [
+    { id: "local", name: "This computer" },
+    ...(all.data?.environments ?? []).map((env) => ({ id: env.id, name: env.name })),
+  ].filter((choice) => choice.id !== own);
+
+  const allowed =
+    draft ?? (saved.data?.environments ?? []).filter((env) => !env.default).map((env) => env.id);
+
+  const save = useMutation({
+    ...setAgentEnvironmentsMutation(),
+    onSuccess: async () => {
+      await refreshEnvironments();
+      setDraft(undefined);
+      notify("Allowed environments saved.");
+    },
+  });
+
+  function toggle(id: string) {
+    setDraft(allowed.includes(id) ? allowed.filter((item) => item !== id) : [...allowed, id]);
+  }
+
+  return (
+    <div className="border-t border-border px-4 py-3.5">
+      <fieldset disabled={save.isPending || saved.isPending || all.isPending}>
+        <legend className="text-[14px] font-medium text-foreground">Allowed environments</legend>
+        <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+          Chats of this bot can also run in these environments. The execution environment above is always
+          allowed.
+        </p>
+        <div className="mt-2 flex flex-col gap-1.5">
+          {choices.map((choice) => (
+            <label key={choice.id} className="flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                checked={allowed.includes(choice.id)}
+                onChange={() => toggle(choice.id)}
+              />
+              {choice.name}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="mt-3">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!draft || save.isPending}
+          onClick={() => save.mutate({ path: { agentId }, body: { environmentIds: allowed } })}
+        >
+          {save.isPending ? <Spinner /> : null}
+          {save.isPending ? "Saving…" : "Save allowed environments"}
+        </Button>
+      </div>
+      {saved.isError ? (
+        <div className="mt-3">
+          <Failure title="Could not load allowed environments" error={saved.error} />
+        </div>
+      ) : null}
+      {save.isError ? (
+        <div className="mt-3">
+          <Failure title="Could not save allowed environments" error={save.error} />
         </div>
       ) : null}
     </div>

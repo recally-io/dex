@@ -251,6 +251,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           key={created.id}
           chatId={created.id}
           cwd={created.cwd}
+          environmentId={created.environmentId}
           initialOpen
           onClose={() => setCreated(undefined)}
         />
