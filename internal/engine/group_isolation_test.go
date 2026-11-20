@@ -149,7 +149,7 @@ func TestUserGroupChildForkAndRestoreCannotUpgradeResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	notePath := strings.TrimPrefix(coreWait(t, note).Answer, "tool: ")
-	child, ok, err := a.Fork(t.Context(), ref, 0, false)
+	child, ok, err := a.Fork(t.Context(), ref, 0, false, nil)
 	if err != nil || !ok {
 		t.Fatalf("fork: %+v %v %v", child, ok, err)
 	}

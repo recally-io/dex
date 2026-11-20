@@ -1049,8 +1049,21 @@ A web chat selects its environment before its first message
 409. `session_new` takes `environment`. A child of the same bot runs in its
 parent's environment unless it selects another one. A child of another bot runs
 in that bot's environment. `environment_list` shows the bot's environment, `local`,
-and the SSH environments with ID, name, kind, and status, and no configuration or secrets. A fork keeps
-the environment of its source.
+and the SSH environments with ID, name, kind, and status, and no configuration or secrets. Any
+bot can select `local` or any SSH environment; there is no per-bot allowlist.
+
+A fork keeps the environment selection of its source unless it selects `local` or an SSH
+environment (`environmentId` of `POST /api/agents/{agentId}/chats/{chatId}/fork`, `environment`
+of `session_fork`). When the effective environment changes, the fork has no cwd. When the copied
+history last ran in another environment than the fork, the engine ends the copied history with one
+`dex.environment` entry. The entry holds the notice as a user message, so the model reads it
+before the next input, and the transcript shows it as an `environment` boundary. The entry data
+keeps the environment that the history left. A fork that ends before such an entry of its source
+uses that environment, so a fork of a moved chat from before the move gets its own notice. Files,
+background commands, and queued input stay in the source environment. A fork with no copied
+history gets no notice. A fork cannot change its environment after that, so a retry with the same
+ID compares the fork row with the requested environment. The retry gets its fork before the target
+is checked, so a removed target does not refuse it.
 
 A change of the bot's environment fails with 409 while sessions that follow it
 have queued input or running background commands. After the change, those

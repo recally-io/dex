@@ -1002,7 +1002,11 @@ func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (
 		}
 		requestID = id.String()
 	}
-	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID)
+	environmentID := ""
+	if req.Body.EnvironmentId != nil {
+		environmentID = *req.Body.EnvironmentId
+	}
+	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID, environmentID)
 	if err != nil {
 		return nil, err
 	}

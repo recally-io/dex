@@ -37,7 +37,8 @@ New chat sends `POST /api/agents/{agentId}/chats` with no request body.
 When an SSH environment exists or the bot is not local, a chat that has no
 message yet shows an environment picker (`listAgentEnvironments`), and the project
 picker lists folders in the chosen environment. After the first message the
-header shows the environment name.
+header shows the environment name. With other available environments, Fork from here
+opens a menu that forks in the current environment or to another one.
 See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.

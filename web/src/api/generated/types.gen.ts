@@ -384,13 +384,13 @@ export type BoundaryItem = {
     kind: 'boundary';
     id: string;
     entryId?: number;
-    boundary: 'reset' | 'compaction';
+    boundary: 'reset' | 'compaction' | 'environment';
     /**
      * The boundary time in milliseconds.
      */
     at?: number;
     /**
-     * The handoff of a reset, or the summary of a compaction. Absent when there is none.
+     * The handoff of a reset, the summary of a compaction, or the notice of a fork to another environment. Absent when there is none.
      *
      */
     text?: string;
@@ -3218,6 +3218,10 @@ export type ForkChatData = {
          * End the history just before the entry.
          */
         before?: boolean;
+        /**
+         * The execution environment of the new Chat.
+         */
+        environmentId?: string;
     };
     path: {
         agentId: string;
