@@ -23,7 +23,7 @@ const pageNames = new Map([
   ["instructions", "Settings"],
   ["channels", "Settings"],
   ["extensions", "Settings"],
-  ["sessions", "Tasks"],
+  ["sessions", "Sessions"],
 ]);
 
 /**

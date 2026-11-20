@@ -61,7 +61,7 @@ to read in an afternoon.
   for Needs you, blue for Working. Needs you wins. New bot comes after the bots.
   The sidebar footer opens global Settings and About. A red dot marks provider
   errors. The page header names the bot and the open page. On desktop, its right
-  side shows New task, Tasks, Routines, and Bot settings as direct controls.
+  side shows New session, Sessions, Routines, and Bot settings as direct controls.
   Routines keeps its enabled count and failure mark. Bot settings keeps its
   instructions draft mark. On a phone, a Menu button holds these same actions.
   Main has no session settings button; Bot settings edits its default model and
@@ -77,7 +77,7 @@ to read in an afternoon.
   has no thinking choices. There is no separate settings row or toggle. Main cannot be archived.
   The row menu and a right-click archive or restore a Chat. Archiving keeps the
   messages, records and files; a child session's result still returns to the chat.
-  New task does not reuse an archived empty chat. The button at the top left of
+  New session does not reuse an archived empty chat. The button at the top left of
   the sidebar hides it. The first button of the page header then shows it
   again, with an orange dot when a bot needs the user, and the header shows the
   bot's avatar. On a phone, the menu button opens the sidebar as a drawer. The
@@ -207,7 +207,7 @@ a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
 The chat does not show the internal report as input. The user opens the
 child session to read its full work.
-Tasks in the bot header opens the full session list, newest activity first.
+Sessions in the bot header opens the full session list, newest activity first.
 The sidebar only switches bots. A child session is a Chat session with a parent. Its row shows "Started by"
 and the name of the parent: Main, or the title of a Chat, also when that Chat is
 archived. The list has no task rows, no step preview, no Stop on a row, no Mark
@@ -225,11 +225,11 @@ Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
 Named dispatch and result labels open the child session that holds the turn. An
 old `/tasks/<id>` link, with or without the bot prefix, opens the session of that
-old task in the same way. Tasks uses the existing session pages. The filter has no separate Task kind.
+old task in the same way. The Sessions filter has no separate Task kind.
 A result shows that the child returned a report. It does not prove goal
 completion. The UI does not show progress percentages.
 
-`New task` in the bot header opens a writable Chat with its own model context.
+`New session` in the bot header opens a writable Chat with its own model context.
 It copies the current session's project, or Main's project from a bot page,
 and opens the directory picker. The user can keep or change that directory.
 It reuses the newest empty Chat, so an abandoned click leaves no list row. The first message

@@ -47,7 +47,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
   const needs = needsItems(agentId, work.data);
   const attention = needs.questions.length + needs.results.length + needs.setup.length;
   const [created, setCreated] = useState<Chat>();
-  const newTask = useNewChat(cwd, setCreated);
+  const newSession = useNewChat(cwd, setCreated);
   const agents = useQuery(listAgentsOptions());
   const activity = agents.data?.agents.find((item) => item.id === agentId)?.activity;
   const routines = activity?.enabledAutomations ?? 0;
@@ -66,11 +66,11 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
 
   const items = (
     <>
-      <DropdownMenuItem disabled={newTask.isPending} onClick={() => newTask.mutate()}>
-        <Plus size={15} /> New task
+      <DropdownMenuItem disabled={newSession.isPending} onClick={() => newSession.mutate()}>
+        <Plus size={15} /> New session
       </DropdownMenuItem>
       <DropdownMenuItem render={<Link to="/a/$agentId/sessions" params={{ agentId }} />}>
-        <List size={15} /> Tasks
+        <List size={15} /> Sessions
       </DropdownMenuItem>
       <DropdownMenuItem
         render={<Link to="/a/$agentId/automations" params={{ agentId }} />}
@@ -158,10 +158,10 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           variant="ghost"
           size="icon-sm"
           className="text-muted-foreground"
-          aria-label="New task"
-          title="Start an independent task without changing Main"
-          disabled={newTask.isPending}
-          onClick={() => newTask.mutate()}
+          aria-label="New session"
+          title="Open a session without changing Main"
+          disabled={newSession.isPending}
+          onClick={() => newSession.mutate()}
         >
           <Plus aria-hidden="true" />
         </Button>
@@ -169,8 +169,8 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           to="/a/$agentId/sessions"
           params={{ agentId }}
           aria-current={segment === "sessions" ? "page" : undefined}
-          aria-label="Tasks"
-          title="Tasks"
+          aria-label="Sessions"
+          title="Sessions"
           className={linkClass}
         >
           <List aria-hidden="true" />
