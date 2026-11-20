@@ -1,5 +1,5 @@
 -- +goose Up
--- Child sessions replace tasks (ADR 0015). The child_sessions migration copied the parent link of
+-- Child sessions replace tasks. The child_sessions migration copied the parent link of
 -- each task conversation and the request of each parent turn, so nothing reads these tables now.
 DROP TABLE task_steer_receipts;
 DROP TABLE tasks;

@@ -5,9 +5,11 @@ Read this before you write or change a document or a diagram.
 - `README.md`: what dex is, the quick start, and links.
 - `docs/product.md`: users, problem, scope, non-goals.
 - `docs/dev/architecture.md`: subsystems, sources of truth, flows, failure
-  behavior. Update it in the same commit as a change to a documented contract.
-- `docs/dev/decisions/NNNN-<slug>.md`: ADRs for decisions that are hard to
-  reverse. Do not change an accepted ADR; supersede it.
+  behavior. It is the single source of truth for the current design. It
+  describes how the system works now, not its history. Update it in the same
+  commit as a change to architecture, a contract, or a documented behavior.
+- Do not add ADRs or other decision logs, and do not commit them. Put the
+  reason for a decision in the commit message or the PR body.
 - `.local/`: plans and reports; ignored by Git.
 
 Write English in ASD-STE100 style: short sentences, active voice, one meaning

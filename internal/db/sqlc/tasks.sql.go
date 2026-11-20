@@ -21,7 +21,7 @@ type GetConversationByExecutionParams struct {
 	ExecutionID    sql.NullInt64 `json:"execution_id"`
 }
 
-// Stop of a conversation and of its child sessions (ADR 0015). The file keeps its name from the
+// Stop of a conversation and of its child sessions. The file keeps its name from the
 // task layer that child sessions replaced.
 func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
 	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionScope, arg.ExecutionID)

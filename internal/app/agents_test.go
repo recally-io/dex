@@ -252,7 +252,7 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT agent_id FROM conversations WHERE id = ?", child).Scan(&agent); err != nil || agent != b.ID {
 		t.Fatalf("child agent=%q err=%v", agent, err)
 	}
-	// Reading is open across bots (ADR 0016), but the default agent cannot write to the child.
+	// Reading is open across bots, but the default agent cannot write to the child.
 	if got := callSessionTool(t, d, d.mainChat(t), "session_read", map[string]any{"id": child}); !strings.Contains(got, "B report") || !strings.Contains(got, `"bot":"B"`) {
 		t.Fatalf("the default agent could not read a child of B: %s", got)
 	}

@@ -3,7 +3,7 @@
 -- needs no copy.
 ALTER TABLE agents ADD COLUMN archived_at INTEGER;
 
--- A question can carry an action that control runs when the owner approves it (ADR 0016).
+-- A question can carry an action that control runs when the owner approves it.
 -- action_agent_id is the bot the action changes. approve_text is the one answer that approves.
 -- outcome is the decision that control wrote into the answer; it is set once, with the answer.
 ALTER TABLE questions ADD COLUMN action TEXT;

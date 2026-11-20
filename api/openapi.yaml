@@ -738,7 +738,7 @@ paths:
       description: >
         Restores an archived agent and starts its saved channels. An agent that is not archived
         answers 404. There is no archive route: an agent is archived only when the owner approves
-        a bot_delete question (ADR 0016). Every other agent route answers 404 for an archived agent.
+        a bot_delete question. Every other agent route answers 404 for an archived agent.
       responses:
         "200":
           description: The restored agent.

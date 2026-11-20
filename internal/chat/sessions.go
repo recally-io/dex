@@ -62,7 +62,7 @@ func (s *Service) ref(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation)
 }
 
 // childOf returns the child of parent that the model named. The ownership rule is the parent
-// link for private callers (ADR 0016). Group callers also require the same bot and audience.
+// link for private callers. Group callers also require the same bot and audience.
 func (s *Service) childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id string) (sqlc.Conversation, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
@@ -659,7 +659,7 @@ func boolInt(b bool) int64 {
 // ChatOfTurn returns the session that holds input id, or ErrNotFound. The ID is the input ID of a
 // turn: a result names its child session turn, and a task from before child sessions used the ID
 // of its first input as its own ID. The session belongs to agentID, or is a child of a session of
-// agentID in another bot (ADR 0016). The child names its bot in AgentID.
+// agentID in another bot. The child names its bot in AgentID.
 func (s *Service) ChatOfTurn(ctx context.Context, agentID, id string) (Chat, error) {
 	turn, err := s.q.GetSubmission(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {

@@ -1,5 +1,5 @@
 -- +goose Up
--- A child session is a conversation with a parent (ADR 0015). Task conversations become children,
+-- A child session is a conversation with a parent. Task conversations become children,
 -- and the input that a parent sent to a child keeps the request that sent it. The tasks table stays
 -- until the web UI reads children from parent_id.
 ALTER TABLE conversations ADD COLUMN parent_id INTEGER REFERENCES conversations (id);

@@ -22,7 +22,7 @@ var errBotCaller = errors.New("bot tool not allowed here")
 
 const maxArchiveReason = 500
 
-// archiveAction is the one action that a question can carry (ADR 0016).
+// archiveAction is the one action that a question can carry.
 const archiveAction = "archive"
 
 // userOrigin reports whether an input origin is a person: the web UI or a paired channel peer.

@@ -109,7 +109,7 @@ func (s *Service) resolveBot(ctx context.Context, ref string) (Agent, error) {
 	}
 }
 
-// BotTools serves the bot tools (ADR 0016). It owns the mapping from tool input to the same
+// BotTools serves the bot tools. It owns the mapping from tool input to the same
 // service calls that the web uses; chat.Service checks the source of every call.
 type BotTools struct {
 	Agents     *Service

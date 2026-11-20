@@ -625,7 +625,7 @@ export const listArchivedAgents = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Restores an archived agent and starts its saved channels. An agent that is not archived answers 404. There is no archive route: an agent is archived only when the owner approves a bot_delete question (ADR 0016). Every other agent route answers 404 for an archived agent.
+ * Restores an archived agent and starts its saved channels. An agent that is not archived answers 404. There is no archive route: an agent is archived only when the owner approves a bot_delete question. Every other agent route answers 404 for an archived agent.
  *
  */
 export const restoreAgent = <ThrowOnError extends boolean = false>(options: Options<RestoreAgentData, ThrowOnError>): RequestResult<RestoreAgentResponses, RestoreAgentErrors, ThrowOnError> => (options.client ?? client).delete<RestoreAgentResponses, RestoreAgentErrors, ThrowOnError>({

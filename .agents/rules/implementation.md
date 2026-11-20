@@ -62,14 +62,12 @@ Read this before you change code, dependencies, native execution, or stored data
   settings. `internal/agent` owns agent and channel settings. `internal/chat`
   owns session overrides. Do not add an environment variable or a file for a
   setting. The exceptions are skills, MCP servers, and tool environment values
-  in `.env`, which come from files
-  ([ADR 0010](../../docs/dev/decisions/0010-extension-levels.md)). The settings
+  in `.env`, which come from files. The settings
   service passes provider credentials directly to the engine catalog.
 - Keep slow resource work outside the engine's global state lock. Track opens
   and reloads before they start. Register recovery isolation before Harness
   resume. Use per-agent delivery locks for input, Stop, Clear, and reconciliation.
   The global receipt gate must order receipt commits and maintenance confirmation.
-  See [ADR 0012](../../docs/dev/decisions/0012-agent-lifecycle-isolation.md).
 - Reload replaces only the selected agent's resources. Tools and stdio MCP
   receive an explicit environment. Do not change the dex process environment.
 - Do not edit generated code: `internal/db/sqlc/` (`mise run generate:db`),

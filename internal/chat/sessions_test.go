@@ -136,7 +136,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	if _, err := r.service.ToolSessionSend(t.Context(), foreign, engine.SessionSendArgs{ID: child.ID, Message: "hi"}); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("foreign send: %v", err)
 	}
-	// Reading is open to any bot (ADR 0016).
+	// Reading is open to any bot.
 	if page, err := r.service.ToolSessionRead(t.Context(), foreign, engine.SessionReadArgs{ID: child.ID}); err != nil || page.BotID != "bot" {
 		t.Fatalf("foreign read: %+v, %v", page, err)
 	}

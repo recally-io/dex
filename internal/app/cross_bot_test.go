@@ -12,7 +12,7 @@ import (
 	"uuid"
 )
 
-// The tests in this file cover ADR 0016: child sessions in another bot, and reading and search
+// The tests in this file cover cross-bot sessions: child sessions in another bot, and reading and search
 // across bots. They drive real PiG, real SQLite files, and the faux provider. Bot A is the default
 // bot. Bot B is "Coder". Each bot has a parent chat whose model is "spawn": its message is the JSON
 // arguments of one session tool, as in child_sessions_test.go.
@@ -280,7 +280,7 @@ func TestUserOnlyTheParentOperatesAChildInAnotherBot(t *testing.T) {
 	}
 }
 
-// TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock covers the lock rule of ADR 0016:
+// TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock covers the cross-bot lock rule:
 // a settlement in B and a delivery in A, and a Stop in A and a Stop in B, run at the same time and
 // finish. Run it with -race -count=50.
 func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
