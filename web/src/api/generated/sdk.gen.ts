@@ -62,7 +62,7 @@ export const deleteGitHubWebhook = <ThrowOnError extends boolean = false>(option
 });
 
 /**
- * Save or rotate a write-only GitHub Webhook secret.
+ * Save a GitHub Webhook secret and optional destination for new Issues.
  */
 export const saveGitHubWebhook = <ThrowOnError extends boolean = false>(options: Options<SaveGitHubWebhookData, ThrowOnError>): RequestResult<SaveGitHubWebhookResponses, SaveGitHubWebhookErrors, ThrowOnError> => (options.client ?? client).put<SaveGitHubWebhookResponses, SaveGitHubWebhookErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }, {

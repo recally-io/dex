@@ -150,6 +150,23 @@ func (q *Queries) GetWorkSourceEventByReceipt(ctx context.Context, arg GetWorkSo
 	return i, err
 }
 
+const hasWorkTaskObject = `-- name: HasWorkTaskObject :one
+SELECT count(*) FROM work_task_objects WHERE namespace = ? AND object_type = ? AND object_key = ?
+`
+
+type HasWorkTaskObjectParams struct {
+	Namespace  string `json:"namespace"`
+	ObjectType string `json:"object_type"`
+	ObjectKey  string `json:"object_key"`
+}
+
+func (q *Queries) HasWorkTaskObject(ctx context.Context, arg HasWorkTaskObjectParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, hasWorkTaskObject, arg.Namespace, arg.ObjectType, arg.ObjectKey)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const linkWorkTaskObject = `-- name: LinkWorkTaskObject :execrows
 INSERT INTO work_task_objects (namespace, object_type, object_key, task_id)
 SELECT ?1, ?2, ?3, t.id FROM work_tasks t JOIN agents a ON a.id = t.agent_id

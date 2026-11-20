@@ -54,14 +54,17 @@ func PullRequest(number int64) worktask.Object {
 	return worktask.Object{Type: "pull_request", Key: strconv.FormatInt(number, 10)}
 }
 
-// AcceptWebhook verifies a submitted review and commits it before returning its receipt.
+// AcceptWebhook verifies a delivery and commits supported events before returning its receipt.
 // A valid but unsupported delivery returns no receipt.
-func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID int64, secret []byte, delivery, kind, signature string, body []byte) (*worktask.Receipt, error) {
+func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID int64, secret []byte, delivery, kind, signature string, body []byte, issueAgentID string) (*worktask.Receipt, error) {
 	if len(body) > maxPayload || repositoryID <= 0 || delivery == "" {
 		return nil, ErrPayload
 	}
 	if !validSignature(secret, signature, body) {
 		return nil, ErrSignature
+	}
+	if kind == "issues" && issueAgentID != "" {
+		return acceptIssue(ctx, store, repositoryID, "webhook:"+delivery, body, issueAgentID)
 	}
 	if kind != "pull_request_review" {
 		return nil, nil

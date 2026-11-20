@@ -209,8 +209,9 @@ type GithubReviewPull struct {
 }
 
 type GithubWebhookSetting struct {
-	RepositoryID int64  `json:"repository_id"`
-	Secret       string `json:"secret"`
+	RepositoryID int64          `json:"repository_id"`
+	Secret       string         `json:"secret"`
+	IssueAgentID sql.NullString `json:"issue_agent_id"`
 }
 
 type OnePassword struct {

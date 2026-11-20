@@ -45,13 +45,13 @@ func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write(body)
 	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-	if _, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", "sha256=00", body); !errors.Is(err, ErrSignature) {
+	if _, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", "sha256=00", body, ""); !errors.Is(err, ErrSignature) {
 		t.Fatalf("unsigned event: %v", err)
 	}
-	if _, err := AcceptWebhook(ctx, store, 11, secret, "delivery-1", "pull_request_review", signature, body); !errors.Is(err, ErrPayload) {
+	if _, err := AcceptWebhook(ctx, store, 11, secret, "delivery-1", "pull_request_review", signature, body, ""); !errors.Is(err, ErrPayload) {
 		t.Fatalf("wrong repository: %v", err)
 	}
-	first, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", signature, body)
+	first, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", signature, body, "")
 	if err != nil || first == nil || first.TaskID != task.ID || first.Duplicate || first.ResolvedWaits != 1 {
 		t.Fatalf("Webhook: %+v, %v", first, err)
 	}

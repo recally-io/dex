@@ -1321,6 +1321,10 @@ export type DeleteGitHubWebhookResponse = DeleteGitHubWebhookResponses[keyof Del
 export type SaveGitHubWebhookData = {
     body: {
         secret: string;
+        /**
+         * Create Tasks for opened Issues under this agent. Omit to disable creation.
+         */
+        issueAgentId?: string;
     };
     path: {
         repositoryId: number;
@@ -1340,7 +1344,7 @@ export type SaveGitHubWebhookError = SaveGitHubWebhookErrors[keyof SaveGitHubWeb
 
 export type SaveGitHubWebhookResponses = {
     /**
-     * Secret saved.
+     * Webhook configuration saved.
      */
     204: void;
 };

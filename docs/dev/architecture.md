@@ -103,7 +103,12 @@ the submission time. The adapter skips pending and dismissed reviews.
 The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
 An administrator saves or rotates a write-only secret with
 `PUT /api/settings/github-webhooks/{repositoryId}` and disables the hook with
-`DELETE` on the same path. The hook does not accept the management token as a signature. It accepts a
+`DELETE` on the same path. Set `issueAgentId` to an active bot on the same PUT
+to create Tasks for signed `issues.opened` deliveries. Omit it to disable Task
+creation. Dex first checks for an existing Issue link, then stores any new
+Task, its link, and the opening event in one transaction. The issue title and
+body are timeline data. Opening an issue does not send an input to Main.
+The hook does not accept the management token as a signature. It accepts a
 request body of at most 256 KiB and returns `204` after the event commits or
 when a signed delivery needs no action. A failed write returns `503`. To
 receive deliveries from GitHub, expose only the hook path through a public

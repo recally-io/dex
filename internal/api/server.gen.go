@@ -1892,7 +1892,9 @@ type SaveGitHubReviewPullJSONBody struct {
 
 // SaveGitHubWebhookJSONBody defines parameters for SaveGitHubWebhook.
 type SaveGitHubWebhookJSONBody struct {
-	Secret *string `json:"secret,omitempty"`
+	// IssueAgentId Create Tasks for opened Issues under this agent. Omit to disable creation.
+	IssueAgentId *string `json:"issueAgentId,omitempty"`
+	Secret       *string `json:"secret,omitempty"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
