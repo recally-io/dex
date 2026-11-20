@@ -9,6 +9,20 @@ import (
 	"context"
 )
 
+const associateWorkTaskInput = `-- name: AssociateWorkTaskInput :exec
+INSERT INTO work_task_inputs (submission_id, task_id) VALUES (?, ?)
+`
+
+type AssociateWorkTaskInputParams struct {
+	SubmissionID string `json:"submission_id"`
+	TaskID       string `json:"task_id"`
+}
+
+func (q *Queries) AssociateWorkTaskInput(ctx context.Context, arg AssociateWorkTaskInputParams) error {
+	_, err := q.db.ExecContext(ctx, associateWorkTaskInput, arg.SubmissionID, arg.TaskID)
+	return err
+}
+
 const createWorkTask = `-- name: CreateWorkTask :one
 INSERT INTO work_tasks (id, agent_id, title, created_at, updated_at)
 SELECT ?1, a.id, ?2, ?3, ?3 FROM agents a WHERE a.id = ?4 AND a.archived_at IS NULL
@@ -208,4 +222,32 @@ type TouchWorkTaskParams struct {
 func (q *Queries) TouchWorkTask(ctx context.Context, arg TouchWorkTaskParams) error {
 	_, err := q.db.ExecContext(ctx, touchWorkTask, arg.At, arg.ID)
 	return err
+}
+
+const workTaskForInput = `-- name: WorkTaskForInput :one
+SELECT task_id FROM work_task_inputs WHERE submission_id = ?
+`
+
+func (q *Queries) WorkTaskForInput(ctx context.Context, submissionID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, workTaskForInput, submissionID)
+	var task_id string
+	err := row.Scan(&task_id)
+	return task_id, err
+}
+
+const workTaskForQuestion = `-- name: WorkTaskForQuestion :one
+SELECT i.task_id FROM work_task_inputs i JOIN questions q ON q.source_submission_id = i.submission_id
+WHERE q.id = ?1 AND q.conversation_id = ?2
+`
+
+type WorkTaskForQuestionParams struct {
+	QuestionID     string `json:"question_id"`
+	ConversationID int64  `json:"conversation_id"`
+}
+
+func (q *Queries) WorkTaskForQuestion(ctx context.Context, arg WorkTaskForQuestionParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, workTaskForQuestion, arg.QuestionID, arg.ConversationID)
+	var task_id string
+	err := row.Scan(&task_id)
+	return task_id, err
 }

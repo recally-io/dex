@@ -101,6 +101,8 @@ type Message struct {
 	// AnswersQuestion is the ID of the open question that this message answers. A message with
 	// this ID is an answer to that question; any other message leaves a question open.
 	AnswersQuestion string
+	// WorkTaskID selects the Task context for a Main message.
+	WorkTaskID string
 	// QuestionOnly prevents a stale button answer from becoming an ordinary message.
 	QuestionOnly bool
 	// ReplyTo is the remote ID of the channel message that this message quotes. A quote of a message
@@ -413,6 +415,10 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err != nil {
 			return 0, err
 		}
+		taskID, err := workTaskForMessage(ctx, q, conv, m)
+		if err != nil {
+			return 0, err
+		}
 		content, answers := m.Content, false
 		var decision answerDecision
 		if m.AnswersQuestion != "" {
@@ -453,6 +459,13 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, priorErr
 			}
 			if priorErr == nil {
+				priorTask, err := workTaskForInput(ctx, q, m.ID)
+				if err != nil {
+					return 0, err
+				}
+				if priorTask != taskID {
+					return 0, ErrMessageID
+				}
 				original, err := originalMessageContent(ctx, q, prior, m.AnswersQuestion)
 				if err != nil {
 					return 0, err
@@ -488,6 +501,11 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, ErrQuestionClosed
 			}
 			if err := decision.apply(ctx, q, s.now()); err != nil {
+				return 0, err
+			}
+		}
+		if created > 0 && taskID != "" {
+			if err := recordWorkTaskMessage(ctx, q, agentID, taskID, m, submittedAt); err != nil {
 				return 0, err
 			}
 		}
@@ -777,6 +795,15 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
+	if input.Main && p.Kind == "message" {
+		taskID, err := workTaskForInput(ctx, s.q, p.ID)
+		if err != nil {
+			return err
+		}
+		if taskID != "" {
+			input.Content = "Dex Task ID: " + taskID + "\n\n" + input.Content
+		}
+	}
 	if input.Child {
 		input.Changed = func() { s.signal(conv.ID) }
 	}

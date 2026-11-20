@@ -442,3 +442,8 @@ type WorkTaskEntry struct {
 	Content   string `json:"content"`
 	CreatedAt int64  `json:"created_at"`
 }
+
+type WorkTaskInput struct {
+	SubmissionID string `json:"submission_id"`
+	TaskID       string `json:"task_id"`
+}

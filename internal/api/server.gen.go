@@ -1270,6 +1270,9 @@ type MessageInput struct {
 
 	// Text 1 to 32000 characters. It can be empty when the message has an attachment.
 	Text string `json:"text"`
+
+	// WorkTaskId Selects a Task of this agent for a Main message.
+	WorkTaskId *string `json:"workTaskId,omitempty"`
 }
 
 // MessageInputMode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
