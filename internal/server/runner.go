@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -105,13 +106,16 @@ func (h *handler) machineFile(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(machineInstaller)
 }
 
+// devArchive matches the names of the development archives, so no other file is readable.
+var devArchive = regexp.MustCompile(`^dex-agent_v0\.0\.0-dev_(linux|darwin)_(amd64|arm64)\.tar\.gz$`)
+
 // machineRelease serves the development archives. A release publishes them instead.
 func (h *handler) machineRelease(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
-	if name != "checksums.txt" && !strings.HasPrefix(name, "dex-agent_v0.0.0-dev_linux_") {
+	if name != "checksums.txt" && !devArchive.MatchString(name) {
 		http.NotFound(w, r)
 		return
 	}
-	// The name matched one of the fixed development archive names above.
-	http.ServeFile(w, r, filepath.Join(h.DataDir, "machine-release", name)) //nolint:gosec // The name is one of the fixed development archives.
+	// The name is one of the fixed development archives, or the checksum file.
+	http.ServeFile(w, r, filepath.Join(h.DataDir, "machine-release", name)) //nolint:gosec // See above.
 }
