@@ -203,11 +203,15 @@ func run(ctx context.Context, state string) error {
 		// websocket.Dial takes ownership of the response on a successful upgrade.
 		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}}) //nolint:bodyclose
 		cancel()
+		// A refused token and an incompatible protocol are terminal, so the agent stops with
+		// success and the service manager leaves it stopped.
 		if res != nil && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden) {
-			return errors.New("the machine token was rejected; install the machine again")
+			log.Print("Dex rejected the machine token; install the machine again")
+			return nil
 		}
 		if res != nil && res.StatusCode == http.StatusUpgradeRequired {
-			return errors.New("the machine protocol is incompatible; install the matching Dex version")
+			log.Print("the machine protocol is incompatible; install the matching Dex version")
+			return nil
 		}
 		if dialErr == nil {
 			log.Print("connected to Dex")
