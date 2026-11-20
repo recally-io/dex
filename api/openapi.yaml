@@ -2248,6 +2248,9 @@ components:
           maxItems: 10
           description: Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
           items: { type: string }
+        workTaskId:
+          type: string
+          description: Selects a Task of this agent for a Main message.
         answersQuestionId:
           type: string
           description: >

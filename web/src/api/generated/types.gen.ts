@@ -177,6 +177,10 @@ export type MessageInput = {
      */
     attachments?: Array<string>;
     /**
+     * Selects a Task of this agent for a Main message.
+     */
+    workTaskId?: string;
+    /**
      * The ID of the open question that this message answers. dex answers 409 when the question is closed. A message without this field never closes a question.
      *
      */

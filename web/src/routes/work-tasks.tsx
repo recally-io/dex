@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -6,7 +6,13 @@ import {
   listAgentsOptions,
   listWorkTasksOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { appendWorkTaskNote, createWorkTask, setWorkTaskLifecycle } from "../api/generated/sdk.gen";
+import {
+  appendWorkTaskNote,
+  createWorkTask,
+  getMainChat,
+  sendMessage,
+  setWorkTaskLifecycle,
+} from "../api/generated/sdk.gen";
 import type { WorkTaskLifecycle } from "../api/generated/types.gen";
 import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
@@ -15,6 +21,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { inboxOptions } from "../lib/inbox";
+import { newId } from "../lib/utils";
 
 export function TaskInboxPage() {
   const [closed, setClosed] = useState(false);
@@ -130,6 +137,8 @@ export function TaskInboxPage() {
 
 export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: string }) {
   const [note, setNote] = useState("");
+  const pendingMessage = useRef<{ id: string; text: string } | null>(null);
+  const navigate = useNavigate();
   const path = { agentId, taskId };
   const options = getWorkTaskOptions({ path });
   const detail = useQuery({ ...options, refetchInterval: 3000 });
@@ -146,6 +155,28 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
     onSuccess: async () => {
       setNote("");
       await client.invalidateQueries({ queryKey: options.queryKey });
+    },
+  });
+
+  const send = useMutation({
+    mutationFn: async () => {
+      const text = note.trim();
+      const message = pendingMessage.current?.text === text ? pendingMessage.current : { text, id: newId() };
+      pendingMessage.current = message;
+
+      const main = await getMainChat({ path: { agentId }, throwOnError: true });
+
+      await sendMessage({
+        path: { agentId, chatId: main.data.id },
+        body: { ...message, workTaskId: taskId },
+        throwOnError: true,
+      });
+    },
+    onSuccess: async () => {
+      pendingMessage.current = null;
+      setNote("");
+      await client.invalidateQueries({ queryKey: options.queryKey });
+      await navigate({ to: "/a/$agentId", params: { agentId } });
     },
   });
 
@@ -197,11 +228,24 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
                 maxLength={32000}
                 onChange={(event) => setNote(event.target.value)}
               />
-              <Button type="submit" disabled={!note.trim() || append.isPending}>
-                Add note
-              </Button>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={!note.trim() || append.isPending || send.isPending}>
+                  Add note
+                </Button>
+                {task?.lifecycle === "open" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={!note.trim() || append.isPending || send.isPending}
+                    onClick={() => send.mutate()}
+                  >
+                    Send to Main
+                  </Button>
+                ) : null}
+              </div>
             </form>
             {append.error ? <Failure title="Could not add note" error={append.error} /> : null}
+            {send.error ? <Failure title="Could not send to Main" error={send.error} /> : null}
             <ul className="divide-y divide-border">
               {detail.data.entries.map((entry) => (
                 <li key={entry.id} className="py-3">
