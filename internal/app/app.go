@@ -76,8 +76,6 @@ type Config struct {
 	// RequireToken is set, and no authentication otherwise.
 	Token        string
 	RequireToken bool
-	// MachineListen enables the remote machine listener, for example "0.0.0.0:8788".
-	MachineListen string
 }
 
 // App is a running control process.
@@ -86,7 +84,6 @@ type App struct {
 	engine     *engine.Agents
 	envs       *execenv.Manager
 	handler    http.Handler
-	machines   *server.MachineTLS
 	bots       *channelRegistry
 	jobs       *scheduler.Scheduler
 	background *background.Manager
@@ -395,21 +392,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		token = stored
 	}
 
-	machineConfig := server.Config{Engine: native, Envs: envs, Chats: chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token}
-	if cfg.MachineListen != "" {
-		machines, listenErr := server.ListenMachineTLS(ctx, cfg.MachineListen, cfg.DataDir, envs)
-		if listenErr != nil {
-			return nil, listenErr
-		}
-		a.machines = machines
-		machineConfig.Machines = machines
-		a.wg.Go(func() {
-			if err := machines.Serve(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.Error("machine listener", "err", err)
-			}
-		})
-	}
-	a.handler = server.New(machineConfig)
+	a.handler = server.New(server.Config{
+		Engine: native,
+		Envs:   envs,
+		Chats:  chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+	})
 	a.wg.Go(func() { chats.Run(runCtx) })
 	a.wg.Go(func() {
 		select {
@@ -463,9 +450,6 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // Close stops business services, closes native execution, and closes business storage.
 func (a *App) Close() error {
-	if a.machines != nil {
-		_ = a.machines.Close()
-	}
 	a.jobs.Close()
 	a.bots.Close()
 	a.cancel()

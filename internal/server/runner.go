@@ -2,13 +2,12 @@ package server
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
@@ -40,49 +39,38 @@ func (h *handler) RevokeRunner(ctx context.Context, req api.RevokeRunnerRequestO
 	return api.RevokeRunner200JSONResponse(ok), nil
 }
 
-// machinePeer returns the identity of the machine certificate on a machine listener request.
-// The machine listener asks for a client certificate, and the install command uses the same
-// key for its first and later connections.
-func machinePeer(r *http.Request) string {
-	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 || r.Header.Get("Origin") != "" {
-		return ""
-	}
-	cert := r.TLS.PeerCertificates[0]
-	now := time.Now()
-	if now.Before(cert.NotBefore) || now.After(cert.NotAfter) {
-		return ""
-	}
-	key := sha256.Sum256(cert.RawSubjectPublicKeyInfo)
-	return "mtls:" + base64.StdEncoding.EncodeToString(key[:])
-}
-
-func (h *handler) pairRunner(w http.ResponseWriter, r *http.Request) {
-	code := runnerBearer(r)
+// machinePair trades a one-time code for the machine token. The machine sends the code in the
+// Authorization header, so the code stays out of every proxy log.
+func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
+	code := machineBearer(r)
 	if code == "" {
 		writeError(w, http.StatusUnauthorized, "the one-time enrollment code is required")
 		return
 	}
-	identity := machinePeer(r)
-	if identity == "" {
-		writeError(w, http.StatusUnauthorized, "the machine client certificate is required")
+	if h.Envs == nil {
+		writeError(w, http.StatusServiceUnavailable, "remote machines are unavailable in this build")
 		return
 	}
-	if err := h.Envs.EnrollRunner(r.Context(), r.PathValue("id"), code, identity); errors.Is(err, execenv.ErrRunnerCredential) {
+	token, err := h.Envs.EnrollRunner(r.Context(), r.PathValue("id"), code)
+	switch {
+	case errors.Is(err, execenv.ErrRunnerCredential):
 		writeError(w, http.StatusUnauthorized, "the enrollment code is invalid or expired")
 		return
-	} else if err != nil {
+	case err != nil:
 		writeError(w, http.StatusServiceUnavailable, "enrollment is temporarily unavailable")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(http.StatusNoContent)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "protocol": runner.Version})
 }
 
-func (h *handler) connectRunner(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
-	identity := machinePeer(r)
-	if identity == "" || h.Envs.VerifyRunner(r.Context(), id, identity) != nil {
-		writeError(w, http.StatusUnauthorized, "the machine certificate is not enrolled; install the machine again")
+// machineConnect serves the session of one machine. The machine sends its token in the
+// Authorization header, and the socket protocol version in the WebSocket subprotocol.
+func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
+	id, token := r.PathValue("id"), machineBearer(r)
+	if h.Envs == nil || token == "" || h.Envs.VerifyRunner(r.Context(), id, token) != nil {
+		writeError(w, http.StatusUnauthorized, "the machine token is not valid; install the machine again")
 		return
 	}
 	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), runner.Version) {
@@ -93,14 +81,37 @@ func (h *handler) connectRunner(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	_ = h.Envs.AcceptRunner(r.Context(), id, identity, conn)
+	_ = h.Envs.AcceptRunner(r.Context(), id, token, conn)
 }
 
-// runnerBearer reads the one-time enrollment code. It refuses a browser request.
-func runnerBearer(r *http.Request) string {
-	code, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok || len(code) < 26 || len(code) > 128 || r.Header.Get("Origin") != "" {
+// machineBearer reads the machine credential. It refuses a browser request, because a page in
+// the browser can send an Origin header.
+func machineBearer(r *http.Request) string {
+	value, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || len(value) < 26 || len(value) > 128 || r.Header.Get("Origin") != "" {
 		return ""
 	}
-	return code
+	return value
+}
+
+// machineFile serves the installer and, for a development build, its own archives. These
+// files are public: a machine reads them before it has a token.
+func (h *handler) machineFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write(machineInstaller)
+}
+
+// machineRelease serves the development archives. A release publishes them instead.
+func (h *handler) machineRelease(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("file")
+	if name != "checksums.txt" && !strings.HasPrefix(name, "dex-agent_v0.0.0-dev_linux_") {
+		http.NotFound(w, r)
+		return
+	}
+	// The name matched one of the fixed development archive names above.
+	http.ServeFile(w, r, filepath.Join(h.DataDir, "machine-release", name)) //nolint:gosec // The name is one of the fixed development archives.
 }

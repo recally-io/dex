@@ -1,17 +1,12 @@
 package app_test
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"crypto/tls"
-	"encoding/base64"
-	"errors"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -22,17 +17,17 @@ import (
 	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
-// TestUserEnrollsRemoteMachine installs a machine with one command. Dex publishes a pinned TLS
-// address, the machine presents its own certificate, and the one-time code enrolls that
-// certificate without a second step.
+// TestUserEnrollsRemoteMachine installs a machine with one command. The machine trades the
+// one-time code for a token and then connects with that token, over the same listener as the
+// web UI, so a proxy in front of Dex needs no special configuration.
 func TestUserEnrollsRemoteMachine(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancel()
-	a, err := app.Start(ctx, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), FakeModel: true, Token: "test-admin", MachineListen: "127.0.0.1:0"})
+	a, err := app.Start(ctx, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), FakeModel: true, Token: "test-admin"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := &dex{app: a, srv: httptest.NewTLSServer(a.Handler())}
+	d := &dex{app: a, srv: httptest.NewServer(a.Handler())}
 	t.Cleanup(d.stop)
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -40,81 +35,74 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	}
 	d.srv.Client().Jar = jar
 	d.must(t, http.MethodPost, "/api/session", map[string]string{"token": "test-admin"}, nil, http.StatusNoContent)
-	var health struct {
-		MachineUrls []string `json:"machineUrls"`
-		MachinePin  string   `json:"machinePin"`
-	}
-	d.must(t, http.MethodGet, "/api/health", nil, &health)
-	if len(health.MachineUrls) != 1 || health.MachinePin == "" {
-		t.Fatalf("health reports machineUrls=%v pin=%q", health.MachineUrls, health.MachinePin)
-	}
-	origin, err := url.Parse(health.MachineUrls[0])
-	if err != nil {
-		t.Fatal(err)
-	}
 	var created apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{"name": "Debian VM", "kind": "runner"}, &created, http.StatusCreated)
 	settingsPath := "/api/settings/environments/" + created.ID
-	devicePath := "/api/runner/" + created.ID
+	machinePath := d.srv.URL + "/machine/" + created.ID
 	var issued struct {
 		Code string `json:"code"`
 	}
 	d.must(t, http.MethodPost, settingsPath+"/runner-pairing", nil, &issued)
 
-	identityPEM, err := runner.NewMachineIdentity()
-	if err != nil {
-		t.Fatal(err)
-	}
-	identity, err := runner.ParseMachineIdentity(identityPEM)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, err := runner.MachineClient(health.MachinePin, identity)
-	if err != nil {
-		t.Fatal(err)
-	}
-	enroll := func(code string, client *http.Client) int {
+	enroll := func(code string) (int, string) {
 		t.Helper()
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, origin.String()+devicePath+"/pair", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, machinePath+"/pair", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		req.Header.Set("Authorization", "Bearer "+code)
-		response, err := client.Do(req)
+		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer response.Body.Close()
-		_, _ = io.Copy(io.Discard, response.Body)
-		return response.StatusCode
+		defer res.Body.Close()
+		var body struct {
+			Token string `json:"token"`
+		}
+		_ = json.NewDecoder(io.LimitReader(res.Body, 4096)).Decode(&body)
+		return res.StatusCode, body.Token
 	}
-	// Without the machine certificate the code is useless, and Dex cannot be reached without the pin.
-	anonymous := &http.Client{Transport: &http.Transport{TLSClientConfig: pinned(t, health.MachinePin)}}
-	if got := enroll(issued.Code, anonymous); got != http.StatusUnauthorized {
-		t.Fatalf("enrollment without a machine certificate returned %d", got)
+	// The code needs no certificate, and a browser request is refused.
+	if status, _ := enroll(""); status != http.StatusUnauthorized {
+		t.Fatalf("enrollment without a code returned %d", status)
 	}
-	unpinned, err := runner.MachineClient("", identity)
-	if err == nil || unpinned != nil {
-		t.Fatalf("a missing pin was accepted: %v", err)
+	anonymous, err := http.NewRequestWithContext(ctx, http.MethodPost, machinePath+"/pair", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := enroll(issued.Code, client); got != http.StatusNoContent {
-		t.Fatalf("enrollment returned %d", got)
+	anonymous.Header.Set("Origin", "http://example.test")
+	res, err := http.DefaultClient.Do(anonymous)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := enroll(issued.Code, client); got != http.StatusUnauthorized {
-		t.Fatalf("a used code returned %d", got)
+	_ = res.Body.Close()
+	if res.StatusCode == http.StatusOK {
+		t.Fatal("a browser origin enrolled a machine")
+	}
+	status, token := enroll(issued.Code)
+	if status != http.StatusOK || token == "" {
+		t.Fatalf("enrollment returned %d and token %q", status, token)
+	}
+	if status, _ := enroll(issued.Code); status != http.StatusUnauthorized {
+		t.Fatalf("a used code returned %d", status)
 	}
 
-	dial := func() (*websocket.Conn, error) {
-		u := url.URL{Scheme: "wss", Host: origin.Host, Path: devicePath + "/connect"}
-		ws, res, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPClient: client, Subprotocols: []string{runner.Version}})
+	dial := func(token string) (*websocket.Conn, error) {
+		u := strings.Replace(machinePath+"/connect", "http://", "ws://", 1)
+		header := http.Header{"Authorization": []string{"Bearer " + token}}
+		ws, res, err := websocket.Dial(ctx, u, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}})
 		if res != nil && res.Body != nil {
 			_ = res.Body.Close()
 		}
 		return ws, err
 	}
-	ws, err := dial()
+	if ws, err := dial("wrong-token-that-is-long-enough"); err == nil {
+		_ = ws.CloseNow()
+		t.Fatal("a wrong token connected")
+	}
+	ws, err := dial(token)
 	if err != nil {
-		t.Fatalf("connect with the enrolled certificate: %v", err)
+		t.Fatalf("connect with the enrolled token: %v", err)
 	}
 	defer func() { _ = ws.CloseNow() }()
 	work := t.TempDir()
@@ -153,32 +141,8 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("revocation did not close the machine")
 	}
-	if ws, err := dial(); err == nil {
+	if ws, err := dial(token); err == nil {
 		_ = ws.CloseNow()
-		t.Fatal("a revoked certificate reconnected")
-	}
-}
-
-// pinned returns the TLS configuration of a machine that trusts only the Dex public key. The
-// certificate carries no host name, so the pin is the only identity check.
-func pinned(t *testing.T, pin string) *tls.Config {
-	t.Helper()
-	seed, err := base64.StdEncoding.DecodeString(pin)
-	if err != nil || len(seed) != sha256.Size {
-		t.Fatalf("pin %q is not a SHA-256 digest", pin)
-	}
-	return &tls.Config{ //nolint:gosec // The pinned key replaces host name verification.
-		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true,
-		VerifyConnection: func(state tls.ConnectionState) error {
-			if len(state.PeerCertificates) == 0 {
-				return errors.New("no Dex certificate")
-			}
-			sum := sha256.Sum256(state.PeerCertificates[0].RawSubjectPublicKeyInfo)
-			if !bytes.Equal(sum[:], seed) {
-				return errors.New("Dex certificate does not match the pin")
-			}
-			return nil
-		},
+		t.Fatal("a revoked token reconnected")
 	}
 }

@@ -14,19 +14,11 @@ as_root() {
 	fi
 }
 
-# pin_curl fetches from Dex with the pinned certificate key. The certificate is self-signed,
-# so the pin replaces the CA check.
-pin_curl() {
-	curl -fsSk --pinnedpubkey "sha256//$pin" "$@"
-}
-
 main() {
-	[ "$#" -ge 4 ] && [ "$#" -le 5 ] || fail 'copy the complete install command from Dex'
+	[ "$#" -eq 3 ] || fail 'copy the complete install command from Dex'
 	origin=$1
 	environment=$2
-	pin=$3
-	code=$4
-	version=${5:-}
+	code=$3
 	state=/var/lib/dex-agent
 	binary=/usr/local/bin/dex-agent
 	unit=/etc/systemd/system/dex-agent.service
@@ -34,7 +26,6 @@ main() {
 
 	case $origin in https://?*) ;; *) fail 'the Dex address must start with https://' ;; esac
 	case $environment in '' | *[!a-zA-Z0-9-]*) fail 'invalid environment ID' ;; esac
-	case $pin in '' | *[!A-Za-z0-9+/=]*) fail 'invalid Dex certificate pin' ;; esac
 	[ "$(uname -s)" = Linux ] || fail 'this installer requires Linux'
 	case $(uname -m) in
 		x86_64 | amd64) arch=amd64 ;;
@@ -52,12 +43,14 @@ main() {
 	if as_root test -e "$state/device.json"; then
 		fail 'this machine is already connected; revoke it in Dex before connecting again'
 	fi
-	if [ "$version" = dev ]; then
-		base="$origin/machine-release"
+	# A development build serves its own archives; a release publishes them on GitHub.
+	if curl -fsSL -o /dev/null "$origin/machine-release/checksums.txt"; then
 		version=v0.0.0-dev
-	elif [ -z "$version" ]; then
+		base="$origin/machine-release"
+	else
 		url=$(curl -fsSLo /dev/null -w '%{url_effective}' "$repo/releases/latest") || fail 'cannot find the latest Dex release'
 		version=${url##*/}
+		base="$repo/releases/download/$version"
 	fi
 	case $version in *[!a-zA-Z0-9.+-]*) fail 'invalid release tag' ;; v[0-9]*) ;; *) fail 'no Dex release found' ;; esac
 
@@ -65,13 +58,8 @@ main() {
 	tmp=$(mktemp -d)
 	trap 'rm -rf "$tmp"' EXIT
 	printf 'Downloading the Dex machine service (%s, %s)…\n' "$version" "$arch"
-	if [ "$version" = v0.0.0-dev ]; then
-		pin_curl -o "$tmp/$archive" "$base/$archive" || fail 'this development build has no machine archive'
-		pin_curl -o "$tmp/checksums.txt" "$base/checksums.txt" || fail 'this development build has no checksums'
-	else
-		curl -fsSL -o "$tmp/$archive" "$base/$archive" || fail "this release has no $arch machine archive, or the download failed"
-		curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt" || fail 'cannot download the release checksums'
-	fi
+	curl -fsSL -o "$tmp/$archive" "$base/$archive" || fail "this release has no $arch machine archive, or the download failed"
+	curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt" || fail 'cannot download the release checksums'
 	want=$(awk -v file="$archive" '$2 == file { print $1 }' "$tmp/checksums.txt")
 	[ -n "$want" ] || fail 'the release checksum is missing'
 	printf '%s  %s\n' "$want" "$archive" | (cd "$tmp" && sha256sum -c --status) || fail 'the archive checksum does not match'
@@ -84,7 +72,7 @@ main() {
 	as_root install -m 0755 "$tmp/dex-agent" "$binary"
 	as_root install -m 0644 "$tmp/dex-agent.service" "$unit"
 	# The code goes through stdin, so it stays out of the process list.
-	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" -server-pin "$pin" || fail 'Dex refused the enrollment; get a fresh install command'
+	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" || fail 'Dex refused the enrollment; get a fresh install command'
 	unset code
 	as_root systemctl daemon-reload
 	as_root systemctl enable --now dex-agent.service || fail 'the machine service did not start; read its log with: sudo journalctl -u dex-agent'

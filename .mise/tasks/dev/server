@@ -4,4 +4,4 @@
 set -euo pipefail
 
 # Later flags win: `mise run dev:server -- --data-dir <dir>` uses other data.
-go run ./cmd/dex --port 18787 --machine-listen 0.0.0.0:18788 --data-dir "$HOME/.dex-dev" "$@"
+go run ./cmd/dex --port 18787 --data-dir "$HOME/.dex-dev" "$@"

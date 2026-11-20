@@ -42,14 +42,13 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 	defer listener.Close()
 
 	a, err := app.Start(ctx, app.Config{
-		DataDir:       cfg.DataDir,
-		ToolEnv:       app.ToolEnv(os.Environ()),
-		LoginEnv:      testLoginEnv(),
-		FakeModel:     testFakeModel(),
-		Version:       version(),
-		Token:         token,
-		RequireToken:  requireToken,
-		MachineListen: cfg.MachineListen,
+		DataDir:      cfg.DataDir,
+		ToolEnv:      app.ToolEnv(os.Environ()),
+		LoginEnv:     testLoginEnv(),
+		FakeModel:    testFakeModel(),
+		Version:      version(),
+		Token:        token,
+		RequireToken: requireToken,
 	})
 	if err != nil {
 		return err

@@ -67,7 +67,6 @@ func runFlags(f *flag.FlagSet, c *service.Config) {
 	f.StringVar(&c.Host, "host", c.Host, "Host IP; a host that is not loopback requires the access token")
 	f.IntVar(&c.Port, "port", c.Port, "HTTP port")
 	f.StringVar(&c.DataDir, "data-dir", c.DataDir, "Data directory (does not move existing data)")
-	f.StringVar(&c.MachineListen, "machine-listen", c.MachineListen, "TLS address for remote machines, for example 0.0.0.0:8788; port 0 asks the OS, empty disables them")
 }
 func configured(f *flag.FlagSet, args []string, c *service.Config) error {
 	runFlags(f, c)
@@ -418,25 +417,7 @@ func serveCommand(ctx context.Context, args []string) error {
 	if err != nil {
 		return errors.Join(errUsage, err)
 	}
-	c.MachineListen, err = machineListen(c)
-	if err != nil {
-		return errors.Join(errUsage, err)
-	}
 	return serve(ctx, c, token, require)
-}
-
-// machineListen returns the address of the remote machine listener. A host that a machine can
-// reach gets the port after the web UI port, so remote machines work without another flag.
-// Machines use TLS, so they cannot share the web UI socket, and they must reach Dex directly,
-// because a TLS proxy in front of the web UI would present its own certificate.
-func machineListen(c service.Config) (string, error) {
-	if c.MachineListen != "" || c.Loopback() {
-		return c.MachineListen, nil
-	}
-	if c.Port >= 65535 {
-		return "", errors.New("set --machine-listen: the port after the web UI port is not available")
-	}
-	return net.JoinHostPort(c.Host, strconv.Itoa(c.Port+1)), nil
 }
 
 // serveAuth selects the access token: DEX_TOKEN when it is set, or the stored token when the host
