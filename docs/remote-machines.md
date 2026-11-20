@@ -60,10 +60,36 @@ The command does four things:
 4. In Dex, select **Test**. Then select the environment in the settings of one bot, and send a
    request that runs `uname -sm`.
 
-The target needs Linux, systemd, curl, tar, and sha256sum. Debian 12 or later, Ubuntu 22.04 or
-later, and equivalent distributions work.
+The target needs curl and tar. Linux needs systemd and sha256sum or shasum; Debian 12 or later,
+Ubuntu 22.04 or later, and equivalent distributions work. macOS works without sudo.
 
 If the service does not start, run `sudo journalctl -u dex-agent -n 30` on the target.
+
+## macOS
+
+The same install command works on a Mac. A Mac is a single-user machine, so the agent runs in
+your login session instead of as a system service:
+
+|                 | Linux                             | macOS                                 |
+| --------------- | --------------------------------- | ------------------------------------- |
+| Binary          | `/usr/local/bin/dex-agent`        | `~/.local/bin/dex-agent`              |
+| State and token | `/var/lib/dex-agent`              | `~/.dex-agent`                        |
+| Supervisor      | `dex-agent.service` under systemd | `com.recally.dex-agent` under launchd |
+| Log             | `journalctl -u dex-agent`         | `~/Library/Logs/dex-agent.log`        |
+
+The command in the UI starts with `sudo`. On macOS you can drop it. With `sudo`, the installer
+uses the account that ran `sudo`, because the agent refuses to run as root.
+
+```sh
+launchctl print gui/$(id -u)/com.recally.dex-agent   # state of the agent
+tail -f ~/Library/Logs/dex-agent.log                 # what it does
+```
+
+To stop the agent without removing the machine:
+
+```sh
+launchctl bootout gui/$(id -u)/com.recally.dex-agent
+```
 
 ## Replace, revoke, or remove a machine
 
@@ -72,10 +98,18 @@ Then generate a new install command. To connect the same machine again, stop the
 remove `/var/lib/dex-agent/device.json` after the revocation. The workspace stays in the state
 directory. Workspaces do not move between machines.
 
-To uninstall, first revoke the machine and move the bot to another environment. On the target,
-disable the systemd unit, then remove `/usr/local/bin/dex-agent` and
-`/etc/systemd/system/dex-agent.service`. Keep the state directory until you have copied the work
-you need. The state directory holds the machine token and the workspace.
+To uninstall, first revoke the machine and move the bot to another environment. Keep the state
+directory until you have copied the work you need: it holds the machine token and the workspace.
+
+```sh
+# Linux
+sudo systemctl disable --now dex-agent.service
+sudo rm /usr/local/bin/dex-agent /etc/systemd/system/dex-agent.service
+
+# macOS
+launchctl bootout gui/$(id -u)/com.recally.dex-agent
+rm ~/Library/LaunchAgents/com.recally.dex-agent.plist ~/.local/bin/dex-agent
+```
 
 For foreground use, run `dex-agent run -state /var/lib/dex-agent` as the `dex-agent` account.
 

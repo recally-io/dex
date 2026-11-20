@@ -22,7 +22,7 @@ builds:
     binary: dex-agent
     env:
       - CGO_ENABLED=0
-    goos: [linux]
+    goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags: [-trimpath]
     ldflags: [-s, -w]
@@ -41,6 +41,8 @@ archives:
         dst: remote-machines.md
       - src: contrib/dex-agent.service
         dst: dex-agent.service
+      - src: contrib/com.recally.dex-agent.plist
+        dst: com.recally.dex-agent.plist
 
 checksum:
   name_template: checksums.txt
