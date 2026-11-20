@@ -2,7 +2,8 @@ package server
 
 import (
 	"context"
-	"crypto/ed25519"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -137,7 +138,9 @@ func machineIdentity(dataDir string) (tls.Certificate, error) {
 	if !errors.Is(err, os.ErrNotExist) {
 		return tls.Certificate{}, err
 	}
-	public, private, err := ed25519.GenerateKey(rand.Reader)
+	// A P-256 key works with every TLS client that can pin a public key; not every
+	// curl build supports an Ed25519 certificate.
+	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
@@ -153,7 +156,7 @@ func machineIdentity(dataDir string) (tls.Certificate, error) {
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, public, private)
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &private.PublicKey, private)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
