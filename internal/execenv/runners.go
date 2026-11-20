@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
-	"strconv"
 	"sync"
 	"time"
 
@@ -20,13 +19,25 @@ import (
 var ErrRunnerCredential = errors.New("the machine certificate is not valid")
 var ErrRunnerConflict = errors.New("this environment already has a machine; revoke it before connecting another machine")
 
-type runnerRuntime struct {
+// Runners owns the enrollment and the live sessions of remote machines. The HTTP routes
+// call it directly; the machine backend reads its sessions.
+type Runners struct {
 	q        *sqlc.Queries
 	mu       sync.Mutex
-	sessions map[string]*runner.Client
-	// generation counts the sessions of one environment, so a reconnect changes its stamp.
-	generation map[string]uint64
-	closed     bool
+	sessions map[string]liveRunner
+	// lastGeneration numbers sessions for the whole process. A number is never reused, so a
+	// session after a revoke and a new enrollment cannot match a stamp from the earlier session.
+	lastGeneration uint64
+	closed         bool
+}
+
+type liveRunner struct {
+	client     *runner.Client
+	generation uint64
+}
+
+func newRunners(q *sqlc.Queries) *Runners {
+	return &Runners{q: q, sessions: map[string]liveRunner{}}
 }
 
 func runnerDigest(value string) string {
@@ -34,10 +45,9 @@ func runnerDigest(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// IssueRunnerCode creates a ten-minute enrollment code for a saved remote machine.
-func (m *Manager) IssueRunnerCode(ctx context.Context, id string) (string, error) {
+// IssueCode creates a ten-minute enrollment code for a saved remote machine.
+func (rt *Runners) IssueCode(ctx context.Context, id string) (string, error) {
 	code := rand.Text()
-	rt := m.runner
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	n, err := rt.q.IssueRunnerCode(ctx, sqlc.IssueRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), ExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()})
@@ -50,11 +60,10 @@ func (m *Manager) IssueRunnerCode(ctx context.Context, id string) (string, error
 	return code, nil
 }
 
-// EnrollRunner consumes a one-time code and returns the token of the machine. Dex stores only
+// Enroll consumes a one-time code and returns the token of the machine. Dex stores only
 // the SHA-256 digest of the token.
-func (m *Manager) EnrollRunner(ctx context.Context, id, code string) (string, error) {
+func (rt *Runners) Enroll(ctx context.Context, id, code string) (string, error) {
 	token := rand.Text()
-	rt := m.runner
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	n, err := rt.q.RedeemRunnerCode(ctx, sqlc.RedeemRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), CredentialDigest: runnerDigest(token), Now: time.Now().UnixMilli()})
@@ -67,7 +76,8 @@ func (m *Manager) EnrollRunner(ctx context.Context, id, code string) (string, er
 	return token, nil
 }
 
-func (rt *runnerRuntime) verify(ctx context.Context, id, token string) error {
+// Verify checks the machine token before the HTTP upgrade.
+func (rt *Runners) Verify(ctx context.Context, id, token string) error {
 	digest, err := rt.q.GetRunnerCredential(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrRunnerCredential
@@ -81,30 +91,25 @@ func (rt *runnerRuntime) verify(ctx context.Context, id, token string) error {
 	return nil
 }
 
-// VerifyRunner checks the machine token before the HTTP upgrade.
-func (m *Manager) VerifyRunner(ctx context.Context, id, token string) error {
-	return m.runner.verify(ctx, id, token)
-}
-
-// AcceptRunner installs a ready connection after checking that its token is still valid.
-func (m *Manager) AcceptRunner(ctx context.Context, id, token string, socket *websocket.Conn) error {
+// Accept installs a ready connection after checking that its token is still valid.
+// It returns when the session ends.
+func (rt *Runners) Accept(ctx context.Context, id, token string, socket *websocket.Conn) error {
 	session, err := runner.Connect(ctx, socket)
 	if err != nil {
 		return err
 	}
 	defer session.Close()
-	rt := m.runner
 	rt.mu.Lock()
-	err = rt.verify(ctx, id, token)
+	err = rt.Verify(ctx, id, token)
 	if err == nil && rt.closed {
 		err = runner.ErrOffline
 	}
-	if err == nil && rt.sessions[id] != nil {
+	if _, live := rt.sessions[id]; err == nil && live {
 		err = ErrRunnerConflict
 	}
 	if err == nil {
-		rt.sessions[id] = session
-		rt.generation[id]++
+		rt.lastGeneration++
+		rt.sessions[id] = liveRunner{client: session, generation: rt.lastGeneration}
 	}
 	rt.mu.Unlock()
 	if err != nil {
@@ -113,7 +118,7 @@ func (m *Manager) AcceptRunner(ctx context.Context, id, token string, socket *we
 	defer func() {
 		rt.mu.Lock()
 		defer rt.mu.Unlock()
-		if rt.sessions[id] == session {
+		if rt.sessions[id].client == session {
 			delete(rt.sessions, id)
 		}
 	}()
@@ -125,16 +130,14 @@ func (m *Manager) AcceptRunner(ctx context.Context, id, token string, socket *we
 	}
 }
 
-// RevokeRunner removes the enrollment and disconnects the machine.
-func (m *Manager) RevokeRunner(ctx context.Context, id string) error {
-	rt := m.runner
+// Revoke removes the enrollment and disconnects the machine.
+func (rt *Runners) Revoke(ctx context.Context, id string) error {
 	rt.mu.Lock()
 	err := rt.q.RevokeRunnerCredential(ctx, id)
 	var session *runner.Client
 	if err == nil {
-		session = rt.sessions[id]
+		session = rt.sessions[id].client
 		delete(rt.sessions, id)
-		delete(rt.generation, id)
 	}
 	rt.mu.Unlock()
 	if session != nil {
@@ -143,27 +146,27 @@ func (m *Manager) RevokeRunner(ctx context.Context, id string) error {
 	return err
 }
 
-func (rt *runnerRuntime) online(id string) *runner.Client {
+func (rt *Runners) online(id string) *runner.Client {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	return rt.sessions[id]
+	return rt.sessions[id].client
 }
 
-// sessionStamp identifies the live session of an environment. A reconnect changes the stamp,
-// so cached work from the earlier session cannot match it.
-func (rt *runnerRuntime) sessionStamp(id string) string {
+// generation identifies the live session of a machine, or is 0 when the machine is offline.
+// A reconnect changes it, so a stamp from the earlier session cannot match.
+func (rt *Runners) generation(id string) uint64 {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	return strconv.FormatUint(rt.generation[id], 10)
+	return rt.sessions[id].generation
 }
 
-func (rt *runnerRuntime) close() {
+func (rt *Runners) close() {
 	rt.mu.Lock()
 	rt.closed = true
 	sessions := rt.sessions
 	rt.sessions = nil
 	rt.mu.Unlock()
 	for _, session := range sessions {
-		session.Close()
+		session.client.Close()
 	}
 }

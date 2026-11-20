@@ -61,7 +61,7 @@ func (s *Service) ListEnvironments(ctx context.Context) ([]Environment, error) {
 // CreateEnvironment validates and persists a new execution environment.
 func (s *Service) CreateEnvironment(ctx context.Context, in EnvironmentInput) (Environment, error) {
 	id := uuid.NewV7().String()
-	name, kind, configJSON, err := s.prepareEnvironmentInput(ctx, id, in, in.Secret)
+	name, kind, configJSON, err := s.prepareEnvironmentInput(id, in, in.Secret)
 	if err != nil {
 		return Environment{}, err
 	}
@@ -104,7 +104,7 @@ func (s *Service) UpdateEnvironment(ctx context.Context, id string, in Environme
 	if trimmed := strings.TrimSpace(in.Secret); trimmed != "" {
 		secret = trimmed
 	}
-	name, kind, configJSON, err := s.prepareEnvironmentInput(ctx, id, in, secret)
+	name, kind, configJSON, err := s.prepareEnvironmentInput(id, in, secret)
 	if err != nil {
 		return Environment{}, err
 	}
@@ -119,7 +119,7 @@ func (s *Service) UpdateEnvironment(ctx context.Context, id string, in Environme
 	if err != nil {
 		return Environment{}, err
 	}
-	_ = s.envs.OnEnvironmentUpdated(execenv.SpecFromRow(saved), execenv.SpecFromRow(row))
+	_ = s.envs.Changed(ctx, execenv.SpecFromRow(saved), new(execenv.SpecFromRow(row)))
 	return environmentView(row)
 }
 
@@ -152,7 +152,7 @@ func (s *Service) DeleteEnvironment(ctx context.Context, id string) error {
 		return fmt.Errorf("%w: execution environment %q is used by %d active bot(s)", ErrConflict, saved.Name, max(1, len(users)))
 	}
 	if s.envs != nil {
-		_ = s.envs.OnEnvironmentDeleted(ctx, execenv.SpecFromRow(saved))
+		_ = s.envs.Changed(ctx, execenv.SpecFromRow(saved), nil)
 	}
 	return nil
 }
@@ -172,7 +172,8 @@ func (s *Service) TestEnvironment(ctx context.Context, id string) (execenv.TestR
 	if s.envs == nil {
 		return execenv.TestResult{}, errors.New("execution environment manager is not configured")
 	}
-	res, err := s.envs.TestEnvironment(ctx, execenv.SpecFromRow(row))
+	spec := execenv.SpecFromRow(row)
+	res, err := s.envs.Probe(ctx, &spec, spec)
 	return res, wrapInvalidConfig(err)
 }
 
@@ -207,7 +208,7 @@ func (s *Service) ProbeEnvironment(ctx context.Context, existingID string, in En
 			secret = spec.Secret
 		}
 	}
-	res, err := s.envs.ProbeEnvironment(ctx, savedSpec, execenv.EnvironmentSpec{
+	res, err := s.envs.Probe(ctx, savedSpec, execenv.EnvironmentSpec{
 		ID:     id,
 		Kind:   kind,
 		Config: normalizeRawJSON(in.Config),
@@ -237,7 +238,7 @@ func (s *Service) ForgetEnvironmentHostKey(ctx context.Context, id string) error
 	return wrapInvalidConfig(s.envs.ForgetHostKey(execenv.SpecFromRow(saved)))
 }
 
-func (s *Service) prepareEnvironmentInput(ctx context.Context, envID string, in EnvironmentInput, secret string) (string, execenv.Kind, string, error) {
+func (s *Service) prepareEnvironmentInput(envID string, in EnvironmentInput, secret string) (string, execenv.Kind, string, error) {
 	name := strings.TrimSpace(in.Name)
 	if n := utf8.RuneCountInString(name); n < 1 || n > 60 {
 		return "", "", "", fmt.Errorf("%w: name must be 1 to 60 characters", ErrInvalid)
@@ -246,7 +247,7 @@ func (s *Service) prepareEnvironmentInput(ctx context.Context, envID string, in 
 		return "", "", "", errors.New("execution environment manager is not configured")
 	}
 	kind := execenv.Kind(strings.TrimSpace(in.Kind))
-	normalizedCfg, err := s.envs.NormalizeAndValidate(ctx, execenv.EnvironmentSpec{
+	normalizedCfg, err := s.envs.Normalize(execenv.EnvironmentSpec{
 		ID:     envID,
 		Kind:   kind,
 		Config: normalizeRawJSON(in.Config),

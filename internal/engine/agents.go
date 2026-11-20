@@ -296,11 +296,11 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	execStamp, _ := a.config.ExecEnv.Stamp(ctx, agentID)
 	execHandle, err := a.config.ExecEnv.Open(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
+	execStamp := execHandle.Stamp()
 	defer func() {
 		if resultErr != nil {
 			resultErr = errors.Join(resultErr, execHandle.Close(context.WithoutCancel(ctx)))
@@ -1060,12 +1060,8 @@ func (a *Agents) withHandle(ctx context.Context, agentID string, fn func(execenv
 func (a *Agents) ReadWorkspaceFile(ctx context.Context, agentID, relPath string, maxBytes int64) ([]byte, error) {
 	var data []byte
 	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
-		env, envErr := h.Env(ctx, h.Workspace(), nil)
-		if envErr != nil {
-			return envErr
-		}
 		var readErr error
-		data, readErr = execenv.ReadWorkspaceFile(ctx, env, h.Workspace(), relPath, maxBytes)
+		data, readErr = execenv.ReadWorkspaceFile(ctx, h, relPath, maxBytes)
 		return readErr
 	})
 	return data, err
@@ -1078,16 +1074,8 @@ func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, raw string) (s
 	}
 	var resolved string
 	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
-		home, homeErr := h.Home(ctx)
-		if homeErr != nil {
-			home = ""
-		}
-		env, envErr := h.Env(ctx, h.Workspace(), nil)
-		if envErr != nil {
-			return envErr
-		}
 		var err error
-		resolved, err = execenv.ResolveProjectPath(ctx, env, home, raw)
+		resolved, err = execenv.ResolveProjectPath(ctx, h, raw)
 		return err
 	})
 	return resolved, err
@@ -1100,13 +1088,8 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID string, paths [
 	}
 	var existing []string
 	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
-		home, _ := h.Home(ctx)
-		env, envErr := h.Env(ctx, h.Workspace(), nil)
-		if envErr != nil {
-			return envErr
-		}
 		for _, p := range paths {
-			if _, resErr := execenv.ResolveProjectPath(ctx, env, home, p); resErr == nil {
+			if _, resErr := execenv.ResolveProjectPath(ctx, h, p); resErr == nil {
 				existing = append(existing, p)
 				if len(existing) >= limit {
 					break
@@ -1125,16 +1108,8 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID string, paths [
 func (a *Agents) ListDirectories(ctx context.Context, agentID string, path *string) (execenv.DirectoryListing, error) {
 	var listing execenv.DirectoryListing
 	err := a.withHandle(ctx, agentID, func(h execenv.Handle) error {
-		home, homeErr := h.Home(ctx)
-		if homeErr != nil || home == "" {
-			return fmt.Errorf("%w: home directory is unavailable", execenv.ErrInvalidPath)
-		}
-		env, envErr := h.Env(ctx, h.Workspace(), nil)
-		if envErr != nil {
-			return envErr
-		}
 		var listErr error
-		listing, listErr = execenv.ListDirectories(ctx, env, home, path)
+		listing, listErr = execenv.ListDirectories(ctx, h, path)
 		return listErr
 	})
 	return listing, err

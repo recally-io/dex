@@ -990,18 +990,20 @@ behind the same HTTPS front as the web UI, and uses the public PiG execution API
 on the target. Enrollment trades a one-time code for a machine token; Dex stores
 the SHA-256 digest of that token in `control.sqlite` and keeps live connections
 in memory. A bot borrows the connection, so reloading the bot does not disconnect
-its machine. The socket carries JSON-RPC 2.0 calls from
+its machine. Each backend owns its connections, and a `Handle` is one lease on
+them ([ADR 0026](decisions/0026-execution-environment-backends.md)): all bots on
+one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
 operation, one operation at a time, and a `cancel` notification for the call
 that the user stopped. Dex waits for the canceled operation to finish before it
 sends the next call. The library owns call correlation, reply routing, and
 session loss, so Dex owns only the operations. A session does not replay calls
 after connection loss. Dex reports a missing final result as unknown.
-`execenv.Manager` owns per-kind driver dispatch and lifecycle
-(`NormalizeAndValidate`, `ProbeEnvironment`, `OnEnvironmentUpdated`,
-`OnEnvironmentDeleted`, `ForgetHostKey`, `CanResetAgent`, `ResetAgent`,
-`CleanupSandbox`), keeping `internal/settings` independent of backend config
-schemas and SSH `known_hosts` storage. SSH environments default `loginShell` to
+`execenv.Manager` dispatches each kind to one backend and owns the environment
+lifecycle (`Normalize`, `Probe`, `Changed`, `ForgetHostKey`) and the agent
+lifecycle (`CanResetAgent`, `ResetAgent`, `ReleaseAgent`). This keeps
+`internal/settings` independent of backend config schemas and SSH `known_hosts`
+storage. `execenv.Runners` owns machine enrollment for the HTTP routes. SSH environments default `loginShell` to
 `true`: they start the daemon via `$SHELL -lc` and capture interactive login
 shell exports via `$SHELL -l -i -c '... env -0'` on open.
 `GET /api/settings/environments/ssh-config` parses `~/.ssh/config` (including

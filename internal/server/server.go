@@ -47,6 +47,8 @@ type Config struct {
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
 	Envs   *execenv.Manager
+	// Runners enrolls remote machines and serves their sessions.
+	Runners *execenv.Runners
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string

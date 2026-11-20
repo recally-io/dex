@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // DispatchHelperMain handles --dex-fake-ssh subprocess invocations from TestMain.
@@ -71,9 +72,49 @@ func (f *FakeSSHFixture) RotateHostKey(t *testing.T) {
 	}
 }
 
+// Invocations returns how many times dex ran the fake ssh program.
+func (f *FakeSSHFixture) Invocations(t *testing.T) int {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(f.stateDir, "invocations"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(raw)
+}
+
+// Hold makes each later ssh run wait until Resume, so a test can act while a dial is in progress.
+func (f *FakeSSHFixture) Hold(t *testing.T) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.stateDir, "hold"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Resume lets held ssh runs continue.
+func (f *FakeSSHFixture) Resume(t *testing.T) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(f.stateDir, "hold")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+}
+
 func runFakeSSH(stateDir string, sshArgs []string) int {
 	if len(sshArgs) == 0 {
 		return 255
+	}
+	// One byte per run: O_APPEND writes are atomic, so concurrent runs count correctly.
+	if f, err := os.OpenFile(filepath.Join(stateDir, "invocations"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil { //nolint:gosec // test fixture directory.
+		_, _ = f.Write([]byte{'.'})
+		_ = f.Close()
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(stateDir, "hold")); err != nil { //nolint:gosec // test fixture directory.
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	var strict, knownHosts, alias string
 	cmdStart := len(sshArgs) - 1

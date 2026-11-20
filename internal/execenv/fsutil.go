@@ -83,8 +83,16 @@ func StageUpload(ctx context.Context, env durableenv.ExecutionEnv, localWorkspac
 	return env.WriteFile(ctx, target, data)
 }
 
-// ReadWorkspaceFile reads up to maxBytes of a regular, non-symlink file confined inside workspace.
-func ReadWorkspaceFile(ctx context.Context, env durableenv.ExecutionEnv, workspace, relPath string, maxBytes int64) ([]byte, error) {
+// ReadWorkspaceFile reads up to maxBytes of a regular, non-symlink file confined inside the workspace of h.
+func ReadWorkspaceFile(ctx context.Context, h Handle, relPath string, maxBytes int64) ([]byte, error) {
+	env, err := h.Env(ctx, h.Workspace(), nil)
+	if err != nil {
+		return nil, err
+	}
+	return readWorkspaceFile(ctx, env, h.Workspace(), relPath, maxBytes)
+}
+
+func readWorkspaceFile(ctx context.Context, env durableenv.ExecutionEnv, workspace, relPath string, maxBytes int64) ([]byte, error) {
 	if maxBytes < 0 {
 		return nil, errors.New("maxBytes must be non-negative")
 	}
@@ -226,8 +234,17 @@ func SyncSkills(ctx context.Context, env durableenv.ExecutionEnv, localDir, remo
 	})
 }
 
-// ResolveProjectPath validates and normalizes a project path inside env. Empty input returns empty string.
-func ResolveProjectPath(ctx context.Context, env durableenv.ExecutionEnv, home, raw string) (string, error) {
+// ResolveProjectPath validates and normalizes a project directory inside the environment of h.
+// Empty input returns an empty string.
+func ResolveProjectPath(ctx context.Context, h Handle, raw string) (string, error) {
+	env, err := h.Env(ctx, h.Workspace(), nil)
+	if err != nil {
+		return "", err
+	}
+	return resolveProjectPath(ctx, env, h.Home(), raw)
+}
+
+func resolveProjectPath(ctx context.Context, env durableenv.ExecutionEnv, home, raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
@@ -260,8 +277,16 @@ func ResolveProjectPath(ctx context.Context, env durableenv.ExecutionEnv, home, 
 	return clean, nil
 }
 
-// ListDirectories lists sorted, non-hidden subdirectories inside path (defaulting to home), capped at 500 entries.
-func ListDirectories(ctx context.Context, env durableenv.ExecutionEnv, home string, path *string) (DirectoryListing, error) {
+// ListDirectories lists sorted, non-hidden subdirectories inside path (defaulting to the home of h), capped at 500 entries.
+func ListDirectories(ctx context.Context, h Handle, path *string) (DirectoryListing, error) {
+	env, err := h.Env(ctx, h.Workspace(), nil)
+	if err != nil {
+		return DirectoryListing{}, err
+	}
+	return listDirectories(ctx, env, h.Home(), path)
+}
+
+func listDirectories(ctx context.Context, env durableenv.ExecutionEnv, home string, path *string) (DirectoryListing, error) {
 	if home == "" {
 		return DirectoryListing{}, fmt.Errorf("%w: home directory is unavailable", ErrInvalidPath)
 	}
@@ -272,7 +297,7 @@ func ListDirectories(ctx context.Context, env durableenv.ExecutionEnv, home stri
 			return DirectoryListing{}, fmt.Errorf("%w: path must be absolute", ErrInvalidPath)
 		}
 	}
-	selected, err := ResolveProjectPath(ctx, env, home, selected)
+	selected, err := resolveProjectPath(ctx, env, home, selected)
 	if err != nil {
 		return DirectoryListing{}, err
 	}

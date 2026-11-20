@@ -150,4 +150,36 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		_ = ws.CloseNow()
 		t.Fatal("a revoked token reconnected")
 	}
+
+	// The loaded bot uses the machine again after a new enrollment: the new session must not reuse
+	// the stamp of the revoked session, or the bot would keep its closed connection.
+	d.must(t, http.MethodPost, settingsPath+"/runner-pairing", nil, &issued)
+	status, token = enroll(issued.Code)
+	if status != http.StatusOK || token == "" {
+		t.Fatalf("second enrollment returned %d and token %q", status, token)
+	}
+	ws2, err := dial(token)
+	if err != nil {
+		t.Fatalf("connect after the second enrollment: %v", err)
+	}
+	defer func() { _ = ws2.CloseNow() }()
+	go func() {
+		_ = runner.Serve(ctx, ws2, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: work}))
+	}()
+	for probe = (apiEnvironmentTestResult{}); !probe.OK; {
+		d.must(t, http.MethodPost, settingsPath+"/test", nil, &probe)
+		if probe.OK {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+	// The new session changes the stamp, so dex reloads the idle bot on its own.
+	d.applied(t)
+	if got := taskTurn(t, d, chat, `printf 'machine-again'`); !strings.Contains(got, "machine-again") {
+		t.Fatalf("remote command after a new enrollment returned %q", got)
+	}
 }

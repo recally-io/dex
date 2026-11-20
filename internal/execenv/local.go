@@ -13,14 +13,20 @@ import (
 	envnode "github.com/MichaelKinsy/PiG/durable/env/node"
 )
 
+const localStamp = string(KindLocal)
+
 type localProvider struct {
 	dataDir string
 	home    string
 }
 
 // NewLocalProvider returns an execution environment provider rooted on the control host under dataDir.
-// An empty home falls back to os.UserHomeDir when resolving Home.
+// An empty home selects os.UserHomeDir at Open.
 func NewLocalProvider(dataDir, home string) Provider {
+	return newLocalProvider(dataDir, home)
+}
+
+func newLocalProvider(dataDir, home string) *localProvider {
 	cleanHome := ""
 	if home != "" {
 		cleanHome = filepath.Clean(home)
@@ -29,6 +35,14 @@ func NewLocalProvider(dataDir, home string) Provider {
 }
 
 func (p *localProvider) Open(ctx context.Context, agentID string) (Handle, error) {
+	l, err := p.open(ctx, agentID)
+	if err != nil {
+		return nil, err
+	}
+	return stampedHandle{lease: l, stamp: localStamp}, nil
+}
+
+func (p *localProvider) open(ctx context.Context, agentID string) (lease, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -39,11 +53,18 @@ func (p *localProvider) Open(ctx context.Context, agentID string) (Handle, error
 	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		return nil, err
 	}
-	return &localHandle{workspace: workspace, home: p.home}, nil
+	home := p.home
+	if home == "" {
+		// A host without a home directory leaves home empty; callers that need it report ErrInvalidPath.
+		if dir, err := os.UserHomeDir(); err == nil {
+			home = filepath.Clean(dir)
+		}
+	}
+	return &localHandle{workspace: workspace, home: home}, nil
 }
 
 func (p *localProvider) Stamp(context.Context, string) (string, bool) {
-	return string(KindLocal), true
+	return localStamp, true
 }
 
 func (p *localProvider) Close(context.Context) error { return nil }
@@ -56,19 +77,7 @@ type localHandle struct {
 func (h *localHandle) Kind() Kind        { return KindLocal }
 func (h *localHandle) Workspace() string { return h.workspace }
 
-func (h *localHandle) Home(ctx context.Context) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	if h.home != "" {
-		return h.home, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Clean(home), nil
-}
+func (h *localHandle) Home() string { return h.home }
 
 func (h *localHandle) Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error) {
 	if err := ctx.Err(); err != nil {

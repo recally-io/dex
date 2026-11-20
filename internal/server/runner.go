@@ -19,10 +19,10 @@ import (
 )
 
 func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRequestObject) (api.IssueRunnerCodeResponseObject, error) {
-	if h.Envs == nil {
+	if h.Runners == nil {
 		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: api.Error{Error: "Remote machines are unavailable in this build."}}, nil
 	}
-	code, err := h.Envs.IssueRunnerCode(ctx, req.EnvironmentId)
+	code, err := h.Runners.IssueCode(ctx, req.EnvironmentId)
 	if errors.Is(err, execenv.ErrRunnerConflict) {
 		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusConflict, Body: api.Error{Error: err.Error()}}, nil
 	}
@@ -33,10 +33,10 @@ func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRe
 }
 
 func (h *handler) RevokeRunner(ctx context.Context, req api.RevokeRunnerRequestObject) (api.RevokeRunnerResponseObject, error) {
-	if h.Envs == nil {
+	if h.Runners == nil {
 		return api.RevokeRunnerdefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: api.Error{Error: "Remote machines are unavailable in this build."}}, nil
 	}
-	if err := h.Envs.RevokeRunner(ctx, req.EnvironmentId); err != nil {
+	if err := h.Runners.Revoke(ctx, req.EnvironmentId); err != nil {
 		return nil, err
 	}
 	return api.RevokeRunner200JSONResponse(ok), nil
@@ -50,11 +50,11 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "the one-time enrollment code is required")
 		return
 	}
-	if h.Envs == nil {
+	if h.Runners == nil {
 		writeError(w, http.StatusServiceUnavailable, "remote machines are unavailable in this build")
 		return
 	}
-	token, err := h.Envs.EnrollRunner(r.Context(), r.PathValue("id"), code)
+	token, err := h.Runners.Enroll(r.Context(), r.PathValue("id"), code)
 	switch {
 	case errors.Is(err, execenv.ErrRunnerCredential):
 		writeError(w, http.StatusUnauthorized, "the enrollment code is invalid or expired")
@@ -72,7 +72,7 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 // Authorization header, and the socket protocol version in the WebSocket subprotocol.
 func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 	id, token := r.PathValue("id"), machineBearer(r)
-	if h.Envs == nil || token == "" || h.Envs.VerifyRunner(r.Context(), id, token) != nil {
+	if h.Runners == nil || token == "" || h.Runners.Verify(r.Context(), id, token) != nil {
 		writeError(w, http.StatusUnauthorized, "the machine token is not valid; install the machine again")
 		return
 	}
@@ -84,7 +84,7 @@ func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	_ = h.Envs.AcceptRunner(r.Context(), id, token, conn)
+	_ = h.Runners.Accept(r.Context(), id, token, conn)
 }
 
 // machineBearer reads the machine credential. It refuses a browser request, because a page in

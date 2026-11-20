@@ -45,10 +45,11 @@ type isolatedHandle struct {
 	baseEnv map[string]string
 }
 
-func (h *isolatedHandle) Kind() execenv.Kind                       { return h.kind }
-func (h *isolatedHandle) Workspace() string                        { return h.ws }
-func (h *isolatedHandle) Home(ctx context.Context) (string, error) { return h.home, ctx.Err() }
-func (h *isolatedHandle) Close(context.Context) error              { return nil }
+func (h *isolatedHandle) Kind() execenv.Kind          { return h.kind }
+func (h *isolatedHandle) Workspace() string           { return h.ws }
+func (h *isolatedHandle) Home() string                { return h.home }
+func (h *isolatedHandle) Stamp() string               { return "" }
+func (h *isolatedHandle) Close(context.Context) error { return nil }
 func (h *isolatedHandle) Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

@@ -260,7 +260,7 @@ func (a *agentExtensions) agentsMDContext(ctx context.Context, cwd string) []age
 	if a.isRemote() {
 		if env, err := a.execHandle.Env(ctx, cwd, nil); err == nil {
 			if canonCwd, err := env.CanonicalPath(ctx, cwd); err == nil {
-				remoteHome, _ := a.execHandle.Home(ctx)
+				remoteHome := a.execHandle.Home()
 				project = readAgentsMDEnv(ctx, env, execenv.JoinTargetPath(cwd, "AGENTS.md"), remoteHome, canonCwd)
 			}
 		}

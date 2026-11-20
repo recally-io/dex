@@ -37,8 +37,8 @@ type e2bExecEnv struct {
 }
 
 func (e *e2bExecEnv) acquire(ctx context.Context) (*envdClient, string, error) {
-	envd, _, _, sbID, _, err := e.handle.rt.acquire(ctx, e.handle.agentID, e.handle.spec)
-	return envd, sbID, err
+	session, err := e.handle.rt.acquire(ctx, e.handle.agentID, e.handle.spec)
+	return session.envd, session.sandboxID, err
 }
 
 func (e *e2bExecEnv) renew(ctx context.Context, sbID string) {

@@ -9,10 +9,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
-	"sync"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
 // EnvironmentSpec holds the stored configuration and secret for one execution environment.
@@ -39,139 +37,87 @@ type TestResult struct {
 type ManagerConfig struct {
 	DataDir string
 	// SSHHome overrides the directory scanned for ~/.ssh/config and key discovery (falls back to OS home).
-	SSHHome    string
+	SSHHome string
+	// Queries reads agents and environments. Probes work without it; Open, Stamp, and the agent methods need it.
 	Queries    *sqlc.Queries
 	SSHProgram string
 	E2BAPIURL  string
 	E2BEnvdURL string
 }
 
-// Manager resolves each agent's configured execution environment from control storage.
+// Manager resolves each agent's configured execution environment from control storage
+// and dispatches each environment to its backend.
 type Manager struct {
-	dataDir string
-	sshHome string
-	q       *sqlc.Queries
-	local   Provider
-	pienv   *piEnvRuntime
-	e2b     *e2bRuntime
-	runner  *runnerRuntime
-
-	mu      sync.Mutex
-	closed  bool
-	handles map[Handle]struct{}
+	sshHome  string
+	q        *sqlc.Queries
+	local    *localProvider
+	pienv    *piEnvRuntime
+	runners  *Runners
+	backends map[Kind]backend
 }
 
 var _ Provider = (*Manager)(nil)
 
-// NewManager constructs an execution environment Manager supporting local, SSH (pi-env), and E2B sandbox backends.
+// NewManager constructs an execution environment Manager supporting local, SSH (pi-env), E2B, and machine backends.
 func NewManager(cfg ManagerConfig) *Manager {
 	dataDir := filepath.Clean(cfg.DataDir)
+	pienv := newPiEnvRuntime(dataDir, cfg.SSHProgram)
+	runners := newRunners(cfg.Queries)
 	return &Manager{
-		dataDir: dataDir,
 		sshHome: cfg.SSHHome,
 		q:       cfg.Queries,
-		local:   NewLocalProvider(dataDir, ""),
-		pienv:   &piEnvRuntime{dataDir: dataDir, sshProgram: cfg.SSHProgram},
-		e2b:     newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL),
-		runner:  &runnerRuntime{q: cfg.Queries, sessions: map[string]*runner.Client{}, generation: map[string]uint64{}},
-		handles: map[Handle]struct{}{},
+		local:   newLocalProvider(dataDir, ""),
+		pienv:   pienv,
+		runners: runners,
+		backends: map[Kind]backend{
+			KindPiEnv:  pienv,
+			KindE2B:    newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL),
+			KindRunner: runnerBackend{runners: runners},
+		},
 	}
 }
 
-func unsupportedKindErr(kind Kind) error {
-	return fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, kind)
-}
+// Runners returns the enrollment and live sessions of remote machines.
+func (m *Manager) Runners() *Runners { return m.runners }
 
 // DiscoverSSHConfig discovers concrete host entries and private key path candidates under the configured SSH home directory.
 func (m *Manager) DiscoverSSHConfig() (SSHConfigDiscovery, error) {
 	return DiscoverSSHConfig(m.sshHome)
 }
 
-func (m *Manager) canReset(kind Kind) bool {
-	return kind == KindE2B
+func (m *Manager) backend(kind Kind) (backend, error) {
+	if b, ok := m.backends[kind]; ok {
+		return b, nil
+	}
+	return nil, fmt.Errorf("%w: unsupported environment kind %q", ErrInvalidConfig, kind)
 }
 
-// CanResetAgent reports whether agentID's configured execution environment supports stateless reset.
-func (m *Manager) CanResetAgent(ctx context.Context, agentID string) (bool, error) {
-	kind, err := m.agentEnvironmentKind(ctx, agentID)
+// Normalize validates spec against its backend rules and returns the normalized JSON config.
+func (m *Manager) Normalize(spec EnvironmentSpec) (string, error) {
+	b, err := m.backend(spec.Kind)
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return m.canReset(kind), nil
+	return b.normalize(spec)
 }
 
-// NormalizeAndValidate validates spec against its backend rules and returns the normalized JSON config.
-func (m *Manager) NormalizeAndValidate(ctx context.Context, spec EnvironmentSpec) (string, error) {
-	switch spec.Kind {
-	case KindPiEnv:
-		return m.pienv.normalizeAndValidate(ctx, spec)
-	case KindE2B:
-		return m.e2b.normalizeAndValidate(ctx, spec)
-	case KindRunner:
-		if spec.Secret != "" {
-			return "", ErrInvalidConfig
-		}
-		return "{}", nil
-	case KindLocal:
-		return "", unsupportedKindErr(spec.Kind)
-	default:
-		return "", unsupportedKindErr(spec.Kind)
+// Probe checks connectivity for spec. When saved is the stored spec of the same environment,
+// a backend can reuse saved host state, such as SSH known_hosts, if the endpoint is unchanged.
+func (m *Manager) Probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+	b, err := m.backend(spec.Kind)
+	if err != nil {
+		return TestResult{}, err
 	}
+	return b.probe(ctx, saved, spec)
 }
 
-// TestEnvironment probes connectivity for a saved environment spec.
-func (m *Manager) TestEnvironment(ctx context.Context, spec EnvironmentSpec) (TestResult, error) {
-	return m.ProbeEnvironment(ctx, &spec, spec)
-}
-
-// ProbeEnvironment probes connectivity for spec. When saved is provided, drivers may reuse saved host state (such as SSH known_hosts) if the endpoint is unchanged.
-func (m *Manager) ProbeEnvironment(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
-	switch spec.Kind {
-	case KindPiEnv:
-		return m.pienv.probe(ctx, saved, spec)
-	case KindE2B:
-		return m.e2b.probe(ctx, saved, spec)
-	case KindRunner:
-		if s := m.runner.online(spec.ID); s != nil {
-			meta := s.Info()
-			return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil
-		}
-		return TestResult{Error: "Runner is offline"}, nil
-	case KindLocal:
-		return TestResult{}, unsupportedKindErr(spec.Kind)
-	default:
-		return TestResult{}, unsupportedKindErr(spec.Kind)
+// Changed runs backend housekeeping after an environment row changed. cur is nil when the row was deleted.
+func (m *Manager) Changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
+	b, err := m.backend(old.Kind)
+	if err != nil {
+		return err
 	}
-}
-
-// OnEnvironmentUpdated runs backend-specific housekeeping after an environment configuration changes.
-func (m *Manager) OnEnvironmentUpdated(oldSpec, newSpec EnvironmentSpec) error {
-	switch newSpec.Kind {
-	case KindPiEnv:
-		return m.pienv.onUpdated(oldSpec, newSpec)
-	case KindE2B, KindRunner:
-		return nil
-	case KindLocal:
-		return unsupportedKindErr(newSpec.Kind)
-	default:
-		return unsupportedKindErr(newSpec.Kind)
-	}
-}
-
-// OnEnvironmentDeleted runs backend-specific cleanup after an environment row is removed.
-func (m *Manager) OnEnvironmentDeleted(ctx context.Context, spec EnvironmentSpec) error {
-	switch spec.Kind {
-	case KindPiEnv:
-		return m.pienv.onDeleted(spec)
-	case KindRunner:
-		return m.RevokeRunner(ctx, spec.ID)
-	case KindE2B:
-		return nil
-	case KindLocal:
-		return unsupportedKindErr(spec.Kind)
-	default:
-		return unsupportedKindErr(spec.Kind)
-	}
+	return b.changed(ctx, old, cur)
 }
 
 // ForgetHostKey removes saved SSH host trust entries for spec so the next connect re-trusts via TOFU.
@@ -182,45 +128,43 @@ func (m *Manager) ForgetHostKey(spec EnvironmentSpec) error {
 	return m.pienv.forgetHostKey(spec)
 }
 
-func (m *Manager) agentEnvironmentKind(ctx context.Context, agentID string) (Kind, error) {
-	if m.q == nil {
-		return KindLocal, nil
+// binding is the environment that an agent uses. A zero spec selects local.
+type binding struct {
+	spec      EnvironmentSpec
+	sandboxID string
+}
+
+func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, error) {
+	row, err := m.q.GetAgentBinding(ctx, agentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return binding{}, fmt.Errorf("agent %q not found", agentID)
 	}
-	row, err := m.q.GetAgent(ctx, agentID)
 	if err != nil {
-		return "", err
+		return binding{}, err
 	}
 	if row.EnvironmentID == "" {
-		return KindLocal, nil
+		return binding{}, nil
 	}
-	envRow, err := m.q.GetEnvironment(ctx, row.EnvironmentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("execution environment %q not found", row.EnvironmentID)
+	if row.FoundID == "" {
+		return binding{}, fmt.Errorf("execution environment %q not found", row.EnvironmentID)
 	}
-	if err != nil {
-		return "", err
-	}
-	return Kind(envRow.Kind), nil
+	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt}
+	return binding{spec: spec, sandboxID: row.EnvironmentSandboxID}, nil
 }
 
-// ResetAgent kills any persisted disposable sandbox for agentID and clears its sandbox reference.
-func (m *Manager) ResetAgent(ctx context.Context, agentID string) error {
-	kind, err := m.agentEnvironmentKind(ctx, agentID)
-	if err != nil {
-		return err
+// stamp fingerprints spec and the backend generation, so a reconnect or a forgotten host key
+// makes earlier handles stale.
+func (m *Manager) stamp(b backend, spec EnvironmentSpec) string {
+	h := sha256.New()
+	for _, s := range []string{spec.ID, string(spec.Kind), spec.Config, spec.Secret, strconv.FormatInt(spec.UpdatedAt, 10)} {
+		_, _ = h.Write([]byte(s))
+		_, _ = h.Write([]byte{0})
 	}
-	if !m.canReset(kind) {
-		return nil
-	}
-	return m.e2b.resetAgent(ctx, agentID)
+	_, _ = h.Write([]byte(strconv.FormatUint(b.generation(spec.ID), 10)))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
-// CleanupSandbox best-effort terminates a previous sandbox after an environment switch or bot archive.
-func (m *Manager) CleanupSandbox(ctx context.Context, agentID, envID, sandboxID string) {
-	m.e2b.cleanupSandbox(ctx, agentID, envID, sandboxID)
-}
-
-// Open resolves agentID's environment_id from SQLite and opens a Handle.
+// Open resolves agentID's environment from control storage and opens a lease on it.
 func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -228,105 +172,101 @@ func (m *Manager) Open(ctx context.Context, agentID string) (Handle, error) {
 	if err := validateAgentID(agentID); err != nil {
 		return nil, err
 	}
-	if m.q == nil {
-		return m.local.Open(ctx, agentID)
-	}
-	row, err := m.q.GetAgent(ctx, agentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("agent %q not found", agentID)
-	}
+	bound, err := m.agentBinding(ctx, agentID)
 	if err != nil {
 		return nil, err
 	}
-	if row.EnvironmentID == "" {
-		return m.local.Open(ctx, agentID)
-	}
-	envRow, err := m.q.GetEnvironment(ctx, row.EnvironmentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("execution environment %q not found", row.EnvironmentID)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	spec := SpecFromRow(envRow)
-	var h Handle
-	switch spec.Kind {
-	case KindPiEnv:
-		h, err = m.pienv.open(ctx, agentID, spec)
-	case KindE2B:
-		h, err = m.e2b.open(ctx, agentID, spec)
-	case KindRunner:
-		if session := m.runner.online(spec.ID); session != nil {
-			h = &runnerHandle{id: spec.ID, client: session}
-		} else {
-			err = runner.ErrOffline
+	if bound.spec.ID == "" {
+		l, err := m.local.open(ctx, agentID)
+		if err != nil {
+			return nil, err
 		}
-	case KindLocal:
-		err = unsupportedKindErr(spec.Kind)
-	default:
-		err = unsupportedKindErr(spec.Kind)
+		return stampedHandle{lease: l, stamp: localStamp}, nil
 	}
+	b, err := m.backend(bound.spec.Kind)
 	if err != nil {
 		return nil, err
 	}
-
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
-		_ = h.Close(context.WithoutCancel(ctx))
-		return nil, errors.New("execution environment manager is closed")
+	// Stamp before the open: a reconnect during the open makes this handle stale, never fresh.
+	stamp := m.stamp(b, bound.spec)
+	l, err := b.open(ctx, agentID, bound.spec)
+	if err != nil {
+		return nil, err
 	}
-	m.handles[h] = struct{}{}
-	m.mu.Unlock()
-	return &managedHandle{Handle: h, release: func() {
-		m.mu.Lock()
-		delete(m.handles, h)
-		m.mu.Unlock()
-	}}, nil
+	return stampedHandle{lease: l, stamp: stamp}, nil
 }
 
-// Stamp returns a deterministic fingerprint of agentID's configured execution environment.
+// Stamp returns the fingerprint of agentID's configured execution environment.
 func (m *Manager) Stamp(ctx context.Context, agentID string) (string, bool) {
-	if m.q == nil {
-		return "", true
-	}
-	row, err := m.q.GetAgentEnvironmentStamp(ctx, agentID)
+	bound, err := m.agentBinding(ctx, agentID)
 	if err != nil {
 		return "", false
 	}
-	if row.EnvironmentID == "" {
-		return "local", true
+	if bound.spec.ID == "" {
+		return localStamp, true
 	}
-	h := sha256.New()
-	for _, s := range []string{row.EnvironmentID, row.Kind, row.Config, row.Secret, strconv.FormatInt(row.UpdatedAt, 10)} {
-		_, _ = h.Write([]byte(s))
-		_, _ = h.Write([]byte{0})
+	b, err := m.backend(bound.spec.Kind)
+	if err != nil {
+		return "", false
 	}
-	if Kind(row.Kind) == KindRunner {
-		_, _ = h.Write([]byte(m.runner.sessionStamp(row.EnvironmentID)))
-	}
-	return hex.EncodeToString(h.Sum(nil)), true
+	return m.stamp(b, bound.spec), true
 }
 
-// Close closes all active handles.
-func (m *Manager) Close(ctx context.Context) error {
-	m.runner.close()
-	m.mu.Lock()
-	m.closed = true
-	handles := make([]Handle, 0, len(m.handles))
-	for h := range m.handles {
-		handles = append(handles, h)
+// CanResetAgent reports whether agentID's environment discards its files on reset.
+func (m *Manager) CanResetAgent(ctx context.Context, agentID string) (bool, error) {
+	bound, err := m.agentBinding(ctx, agentID)
+	if err != nil || bound.spec.ID == "" {
+		return false, err
 	}
-	clear(m.handles)
-	m.mu.Unlock()
+	b, err := m.backend(bound.spec.Kind)
+	if err != nil {
+		return false, err
+	}
+	return b.disposable(), nil
+}
 
-	var errs []error
-	for _, h := range handles {
-		errs = append(errs, h.Close(ctx))
+// ResetAgent discards agentID's state in its current environment when that environment is disposable.
+func (m *Manager) ResetAgent(ctx context.Context, agentID string) error {
+	bound, err := m.agentBinding(ctx, agentID)
+	if err != nil || bound.spec.ID == "" {
+		return err
 	}
-	errs = append(errs, m.local.Close(ctx))
-	return errors.Join(errs...)
+	b, err := m.backend(bound.spec.Kind)
+	if err != nil {
+		return err
+	}
+	if !b.disposable() {
+		return nil
+	}
+	return b.release(ctx, agentID, bound.spec, bound.sandboxID)
+}
+
+// ReleaseAgent tells the backend of an earlier environment that agentID left it.
+// sandboxID is the agent's sandbox reference in that environment, or empty.
+func (m *Manager) ReleaseAgent(ctx context.Context, agentID, envID, sandboxID string) error {
+	if envID == "" {
+		return nil
+	}
+	envRow, err := m.q.GetEnvironment(ctx, envID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	spec := SpecFromRow(envRow)
+	b, err := m.backend(spec.Kind)
+	if err != nil {
+		return err
+	}
+	return b.release(ctx, agentID, spec, sandboxID)
+}
+
+// Close disconnects the machines and closes the shared connections. Open leases fail after Close.
+func (m *Manager) Close(context.Context) error {
+	m.runners.close()
+	m.pienv.close()
+	return nil
 }
 
 // SpecFromRow converts a sqlc.ExecutionEnvironment row into an EnvironmentSpec.
@@ -338,15 +278,4 @@ func SpecFromRow(row sqlc.ExecutionEnvironment) EnvironmentSpec {
 		Secret:    row.Secret,
 		UpdatedAt: row.UpdatedAt,
 	}
-}
-
-type managedHandle struct {
-	Handle
-	once    sync.Once
-	release func()
-}
-
-func (h *managedHandle) Close(ctx context.Context) error {
-	h.once.Do(h.release)
-	return h.Handle.Close(ctx)
 }

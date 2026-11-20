@@ -28,18 +28,60 @@ var ErrInvalidPath = errors.New("invalid project directory")
 // ErrInvalidConfig is returned when an execution environment configuration is invalid.
 var ErrInvalidConfig = errors.New("invalid execution environment configuration")
 
-// Handle represents an opened execution environment bound to one agent.
+// Handle is one agent's lease on an opened execution environment.
+// The backend owns the connection; Close releases only the lease.
 type Handle interface {
 	Kind() Kind
+	// Stamp is the fingerprint of the configuration that Open read.
+	// It differs from Provider.Stamp when the handle is stale.
+	Stamp() string
 	Workspace() string
-	Home(ctx context.Context) (string, error)
+	// Home is the home directory of the environment, or empty when the host has none.
+	Home() string
 	Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error)
 	Close(ctx context.Context) error
 }
 
-// Provider opens and manages agent execution environment handles.
+// Provider opens agent execution environment handles.
 type Provider interface {
 	Open(ctx context.Context, agentID string) (Handle, error)
-	Stamp(ctx context.Context, agentID string) (string, bool)
+	// Stamp returns the current fingerprint of agentID's environment. ok is false when it cannot be read.
+	Stamp(ctx context.Context, agentID string) (stamp string, ok bool)
 	Close(ctx context.Context) error
+}
+
+// lease is a Handle without its stamp. A backend returns it, and the Manager adds the stamp
+// from the same configuration read.
+type lease interface {
+	Kind() Kind
+	Workspace() string
+	Home() string
+	Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error)
+	Close(ctx context.Context) error
+}
+
+type stampedHandle struct {
+	lease
+	stamp string
+}
+
+func (h stampedHandle) Stamp() string { return h.stamp }
+
+// backend is one remote environment kind. Each method gets the stored spec of one environment.
+type backend interface {
+	// normalize validates spec and returns its normalized JSON config.
+	normalize(spec EnvironmentSpec) (string, error)
+	// probe checks connectivity. saved is the stored spec when the user edits a saved environment.
+	probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error)
+	open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error)
+	// changed runs after the row changed. cur is nil when the row was deleted.
+	changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error
+	// release drops the agent's state in the environment: an environment switch, an archive, or a reset.
+	// sandboxID is the agent's stored sandbox reference, or empty.
+	release(ctx context.Context, agentID string, spec EnvironmentSpec, sandboxID string) error
+	// disposable reports that release discards the agent's files, so the user can reset the environment.
+	disposable() bool
+	// generation identifies the live connection state of an environment beyond its stored spec.
+	// A change makes the stamp of every earlier handle stale.
+	generation(envID string) uint64
 }

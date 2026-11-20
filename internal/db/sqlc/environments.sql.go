@@ -12,11 +12,16 @@ import (
 const clearAgentEnvironmentSandboxID = `-- name: ClearAgentEnvironmentSandboxID :exec
 UPDATE agents
 SET environment_sandbox_id = ''
-WHERE id = ?1
+WHERE id = ?1 AND environment_sandbox_id = ?2
 `
 
-func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, clearAgentEnvironmentSandboxID, agentID)
+type ClearAgentEnvironmentSandboxIDParams struct {
+	AgentID   string `json:"agent_id"`
+	SandboxID string `json:"sandbox_id"`
+}
+
+func (q *Queries) ClearAgentEnvironmentSandboxID(ctx context.Context, arg ClearAgentEnvironmentSandboxIDParams) error {
+	_, err := q.db.ExecContext(ctx, clearAgentEnvironmentSandboxID, arg.AgentID, arg.SandboxID)
 	return err
 }
 
@@ -88,9 +93,11 @@ func (q *Queries) DeleteEnvironmentIfUnused(ctx context.Context, id string) (int
 	return result.RowsAffected()
 }
 
-const getAgentEnvironmentStamp = `-- name: GetAgentEnvironmentStamp :one
+const getAgentBinding = `-- name: GetAgentBinding :one
 SELECT
     a.environment_id,
+    a.environment_sandbox_id,
+    CAST(coalesce(e.id, '') AS TEXT) AS found_id,
     CAST(coalesce(e.kind, '') AS TEXT) AS kind,
     CAST(coalesce(e.config, '') AS TEXT) AS config,
     CAST(coalesce(e.secret, '') AS TEXT) AS secret,
@@ -100,19 +107,24 @@ LEFT JOIN execution_environments e ON e.id = a.environment_id
 WHERE a.id = ?
 `
 
-type GetAgentEnvironmentStampRow struct {
-	EnvironmentID string `json:"environment_id"`
-	Kind          string `json:"kind"`
-	Config        string `json:"config"`
-	Secret        string `json:"secret"`
-	UpdatedAt     int64  `json:"updated_at"`
+type GetAgentBindingRow struct {
+	EnvironmentID        string `json:"environment_id"`
+	EnvironmentSandboxID string `json:"environment_sandbox_id"`
+	FoundID              string `json:"found_id"`
+	Kind                 string `json:"kind"`
+	Config               string `json:"config"`
+	Secret               string `json:"secret"`
+	UpdatedAt            int64  `json:"updated_at"`
 }
 
-func (q *Queries) GetAgentEnvironmentStamp(ctx context.Context, id string) (GetAgentEnvironmentStampRow, error) {
-	row := q.db.QueryRowContext(ctx, getAgentEnvironmentStamp, id)
-	var i GetAgentEnvironmentStampRow
+// found_id is empty when environment_id names a deleted environment.
+func (q *Queries) GetAgentBinding(ctx context.Context, id string) (GetAgentBindingRow, error) {
+	row := q.db.QueryRowContext(ctx, getAgentBinding, id)
+	var i GetAgentBindingRow
 	err := row.Scan(
 		&i.EnvironmentID,
+		&i.EnvironmentSandboxID,
+		&i.FoundID,
 		&i.Kind,
 		&i.Config,
 		&i.Secret,
