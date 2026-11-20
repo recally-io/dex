@@ -200,6 +200,14 @@ type ForkReceipt struct {
 	ForkID      int64  `json:"fork_id"`
 }
 
+type GithubReviewPull struct {
+	RepositoryID    int64  `json:"repository_id"`
+	PullNumber      int64  `json:"pull_number"`
+	Token           string `json:"token"`
+	ConfigurationID string `json:"configuration_id"`
+	Etag            string `json:"etag"`
+}
+
 type GithubWebhookSetting struct {
 	RepositoryID int64  `json:"repository_id"`
 	Secret       string `json:"secret"`
