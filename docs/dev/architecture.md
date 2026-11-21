@@ -364,6 +364,10 @@ A plugin is an optional source of Task events, such as GitHub or a generic
 Webhook. It runs in the dex process, but its code and its behavior stay out of
 the core path. The core works the same with every plugin off.
 
+![Plugin boundary and startup](../../assets/plugins.png)
+
+Source: [plugins.puml](../../assets/src/plugins.puml).
+
 ### Boundary
 
 | Part                | Owns                                                                     |
