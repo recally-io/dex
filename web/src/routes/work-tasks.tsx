@@ -13,7 +13,7 @@ import {
   sendMessage,
   setWorkTaskLifecycle,
 } from "../api/generated/sdk.gen";
-import type { WorkTaskLifecycle } from "../api/generated/types.gen";
+import type { WorkTaskEntry, WorkTaskLifecycle } from "../api/generated/types.gen";
 import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
 import { Empty, FramedPage, Section } from "../components/page";
@@ -23,6 +23,13 @@ import { Textarea } from "../components/ui/textarea";
 import { TaskGitHubPulls } from "../components/task-github-pulls";
 import { inboxOptions } from "../lib/inbox";
 import { newId } from "../lib/utils";
+
+const entryAuthors: Record<WorkTaskEntry["author"], string> = {
+  owner: "Owner",
+  agent: "Agent",
+  external: "External event",
+  unknown: "Source not recorded",
+};
 
 export function TaskInboxPage() {
   const [closed, setClosed] = useState(false);
@@ -253,6 +260,17 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
               {answer.error ? <Failure title="Could not answer question" error={answer.error} /> : null}
             </Section>
           ) : null}
+          {detail.data.session ? (
+            <Section title="Session">
+              <Link
+                to="/a/$agentId/c/$chatId"
+                params={{ agentId: detail.data.session.agentId, chatId: String(detail.data.session.id) }}
+                className="font-medium text-foreground underline"
+              >
+                {detail.data.session.title || "Untitled session"}
+              </Link>
+            </Section>
+          ) : null}
           <TaskGitHubPulls
             key={taskId}
             path={path}
@@ -295,7 +313,7 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
               {detail.data.entries.map((entry) => (
                 <li key={entry.id} className="py-3">
                   <span className="mr-2 text-xs font-medium text-muted-foreground">
-                    {entry.eventId ? "External event" : "Source not recorded"}
+                    {entryAuthors[entry.author]}
                   </span>
                   <time
                     dateTime={new Date(entry.createdAt).toISOString()}

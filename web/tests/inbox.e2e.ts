@@ -11,7 +11,7 @@ test("tracks a task from creation to completion and reopening", async ({ app, sc
   await screen.getByRole("textbox", "Task note").fill("The change is ready for review.");
   await screen.getByRole("button", "Add note").tap();
   await expect(screen.getByText("The change is ready for review.")).toBeVisible();
-  await expect(screen.getByText("Source not recorded")).toBeVisible();
+  await expect(screen.getByText("Owner")).toBeVisible();
 
   await screen.getByRole("button", "Complete task").tap();
   await expect(screen.getByRole("button", "Reopen task")).toBeVisible();
