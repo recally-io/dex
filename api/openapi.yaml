@@ -425,6 +425,44 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/settings/plugins:
+    get:
+      operationId: listPlugins
+      description: List the plugins of this build, the stored choice, and whether each one runs now.
+      responses:
+        "200":
+          description: The plugins.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plugins]
+                properties:
+                  plugins:
+                    type: array
+                    items: { $ref: "#/components/schemas/PluginSetting" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/settings/plugins/{name}:
+    parameters:
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    put:
+      operationId: setPlugin
+      description: Turn a plugin on or off. The change takes effect when dex starts again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "204": { description: Choice saved. }
+        default: { $ref: "#/components/responses/Error" }
   /api/settings:
     get:
       operationId: getSettings
@@ -2348,6 +2386,19 @@ components:
       properties:
         status: { type: string, enum: [ok] }
 
+    PluginSetting:
+      type: object
+      required: [name, enabled, running]
+      properties:
+        name: { type: string }
+        enabled: {
+          type: boolean,
+          description: The stored choice. dex reads it at start.,
+        }
+        running: {
+          type: boolean,
+          description: The plugin runs in this process.,
+        }
     Health:
       type: object
       required: [status, version, dataDir, runtimeReady, plugins]

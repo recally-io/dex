@@ -53,8 +53,9 @@ type Config struct {
 	// Runners enrolls remote machines and serves their sessions.
 	Runners *execenv.Runners
 
-	// Plugins add hook and API routes.
-	Plugins []plugin.Plugin
+	// Plugins add hook and API routes. AvailablePlugins names every plugin of this build.
+	Plugins          []plugin.Plugin
+	AvailablePlugins []string
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string

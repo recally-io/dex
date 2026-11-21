@@ -260,6 +260,11 @@ type OutboxMessage struct {
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
 }
 
+type PluginSetting struct {
+	Name    string `json:"name"`
+	Enabled int64  `json:"enabled"`
+}
+
 type Provider struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`

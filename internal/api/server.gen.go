@@ -1436,6 +1436,16 @@ type OutboxMessageList struct {
 	Messages []OutboxMessage `json:"messages"`
 }
 
+// PluginSetting defines model for PluginSetting.
+type PluginSetting struct {
+	// Enabled The stored choice. dex reads it at start.
+	Enabled bool   `json:"enabled"`
+	Name    string `json:"name"`
+
+	// Running The plugin runs in this process.
+	Running bool `json:"running"`
+}
+
 // Provider defines model for Provider.
 type Provider struct {
 	// Api Empty for a built-in provider.
@@ -2000,6 +2010,11 @@ type ListWorkTasksParams struct {
 	IncludeClosed *bool `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
 }
 
+// SetPluginJSONBody defines parameters for SetPlugin.
+type SetPluginJSONBody struct {
+	Enabled bool `json:"enabled"`
+}
+
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgentInput
 
@@ -2092,6 +2107,9 @@ type UpdateEnvironmentJSONRequestBody = EnvironmentInput
 
 // SetOnePasswordJSONRequestBody defines body for SetOnePassword for application/json ContentType.
 type SetOnePasswordJSONRequestBody = OnePasswordInput
+
+// SetPluginJSONRequestBody defines body for SetPlugin for application/json ContentType.
+type SetPluginJSONRequestBody SetPluginJSONBody
 
 // ListProviderModelsJSONRequestBody defines body for ListProviderModels for application/json ContentType.
 type ListProviderModelsJSONRequestBody = ProviderModelsInput
@@ -2873,6 +2891,12 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/onepassword)
 	SetOnePassword(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/settings/plugins)
+	ListPlugins(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/settings/plugins/{name})
+	SetPlugin(w http.ResponseWriter, r *http.Request, name string)
 
 	// (POST /api/settings/provider-models)
 	ListProviderModels(w http.ResponseWriter, r *http.Request)
@@ -5597,6 +5621,46 @@ func (siw *ServerInterfaceWrapper) SetOnePassword(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListPlugins operation middleware
+func (siw *ServerInterfaceWrapper) ListPlugins(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlugins(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetPlugin operation middleware
+func (siw *ServerInterfaceWrapper) SetPlugin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetPlugin(w, r, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListProviderModels operation middleware
 func (siw *ServerInterfaceWrapper) ListProviderModels(w http.ResponseWriter, r *http.Request) {
 
@@ -5813,6 +5877,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/maintenance", wrapper.AcquireMaintenance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/plugins", wrapper.ListPlugins)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/plugins/{name}", wrapper.SetPlugin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/onepassword", wrapper.GetOnePassword)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/onepassword", wrapper.SetOnePassword)
@@ -11223,6 +11289,80 @@ func (response SetOnePassworddefaultJSONResponse) VisitSetOnePasswordResponse(w 
 	return err
 }
 
+type ListPluginsRequestObject struct {
+}
+
+type ListPluginsResponseObject interface {
+	VisitListPluginsResponse(w http.ResponseWriter) error
+}
+
+type ListPlugins200JSONResponse struct {
+	Plugins []PluginSetting `json:"plugins"`
+}
+
+func (response ListPlugins200JSONResponse) VisitListPluginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPluginsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListPluginsdefaultJSONResponse) VisitListPluginsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetPluginRequestObject struct {
+	Name string `json:"name"`
+	Body *SetPluginJSONRequestBody
+}
+
+type SetPluginResponseObject interface {
+	VisitSetPluginResponse(w http.ResponseWriter) error
+}
+
+type SetPlugin204Response struct {
+}
+
+func (response SetPlugin204Response) VisitSetPluginResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetPlugindefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetPlugindefaultJSONResponse) VisitSetPluginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListProviderModelsRequestObject struct {
 	Body *ListProviderModelsJSONRequestBody
 }
@@ -11691,6 +11831,12 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/onepassword)
 	SetOnePassword(ctx context.Context, request SetOnePasswordRequestObject) (SetOnePasswordResponseObject, error)
+
+	// (GET /api/settings/plugins)
+	ListPlugins(ctx context.Context, request ListPluginsRequestObject) (ListPluginsResponseObject, error)
+
+	// (PUT /api/settings/plugins/{name})
+	SetPlugin(ctx context.Context, request SetPluginRequestObject) (SetPluginResponseObject, error)
 
 	// (POST /api/settings/provider-models)
 	ListProviderModels(ctx context.Context, request ListProviderModelsRequestObject) (ListProviderModelsResponseObject, error)
@@ -14410,6 +14556,63 @@ func (sh *strictHandler) SetOnePassword(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetOnePasswordResponseObject); ok {
 		if err := validResponse.VisitSetOnePasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPlugins operation middleware
+func (sh *strictHandler) ListPlugins(w http.ResponseWriter, r *http.Request) {
+	var request ListPluginsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPlugins(ctx, request.(ListPluginsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPlugins")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPluginsResponseObject); ok {
+		if err := validResponse.VisitListPluginsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetPlugin operation middleware
+func (sh *strictHandler) SetPlugin(w http.ResponseWriter, r *http.Request, name string) {
+	var request SetPluginRequestObject
+
+	request.Name = name
+
+	var body SetPluginJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetPlugin(ctx, request.(SetPluginRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetPlugin")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetPluginResponseObject); ok {
+		if err := validResponse.VisitSetPluginResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

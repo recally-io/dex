@@ -71,7 +71,7 @@ func startDexHome(t *testing.T, cfg app.Config, home string) *dex {
 	cfg.ToolEnv = map[string]string{"PATH": os.Getenv("PATH"), "HOME": home, "DEX_DATA_DIR": cfg.DataDir}
 	cfg.FakeModel = true
 	if cfg.Plugins == nil {
-		// As in cmd/dex. A test that needs no plugin gives an empty list.
+		// As in cmd/dex.
 		cfg.Plugins = []plugin.Factory{github.New}
 	}
 	a, err := app.Start(t.Context(), cfg)

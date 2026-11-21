@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/plugin"
 )
 
 func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
@@ -26,10 +24,17 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	var task api.WorkTask
 	d.must(t, http.MethodPost, "/api/agents/default/inbox/tasks", map[string]string{"title": "Ship PR 2"}, &task, http.StatusCreated)
 	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+task.Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{"revision": "abc", "afterAt": 1}}, nil, http.StatusNoContent)
-	d.stop()
 
-	// When dex starts again with no plugins.
-	d = startDexWith(t, app.Config{DataDir: dataDir, Plugins: []plugin.Factory{}})
+	// When the owner turns GitHub off, it keeps running until dex starts again.
+	d.must(t, http.MethodPut, "/api/settings/plugins/github", map[string]bool{"enabled": false}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/settings/plugins/unknown", map[string]bool{"enabled": true}, nil, http.StatusNotFound)
+	var plugins api.ListPlugins200JSONResponse
+	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
+	if !slices.Equal(plugins.Plugins, []api.PluginSetting{{Name: "github", Enabled: false, Running: true}}) {
+		t.Fatalf("the choice must wait for a restart: %+v", plugins.Plugins)
+	}
+	d.stop()
+	d = startDex(t, dataDir, "")
 
 	// Then GitHub has no hook, API, tool, or UI.
 	d.must(t, http.MethodGet, "/api/health", nil, &health)
