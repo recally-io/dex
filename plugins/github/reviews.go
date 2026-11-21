@@ -3,15 +3,13 @@ package github
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/worktask"
 )
 
@@ -97,7 +95,7 @@ func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID in
 	if len(body) > MaxPayload || repositoryID <= 0 || delivery == "" {
 		return nil, ErrPayload
 	}
-	if !validSignature(secret, signature, body) {
+	if !plugin.ValidSignature(secret, signature, body) {
 		return nil, ErrSignature
 	}
 	if kind == "issues" && (rule.IssueAgentID != "" || rule.HoldUnmatched) {
@@ -120,20 +118,6 @@ func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID in
 		return nil, nil
 	}
 	return acceptReview(ctx, store, repositoryID, payload.PullRequest.Number, "webhook:"+delivery, payload.Review, rule.HoldUnmatched)
-}
-
-func validSignature(secret []byte, signature string, body []byte) bool {
-	encoded, ok := strings.CutPrefix(signature, "sha256=")
-	if !ok || len(secret) == 0 || len(encoded) != 2*sha256.Size {
-		return false
-	}
-	digest, err := hex.DecodeString(encoded)
-	if err != nil {
-		return false
-	}
-	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write(body)
-	return hmac.Equal(digest, mac.Sum(nil))
 }
 
 // AcceptReviewPage stores a page from the authenticated List Reviews API for the given PR.

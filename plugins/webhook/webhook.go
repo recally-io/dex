@@ -5,15 +5,13 @@ package webhook
 import (
 	"cmp"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/worktask"
 )
 
@@ -59,7 +57,7 @@ func Accept(ctx context.Context, store *worktask.Service, sourceID string, secre
 	if len(body) > MaxPayload || delivery == "" {
 		return worktask.Receipt{}, ErrPayload
 	}
-	if !validSignature(secret, signature, body) {
+	if !plugin.ValidSignature(secret, signature, body) {
 		return worktask.Receipt{}, ErrSignature
 	}
 	var p payload
@@ -79,18 +77,4 @@ func Accept(ctx context.Context, store *worktask.Service, sourceID string, secre
 		return store.Accept(ctx, event)
 	}
 	return store.AcceptCreating(ctx, event, rule.TaskAgentID, cmp.Or(title, p.Type))
-}
-
-func validSignature(secret []byte, signature string, body []byte) bool {
-	encoded, ok := strings.CutPrefix(signature, "sha256=")
-	if !ok || len(secret) == 0 || len(encoded) != 2*sha256.Size {
-		return false
-	}
-	digest, err := hex.DecodeString(encoded)
-	if err != nil {
-		return false
-	}
-	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write(body)
-	return hmac.Equal(digest, mac.Sum(nil))
 }
