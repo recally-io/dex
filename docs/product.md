@@ -277,6 +277,7 @@ Main gets a Task alert when a source rule creates a Task, or when a review
 arrives for a wait that asks for an alert. The alert shows the Task title,
 the event type, the author class, and the link, but not the event text.
 Each event sends at most one alert.
+A finished CI run on a linked PR only adds a timeline entry.
 The Inbox holds an event when its links point to different Tasks. A source
 rule can also hold an event that matches no Task. Dex holds only events from
 trusted authors, or events with conflicting links. The owner attaches a held
