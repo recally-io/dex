@@ -117,7 +117,7 @@ export function TaskInboxPage() {
           <Empty title="No tasks">Create a task to track work here.</Empty>
         )}
       </Section>
-      <HeldEvents tasks={tasks.data?.tasks ?? []} />
+      <HeldEvents tasks={tasks.data?.tasks ?? []} agents={agents.data?.agents ?? []} />
       <Section title="Routine results">
         {routines.isPending ? (
           <Loading />

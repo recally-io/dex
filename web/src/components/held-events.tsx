@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listHeldEventsOptions, listWorkTasksOptions } from "../api/generated/@tanstack/react-query.gen";
 import { attachHeldEvent, dismissHeldEvent } from "../api/generated/sdk.gen";
-import type { HeldEvent, WorkTask } from "../api/generated/types.gen";
+import type { Agent, HeldEvent, WorkTask } from "../api/generated/types.gen";
 import { Failure, Loading } from "./feedback";
 import { Select } from "./form";
 import { Section } from "./page";
@@ -19,7 +19,7 @@ function sourceHref(url: string) {
   return /^https?:\/\//i.test(url) ? url : undefined;
 }
 
-export function HeldEvents({ tasks }: { tasks: WorkTask[] }) {
+export function HeldEvents({ tasks, agents }: { tasks: WorkTask[]; agents: Agent[] }) {
   const held = useQuery({ ...listHeldEventsOptions(), refetchInterval: 10_000 });
   const open = tasks.filter((task) => task.lifecycle === "open");
 
@@ -32,7 +32,7 @@ export function HeldEvents({ tasks }: { tasks: WorkTask[] }) {
       ) : held.data.events.length ? (
         <ul className="divide-y divide-border">
           {held.data.events.map((event) => (
-            <HeldEventItem key={event.id} event={event} tasks={open} />
+            <HeldEventItem key={event.id} event={event} tasks={open} agents={agents} />
           ))}
         </ul>
       ) : (
@@ -42,10 +42,11 @@ export function HeldEvents({ tasks }: { tasks: WorkTask[] }) {
   );
 }
 
-function HeldEventItem({ event, tasks }: { event: HeldEvent; tasks: WorkTask[] }) {
+function HeldEventItem({ event, tasks, agents }: { event: HeldEvent; tasks: WorkTask[]; agents: Agent[] }) {
   const [selected, setSelected] = useState("");
   const client = useQueryClient();
-  const task = tasks.find((item) => item.id === selected) ?? tasks[0];
+  // An attach also links the event objects, and no API removes a link. The owner must pick the Task.
+  const task = tasks.find((item) => item.id === selected);
   const href = sourceHref(event.sourceUrl);
 
   const refresh = async () => {
@@ -90,9 +91,10 @@ function HeldEventItem({ event, tasks }: { event: HeldEvent; tasks: WorkTask[] }
           disabled={!tasks.length}
           onChange={(change) => setSelected(change.target.value)}
         >
+          <option value="">Choose a Task</option>
           {tasks.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.title}
+              {item.title} · {agents.find((agent) => agent.id === item.agentId)?.name ?? item.agentId}
             </option>
           ))}
         </Select>
