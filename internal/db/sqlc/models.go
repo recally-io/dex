@@ -155,6 +155,17 @@ type Dream struct {
 	CreatedAt        int64  `json:"created_at"`
 }
 
+type EmailImapPull struct {
+	SourceID        string `json:"source_id"`
+	Address         string `json:"address"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	Folder          string `json:"folder"`
+	ConfigurationID string `json:"configuration_id"`
+	UidValidity     int64  `json:"uid_validity"`
+	LastUid         int64  `json:"last_uid"`
+}
+
 type EmailSource struct {
 	ID            string         `json:"id"`
 	Secret        string         `json:"secret"`

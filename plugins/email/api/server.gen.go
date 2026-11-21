@@ -43,8 +43,22 @@ type SaveEmailSourceJSONBody struct {
 	TaskAgentId *string `json:"taskAgentId,omitempty"`
 }
 
+// SaveEmailIMAPPullJSONBody defines parameters for SaveEmailIMAPPull.
+type SaveEmailIMAPPullJSONBody struct {
+	// Address imaps://host[:port]. Use imap://host[:port] only for a loopback host, such as a local mail bridge.
+	Address string `json:"address"`
+
+	// Folder A dedicated folder. Pull opens it read-only.
+	Folder   *string `json:"folder,omitempty"`
+	Password *string `json:"password,omitempty"`
+	Username string  `json:"username"`
+}
+
 // SaveEmailSourceJSONRequestBody defines body for SaveEmailSource for application/json ContentType.
 type SaveEmailSourceJSONRequestBody SaveEmailSourceJSONBody
+
+// SaveEmailIMAPPullJSONRequestBody defines body for SaveEmailIMAPPull for application/json ContentType.
+type SaveEmailIMAPPullJSONRequestBody SaveEmailIMAPPullJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -54,6 +68,12 @@ type ServerInterface interface {
 
 	// (PUT /api/plugins/email/sources/{sourceId})
 	SaveEmailSource(w http.ResponseWriter, r *http.Request, sourceId string)
+
+	// (DELETE /api/plugins/email/sources/{sourceId}/imap)
+	DeleteEmailIMAPPull(w http.ResponseWriter, r *http.Request, sourceId string)
+
+	// (PUT /api/plugins/email/sources/{sourceId}/imap)
+	SaveEmailIMAPPull(w http.ResponseWriter, r *http.Request, sourceId string)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -108,6 +128,58 @@ func (siw *ServerInterfaceWrapper) SaveEmailSource(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SaveEmailSource(w, r, sourceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteEmailIMAPPull operation middleware
+func (siw *ServerInterfaceWrapper) DeleteEmailIMAPPull(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sourceId" -------------
+	var sourceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sourceId", r.PathValue("sourceId"), &sourceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sourceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteEmailIMAPPull(w, r, sourceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SaveEmailIMAPPull operation middleware
+func (siw *ServerInterfaceWrapper) SaveEmailIMAPPull(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sourceId" -------------
+	var sourceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sourceId", r.PathValue("sourceId"), &sourceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sourceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SaveEmailIMAPPull(w, r, sourceId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -237,6 +309,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}/imap", wrapper.DeleteEmailIMAPPull)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}/imap", wrapper.SaveEmailIMAPPull)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}", wrapper.DeleteEmailSource)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}", wrapper.SaveEmailSource)
 
@@ -312,6 +386,73 @@ func (response SaveEmailSourcedefaultJSONResponse) VisitSaveEmailSourceResponse(
 	return err
 }
 
+type DeleteEmailIMAPPullRequestObject struct {
+	SourceId string `json:"sourceId"`
+}
+
+type DeleteEmailIMAPPullResponseObject interface {
+	VisitDeleteEmailIMAPPullResponse(w http.ResponseWriter) error
+}
+
+type DeleteEmailIMAPPull204Response struct {
+}
+
+func (response DeleteEmailIMAPPull204Response) VisitDeleteEmailIMAPPullResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteEmailIMAPPulldefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteEmailIMAPPulldefaultJSONResponse) VisitDeleteEmailIMAPPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveEmailIMAPPullRequestObject struct {
+	SourceId string `json:"sourceId"`
+	Body     *SaveEmailIMAPPullJSONRequestBody
+}
+
+type SaveEmailIMAPPullResponseObject interface {
+	VisitSaveEmailIMAPPullResponse(w http.ResponseWriter) error
+}
+
+type SaveEmailIMAPPull204Response struct {
+}
+
+func (response SaveEmailIMAPPull204Response) VisitSaveEmailIMAPPullResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SaveEmailIMAPPulldefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SaveEmailIMAPPulldefaultJSONResponse) VisitSaveEmailIMAPPullResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -320,6 +461,12 @@ type StrictServerInterface interface {
 
 	// (PUT /api/plugins/email/sources/{sourceId})
 	SaveEmailSource(ctx context.Context, request SaveEmailSourceRequestObject) (SaveEmailSourceResponseObject, error)
+
+	// (DELETE /api/plugins/email/sources/{sourceId}/imap)
+	DeleteEmailIMAPPull(ctx context.Context, request DeleteEmailIMAPPullRequestObject) (DeleteEmailIMAPPullResponseObject, error)
+
+	// (PUT /api/plugins/email/sources/{sourceId}/imap)
+	SaveEmailIMAPPull(ctx context.Context, request SaveEmailIMAPPullRequestObject) (SaveEmailIMAPPullResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -413,6 +560,65 @@ func (sh *strictHandler) SaveEmailSource(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SaveEmailSourceResponseObject); ok {
 		if err := validResponse.VisitSaveEmailSourceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteEmailIMAPPull operation middleware
+func (sh *strictHandler) DeleteEmailIMAPPull(w http.ResponseWriter, r *http.Request, sourceId string) {
+	var request DeleteEmailIMAPPullRequestObject
+
+	request.SourceId = sourceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteEmailIMAPPull(ctx, request.(DeleteEmailIMAPPullRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteEmailIMAPPull")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteEmailIMAPPullResponseObject); ok {
+		if err := validResponse.VisitDeleteEmailIMAPPullResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SaveEmailIMAPPull operation middleware
+func (sh *strictHandler) SaveEmailIMAPPull(w http.ResponseWriter, r *http.Request, sourceId string) {
+	var request SaveEmailIMAPPullRequestObject
+
+	request.SourceId = sourceId
+
+	var body SaveEmailIMAPPullJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SaveEmailIMAPPull(ctx, request.(SaveEmailIMAPPullRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SaveEmailIMAPPull")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SaveEmailIMAPPullResponseObject); ok {
+		if err := validResponse.VisitSaveEmailIMAPPullResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -1419,6 +1419,71 @@ export type SaveGitHubReviewPullResponses = {
 
 export type SaveGitHubReviewPullResponse = SaveGitHubReviewPullResponses[keyof SaveGitHubReviewPullResponses];
 
+export type DeleteEmailImapPullData = {
+    body?: never;
+    path: {
+        sourceId: string;
+    };
+    query?: never;
+    url: '/api/plugins/email/sources/{sourceId}/imap';
+};
+
+export type DeleteEmailImapPullErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteEmailImapPullError = DeleteEmailImapPullErrors[keyof DeleteEmailImapPullErrors];
+
+export type DeleteEmailImapPullResponses = {
+    /**
+     * Pull disabled.
+     */
+    204: void;
+};
+
+export type DeleteEmailImapPullResponse = DeleteEmailImapPullResponses[keyof DeleteEmailImapPullResponses];
+
+export type SaveEmailImapPullData = {
+    body: {
+        /**
+         * imaps://host[:port]. Use imap://host[:port] only for a loopback host, such as a local mail bridge.
+         */
+        address: string;
+        username: string;
+        password: string;
+        /**
+         * A dedicated folder. Pull opens it read-only.
+         */
+        folder?: string;
+    };
+    path: {
+        sourceId: string;
+    };
+    query?: never;
+    url: '/api/plugins/email/sources/{sourceId}/imap';
+};
+
+export type SaveEmailImapPullErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SaveEmailImapPullError = SaveEmailImapPullErrors[keyof SaveEmailImapPullErrors];
+
+export type SaveEmailImapPullResponses = {
+    /**
+     * Pull saved.
+     */
+    204: void;
+};
+
+export type SaveEmailImapPullResponse = SaveEmailImapPullResponses[keyof SaveEmailImapPullResponses];
+
 export type DeleteEmailSourceData = {
     body?: never;
     path: {

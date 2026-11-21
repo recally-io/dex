@@ -199,6 +199,30 @@ Set `taskAgentId` to create a Task for a new thread, which has one object. A
 reply finds the Task of a linked reference. A message whose references link to
 different Tasks is a conflict. A reply to a thread that Dex never saw has more
 than one object, so Dex holds it with `holdUnmatched` or ignores it. A message
-above 2 MiB gets `413`, so the forwarder must remove large files first. Dex
-does not read a mailbox: IMAP Pull needs a client that the standard library
-does not have.
+above 2 MiB gets `413`, so the forwarder must remove large files first.
+
+### IMAP Pull
+
+IMAP Pull reads one folder of a mailbox for a source, so no forwarder is
+necessary. An administrator saves it with
+`PUT /api/plugins/email/sources/{sourceId}/imap`, with the address, the user
+name, the password, and the folder (default `INBOX`). `DELETE` on the same path
+stops it. Deleting the source also deletes its Pull. The password is
+write-only. Use an app password. The `email/imap-pull` job runs every minute.
+
+- Address: `imaps://host[:port]` (default port 993, TLS 1.2 or later).
+  `imap://` without TLS is accepted only for a loopback host.
+- Read-only: Dex opens the folder with `EXAMINE` and reads bodies with
+  `BODY.PEEK`, so it does not set `\Seen` or change the mailbox.
+- Start: the first run, and every UIDVALIDITY change, start after the newest
+  message. Dex does not import old mail.
+- Cursor: Dex stores the last UID that it handled. One run reads at most 50
+  messages. A network or store failure keeps the cursor, so the next run reads
+  the message again. A message above 2 MiB, or one that is not a valid email,
+  is skipped with a warning.
+- Dedupe: Pull and the hook share the change key, the Message-ID. A message that
+  arrives by both paths adds one entry.
+- Each save resets the cursor, so the next run starts after the newest message.
+
+The client is `github.com/emersion/go-imap/v2`, because the standard library
+has no IMAP client.
