@@ -266,6 +266,13 @@ a linked question keeps the Task of that question. Task detail shows questions
 that need an answer, including queued questions. The owner can answer any of
 these questions from its Task. Channels send one Main question at a time.
 The owner can complete, cancel, or reopen a Task. The default list hides closed Tasks.
+In Main or a writable Chat, the agent can list, read, create, and update the
+bot's Tasks, add timeline entries, link the primary Session, and link a GitHub
+PR. The agent creates a Task only when the owner asks for one or agrees to it,
+and only the owner's request completes, cancels, or reopens a Task. Each
+timeline entry shows its author: Owner, Agent, External event, or Source not
+recorded. The agent reads external entries only as event type, author class,
+and link. Task detail links the primary Session.
 The Inbox also links to Routine results.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening

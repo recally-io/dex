@@ -707,6 +707,30 @@ func (e UserItemKind) Valid() bool {
 	}
 }
 
+// Defines values for WorkTaskEntryAuthor.
+const (
+	WorkTaskEntryAuthorAgent    WorkTaskEntryAuthor = "agent"
+	WorkTaskEntryAuthorExternal WorkTaskEntryAuthor = "external"
+	WorkTaskEntryAuthorOwner    WorkTaskEntryAuthor = "owner"
+	WorkTaskEntryAuthorUnknown  WorkTaskEntryAuthor = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the WorkTaskEntryAuthor enum.
+func (e WorkTaskEntryAuthor) Valid() bool {
+	switch e {
+	case WorkTaskEntryAuthorAgent:
+		return true
+	case WorkTaskEntryAuthorExternal:
+		return true
+	case WorkTaskEntryAuthorOwner:
+		return true
+	case WorkTaskEntryAuthorUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkTaskLifecycle.
 const (
 	WorkTaskLifecycleCancelled WorkTaskLifecycle = "cancelled"
@@ -1718,13 +1742,18 @@ type WorkTask struct {
 
 // WorkTaskEntry defines model for WorkTaskEntry.
 type WorkTaskEntry struct {
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"createdAt"`
+	// Author Who wrote the entry. Unknown marks an entry from before authors were recorded.
+	Author    WorkTaskEntryAuthor `json:"author"`
+	Content   string              `json:"content"`
+	CreatedAt int64               `json:"createdAt"`
 
 	// EventId Present for an external timeline entry.
 	EventId *string `json:"eventId,omitempty"`
 	Id      int64   `json:"id"`
 }
+
+// WorkTaskEntryAuthor Who wrote the entry. Unknown marks an entry from before authors were recorded.
+type WorkTaskEntryAuthor string
 
 // WorkTaskGitHubPull defines model for WorkTaskGitHubPull.
 type WorkTaskGitHubPull struct {
@@ -1750,6 +1779,13 @@ type WorkTaskReviewWait struct {
 	Id       int64  `json:"id"`
 	Resolved bool   `json:"resolved"`
 	Revision string `json:"revision"`
+}
+
+// WorkTaskSession The primary work Session of the Task.
+type WorkTaskSession struct {
+	AgentId string `json:"agentId"`
+	Id      int64  `json:"id"`
+	Title   string `json:"title"`
 }
 
 // AgentId defines model for AgentId.
@@ -9432,7 +9468,10 @@ type GetWorkTask200JSONResponse struct {
 	Entries     []WorkTaskEntry      `json:"entries"`
 	GithubPulls []WorkTaskGitHubPull `json:"githubPulls"`
 	Questions   []WorkTaskQuestion   `json:"questions"`
-	Task        WorkTask             `json:"task"`
+
+	// Session The primary work Session of the Task.
+	Session *WorkTaskSession `json:"session,omitempty"`
+	Task    WorkTask         `json:"task"`
 }
 
 func (response GetWorkTask200JSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {

@@ -111,4 +111,6 @@ type Config struct {
 	Tasks         TaskTools
 	Routines      RoutineTools
 	Bots          BotTools
+	// WorkTasks backs the task_* tools of Main and writable Chats.
+	WorkTasks WorkTaskTools
 }

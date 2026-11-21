@@ -241,7 +241,8 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 		}
 		return s.ref(ctx, q, c)
 	}
-	if _, err := sessionSource(ctx, q, r); err != nil {
+	source, err := sessionSource(ctx, q, r)
+	if err != nil {
 		return engine.SessionRef{}, err
 	}
 	now := s.now().UnixMilli()
@@ -255,6 +256,14 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	}
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now}); err != nil {
 		return engine.SessionRef{}, err
+	}
+	// Work for a Task starts here, so the first child of a Task input becomes its primary Session.
+	if taskID, err := workTaskForInput(ctx, q, source.ID); err != nil {
+		return engine.SessionRef{}, err
+	} else if taskID != "" {
+		if err := q.LinkFirstWorkTaskSession(ctx, sqlc.LinkFirstWorkTaskSessionParams{TaskID: taskID, ConversationID: child.ID}); err != nil {
+			return engine.SessionRef{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return engine.SessionRef{}, err

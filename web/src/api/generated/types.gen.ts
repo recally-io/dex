@@ -35,8 +35,21 @@ export type WorkTaskQuestion = {
     queued: boolean;
 };
 
+/**
+ * The primary work Session of the Task.
+ */
+export type WorkTaskSession = {
+    id: number;
+    agentId: string;
+    title: string;
+};
+
 export type WorkTaskEntry = {
     id: number;
+    /**
+     * Who wrote the entry. Unknown marks an entry from before authors were recorded.
+     */
+    author: 'owner' | 'agent' | 'external' | 'unknown';
     /**
      * Present for an external timeline entry.
      */
@@ -1489,6 +1502,7 @@ export type GetWorkTaskResponses = {
      */
     200: {
         task: WorkTask;
+        session?: WorkTaskSession;
         entries: Array<WorkTaskEntry>;
         questions: Array<WorkTaskQuestion>;
         githubPulls: Array<WorkTaskGitHubPull>;
