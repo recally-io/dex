@@ -10,7 +10,6 @@ import (
 	"database/sql"
 )
 
-<<<<<<< HEAD
 const deleteEmailIMAPPull = `-- name: DeleteEmailIMAPPull :exec
 DELETE FROM email_imap_pulls WHERE source_id = ?
 `
@@ -20,8 +19,6 @@ func (q *Queries) DeleteEmailIMAPPull(ctx context.Context, sourceID string) erro
 	return err
 }
 
-=======
->>>>>>> origin/main
 const deleteEmailSource = `-- name: DeleteEmailSource :exec
 DELETE FROM email_sources WHERE id = ?
 `
@@ -47,7 +44,6 @@ func (q *Queries) GetEmailSource(ctx context.Context, id string) (EmailSource, e
 	return i, err
 }
 
-<<<<<<< HEAD
 const listEmailIMAPPulls = `-- name: ListEmailIMAPPulls :many
 SELECT p.source_id, p.address, p.username, p.password, p.folder, p.configuration_id, p.uid_validity, p.last_uid,
   s.task_agent_id, s.hold_unmatched
@@ -134,8 +130,6 @@ func (q *Queries) SaveEmailIMAPPull(ctx context.Context, arg SaveEmailIMAPPullPa
 	return result.RowsAffected()
 }
 
-=======
->>>>>>> origin/main
 const saveEmailSource = `-- name: SaveEmailSource :execrows
 INSERT INTO email_sources (id, secret, task_agent_id, hold_unmatched)
 SELECT ?1, ?2, ?3, ?4
@@ -165,7 +159,6 @@ func (q *Queries) SaveEmailSource(ctx context.Context, arg SaveEmailSourceParams
 	}
 	return result.RowsAffected()
 }
-<<<<<<< HEAD
 
 const setEmailIMAPCursor = `-- name: SetEmailIMAPCursor :exec
 UPDATE email_imap_pulls SET uid_validity = ?1, last_uid = ?2
@@ -189,5 +182,3 @@ func (q *Queries) SetEmailIMAPCursor(ctx context.Context, arg SetEmailIMAPCursor
 	)
 	return err
 }
-=======
->>>>>>> origin/main

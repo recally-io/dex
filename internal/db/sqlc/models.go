@@ -155,7 +155,6 @@ type Dream struct {
 	CreatedAt        int64  `json:"created_at"`
 }
 
-<<<<<<< HEAD
 type EmailImapPull struct {
 	SourceID        string `json:"source_id"`
 	Address         string `json:"address"`
@@ -167,8 +166,6 @@ type EmailImapPull struct {
 	LastUid         int64  `json:"last_uid"`
 }
 
-=======
->>>>>>> origin/main
 type EmailSource struct {
 	ID            string         `json:"id"`
 	Secret        string         `json:"secret"`

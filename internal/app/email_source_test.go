@@ -99,7 +99,6 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 			t.Fatalf("an email alert must carry the source class: %q", alert)
 		}
 	}
-<<<<<<< HEAD
 
 	// The owner can also let Dex read a mailbox folder. The API accepts only a TLS
 	// address off loopback, and only for a saved source.
@@ -109,6 +108,4 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail/imap", map[string]any{"address": "imaps://imap.example.com", "username": "owner"}, nil, http.StatusBadRequest)
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail/imap", pull, nil, http.StatusNoContent)
 	d.must(t, http.MethodDelete, "/api/plugins/email/sources/mail/imap", nil, nil, http.StatusNoContent)
-=======
->>>>>>> origin/main
 }

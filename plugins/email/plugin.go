@@ -11,11 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
-<<<<<<< HEAD
 	"time"
 	"uuid"
-=======
->>>>>>> origin/main
 
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/worktask"
@@ -24,14 +21,9 @@ import (
 )
 
 var (
-<<<<<<< HEAD
 	errInvalid  = errors.New("invalid request")
 	errNotFound = errors.New("email source not found")
 	validID     = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
-=======
-	errInvalid = errors.New("invalid request")
-	validID    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
->>>>>>> origin/main
 )
 
 // New makes the email plugin: signed sources that post raw messages of one address.
@@ -46,32 +38,22 @@ func New(deps plugin.Deps) plugin.Plugin {
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			status := http.StatusInternalServerError
-<<<<<<< HEAD
 			switch {
 			case errors.Is(err, errInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, errNotFound):
 				status = http.StatusNotFound
 			default:
-=======
-			if errors.Is(err, errInvalid) {
-				status = http.StatusBadRequest
-			} else {
->>>>>>> origin/main
 				slog.Error("email plugin api", "err", err)
 			}
 			writeError(w, status, err.Error())
 		},
 	}), api.StdHTTPServerOptions{BaseRouter: routes})
-<<<<<<< HEAD
 	pull := &puller{q: s.q, tasks: s.tasks}
 	return plugin.Plugin{
 		Name: "email", Hooks: hooks, HookLimit: MaxPayload, API: routes,
 		Jobs: []plugin.Job{{Name: "imap-pull", Every: time.Minute, Run: pull.Check}},
 	}
-=======
-	return plugin.Plugin{Name: "email", Hooks: hooks, HookLimit: MaxPayload, API: routes}
->>>>>>> origin/main
 }
 
 type service struct {
@@ -156,7 +138,6 @@ func (s *service) DeleteEmailSource(ctx context.Context, req api.DeleteEmailSour
 	}
 	return api.DeleteEmailSource204Response{}, nil
 }
-<<<<<<< HEAD
 
 // SaveEmailIMAPPull replaces the IMAP folder of a source and its write-only password.
 func (s *service) SaveEmailIMAPPull(ctx context.Context, req api.SaveEmailIMAPPullRequestObject) (api.SaveEmailIMAPPullResponseObject, error) {
@@ -192,5 +173,3 @@ func (s *service) DeleteEmailIMAPPull(ctx context.Context, req api.DeleteEmailIM
 	}
 	return api.DeleteEmailIMAPPull204Response{}, nil
 }
-=======
->>>>>>> origin/main

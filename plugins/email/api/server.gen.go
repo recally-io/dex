@@ -43,7 +43,6 @@ type SaveEmailSourceJSONBody struct {
 	TaskAgentId *string `json:"taskAgentId,omitempty"`
 }
 
-<<<<<<< HEAD
 // SaveEmailIMAPPullJSONBody defines parameters for SaveEmailIMAPPull.
 type SaveEmailIMAPPullJSONBody struct {
 	// Address imaps://host[:port]. Use imap://host[:port] only for a loopback host, such as a local mail bridge.
@@ -61,11 +60,6 @@ type SaveEmailSourceJSONRequestBody SaveEmailSourceJSONBody
 // SaveEmailIMAPPullJSONRequestBody defines body for SaveEmailIMAPPull for application/json ContentType.
 type SaveEmailIMAPPullJSONRequestBody SaveEmailIMAPPullJSONBody
 
-=======
-// SaveEmailSourceJSONRequestBody defines body for SaveEmailSource for application/json ContentType.
-type SaveEmailSourceJSONRequestBody SaveEmailSourceJSONBody
-
->>>>>>> origin/main
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
@@ -74,15 +68,12 @@ type ServerInterface interface {
 
 	// (PUT /api/plugins/email/sources/{sourceId})
 	SaveEmailSource(w http.ResponseWriter, r *http.Request, sourceId string)
-<<<<<<< HEAD
 
 	// (DELETE /api/plugins/email/sources/{sourceId}/imap)
 	DeleteEmailIMAPPull(w http.ResponseWriter, r *http.Request, sourceId string)
 
 	// (PUT /api/plugins/email/sources/{sourceId}/imap)
 	SaveEmailIMAPPull(w http.ResponseWriter, r *http.Request, sourceId string)
-=======
->>>>>>> origin/main
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -146,7 +137,6 @@ func (siw *ServerInterfaceWrapper) SaveEmailSource(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-<<<<<<< HEAD
 // DeleteEmailIMAPPull operation middleware
 func (siw *ServerInterfaceWrapper) DeleteEmailIMAPPull(w http.ResponseWriter, r *http.Request) {
 
@@ -199,8 +189,6 @@ func (siw *ServerInterfaceWrapper) SaveEmailIMAPPull(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
-=======
->>>>>>> origin/main
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -321,11 +309,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-<<<<<<< HEAD
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}/imap", wrapper.DeleteEmailIMAPPull)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}/imap", wrapper.SaveEmailIMAPPull)
-=======
->>>>>>> origin/main
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}", wrapper.DeleteEmailSource)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/plugins/email/sources/{sourceId}", wrapper.SaveEmailSource)
 
@@ -401,7 +386,6 @@ func (response SaveEmailSourcedefaultJSONResponse) VisitSaveEmailSourceResponse(
 	return err
 }
 
-<<<<<<< HEAD
 type DeleteEmailIMAPPullRequestObject struct {
 	SourceId string `json:"sourceId"`
 }
@@ -469,8 +453,6 @@ func (response SaveEmailIMAPPulldefaultJSONResponse) VisitSaveEmailIMAPPullRespo
 	return err
 }
 
-=======
->>>>>>> origin/main
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
@@ -479,15 +461,12 @@ type StrictServerInterface interface {
 
 	// (PUT /api/plugins/email/sources/{sourceId})
 	SaveEmailSource(ctx context.Context, request SaveEmailSourceRequestObject) (SaveEmailSourceResponseObject, error)
-<<<<<<< HEAD
 
 	// (DELETE /api/plugins/email/sources/{sourceId}/imap)
 	DeleteEmailIMAPPull(ctx context.Context, request DeleteEmailIMAPPullRequestObject) (DeleteEmailIMAPPullResponseObject, error)
 
 	// (PUT /api/plugins/email/sources/{sourceId}/imap)
 	SaveEmailIMAPPull(ctx context.Context, request SaveEmailIMAPPullRequestObject) (SaveEmailIMAPPullResponseObject, error)
-=======
->>>>>>> origin/main
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -587,7 +566,6 @@ func (sh *strictHandler) SaveEmailSource(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
 	}
 }
-<<<<<<< HEAD
 
 // DeleteEmailIMAPPull operation middleware
 func (sh *strictHandler) DeleteEmailIMAPPull(w http.ResponseWriter, r *http.Request, sourceId string) {
@@ -647,5 +625,3 @@ func (sh *strictHandler) SaveEmailIMAPPull(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
 	}
 }
-=======
->>>>>>> origin/main
