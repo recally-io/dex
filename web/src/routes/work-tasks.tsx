@@ -294,6 +294,9 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
             <ul className="divide-y divide-border">
               {detail.data.entries.map((entry) => (
                 <li key={entry.id} className="py-3">
+                  <span className="mr-2 text-xs font-medium text-muted-foreground">
+                    {entry.eventId ? "External event" : "Source not recorded"}
+                  </span>
                   <time
                     dateTime={new Date(entry.createdAt).toISOString()}
                     className="text-xs text-muted-foreground"
