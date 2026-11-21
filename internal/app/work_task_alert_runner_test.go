@@ -48,7 +48,7 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	bot.EnvironmentID = machine.ID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
 	secret := strings.Repeat("r", 40)
-	d.must(t, http.MethodPut, "/api/settings/github-webhooks/10", map[string]string{"secret": secret, "issueAgentId": "default"}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret, "issueAgentId": "default"}, nil, http.StatusNoContent)
 	issue := `{"action":"opened","repository":{"id":10},"issue":{"id":17,"number":1,"user":{"login":"maintainer"},"author_association":"MEMBER","title":"Fix login","html_url":"https://github.com/o/r/issues/1","created_at":"2026-11-21T02:00:00Z"}}`
 
 	// When an Issue opens a Task while the runner is away, and the controller restarts.
