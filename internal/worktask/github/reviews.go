@@ -162,7 +162,7 @@ func acceptReview(ctx context.Context, store *worktask.Service, repositoryID, pu
 		Namespace: Namespace(repositoryID), ReceiptKey: receiptKey, ChangeKey: reviewKey(item.ID), Type: "review.submitted",
 		Objects: []worktask.Object{PullRequest(pullNumber)}, Revision: item.Commit,
 		Content: string(chars[:min(len(chars), 32000)]), SourceURL: item.URL, OccurredAt: item.SubmittedAt.UnixMilli(),
-		AuthorLogin: item.User.Login, AuthorAssociation: item.Association, RecordOnly: !item.author.trusted(),
+		AuthorLogin: item.User.Login, AuthorAssociation: item.Association, RecordOnly: !item.trusted(),
 	})
 	if err != nil {
 		return nil, err

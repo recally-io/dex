@@ -140,11 +140,12 @@ func New(cfg Config) http.Handler {
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w = &responseWriter{ResponseWriter: w}
 		parts := strings.Split(r.URL.Path, "/")
-		if strings.HasPrefix(r.URL.Path, "/hooks/github/") {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/hooks/github/"):
 			webhooks.ServeHTTP(w, r)
-		} else if len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads" {
+		case len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads":
 			uploads.ServeHTTP(w, r)
-		} else {
+		default:
 			small.ServeHTTP(w, r)
 		}
 	})
