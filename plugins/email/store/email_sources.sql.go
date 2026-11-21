@@ -11,7 +11,7 @@ import (
 )
 
 const deleteEmailIMAPPull = `-- name: DeleteEmailIMAPPull :exec
-DELETE FROM email_imap_pulls WHERE source_id = ?
+DELETE FROM plugin_email_imap_pulls WHERE source_id = ?
 `
 
 func (q *Queries) DeleteEmailIMAPPull(ctx context.Context, sourceID string) error {
@@ -20,7 +20,7 @@ func (q *Queries) DeleteEmailIMAPPull(ctx context.Context, sourceID string) erro
 }
 
 const deleteEmailSource = `-- name: DeleteEmailSource :exec
-DELETE FROM email_sources WHERE id = ?
+DELETE FROM plugin_email_sources WHERE id = ?
 `
 
 func (q *Queries) DeleteEmailSource(ctx context.Context, id string) error {
@@ -29,12 +29,12 @@ func (q *Queries) DeleteEmailSource(ctx context.Context, id string) error {
 }
 
 const getEmailSource = `-- name: GetEmailSource :one
-SELECT id, secret, task_agent_id, hold_unmatched FROM email_sources WHERE id = ?
+SELECT id, secret, task_agent_id, hold_unmatched FROM plugin_email_sources WHERE id = ?
 `
 
-func (q *Queries) GetEmailSource(ctx context.Context, id string) (EmailSource, error) {
+func (q *Queries) GetEmailSource(ctx context.Context, id string) (PluginEmailSource, error) {
 	row := q.db.QueryRowContext(ctx, getEmailSource, id)
-	var i EmailSource
+	var i PluginEmailSource
 	err := row.Scan(
 		&i.ID,
 		&i.Secret,
@@ -47,7 +47,7 @@ func (q *Queries) GetEmailSource(ctx context.Context, id string) (EmailSource, e
 const listEmailIMAPPulls = `-- name: ListEmailIMAPPulls :many
 SELECT p.source_id, p.address, p.username, p.password, p.folder, p.configuration_id, p.uid_validity, p.last_uid,
   s.task_agent_id, s.hold_unmatched
-FROM email_imap_pulls p JOIN email_sources s ON s.id = p.source_id ORDER BY p.source_id
+FROM plugin_email_imap_pulls p JOIN plugin_email_sources s ON s.id = p.source_id ORDER BY p.source_id
 `
 
 type ListEmailIMAPPullsRow struct {
@@ -98,8 +98,8 @@ func (q *Queries) ListEmailIMAPPulls(ctx context.Context) ([]ListEmailIMAPPullsR
 }
 
 const saveEmailIMAPPull = `-- name: SaveEmailIMAPPull :execrows
-INSERT INTO email_imap_pulls (source_id, address, username, password, folder, configuration_id)
-SELECT s.id, ?1, ?2, ?3, ?4, ?5 FROM email_sources s WHERE s.id = ?6
+INSERT INTO plugin_email_imap_pulls (source_id, address, username, password, folder, configuration_id)
+SELECT s.id, ?1, ?2, ?3, ?4, ?5 FROM plugin_email_sources s WHERE s.id = ?6
 ON CONFLICT (source_id) DO UPDATE SET address = excluded.address, username = excluded.username,
   password = excluded.password, folder = excluded.folder, configuration_id = excluded.configuration_id,
   uid_validity = 0, last_uid = 0
@@ -131,7 +131,7 @@ func (q *Queries) SaveEmailIMAPPull(ctx context.Context, arg SaveEmailIMAPPullPa
 }
 
 const saveEmailSource = `-- name: SaveEmailSource :execrows
-INSERT INTO email_sources (id, secret, task_agent_id, hold_unmatched)
+INSERT INTO plugin_email_sources (id, secret, task_agent_id, hold_unmatched)
 SELECT ?1, ?2, ?3, ?4
 WHERE ?3 IS NULL OR EXISTS (
   SELECT 1 FROM agents a WHERE a.id = ?3 AND a.archived_at IS NULL
@@ -161,7 +161,7 @@ func (q *Queries) SaveEmailSource(ctx context.Context, arg SaveEmailSourceParams
 }
 
 const setEmailIMAPCursor = `-- name: SetEmailIMAPCursor :exec
-UPDATE email_imap_pulls SET uid_validity = ?1, last_uid = ?2
+UPDATE plugin_email_imap_pulls SET uid_validity = ?1, last_uid = ?2
 WHERE source_id = ?3 AND configuration_id = ?4
 `
 

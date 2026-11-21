@@ -1439,8 +1439,11 @@ type OutboxMessageList struct {
 // PluginSetting defines model for PluginSetting.
 type PluginSetting struct {
 	// Enabled The stored choice. dex reads it at start.
-	Enabled bool   `json:"enabled"`
-	Name    string `json:"name"`
+	Enabled bool `json:"enabled"`
+
+	// Error Why an enabled plugin does not run
+	Error *string `json:"error,omitempty"`
+	Name  string  `json:"name"`
 
 	// Running The plugin runs in this process.
 	Running bool `json:"running"`

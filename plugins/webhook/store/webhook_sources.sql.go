@@ -11,7 +11,7 @@ import (
 )
 
 const deleteWebhookSource = `-- name: DeleteWebhookSource :exec
-DELETE FROM webhook_sources WHERE id = ?
+DELETE FROM plugin_webhook_sources WHERE id = ?
 `
 
 func (q *Queries) DeleteWebhookSource(ctx context.Context, id string) error {
@@ -20,12 +20,12 @@ func (q *Queries) DeleteWebhookSource(ctx context.Context, id string) error {
 }
 
 const getWebhookSource = `-- name: GetWebhookSource :one
-SELECT id, secret, task_agent_id, hold_unmatched FROM webhook_sources WHERE id = ?
+SELECT id, secret, task_agent_id, hold_unmatched FROM plugin_webhook_sources WHERE id = ?
 `
 
-func (q *Queries) GetWebhookSource(ctx context.Context, id string) (WebhookSource, error) {
+func (q *Queries) GetWebhookSource(ctx context.Context, id string) (PluginWebhookSource, error) {
 	row := q.db.QueryRowContext(ctx, getWebhookSource, id)
-	var i WebhookSource
+	var i PluginWebhookSource
 	err := row.Scan(
 		&i.ID,
 		&i.Secret,
@@ -36,7 +36,7 @@ func (q *Queries) GetWebhookSource(ctx context.Context, id string) (WebhookSourc
 }
 
 const saveWebhookSource = `-- name: SaveWebhookSource :execrows
-INSERT INTO webhook_sources (id, secret, task_agent_id, hold_unmatched)
+INSERT INTO plugin_webhook_sources (id, secret, task_agent_id, hold_unmatched)
 SELECT ?1, ?2, ?3, ?4
 WHERE ?3 IS NULL OR EXISTS (
   SELECT 1 FROM agents a WHERE a.id = ?3 AND a.archived_at IS NULL

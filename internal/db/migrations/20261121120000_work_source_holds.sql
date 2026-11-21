@@ -10,8 +10,5 @@ CREATE TABLE work_source_holds (
 ) STRICT;
 CREATE INDEX work_source_holds_open ON work_source_holds(held_at) WHERE decision IS NULL;
 
-ALTER TABLE github_webhook_settings ADD COLUMN hold_unmatched INTEGER NOT NULL DEFAULT 0 CHECK (hold_unmatched IN (0, 1));
-
 -- +goose Down
-ALTER TABLE github_webhook_settings DROP COLUMN hold_unmatched;
 DROP TABLE work_source_holds;

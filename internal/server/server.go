@@ -56,6 +56,9 @@ type Config struct {
 	// Plugins add hook and API routes. AvailablePlugins names every plugin of this build.
 	Plugins          []plugin.Plugin
 	AvailablePlugins []string
+	// PluginErrors maps an enabled plugin that does not run to the reason, for example a failed
+	// migration.
+	PluginErrors map[string]string
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string

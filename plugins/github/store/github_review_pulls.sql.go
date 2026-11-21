@@ -10,7 +10,7 @@ import (
 )
 
 const advanceGitHubReviewPull = `-- name: AdvanceGitHubReviewPull :exec
-UPDATE github_review_pulls SET etag = ?1
+UPDATE plugin_github_review_pulls SET etag = ?1
 WHERE repository_id = ?2 AND pull_number = ?3
   AND configuration_id = ?4 AND etag = ?5
 `
@@ -35,7 +35,7 @@ func (q *Queries) AdvanceGitHubReviewPull(ctx context.Context, arg AdvanceGitHub
 }
 
 const deleteGitHubReviewPull = `-- name: DeleteGitHubReviewPull :exec
-DELETE FROM github_review_pulls WHERE repository_id = ? AND pull_number = ?
+DELETE FROM plugin_github_review_pulls WHERE repository_id = ? AND pull_number = ?
 `
 
 type DeleteGitHubReviewPullParams struct {
@@ -49,18 +49,18 @@ func (q *Queries) DeleteGitHubReviewPull(ctx context.Context, arg DeleteGitHubRe
 }
 
 const listGitHubReviewPulls = `-- name: ListGitHubReviewPulls :many
-SELECT repository_id, pull_number, token, configuration_id, etag FROM github_review_pulls ORDER BY repository_id, pull_number
+SELECT repository_id, pull_number, token, configuration_id, etag FROM plugin_github_review_pulls ORDER BY repository_id, pull_number
 `
 
-func (q *Queries) ListGitHubReviewPulls(ctx context.Context) ([]GithubReviewPull, error) {
+func (q *Queries) ListGitHubReviewPulls(ctx context.Context) ([]PluginGithubReviewPull, error) {
 	rows, err := q.db.QueryContext(ctx, listGitHubReviewPulls)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []GithubReviewPull{}
+	items := []PluginGithubReviewPull{}
 	for rows.Next() {
-		var i GithubReviewPull
+		var i PluginGithubReviewPull
 		if err := rows.Scan(
 			&i.RepositoryID,
 			&i.PullNumber,
@@ -82,7 +82,7 @@ func (q *Queries) ListGitHubReviewPulls(ctx context.Context) ([]GithubReviewPull
 }
 
 const saveGitHubReviewPull = `-- name: SaveGitHubReviewPull :exec
-INSERT INTO github_review_pulls (repository_id, pull_number, token, configuration_id) VALUES (?, ?, ?, ?)
+INSERT INTO plugin_github_review_pulls (repository_id, pull_number, token, configuration_id) VALUES (?, ?, ?, ?)
 ON CONFLICT (repository_id, pull_number) DO UPDATE SET
   token = excluded.token, configuration_id = excluded.configuration_id, etag = ''
 `

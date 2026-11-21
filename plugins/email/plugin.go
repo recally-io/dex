@@ -51,7 +51,7 @@ func New(deps plugin.Deps) plugin.Plugin {
 	}), api.StdHTTPServerOptions{BaseRouter: routes})
 	pull := &puller{q: s.q, tasks: s.tasks}
 	return plugin.Plugin{
-		Name: "email", Hooks: hooks, HookLimit: MaxPayload, API: routes,
+		Name: "email", Hooks: hooks, HookLimit: MaxPayload, API: routes, Migrations: Migrations,
 		Jobs: []plugin.Job{{Name: "imap-pull", Every: time.Minute, Run: pull.Check}},
 	}
 }

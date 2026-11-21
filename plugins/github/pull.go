@@ -56,7 +56,7 @@ func (p *Puller) Check(ctx context.Context) {
 	}
 }
 
-func (p *Puller) pull(ctx context.Context, row store.GithubReviewPull) error {
+func (p *Puller) pull(ctx context.Context, row store.PluginGithubReviewPull) error {
 	body, _, _, err := p.get(ctx, fmt.Sprintf("/repositories/%d", row.RepositoryID), row.Token, "")
 	if err != nil {
 		return err

@@ -10,6 +10,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/plugins/github/store"
 )
@@ -21,6 +22,9 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	if err := plugin.Migrate(ctx, conn, "github", Migrations); err != nil {
+		t.Fatal(err)
+	}
 	q := sqlc.New(conn)
 	gh := store.New(conn)
 	if _, err := q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
@@ -76,7 +80,7 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 	t.Cleanup(srv.Close)
 	p := NewPuller(gh, tasks)
 	p.origin = srv.URL
-	current := func() store.GithubReviewPull {
+	current := func() store.PluginGithubReviewPull {
 		t.Helper()
 		rows, err := gh.ListGitHubReviewPulls(ctx)
 		if err != nil || len(rows) != 1 {

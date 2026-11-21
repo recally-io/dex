@@ -29,6 +29,12 @@ type Agent struct {
 	FallbackModelID             string         `json:"fallback_model_id"`
 }
 
+type AppliedPluginMigration struct {
+	Plugin    string `json:"plugin"`
+	Version   int64  `json:"version"`
+	AppliedAt int64  `json:"applied_at"`
+}
+
 type Artifact struct {
 	ID                    string `json:"id"`
 	AgentID               string `json:"agent_id"`
@@ -155,22 +161,8 @@ type Dream struct {
 	CreatedAt        int64  `json:"created_at"`
 }
 
-type EmailImapPull struct {
-	SourceID        string `json:"source_id"`
-	Address         string `json:"address"`
-	Username        string `json:"username"`
-	Password        string `json:"password"`
-	Folder          string `json:"folder"`
-	ConfigurationID string `json:"configuration_id"`
-	UidValidity     int64  `json:"uid_validity"`
-	LastUid         int64  `json:"last_uid"`
-}
-
-type EmailSource struct {
-	ID            string         `json:"id"`
-	Secret        string         `json:"secret"`
-	TaskAgentID   sql.NullString `json:"task_agent_id"`
-	HoldUnmatched int64          `json:"hold_unmatched"`
+type EnabledPlugin struct {
+	Name string `json:"name"`
 }
 
 type ExecutionEnvironment struct {
@@ -218,21 +210,6 @@ type ForkReceipt struct {
 	ForkID      int64  `json:"fork_id"`
 }
 
-type GithubReviewPull struct {
-	RepositoryID    int64  `json:"repository_id"`
-	PullNumber      int64  `json:"pull_number"`
-	Token           string `json:"token"`
-	ConfigurationID string `json:"configuration_id"`
-	Etag            string `json:"etag"`
-}
-
-type GithubWebhookSetting struct {
-	RepositoryID  int64          `json:"repository_id"`
-	Secret        string         `json:"secret"`
-	IssueAgentID  sql.NullString `json:"issue_agent_id"`
-	HoldUnmatched int64          `json:"hold_unmatched"`
-}
-
 type OnePassword struct {
 	ID                  int64  `json:"id"`
 	Mode                string `json:"mode"`
@@ -276,11 +253,6 @@ type OutboxMessage struct {
 	DismissedAt        sql.NullInt64  `json:"dismissed_at"`
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
-}
-
-type PluginSetting struct {
-	Name    string `json:"name"`
-	Enabled int64  `json:"enabled"`
 }
 
 type Provider struct {
@@ -447,13 +419,6 @@ type TelegramSetting struct {
 	PairingExpires int64  `json:"pairing_expires"`
 	RetryAt        int64  `json:"retry_at"`
 	Options        string `json:"options"`
-}
-
-type WebhookSource struct {
-	ID            string         `json:"id"`
-	Secret        string         `json:"secret"`
-	TaskAgentID   sql.NullString `json:"task_agent_id"`
-	HoldUnmatched int64          `json:"hold_unmatched"`
 }
 
 type WechatRuntime struct {

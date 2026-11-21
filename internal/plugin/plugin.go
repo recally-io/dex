@@ -5,6 +5,7 @@ package plugin
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"net/http"
 	"time"
 
@@ -31,6 +32,8 @@ type Plugin struct {
 	API   http.Handler
 	Jobs  []Job
 	Tools []worktask.LinkTool
+	// Migrations holds migrations/*.sql, the schema of the plugin. See Migrate.
+	Migrations fs.FS
 }
 
 // Job runs on the core scheduler. A job checks durable state, so a missed run is safe.

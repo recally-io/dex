@@ -12,6 +12,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/worktask"
 )
 
@@ -22,6 +23,9 @@ func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	if err := plugin.Migrate(ctx, conn, "github", Migrations); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}

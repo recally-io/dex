@@ -8,7 +8,7 @@ import (
 	"database/sql"
 )
 
-type WebhookSource struct {
+type PluginWebhookSource struct {
 	ID            string         `json:"id"`
 	Secret        string         `json:"secret"`
 	TaskAgentID   sql.NullString `json:"task_agent_id"`

@@ -14,7 +14,7 @@ request IDs across the two stores. Their commits are separate; reconciliation
 must handle native admission before the receipt write and a receipt that
 never reached native admission.
 
-- `internal/db/migrations/` is the only schema source. Goose migrations are
+- `internal/db/migrations/` is the core schema. Goose migrations are
   plain SQL with `-- +goose Up` and `-- +goose Down` sections. Create one with
   `goose -dir internal/db/migrations create <name> sql`.
 - dex has no separate deploy step, so `db.Open` applies the migrations on
@@ -22,9 +22,13 @@ never reached native admission.
 - A release branch can ship a migration with a later version than migrations
   on main, so `db.Open` also applies lower versions that are missing. A
   migration must not depend on a migration that another branch adds.
+- A plugin keeps its schema in `plugins/<name>/migrations/` with versions
+  `00001`, `00002`, and so on. Name its tables `plugin_<name>_<table>`. A core
+  table never uses the `plugin_` prefix and never refers to a plugin table. dex
+  applies plugin migrations only for an enabled plugin. See
+  [plugin migrations](../../docs/dev/plugins.md#plugin-migrations).
 - Write core queries in `internal/db/queries/` and plugin queries in
-  `plugins/<name>/queries/`. Plugin tables also use core migrations, so they
-  exist when the plugin is off. Run `mise run generate:db` and commit
+  `plugins/<name>/queries/`. Run `mise run generate:db` and commit
   `internal/db/sqlc/` and `plugins/<name>/store/`. `mise run check:db-drift` fails when the
   committed code differs from the generated code.
 - Use `STRICT` tables.

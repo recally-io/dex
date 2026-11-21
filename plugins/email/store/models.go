@@ -8,7 +8,7 @@ import (
 	"database/sql"
 )
 
-type EmailSource struct {
+type PluginEmailSource struct {
 	ID            string         `json:"id"`
 	Secret        string         `json:"secret"`
 	TaskAgentID   sql.NullString `json:"task_agent_id"`

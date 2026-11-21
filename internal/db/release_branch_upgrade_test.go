@@ -55,9 +55,9 @@ func TestUserUpgradesFromAReleaseBranchThatSkippedMainMigrations(t *testing.T) {
 			t.Fatalf("a release-branch database must upgrade: %v", err)
 		}
 		// Then the skipped migrations ran, including their seed rows.
-		var enabled int
-		if err := conn.QueryRowContext(t.Context(), "SELECT enabled FROM plugin_settings WHERE name = 'github'").Scan(&enabled); err != nil || enabled != 1 {
-			t.Fatalf("the skipped plugin_settings migration must run: %d %v", enabled, err)
+		var enabled string
+		if err := conn.QueryRowContext(t.Context(), "SELECT name FROM enabled_plugins").Scan(&enabled); err != nil || enabled != "github" {
+			t.Fatalf("the skipped plugin migrations must turn GitHub on: %q %v", enabled, err)
 		}
 		if err := conn.Close(); err != nil {
 			t.Fatal(err)

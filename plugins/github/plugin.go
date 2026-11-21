@@ -51,7 +51,7 @@ func New(deps plugin.Deps) plugin.Plugin {
 	}), api.StdHTTPServerOptions{BaseRouter: routes})
 	pull := NewPuller(s.q, s.tasks)
 	return plugin.Plugin{
-		Name: "github", Hooks: hooks, HookLimit: MaxPayload, API: routes,
+		Name: "github", Hooks: hooks, HookLimit: MaxPayload, API: routes, Migrations: Migrations,
 		Jobs:  []plugin.Job{{Name: "review-pull", Every: time.Minute, Run: pull.Check}},
 		Tools: []worktask.LinkTool{pullTool},
 	}

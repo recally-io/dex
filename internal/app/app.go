@@ -133,7 +133,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	workTasks := worktask.New(conn, func(id int64) { chats.WakeConversation(id) })
-	plugins, available, err := startPlugins(ctx, q, cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
+	plugins, available, pluginErrors, err := startPlugins(ctx, q, cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
 	if err != nil {
 		cancel()
 		jobs.Close()
@@ -427,7 +427,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
-		Plugins:   plugins, AvailablePlugins: available,
+		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine:  native,
 		Envs:    envs,
 		Runners: envs.Runners(),
