@@ -478,5 +478,5 @@ agent prevents replacement and keeps its current
 resources in place.
 Keep `.env` files out of Git and set mode `0600`. The API hides values, but
 the model can read files and run `env`. Tool output becomes part of the transcript.
-See [extension architecture](dev/architecture.md#extensions) for file loading
+See [extension architecture](dev/extensions.md) for file loading
 and resource lifetime.
