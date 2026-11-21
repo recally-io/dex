@@ -3,11 +3,18 @@ package app_test
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
+	"errors"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-imap/v2/imapserver"
+	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 
 	"github.com/recally-io/dex/internal/api"
 )
@@ -108,4 +115,63 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail/imap", map[string]any{"address": "imaps://imap.example.com", "username": "owner"}, nil, http.StatusBadRequest)
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail/imap", pull, nil, http.StatusNoContent)
 	d.must(t, http.MethodDelete, "/api/plugins/email/sources/mail/imap", nil, nil, http.StatusNoContent)
+}
+
+func TestUserLetsDexReadAMailboxFolder(t *testing.T) {
+	t.Parallel()
+	// Given a mailbox server on loopback and an email source.
+	mem := imapmemserver.New()
+	user := imapmemserver.NewUser("owner", "app-password")
+	if err := user.Create("Dex", nil); err != nil {
+		t.Fatal(err)
+	}
+	mem.AddUser(user)
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := imapserver.New(&imapserver.Options{
+		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return mem.NewSession(), nil, nil
+		},
+		InsecureAuth: true,
+		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}},
+	})
+	go func() { _ = server.Serve(ln) }()
+	t.Cleanup(func() { _ = server.Close() })
+	dataDir := t.TempDir()
+	d := startDex(t, dataDir, "")
+	d.must(t, http.MethodPut, "/api/settings/plugins/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
+	d.stop()
+	d = startDex(t, dataDir, "")
+	source := map[string]any{"secret": strings.Repeat("m", 40), "taskAgentId": "default"}
+	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail", source, nil, http.StatusNoContent)
+
+	// When the owner saves a Pull and dex starts again.
+	pull := map[string]any{"address": "imap://" + ln.Addr().String(), "username": "owner", "password": "app-password", "folder": "Dex"}
+	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail/imap", pull, nil, http.StatusNoContent)
+	d.stop()
+	d = startDex(t, dataDir, "")
+
+	// Then the email/imap-pull job reads the folder and stores its cursor.
+	conn := controlWriteDB(t, dataDir)
+	validity := func() (int64, error) {
+		var v int64
+		err := conn.QueryRowContext(t.Context(), "SELECT uid_validity FROM email_imap_pulls WHERE source_id = 'mail'").Scan(&v)
+		return v, err
+	}
+	eventually(t, "IMAP cursor", func() (bool, any) {
+		v, err := validity()
+		return err == nil && v != 0, []any{v, err}
+	})
+	// A new source secret keeps the Pull. Deleting the source deletes the Pull.
+	source["secret"] = strings.Repeat("n", 40)
+	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail", source, nil, http.StatusNoContent)
+	if v, err := validity(); err != nil || v == 0 {
+		t.Fatalf("saving the source must keep its Pull: %d %v", v, err)
+	}
+	d.must(t, http.MethodDelete, "/api/plugins/email/sources/mail", nil, nil, http.StatusNoContent)
+	if _, err := validity(); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("deleting the source must delete its Pull: %v", err)
+	}
 }

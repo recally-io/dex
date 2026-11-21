@@ -199,8 +199,8 @@ reach the agent. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
 cannot send messages or change settings.
 
-`control.sqlite` holds provider keys, channel tokens, and WeChat context tokens as
-plain text. WeChat logs exclude credentials and remote error text. The
+`control.sqlite` holds provider keys, channel tokens, WeChat context tokens,
+plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain text. WeChat logs exclude credentials and remote error text. The
 data directory is created with mode 0700. The API never returns a key or a
 token.
 
