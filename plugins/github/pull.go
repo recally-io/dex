@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/worktask"
+	"github.com/recally-io/dex/plugins/github/store"
 )
 
 const maxReviewPages = 20
@@ -23,15 +23,15 @@ var repositoryName = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$`)
 
 // Puller polls configured PRs and saves the last accepted single-page ETag.
 type Puller struct {
-	q      *sqlc.Queries
-	store  *worktask.Service
+	q      *store.Queries
+	tasks  *worktask.Service
 	client *http.Client
 	origin string
 }
 
 // NewPuller configures a client that sends credentials only to the GitHub API.
-func NewPuller(q *sqlc.Queries, store *worktask.Service) *Puller {
-	return &Puller{q: q, store: store, origin: "https://api.github.com", client: &http.Client{
+func NewPuller(q *store.Queries, tasks *worktask.Service) *Puller {
+	return &Puller{q: q, tasks: tasks, origin: "https://api.github.com", client: &http.Client{
 		Timeout:       15 * time.Second,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 	}}
@@ -56,7 +56,7 @@ func (p *Puller) Check(ctx context.Context) {
 	}
 }
 
-func (p *Puller) pull(ctx context.Context, row sqlc.GithubReviewPull) error {
+func (p *Puller) pull(ctx context.Context, row store.GithubReviewPull) error {
 	body, _, _, err := p.get(ctx, fmt.Sprintf("/repositories/%d", row.RepositoryID), row.Token, "")
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func (p *Puller) pull(ctx context.Context, row sqlc.GithubReviewPull) error {
 		if unchanged {
 			return nil
 		}
-		_, count, err := acceptReviewPage(ctx, p.store, row.RepositoryID, row.PullNumber, body, rule)
+		_, count, err := acceptReviewPage(ctx, p.tasks, row.RepositoryID, row.PullNumber, body, rule)
 		if err != nil {
 			return err
 		}
@@ -97,7 +97,7 @@ func (p *Puller) pull(ctx context.Context, row sqlc.GithubReviewPull) error {
 		if page == 1 && count < 100 {
 			next = headers.Get("ETag")
 		}
-		return p.q.AdvanceGitHubReviewPull(ctx, sqlc.AdvanceGitHubReviewPullParams{RepositoryID: row.RepositoryID, PullNumber: row.PullNumber, ConfigurationID: row.ConfigurationID, PreviousEtag: row.Etag, NextEtag: next})
+		return p.q.AdvanceGitHubReviewPull(ctx, store.AdvanceGitHubReviewPullParams{RepositoryID: row.RepositoryID, PullNumber: row.PullNumber, ConfigurationID: row.ConfigurationID, PreviousEtag: row.Etag, NextEtag: next})
 	}
 	return errors.New("GitHub review page limit exceeded")
 }

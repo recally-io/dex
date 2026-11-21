@@ -29,10 +29,10 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/live"
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/worktask"
-	"github.com/recally-io/dex/internal/worktask/github"
 	"github.com/recally-io/dex/web"
 )
 
@@ -52,6 +52,9 @@ type Config struct {
 	Envs   *execenv.Manager
 	// Runners enrolls remote machines and serves their sessions.
 	Runners *execenv.Runners
+
+	// Plugins add hook and API routes.
+	Plugins []plugin.Plugin
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
@@ -130,19 +133,26 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
-	mux.HandleFunc("POST /hooks/github/{repositoryId}", h.receiveGitHubWebhook)
+	for _, p := range cfg.Plugins {
+		if p.Hooks != nil {
+			mux.Handle("/hooks/"+p.Name+"/", http.MaxBytesHandler(p.Hooks, p.HookLimit))
+		}
+		if p.API != nil {
+			mux.Handle("/api/plugins/"+p.Name+"/", p.API)
+		}
+	}
 	mux.HandleFunc("/hooks/", http.NotFound)
 	mux.Handle("/", web.Handler())
 	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
 	// multipart headers.
 	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)
-	webhooks := http.MaxBytesHandler(mux, github.MaxPayload)
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w = &responseWriter{ResponseWriter: w}
 		parts := strings.Split(r.URL.Path, "/")
 		switch {
-		case strings.HasPrefix(r.URL.Path, "/hooks/github/"):
-			webhooks.ServeHTTP(w, r)
+		case strings.HasPrefix(r.URL.Path, "/hooks/"):
+			// Each plugin limits the body of its own hooks.
+			mux.ServeHTTP(w, r)
 		case len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads":
 			uploads.ServeHTTP(w, r)
 		default:
@@ -239,7 +249,11 @@ func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	ctx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 	ready := h.Engine != nil && h.Engine.Health(ctx) == nil
-	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready}, nil
+	plugins := make([]string, 0, len(h.Plugins))
+	for _, p := range h.Plugins {
+		plugins = append(plugins, p.Name)
+	}
+	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready, Plugins: plugins}, nil
 }
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

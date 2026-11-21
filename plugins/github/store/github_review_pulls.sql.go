@@ -3,7 +3,7 @@
 //   sqlc v1.31.1
 // source: github_review_pulls.sql
 
-package sqlc
+package store
 
 import (
 	"context"

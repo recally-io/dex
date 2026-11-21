@@ -267,8 +267,9 @@ that need an answer, including queued questions. The owner can answer any of
 these questions from its Task. Channels send one Main question at a time.
 The owner can complete, cancel, or reopen a Task. The default list hides closed Tasks.
 In Main or a writable Chat, the agent can list, read, create, and update the
-bot's Tasks, add timeline entries, link the primary Session, and link a GitHub
-PR. The agent creates a Task only when the owner asks for one or agrees to it,
+bot's Tasks, add timeline entries, and link the primary Session. When the
+GitHub plugin is on, the agent can also link a GitHub PR. GitHub, like other
+optional sources, is a plugin; this build turns it on. The agent creates a Task only when the owner asks for one or agrees to it,
 and only the owner's request completes, cancels, or reopens a Task. Each
 timeline entry shows its author: Owner, Agent, External event, or Source not
 recorded. The agent reads external entries only as event type, author class,

@@ -11,6 +11,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/worktask"
+	"github.com/recally-io/dex/plugins/github/store"
 )
 
 func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
@@ -21,18 +22,19 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
+	gh := store.New(conn)
 	if _, err := q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	store := worktask.New(conn, nil)
-	task, err := store.Create(ctx, "default", "Review")
+	tasks := worktask.New(conn, nil)
+	task, err := tasks.Create(ctx, "default", "Review")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.LinkObject(ctx, "default", task.ID, Namespace(10), PullRequest(2)); err != nil {
+	if err := tasks.LinkObject(ctx, "default", task.ID, Namespace(10), PullRequest(2)); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.SaveGitHubReviewPull(ctx, sqlc.SaveGitHubReviewPullParams{RepositoryID: 10, PullNumber: 2, Token: "test-only", ConfigurationID: "config"}); err != nil {
+	if err := gh.SaveGitHubReviewPull(ctx, store.SaveGitHubReviewPullParams{RepositoryID: 10, PullNumber: 2, Token: "test-only", ConfigurationID: "config"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,11 +74,11 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	p := NewPuller(q, store)
+	p := NewPuller(gh, tasks)
 	p.origin = srv.URL
-	current := func() sqlc.GithubReviewPull {
+	current := func() store.GithubReviewPull {
 		t.Helper()
-		rows, err := q.ListGitHubReviewPulls(ctx)
+		rows, err := gh.ListGitHubReviewPulls(ctx)
 		if err != nil || len(rows) != 1 {
 			t.Fatalf("list pull sources: %d, %v", len(rows), err)
 		}
@@ -97,7 +99,7 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 	if err := p.pull(ctx, current()); err != nil {
 		t.Fatal(err)
 	}
-	detail, err := store.Detail(ctx, "default", task.ID)
+	detail, err := tasks.Detail(ctx, "default", task.ID)
 	if err != nil || len(detail.Entries) != 1 {
 		t.Fatalf("expected one Task entry: %d, %v", len(detail.Entries), err)
 	}

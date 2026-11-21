@@ -17,7 +17,6 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/worktask"
-	"github.com/recally-io/dex/internal/worktask/github"
 )
 
 // ErrInvalid means the tool call cannot change this Task. The message tells the model why.
@@ -40,9 +39,22 @@ func New(conn *sql.DB) *Service {
 	return &Service{db: conn, q: sqlc.New(conn), now: time.Now}
 }
 
-// Handlers binds the engine tools to this service.
-func (s *Service) Handlers() engine.WorkTaskTools {
-	return engine.WorkTaskTools{List: s.List, Get: s.Get, New: s.New, Update: s.Update, Append: s.Append}
+// Handlers binds the engine tools to this service. links are the tools of the enabled plugins.
+func (s *Service) Handlers(links []worktask.LinkTool) engine.WorkTaskTools {
+	tools := engine.WorkTaskTools{List: s.List, Get: s.Get, New: s.New, Update: s.Update, Append: s.Append}
+	for _, link := range links {
+		tools.Links = append(tools.Links, engine.WorkTaskLinkTool{
+			Name: link.Name, Description: link.Description, Rules: link.Rules, Properties: link.Properties, Required: link.Required,
+			Invoke: func(ctx context.Context, c engine.TaskContext, taskID string, args []byte) (engine.WorkTaskInfo, error) {
+				l, err := link.Parse(args)
+				if err != nil {
+					return engine.WorkTaskInfo{}, invalid("%v", err)
+				}
+				return s.Link(ctx, c, link.Name, taskID, l)
+			},
+		})
+	}
+	return tools
 }
 
 func invalid(format string, args ...any) error {
@@ -290,10 +302,7 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a engine.Wor
 	default:
 		return engine.WorkTaskInfo{}, invalid("lifecycle is open, completed, or cancelled")
 	}
-	if p := a.GitHubPull; p != nil && (p.RepositoryID <= 0 || p.PullNumber <= 0 || strings.TrimSpace(p.WaitRevision) != p.WaitRevision || len(p.WaitRevision) > 512) {
-		return engine.WorkTaskInfo{}, invalid("githubPull needs a numeric repositoryId, a pullNumber, and an optional commit SHA")
-	}
-	if title == "" && a.Lifecycle == "" && a.Session == "" && a.GitHubPull == nil {
+	if title == "" && a.Lifecycle == "" && a.Session == "" {
 		return engine.WorkTaskInfo{}, invalid("give at least one field to change")
 	}
 	return mutate(ctx, s, c, "update", func(q *sqlc.Queries, conv sqlc.Conversation, source sqlc.Submission, now int64) (engine.WorkTaskInfo, error) {
@@ -323,11 +332,6 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a engine.Wor
 				return engine.WorkTaskInfo{}, err
 			}
 		}
-		if p := a.GitHubPull; p != nil {
-			if err := bindPull(ctx, q, c.AgentID, task, *p, now); err != nil {
-				return engine.WorkTaskInfo{}, err
-			}
-		}
 		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
 			return engine.WorkTaskInfo{}, err
 		}
@@ -351,25 +355,38 @@ func childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id 
 	return child, err
 }
 
-func bindPull(ctx context.Context, q *sqlc.Queries, agentID string, task sqlc.WorkTask, p engine.WorkTaskGitHubPull, now int64) error {
-	namespace, object := github.Namespace(p.RepositoryID), github.PullRequest(p.PullNumber)
-	n, err := q.LinkWorkTaskObject(ctx, sqlc.LinkWorkTaskObjectParams{AgentID: agentID, TaskID: task.ID, Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key})
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return invalid("PR %d of repository %d is linked to another Task", p.PullNumber, p.RepositoryID)
-	}
-	if p.WaitRevision == "" {
-		return nil
-	}
-	if task.Lifecycle != "open" {
-		return invalid("a closed Task cannot wait for a review")
-	}
-	var alert int64
-	if p.AlertMain {
-		alert = 1
-	}
-	_, err = q.AddWorkTaskWait(ctx, sqlc.AddWorkTaskWaitParams{AgentID: agentID, TaskID: task.ID, Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key, EventType: github.ReviewSubmitted, Revision: p.WaitRevision, AfterAt: now, Alert: alert})
-	return err
+// Link writes the link of one plugin tool call with its replay record. A wait starts at the call time.
+func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID string, l worktask.Link) (engine.WorkTaskInfo, error) {
+	return mutate(ctx, s, c, tool, func(q *sqlc.Queries, _ sqlc.Conversation, _ sqlc.Submission, now int64) (engine.WorkTaskInfo, error) {
+		task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: c.AgentID})
+		if err != nil {
+			return engine.WorkTaskInfo{}, notFound(err)
+		}
+		n, err := q.LinkWorkTaskObject(ctx, sqlc.LinkWorkTaskObjectParams{AgentID: c.AgentID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key})
+		if err != nil {
+			return engine.WorkTaskInfo{}, err
+		}
+		if n == 0 {
+			return engine.WorkTaskInfo{}, invalid("%s is linked to another Task", l.Name)
+		}
+		if l.WaitEvent != "" {
+			if task.Lifecycle != "open" {
+				return engine.WorkTaskInfo{}, invalid("a closed Task cannot wait for %s", l.Name)
+			}
+			var alert int64
+			if l.Alert {
+				alert = 1
+			}
+			if _, err := q.AddWorkTaskWait(ctx, sqlc.AddWorkTaskWaitParams{AgentID: c.AgentID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key, EventType: l.WaitEvent, Revision: l.WaitRevision, AfterAt: now, Alert: alert}); err != nil {
+				return engine.WorkTaskInfo{}, err
+			}
+		}
+		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
+			return engine.WorkTaskInfo{}, err
+		}
+		if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {
+			return engine.WorkTaskInfo{}, err
+		}
+		return taskInfo(ctx, q, task)
+	})
 }

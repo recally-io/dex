@@ -27,6 +27,9 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/mcptest`          | Local MCP test servers; no production execution                                    |
 | `internal/settings`         | Global providers, model checks, 1Password credentials, access token                |
 | `internal/agent`            | Agent settings, activity, paths, channel configuration                             |
+| `internal/worktask`         | Tasks, the source event store, holds, waits, and the `task_*` tools                |
+| `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools   |
+| `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it         |
 | `web`                       | React UI, built into `web/dist` and embedded                                       |
 
 ## Rules
@@ -70,11 +73,12 @@ Read this before you change code, dependencies, native execution, or stored data
   The global receipt gate must order receipt commits and maintenance confirmation.
 - Reload replaces only the selected agent's resources. Tools and stdio MCP
   receive an explicit environment. Do not change the dex process environment.
-- Do not edit generated code: `internal/db/sqlc/` (`mise run generate:db`),
-  `internal/api/server.gen.go` and `web/src/api/generated/`
+- Do not edit generated code: `internal/db/sqlc/` and `plugins/*/store/`
+  (`mise run generate:db`), `internal/api/server.gen.go`,
+  `plugins/*/api/server.gen.go`, and `web/src/api/generated/`
   (`mise run generate:api`).
 - `api/openapi.yaml` is the only source of the HTTP API. Change it first, then
-  generate.
+  generate. Tag each plugin operation with the plugin name.
 - A fix covers every entry point with the same failure mechanism. Search for
   the pattern, and re-check the callers, the stored data, and the tests that
   depend on the old meaning.

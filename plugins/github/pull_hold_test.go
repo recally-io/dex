@@ -13,6 +13,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/worktask"
+	"github.com/recally-io/dex/plugins/github/store"
 )
 
 func TestUserPullHoldsReviewsOnlyWithTheWebhookRule(t *testing.T) {
@@ -22,9 +23,9 @@ func TestUserPullHoldsReviewsOnlyWithTheWebhookRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	q := sqlc.New(conn)
-	store := worktask.New(conn, nil)
-	if err := q.SaveGitHubReviewPull(ctx, sqlc.SaveGitHubReviewPullParams{RepositoryID: 10, PullNumber: 3, Token: "test-only", ConfigurationID: "config"}); err != nil {
+	gh := store.New(conn)
+	tasks := worktask.New(conn, nil)
+	if err := gh.SaveGitHubReviewPull(ctx, store.SaveGitHubReviewPullParams{RepositoryID: 10, PullNumber: 3, Token: "test-only", ConfigurationID: "config"}); err != nil {
 		t.Fatal(err)
 	}
 	// Each pull returns a new trusted review of a PR that no Task links.
@@ -40,18 +41,18 @@ func TestUserPullHoldsReviewsOnlyWithTheWebhookRule(t *testing.T) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	p := NewPuller(q, store)
+	p := NewPuller(gh, tasks)
 	p.origin = srv.URL
 	pull := func() []sqlc.ListHeldWorkSourceEventsRow {
 		t.Helper()
-		rows, err := q.ListGitHubReviewPulls(ctx)
+		rows, err := gh.ListGitHubReviewPulls(ctx)
 		if err != nil || len(rows) != 1 {
 			t.Fatalf("pull configuration: %+v, %v", rows, err)
 		}
 		if err := p.pull(ctx, rows[0]); err != nil {
 			t.Fatal(err)
 		}
-		held, err := store.ListHeld(ctx)
+		held, err := tasks.ListHeld(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +62,7 @@ func TestUserPullHoldsReviewsOnlyWithTheWebhookRule(t *testing.T) {
 	if held := pull(); len(held) != 0 {
 		t.Fatalf("Pull without a Webhook rule must hold nothing: %+v", held)
 	}
-	if _, err := q.SaveGitHubWebhook(ctx, sqlc.SaveGitHubWebhookParams{RepositoryID: 10, Secret: strings.Repeat("s", 32), HoldUnmatched: 1}); err != nil {
+	if _, err := gh.SaveGitHubWebhook(ctx, store.SaveGitHubWebhookParams{RepositoryID: 10, Secret: strings.Repeat("s", 32), HoldUnmatched: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if held := pull(); len(held) != 1 || held[0].EventType != ReviewSubmitted {

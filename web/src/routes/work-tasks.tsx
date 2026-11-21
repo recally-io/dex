@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  getHealthOptions,
   getWorkTaskOptions,
   listAgentsOptions,
   listWorkTasksOptions,
@@ -21,6 +22,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { TaskLinks } from "../components/task-links";
+import { GitHubPullForm } from "../plugins/github/pull-form";
 import { HeldEvents } from "../components/held-events";
 import { inboxOptions } from "../lib/inbox";
 import { newId } from "../lib/utils";
@@ -152,6 +154,7 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
   const path = { agentId, taskId };
   const options = getWorkTaskOptions({ path });
   const detail = useQuery({ ...options, refetchInterval: 3000 });
+  const health = useQuery(getHealthOptions());
   const client = useQueryClient();
 
   const lifecycle = useMutation({
@@ -273,12 +276,11 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
               </Link>
             </Section>
           ) : null}
-          <TaskLinks
-            key={taskId}
-            path={path}
-            links={detail.data.links}
-            open={detail.data.task.lifecycle === "open"}
-          />
+          <TaskLinks links={detail.data.links} open={detail.data.task.lifecycle === "open"}>
+            {detail.data.task.lifecycle === "open" && health.data?.plugins.includes("github") ? (
+              <GitHubPullForm key={taskId} path={path} />
+            ) : null}
+          </TaskLinks>
           <Section title="Timeline">
             <form
               className="space-y-2"
