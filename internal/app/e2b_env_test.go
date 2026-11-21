@@ -104,6 +104,12 @@ func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 	}
 
 	// Switching bot back to local cleans up the E2B sandbox automatically.
+	// The turn returns its answer before the chat settles, and a busy chat blocks the switch.
+	eventually(t, "chat settled before switch", func() (bool, any) {
+		var info chatInfo
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &info)
+		return !info.Busy, info.Busy
+	})
 	killsBeforeSwitch := fake.Counts().Killed
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &defAgent)
 	defAgent.EnvironmentID = ""
