@@ -2022,6 +2022,16 @@ type SaveGitHubWebhookJSONBody struct {
 	Secret       *string `json:"secret,omitempty"`
 }
 
+// SaveWebhookSourceJSONBody defines parameters for SaveWebhookSource.
+type SaveWebhookSourceJSONBody struct {
+	// HoldUnmatched Hold other unmatched events in the Inbox. The default ignores them.
+	HoldUnmatched *bool   `json:"holdUnmatched,omitempty"`
+	Secret        *string `json:"secret,omitempty"`
+
+	// TaskAgentId Create a Task under this agent for an unmatched event with exactly one object. Omit to disable creation.
+	TaskAgentId *string `json:"taskAgentId,omitempty"`
+}
+
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgentInput
 
@@ -2129,6 +2139,9 @@ type ListProviderModelsJSONRequestBody = ProviderModelsInput
 
 // SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
 type SetProviderJSONRequestBody = ProviderInput
+
+// SaveWebhookSourceJSONRequestBody defines body for SaveWebhookSource for application/json ContentType.
+type SaveWebhookSourceJSONRequestBody SaveWebhookSourceJSONBody
 
 // AsSnapshotEvent returns the union data inside the ChatEvent as a SnapshotEvent
 func (t ChatEvent) AsSnapshotEvent() (SnapshotEvent, error) {
@@ -2928,6 +2941,12 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(w http.ResponseWriter, r *http.Request, providerId string)
+
+	// (DELETE /api/settings/webhook-sources/{sourceId})
+	DeleteWebhookSource(w http.ResponseWriter, r *http.Request, sourceId string)
+
+	// (PUT /api/settings/webhook-sources/{sourceId})
+	SaveWebhookSource(w http.ResponseWriter, r *http.Request, sourceId string)
 
 	// (GET /api/work)
 	GetWork(w http.ResponseWriter, r *http.Request)
@@ -5866,6 +5885,58 @@ func (siw *ServerInterfaceWrapper) SetProvider(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteWebhookSource operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWebhookSource(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sourceId" -------------
+	var sourceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sourceId", r.PathValue("sourceId"), &sourceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sourceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWebhookSource(w, r, sourceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SaveWebhookSource operation middleware
+func (siw *ServerInterfaceWrapper) SaveWebhookSource(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "sourceId" -------------
+	var sourceId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sourceId", r.PathValue("sourceId"), &sourceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sourceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SaveWebhookSource(w, r, sourceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWork operation middleware
 func (siw *ServerInterfaceWrapper) GetWork(w http.ResponseWriter, r *http.Request) {
 
@@ -6005,6 +6076,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/github-review-pulls/{repositoryId}/{pullNumber}", wrapper.SaveGitHubReviewPull)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/github-webhooks/{repositoryId}", wrapper.DeleteGitHubWebhook)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/github-webhooks/{repositoryId}", wrapper.SaveGitHubWebhook)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/webhook-sources/{sourceId}", wrapper.DeleteWebhookSource)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/webhook-sources/{sourceId}", wrapper.SaveWebhookSource)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/tasks", wrapper.ListWorkTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks", wrapper.CreateWorkTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.GetWorkTask)
@@ -11748,6 +11821,73 @@ func (response SetProviderdefaultJSONResponse) VisitSetProviderResponse(w http.R
 	return err
 }
 
+type DeleteWebhookSourceRequestObject struct {
+	SourceId string `json:"sourceId"`
+}
+
+type DeleteWebhookSourceResponseObject interface {
+	VisitDeleteWebhookSourceResponse(w http.ResponseWriter) error
+}
+
+type DeleteWebhookSource204Response struct {
+}
+
+func (response DeleteWebhookSource204Response) VisitDeleteWebhookSourceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteWebhookSourcedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DeleteWebhookSourcedefaultJSONResponse) VisitDeleteWebhookSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SaveWebhookSourceRequestObject struct {
+	SourceId string `json:"sourceId"`
+	Body     *SaveWebhookSourceJSONRequestBody
+}
+
+type SaveWebhookSourceResponseObject interface {
+	VisitSaveWebhookSourceResponse(w http.ResponseWriter) error
+}
+
+type SaveWebhookSource204Response struct {
+}
+
+func (response SaveWebhookSource204Response) VisitSaveWebhookSourceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SaveWebhookSourcedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SaveWebhookSourcedefaultJSONResponse) VisitSaveWebhookSourceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetWorkRequestObject struct {
 }
 
@@ -12094,6 +12234,12 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(ctx context.Context, request SetProviderRequestObject) (SetProviderResponseObject, error)
+
+	// (DELETE /api/settings/webhook-sources/{sourceId})
+	DeleteWebhookSource(ctx context.Context, request DeleteWebhookSourceRequestObject) (DeleteWebhookSourceResponseObject, error)
+
+	// (PUT /api/settings/webhook-sources/{sourceId})
+	SaveWebhookSource(ctx context.Context, request SaveWebhookSourceRequestObject) (SaveWebhookSourceResponseObject, error)
 
 	// (GET /api/work)
 	GetWork(ctx context.Context, request GetWorkRequestObject) (GetWorkResponseObject, error)
@@ -15048,6 +15194,65 @@ func (sh *strictHandler) SetProvider(w http.ResponseWriter, r *http.Request, pro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetProviderResponseObject); ok {
 		if err := validResponse.VisitSetProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWebhookSource operation middleware
+func (sh *strictHandler) DeleteWebhookSource(w http.ResponseWriter, r *http.Request, sourceId string) {
+	var request DeleteWebhookSourceRequestObject
+
+	request.SourceId = sourceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWebhookSource(ctx, request.(DeleteWebhookSourceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWebhookSource")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWebhookSourceResponseObject); ok {
+		if err := validResponse.VisitDeleteWebhookSourceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SaveWebhookSource operation middleware
+func (sh *strictHandler) SaveWebhookSource(w http.ResponseWriter, r *http.Request, sourceId string) {
+	var request SaveWebhookSourceRequestObject
+
+	request.SourceId = sourceId
+
+	var body SaveWebhookSourceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SaveWebhookSource(ctx, request.(SaveWebhookSourceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SaveWebhookSource")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SaveWebhookSourceResponseObject); ok {
+		if err := validResponse.VisitSaveWebhookSourceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

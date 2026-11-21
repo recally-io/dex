@@ -131,6 +131,7 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	mux.HandleFunc("POST /hooks/github/{repositoryId}", h.receiveGitHubWebhook)
+	mux.HandleFunc("POST /hooks/sources/{sourceId}", h.receiveWebhookSource)
 	mux.HandleFunc("/hooks/", http.NotFound)
 	mux.Handle("/", web.Handler())
 	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
@@ -141,7 +142,8 @@ func New(cfg Config) http.Handler {
 		w = &responseWriter{ResponseWriter: w}
 		parts := strings.Split(r.URL.Path, "/")
 		switch {
-		case strings.HasPrefix(r.URL.Path, "/hooks/github/"):
+		// Both hook kinds accept at most 2 MiB.
+		case strings.HasPrefix(r.URL.Path, "/hooks/github/"), strings.HasPrefix(r.URL.Path, "/hooks/sources/"):
 			webhooks.ServeHTTP(w, r)
 		case len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads":
 			uploads.ServeHTTP(w, r)

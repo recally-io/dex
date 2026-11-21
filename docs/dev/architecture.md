@@ -141,6 +141,22 @@ when a signed delivery needs no action. A failed write returns `503`. To
 receive deliveries from GitHub, expose only the hook path through a public
 HTTPS proxy. Keep the management routes private.
 
+A generic source sends normalized Task events to
+`POST /hooks/sources/{sourceId}`. An administrator saves the source with
+`PUT /api/settings/webhook-sources/{sourceId}` and disables it with `DELETE`
+on the same path. The source ID uses lowercase letters, digits, and dashes.
+Each delivery has an `X-Dex-Delivery` ID, which is the receipt key, and an
+`X-Dex-Signature` header of the form `sha256=<hex HMAC of the body>`. The JSON
+body has `type`, `objects` (1 to 16 typed references), and `occurredAt` (RFC
+3339). Optional fields are `changeKey`, `revision`, `title`, `content`, and an
+HTTPS `sourceUrl`. The namespace is `webhook/<sourceId>`. Dex sets it on the
+server, so a source cannot reach the objects of GitHub or another source. The
+author class is `SOURCE`. Set `taskAgentId` to create a Task for an unmatched
+event with exactly one object, with `title` as the Task title. Set
+`holdUnmatched` to hold other unmatched events. The source uses the same event
+store, routing, holds, and Task alerts as GitHub. It cannot add a wait, because
+only a GitHub PR binding creates one.
+
 The controller polls each PR configured through
 `PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber}` once per
 minute. This API accepts a write-only GitHub token. `DELETE` on the same path
