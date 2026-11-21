@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
 import { InboxResultPage } from "./routes/inbox";
+import { TaskInboxPage, WorkTaskPage } from "./routes/work-tasks";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
@@ -78,7 +79,7 @@ const instructions = agentPage("/instructions", InstructionsPage);
 const channels = agentPage("/channels", ChannelsPage);
 const automations = agentPage("/automations", AutomationsPage);
 
-// Needs you, Work, Automations and the Inbox list were global pages. Each bot now shows its own
+// Needs you, Work and Automations were global pages. Each bot now shows its own
 // items: questions in the sidebar, routines and their results under Routines. Secrets split into
 // the global Environment page and the Tools tab of each bot.
 const retired = <P extends string>(path: P, href: string) =>
@@ -93,7 +94,6 @@ const retired = <P extends string>(path: P, href: string) =>
 const retiredRoutes = [
   retired("/needs-you", "/a/default"),
   retired("/work", "/a/default"),
-  retired("/inbox", "/a/default"),
   retired("/automations", "/a/default/automations"),
   retired("/secrets", "/settings/environment"),
   retired("/providers", "/settings/providers"),
@@ -101,6 +101,14 @@ const retiredRoutes = [
   retired("/archived", "/settings/archived"),
   retired("/about", "/settings/about"),
 ] as const;
+
+const inbox = page("/inbox", TaskInboxPage);
+
+const taskDetail = agentPage("/inbox/$taskId", () => {
+  const { agentId, taskId } = taskDetail.useParams();
+
+  return <WorkTaskPage key={taskId} agentId={agentId} taskId={taskId} />;
+});
 
 const inboxDetail = page("/inbox/$runId", () => {
   const { runId } = inboxDetail.useParams();
@@ -228,6 +236,7 @@ const router = createRouter({
       home,
       chat,
       sessions,
+      taskDetail,
       turn,
       instructions,
       channels,
@@ -240,6 +249,7 @@ const router = createRouter({
     ...oldAgentRoutes,
     tasks,
     ...retiredRoutes,
+    inbox,
     inboxDetail,
     generalSettings,
     providers,

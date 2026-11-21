@@ -84,8 +84,9 @@ to read in an afternoon.
   menu button shows an orange dot when another bot needs the user.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
-  URLs open the default agent. `/needs-you`, `/work`, and `/inbox` open the
-  default bot. `/automations` opens its Routines page. An unknown agent shows a not-found page.
+  URLs open the default agent. `/needs-you` and `/work` open the default bot.
+  `/automations` opens its Routines page. `/inbox` opens the Inbox across bots.
+  An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
   Each run requires an explicit changed, unchanged or failed report. Missing
@@ -258,7 +259,10 @@ failed routine run that is not handled, or a routine that needs a model. The
 Needs you button in the desktop header lists each item and opens the place to
 act on it. On a phone, these items appear in the bot menu. A failed child session goes to its parent, which tells the user; it
 is not a Needs you item. Mark handled applies to a failed routine run only.
-There is no cross-bot list.
+The Inbox lists Tasks across bots. A Task tracks one piece of work. It has a title,
+notes, and a status. Creating a Task or adding a note does not start a Session.
+The owner can complete, cancel, or reopen a Task. The default list hides closed Tasks.
+The Inbox also links to Routine results.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening
 a result marks it read. Marking it handled dismisses it. Both states survive restart.

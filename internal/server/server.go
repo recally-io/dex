@@ -31,6 +31,7 @@ import (
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
+	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/web"
 )
 
@@ -38,6 +39,7 @@ import (
 type Config struct {
 	Chats       *chat.Service
 	Automations *automation.Service
+	WorkTasks   *worktask.Service
 	Settings    *settings.Service
 	Agents      *agent.Service
 	Artifacts   *artifact.Service

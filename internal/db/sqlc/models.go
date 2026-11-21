@@ -426,3 +426,19 @@ type WechatSetting struct {
 	BotID   string `json:"bot_id"`
 	Owner   string `json:"owner"`
 }
+
+type WorkTask struct {
+	ID        string `json:"id"`
+	AgentID   string `json:"agent_id"`
+	Title     string `json:"title"`
+	Lifecycle string `json:"lifecycle"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+type WorkTaskEntry struct {
+	ID        int64  `json:"id"`
+	TaskID    string `json:"task_id"`
+	Content   string `json:"content"`
+	CreatedAt int64  `json:"created_at"`
+}

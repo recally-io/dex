@@ -160,16 +160,16 @@ func (e ChatQuestionAction) Valid() bool {
 
 // Defines values for ChatQuestionStatus.
 const (
-	Answered ChatQuestionStatus = "answered"
-	Open     ChatQuestionStatus = "open"
+	ChatQuestionStatusAnswered ChatQuestionStatus = "answered"
+	ChatQuestionStatusOpen     ChatQuestionStatus = "open"
 )
 
 // Valid indicates whether the value is a known member of the ChatQuestionStatus enum.
 func (e ChatQuestionStatus) Valid() bool {
 	switch e {
-	case Answered:
+	case ChatQuestionStatusAnswered:
 		return true
-	case Open:
+	case ChatQuestionStatusOpen:
 		return true
 	default:
 		return false
@@ -295,22 +295,22 @@ func (e ExtensionsEnvHints) Valid() bool {
 
 // Defines values for FollowupTimerState.
 const (
-	Cancelled FollowupTimerState = "cancelled"
-	Expired   FollowupTimerState = "expired"
-	Fired     FollowupTimerState = "fired"
-	Scheduled FollowupTimerState = "scheduled"
+	FollowupTimerStateCancelled FollowupTimerState = "cancelled"
+	FollowupTimerStateExpired   FollowupTimerState = "expired"
+	FollowupTimerStateFired     FollowupTimerState = "fired"
+	FollowupTimerStateScheduled FollowupTimerState = "scheduled"
 )
 
 // Valid indicates whether the value is a known member of the FollowupTimerState enum.
 func (e FollowupTimerState) Valid() bool {
 	switch e {
-	case Cancelled:
+	case FollowupTimerStateCancelled:
 		return true
-	case Expired:
+	case FollowupTimerStateExpired:
 		return true
-	case Fired:
+	case FollowupTimerStateFired:
 		return true
-	case Scheduled:
+	case FollowupTimerStateScheduled:
 		return true
 	default:
 		return false
@@ -701,6 +701,27 @@ const (
 func (e UserItemKind) Valid() bool {
 	switch e {
 	case User:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkTaskLifecycle.
+const (
+	WorkTaskLifecycleCancelled WorkTaskLifecycle = "cancelled"
+	WorkTaskLifecycleCompleted WorkTaskLifecycle = "completed"
+	WorkTaskLifecycleOpen      WorkTaskLifecycle = "open"
+)
+
+// Valid indicates whether the value is a known member of the WorkTaskLifecycle enum.
+func (e WorkTaskLifecycle) Valid() bool {
+	switch e {
+	case WorkTaskLifecycleCancelled:
+		return true
+	case WorkTaskLifecycleCompleted:
+		return true
+	case WorkTaskLifecycleOpen:
 		return true
 	default:
 		return false
@@ -1682,6 +1703,26 @@ type WorkSession struct {
 	Chat    Chat   `json:"chat"`
 }
 
+// WorkTask defines model for WorkTask.
+type WorkTask struct {
+	AgentId   string            `json:"agentId"`
+	CreatedAt int64             `json:"createdAt"`
+	Id        string            `json:"id"`
+	Lifecycle WorkTaskLifecycle `json:"lifecycle"`
+	Title     string            `json:"title"`
+	UpdatedAt int64             `json:"updatedAt"`
+}
+
+// WorkTaskEntry defines model for WorkTaskEntry.
+type WorkTaskEntry struct {
+	Content   string `json:"content"`
+	CreatedAt int64  `json:"createdAt"`
+	Id        int64  `json:"id"`
+}
+
+// WorkTaskLifecycle defines model for WorkTaskLifecycle.
+type WorkTaskLifecycle string
+
 // AgentId defines model for AgentId.
 type AgentId = string
 
@@ -1782,6 +1823,21 @@ type PutExtensionEnvJSONBody struct {
 // PutExtensionEnvJSONBodyScope defines parameters for PutExtensionEnv.
 type PutExtensionEnvJSONBodyScope string
 
+// CreateWorkTaskJSONBody defines parameters for CreateWorkTask.
+type CreateWorkTaskJSONBody struct {
+	Title string `json:"title"`
+}
+
+// SetWorkTaskLifecycleJSONBody defines parameters for SetWorkTaskLifecycle.
+type SetWorkTaskLifecycleJSONBody struct {
+	Lifecycle WorkTaskLifecycle `json:"lifecycle"`
+}
+
+// AppendWorkTaskNoteJSONBody defines parameters for AppendWorkTaskNote.
+type AppendWorkTaskNoteJSONBody struct {
+	Content string `json:"content"`
+}
+
 // SetPrimaryNotificationTargetJSONBody defines parameters for SetPrimaryNotificationTarget.
 type SetPrimaryNotificationTargetJSONBody struct {
 	// TargetId Empty clears the default.
@@ -1811,6 +1867,11 @@ type ListDirectoriesParams struct {
 // ListInboxParams defines parameters for ListInbox.
 type ListInboxParams struct {
 	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
+}
+
+// ListWorkTasksParams defines parameters for ListWorkTasks.
+type ListWorkTasksParams struct {
+	IncludeClosed *bool `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
@@ -1869,6 +1930,15 @@ type SetChatSettingsJSONRequestBody = ChatSettings
 
 // PutExtensionEnvJSONRequestBody defines body for PutExtensionEnv for application/json ContentType.
 type PutExtensionEnvJSONRequestBody PutExtensionEnvJSONBody
+
+// CreateWorkTaskJSONRequestBody defines body for CreateWorkTask for application/json ContentType.
+type CreateWorkTaskJSONRequestBody CreateWorkTaskJSONBody
+
+// SetWorkTaskLifecycleJSONRequestBody defines body for SetWorkTaskLifecycle for application/json ContentType.
+type SetWorkTaskLifecycleJSONRequestBody SetWorkTaskLifecycleJSONBody
+
+// AppendWorkTaskNoteJSONRequestBody defines body for AppendWorkTaskNote for application/json ContentType.
+type AppendWorkTaskNoteJSONRequestBody AppendWorkTaskNoteJSONBody
 
 // SetPrimaryNotificationTargetJSONRequestBody defines body for SetPrimaryNotificationTarget for application/json ContentType.
 type SetPrimaryNotificationTargetJSONRequestBody SetPrimaryNotificationTargetJSONBody
@@ -2561,6 +2631,18 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
 
+	// (POST /api/agents/{agentId}/inbox/tasks)
+	CreateWorkTask(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (GET /api/agents/{agentId}/inbox/tasks/{taskId})
+	GetWorkTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
+
+	// (PATCH /api/agents/{agentId}/inbox/tasks/{taskId})
+	SetWorkTaskLifecycle(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
+
+	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
+	AppendWorkTaskNote(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
+
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
@@ -2593,6 +2675,9 @@ type ServerInterface interface {
 
 	// (GET /api/inbox)
 	ListInbox(w http.ResponseWriter, r *http.Request, params ListInboxParams)
+
+	// (GET /api/inbox/tasks)
+	ListWorkTasks(w http.ResponseWriter, r *http.Request, params ListWorkTasksParams)
 
 	// (POST /api/inbox/{runId}/dismiss)
 	DismissInboxItem(w http.ResponseWriter, r *http.Request, runId string)
@@ -4458,6 +4543,137 @@ func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// CreateWorkTask operation middleware
+func (siw *ServerInterfaceWrapper) CreateWorkTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateWorkTask(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetWorkTask operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkTask(w, r, agentId, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetWorkTaskLifecycle operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkTaskLifecycle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWorkTaskLifecycle(w, r, agentId, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AppendWorkTaskNote operation middleware
+func (siw *ServerInterfaceWrapper) AppendWorkTaskNote(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "taskId" -------------
+	var taskId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AppendWorkTaskNote(w, r, agentId, taskId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNotificationTargets operation middleware
 func (siw *ServerInterfaceWrapper) GetNotificationTargets(w http.ResponseWriter, r *http.Request) {
 
@@ -4773,6 +4989,39 @@ func (siw *ServerInterfaceWrapper) ListInbox(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListInbox(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWorkTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWorkTasksParams
+
+	// ------------- Optional query parameter "includeClosed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeClosed", r.URL.Query(), &params.IncludeClosed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeClosed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeClosed", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkTasks(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5344,6 +5593,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/tasks", wrapper.ListWorkTasks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks", wrapper.CreateWorkTask)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.GetWorkTask)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.SetWorkTaskLifecycle)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.AppendWorkTaskNote)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work", wrapper.GetWork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/read", wrapper.ReadInboxItem)
@@ -8887,6 +9141,171 @@ func (response ReloadExtensionsdefaultJSONResponse) VisitReloadExtensionsRespons
 	return err
 }
 
+type CreateWorkTaskRequestObject struct {
+	AgentId string `json:"agentId"`
+	Body    *CreateWorkTaskJSONRequestBody
+}
+
+type CreateWorkTaskResponseObject interface {
+	VisitCreateWorkTaskResponse(w http.ResponseWriter) error
+}
+
+type CreateWorkTask201JSONResponse WorkTask
+
+func (response CreateWorkTask201JSONResponse) VisitCreateWorkTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateWorkTaskdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CreateWorkTaskdefaultJSONResponse) VisitCreateWorkTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkTaskRequestObject struct {
+	AgentId string `json:"agentId"`
+	TaskId  string `json:"taskId"`
+}
+
+type GetWorkTaskResponseObject interface {
+	VisitGetWorkTaskResponse(w http.ResponseWriter) error
+}
+
+type GetWorkTask200JSONResponse struct {
+	Entries []WorkTaskEntry `json:"entries"`
+	Task    WorkTask        `json:"task"`
+}
+
+func (response GetWorkTask200JSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetWorkTaskdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetWorkTaskdefaultJSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetWorkTaskLifecycleRequestObject struct {
+	AgentId string `json:"agentId"`
+	TaskId  string `json:"taskId"`
+	Body    *SetWorkTaskLifecycleJSONRequestBody
+}
+
+type SetWorkTaskLifecycleResponseObject interface {
+	VisitSetWorkTaskLifecycleResponse(w http.ResponseWriter) error
+}
+
+type SetWorkTaskLifecycle200JSONResponse WorkTask
+
+func (response SetWorkTaskLifecycle200JSONResponse) VisitSetWorkTaskLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetWorkTaskLifecycledefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetWorkTaskLifecycledefaultJSONResponse) VisitSetWorkTaskLifecycleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AppendWorkTaskNoteRequestObject struct {
+	AgentId string `json:"agentId"`
+	TaskId  string `json:"taskId"`
+	Body    *AppendWorkTaskNoteJSONRequestBody
+}
+
+type AppendWorkTaskNoteResponseObject interface {
+	VisitAppendWorkTaskNoteResponse(w http.ResponseWriter) error
+}
+
+type AppendWorkTaskNote201JSONResponse WorkTaskEntry
+
+func (response AppendWorkTaskNote201JSONResponse) VisitAppendWorkTaskNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AppendWorkTaskNotedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AppendWorkTaskNotedefaultJSONResponse) VisitAppendWorkTaskNoteResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetNotificationTargetsRequestObject struct {
 	AgentId AgentId `json:"agentId"`
 }
@@ -9428,6 +9847,47 @@ type ListInboxdefaultJSONResponse struct {
 }
 
 func (response ListInboxdefaultJSONResponse) VisitListInboxResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkTasksRequestObject struct {
+	Params ListWorkTasksParams
+}
+
+type ListWorkTasksResponseObject interface {
+	VisitListWorkTasksResponse(w http.ResponseWriter) error
+}
+
+type ListWorkTasks200JSONResponse struct {
+	Tasks []WorkTask `json:"tasks"`
+}
+
+func (response ListWorkTasks200JSONResponse) VisitListWorkTasksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkTasksdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListWorkTasksdefaultJSONResponse) VisitListWorkTasksResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -10771,6 +11231,18 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
 
+	// (POST /api/agents/{agentId}/inbox/tasks)
+	CreateWorkTask(ctx context.Context, request CreateWorkTaskRequestObject) (CreateWorkTaskResponseObject, error)
+
+	// (GET /api/agents/{agentId}/inbox/tasks/{taskId})
+	GetWorkTask(ctx context.Context, request GetWorkTaskRequestObject) (GetWorkTaskResponseObject, error)
+
+	// (PATCH /api/agents/{agentId}/inbox/tasks/{taskId})
+	SetWorkTaskLifecycle(ctx context.Context, request SetWorkTaskLifecycleRequestObject) (SetWorkTaskLifecycleResponseObject, error)
+
+	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
+	AppendWorkTaskNote(ctx context.Context, request AppendWorkTaskNoteRequestObject) (AppendWorkTaskNoteResponseObject, error)
+
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(ctx context.Context, request GetNotificationTargetsRequestObject) (GetNotificationTargetsResponseObject, error)
 
@@ -10803,6 +11275,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/inbox)
 	ListInbox(ctx context.Context, request ListInboxRequestObject) (ListInboxResponseObject, error)
+
+	// (GET /api/inbox/tasks)
+	ListWorkTasks(ctx context.Context, request ListWorkTasksRequestObject) (ListWorkTasksResponseObject, error)
 
 	// (POST /api/inbox/{runId}/dismiss)
 	DismissInboxItem(ctx context.Context, request DismissInboxItemRequestObject) (DismissInboxItemResponseObject, error)
@@ -12538,6 +13013,134 @@ func (sh *strictHandler) ReloadExtensions(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// CreateWorkTask operation middleware
+func (sh *strictHandler) CreateWorkTask(w http.ResponseWriter, r *http.Request, agentId string) {
+	var request CreateWorkTaskRequestObject
+
+	request.AgentId = agentId
+
+	var body CreateWorkTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateWorkTask(ctx, request.(CreateWorkTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateWorkTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateWorkTaskResponseObject); ok {
+		if err := validResponse.VisitCreateWorkTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetWorkTask operation middleware
+func (sh *strictHandler) GetWorkTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
+	var request GetWorkTaskRequestObject
+
+	request.AgentId = agentId
+	request.TaskId = taskId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetWorkTask(ctx, request.(GetWorkTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetWorkTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetWorkTaskResponseObject); ok {
+		if err := validResponse.VisitGetWorkTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetWorkTaskLifecycle operation middleware
+func (sh *strictHandler) SetWorkTaskLifecycle(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
+	var request SetWorkTaskLifecycleRequestObject
+
+	request.AgentId = agentId
+	request.TaskId = taskId
+
+	var body SetWorkTaskLifecycleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetWorkTaskLifecycle(ctx, request.(SetWorkTaskLifecycleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetWorkTaskLifecycle")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetWorkTaskLifecycleResponseObject); ok {
+		if err := validResponse.VisitSetWorkTaskLifecycleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AppendWorkTaskNote operation middleware
+func (sh *strictHandler) AppendWorkTaskNote(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
+	var request AppendWorkTaskNoteRequestObject
+
+	request.AgentId = agentId
+	request.TaskId = taskId
+
+	var body AppendWorkTaskNoteJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AppendWorkTaskNote(ctx, request.(AppendWorkTaskNoteRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AppendWorkTaskNote")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AppendWorkTaskNoteResponseObject); ok {
+		if err := validResponse.VisitAppendWorkTaskNoteResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetNotificationTargets operation middleware
 func (sh *strictHandler) GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId) {
 	var request GetNotificationTargetsRequestObject
@@ -12835,6 +13438,32 @@ func (sh *strictHandler) ListInbox(w http.ResponseWriter, r *http.Request, param
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListInboxResponseObject); ok {
 		if err := validResponse.VisitListInboxResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkTasks operation middleware
+func (sh *strictHandler) ListWorkTasks(w http.ResponseWriter, r *http.Request, params ListWorkTasksParams) {
+	var request ListWorkTasksRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkTasks(ctx, request.(ListWorkTasksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkTasks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkTasksResponseObject); ok {
+		if err := validResponse.VisitListWorkTasksResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
