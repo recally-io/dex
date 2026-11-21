@@ -57,7 +57,7 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	}
 
 	// Given a Task created from a signed Issue delivery.
-	deliver("issue-1", "issues", `{"action":"opened","repository":{"id":10},"issue":{"id":17,"number":1,"title":"Fix login","created_at":"2026-11-21T02:00:00Z"}}`)
+	deliver("issue-1", "issues", `{"action":"opened","repository":{"id":10},"issue":{"id":17,"number":1,"user":{"login":"maintainer"},"author_association":"MEMBER","title":"Fix login","created_at":"2026-11-21T02:00:00Z"}}`)
 	var list api.ListWorkTasks200JSONResponse
 	d.must(t, http.MethodGet, "/api/inbox/tasks", nil, &list)
 	if len(list.Tasks) != 1 {
@@ -85,15 +85,16 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 		}
 		return detail
 	}
-	pushReview := func(id int, revision, submitted string) {
+	pushReview := func(id int, revision, submitted, association string) {
 		t.Helper()
-		body := fmt.Sprintf(`{"action":"submitted","repository":{"id":10},"pull_request":{"number":2},"review":{"id":%d,"state":"approved","commit_id":%q,"submitted_at":%q}}`, id, revision, submitted)
+		body := fmt.Sprintf(`{"action":"submitted","repository":{"id":10},"pull_request":{"number":2},"review":{"id":%d,"state":"approved","commit_id":%q,"submitted_at":%q,"user":{"login":"reviewer"},"author_association":%q}}`, id, revision, submitted, association)
 		deliver(fmt.Sprint(id), "pull_request_review", body)
 	}
-	pushReview(21, "abc", "2026-11-21T03:00:00Z")
-	pushReview(22, "old", "2026-11-21T03:01:00Z")
+	pushReview(21, "abc", "2026-11-21T03:00:00Z", "MEMBER")
+	pushReview(22, "old", "2026-11-21T03:01:00Z", "MEMBER")
+	pushReview(24, "abc", "2026-11-21T03:02:00Z", "NONE")
 	checkWait(false)
-	pushReview(23, "abc", "2026-11-21T03:02:00Z")
+	pushReview(23, "abc", "2026-11-21T03:03:00Z", "COLLABORATOR")
 	checkWait(true)
 
 	// Then a controller restart retains the reviews and the wait result while the runner stays offline.
@@ -101,14 +102,14 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	d = startDex(t, dir, "")
 	probeRunner()
 	afterRestart := checkWait(true)
-	if len(afterRestart.Entries) != 4 || !strings.Contains(afterRestart.Entries[0].Content, "GitHub review: approved") {
+	if len(afterRestart.Entries) != 5 || afterRestart.Entries[0].EventId == nil || !strings.Contains(afterRestart.Entries[0].Content, "GitHub review: approved") {
 		t.Fatalf("accepted review missing after restart: %+v", afterRestart.Entries)
 	}
 
 	// A redelivery adds no duplicate and does not change the unrelated Task.
-	pushReview(23, "abc", "2026-11-21T03:02:00Z")
+	pushReview(23, "abc", "2026-11-21T03:03:00Z", "COLLABORATOR")
 	detail := checkWait(true)
-	if len(detail.Entries) != 4 || detail.Entries[3].Content != "Fix login" {
+	if len(detail.Entries) != 5 || detail.Entries[4].Content != "Fix login" {
 		t.Fatalf("unexpected Issue Task timeline: %+v", detail.Entries)
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/inbox/tasks/"+other.Id, nil, &detail)

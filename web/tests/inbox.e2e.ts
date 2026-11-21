@@ -11,6 +11,7 @@ test("tracks a task from creation to completion and reopening", async ({ app, sc
   await screen.getByRole("textbox", "Task note").fill("The change is ready for review.");
   await screen.getByRole("button", "Add note").tap();
   await expect(screen.getByText("The change is ready for review.")).toBeVisible();
+  await expect(screen.getByText("Source not recorded")).toBeVisible();
 
   await screen.getByRole("button", "Complete task").tap();
   await expect(screen.getByRole("button", "Reopen task")).toBeVisible();
@@ -18,11 +19,19 @@ test("tracks a task from creation to completion and reopening", async ({ app, sc
   await expect(screen.getByRole("button", "Complete task")).toBeVisible();
 });
 
+type LocalGitHubAuthor = { user: { login: string }; author_association: string };
+
 type LocalGitHubPayload =
-  | { issue: { id: number; number: number; title: string; created_at: string } }
+  | { issue: { id: number; number: number; title: string; created_at: string } & LocalGitHubAuthor }
   | {
       pull_request: { number: number };
-      review: { id: number; state: string; commit_id: string; body: string; submitted_at: string };
+      review: {
+        id: number;
+        state: string;
+        commit_id: string;
+        body: string;
+        submitted_at: string;
+      } & LocalGitHubAuthor;
     };
 
 test("links a PR and sees its reviews and wait on the Issue Task", async ({ app, browser, screen }) => {
@@ -63,10 +72,18 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
 
   const title = `GitHub issue #${repositoryId}`;
   await deliver("issues", "issue", {
-    issue: { id: 1, number: repositoryId, title: "Review login fix", created_at: new Date().toISOString() },
+    issue: {
+      id: 1,
+      number: repositoryId,
+      title: "Review login fix",
+      created_at: new Date().toISOString(),
+      user: { login: "maintainer" },
+      author_association: "MEMBER",
+    },
   });
   await screen.getByRole("link", new RegExp(title)).tap();
   await expect(screen.getByRole("heading", title)).toBeVisible();
+  await expect(screen.getByText("External event")).toBeVisible();
   await screen.getByRole("textbox", "Repository ID").fill(String(repositoryId));
   await screen.getByRole("textbox", "PR number").fill("42");
   await screen.getByRole("textbox", "Commit SHA (optional)").fill("commit-a");
@@ -74,7 +91,7 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
   await expect(screen.getByText(`PR #42 · Repository ${repositoryId}`)).toBeVisible();
   await expect(screen.getByText("Waiting for review")).toBeVisible();
 
-  async function review(id: number, commit: string, text: string) {
+  async function review(id: number, commit: string, text: string, association = "MEMBER") {
     await deliver("pull_request_review", `review-${id}`, {
       pull_request: { number: 42 },
       review: {
@@ -82,6 +99,8 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
         state: "commented",
         commit_id: commit,
         body: text,
+        user: { login: "reviewer" },
+        author_association: association,
         submitted_at: new Date(Date.now() + 1000).toISOString(),
       },
     });
@@ -89,6 +108,9 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
 
   await review(1, "commit-b", "Review of another commit");
   await expect(screen.getByText(/Review of another commit/)).toBeVisible();
+  await expect(screen.getByText("Waiting for review")).toBeVisible();
+  await review(3, "commit-a", "Review from outside the repository", "NONE");
+  await expect(screen.getByText(/Review from outside the repository/)).toBeVisible();
   await expect(screen.getByText("Waiting for review")).toBeVisible();
   await review(2, "commit-a", "Review of the selected commit");
   await expect(screen.getByText(/Review of the selected commit/)).toBeVisible();
