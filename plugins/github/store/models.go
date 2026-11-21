@@ -8,7 +8,7 @@ import (
 	"database/sql"
 )
 
-type GithubReviewPull struct {
+type PluginGithubReviewPull struct {
 	RepositoryID    int64  `json:"repository_id"`
 	PullNumber      int64  `json:"pull_number"`
 	Token           string `json:"token"`
@@ -16,7 +16,7 @@ type GithubReviewPull struct {
 	Etag            string `json:"etag"`
 }
 
-type GithubWebhookSetting struct {
+type PluginGithubWebhookSetting struct {
 	RepositoryID  int64          `json:"repository_id"`
 	Secret        string         `json:"secret"`
 	IssueAgentID  sql.NullString `json:"issue_agent_id"`

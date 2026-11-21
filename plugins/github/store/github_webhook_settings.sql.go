@@ -11,7 +11,7 @@ import (
 )
 
 const deleteGitHubWebhook = `-- name: DeleteGitHubWebhook :exec
-DELETE FROM github_webhook_settings WHERE repository_id = ?
+DELETE FROM plugin_github_webhook_settings WHERE repository_id = ?
 `
 
 func (q *Queries) DeleteGitHubWebhook(ctx context.Context, repositoryID int64) error {
@@ -20,12 +20,12 @@ func (q *Queries) DeleteGitHubWebhook(ctx context.Context, repositoryID int64) e
 }
 
 const getGitHubWebhook = `-- name: GetGitHubWebhook :one
-SELECT repository_id, secret, issue_agent_id, hold_unmatched FROM github_webhook_settings WHERE repository_id = ?
+SELECT repository_id, secret, issue_agent_id, hold_unmatched FROM plugin_github_webhook_settings WHERE repository_id = ?
 `
 
-func (q *Queries) GetGitHubWebhook(ctx context.Context, repositoryID int64) (GithubWebhookSetting, error) {
+func (q *Queries) GetGitHubWebhook(ctx context.Context, repositoryID int64) (PluginGithubWebhookSetting, error) {
 	row := q.db.QueryRowContext(ctx, getGitHubWebhook, repositoryID)
-	var i GithubWebhookSetting
+	var i PluginGithubWebhookSetting
 	err := row.Scan(
 		&i.RepositoryID,
 		&i.Secret,
@@ -36,7 +36,7 @@ func (q *Queries) GetGitHubWebhook(ctx context.Context, repositoryID int64) (Git
 }
 
 const saveGitHubWebhook = `-- name: SaveGitHubWebhook :execrows
-INSERT INTO github_webhook_settings (repository_id, secret, issue_agent_id, hold_unmatched)
+INSERT INTO plugin_github_webhook_settings (repository_id, secret, issue_agent_id, hold_unmatched)
 SELECT ?1, ?2, ?3, ?4
 WHERE ?3 IS NULL OR EXISTS (
   SELECT 1 FROM agents a WHERE a.id = ?3 AND a.archived_at IS NULL

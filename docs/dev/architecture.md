@@ -74,7 +74,9 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, the channel outbox, Tasks, and plugin tables. Each agent has
+receipts, the channel outbox, Tasks, and plugin tables. Core migrations own
+the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
+start ([plugins](plugins.md#plugin-migrations)). Each agent has
 `agents/<id>/state.sqlite`, which holds native admission, runs, transcripts,
 and tool calls. Only the engine opens an agent execution store, and business
 code calls typed engine methods instead of reading it.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/plugins/github/store"
 )
@@ -23,6 +24,9 @@ func TestUserPullHoldsReviewsOnlyWithTheWebhookRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	if err := plugin.Migrate(ctx, conn, "github", Migrations); err != nil {
+		t.Fatal(err)
+	}
 	gh := store.New(conn)
 	tasks := worktask.New(conn, nil)
 	if err := gh.SaveGitHubReviewPull(ctx, store.SaveGitHubReviewPullParams{RepositoryID: 10, PullNumber: 3, Token: "test-only", ConfigurationID: "config"}); err != nil {

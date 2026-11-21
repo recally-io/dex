@@ -157,7 +157,7 @@ func TestUserLetsDexReadAMailboxFolder(t *testing.T) {
 	conn := controlWriteDB(t, dataDir)
 	validity := func() (int64, error) {
 		var v int64
-		err := conn.QueryRowContext(t.Context(), "SELECT uid_validity FROM email_imap_pulls WHERE source_id = 'mail'").Scan(&v)
+		err := conn.QueryRowContext(t.Context(), "SELECT uid_validity FROM plugin_email_imap_pulls WHERE source_id = 'mail'").Scan(&v)
 		return v, err
 	}
 	eventually(t, "IMAP cursor", func() (bool, any) {

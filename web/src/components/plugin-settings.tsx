@@ -21,7 +21,8 @@ export function PluginSettings() {
 
   if (plugins.isError) return <Failure title="Could not load plugins" error={plugins.error} />;
 
-  const pending = plugins.data.plugins.some((plugin) => plugin.enabled !== plugin.running);
+  // A plugin whose migrations failed does not run, and a restart alone does not fix it.
+  const pending = plugins.data.plugins.some((plugin) => !plugin.error && plugin.enabled !== plugin.running);
 
   return (
     <Section
@@ -36,9 +37,15 @@ export function PluginSettings() {
           >
             <div className="min-w-0 flex-1">
               <p className="text-[14px] font-medium text-foreground">{plugin.name}</p>
-              <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                {plugin.running ? "Running" : "Not running"}
-              </p>
+              {plugin.error ? (
+                <p className="mt-0.5 break-words text-[12.5px] text-destructive">
+                  Failed to start: {plugin.error}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                  {plugin.running ? "Running" : "Not running"}
+                </p>
+              )}
             </div>
             <Switch
               checked={plugin.enabled}

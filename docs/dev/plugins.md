@@ -10,13 +10,13 @@ Source: [plugins.puml](../../assets/src/plugins.puml).
 
 ## Boundary
 
-| Part                | Owns                                                                     |
-| ------------------- | ------------------------------------------------------------------------ |
-| `internal/plugin`   | The seam: `Plugin`, `Factory`, `Deps`, `Job`, and `ValidSignature`       |
-| `internal/app`      | Builds the plugins, reads `plugin_settings`, and mounts the enabled ones |
-| `plugins/<name>`    | One source: its hooks, API, queries, jobs, tools, and event parsing      |
-| `internal/worktask` | The event store, routing, holds, waits, links, and Task alerts           |
-| `cmd/dex`           | The list of plugins in this build (`app.Config.Plugins`)                 |
+| Part                | Owns                                                                      |
+| ------------------- | ------------------------------------------------------------------------- |
+| `internal/plugin`   | The seam: `Plugin`, `Factory`, `Deps`, `Job`, `ValidSignature`, `Migrate` |
+| `internal/app`      | Builds the plugins, reads `enabled_plugins`, and mounts the enabled ones  |
+| `plugins/<name>`    | One source: hooks, API, migrations, queries, jobs, tools, event parsing   |
+| `internal/worktask` | The event store, routing, holds, waits, links, and Task alerts            |
+| `cmd/dex`           | The list of plugins in this build (`app.Config.Plugins`)                  |
 
 The core in `internal/` never imports a package in `plugins/`. A plugin can
 import the core, but not another plugin. Shared code that two plugins need goes
@@ -43,6 +43,8 @@ nothing.
   `worktask.Link`. The core adds the Task `id`, checks the caller, and writes
   the link and an optional wait with the tool replay record. Each tool adds one
   paragraph to the Task rules.
+- `Migrations`: the `migrations/*.sql` files of the plugin. A plugin without
+  tables leaves it nil. See [Plugin migrations](#plugin-migrations).
 
 ## Lifecycle
 
@@ -50,11 +52,15 @@ nothing.
    builds handlers and starts no work.
 2. dex rejects a name that is not lowercase ASCII letters, a name used twice,
    and hooks without a body limit.
-3. dex keeps the plugins whose name has `enabled = 1` in `plugin_settings`. A
-   plugin without a row is off. The migration that adds the table turns
-   `github` on, because GitHub ran before plugins existed. dex logs a warning
-   for an enabled name that is not in the build.
-4. dex mounts the hooks and API of the enabled plugins, registers their jobs,
+3. dex keeps the plugins that have a row in `enabled_plugins`. A plugin
+   without a row is off. The core migrations turn `github` on, because GitHub
+   ran before plugins existed. dex logs a warning for an enabled name that is
+   not in the build.
+4. dex applies the migrations of each enabled plugin. If they fail, dex logs
+   the error and skips that plugin. The core and the other plugins run, and
+   `GET /api/settings/plugins` shows the error. The owner can turn the plugin
+   off.
+5. dex mounts the hooks and API of the enabled plugins, registers their jobs,
    and gives their tools to the engine.
 
 The owner turns a plugin on or off with `PUT /api/settings/plugins/{name}` or
@@ -79,9 +85,34 @@ it.
   client is generated from the whole spec.
 - A plugin owns its queries in `plugins/<name>/queries` and generates
   `plugins/<name>/store` with its own `sqlc.yaml` target.
-- The core migrations in `internal/db/migrations` stay the only schema source.
-  A plugin table exists when the plugin is off, so turning a plugin on needs no
-  migration.
+- A plugin owns its schema in `plugins/<name>/migrations`. Its `sqlc.yaml`
+  target reads the core migrations and its own, because a plugin table can
+  refer to a core table. The core target reads only the core migrations.
+
+## Plugin migrations
+
+Plugin migrations are goose SQL files, like core migrations, with these
+differences:
+
+| Rule          | Core migrations            | Plugin migrations                                    |
+| ------------- | -------------------------- | ---------------------------------------------------- |
+| Versions      | Timestamps on one timeline | `00001`, `00002`, ... for each plugin                |
+| Version table | `goose_db_version`         | Rows of the plugin in `applied_plugin_migrations`    |
+| When they run | Always, in `db.Open`       | At start, only for an enabled plugin, after the core |
+| Table names   | No `plugin_` prefix        | `plugin_<name>_<table>`                              |
+| References    | Never to a plugin table    | Can refer to core tables, but not to another plugin  |
+
+`plugin.Migrate` gives goose a version store that keeps the rows of one plugin
+in the shared table, so the versions of two plugins do not mix. Goose runs each
+file in a transaction, so a failed file leaves no table and no version. Turning
+a plugin off keeps its tables and rows. When it is on again, dex applies only
+the new versions. dex has no uninstall step.
+
+The first version of each current plugin adopts the tables that a core
+migration made before plugin migrations existed. It creates each table only
+if it does not exist, and then renames it with the `plugin_<name>_` prefix, so
+an old database keeps its rows. A new plugin creates its tables with the
+prefix directly.
 
 ## Add a plugin
 
@@ -89,10 +120,12 @@ it.
 2. Add its operations to `api/openapi.yaml` with tag `<name>`. Add the tag to
    `exclude-tags` in `api/oapi-codegen.yaml`, and add
    `plugins/<name>/api/oapi-codegen.yaml`.
-3. Add its tables in a core migration, its queries in
-   `plugins/<name>/queries`, and a `sqlc.yaml` target.
+3. If it stores data, add `plugins/<name>/migrations/00001_<name>.sql` with
+   `plugin_<name>_` tables, embed it, and set `Migrations`. Add its queries in
+   `plugins/<name>/queries` and a `sqlc.yaml` target. Its package tests call
+   `plugin.Migrate` after `db.Open`.
 4. Add the factory to `cmd/dex` and to the default list in the app test
-   helper. Do not add a `plugin_settings` row, so the plugin starts off.
+   helper. Do not add an `enabled_plugins` row, so the plugin starts off.
 5. Run `mise run generate:api` and `mise run generate:db`. The drift checks
    cover every `plugins/*` directory.
 6. Add an E2E test that turns the plugin on, restarts dex, and uses its hook or

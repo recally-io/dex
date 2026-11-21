@@ -43,7 +43,7 @@ func New(deps plugin.Deps) plugin.Plugin {
 			writeError(w, status, err.Error())
 		},
 	}), api.StdHTTPServerOptions{BaseRouter: routes})
-	return plugin.Plugin{Name: "webhook", Hooks: hooks, HookLimit: MaxPayload, API: routes}
+	return plugin.Plugin{Name: "webhook", Hooks: hooks, HookLimit: MaxPayload, API: routes, Migrations: Migrations}
 }
 
 type service struct {

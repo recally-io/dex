@@ -60,14 +60,14 @@ package "dex: one Go process" as runtime {
   package "plugins/<name>" as plugin {
     rectangle "Hooks + API\nVerify and parse" as handlers
     rectangle "Jobs + link tools" as extras
-    rectangle "store\nOwn queries" as pstore
+    rectangle "store + migrations\nplugin_<name>_ tables" as pstore
   }
   rectangle "internal/worktask\nEvent store, routing,\nholds, waits, links" as worktask
   rectangle "Engine + scheduler" as core
 }
-database "control.sqlite\nplugin_settings\nCore migrations own all tables" as cdb
+database "control.sqlite\nenabled_plugins\napplied_plugin_migrations" as cdb
 cmd --> app : Factories
-app --> cdb : Read plugin_settings at start
+app --> cdb : Read enabled_plugins,\nmigrate enabled plugins
 app --> server : Mount enabled plugins
 app --> core : Jobs + tools
 sources --> server : Signed deliveries

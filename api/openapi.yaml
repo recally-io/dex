@@ -2525,6 +2525,11 @@ components:
           type: boolean,
           description: The plugin runs in this process.,
         }
+        error: {
+          type: string,
+          description: Why an enabled plugin does not run,
+          for example a failed migration.,
+        }
     Health:
       type: object
       required: [status, version, dataDir, runtimeReady, plugins]

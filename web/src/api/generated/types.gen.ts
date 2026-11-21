@@ -122,6 +122,10 @@ export type PluginSetting = {
      * The plugin runs in this process.
      */
     running: boolean;
+    /**
+     * Why an enabled plugin does not run
+     */
+    error?: string;
 };
 
 export type Health = {

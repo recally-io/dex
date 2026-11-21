@@ -19,6 +19,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/plugins/email/store"
 )
@@ -110,6 +111,9 @@ func TestUserPullsAnEmailThreadFromAnIMAPFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
+	if err := plugin.Migrate(ctx, conn, "email", Migrations); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +127,7 @@ func TestUserPullsAnEmailThreadFromAnIMAPFolder(t *testing.T) {
 	cursor := func() (int64, int64) {
 		t.Helper()
 		var validity, last int64
-		if err := conn.QueryRowContext(ctx, "SELECT uid_validity, last_uid FROM email_imap_pulls WHERE source_id = 'mail'").Scan(&validity, &last); err != nil {
+		if err := conn.QueryRowContext(ctx, "SELECT uid_validity, last_uid FROM plugin_email_imap_pulls WHERE source_id = 'mail'").Scan(&validity, &last); err != nil {
 			t.Fatal(err)
 		}
 		return validity, last

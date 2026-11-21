@@ -9,10 +9,11 @@ sql:
         out: "internal/db/sqlc"
         emit_json_tags: true
         emit_empty_slices: true
-  # A plugin owns its queries. The core migrations stay the only schema source.
+  # A plugin owns its queries and migrations. It can refer to core tables, so its schema also
+  # reads the core migrations. The core schema never reads plugin migrations.
   - engine: "sqlite"
     queries: "plugins/github/queries"
-    schema: "internal/db/migrations"
+    schema: ["internal/db/migrations", "plugins/github/migrations"]
     gen:
       go:
         package: "store"
@@ -22,7 +23,7 @@ sql:
         omit_unused_structs: true
   - engine: "sqlite"
     queries: "plugins/webhook/queries"
-    schema: "internal/db/migrations"
+    schema: ["internal/db/migrations", "plugins/webhook/migrations"]
     gen:
       go:
         package: "store"
@@ -32,7 +33,7 @@ sql:
         omit_unused_structs: true
   - engine: "sqlite"
     queries: "plugins/email/queries"
-    schema: "internal/db/migrations"
+    schema: ["internal/db/migrations", "plugins/email/migrations"]
     gen:
       go:
         package: "store"
