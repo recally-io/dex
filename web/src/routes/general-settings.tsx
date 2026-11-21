@@ -16,6 +16,7 @@ import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
 import { ModelPicker } from "../components/model-picker";
 import { FramedPage, Note, Panel, Section } from "../components/page";
+import { PluginSettings } from "../components/plugin-settings";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { Button } from "../components/ui/button";
@@ -289,6 +290,7 @@ export function GeneralSettingsPage() {
           </Panel>
         </Section>
       ) : null}
+      <PluginSettings />
     </FramedPage>
   );
 }

@@ -112,7 +112,13 @@ wait or sends a Task alert.
 
 Optional sources run in the dex process as plugins. Each plugin lives in
 `plugins/<name>`, and the core in `internal/` does not import it. `cmd/dex`
-selects the plugins in `app.Config.Plugins`; this build enables `github`. A
+lists the plugins of the build in `app.Config.Plugins`. The owner turns each
+one on or off with `PUT /api/settings/plugins/{name}` or in General settings.
+The choice lives in `plugin_settings`, and dex reads it at start, so a change
+applies after a restart. A plugin without a row is off. The migration that
+adds the table turns `github` on, because GitHub ran before plugins existed.
+`GET /api/settings/plugins` gives each plugin with its stored choice and
+whether it runs now. A
 plugin gets the control database and the Task event store
 (`internal/plugin.Deps`). It can add:
 
@@ -134,9 +140,9 @@ tag. The core server excludes these tags, and each plugin generates its own
 server from them (`plugins/<name>/api`). A plugin owns its queries in
 `plugins/<name>/queries` and generates `plugins/<name>/store` from the core
 migrations, which stay the only schema source. Migrations that a release
-already applied stay in `internal/db/migrations`. Deliberate limit: the list
-is fixed at build time. Add a stored setting when the owner must turn a plugin
-on or off at runtime.
+already applied stay in `internal/db/migrations`. Deliberate limit: a change
+needs a restart. Reload the plugin routes, jobs, and tools in place if that
+becomes a problem.
 
 ### GitHub plugin
 

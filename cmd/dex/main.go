@@ -51,7 +51,7 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		Version:      version(),
 		Token:        token,
 		RequireToken: requireToken,
-		// The enabled plugins. GitHub stays on, as before plugins existed.
+		// The plugins of this build. The owner turns each one on or off in the settings.
 		Plugins: []plugin.Factory{github.New},
 	})
 	if err != nil {

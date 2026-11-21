@@ -112,6 +112,18 @@ export type Ok = {
     status: 'ok';
 };
 
+export type PluginSetting = {
+    name: string;
+    /**
+     * The stored choice. dex reads it at start.
+     */
+    enabled: boolean;
+    /**
+     * The plugin runs in this process.
+     */
+    running: boolean;
+};
+
 export type Health = {
     status: 'ok';
     version: string;
@@ -1933,6 +1945,62 @@ export type AcquireMaintenanceResponses = {
 };
 
 export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
+
+export type ListPluginsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/settings/plugins';
+};
+
+export type ListPluginsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListPluginsError = ListPluginsErrors[keyof ListPluginsErrors];
+
+export type ListPluginsResponses = {
+    /**
+     * The plugins.
+     */
+    200: {
+        plugins: Array<PluginSetting>;
+    };
+};
+
+export type ListPluginsResponse = ListPluginsResponses[keyof ListPluginsResponses];
+
+export type SetPluginData = {
+    body: {
+        enabled: boolean;
+    };
+    path: {
+        name: string;
+    };
+    query?: never;
+    url: '/api/settings/plugins/{name}';
+};
+
+export type SetPluginErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetPluginError = SetPluginErrors[keyof SetPluginErrors];
+
+export type SetPluginResponses = {
+    /**
+     * Choice saved.
+     */
+    204: void;
+};
+
+export type SetPluginResponse = SetPluginResponses[keyof SetPluginResponses];
 
 export type GetSettingsData = {
     body?: never;

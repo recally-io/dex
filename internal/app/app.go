@@ -79,7 +79,8 @@ type Config struct {
 	// RequireToken is set, and no authentication otherwise.
 	Token        string
 	RequireToken bool
-	// Plugins are the optional sources to enable. cmd/dex selects them.
+	// Plugins are the optional sources of this build. cmd/dex lists them. The owner turns each
+	// one on or off in plugin_settings, and dex starts only the enabled ones.
 	Plugins []plugin.Factory
 }
 
@@ -132,7 +133,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	workTasks := worktask.New(conn, func(id int64) { chats.WakeConversation(id) })
-	plugins, err := startPlugins(cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
+	plugins, available, err := startPlugins(ctx, q, cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
 	if err != nil {
 		cancel()
 		jobs.Close()
@@ -426,11 +427,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
-		Plugins:   plugins,
-		Engine:    native,
-		Envs:      envs,
-		Runners:   envs.Runners(),
-		Chats:     chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		Plugins:   plugins, AvailablePlugins: available,
+		Engine:  native,
+		Envs:    envs,
+		Runners: envs.Runners(),
+		Chats:   chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
 	a.wg.Go(func() {
