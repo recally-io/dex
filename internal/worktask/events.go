@@ -27,7 +27,10 @@ type Event struct {
 	Namespace, ReceiptKey, ChangeKey, Type string
 	Objects                                []Object
 	Revision, Content, SourceURL           string
+	AuthorLogin, AuthorAssociation         string
 	OccurredAt                             int64
+	// RecordOnly prevents an event from creating a Task or resolving a wait.
+	RecordOnly bool
 }
 
 // Receipt identifies the committed event and its routing result.
@@ -145,7 +148,7 @@ func (s *Service) accept(ctx context.Context, event Event, agentID, title string
 		return Receipt{}, err
 	}
 	now := time.Now().UnixMilli()
-	if disposition == "unmatched" && agentID != "" {
+	if disposition == "unmatched" && agentID != "" && !event.RecordOnly {
 		task, err = createEventTask(ctx, q, event, agentID, title, now)
 		if err != nil {
 			return Receipt{}, err
@@ -157,6 +160,7 @@ func (s *Service) accept(ctx context.Context, event Event, agentID, title string
 	row := sqlc.StoreWorkSourceEventParams{
 		ID: id, Namespace: event.Namespace, ChangeKey: change, EventType: event.Type, Objects: string(refs),
 		Revision: event.Revision, Content: event.Content, SourceUrl: event.SourceURL, OccurredAt: event.OccurredAt, ReceivedAt: now,
+		AuthorLogin: event.AuthorLogin, AuthorAssociation: event.AuthorAssociation,
 		TaskID: sql.NullString{String: task.ID, Valid: task.ID != ""}, Disposition: disposition,
 	}
 	if err := q.StoreWorkSourceEvent(ctx, row); err != nil {
@@ -219,14 +223,14 @@ func findEventTask(ctx context.Context, q *sqlc.Queries, event Event) (sqlc.Work
 }
 
 func applyEvent(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask, event Event, id string, now int64) (int64, error) {
-	if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: task.ID, AgentID: task.AgentID, Content: event.Content, CreatedAt: now}); err != nil {
+	if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: task.ID, AgentID: task.AgentID, Content: event.Content, CreatedAt: now, EventID: sql.NullString{String: id, Valid: true}}); err != nil {
 		return 0, err
 	}
 	if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
 		return 0, err
 	}
 	var resolved int64
-	if task.Lifecycle == "open" {
+	if task.Lifecycle == "open" && !event.RecordOnly {
 		for _, object := range event.Objects {
 			n, err := q.ResolveWorkTaskWaits(ctx, sqlc.ResolveWorkTaskWaitsParams{
 				EventID: sql.NullString{String: id, Valid: true}, TaskID: task.ID, Namespace: event.Namespace,

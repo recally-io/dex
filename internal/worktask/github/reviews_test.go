@@ -39,7 +39,7 @@ func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	const review = `{"id":71,"state":"approved","body":"Looks good.","commit_id":"abc","submitted_at":"2026-11-21T03:00:00Z","html_url":"https://github.com/org/repo/pull/2#pullrequestreview-71"}`
+	const review = `{"id":71,"user":{"login":"maintainer"},"author_association":"MEMBER","state":"approved","body":"Looks good.","commit_id":"abc","submitted_at":"2026-11-21T03:00:00Z","html_url":"https://github.com/org/repo/pull/2#pullrequestreview-71"}`
 	body := []byte(`{"action":"submitted","repository":{"id":10},"pull_request":{"number":2},"review":` + review + `}`)
 	secret := []byte("fixture-only-key")
 	mac := hmac.New(sha256.New, secret)

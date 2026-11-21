@@ -118,11 +118,11 @@ func (p *Puller) get(ctx context.Context, path, token, etag string) ([]byte, htt
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, false, fmt.Errorf("GitHub API status %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxPayload+1))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxPayload+1))
 	if err != nil {
 		return nil, nil, false, err
 	}
-	if len(body) > maxPayload {
+	if len(body) > MaxPayload {
 		return nil, nil, false, ErrPayload
 	}
 	return body, resp.Header, false, nil
