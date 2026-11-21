@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.19.1] - 2026-11-21
+
 ### Fixed
 
 - **Remote Machines**: Allow multiple bots to share a runner. Each bot starts in `workspaces/<bot-id>/workspace` under the runner state directory. Dex leaves files in the old `workspace/` directory in place (#230).
@@ -74,7 +76,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/recally-io/dex/compare/v0.19.1...HEAD
+[v0.19.1]: https://github.com/recally-io/dex/compare/v0.19.0...v0.19.1
 [v0.19.0]: https://github.com/recally-io/dex/compare/v0.18.0...v0.19.0
 [v0.18.0]: https://github.com/recally-io/dex/compare/v0.17.0...v0.18.0
 [v0.17.0]: https://github.com/recally-io/dex/compare/v0.16.1...v0.17.0
