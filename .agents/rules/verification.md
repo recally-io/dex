@@ -13,7 +13,8 @@ Read this before you report work as complete.
 | Before a commit or PR            | `mise run check`                                                          |
 
 `check:go` builds the embedded web assets, runs lint, builds Go packages,
-and runs Go tests with the race detector. There is no backend worker build.
+and runs Go tests with the race detector, except `internal/app`. There is no
+backend worker build.
 Run `mise run check:native` for runtime or dependency changes. It checks that
 removed backend paths stay absent, rejects PiG TUI and extension-host imports,
 and builds darwin/linux on amd64/arm64 with `CGO_ENABLED=0`.

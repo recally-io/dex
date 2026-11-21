@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+#MISE description="Run the internal/app tests without the race detector and record test timings"
+#MISE depends=["build:web"]
+set -euo pipefail
+
+# The race detector made these end-to-end tests several times slower and found little that the
+# package race tests do not find. Add -race back here if a data race reaches the app layer.
+mkdir -p .local/ci
+go test -json ./internal/app | tee .local/ci/app.jsonl

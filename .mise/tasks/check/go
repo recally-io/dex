@@ -1,25 +1,26 @@
 #!/usr/bin/env bash
-#MISE description="Lint, build, and test the Go code (builds embedded assets first)"
+#MISE description="Lint, build, and test the Go code; internal/app runs without -race (builds embedded assets first)"
 #MISE depends=["build:web"]
 set -euo pipefail
 
-packages=(./...)
-case "${1:-all}" in
-  all) ;;
-  without-app|without-integration)
-    # CI runs integration packages in separate jobs. The default still runs every package.
-    all_packages="$(go list ./...)"
-    packages=()
-    while IFS= read -r package; do
-      if [[ "$package" == github.com/recally-io/dex/internal/app ]]; then continue; fi
-      if [[ "$1" == without-integration && "$package" == github.com/recally-io/dex/internal/chat ]]; then continue; fi
-      packages+=("$package")
-    done <<< "$all_packages"
-    ;;
+mode="${1:-all}"
+case "$mode" in
+  all|without-app|without-integration) ;;
   *) echo "Usage: mise run check:go [all|without-app|without-integration]" >&2; exit 2 ;;
 esac
+# CI runs integration packages in separate jobs. The default still runs every package.
+packages=()
+while IFS= read -r package; do
+  if [[ "$package" == github.com/recally-io/dex/internal/app ]]; then continue; fi
+  if [[ "$mode" == without-integration && "$package" == github.com/recally-io/dex/internal/chat ]]; then continue; fi
+  packages+=("$package")
+done <<< "$(go list ./...)"
 
 golangci-lint fmt --diff
 golangci-lint run
 go build ./...
 go test -race "${packages[@]}"
+# internal/app runs without the race detector, as in check:app.
+if [[ "$mode" == all ]]; then
+  go test ./internal/app
+fi
