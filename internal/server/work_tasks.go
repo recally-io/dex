@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 
 	"github.com/recally-io/dex/internal/api"
@@ -53,7 +54,15 @@ func (h *handler) GetWorkTask(ctx context.Context, req api.GetWorkTaskRequestObj
 	for _, entry := range detail.Entries {
 		entries = append(entries, workTaskEntry(entry))
 	}
-	return api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries}, nil
+	questions := make([]api.WorkTaskQuestion, 0, len(detail.Questions))
+	for _, question := range detail.Questions {
+		var options []string
+		if err := json.Unmarshal([]byte(question.OptionsJson), &options); err != nil {
+			return nil, err
+		}
+		questions = append(questions, api.WorkTaskQuestion{Id: question.ID, Text: question.Text, Options: options, Queued: question.Queued != 0})
+	}
+	return api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions}, nil
 }
 
 func (h *handler) SetWorkTaskLifecycle(ctx context.Context, req api.SetWorkTaskLifecycleRequestObject) (api.SetWorkTaskLifecycleResponseObject, error) {

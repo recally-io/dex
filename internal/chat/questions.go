@@ -163,6 +163,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 			return engine.QuestionInfo{}, err
 		}
 	}
+	var queued int64
 	switch current, err := q.GetCurrentQuestion(ctx, conv.ID); {
 	case errors.Is(err, sql.ErrNoRows):
 	case err != nil:
@@ -173,10 +174,20 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 			return engine.QuestionInfo{}, err
 		}
 	default:
-		return engine.QuestionInfo{}, errQuestionOpen
+		if action != nil || conv.ChannelKey != MainKey {
+			return engine.QuestionInfo{}, errQuestionOpen
+		}
+		taskID, err := workTaskForInput(ctx, q, source.ID)
+		if err != nil {
+			return engine.QuestionInfo{}, err
+		}
+		if taskID == "" {
+			return engine.QuestionInfo{}, errQuestionOpen
+		}
+		queued = 1
 	}
 	id := uuid.NewV7().String()
-	params := sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, ConversationID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli()}
+	params := sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, ConversationID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli(), Queued: queued}
 	action.store(&params)
 	if err := q.CreateQuestion(ctx, params); err != nil {
 		return engine.QuestionInfo{}, err
@@ -208,7 +219,7 @@ func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, chatID 
 	if err != nil {
 		return answerDecision{}, err
 	}
-	if row.Status != "open" {
+	if row.Status != "open" || row.Queued != 0 && origin != "web" {
 		return answerDecision{}, ErrQuestionClosed
 	}
 	conv, err := q.GetConversation(ctx, chatID)

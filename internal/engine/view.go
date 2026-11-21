@@ -150,6 +150,8 @@ func metadata(value any) inputMetadata {
 	}
 	text := func(key string) string { v, _ := obj.Get(key); s, _ := v.(string); return s }
 	m := inputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), TaskID: text("taskId"), TaskTitle: text("taskTitle")}
+	flag, _ := obj.Get("hasWorkTask")
+	m.HasWorkTask, _ = flag.(bool)
 	raw, _ := obj.Get("attachments")
 	if list, ok := raw.([]any); ok {
 		for _, v := range list {
@@ -167,7 +169,9 @@ func metadata(value any) inputMetadata {
 }
 
 func userItem(m inputMetadata, id string, at int64, text string) Item {
-	if len(m.Attachments) > 0 {
+	if m.HasWorkTask {
+		text = m.Content
+	} else if len(m.Attachments) > 0 {
 		text = stripAttachedFiles(text, m.Attachments)
 	}
 	// A withdrawn input keeps the kind of the input: task_result. An input in the log has dex.task_result.

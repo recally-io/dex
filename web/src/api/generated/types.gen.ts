@@ -15,6 +15,13 @@ export type WorkTask = {
     updatedAt: number;
 };
 
+export type WorkTaskQuestion = {
+    id: string;
+    text: string;
+    options: Array<string>;
+    queued: boolean;
+};
+
 export type WorkTaskEntry = {
     id: number;
     content: string;
@@ -176,6 +183,10 @@ export type MessageInput = {
      * Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
      */
     attachments?: Array<string>;
+    /**
+     * Selects a Task of this agent for a Main message.
+     */
+    workTaskId?: string;
     /**
      * The ID of the open question that this message answers. dex answers 409 when the question is closed. A message without this field never closes a question.
      *
@@ -1306,6 +1317,7 @@ export type GetWorkTaskResponses = {
     200: {
         task: WorkTask;
         entries: Array<WorkTaskEntry>;
+        questions: Array<WorkTaskQuestion>;
     };
 };
 

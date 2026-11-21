@@ -8,6 +8,11 @@ SELECT * FROM routine_notification_targets WHERE agent_id = ? ORDER BY platform,
 -- name: GetRoutineNotificationTarget :one
 SELECT * FROM routine_notification_targets WHERE id = ? AND agent_id = ?;
 
+-- name: GetPrimaryNotificationTarget :one
+SELECT t.* FROM agents a JOIN routine_notification_targets t
+ON t.id = a.primary_notification_target_id AND t.agent_id = a.id
+WHERE a.id = ? AND a.archived_at IS NULL;
+
 -- name: SetPrimaryNotificationTarget :execrows
 UPDATE agents SET primary_notification_target_id = ? WHERE id = ?;
 

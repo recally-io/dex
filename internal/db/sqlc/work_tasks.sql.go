@@ -9,6 +9,20 @@ import (
 	"context"
 )
 
+const associateWorkTaskInput = `-- name: AssociateWorkTaskInput :exec
+INSERT INTO work_task_inputs (submission_id, task_id) VALUES (?, ?)
+`
+
+type AssociateWorkTaskInputParams struct {
+	SubmissionID string `json:"submission_id"`
+	TaskID       string `json:"task_id"`
+}
+
+func (q *Queries) AssociateWorkTaskInput(ctx context.Context, arg AssociateWorkTaskInputParams) error {
+	_, err := q.db.ExecContext(ctx, associateWorkTaskInput, arg.SubmissionID, arg.TaskID)
+	return err
+}
+
 const createWorkTask = `-- name: CreateWorkTask :one
 INSERT INTO work_tasks (id, agent_id, title, created_at, updated_at)
 SELECT ?1, a.id, ?2, ?3, ?3 FROM agents a WHERE a.id = ?4 AND a.archived_at IS NULL
@@ -128,6 +142,54 @@ func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]Wor
 	return items, nil
 }
 
+const listWorkTaskQuestions = `-- name: ListWorkTaskQuestions :many
+SELECT q.id, q.agent_id, q.conversation_id, q.source_submission_id, q.tool_operation_key, q.text, q.options_json, q.status, q.answer_submission_id, q.created_at, q.settled_at, q."action", q.action_agent_id, q.approve_text, q.outcome, q.queued FROM questions q
+JOIN work_task_inputs i ON i.submission_id = q.source_submission_id
+JOIN submissions s ON s.id = q.source_submission_id
+WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
+ORDER BY q.rowid
+`
+
+func (q *Queries) ListWorkTaskQuestions(ctx context.Context, taskID string) ([]Question, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkTaskQuestions, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Question{}
+	for rows.Next() {
+		var i Question
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ConversationID,
+			&i.SourceSubmissionID,
+			&i.ToolOperationKey,
+			&i.Text,
+			&i.OptionsJson,
+			&i.Status,
+			&i.AnswerSubmissionID,
+			&i.CreatedAt,
+			&i.SettledAt,
+			&i.Action,
+			&i.ActionAgentID,
+			&i.ApproveText,
+			&i.Outcome,
+			&i.Queued,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkTasks = `-- name: ListWorkTasks :many
 SELECT t.id, t.agent_id, t.title, t.lifecycle, t.created_at, t.updated_at FROM work_tasks t JOIN agents a ON a.id = t.agent_id
 WHERE a.archived_at IS NULL AND (t.lifecycle = 'open' OR ?1)
@@ -208,4 +270,32 @@ type TouchWorkTaskParams struct {
 func (q *Queries) TouchWorkTask(ctx context.Context, arg TouchWorkTaskParams) error {
 	_, err := q.db.ExecContext(ctx, touchWorkTask, arg.At, arg.ID)
 	return err
+}
+
+const workTaskForInput = `-- name: WorkTaskForInput :one
+SELECT task_id FROM work_task_inputs WHERE submission_id = ?
+`
+
+func (q *Queries) WorkTaskForInput(ctx context.Context, submissionID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, workTaskForInput, submissionID)
+	var task_id string
+	err := row.Scan(&task_id)
+	return task_id, err
+}
+
+const workTaskForQuestion = `-- name: WorkTaskForQuestion :one
+SELECT i.task_id FROM work_task_inputs i JOIN questions q ON q.source_submission_id = i.submission_id
+WHERE q.id = ?1 AND q.conversation_id = ?2
+`
+
+type WorkTaskForQuestionParams struct {
+	QuestionID     string `json:"question_id"`
+	ConversationID int64  `json:"conversation_id"`
+}
+
+func (q *Queries) WorkTaskForQuestion(ctx context.Context, arg WorkTaskForQuestionParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, workTaskForQuestion, arg.QuestionID, arg.ConversationID)
+	var task_id string
+	err := row.Scan(&task_id)
+	return task_id, err
 }

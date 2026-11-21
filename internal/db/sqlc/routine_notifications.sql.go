@@ -19,6 +19,25 @@ func (q *Queries) AdvanceRoutineNotification(ctx context.Context, runID string) 
 	return err
 }
 
+const getPrimaryNotificationTarget = `-- name: GetPrimaryNotificationTarget :one
+SELECT t.id, t.agent_id, t.platform, t.account_id, t.peer FROM agents a JOIN routine_notification_targets t
+ON t.id = a.primary_notification_target_id AND t.agent_id = a.id
+WHERE a.id = ? AND a.archived_at IS NULL
+`
+
+func (q *Queries) GetPrimaryNotificationTarget(ctx context.Context, id string) (RoutineNotificationTarget, error) {
+	row := q.db.QueryRowContext(ctx, getPrimaryNotificationTarget, id)
+	var i RoutineNotificationTarget
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.Platform,
+		&i.AccountID,
+		&i.Peer,
+	)
+	return i, err
+}
+
 const getRoutineNotification = `-- name: GetRoutineNotification :one
 SELECT run_id, agent_id, target_id, platform, account_id, peer, body, rendered_parts, parts, status, reason FROM routine_notification_deliveries WHERE run_id = ?
 `

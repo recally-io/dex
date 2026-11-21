@@ -99,6 +99,11 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	if _, err = writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {
 		return 0, 0, err
 	}
+	if conv.ChannelKey == MainKey {
+		if err := promoteTaskQuestion(ctx, q, conv, s.now().UnixMilli()); err != nil {
+			return 0, 0, err
+		}
+	}
 	if sub.ExitAction != "stay_silent" {
 		if parent, err = s.sendResult(ctx, q, id, event, withdrawn); err != nil {
 			return 0, 0, err

@@ -271,6 +271,7 @@ type Question struct {
 	ActionAgentID      sql.NullString `json:"action_agent_id"`
 	ApproveText        sql.NullString `json:"approve_text"`
 	Outcome            sql.NullString `json:"outcome"`
+	Queued             int64          `json:"queued"`
 }
 
 type QuestionMessage struct {
@@ -441,4 +442,9 @@ type WorkTaskEntry struct {
 	TaskID    string `json:"task_id"`
 	Content   string `json:"content"`
 	CreatedAt int64  `json:"created_at"`
+}
+
+type WorkTaskInput struct {
+	SubmissionID string `json:"submission_id"`
+	TaskID       string `json:"task_id"`
 }

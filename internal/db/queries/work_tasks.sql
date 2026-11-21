@@ -28,3 +28,20 @@ UPDATE work_tasks SET updated_at = max(updated_at, CAST(@at AS INTEGER)) WHERE i
 
 -- name: ListWorkTaskEntries :many
 SELECT * FROM work_task_entries WHERE task_id = ? ORDER BY id DESC LIMIT 100;
+
+-- name: AssociateWorkTaskInput :exec
+INSERT INTO work_task_inputs (submission_id, task_id) VALUES (?, ?);
+
+-- name: WorkTaskForInput :one
+SELECT task_id FROM work_task_inputs WHERE submission_id = ?;
+
+-- name: ListWorkTaskQuestions :many
+SELECT q.* FROM questions q
+JOIN work_task_inputs i ON i.submission_id = q.source_submission_id
+JOIN submissions s ON s.id = q.source_submission_id
+WHERE i.task_id = @task_id AND q.status = 'open' AND s.status = 'done'
+ORDER BY q.rowid;
+
+-- name: WorkTaskForQuestion :one
+SELECT i.task_id FROM work_task_inputs i JOIN questions q ON q.source_submission_id = i.submission_id
+WHERE q.id = @question_id AND q.conversation_id = @conversation_id;

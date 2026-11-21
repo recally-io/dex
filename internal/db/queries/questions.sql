@@ -3,17 +3,29 @@ SELECT * FROM questions WHERE tool_operation_key = ?;
 
 -- name: CreateQuestion :exec
 INSERT INTO questions (id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, created_at,
-    action, action_agent_id, approve_text)
+    action, action_agent_id, approve_text, queued)
 VALUES (@id, @agent_id, @conversation_id, @source_submission_id, @tool_operation_key, @text, @options_json, 'open', @created_at,
-    @action, @action_agent_id, @approve_text);
+    @action, @action_agent_id, @approve_text, @queued);
 
 -- name: GetCurrentQuestion :one
 -- The question that waits for the user, or whose answer waits in the queue.
-SELECT * FROM questions WHERE conversation_id = ? AND status IN ('open', 'answered')
+SELECT * FROM questions WHERE conversation_id = ? AND queued = 0 AND status IN ('open', 'answered')
 ORDER BY rowid DESC LIMIT 1;
 
 -- name: ListCurrentQuestions :many
-SELECT * FROM questions WHERE agent_id = ? AND status IN ('open', 'answered');
+SELECT * FROM questions WHERE agent_id = ? AND queued = 0 AND status IN ('open', 'answered');
+
+-- name: PromoteQueuedQuestion :one
+UPDATE questions SET queued = 0
+WHERE id = (
+  SELECT q.id FROM questions q JOIN submissions s ON s.id = q.source_submission_id
+  WHERE q.conversation_id = @chat_id AND q.queued = 1 AND q.status = 'open' AND s.status = 'done'
+  ORDER BY q.rowid LIMIT 1
+) AND NOT EXISTS (
+  SELECT 1 FROM questions current WHERE current.conversation_id = @chat_id
+  AND current.queued = 0 AND current.status IN ('open', 'answered')
+)
+RETURNING *;
 
 -- name: GetQuestion :one
 SELECT * FROM questions WHERE id = ?;

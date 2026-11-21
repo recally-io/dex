@@ -77,9 +77,9 @@ func (q *Queries) ConsumeQuestion(ctx context.Context, arg ConsumeQuestionParams
 
 const createQuestion = `-- name: CreateQuestion :exec
 INSERT INTO questions (id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, created_at,
-    action, action_agent_id, approve_text)
+    action, action_agent_id, approve_text, queued)
 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'open', ?8,
-    ?9, ?10, ?11)
+    ?9, ?10, ?11, ?12)
 `
 
 type CreateQuestionParams struct {
@@ -94,6 +94,7 @@ type CreateQuestionParams struct {
 	Action             sql.NullString `json:"action"`
 	ActionAgentID      sql.NullString `json:"action_agent_id"`
 	ApproveText        sql.NullString `json:"approve_text"`
+	Queued             int64          `json:"queued"`
 }
 
 func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) error {
@@ -109,6 +110,7 @@ func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) 
 		arg.Action,
 		arg.ActionAgentID,
 		arg.ApproveText,
+		arg.Queued,
 	)
 	return err
 }
@@ -130,7 +132,7 @@ func (q *Queries) DismissQuestions(ctx context.Context, arg DismissQuestionsPara
 }
 
 const getCurrentQuestion = `-- name: GetCurrentQuestion :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE conversation_id = ? AND status IN ('open', 'answered')
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome, queued FROM questions WHERE conversation_id = ? AND queued = 0 AND status IN ('open', 'answered')
 ORDER BY rowid DESC LIMIT 1
 `
 
@@ -154,12 +156,13 @@ func (q *Queries) GetCurrentQuestion(ctx context.Context, conversationID int64) 
 		&i.ActionAgentID,
 		&i.ApproveText,
 		&i.Outcome,
+		&i.Queued,
 	)
 	return i, err
 }
 
 const getQuestion = `-- name: GetQuestion :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE id = ?
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome, queued FROM questions WHERE id = ?
 `
 
 func (q *Queries) GetQuestion(ctx context.Context, id string) (Question, error) {
@@ -181,12 +184,13 @@ func (q *Queries) GetQuestion(ctx context.Context, id string) (Question, error) 
 		&i.ActionAgentID,
 		&i.ApproveText,
 		&i.Outcome,
+		&i.Queued,
 	)
 	return i, err
 }
 
 const getQuestionByAnswer = `-- name: GetQuestionByAnswer :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE answer_submission_id = ?
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome, queued FROM questions WHERE answer_submission_id = ?
 `
 
 func (q *Queries) GetQuestionByAnswer(ctx context.Context, answerSubmissionID sql.NullString) (Question, error) {
@@ -208,6 +212,7 @@ func (q *Queries) GetQuestionByAnswer(ctx context.Context, answerSubmissionID sq
 		&i.ActionAgentID,
 		&i.ApproveText,
 		&i.Outcome,
+		&i.Queued,
 	)
 	return i, err
 }
@@ -230,7 +235,7 @@ func (q *Queries) GetQuestionByMessage(ctx context.Context, arg GetQuestionByMes
 }
 
 const getQuestionByOperation = `-- name: GetQuestionByOperation :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE tool_operation_key = ?
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome, queued FROM questions WHERE tool_operation_key = ?
 `
 
 func (q *Queries) GetQuestionByOperation(ctx context.Context, toolOperationKey string) (Question, error) {
@@ -252,12 +257,13 @@ func (q *Queries) GetQuestionByOperation(ctx context.Context, toolOperationKey s
 		&i.ActionAgentID,
 		&i.ApproveText,
 		&i.Outcome,
+		&i.Queued,
 	)
 	return i, err
 }
 
 const getQuestionBySource = `-- name: GetQuestionBySource :one
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE source_submission_id = ? ORDER BY rowid LIMIT 1
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome, queued FROM questions WHERE source_submission_id = ? ORDER BY rowid LIMIT 1
 `
 
 func (q *Queries) GetQuestionBySource(ctx context.Context, sourceSubmissionID string) (Question, error) {
@@ -279,12 +285,13 @@ func (q *Queries) GetQuestionBySource(ctx context.Context, sourceSubmissionID st
 		&i.ActionAgentID,
 		&i.ApproveText,
 		&i.Outcome,
+		&i.Queued,
 	)
 	return i, err
 }
 
 const listCurrentQuestions = `-- name: ListCurrentQuestions :many
-SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome FROM questions WHERE agent_id = ? AND status IN ('open', 'answered')
+SELECT id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome, queued FROM questions WHERE agent_id = ? AND queued = 0 AND status IN ('open', 'answered')
 `
 
 func (q *Queries) ListCurrentQuestions(ctx context.Context, agentID string) ([]Question, error) {
@@ -312,6 +319,7 @@ func (q *Queries) ListCurrentQuestions(ctx context.Context, agentID string) ([]Q
 			&i.ActionAgentID,
 			&i.ApproveText,
 			&i.Outcome,
+			&i.Queued,
 		); err != nil {
 			return nil, err
 		}
@@ -324,6 +332,43 @@ func (q *Queries) ListCurrentQuestions(ctx context.Context, agentID string) ([]Q
 		return nil, err
 	}
 	return items, nil
+}
+
+const promoteQueuedQuestion = `-- name: PromoteQueuedQuestion :one
+UPDATE questions SET queued = 0
+WHERE id = (
+  SELECT q.id FROM questions q JOIN submissions s ON s.id = q.source_submission_id
+  WHERE q.conversation_id = ?1 AND q.queued = 1 AND q.status = 'open' AND s.status = 'done'
+  ORDER BY q.rowid LIMIT 1
+) AND NOT EXISTS (
+  SELECT 1 FROM questions current WHERE current.conversation_id = ?1
+  AND current.queued = 0 AND current.status IN ('open', 'answered')
+)
+RETURNING id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, answer_submission_id, created_at, settled_at, "action", action_agent_id, approve_text, outcome, queued
+`
+
+func (q *Queries) PromoteQueuedQuestion(ctx context.Context, chatID int64) (Question, error) {
+	row := q.db.QueryRowContext(ctx, promoteQueuedQuestion, chatID)
+	var i Question
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ConversationID,
+		&i.SourceSubmissionID,
+		&i.ToolOperationKey,
+		&i.Text,
+		&i.OptionsJson,
+		&i.Status,
+		&i.AnswerSubmissionID,
+		&i.CreatedAt,
+		&i.SettledAt,
+		&i.Action,
+		&i.ActionAgentID,
+		&i.ApproveText,
+		&i.Outcome,
+		&i.Queued,
+	)
+	return i, err
 }
 
 const reopenQuestion = `-- name: ReopenQuestion :execrows

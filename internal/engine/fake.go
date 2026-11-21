@@ -66,6 +66,11 @@ func fakeProvider() *ai.ModelsProvider {
 			}
 			return fakeCall("bash", map[string]any{"command": fakeBashCommand(text)}), nil
 		case "tool", "direct", "direct-content":
+			if strings.HasPrefix(text, "Dex Task: ") {
+				if _, body, ok := strings.Cut(text, "\n\n"); ok {
+					text = body
+				}
+			}
 			name, argsText, hasArgs := strings.Cut(text, " ")
 			if result, ok := last.(ai.ToolResultMessage); ok && result.ToolName == name {
 				prefix := "tool: "
