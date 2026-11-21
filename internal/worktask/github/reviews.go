@@ -62,6 +62,22 @@ func Namespace(repositoryID int64) string {
 	return "github.com/repository/" + strconv.FormatInt(repositoryID, 10)
 }
 
+const ReviewSubmitted = "review.submitted"
+
+// PullCoordinates decodes a linked GitHub PR's stable identifiers.
+func PullCoordinates(namespace string, object worktask.Object) (repositoryID, pullNumber int64, ok bool) {
+	if object.Type != "pull_request" {
+		return 0, 0, false
+	}
+	repository, ok := strings.CutPrefix(namespace, "github.com/repository/")
+	if !ok {
+		return 0, 0, false
+	}
+	repositoryID, repoErr := strconv.ParseInt(repository, 10, 64)
+	pullNumber, pullErr := strconv.ParseInt(object.Key, 10, 64)
+	return repositoryID, pullNumber, repoErr == nil && repositoryID > 0 && pullErr == nil && pullNumber > 0
+}
+
 // PullRequest returns the object to link when a Task starts tracking a PR.
 func PullRequest(number int64) worktask.Object {
 	return worktask.Object{Type: "pull_request", Key: strconv.FormatInt(number, 10)}
@@ -159,7 +175,7 @@ func acceptReview(ctx context.Context, store *worktask.Service, repositoryID, pu
 	}
 	chars := []rune(content)
 	result, err := store.Accept(ctx, worktask.Event{
-		Namespace: Namespace(repositoryID), ReceiptKey: receiptKey, ChangeKey: reviewKey(item.ID), Type: "review.submitted",
+		Namespace: Namespace(repositoryID), ReceiptKey: receiptKey, ChangeKey: reviewKey(item.ID), Type: ReviewSubmitted,
 		Objects: []worktask.Object{PullRequest(pullNumber)}, Revision: item.Commit,
 		Content: string(chars[:min(len(chars), 32000)]), SourceURL: item.URL, OccurredAt: item.SubmittedAt.UnixMilli(),
 		AuthorLogin: item.User.Login, AuthorAssociation: item.Association, RecordOnly: !item.trusted(),
