@@ -19,7 +19,9 @@ never reached native admission.
   `goose -dir internal/db/migrations create <name> sql`.
 - dex has no separate deploy step, so `db.Open` applies the migrations on
   start. Never edit a migration that a released build applied; add a new one.
-- Write queries in `internal/db/queries/`. Run `mise run generate:db` and
-  commit `internal/db/sqlc/`. `mise run check:db-drift` fails when the
+- Write core queries in `internal/db/queries/` and plugin queries in
+  `plugins/<name>/queries/`. Plugin tables also use core migrations, so they
+  exist when the plugin is off. Run `mise run generate:db` and commit
+  `internal/db/sqlc/` and `plugins/<name>/store/`. `mise run check:db-drift` fails when the
   committed code differs from the generated code.
 - Use `STRICT` tables.

@@ -73,8 +73,9 @@ Read this before you change code, dependencies, native execution, or stored data
   The global receipt gate must order receipt commits and maintenance confirmation.
 - Reload replaces only the selected agent's resources. Tools and stdio MCP
   receive an explicit environment. Do not change the dex process environment.
-- Do not edit generated code: `internal/db/sqlc/` (`mise run generate:db`),
-  `internal/api/server.gen.go` and `web/src/api/generated/`
+- Do not edit generated code: `internal/db/sqlc/` and `plugins/*/store/`
+  (`mise run generate:db`), `internal/api/server.gen.go`,
+  `plugins/*/api/server.gen.go`, and `web/src/api/generated/`
   (`mise run generate:api`).
 - `api/openapi.yaml` is the only source of the HTTP API. Change it first, then
   generate. Tag each plugin operation with the plugin name.

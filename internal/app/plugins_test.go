@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,6 +16,11 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	// Given a Task that waits for a review of a GitHub PR, made while the GitHub plugin was on.
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
+	var health api.Health
+	d.must(t, http.MethodGet, "/api/health", nil, &health)
+	if !slices.Equal(health.Plugins, []string{"github"}) {
+		t.Fatalf("health must list the GitHub plugin: %+v", health.Plugins)
+	}
 	secret := strings.Repeat("s", 40)
 	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret}, nil, http.StatusNoContent)
 	var task api.WorkTask
@@ -25,7 +31,11 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	// When dex starts again with no plugins.
 	d = startDexWith(t, app.Config{DataDir: dataDir, Plugins: []plugin.Factory{}})
 
-	// Then GitHub has no hook, API, or tool.
+	// Then GitHub has no hook, API, tool, or UI.
+	d.must(t, http.MethodGet, "/api/health", nil, &health)
+	if len(health.Plugins) != 0 {
+		t.Fatalf("health must list no plugins: %+v", health.Plugins)
+	}
 	deliverGitHubStatus(t, d, secret, "review-1", "pull_request_review", `{}`, http.StatusNotFound)
 	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret}, nil, http.StatusNotFound)
 	var main chatInfo
