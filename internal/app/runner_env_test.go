@@ -140,6 +140,23 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		t.Fatalf("remote command after reloading the bot returned %q", got)
 	}
 
+	// A second bot can use the same machine without sharing its default files.
+	var second apiAgent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{
+		"name": "Second bot", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "environmentId": created.ID,
+	}, &second, http.StatusCreated)
+	var secondSession sessionInfo
+	d.must(t, http.MethodPost, "/api/agents/"+second.ID+"/chats", nil, &secondSession, http.StatusCreated)
+	if got := taskTurn(t, d, chat, `printf 'first' > note.txt; cat note.txt`); !strings.Contains(got, "first") {
+		t.Fatalf("first bot did not write its file: %q", got)
+	}
+	other := botChat{bots: &bots{t: t, d: d}, agent: second.ID, id: secondSession.ID}
+	other.send(`test ! -e note.txt && printf 'second' > note.txt && cat note.txt`)
+	other.watch().until(t, "second bot writes its own file", answeredWith("bash: second"))
+	if got := taskTurn(t, d, chat, `cat note.txt`); !strings.Contains(got, "first") {
+		t.Fatalf("first bot lost its file: %q", got)
+	}
+
 	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)
 	select {
 	case <-stop:

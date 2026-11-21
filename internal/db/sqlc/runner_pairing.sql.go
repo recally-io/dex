@@ -74,3 +74,22 @@ func (q *Queries) RevokeRunnerCredential(ctx context.Context, environmentID stri
 	_, err := q.db.ExecContext(ctx, revokeRunnerCredential, environmentID)
 	return err
 }
+
+const usesLegacyRunnerWorkspace = `-- name: UsesLegacyRunnerWorkspace :one
+SELECT EXISTS (
+    SELECT 1 FROM runner_legacy_workspaces
+    WHERE environment_id = ? AND agent_id = ?
+)
+`
+
+type UsesLegacyRunnerWorkspaceParams struct {
+	EnvironmentID string `json:"environment_id"`
+	AgentID       string `json:"agent_id"`
+}
+
+func (q *Queries) UsesLegacyRunnerWorkspace(ctx context.Context, arg UsesLegacyRunnerWorkspaceParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, usesLegacyRunnerWorkspace, arg.EnvironmentID, arg.AgentID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
