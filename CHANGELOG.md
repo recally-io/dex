@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.19.0] - 2026-11-21
+
+### Added
+
+- **Remote Machines**: Connect runners to the controller over outbound WebSockets, with a pinned TLS listener (#198).
+- **Execution Environments**: Dispatch work through environment backends and leases. Session tools, Routines, and session forks can run in a selected execution environment (#199, #202, #205, #206).
+
+### Changed
+
+- **Web**: Rename `Tasks` and `New task` to `Sessions` and `New session`. Existing URLs keep their routes (#207).
+- **Docs**: Remove ADRs and make `docs/dev/architecture.md` the source of truth (#200).
+- **Control**: Simplify the service environment and definitions (#195).
+
+### Fixed
+
+- **Sessions**: Wait for a queued steer before the child's tool is released (#204).
+- **Tests**: Stabilize asynchronous App integration tests (#197).
+
 ## [v0.18.0] - 2026-11-19
 
 ### Added
@@ -51,7 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/recally-io/dex/compare/v0.19.0...HEAD
+[v0.19.0]: https://github.com/recally-io/dex/compare/v0.18.0...v0.19.0
 [v0.18.0]: https://github.com/recally-io/dex/compare/v0.17.0...v0.18.0
 [v0.17.0]: https://github.com/recally-io/dex/compare/v0.16.1...v0.17.0
 [v0.16.1]: https://github.com/recally-io/dex/compare/v0.16.0...v0.16.1
