@@ -18,7 +18,7 @@ security:
   - bearer: []
   - session: []
 paths:
-  /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull:
+  /api/plugins/github/agents/{agentId}/tasks/{taskId}/pull:
     parameters:
       - $ref: "#/components/parameters/AgentId"
       - in: path
@@ -27,6 +27,7 @@ paths:
         schema: { type: string }
     put:
       operationId: bindTaskGitHubPull
+      tags: [github]
       description: Bind a GitHub PR to one Task. Optionally add a wait for a review of a specific commit.
       requestBody:
         required: true
@@ -54,7 +55,7 @@ paths:
       responses:
         "204": { description: PR bound. }
         default: { $ref: "#/components/responses/Error" }
-  /api/settings/github-review-pulls/{repositoryId}/{pullNumber}:
+  /api/plugins/github/review-pulls/{repositoryId}/{pullNumber}:
     parameters:
       - in: path
         name: repositoryId
@@ -66,6 +67,7 @@ paths:
         schema: { type: integer, format: int64, minimum: 1 }
     put:
       operationId: saveGitHubReviewPull
+      tags: [github]
       description: Enable scheduled review pulls for one PR with a write-only GitHub token.
       requestBody:
         required: true
@@ -86,11 +88,12 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteGitHubReviewPull
+      tags: [github]
       description: Disable scheduled review pulls for one PR.
       responses:
         "204": { description: Pull disabled. }
         default: { $ref: "#/components/responses/Error" }
-  /api/settings/github-webhooks/{repositoryId}:
+  /api/plugins/github/webhooks/{repositoryId}:
     parameters:
       - in: path
         name: repositoryId
@@ -98,6 +101,7 @@ paths:
         schema: { type: integer, format: int64, minimum: 1 }
     put:
       operationId: saveGitHubWebhook
+      tags: [github]
       description: Save a GitHub Webhook secret and optional destination for new Issues.
       requestBody:
         required: true
@@ -125,6 +129,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteGitHubWebhook
+      tags: [github]
       description: Disable the Webhook for this repository.
       responses:
         "204": { description: Webhook disabled. }
@@ -2345,12 +2350,16 @@ components:
 
     Health:
       type: object
-      required: [status, version, dataDir, runtimeReady]
+      required: [status, version, dataDir, runtimeReady, plugins]
       properties:
         status: { type: string, enum: [ok] }
         version: { type: string }
         dataDir: { type: string }
         runtimeReady: { type: boolean }
+        plugins:
+          type: array
+          description: The names of the enabled plugins, for example github.
+          items: { type: string }
 
     AgentEnvironments:
       type: object

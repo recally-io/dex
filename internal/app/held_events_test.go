@@ -14,7 +14,7 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	secret := strings.Repeat("h", 40)
 	// Given a repository rule that holds unmatched events and creates no Task.
-	d.must(t, http.MethodPut, "/api/settings/github-webhooks/10", map[string]any{"secret": secret, "holdUnmatched": true}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]any{"secret": secret, "holdUnmatched": true}, nil, http.StatusNoContent)
 	review := func(id, pull int, association string) string {
 		return fmt.Sprintf(`{"action":"submitted","repository":{"id":10},"pull_request":{"number":%d},"review":{"id":%d,"state":"commented","body":"Review %d","commit_id":"abc","submitted_at":"2026-11-21T03:00:00Z","user":{"login":"reviewer"},"author_association":%q,"html_url":"https://github.com/o/r/pull/%d"}}`, pull, id, id, association, pull)
 	}

@@ -13,12 +13,12 @@ func TestUserSeesCIOnlyAsATimelineEntry(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	secret := strings.Repeat("c", 40)
-	d.must(t, http.MethodPut, "/api/settings/github-webhooks/10", map[string]any{"secret": secret, "holdUnmatched": true}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]any{"secret": secret, "holdUnmatched": true}, nil, http.StatusNoContent)
 	var task api.WorkTask
 	d.must(t, http.MethodPost, "/api/agents/default/inbox/tasks", map[string]string{"title": "Ship PR 2"}, &task, http.StatusCreated)
 	path := "/api/agents/default/inbox/tasks/" + task.Id
 	// Given a Task that waits for a review of commit abc on PR 2 and asks for an alert.
-	d.must(t, http.MethodPut, path+"/github-pull", map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{"revision": "abc", "afterAt": 1, "alert": true}}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+task.Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{"revision": "abc", "afterAt": 1, "alert": true}}, nil, http.StatusNoContent)
 	suite := func(id int, updated string, pulls string) string {
 		return fmt.Sprintf(`{"action":"completed","repository":{"id":10,"html_url":"https://github.com/o/r"},"check_suite":{"id":%d,"head_sha":"abc","conclusion":"failure","updated_at":%q,"app":{"slug":"github-actions"},"pull_requests":[%s]}}`, id, updated, pulls)
 	}

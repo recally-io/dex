@@ -15,7 +15,7 @@ import (
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/worktask"
-	"github.com/recally-io/dex/internal/worktask/github"
+	"github.com/recally-io/dex/plugins/github"
 )
 
 func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
@@ -24,7 +24,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	adminToken := strings.Repeat("a", 40)
 	secret := strings.Repeat("b", 40)
 	d := startDexWith(t, app.Config{DataDir: dir, Token: adminToken})
-	const settings = "/api/settings/github-webhooks/10"
+	const settings = "/api/plugins/github/webhooks/10"
 	const hook = "/hooks/github/10"
 	const taskPath = "/api/agents/default/inbox/tasks/"
 	const payload = `{"action":"submitted","repository":{"id":10},"pull_request":{"number":2},"review":{"id":71,"state":"approved","body":"Looks good.","commit_id":"abc","submitted_at":"2026-11-21T03:00:00Z"}}`
@@ -105,7 +105,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	request(http.MethodDelete, settings, "", adminToken, "", http.StatusNoContent)
 	request(http.MethodPost, hook, payload, "", signature, http.StatusNotFound)
 
-	const issueSettings = "/api/settings/github-webhooks/11"
+	const issueSettings = "/api/plugins/github/webhooks/11"
 	const issueHook = "/hooks/github/11"
 	const issue = `{"action":"opened","repository":{"id":11},"issue":{"id":73,"number":3,"user":{"login":"maintainer"},"author_association":"MEMBER","title":"Login fails","body":"Please check the logs.", "created_at":"2026-11-21T03:00:00Z"}}`
 	mac.Reset()

@@ -108,6 +108,38 @@ Task keeps its link. `POST /api/inbox/held-events/{eventId}/dismiss` removes
 the event from the Inbox and keeps the record. Neither decision resolves a
 wait or sends a Task alert.
 
+### Plugins
+
+Optional sources run in the dex process as plugins. Each plugin lives in
+`plugins/<name>`, and the core in `internal/` does not import it. `cmd/dex`
+selects the plugins in `app.Config.Plugins`; this build enables `github`. A
+plugin gets the control database and the Task event store
+(`internal/plugin.Deps`). It can add:
+
+- hook routes under `/hooks/<name>/`, without the access token, with its own
+  body limit;
+- API routes under `/api/plugins/<name>/`, behind the access token;
+- scheduler jobs, named `<name>/<job>`;
+- Task link tools. The core adds the Task `id`, checks the caller, and writes
+  the link and an optional wait with the tool replay record. The plugin only
+  parses its arguments. Each tool adds one paragraph to the Task rules.
+
+`GET /api/health` lists the enabled plugins in `plugins`, and the web UI shows
+the forms of a plugin only when it is on. A plugin that is off has no routes
+(`404`), jobs, tools, or rules. Its stored links and waits stay, and Task
+detail shows them as namespace, type, and key.
+
+The plugin API operations in `api/openapi.yaml` have the plugin name as their
+tag. The core server excludes these tags, and each plugin generates its own
+server from them (`plugins/<name>/api`). A plugin owns its queries in
+`plugins/<name>/queries` and generates `plugins/<name>/store` from the core
+migrations, which stay the only schema source. Migrations that a release
+already applied stay in `internal/db/migrations`. Deliberate limit: the list
+is fixed at build time. Add a stored setting when the owner must turn a plugin
+on or off at runtime.
+
+### GitHub plugin
+
 The GitHub review adapter accepts a signed Webhook body or a page from the
 GitHub REST API. Both use the repository ID as the namespace and the review
 ID as the change key. A submitted review identifies the PR, the commit, and
@@ -127,7 +159,7 @@ checks, so Dex does not record those suites.
 
 The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
 An administrator saves or rotates a write-only secret with
-`PUT /api/settings/github-webhooks/{repositoryId}` and disables the hook with
+`PUT /api/plugins/github/webhooks/{repositoryId}` and disables the hook with
 `DELETE` on the same path. Set `issueAgentId` to an active bot on the same PUT
 to create Tasks for signed `issues.opened` deliveries. Omit it to disable Task
 creation. Set `holdUnmatched` to hold Webhook and Pull events that match no
@@ -142,7 +174,7 @@ receive deliveries from GitHub, expose only the hook path through a public
 HTTPS proxy. Keep the management routes private.
 
 The controller polls each PR configured through
-`PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber}` once per
+`PUT /api/plugins/github/review-pulls/{repositoryId}/{pullNumber}` once per
 minute. This API accepts a write-only GitHub token. `DELETE` on the same path
 removes the configuration. The poller resolves the repository ID, reads up to
 20 review pages, and uses the same event store as the hook. It saves an ETag
@@ -151,11 +183,13 @@ A failed pull leaves the checkpoint unchanged. A retry does not duplicate
 previously committed reviews.
 
 The owner can bind a PR to a Task with
-`PUT /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull`. Dex stores the
+`PUT /api/plugins/github/agents/{agentId}/tasks/{taskId}/pull`. Dex stores the
 PR link and optional review wait in one transaction. Reviews on the linked
 PR go to the Task timeline. Only a review of the specified revision, submitted
 after the wait boundary, resolves that wait. Binding does not start a run.
 Set `wait.alert` to `true` to send a Task alert when that review arrives.
+
+### Task alerts and tools
 
 A Task alert is a `task_result` submission on the bot's Main. It is linked to
 the Task, so Main shows it with the Task title. Dex creates an alert when a
@@ -191,9 +225,9 @@ source can read them.
 that started a Main run is linked to a Task, the first `session_new` of that
 run links its child, in the same transaction as the child. A later child does
 not replace it. `task_update` with `session` sets any child of the caller.
-`task_update` with `githubPull` links a PR and can add a review wait that
-starts at the call time. Set `alertMain` to `true` to send a Task alert when
-the review arrives.
+`task_link_github_pull` from the GitHub plugin links a PR and can add a review
+wait that starts at the call time. Set `alertMain` to `true` to send a Task
+alert when the review arrives.
 
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |

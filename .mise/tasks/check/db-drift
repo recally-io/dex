@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-#MISE description="Fail when internal/db/sqlc differs from what sqlc generates from the migrations"
+#MISE description="Fail when the sqlc packages differ from what sqlc generates from the migrations"
 set -euo pipefail
 
 sqlc vet
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-cp -R internal sqlc.yaml "$tmp/"
-(cd "$tmp" && rm -rf internal/db/sqlc && sqlc generate)
+cp -R internal plugins sqlc.yaml "$tmp/"
+(cd "$tmp" && rm -rf internal/db/sqlc plugins/*/store && sqlc generate)
 diff -r internal/db/sqlc "$tmp/internal/db/sqlc"
+for store in plugins/*/store; do
+  diff -r "$store" "$tmp/$store"
+done

@@ -350,3 +350,26 @@ func alertMain(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask, event E
 	}
 	return main, q.AssociateWorkTaskInput(ctx, sqlc.AssociateWorkTaskInputParams{SubmissionID: id, TaskID: task.ID})
 }
+
+// Link is an object that an agent tool links to a Task, with an optional wait on it.
+type Link struct {
+	Namespace string
+	Object    Object
+	// WaitEvent and WaitRevision add a wait that starts at the call time. An empty WaitEvent adds no wait.
+	WaitEvent, WaitRevision string
+	Alert                   bool
+	// Name names the object in error messages, for example "PR 7 of repository 10".
+	Name string
+}
+
+// LinkTool is an agent tool that a source adds to link its objects to Tasks. The core adds the
+// Task id argument, checks the caller, and writes the link with its replay record.
+type LinkTool struct {
+	Name, Description string
+	// Rules is a paragraph for the system prompt that tells the agent when to use the tool.
+	Rules      string
+	Properties map[string]any
+	Required   []string
+	// Parse validates the JSON arguments. Its error tells the model what to fix.
+	Parse func(args []byte) (Link, error)
+}

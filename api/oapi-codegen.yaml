@@ -4,3 +4,6 @@ generate:
   std-http-server: true
   strict-server: true
   models: true
+output-options:
+  # Each plugin generates the operations of its tag.
+  exclude-tags: [github]

@@ -117,6 +117,10 @@ export type Health = {
     version: string;
     dataDir: string;
     runtimeReady: boolean;
+    /**
+     * The names of the enabled plugins, for example github.
+     */
+    plugins: Array<string>;
 };
 
 export type AgentEnvironments = {
@@ -1324,7 +1328,7 @@ export type BindTaskGitHubPullData = {
         taskId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}/github-pull';
+    url: '/api/plugins/github/agents/{agentId}/tasks/{taskId}/pull';
 };
 
 export type BindTaskGitHubPullErrors = {
@@ -1352,7 +1356,7 @@ export type DeleteGitHubReviewPullData = {
         pullNumber: number;
     };
     query?: never;
-    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}';
+    url: '/api/plugins/github/review-pulls/{repositoryId}/{pullNumber}';
 };
 
 export type DeleteGitHubReviewPullErrors = {
@@ -1382,7 +1386,7 @@ export type SaveGitHubReviewPullData = {
         pullNumber: number;
     };
     query?: never;
-    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}';
+    url: '/api/plugins/github/review-pulls/{repositoryId}/{pullNumber}';
 };
 
 export type SaveGitHubReviewPullErrors = {
@@ -1409,7 +1413,7 @@ export type DeleteGitHubWebhookData = {
         repositoryId: number;
     };
     query?: never;
-    url: '/api/settings/github-webhooks/{repositoryId}';
+    url: '/api/plugins/github/webhooks/{repositoryId}';
 };
 
 export type DeleteGitHubWebhookErrors = {
@@ -1446,7 +1450,7 @@ export type SaveGitHubWebhookData = {
         repositoryId: number;
     };
     query?: never;
-    url: '/api/settings/github-webhooks/{repositoryId}';
+    url: '/api/plugins/github/webhooks/{repositoryId}';
 };
 
 export type SaveGitHubWebhookErrors = {

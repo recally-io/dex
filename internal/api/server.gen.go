@@ -1237,7 +1237,10 @@ type FollowupTimerList struct {
 
 // Health defines model for Health.
 type Health struct {
-	DataDir      string       `json:"dataDir"`
+	DataDir string `json:"dataDir"`
+
+	// Plugins The names of the enabled plugins, for example github.
+	Plugins      []string     `json:"plugins"`
 	RuntimeReady bool         `json:"runtimeReady"`
 	Status       HealthStatus `json:"status"`
 	Version      string       `json:"version"`
@@ -1955,20 +1958,6 @@ type AppendWorkTaskNoteJSONBody struct {
 	Content string `json:"content"`
 }
 
-// BindTaskGitHubPullJSONBody defines parameters for BindTaskGitHubPull.
-type BindTaskGitHubPullJSONBody struct {
-	PullNumber   int64 `json:"pullNumber"`
-	RepositoryId int64 `json:"repositoryId"`
-	Wait         *struct {
-		// AfterAt Reviews must be submitted strictly after this Unix time in milliseconds.
-		AfterAt int64 `json:"afterAt"`
-
-		// Alert When a review resolves the wait, send Main a Task alert. The default is false.
-		Alert    *bool  `json:"alert,omitempty"`
-		Revision string `json:"revision"`
-	} `json:"wait,omitempty"`
-}
-
 // SetPrimaryNotificationTargetJSONBody defines parameters for SetPrimaryNotificationTarget.
 type SetPrimaryNotificationTargetJSONBody struct {
 	// TargetId Empty clears the default.
@@ -2009,21 +1998,6 @@ type AttachHeldEventJSONBody struct {
 // ListWorkTasksParams defines parameters for ListWorkTasks.
 type ListWorkTasksParams struct {
 	IncludeClosed *bool `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
-}
-
-// SaveGitHubReviewPullJSONBody defines parameters for SaveGitHubReviewPull.
-type SaveGitHubReviewPullJSONBody struct {
-	Token *string `json:"token,omitempty"`
-}
-
-// SaveGitHubWebhookJSONBody defines parameters for SaveGitHubWebhook.
-type SaveGitHubWebhookJSONBody struct {
-	// HoldUnmatched Hold Webhook and Pull events that match no Task in the Inbox. The default ignores them.
-	HoldUnmatched *bool `json:"holdUnmatched,omitempty"`
-
-	// IssueAgentId Create Tasks for opened Issues under this agent. Omit to disable creation.
-	IssueAgentId *string `json:"issueAgentId,omitempty"`
-	Secret       *string `json:"secret,omitempty"`
 }
 
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
@@ -2092,9 +2066,6 @@ type SetWorkTaskLifecycleJSONRequestBody SetWorkTaskLifecycleJSONBody
 // AppendWorkTaskNoteJSONRequestBody defines body for AppendWorkTaskNote for application/json ContentType.
 type AppendWorkTaskNoteJSONRequestBody AppendWorkTaskNoteJSONBody
 
-// BindTaskGitHubPullJSONRequestBody defines body for BindTaskGitHubPull for application/json ContentType.
-type BindTaskGitHubPullJSONRequestBody BindTaskGitHubPullJSONBody
-
 // SetPrimaryNotificationTargetJSONRequestBody defines body for SetPrimaryNotificationTarget for application/json ContentType.
 type SetPrimaryNotificationTargetJSONRequestBody SetPrimaryNotificationTargetJSONBody
 
@@ -2118,12 +2089,6 @@ type ProbeEnvironmentJSONRequestBody = EnvironmentProbeInput
 
 // UpdateEnvironmentJSONRequestBody defines body for UpdateEnvironment for application/json ContentType.
 type UpdateEnvironmentJSONRequestBody = EnvironmentInput
-
-// SaveGitHubReviewPullJSONRequestBody defines body for SaveGitHubReviewPull for application/json ContentType.
-type SaveGitHubReviewPullJSONRequestBody SaveGitHubReviewPullJSONBody
-
-// SaveGitHubWebhookJSONRequestBody defines body for SaveGitHubWebhook for application/json ContentType.
-type SaveGitHubWebhookJSONRequestBody SaveGitHubWebhookJSONBody
 
 // SetOnePasswordJSONRequestBody defines body for SetOnePassword for application/json ContentType.
 type SetOnePasswordJSONRequestBody = OnePasswordInput
@@ -2807,9 +2772,6 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
 	AppendWorkTaskNote(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
 
-	// (PUT /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull)
-	BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, agentId AgentId, taskId string)
-
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
@@ -2905,18 +2867,6 @@ type ServerInterface interface {
 
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(w http.ResponseWriter, r *http.Request, environmentId EnvironmentId)
-
-	// (DELETE /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
-	DeleteGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64)
-
-	// (PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
-	SaveGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64)
-
-	// (DELETE /api/settings/github-webhooks/{repositoryId})
-	DeleteGitHubWebhook(w http.ResponseWriter, r *http.Request, repositoryId int64)
-
-	// (PUT /api/settings/github-webhooks/{repositoryId})
-	SaveGitHubWebhook(w http.ResponseWriter, r *http.Request, repositoryId int64)
 
 	// (GET /api/settings/onepassword)
 	GetOnePassword(w http.ResponseWriter, r *http.Request)
@@ -4862,41 +4812,6 @@ func (siw *ServerInterfaceWrapper) AppendWorkTaskNote(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
-// BindTaskGitHubPull operation middleware
-func (siw *ServerInterfaceWrapper) BindTaskGitHubPull(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId AgentId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.BindTaskGitHubPull(w, r, agentId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetNotificationTargets operation middleware
 func (siw *ServerInterfaceWrapper) GetNotificationTargets(w http.ResponseWriter, r *http.Request) {
 
@@ -5654,128 +5569,6 @@ func (siw *ServerInterfaceWrapper) TestEnvironment(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// DeleteGitHubReviewPull operation middleware
-func (siw *ServerInterfaceWrapper) DeleteGitHubReviewPull(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "repositoryId" -------------
-	var repositoryId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "repositoryId", r.PathValue("repositoryId"), &repositoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repositoryId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "pullNumber" -------------
-	var pullNumber int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "pullNumber", r.PathValue("pullNumber"), &pullNumber, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pullNumber", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteGitHubReviewPull(w, r, repositoryId, pullNumber)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SaveGitHubReviewPull operation middleware
-func (siw *ServerInterfaceWrapper) SaveGitHubReviewPull(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "repositoryId" -------------
-	var repositoryId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "repositoryId", r.PathValue("repositoryId"), &repositoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repositoryId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "pullNumber" -------------
-	var pullNumber int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "pullNumber", r.PathValue("pullNumber"), &pullNumber, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pullNumber", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SaveGitHubReviewPull(w, r, repositoryId, pullNumber)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteGitHubWebhook operation middleware
-func (siw *ServerInterfaceWrapper) DeleteGitHubWebhook(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "repositoryId" -------------
-	var repositoryId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "repositoryId", r.PathValue("repositoryId"), &repositoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repositoryId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteGitHubWebhook(w, r, repositoryId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SaveGitHubWebhook operation middleware
-func (siw *ServerInterfaceWrapper) SaveGitHubWebhook(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "repositoryId" -------------
-	var repositoryId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "repositoryId", r.PathValue("repositoryId"), &repositoryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "repositoryId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SaveGitHubWebhook(w, r, repositoryId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetOnePassword operation middleware
 func (siw *ServerInterfaceWrapper) GetOnePassword(w http.ResponseWriter, r *http.Request) {
 
@@ -6004,11 +5797,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}/github-pull", wrapper.BindTaskGitHubPull)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/github-review-pulls/{repositoryId}/{pullNumber}", wrapper.DeleteGitHubReviewPull)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/github-review-pulls/{repositoryId}/{pullNumber}", wrapper.SaveGitHubReviewPull)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/settings/github-webhooks/{repositoryId}", wrapper.DeleteGitHubWebhook)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/github-webhooks/{repositoryId}", wrapper.SaveGitHubWebhook)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/tasks", wrapper.ListWorkTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks", wrapper.CreateWorkTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.GetWorkTask)
@@ -9730,41 +9518,6 @@ func (response AppendWorkTaskNotedefaultJSONResponse) VisitAppendWorkTaskNoteRes
 	return err
 }
 
-type BindTaskGitHubPullRequestObject struct {
-	AgentId AgentId `json:"agentId"`
-	TaskId  string  `json:"taskId"`
-	Body    *BindTaskGitHubPullJSONRequestBody
-}
-
-type BindTaskGitHubPullResponseObject interface {
-	VisitBindTaskGitHubPullResponse(w http.ResponseWriter) error
-}
-
-type BindTaskGitHubPull204Response struct {
-}
-
-func (response BindTaskGitHubPull204Response) VisitBindTaskGitHubPullResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type BindTaskGitHubPulldefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response BindTaskGitHubPulldefaultJSONResponse) VisitBindTaskGitHubPullResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetNotificationTargetsRequestObject struct {
 	AgentId AgentId `json:"agentId"`
 }
@@ -11379,142 +11132,6 @@ func (response TestEnvironmentdefaultJSONResponse) VisitTestEnvironmentResponse(
 	return err
 }
 
-type DeleteGitHubReviewPullRequestObject struct {
-	RepositoryId int64 `json:"repositoryId"`
-	PullNumber   int64 `json:"pullNumber"`
-}
-
-type DeleteGitHubReviewPullResponseObject interface {
-	VisitDeleteGitHubReviewPullResponse(w http.ResponseWriter) error
-}
-
-type DeleteGitHubReviewPull204Response struct {
-}
-
-func (response DeleteGitHubReviewPull204Response) VisitDeleteGitHubReviewPullResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DeleteGitHubReviewPulldefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DeleteGitHubReviewPulldefaultJSONResponse) VisitDeleteGitHubReviewPullResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SaveGitHubReviewPullRequestObject struct {
-	RepositoryId int64 `json:"repositoryId"`
-	PullNumber   int64 `json:"pullNumber"`
-	Body         *SaveGitHubReviewPullJSONRequestBody
-}
-
-type SaveGitHubReviewPullResponseObject interface {
-	VisitSaveGitHubReviewPullResponse(w http.ResponseWriter) error
-}
-
-type SaveGitHubReviewPull204Response struct {
-}
-
-func (response SaveGitHubReviewPull204Response) VisitSaveGitHubReviewPullResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type SaveGitHubReviewPulldefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SaveGitHubReviewPulldefaultJSONResponse) VisitSaveGitHubReviewPullResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteGitHubWebhookRequestObject struct {
-	RepositoryId int64 `json:"repositoryId"`
-}
-
-type DeleteGitHubWebhookResponseObject interface {
-	VisitDeleteGitHubWebhookResponse(w http.ResponseWriter) error
-}
-
-type DeleteGitHubWebhook204Response struct {
-}
-
-func (response DeleteGitHubWebhook204Response) VisitDeleteGitHubWebhookResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DeleteGitHubWebhookdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response DeleteGitHubWebhookdefaultJSONResponse) VisitDeleteGitHubWebhookResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SaveGitHubWebhookRequestObject struct {
-	RepositoryId int64 `json:"repositoryId"`
-	Body         *SaveGitHubWebhookJSONRequestBody
-}
-
-type SaveGitHubWebhookResponseObject interface {
-	VisitSaveGitHubWebhookResponse(w http.ResponseWriter) error
-}
-
-type SaveGitHubWebhook204Response struct {
-}
-
-func (response SaveGitHubWebhook204Response) VisitSaveGitHubWebhookResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type SaveGitHubWebhookdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SaveGitHubWebhookdefaultJSONResponse) VisitSaveGitHubWebhookResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetOnePasswordRequestObject struct {
 }
 
@@ -11973,9 +11590,6 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
 	AppendWorkTaskNote(ctx context.Context, request AppendWorkTaskNoteRequestObject) (AppendWorkTaskNoteResponseObject, error)
 
-	// (PUT /api/agents/{agentId}/inbox/tasks/{taskId}/github-pull)
-	BindTaskGitHubPull(ctx context.Context, request BindTaskGitHubPullRequestObject) (BindTaskGitHubPullResponseObject, error)
-
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(ctx context.Context, request GetNotificationTargetsRequestObject) (GetNotificationTargetsResponseObject, error)
 
@@ -12071,18 +11685,6 @@ type StrictServerInterface interface {
 
 	// (POST /api/settings/environments/{environmentId}/test)
 	TestEnvironment(ctx context.Context, request TestEnvironmentRequestObject) (TestEnvironmentResponseObject, error)
-
-	// (DELETE /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
-	DeleteGitHubReviewPull(ctx context.Context, request DeleteGitHubReviewPullRequestObject) (DeleteGitHubReviewPullResponseObject, error)
-
-	// (PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber})
-	SaveGitHubReviewPull(ctx context.Context, request SaveGitHubReviewPullRequestObject) (SaveGitHubReviewPullResponseObject, error)
-
-	// (DELETE /api/settings/github-webhooks/{repositoryId})
-	DeleteGitHubWebhook(ctx context.Context, request DeleteGitHubWebhookRequestObject) (DeleteGitHubWebhookResponseObject, error)
-
-	// (PUT /api/settings/github-webhooks/{repositoryId})
-	SaveGitHubWebhook(ctx context.Context, request SaveGitHubWebhookRequestObject) (SaveGitHubWebhookResponseObject, error)
 
 	// (GET /api/settings/onepassword)
 	GetOnePassword(ctx context.Context, request GetOnePasswordRequestObject) (GetOnePasswordResponseObject, error)
@@ -13895,40 +13497,6 @@ func (sh *strictHandler) AppendWorkTaskNote(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-// BindTaskGitHubPull operation middleware
-func (sh *strictHandler) BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, agentId AgentId, taskId string) {
-	var request BindTaskGitHubPullRequestObject
-
-	request.AgentId = agentId
-	request.TaskId = taskId
-
-	var body BindTaskGitHubPullJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.BindTaskGitHubPull(ctx, request.(BindTaskGitHubPullRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "BindTaskGitHubPull")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(BindTaskGitHubPullResponseObject); ok {
-		if err := validResponse.VisitBindTaskGitHubPullResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetNotificationTargets operation middleware
 func (sh *strictHandler) GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId) {
 	var request GetNotificationTargetsRequestObject
@@ -14787,126 +14355,6 @@ func (sh *strictHandler) TestEnvironment(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TestEnvironmentResponseObject); ok {
 		if err := validResponse.VisitTestEnvironmentResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteGitHubReviewPull operation middleware
-func (sh *strictHandler) DeleteGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64) {
-	var request DeleteGitHubReviewPullRequestObject
-
-	request.RepositoryId = repositoryId
-	request.PullNumber = pullNumber
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteGitHubReviewPull(ctx, request.(DeleteGitHubReviewPullRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteGitHubReviewPull")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteGitHubReviewPullResponseObject); ok {
-		if err := validResponse.VisitDeleteGitHubReviewPullResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SaveGitHubReviewPull operation middleware
-func (sh *strictHandler) SaveGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64) {
-	var request SaveGitHubReviewPullRequestObject
-
-	request.RepositoryId = repositoryId
-	request.PullNumber = pullNumber
-
-	var body SaveGitHubReviewPullJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SaveGitHubReviewPull(ctx, request.(SaveGitHubReviewPullRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SaveGitHubReviewPull")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SaveGitHubReviewPullResponseObject); ok {
-		if err := validResponse.VisitSaveGitHubReviewPullResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteGitHubWebhook operation middleware
-func (sh *strictHandler) DeleteGitHubWebhook(w http.ResponseWriter, r *http.Request, repositoryId int64) {
-	var request DeleteGitHubWebhookRequestObject
-
-	request.RepositoryId = repositoryId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteGitHubWebhook(ctx, request.(DeleteGitHubWebhookRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteGitHubWebhook")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(DeleteGitHubWebhookResponseObject); ok {
-		if err := validResponse.VisitDeleteGitHubWebhookResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SaveGitHubWebhook operation middleware
-func (sh *strictHandler) SaveGitHubWebhook(w http.ResponseWriter, r *http.Request, repositoryId int64) {
-	var request SaveGitHubWebhookRequestObject
-
-	request.RepositoryId = repositoryId
-
-	var body SaveGitHubWebhookJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SaveGitHubWebhook(ctx, request.(SaveGitHubWebhookRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SaveGitHubWebhook")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SaveGitHubWebhookResponseObject); ok {
-		if err := validResponse.VisitSaveGitHubWebhookResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -36,7 +36,7 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	}
 	probeRunner()
 	secret := strings.Repeat("c", 40)
-	d.must(t, http.MethodPut, "/api/settings/github-webhooks/10", map[string]string{"secret": secret, "issueAgentId": "default"}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret, "issueAgentId": "default"}, nil, http.StatusNoContent)
 	deliver := func(id, kind, body string) {
 		t.Helper()
 		mac := hmac.New(sha256.New, []byte(secret))
@@ -72,10 +72,10 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	}}
 
 	// When the owner binds the PR, it cannot also belong to a second Task.
-	d.must(t, http.MethodPut, path+"/github-pull", binding, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+task.Id+"/pull", binding, nil, http.StatusNoContent)
 	var other api.WorkTask
 	d.must(t, http.MethodPost, "/api/agents/default/inbox/tasks", map[string]string{"title": "Other"}, &other, http.StatusCreated)
-	d.must(t, http.MethodPut, "/api/agents/default/inbox/tasks/"+other.Id+"/github-pull", binding, nil, http.StatusConflict)
+	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+other.Id+"/pull", binding, nil, http.StatusConflict)
 
 	checkWait := func(want bool) api.GetWorkTask200JSONResponse {
 		t.Helper()

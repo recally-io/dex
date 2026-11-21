@@ -50,7 +50,10 @@ A held event shows its type, reason, author, source link, and text. The owner
 chooses an open Task before Attach is enabled, because no API removes the object
 links of an attach. The owner can also dismiss the event.
 `/a/{agentId}/inbox/{taskId}` opens a Task only under the bot that owns it.
-On an open Task, the owner can link a GitHub PR by repository ID and PR number.
+When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
+a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
+components in `src/plugins/<name>/`, and a page renders them only when the
+plugin is on.
 An optional commit SHA sets a wait for a review submitted after the form is
 submitted. The Task shows its primary Session link, then its links and
 wait states, above the timeline. A link shows its type, key, and namespace as

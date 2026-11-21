@@ -29,13 +29,13 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/live"
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worktask"
-	"github.com/recally-io/dex/internal/worktask/github"
 	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 )
 
@@ -79,6 +79,8 @@ type Config struct {
 	// RequireToken is set, and no authentication otherwise.
 	Token        string
 	RequireToken bool
+	// Plugins are the optional sources to enable. cmd/dex selects them.
+	Plugins []plugin.Factory
 }
 
 // App is a running control process.
@@ -125,6 +127,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { chats.WakeConversation(id) })
 	// A previous run owned the processes of running commands. This must precede any new command.
 	if err := bg.Recover(ctx); err != nil {
+		cancel()
+		jobs.Close()
+		return nil, errors.Join(err, conn.Close())
+	}
+	workTasks := worktask.New(conn, func(id int64) { chats.WakeConversation(id) })
+	plugins, err := startPlugins(cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
+	if err != nil {
 		cancel()
 		jobs.Close()
 		return nil, errors.Join(err, conn.Close())
@@ -288,7 +297,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Tasks:     tools,
 		Routines:  routines,
 		Bots:      botTools.Handlers(),
-		WorkTasks: worktasktools.New(conn).Handlers(),
+		WorkTasks: worktasktools.New(conn).Handlers(pluginTools(plugins)),
 		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
 			row, err := q.GetAgent(ctx, agentID)
 			if err != nil {
@@ -415,9 +424,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		token = stored
 	}
 
-	workTasks := worktask.New(conn, chats.WakeConversation)
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
+		Plugins:   plugins,
 		Engine:    native,
 		Envs:      envs,
 		Runners:   envs.Runners(),
@@ -450,9 +459,12 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := jobs.Every("extensions", 3*time.Second, reloadStale(native, chats)); err != nil {
 		return nil, err
 	}
-	pull := github.NewPuller(q, workTasks)
-	if err := jobs.Every("github-review-pull", time.Minute, pull.Check); err != nil {
-		return nil, err
+	for _, p := range plugins {
+		for _, job := range p.Jobs {
+			if err := jobs.Every(p.Name+"/"+job.Name, job.Every, job.Run); err != nil {
+				return nil, err
+			}
+		}
 	}
 	jobs.Start(runCtx)
 	for _, agent := range agents {

@@ -22,6 +22,8 @@ import (
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/execenv/execenvtest"
 	"github.com/recally-io/dex/internal/mcptest"
+	"github.com/recally-io/dex/internal/plugin"
+	"github.com/recally-io/dex/plugins/github"
 )
 
 // These tests run the native runtime with pi-ai's faux provider: model faux/echo answers
@@ -68,6 +70,10 @@ func startDexHome(t *testing.T, cfg app.Config, home string) *dex {
 	cfg.Home = home
 	cfg.ToolEnv = map[string]string{"PATH": os.Getenv("PATH"), "HOME": home, "DEX_DATA_DIR": cfg.DataDir}
 	cfg.FakeModel = true
+	if cfg.Plugins == nil {
+		// As in cmd/dex. A test that needs no plugin gives an empty list.
+		cfg.Plugins = []plugin.Factory{github.New}
+	}
 	a, err := app.Start(t.Context(), cfg)
 	if err != nil {
 		t.Fatal(err)

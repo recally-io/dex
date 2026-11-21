@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/app"
+	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/plugins/github"
 	"golang.org/x/mod/module"
 )
 
@@ -49,6 +51,8 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		Version:      version(),
 		Token:        token,
 		RequireToken: requireToken,
+		// The enabled plugins. GitHub stays on, as before plugins existed.
+		Plugins: []plugin.Factory{github.New},
 	})
 	if err != nil {
 		return err

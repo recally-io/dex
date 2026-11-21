@@ -27,7 +27,7 @@ export const bindTaskGitHubPull = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}/github-pull',
+    url: '/api/plugins/github/agents/{agentId}/tasks/{taskId}/pull',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -44,7 +44,7 @@ export const deleteGitHubReviewPull = <ThrowOnError extends boolean = false>(opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}',
+    url: '/api/plugins/github/review-pulls/{repositoryId}/{pullNumber}',
     ...options
 });
 
@@ -57,7 +57,7 @@ export const saveGitHubReviewPull = <ThrowOnError extends boolean = false>(optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}',
+    url: '/api/plugins/github/review-pulls/{repositoryId}/{pullNumber}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -74,7 +74,7 @@ export const deleteGitHubWebhook = <ThrowOnError extends boolean = false>(option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/github-webhooks/{repositoryId}',
+    url: '/api/plugins/github/webhooks/{repositoryId}',
     ...options
 });
 
@@ -87,7 +87,7 @@ export const saveGitHubWebhook = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/github-webhooks/{repositoryId}',
+    url: '/api/plugins/github/webhooks/{repositoryId}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
