@@ -1175,8 +1175,11 @@ of truth. Empty means that the session follows the bot's environment
 (`agents.environment_id`). `local` or an environment ID is an explicit
 selection, which does not change when the bot's environment changes. A session
 can select only `local` or an SSH (pi-env) environment. E2B and runner
-environments serve only the bot that has them as its own environment: an E2B
-sandbox (`agents.environment_sandbox_id`) and a runner belong to one bot.
+environments are available through each bot's default environment. Each bot has
+its own E2B sandbox (`agents.environment_sandbox_id`). Bots that use the same
+runner share its connection and execute one operation at a time. SSH and runner
+use the same `<base>/<bot-id>/workspace` layout under their respective base
+directories. These workspaces are not permission boundaries.
 
 The engine resolves the environment of a session at each call, through the
 `SessionEnvironment` callback that chat provides. One resolver

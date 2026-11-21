@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -105,7 +107,11 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		t.Fatalf("connect with the enrolled token: %v", err)
 	}
 	defer func() { _ = ws.CloseNow() }()
-	work := t.TempDir()
+	machineState := t.TempDir()
+	work := filepath.Join(machineState, "workspace")
+	if err := os.Mkdir(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	stop := make(chan error, 1)
 	go func() {
 		stop <- runner.Serve(ctx, ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: work}))
@@ -138,6 +144,27 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	chat := d.newSession(t).ID
 	if got := taskTurn(t, d, chat, `printf 'machine-ok'`); !strings.Contains(got, "machine-ok") {
 		t.Fatalf("remote command after reloading the bot returned %q", got)
+	}
+
+	// A second bot can use the same machine without sharing its default files.
+	var second apiAgent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{
+		"name": "Second bot", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "environmentId": created.ID,
+	}, &second, http.StatusCreated)
+	var secondSession sessionInfo
+	d.must(t, http.MethodPost, "/api/agents/"+second.ID+"/chats", nil, &secondSession, http.StatusCreated)
+	if got := taskTurn(t, d, chat, `printf 'first' > note.txt; cat note.txt`); !strings.Contains(got, "first") {
+		t.Fatalf("first bot did not write its file: %q", got)
+	}
+	other := botChat{bots: &bots{t: t, d: d}, agent: second.ID, id: secondSession.ID}
+	other.send(`test ! -e note.txt && printf 'second' > note.txt && cat note.txt`)
+	other.watch().until(t, "second bot writes its own file", answeredWith("bash: second"))
+	for botID, want := range map[string]string{bot.ID: "first", second.ID: "second"} {
+		file := filepath.Join(machineState, "workspaces", botID, "workspace", "note.txt")
+		got, err := os.ReadFile(file)
+		if err != nil || string(got) != want {
+			t.Fatalf("bot %s file = %q, want %q (err %v)", botID, got, want, err)
+		}
 	}
 
 	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)

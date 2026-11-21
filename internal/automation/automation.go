@@ -251,8 +251,8 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 }
 
 // checkEnvironment fails with ErrInvalid unless id is empty, LocalID, or a saved pi-env
-// environment. E2B and runner environments belong to one bot. The current value of a routine
-// passes, so the owner can still edit or pause a routine whose environment was removed.
+// environment. Routines can use E2B or runner only through their bot's default environment.
+// The saved value still passes so the owner can edit or pause a routine whose environment was removed.
 func (s *Service) checkEnvironment(ctx context.Context, id, current string) error {
 	if id == "" || id == current || id == execenv.LocalID {
 		return nil
