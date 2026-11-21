@@ -15,7 +15,8 @@ import (
 	"github.com/recally-io/dex/internal/worktask"
 )
 
-const maxPayload = 2 << 20
+// MaxPayload is the maximum size of a webhook delivery or review page.
+const MaxPayload = 2 << 20
 
 var (
 	// ErrSignature means the Webhook does not have a valid SHA-256 signature.
@@ -24,7 +25,19 @@ var (
 	ErrPayload = errors.New("invalid GitHub review payload")
 )
 
+type author struct {
+	User struct {
+		Login string `json:"login"`
+	} `json:"user"`
+	Association string `json:"author_association"`
+}
+
+func (a author) trusted() bool {
+	return a.User.Login != "" && (a.Association == "OWNER" || a.Association == "MEMBER" || a.Association == "COLLABORATOR")
+}
+
 type review struct {
+	author
 	ID          int64     `json:"id"`
 	State       string    `json:"state"`
 	Body        string    `json:"body"`
@@ -57,7 +70,7 @@ func PullRequest(number int64) worktask.Object {
 // AcceptWebhook verifies a delivery and commits supported events before returning its receipt.
 // A valid but unsupported delivery returns no receipt.
 func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID int64, secret []byte, delivery, kind, signature string, body []byte, issueAgentID string) (*worktask.Receipt, error) {
-	if len(body) > maxPayload || repositoryID <= 0 || delivery == "" {
+	if len(body) > MaxPayload || repositoryID <= 0 || delivery == "" {
 		return nil, ErrPayload
 	}
 	if !validSignature(secret, signature, body) {
@@ -104,7 +117,7 @@ func AcceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID
 }
 
 func acceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID, pullNumber int64, body []byte) ([]worktask.Receipt, int, error) {
-	if len(body) > maxPayload || repositoryID <= 0 || pullNumber <= 0 {
+	if len(body) > MaxPayload || repositoryID <= 0 || pullNumber <= 0 {
 		return nil, 0, ErrPayload
 	}
 	var reviews []review
@@ -149,6 +162,7 @@ func acceptReview(ctx context.Context, store *worktask.Service, repositoryID, pu
 		Namespace: Namespace(repositoryID), ReceiptKey: receiptKey, ChangeKey: reviewKey(item.ID), Type: "review.submitted",
 		Objects: []worktask.Object{PullRequest(pullNumber)}, Revision: item.Commit,
 		Content: string(chars[:min(len(chars), 32000)]), SourceURL: item.URL, OccurredAt: item.SubmittedAt.UnixMilli(),
+		AuthorLogin: item.User.Login, AuthorAssociation: item.Association, RecordOnly: !item.author.trusted(),
 	})
 	if err != nil {
 		return nil, err

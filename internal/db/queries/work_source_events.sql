@@ -14,8 +14,8 @@ UPDATE work_source_receipts SET event_id = ? WHERE namespace = ? AND receipt_key
 
 -- name: StoreWorkSourceEvent :exec
 INSERT INTO work_source_events (id, namespace, change_key, event_type, objects, revision, content,
-  source_url, occurred_at, received_at, task_id, disposition)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+  source_url, occurred_at, received_at, task_id, disposition, author_login, author_association)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: LinkWorkTaskObject :execrows
 INSERT INTO work_task_objects (namespace, object_type, object_key, task_id)

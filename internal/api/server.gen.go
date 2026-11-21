@@ -1720,7 +1720,10 @@ type WorkTask struct {
 type WorkTaskEntry struct {
 	Content   string `json:"content"`
 	CreatedAt int64  `json:"createdAt"`
-	Id        int64  `json:"id"`
+
+	// EventId Present for an external timeline entry.
+	EventId *string `json:"eventId,omitempty"`
+	Id      int64   `json:"id"`
 }
 
 // WorkTaskLifecycle defines model for WorkTaskLifecycle.

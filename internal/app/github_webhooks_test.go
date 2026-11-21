@@ -42,7 +42,11 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
 		if strings.HasPrefix(path, "/hooks/") {
-			req.Header.Set("X-GitHub-Delivery", "delivery-1")
+			delivery := "delivery-1"
+			if strings.Contains(body, `"id":74`) {
+				delivery = "delivery-2"
+			}
+			req.Header.Set("X-GitHub-Delivery", delivery)
 			kind := "pull_request_review"
 			if path == "/hooks/github/11" {
 				kind = "issues"
@@ -95,7 +99,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	if err := json.Unmarshal(request(http.MethodGet, taskPath+task.Id, "", adminToken, "", http.StatusOK), &detail); err != nil {
 		t.Fatal(err)
 	}
-	if len(detail.Entries) != 1 || detail.Entries[0].Content != "GitHub review: approved\n\nLooks good." {
+	if len(detail.Entries) != 1 || detail.Entries[0].Content != "GitHub review: approved\n\nLooks good." || detail.Entries[0].EventId == nil {
 		t.Fatalf("unexpected timeline: %+v", detail.Entries)
 	}
 	request(http.MethodDelete, settings, "", adminToken, "", http.StatusNoContent)
@@ -103,7 +107,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 
 	const issueSettings = "/api/settings/github-webhooks/11"
 	const issueHook = "/hooks/github/11"
-	const issue = `{"action":"opened","repository":{"id":11},"issue":{"id":73,"number":3,"title":"Login fails","body":"Please check the logs.","created_at":"2026-11-21T03:00:00Z"}}`
+	const issue = `{"action":"opened","repository":{"id":11},"issue":{"id":73,"number":3,"user":{"login":"maintainer"},"author_association":"MEMBER","title":"Login fails","body":"Please check the logs.", "created_at":"2026-11-21T03:00:00Z"}}`
 	mac.Reset()
 	_, _ = mac.Write([]byte(issue))
 	issueSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
@@ -125,8 +129,19 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	listTasks(1)
 	request(http.MethodPut, issueSettings, `{"secret":"`+secret+`","issueAgentId":"missing"}`, adminToken, "", http.StatusBadRequest)
 	request(http.MethodPut, issueSettings, `{"secret":"`+secret+`","issueAgentId":"default"}`, adminToken, "", http.StatusNoContent)
-	request(http.MethodPost, issueHook, issue, "", issueSignature, http.StatusNoContent)
-	request(http.MethodPost, issueHook, issue, "", issueSignature, http.StatusNoContent)
+	outside := strings.ReplaceAll(issue, `"MEMBER"`, `"NONE"`)
+	mac.Reset()
+	_, _ = mac.Write([]byte(outside))
+	request(http.MethodPost, issueHook, outside, "", "sha256="+hex.EncodeToString(mac.Sum(nil)), http.StatusNoContent)
+	listTasks(1)
+	// Use a second receipt and change identity for the maintainer's Issue.
+	trusted := strings.ReplaceAll(issue, `"id":73`, `"id":74`) + strings.Repeat(" ", 300<<10)
+	request(http.MethodPost, issueHook, trusted+strings.Repeat(" ", 2<<20), "", "", http.StatusRequestEntityTooLarge)
+	mac.Reset()
+	_, _ = mac.Write([]byte(trusted))
+	trustedSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	request(http.MethodPost, issueHook, trusted, "", trustedSignature, http.StatusNoContent)
+	request(http.MethodPost, issueHook, trusted, "", trustedSignature, http.StatusNoContent)
 	var created api.WorkTask
 	for _, row := range listTasks(2) {
 		if row.Title == "GitHub issue #3" {

@@ -98,7 +98,11 @@ specified revision match. This store does not call the model.
 The GitHub review adapter accepts a signed Webhook body or a page from the
 GitHub REST API. Both use the repository ID as the namespace and the review
 ID as the change key. A submitted review identifies the PR, the commit, and
-the submission time. The adapter skips pending and dismissed reviews.
+the submission time. The adapter skips pending and dismissed reviews. Dex
+records the author login and association. GitHub events from an `OWNER`,
+`MEMBER`, or `COLLABORATOR` with a login can create a Task or resolve a wait.
+Other authors can add to a linked Task's timeline, but cannot change waits.
+External timeline entries carry a source event ID.
 
 The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
 An administrator saves or rotates a write-only secret with
@@ -109,7 +113,7 @@ creation. Dex first checks for an existing Issue link, then stores any new
 Task, its link, and the opening event in one transaction. The issue title and
 body are timeline data. Opening an issue does not send an input to Main.
 The hook does not accept the management token as a signature. It accepts a
-request body of at most 256 KiB and returns `204` after the event commits or
+request body of at most 2 MiB and returns `204` after the event commits or
 when a signed delivery needs no action. A failed write returns `503`. To
 receive deliveries from GitHub, expose only the hook path through a public
 HTTPS proxy. Keep the management routes private.

@@ -443,18 +443,20 @@ type WechatSetting struct {
 }
 
 type WorkSourceEvent struct {
-	ID          string         `json:"id"`
-	Namespace   string         `json:"namespace"`
-	ChangeKey   sql.NullString `json:"change_key"`
-	EventType   string         `json:"event_type"`
-	Objects     string         `json:"objects"`
-	Revision    string         `json:"revision"`
-	Content     string         `json:"content"`
-	SourceUrl   string         `json:"source_url"`
-	OccurredAt  int64          `json:"occurred_at"`
-	ReceivedAt  int64          `json:"received_at"`
-	TaskID      sql.NullString `json:"task_id"`
-	Disposition string         `json:"disposition"`
+	ID                string         `json:"id"`
+	Namespace         string         `json:"namespace"`
+	ChangeKey         sql.NullString `json:"change_key"`
+	EventType         string         `json:"event_type"`
+	Objects           string         `json:"objects"`
+	Revision          string         `json:"revision"`
+	Content           string         `json:"content"`
+	SourceUrl         string         `json:"source_url"`
+	OccurredAt        int64          `json:"occurred_at"`
+	ReceivedAt        int64          `json:"received_at"`
+	TaskID            sql.NullString `json:"task_id"`
+	Disposition       string         `json:"disposition"`
+	AuthorLogin       string         `json:"author_login"`
+	AuthorAssociation string         `json:"author_association"`
 }
 
 type WorkSourceReceipt struct {
@@ -473,10 +475,11 @@ type WorkTask struct {
 }
 
 type WorkTaskEntry struct {
-	ID        int64  `json:"id"`
-	TaskID    string `json:"task_id"`
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"created_at"`
+	ID        int64          `json:"id"`
+	TaskID    string         `json:"task_id"`
+	Content   string         `json:"content"`
+	CreatedAt int64          `json:"created_at"`
+	EventID   sql.NullString `json:"event_id"`
 }
 
 type WorkTaskInput struct {

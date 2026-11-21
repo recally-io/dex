@@ -92,7 +92,7 @@ func (q *Queries) FindWorkTaskByObject(ctx context.Context, arg FindWorkTaskByOb
 }
 
 const getWorkSourceEventByChange = `-- name: GetWorkSourceEventByChange :one
-SELECT id, namespace, change_key, event_type, objects, revision, content, source_url, occurred_at, received_at, task_id, disposition FROM work_source_events WHERE namespace = ? AND change_key = ?
+SELECT id, namespace, change_key, event_type, objects, revision, content, source_url, occurred_at, received_at, task_id, disposition, author_login, author_association FROM work_source_events WHERE namespace = ? AND change_key = ?
 `
 
 type GetWorkSourceEventByChangeParams struct {
@@ -116,12 +116,14 @@ func (q *Queries) GetWorkSourceEventByChange(ctx context.Context, arg GetWorkSou
 		&i.ReceivedAt,
 		&i.TaskID,
 		&i.Disposition,
+		&i.AuthorLogin,
+		&i.AuthorAssociation,
 	)
 	return i, err
 }
 
 const getWorkSourceEventByReceipt = `-- name: GetWorkSourceEventByReceipt :one
-SELECT e.id, e.namespace, e.change_key, e.event_type, e.objects, e.revision, e.content, e.source_url, e.occurred_at, e.received_at, e.task_id, e.disposition FROM work_source_events e JOIN work_source_receipts r ON r.event_id = e.id
+SELECT e.id, e.namespace, e.change_key, e.event_type, e.objects, e.revision, e.content, e.source_url, e.occurred_at, e.received_at, e.task_id, e.disposition, e.author_login, e.author_association FROM work_source_events e JOIN work_source_receipts r ON r.event_id = e.id
 WHERE r.namespace = ? AND r.receipt_key = ?
 `
 
@@ -146,6 +148,8 @@ func (q *Queries) GetWorkSourceEventByReceipt(ctx context.Context, arg GetWorkSo
 		&i.ReceivedAt,
 		&i.TaskID,
 		&i.Disposition,
+		&i.AuthorLogin,
+		&i.AuthorAssociation,
 	)
 	return i, err
 }
@@ -292,23 +296,25 @@ func (q *Queries) SetWorkSourceReceiptEvent(ctx context.Context, arg SetWorkSour
 
 const storeWorkSourceEvent = `-- name: StoreWorkSourceEvent :exec
 INSERT INTO work_source_events (id, namespace, change_key, event_type, objects, revision, content,
-  source_url, occurred_at, received_at, task_id, disposition)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  source_url, occurred_at, received_at, task_id, disposition, author_login, author_association)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type StoreWorkSourceEventParams struct {
-	ID          string         `json:"id"`
-	Namespace   string         `json:"namespace"`
-	ChangeKey   sql.NullString `json:"change_key"`
-	EventType   string         `json:"event_type"`
-	Objects     string         `json:"objects"`
-	Revision    string         `json:"revision"`
-	Content     string         `json:"content"`
-	SourceUrl   string         `json:"source_url"`
-	OccurredAt  int64          `json:"occurred_at"`
-	ReceivedAt  int64          `json:"received_at"`
-	TaskID      sql.NullString `json:"task_id"`
-	Disposition string         `json:"disposition"`
+	ID                string         `json:"id"`
+	Namespace         string         `json:"namespace"`
+	ChangeKey         sql.NullString `json:"change_key"`
+	EventType         string         `json:"event_type"`
+	Objects           string         `json:"objects"`
+	Revision          string         `json:"revision"`
+	Content           string         `json:"content"`
+	SourceUrl         string         `json:"source_url"`
+	OccurredAt        int64          `json:"occurred_at"`
+	ReceivedAt        int64          `json:"received_at"`
+	TaskID            sql.NullString `json:"task_id"`
+	Disposition       string         `json:"disposition"`
+	AuthorLogin       string         `json:"author_login"`
+	AuthorAssociation string         `json:"author_association"`
 }
 
 func (q *Queries) StoreWorkSourceEvent(ctx context.Context, arg StoreWorkSourceEventParams) error {
@@ -325,6 +331,8 @@ func (q *Queries) StoreWorkSourceEvent(ctx context.Context, arg StoreWorkSourceE
 		arg.ReceivedAt,
 		arg.TaskID,
 		arg.Disposition,
+		arg.AuthorLogin,
+		arg.AuthorAssociation,
 	)
 	return err
 }
