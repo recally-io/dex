@@ -415,7 +415,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		token = stored
 	}
 
-	workTasks := worktask.New(conn)
+	workTasks := worktask.New(conn, chats.WakeConversation)
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
 		Engine:    native,

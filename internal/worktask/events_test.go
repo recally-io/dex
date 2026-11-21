@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/recally-io/dex/internal/db"
@@ -13,7 +14,7 @@ import (
 func TestUserSeesOneSourceChangeAndItsWaitAfterRestart(t *testing.T) {
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	s, conn := openEventStore(t, path)
+	s, conn, woken := openEventStore(t, path)
 	if _, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,7 @@ func TestUserSeesOneSourceChangeAndItsWaitAfterRestart(t *testing.T) {
 	if err := s.LinkObject(ctx, "default", other.ID, namespace, object); !errors.Is(err, ErrObjectConflict) {
 		t.Fatalf("expected object conflict, got %v", err)
 	}
-	if err := s.AddWait(ctx, "default", task.ID, Wait{Namespace: namespace, Type: "review", Object: object, Revision: "v2", AfterAt: 100}); err != nil {
+	if err := s.AddWait(ctx, "default", task.ID, Wait{Namespace: namespace, Type: "review", Object: object, Revision: "v2", AfterAt: 100, Alert: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -52,20 +53,35 @@ func TestUserSeesOneSourceChangeAndItsWaitAfterRestart(t *testing.T) {
 	match := old
 	match.ReceiptKey, match.ChangeKey, match.OccurredAt, match.Content = "push-new", "review-2", 103, "New review"
 	accepted, err := s.Accept(ctx, match)
-	if err != nil || accepted.ResolvedWaits != 1 || accepted.Duplicate {
-		t.Fatalf("matching event: %+v, %v", accepted, err)
+	if err != nil || accepted.ResolvedWaits != 1 || accepted.Duplicate || !accepted.Alerted || len(*woken) != 1 {
+		t.Fatalf("matching event: %+v, %v, woken %v", accepted, err, *woken)
 	}
 	if err := conn.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	s, _ = openEventStore(t, path)
+	s, _, woken = openEventStore(t, path)
 	for _, key := range []string{"push-new", "pull-new", "pull-new"} {
 		match.ReceiptKey = key
 		replay, err := s.Accept(ctx, match)
-		if err != nil || replay.EventID != accepted.EventID || !replay.Duplicate || replay.ResolvedWaits != 0 {
+		if err != nil || replay.EventID != accepted.EventID || !replay.Duplicate || replay.ResolvedWaits != 0 || replay.Alerted {
 			t.Fatalf("replay %s: %+v, %v", key, replay, err)
 		}
+	}
+	if len(*woken) != 0 {
+		t.Fatalf("a replay woke Main: %v", *woken)
+	}
+	alert, err := s.q.GetSubmission(ctx, "task-alert:"+accepted.EventID)
+	if err != nil || alert.Kind != "task_result" || alert.Status != "pending" || strings.Contains(alert.Content, "New review") ||
+		!strings.Contains(alert.Content, "[Task event: review]") {
+		t.Fatalf("Main must have one metadata-only alert: %+v, %v", alert, err)
+	}
+	if linked, err := s.q.WorkTaskForInput(ctx, alert.ID); err != nil || linked != task.ID {
+		t.Fatalf("the alert must belong to the Task: %q, %v", linked, err)
+	}
+	var alerts int
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM submissions WHERE kind = 'task_result'").Scan(&alerts); err != nil || alerts != 1 {
+		t.Fatalf("expected exactly one alert, got %d, %v", alerts, err)
 	}
 	detail, err := s.Detail(ctx, "default", task.ID)
 	if err != nil || len(detail.Entries) != 2 || detail.Entries[0].Content != "New review" {
@@ -77,12 +93,72 @@ func TestUserSeesOneSourceChangeAndItsWaitAfterRestart(t *testing.T) {
 	}
 }
 
-func openEventStore(t *testing.T, path string) (*Service, *sql.DB) {
+func TestUserGetsNoAlertWithoutAnAlertRule(t *testing.T) {
+	ctx := t.Context()
+	s, conn, woken := openEventStore(t, filepath.Join(t.TempDir(), "control.sqlite"))
+	if _, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+		t.Fatal(err)
+	}
+	const namespace = "test/account"
+	quiet, loud, closed := Object{Type: "proposal", Key: "quiet"}, Object{Type: "proposal", Key: "loud"}, Object{Type: "proposal", Key: "closed"}
+	waits := map[Object]bool{quiet: false, loud: true, closed: true}
+	tasks := map[Object]string{}
+	for object, alert := range waits {
+		task, err := s.Create(ctx, "default", object.Key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tasks[object] = task.ID
+		if err := s.BindObject(ctx, "default", task.ID, namespace, object, &Wait{Namespace: namespace, Type: "review", Object: object, AfterAt: 1, Alert: alert}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.SetLifecycle(ctx, "default", tasks[closed], "completed"); err != nil {
+		t.Fatal(err)
+	}
+	review := func(key string, object Object, recordOnly bool) Receipt {
+		t.Helper()
+		got, err := s.Accept(ctx, Event{Namespace: namespace, ReceiptKey: key, ChangeKey: key, Type: "review", Objects: []Object{object}, Content: "Approve", OccurredAt: 10, RecordOnly: recordOnly})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	// A wait without an alert resolves silently.
+	if got := review("quiet", quiet, false); got.ResolvedWaits != 1 || got.Alerted {
+		t.Fatalf("a wait without an alert alerted Main: %+v", got)
+	}
+	// A record-only event and an event on a closed Task resolve nothing and alert nobody.
+	if got := review("outsider", loud, true); got.ResolvedWaits != 0 || got.Alerted {
+		t.Fatalf("a record-only event alerted Main: %+v", got)
+	}
+	if got := review("late", closed, false); got.ResolvedWaits != 0 || got.Alerted {
+		t.Fatalf("an event on a closed Task alerted Main: %+v", got)
+	}
+	// An unmatched event has no Task and so no alert.
+	if got := review("stray", Object{Type: "proposal", Key: "unknown"}, false); got.Disposition != "unmatched" || got.Alerted {
+		t.Fatalf("an unmatched event alerted Main: %+v", got)
+	}
+	if len(*woken) != 0 {
+		t.Fatalf("Main was woken: %v", *woken)
+	}
+	var alerts int
+	if err := conn.QueryRowContext(ctx, "SELECT count(*) FROM submissions").Scan(&alerts); err != nil || alerts != 0 {
+		t.Fatalf("expected no alerts, got %d, %v", alerts, err)
+	}
+	// The alert wait still alerts once a trusted review arrives.
+	if got := review("member", loud, false); got.ResolvedWaits != 1 || !got.Alerted || len(*woken) != 1 {
+		t.Fatalf("the alert wait did not alert Main: %+v, %v", got, *woken)
+	}
+}
+
+func openEventStore(t *testing.T, path string) (*Service, *sql.DB, *[]int64) {
 	t.Helper()
 	conn, err := db.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	return New(conn), conn
+	woken := new([]int64)
+	return New(conn, func(id int64) { *woken = append(*woken, id) }), conn, woken
 }

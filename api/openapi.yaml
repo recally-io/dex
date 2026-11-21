@@ -48,6 +48,9 @@ paths:
                       format: int64
                       minimum: 1
                       description: Reviews must be submitted strictly after this Unix time in milliseconds.
+                    alert:
+                      type: boolean
+                      description: When a review resolves the wait, send Main a Task alert. The default is false.
       responses:
         "204": { description: PR bound. }
         default: { $ref: "#/components/responses/Error" }
@@ -2175,12 +2178,15 @@ components:
           items: { $ref: "#/components/schemas/WorkTaskReviewWait" }
     WorkTaskReviewWait:
       type: object
-      required: [id, revision, afterAt, resolved]
+      required: [id, revision, afterAt, resolved, alert]
       properties:
         id: { type: integer, format: int64 }
         revision: { type: string }
         afterAt: { type: integer, format: int64 }
         resolved: { type: boolean }
+        alert:
+          type: boolean
+          description: Main gets a Task alert when the wait resolves.
     WorkTaskQuestion:
       type: object
       required: [id, text, options, queued]
@@ -2835,6 +2841,11 @@ components:
         taskId:
           type: string
           description: The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
+        alert:
+          type: boolean
+          description: >-
+            True for a Task alert on Main. The title is the Task title, and taskId is empty. The
+            alert has only event metadata.
 
     ThinkingItem:
       type: object

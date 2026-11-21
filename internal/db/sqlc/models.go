@@ -519,4 +519,5 @@ type WorkTaskWait struct {
 	Revision   string         `json:"revision"`
 	AfterAt    int64          `json:"after_at"`
 	ResolvedBy sql.NullString `json:"resolved_by"`
+	Alert      int64          `json:"alert"`
 }

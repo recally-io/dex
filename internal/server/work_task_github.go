@@ -16,7 +16,7 @@ func taskGitHubPulls(detail worktask.Detail) []api.WorkTaskGitHubPull {
 	for _, wait := range detail.Waits {
 		if wait.ObjectType == "pull_request" && wait.EventType == github.ReviewSubmitted {
 			k := key{wait.Namespace, wait.ObjectKey}
-			waits[k] = append(waits[k], api.WorkTaskReviewWait{Id: wait.ID, Revision: wait.Revision, AfterAt: wait.AfterAt, Resolved: wait.ResolvedBy.Valid})
+			waits[k] = append(waits[k], api.WorkTaskReviewWait{Id: wait.ID, Revision: wait.Revision, AfterAt: wait.AfterAt, Resolved: wait.ResolvedBy.Valid, Alert: wait.Alert == 1})
 		}
 	}
 	pulls := []api.WorkTaskGitHubPull{}
@@ -45,7 +45,7 @@ func (h *handler) BindTaskGitHubPull(ctx context.Context, req api.BindTaskGitHub
 		if condition.Revision == "" || strings.TrimSpace(condition.Revision) != condition.Revision {
 			return nil, errInvalid
 		}
-		wait = new(worktask.Wait{Namespace: namespace, Object: object, Type: github.ReviewSubmitted, AfterAt: condition.AfterAt, Revision: condition.Revision})
+		wait = new(worktask.Wait{Namespace: namespace, Object: object, Type: github.ReviewSubmitted, AfterAt: condition.AfterAt, Revision: condition.Revision, Alert: condition.Alert != nil && *condition.Alert})
 	}
 	if err := h.WorkTasks.BindObject(ctx, req.AgentId, req.TaskId, namespace, object, wait); err != nil {
 		if errors.Is(err, worktask.ErrObjectConflict) {

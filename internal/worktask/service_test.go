@@ -19,7 +19,7 @@ func TestUserTracksWorkAcrossTaskLifecycle(t *testing.T) {
 	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	s := New(conn)
+	s := New(conn, nil)
 	task, err := s.Create(ctx, "default", "Fix login")
 	if err != nil || task.Lifecycle != "open" {
 		t.Fatalf("create: %+v, %v", task, err)
@@ -42,7 +42,7 @@ func TestUserTracksWorkAcrossTaskLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = other.Close() }()
-	detail, err := New(other).Detail(ctx, "default", task.ID)
+	detail, err := New(other, nil).Detail(ctx, "default", task.ID)
 	if err != nil || detail.Task.Lifecycle != "completed" || len(detail.Entries) != 1 || detail.Entries[0].Content != "PR is ready for review" {
 		t.Fatalf("reopened database: %+v, %v", detail, err)
 	}

@@ -35,19 +35,34 @@ SELECT t.* FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN a
 WHERE o.namespace = ? AND o.object_type = ? AND o.object_key = ? AND a.archived_at IS NULL;
 
 -- name: AddWorkTaskWait :execrows
-INSERT INTO work_task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at)
-SELECT t.id, o.namespace, o.object_type, o.object_key, @event_type, @revision, @after_at
+INSERT INTO work_task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at, alert)
+SELECT t.id, o.namespace, o.object_type, o.object_key, @event_type, @revision, @after_at, @alert
 FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.agent_id
 WHERE t.id = @task_id AND t.agent_id = @agent_id AND t.lifecycle = 'open' AND a.archived_at IS NULL
 AND o.namespace = @namespace AND o.object_type = @object_type AND o.object_key = @object_key
-ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at;
+ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at, alert = excluded.alert;
 
--- name: ResolveWorkTaskWaits :execrows
+-- name: ResolveWorkTaskWaits :many
 UPDATE work_task_waits SET resolved_by = @event_id
 WHERE task_id = @task_id AND resolved_by IS NULL AND namespace = @namespace
 AND object_type = @object_type AND object_key = @object_key AND event_type = @event_type
-AND after_at < @occurred_at AND (revision = '' OR revision = sqlc.arg(event_revision));
+AND after_at < @occurred_at AND (revision = '' OR revision = sqlc.arg(event_revision))
+RETURNING alert;
 
 -- name: ListWorkTaskWaits :many
 SELECT w.* FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.agent_id
 WHERE w.task_id = @task_id AND t.agent_id = @agent_id AND a.archived_at IS NULL ORDER BY w.id;
+
+-- name: EnsureWorkTaskMain :exec
+-- Main is created on first use. An alert can be the first input of a new bot.
+INSERT INTO conversations (agent_id, channel_key, title, created_at)
+SELECT a.id, 'main', a.name, @created_at FROM agents a WHERE a.id = @agent_id AND a.archived_at IS NULL
+ON CONFLICT (agent_id, channel_key) DO NOTHING;
+
+-- name: CreateWorkTaskAlert :one
+-- A Task alert is a system input of Main. Its ID comes from the event, so one event alerts once.
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context)
+SELECT @id, c.id, @content, 'null', @id, 'web', 'task_result', 'pending', @created_at, '{}'
+FROM conversations c WHERE c.agent_id = @agent_id AND c.channel_key = 'main' AND c.archived_at IS NULL
+ON CONFLICT DO NOTHING
+RETURNING conversation_id;

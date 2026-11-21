@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/db"
 )
 
 func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
@@ -66,7 +68,7 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	task := list.Tasks[0]
 	path := "/api/agents/default/inbox/tasks/" + task.Id
 	binding := map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{
-		"revision": "abc", "afterAt": time.Date(2026, 11, 21, 3, 0, 0, 0, time.UTC).UnixMilli(),
+		"revision": "abc", "afterAt": time.Date(2026, 11, 21, 3, 0, 0, 0, time.UTC).UnixMilli(), "alert": true,
 	}}
 
 	// When the owner binds the PR, it cannot also belong to a second Task.
@@ -94,14 +96,31 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	pushReview(22, "old", "2026-11-21T03:01:00Z", "MEMBER")
 	pushReview(24, "abc", "2026-11-21T03:02:00Z", "NONE")
 	checkWait(false)
+	// The Issue Task alerted Main once. Reviews that resolve no wait add no alert.
+	// The runner is offline, so Main keeps the alerts as pending input.
+	alerts := func(want int) {
+		t.Helper()
+		got := pendingTaskAlerts(t, dir)
+		if len(got) != want {
+			t.Fatalf("expected %d pending Task alerts in Main, got %q", want, got)
+		}
+		for _, alert := range got {
+			if strings.Contains(alert, "Fix login") || strings.Contains(alert, "approved") {
+				t.Fatalf("a Task alert carries external text: %q", alert)
+			}
+		}
+	}
+	alerts(1)
 	pushReview(23, "abc", "2026-11-21T03:03:00Z", "COLLABORATOR")
 	checkWait(true)
+	alerts(2)
 
 	// Then a controller restart retains the reviews and the wait result while the runner stays offline.
 	d.stop()
 	d = startDex(t, dir, "")
 	probeRunner()
 	afterRestart := checkWait(true)
+	alerts(2)
 	if len(afterRestart.Entries) != 5 || afterRestart.Entries[0].EventId == nil || !strings.Contains(afterRestart.Entries[0].Content, "GitHub review: approved") {
 		t.Fatalf("accepted review missing after restart: %+v", afterRestart.Entries)
 	}
@@ -109,6 +128,7 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	// A redelivery adds no duplicate and does not change the unrelated Task.
 	pushReview(23, "abc", "2026-11-21T03:03:00Z", "COLLABORATOR")
 	detail := checkWait(true)
+	alerts(2)
 	if len(detail.Entries) != 5 || detail.Entries[4].Content != "Fix login" {
 		t.Fatalf("unexpected Issue Task timeline: %+v", detail.Entries)
 	}
@@ -116,4 +136,32 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	if len(detail.Entries) != 0 {
 		t.Fatalf("unrelated Task received reviews: %+v", detail.Entries)
 	}
+}
+
+// pendingTaskAlerts returns the content of the Task alerts that Main has not handled.
+func pendingTaskAlerts(t *testing.T, dir string) []string {
+	t.Helper()
+	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	rows, err := conn.QueryContext(t.Context(), `SELECT s.content FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+JOIN work_task_inputs i ON i.submission_id = s.id WHERE c.channel_key = 'main' AND s.kind = 'task_result' AND s.status = 'pending' ORDER BY s.created_at`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var alerts []string
+	for rows.Next() {
+		var content string
+		if err := rows.Scan(&content); err != nil {
+			t.Fatal(err)
+		}
+		alerts = append(alerts, content)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return alerts
 }

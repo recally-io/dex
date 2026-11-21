@@ -810,7 +810,9 @@ function TranscriptItem({
         <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5">
           <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0 text-muted-foreground" />
           <h3 className="min-w-0 [overflow-wrap:anywhere]">
-            <span className="mr-1.5 font-medium text-muted-foreground">Background command</span>
+            <span className="mr-1.5 font-medium text-muted-foreground">
+              {item.alert ? "Task alert" : "Background command"}
+            </span>
             <span className="font-semibold text-foreground">{item.title}</span>
           </h3>
         </header>

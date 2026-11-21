@@ -31,16 +31,18 @@ func TestUserReceivesTaskQuestionsAtPrimaryTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := []struct {
-		id, origin, exit, want string
-		linked                 bool
+		id, kind, origin, exit, want string
+		linked                       bool
 	}{
-		{"task-web", "web", "ask_user", "telegram:42", true},
-		{"task-channel", "telegram:17", "ask_user", "telegram:17", true},
-		{"ordinary-question", "web", "ask_user", "", false},
-		{"ordinary-reply", "web", "", "", true},
+		{"task-web", "message", "web", "ask_user", "telegram:42", true},
+		{"task-channel", "message", "telegram:17", "ask_user", "telegram:17", true},
+		{"ordinary-question", "message", "web", "ask_user", "", false},
+		{"ordinary-reply", "message", "web", "", "", true},
+		// A Task alert is a Main system input with the web origin. Its question goes to the primary target.
+		{"task-alert", "task_result", "web", "ask_user", "telegram:42", true},
 	}
 	for _, tc := range cases {
-		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: tc.id, ConversationID: conv.ID, Kind: "message", Origin: tc.origin, Content: "input", Attachments: "null", CreatedAt: 1})
+		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: tc.id, ConversationID: conv.ID, Kind: tc.kind, Origin: tc.origin, Content: "input", Attachments: "null", CreatedAt: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

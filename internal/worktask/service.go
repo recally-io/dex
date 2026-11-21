@@ -44,10 +44,14 @@ func Content(content string) (string, error) {
 type Service struct {
 	db *sql.DB
 	q  *sqlc.Queries
+	// wake starts Main after a commit that added a Task alert.
+	wake func(conversationID int64)
 }
 
-// New opens a Task service on the existing control database.
-func New(conn *sql.DB) *Service { return &Service{db: conn, q: sqlc.New(conn)} }
+// New opens a Task service on the existing control database. wake can be nil.
+func New(conn *sql.DB, wake func(conversationID int64)) *Service {
+	return &Service{db: conn, q: sqlc.New(conn), wake: wake}
+}
 
 // Detail holds the current Task and its most recent timeline entries.
 type Detail struct {

@@ -111,7 +111,7 @@ An administrator saves or rotates a write-only secret with
 to create Tasks for signed `issues.opened` deliveries. Omit it to disable Task
 creation. Dex first checks for an existing Issue link, then stores any new
 Task, its link, and the opening event in one transaction. The issue title and
-body are timeline data. Opening an issue does not send an input to Main.
+body are timeline data.
 The hook does not accept the management token as a signature. It accepts a
 request body of at most 2 MiB and returns `204` after the event commits or
 when a signed delivery needs no action. A failed write returns `503`. To
@@ -132,6 +132,19 @@ The owner can bind a PR to a Task with
 PR link and optional review wait in one transaction. Reviews on the linked
 PR go to the Task timeline. Only a review of the specified revision, submitted
 after the wait boundary, resolves that wait. Binding does not start a run.
+Set `wait.alert` to `true` to send a Task alert when that review arrives.
+
+A Task alert is a `task_result` submission on the bot's Main. It is linked to
+the Task, so Main shows it with the Task title. Dex creates an alert when a
+source rule creates a Task, or when an event resolves a wait that has `alert`
+set. Dex writes the alert in the same transaction as the event, with the event
+ID as its source key, so each event sends at most one alert. A replayed
+delivery or a restart does not send a second alert. If the runner is offline,
+the alert stays pending until the runner returns. The alert contains only the
+event type, author class, source link, and the reason. It does not contain the
+event text. An alert is a system input, so it cannot create, complete, cancel,
+or reopen a Task. A quiet wait, a record-only event, a closed Task, an
+unmatched event, and a link conflict do not send an alert.
 
 Main and writable Chats have the `task_list`, `task_get`, `task_new`,
 `task_update`, and `task_append` tools (`internal/worktask/tools`). They record
@@ -152,7 +165,8 @@ that started a Main run is linked to a Task, the first `session_new` of that
 run links its child, in the same transaction as the child. A later child does
 not replace it. `task_update` with `session` sets any child of the caller.
 `task_update` with `githubPull` links a PR and can add a review wait that
-starts at the call time.
+starts at the call time. Set `alertMain` to `true` to send a Task alert when
+the review arrives.
 
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
