@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -136,6 +137,12 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 	}
 
 	// Switching bot back to local allows deleting the environment.
+	// The turn returns its answer before the chat settles, and a busy chat blocks the switch.
+	eventually(t, "chat settled before switch", func() (bool, any) {
+		var info chatInfo
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &info)
+		return !info.Busy, info.Busy
+	})
 	defAgent.EnvironmentID = ""
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
 	d.must(t, http.MethodDelete, "/api/settings/environments/"+created.ID, nil, nil, http.StatusOK)
