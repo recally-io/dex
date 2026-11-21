@@ -2193,6 +2193,10 @@ components:
       required: [id, content, createdAt]
       properties:
         id: { type: integer, format: int64 }
+        eventId: {
+          type: string,
+          description: Present for an external timeline entry.,
+        }
         content: { type: string }
         createdAt: { type: integer, format: int64 }
     Error:

@@ -18,6 +18,7 @@ func acceptIssue(ctx context.Context, store *worktask.Service, repositoryID int6
 			ID int64 `json:"id"`
 		} `json:"repository"`
 		Issue struct {
+			author
 			ID        int64     `json:"id"`
 			Number    int64     `json:"number"`
 			Title     string    `json:"title"`
@@ -45,6 +46,7 @@ func acceptIssue(ctx context.Context, store *worktask.Service, repositoryID int6
 		Namespace: Namespace(repositoryID), ReceiptKey: receiptKey, ChangeKey: "issue.opened:" + strconv.FormatInt(issue.ID, 10), Type: "issue.opened",
 		Objects: []worktask.Object{{Type: "issue", Key: number}}, OccurredAt: issue.CreatedAt.UnixMilli(),
 		Content: string(content[:min(len(content), 32000)]), SourceURL: issue.URL,
+		AuthorLogin: issue.User.Login, AuthorAssociation: issue.Association, RecordOnly: !issue.author.trusted(),
 	}, agentID, "GitHub issue #"+number)
 	if err != nil {
 		return nil, err

@@ -37,6 +37,10 @@ export type WorkTaskQuestion = {
 
 export type WorkTaskEntry = {
     id: number;
+    /**
+     * Present for an external timeline entry.
+     */
+    eventId?: string;
     content: string;
     createdAt: number;
 };

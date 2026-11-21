@@ -15,7 +15,11 @@ func workTask(t sqlc.WorkTask) api.WorkTask {
 }
 
 func workTaskEntry(e sqlc.WorkTaskEntry) api.WorkTaskEntry {
-	return api.WorkTaskEntry{Id: e.ID, Content: e.Content, CreatedAt: e.CreatedAt}
+	out := api.WorkTaskEntry{Id: e.ID, Content: e.Content, CreatedAt: e.CreatedAt}
+	if e.EventID.Valid {
+		out.EventId = new(e.EventID.String)
+	}
+	return out
 }
 
 func workTaskError(err error) error {
