@@ -142,7 +142,7 @@ jobs:
         run: |
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern "dex_${RELEASE_TAG}_${{ matrix.target }}.tar.gz" --pattern checksums.txt
-          grep "_${{ matrix.target }}.tar.gz" checksums.txt | shasum -a 256 -c
+          grep " dex_${RELEASE_TAG}_${{ matrix.target }}.tar.gz$" checksums.txt | shasum -a 256 -c
           tar -xzf dex_*.tar.gz
       - name: Smoke test
         run: |
