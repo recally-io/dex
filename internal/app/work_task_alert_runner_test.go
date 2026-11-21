@@ -74,7 +74,9 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = ws.CloseNow() }()
-	go func() { _ = runner.Serve(ctx, ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: t.TempDir()})) }()
+	go func() {
+		_ = runner.Serve(ctx, ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: t.TempDir()}))
+	}()
 
 	// Then Main runs the Task alert exactly once.
 	var main chatInfo
