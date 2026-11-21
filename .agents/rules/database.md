@@ -19,6 +19,9 @@ never reached native admission.
   `goose -dir internal/db/migrations create <name> sql`.
 - dex has no separate deploy step, so `db.Open` applies the migrations on
   start. Never edit a migration that a released build applied; add a new one.
+- A release branch can ship a migration with a later version than migrations
+  on main, so `db.Open` also applies lower versions that are missing. A
+  migration must not depend on a migration that another branch adds.
 - Write core queries in `internal/db/queries/` and plugin queries in
   `plugins/<name>/queries/`. Plugin tables also use core migrations, so they
   exist when the plugin is off. Run `mise run generate:db` and commit

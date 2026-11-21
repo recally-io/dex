@@ -35,7 +35,10 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db, dir)
+	// A release branch can ship a migration with a later version than migrations that main
+	// already has. Upgrading such a database must apply the lower versions too, so each
+	// migration must not depend on a migration from a different branch.
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, dir, goose.WithAllowOutofOrder(true))
 	if err != nil {
 		return err
 	}
