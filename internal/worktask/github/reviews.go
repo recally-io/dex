@@ -103,6 +103,9 @@ func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID in
 	if kind == "issues" && (rule.IssueAgentID != "" || rule.HoldUnmatched) {
 		return acceptIssue(ctx, store, repositoryID, "webhook:"+delivery, body, rule)
 	}
+	if kind == "check_suite" {
+		return acceptCheckSuite(ctx, store, repositoryID, "webhook:"+delivery, body)
+	}
 	if kind != "pull_request_review" {
 		return nil, nil
 	}

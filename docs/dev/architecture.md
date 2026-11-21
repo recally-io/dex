@@ -117,6 +117,14 @@ records the author login and association. GitHub events from an `OWNER`,
 Other authors can add to a linked Task's timeline, but cannot change waits.
 External timeline entries carry a source event ID.
 
+A signed `check_suite` delivery with the `completed` action adds one timeline
+entry to each linked PR of this repository. The entry gives the app and the
+conclusion. The change key includes the suite ID and its update time, so a
+rerun adds a new entry and a redelivery does not. CI events are record-only.
+They cannot create a Task, resolve a wait, send a Task alert, or be held as
+unmatched. GitHub lists no PR for a branch in a fork, and Pull does not read
+checks, so Dex does not record those suites.
+
 The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
 An administrator saves or rotates a write-only secret with
 `PUT /api/settings/github-webhooks/{repositoryId}` and disables the hook with
