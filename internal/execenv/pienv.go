@@ -199,12 +199,8 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec Environmen
 	if err != nil {
 		return nil, err
 	}
-	h := &piEnvHandle{rt: r, c: c, id: agentID, workspace: joinRemoteSegments(c.base, c.sep, agentID, "workspace")}
-	env, err := h.Env(ctx, h.workspace, nil)
-	if err == nil {
-		err = env.CreateDir(ctx, h.workspace, &durableenv.CreateDirOptions{Recursive: new(true)})
-	}
-	if err != nil {
+	h := &piEnvHandle{rt: r, c: c, id: agentID, workspace: remoteBotWorkspace(c.base, c.sep, agentID)}
+	if err := createRemoteBotWorkspace(ctx, h); err != nil {
 		_ = h.Close(context.WithoutCancel(ctx))
 		return nil, err
 	}

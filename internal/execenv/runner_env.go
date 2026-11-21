@@ -33,12 +33,17 @@ func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec Environ
 	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil
 }
 
-func (b runnerBackend) open(_ context.Context, _ string, spec EnvironmentSpec) (lease, error) {
+func (b runnerBackend) open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error) {
 	session := b.runners.online(spec.ID)
 	if session == nil {
 		return nil, runner.ErrOffline
 	}
-	return &runnerHandle{id: spec.ID, client: session}, nil
+	base := path.Join(path.Dir(session.Info().Workspace), "workspaces")
+	h := &runnerHandle{id: spec.ID, client: session, workspace: remoteBotWorkspace(base, "/", agentID)}
+	if err := createRemoteBotWorkspace(ctx, h); err != nil {
+		return nil, fmt.Errorf("create runner workspace: %w", err)
+	}
+	return h, nil
 }
 
 func (b runnerBackend) changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
@@ -54,12 +59,13 @@ func (runnerBackend) disposable() bool                                          
 func (b runnerBackend) generation(envID string) uint64                               { return b.runners.generation(envID) }
 
 type runnerHandle struct {
-	id     string
-	client *runner.Client
+	id        string
+	client    *runner.Client
+	workspace string
 }
 
 func (h *runnerHandle) Kind() Kind        { return KindRunner }
-func (h *runnerHandle) Workspace() string { return h.client.Info().Workspace }
+func (h *runnerHandle) Workspace() string { return h.workspace }
 func (h *runnerHandle) Home() string      { return h.client.Info().Home }
 
 // Close releases the lease. Runners owns the connection.
