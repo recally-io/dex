@@ -57,12 +57,18 @@ func Accept(ctx context.Context, store *worktask.Service, source Source, deliver
 	if !plugin.ValidSignature(source.Secret, signature, body) {
 		return worktask.Receipt{}, ErrSignature
 	}
+	return accept(ctx, store, source, "delivery:"+delivery, body)
+}
+
+// accept stores one message from the hook or from IMAP Pull. Both use the namespace of the source,
+// so a forwarded and a pulled copy of one message share the change key and add one entry.
+func accept(ctx context.Context, store *worktask.Service, source Source, receiptKey string, body []byte) (worktask.Receipt, error) {
 	p, err := parseEmail(body, time.Now())
 	if err != nil {
 		return worktask.Receipt{}, errors.Join(ErrPayload, err)
 	}
 	event := worktask.Event{
-		Namespace: Namespace(source.ID), ReceiptKey: "delivery:" + delivery, ChangeKey: p.ChangeKey, Type: p.Type,
+		Namespace: Namespace(source.ID), ReceiptKey: receiptKey, ChangeKey: p.ChangeKey, Type: p.Type,
 		Objects: p.Objects, Content: p.Content, OccurredAt: p.OccurredAt.UnixMilli(),
 		AuthorAssociation: AuthorClass, HoldUnmatched: source.HoldUnmatched,
 	}

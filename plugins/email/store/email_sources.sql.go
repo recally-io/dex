@@ -10,6 +10,15 @@ import (
 	"database/sql"
 )
 
+const deleteEmailIMAPPull = `-- name: DeleteEmailIMAPPull :exec
+DELETE FROM email_imap_pulls WHERE source_id = ?
+`
+
+func (q *Queries) DeleteEmailIMAPPull(ctx context.Context, sourceID string) error {
+	_, err := q.db.ExecContext(ctx, deleteEmailIMAPPull, sourceID)
+	return err
+}
+
 const deleteEmailSource = `-- name: DeleteEmailSource :exec
 DELETE FROM email_sources WHERE id = ?
 `
@@ -33,6 +42,92 @@ func (q *Queries) GetEmailSource(ctx context.Context, id string) (EmailSource, e
 		&i.HoldUnmatched,
 	)
 	return i, err
+}
+
+const listEmailIMAPPulls = `-- name: ListEmailIMAPPulls :many
+SELECT p.source_id, p.address, p.username, p.password, p.folder, p.configuration_id, p.uid_validity, p.last_uid,
+  s.task_agent_id, s.hold_unmatched
+FROM email_imap_pulls p JOIN email_sources s ON s.id = p.source_id ORDER BY p.source_id
+`
+
+type ListEmailIMAPPullsRow struct {
+	SourceID        string         `json:"source_id"`
+	Address         string         `json:"address"`
+	Username        string         `json:"username"`
+	Password        string         `json:"password"`
+	Folder          string         `json:"folder"`
+	ConfigurationID string         `json:"configuration_id"`
+	UidValidity     int64          `json:"uid_validity"`
+	LastUid         int64          `json:"last_uid"`
+	TaskAgentID     sql.NullString `json:"task_agent_id"`
+	HoldUnmatched   int64          `json:"hold_unmatched"`
+}
+
+func (q *Queries) ListEmailIMAPPulls(ctx context.Context) ([]ListEmailIMAPPullsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listEmailIMAPPulls)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEmailIMAPPullsRow{}
+	for rows.Next() {
+		var i ListEmailIMAPPullsRow
+		if err := rows.Scan(
+			&i.SourceID,
+			&i.Address,
+			&i.Username,
+			&i.Password,
+			&i.Folder,
+			&i.ConfigurationID,
+			&i.UidValidity,
+			&i.LastUid,
+			&i.TaskAgentID,
+			&i.HoldUnmatched,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const saveEmailIMAPPull = `-- name: SaveEmailIMAPPull :execrows
+INSERT INTO email_imap_pulls (source_id, address, username, password, folder, configuration_id)
+SELECT s.id, ?1, ?2, ?3, ?4, ?5 FROM email_sources s WHERE s.id = ?6
+ON CONFLICT (source_id) DO UPDATE SET address = excluded.address, username = excluded.username,
+  password = excluded.password, folder = excluded.folder, configuration_id = excluded.configuration_id,
+  uid_validity = 0, last_uid = 0
+`
+
+type SaveEmailIMAPPullParams struct {
+	Address         string `json:"address"`
+	Username        string `json:"username"`
+	Password        string `json:"password"`
+	Folder          string `json:"folder"`
+	ConfigurationID string `json:"configuration_id"`
+	SourceID        string `json:"source_id"`
+}
+
+// A new configuration starts a new cursor.
+func (q *Queries) SaveEmailIMAPPull(ctx context.Context, arg SaveEmailIMAPPullParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, saveEmailIMAPPull,
+		arg.Address,
+		arg.Username,
+		arg.Password,
+		arg.Folder,
+		arg.ConfigurationID,
+		arg.SourceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const saveEmailSource = `-- name: SaveEmailSource :execrows
@@ -63,4 +158,27 @@ func (q *Queries) SaveEmailSource(ctx context.Context, arg SaveEmailSourceParams
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setEmailIMAPCursor = `-- name: SetEmailIMAPCursor :exec
+UPDATE email_imap_pulls SET uid_validity = ?1, last_uid = ?2
+WHERE source_id = ?3 AND configuration_id = ?4
+`
+
+type SetEmailIMAPCursorParams struct {
+	UidValidity     int64  `json:"uid_validity"`
+	LastUid         int64  `json:"last_uid"`
+	SourceID        string `json:"source_id"`
+	ConfigurationID string `json:"configuration_id"`
+}
+
+// A cursor of a replaced configuration does not apply.
+func (q *Queries) SetEmailIMAPCursor(ctx context.Context, arg SetEmailIMAPCursorParams) error {
+	_, err := q.db.ExecContext(ctx, setEmailIMAPCursor,
+		arg.UidValidity,
+		arg.LastUid,
+		arg.SourceID,
+		arg.ConfigurationID,
+	)
+	return err
 }
