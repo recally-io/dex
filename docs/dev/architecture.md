@@ -195,6 +195,25 @@ PR go to the Task timeline. Only a review of the specified revision, submitted
 after the wait boundary, resolves that wait. Binding does not start a run.
 Set `wait.alert` to `true` to send a Task alert when that review arrives.
 
+### Webhook plugin
+
+The Webhook plugin accepts normalized Task events from a generic source, such
+as a calendar bridge. It is off by default. A source sends signed deliveries to
+`POST /hooks/webhook/{sourceId}`. An administrator saves the source with
+`PUT /api/plugins/webhook/sources/{sourceId}` and disables it with `DELETE` on
+the same path. The source ID uses lowercase letters, digits, and dashes. Each
+delivery has an `X-Dex-Delivery` ID, which is the receipt key, and an
+`X-Dex-Signature` header of the form `sha256=<hex HMAC of the body>`. The JSON
+body has `type`, `objects` (1 to 16 typed references), and `occurredAt` (RFC
+3339). Optional fields are `changeKey`, `revision`, `title`, `content`, and an
+HTTPS `sourceUrl`. The namespace is `webhook/<sourceId>`. Dex sets it on the
+server, so a source cannot reach the objects of GitHub or another source. The
+author class is `SOURCE`. Set `taskAgentId` to create a Task for an unmatched
+event with exactly one object, with `title` as the Task title. Set
+`holdUnmatched` to hold other unmatched events. The hook accepts a body of at
+most 2 MiB. The source uses the same event store, routing, holds, and Task
+alerts as GitHub. It cannot add a wait, and it has no link tool.
+
 ### Task alerts and tools
 
 A Task alert is a `task_result` submission on the bot's Main. It is linked to

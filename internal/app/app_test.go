@@ -24,6 +24,7 @@ import (
 	"github.com/recally-io/dex/internal/mcptest"
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/plugins/github"
+	"github.com/recally-io/dex/plugins/webhook"
 )
 
 // These tests run the native runtime with pi-ai's faux provider: model faux/echo answers
@@ -72,7 +73,7 @@ func startDexHome(t *testing.T, cfg app.Config, home string) *dex {
 	cfg.FakeModel = true
 	if cfg.Plugins == nil {
 		// As in cmd/dex.
-		cfg.Plugins = []plugin.Factory{github.New}
+		cfg.Plugins = []plugin.Factory{github.New, webhook.New}
 	}
 	a, err := app.Start(t.Context(), cfg)
 	if err != nil {
