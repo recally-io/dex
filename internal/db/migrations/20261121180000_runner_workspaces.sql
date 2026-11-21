@@ -1,15 +1,4 @@
 -- +goose Up
-CREATE TABLE runner_legacy_workspaces (
-    environment_id TEXT PRIMARY KEY REFERENCES execution_environments(id) ON DELETE CASCADE,
-    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE
-) STRICT;
-
--- Only the active bot could use the old workspace when this migration ran.
-INSERT INTO runner_legacy_workspaces (environment_id, agent_id)
-SELECT e.id, a.id
-FROM execution_environments e JOIN agents a ON a.environment_id = e.id
-WHERE e.kind = 'runner' AND a.archived_at IS NULL;
-
 DROP TRIGGER runner_one_agent_update;
 DROP TRIGGER runner_one_agent_insert;
 
@@ -40,5 +29,3 @@ BEGIN
     SELECT RAISE(ABORT, 'runner environment already has an active bot');
 END;
 -- +goose StatementEnd
-
-DROP TABLE runner_legacy_workspaces;

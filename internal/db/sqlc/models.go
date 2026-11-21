@@ -311,11 +311,6 @@ type RoutineToolOperation struct {
 	Result          string `json:"result"`
 }
 
-type RunnerLegacyWorkspace struct {
-	EnvironmentID string `json:"environment_id"`
-	AgentID       string `json:"agent_id"`
-}
-
 type RunnerPairing struct {
 	EnvironmentID    string `json:"environment_id"`
 	CodeDigest       string `json:"code_digest"`

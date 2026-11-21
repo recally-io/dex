@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	env "github.com/MichaelKinsy/PiG/durable/env"
-	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
@@ -39,18 +38,9 @@ func (b runnerBackend) open(ctx context.Context, agentID string, spec Environmen
 	if session == nil {
 		return nil, runner.ErrOffline
 	}
-	legacy, err := b.runners.q.UsesLegacyRunnerWorkspace(ctx, sqlc.UsesLegacyRunnerWorkspaceParams{
-		EnvironmentID: spec.ID, AgentID: agentID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("select runner workspace: %w", err)
-	}
-	workspace := session.Info().Workspace
-	if !legacy {
-		workspace = path.Join(path.Dir(workspace), "workspaces", agentID)
-		if err := session.Call(ctx, runner.MethodMakeDir, &runner.MakeDirParams{Path: workspace, Recursive: new(true)}, nil); err != nil {
-			return nil, fmt.Errorf("create runner workspace: %w", err)
-		}
+	workspace := path.Join(path.Dir(session.Info().Workspace), "workspaces", agentID)
+	if err := session.Call(ctx, runner.MethodMakeDir, &runner.MakeDirParams{Path: workspace, Recursive: new(true)}, nil); err != nil {
+		return nil, fmt.Errorf("create runner workspace: %w", err)
 	}
 	return &runnerHandle{id: spec.ID, client: session, workspace: workspace}, nil
 }

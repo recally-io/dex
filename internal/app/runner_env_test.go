@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -105,7 +107,11 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		t.Fatalf("connect with the enrolled token: %v", err)
 	}
 	defer func() { _ = ws.CloseNow() }()
-	work := t.TempDir()
+	machineState := t.TempDir()
+	work := filepath.Join(machineState, "workspace")
+	if err := os.Mkdir(work, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	stop := make(chan error, 1)
 	go func() {
 		stop <- runner.Serve(ctx, ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: work}))
@@ -153,8 +159,12 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	other := botChat{bots: &bots{t: t, d: d}, agent: second.ID, id: secondSession.ID}
 	other.send(`test ! -e note.txt && printf 'second' > note.txt && cat note.txt`)
 	other.watch().until(t, "second bot writes its own file", answeredWith("bash: second"))
-	if got := taskTurn(t, d, chat, `cat note.txt`); !strings.Contains(got, "first") {
-		t.Fatalf("first bot lost its file: %q", got)
+	for botID, want := range map[string]string{bot.ID: "first", second.ID: "second"} {
+		file := filepath.Join(machineState, "workspaces", botID, "note.txt")
+		got, err := os.ReadFile(file)
+		if err != nil || string(got) != want {
+			t.Fatalf("bot %s file = %q, want %q (err %v)", botID, got, want, err)
+		}
 	}
 
 	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)

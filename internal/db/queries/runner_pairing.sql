@@ -1,9 +1,3 @@
--- name: UsesLegacyRunnerWorkspace :one
-SELECT EXISTS (
-    SELECT 1 FROM runner_legacy_workspaces
-    WHERE environment_id = ? AND agent_id = ?
-);
-
 -- name: IssueRunnerCode :execrows
 INSERT INTO runner_pairing (environment_id, code_digest, expires_at)
 SELECT id, @code_digest, @expires_at FROM execution_environments WHERE id = @environment_id AND kind = 'runner'
