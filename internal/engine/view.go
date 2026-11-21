@@ -179,6 +179,7 @@ func userItem(m inputMetadata, id string, at int64, text string) Item {
 	// A withdrawn input keeps the kind of the input: task_result. An input in the log has dex.task_result.
 	// A background wake-up has no TaskID, so the kind decides.
 	if m.TaskID != "" || m.Kind == "dex.task_result" || m.Kind == "task_result" {
+		// Only a Task alert is a task_result linked to a Task. Chat links only owner messages.
 		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle, Alert: m.HasWorkTask}
 		// The answer stays out of the projection. The user reads it in the child session.
 		var body struct {
