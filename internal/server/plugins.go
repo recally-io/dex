@@ -18,7 +18,8 @@ func (h *handler) ListPlugins(ctx context.Context, _ api.ListPluginsRequestObjec
 	for _, name := range h.AvailablePlugins {
 		running := slices.ContainsFunc(h.Plugins, func(p plugin.Plugin) bool { return p.Name == name })
 		setting := api.PluginSetting{Name: name, Enabled: slices.Contains(enabled, name), Running: running}
-		if reason, ok := h.PluginErrors[name]; ok {
+		// The error is from the last start. It does not apply after the owner turns the plugin off.
+		if reason, ok := h.PluginErrors[name]; ok && setting.Enabled {
 			setting.Error = &reason
 		}
 		out = append(out, setting)

@@ -58,7 +58,8 @@ func TestUserKeepsPluginRowsFromBeforePluginMigrations(t *testing.T) {
 		"INSERT INTO github_webhook_settings (repository_id, secret, hold_unmatched) VALUES (10, '" + strings.Repeat("g", 40) + "', 1)",
 		"INSERT INTO webhook_sources (id, secret) VALUES ('calendar', '" + strings.Repeat("w", 40) + "')",
 		"INSERT INTO email_sources (id, secret) VALUES ('mail', '" + strings.Repeat("m", 40) + "')",
-		"INSERT INTO email_imap_pulls (source_id, address, username, password, folder, configuration_id) VALUES ('mail', 'imaps://imap.example.com', 'owner', 'app-password', 'Dex', 'c1')",
+		// Port 1 on loopback refuses the connection, so the Pull job reaches no server and keeps the cursor.
+		"INSERT INTO email_imap_pulls (source_id, address, username, password, folder, configuration_id, uid_validity, last_uid) VALUES ('mail', 'imap://127.0.0.1:1', 'owner', 'app-password', 'Dex', 'c1', 7, 42)",
 	} {
 		if _, err := old.ExecContext(t.Context(), statement); err != nil {
 			t.Fatal(err)
@@ -122,7 +123,7 @@ func TestUserKeepsPluginRowsFromBeforePluginMigrations(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/settings/plugins/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
 	d = startDex(t, dataDir, "")
-	if count("SELECT count(*) FROM plugin_email_imap_pulls WHERE source_id = 'mail'") != 1 {
+	if count("SELECT count(*) FROM plugin_email_imap_pulls WHERE source_id = 'mail' AND configuration_id = 'c1' AND uid_validity = 7 AND last_uid = 42") != 1 {
 		t.Fatalf("the IMAP Pull must survive the rename: %v", tables())
 	}
 	d.must(t, http.MethodDelete, "/api/plugins/email/sources/mail", nil, nil, http.StatusNoContent)
@@ -185,8 +186,12 @@ func TestUserKeepsDexRunningWhenAPluginMigrationFails(t *testing.T) {
 		t.Fatalf("a failed migration must roll back: %d %d %v", tables, versions, err)
 	}
 
-	// When the owner turns it off and dex starts again, the error is gone.
+	// When the owner turns it off, the error of the last start no longer shows.
 	d.must(t, http.MethodPut, "/api/settings/plugins/broken", map[string]bool{"enabled": false}, nil, http.StatusNoContent)
+	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
+	if plugins.Plugins[1].Enabled || plugins.Plugins[1].Error != nil {
+		t.Fatalf("a plugin that is off must not show an old error: %+v", plugins.Plugins)
+	}
 	d.stop()
 	d = startDexWith(t, cfg)
 	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)

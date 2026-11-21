@@ -16,6 +16,11 @@ CREATE TABLE applied_plugin_migrations (
 ) STRICT;
 
 -- +goose Down
+-- Fail when a plugin has migrated. Its renamed tables would stay without their versions, so the
+-- next Up would skip them. Restore the data backup from before the upgrade instead.
+CREATE TEMP TABLE plugin_downgrade_guard (migrated INTEGER CHECK (migrated = 0));
+INSERT INTO plugin_downgrade_guard SELECT count(*) FROM applied_plugin_migrations;
+DROP TABLE plugin_downgrade_guard;
 DROP TABLE applied_plugin_migrations;
 CREATE TABLE plugin_settings (
   name TEXT PRIMARY KEY CHECK (name GLOB '[a-z]*' AND name NOT GLOB '*[^a-z]*'),
