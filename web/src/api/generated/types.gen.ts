@@ -1419,6 +1419,70 @@ export type SaveGitHubReviewPullResponses = {
 
 export type SaveGitHubReviewPullResponse = SaveGitHubReviewPullResponses[keyof SaveGitHubReviewPullResponses];
 
+export type DeleteWebhookSourceData = {
+    body?: never;
+    path: {
+        sourceId: string;
+    };
+    query?: never;
+    url: '/api/plugins/webhook/sources/{sourceId}';
+};
+
+export type DeleteWebhookSourceErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteWebhookSourceError = DeleteWebhookSourceErrors[keyof DeleteWebhookSourceErrors];
+
+export type DeleteWebhookSourceResponses = {
+    /**
+     * Source disabled.
+     */
+    204: void;
+};
+
+export type DeleteWebhookSourceResponse = DeleteWebhookSourceResponses[keyof DeleteWebhookSourceResponses];
+
+export type SaveWebhookSourceData = {
+    body: {
+        secret: string;
+        /**
+         * Create a Task under this agent for an unmatched event with exactly one object. Omit to disable creation.
+         */
+        taskAgentId?: string;
+        /**
+         * Hold other unmatched events in the Inbox. The default ignores them.
+         */
+        holdUnmatched?: boolean;
+    };
+    path: {
+        sourceId: string;
+    };
+    query?: never;
+    url: '/api/plugins/webhook/sources/{sourceId}';
+};
+
+export type SaveWebhookSourceErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SaveWebhookSourceError = SaveWebhookSourceErrors[keyof SaveWebhookSourceErrors];
+
+export type SaveWebhookSourceResponses = {
+    /**
+     * Source saved.
+     */
+    204: void;
+};
+
+export type SaveWebhookSourceResponse = SaveWebhookSourceResponses[keyof SaveWebhookSourceResponses];
+
 export type DeleteGitHubWebhookData = {
     body?: never;
     path: {

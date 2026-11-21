@@ -6,4 +6,4 @@ generate:
   models: true
 output-options:
   # Each plugin generates the operations of its tag.
-  exclude-tags: [github]
+  exclude-tags: [github, webhook]

@@ -431,6 +431,13 @@ type TelegramSetting struct {
 	Options        string `json:"options"`
 }
 
+type WebhookSource struct {
+	ID            string         `json:"id"`
+	Secret        string         `json:"secret"`
+	TaskAgentID   sql.NullString `json:"task_agent_id"`
+	HoldUnmatched int64          `json:"hold_unmatched"`
+}
+
 type WechatRuntime struct {
 	BotID            string `json:"bot_id"`
 	Owner            string `json:"owner"`

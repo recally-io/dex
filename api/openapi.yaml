@@ -93,6 +93,47 @@ paths:
       responses:
         "204": { description: Pull disabled. }
         default: { $ref: "#/components/responses/Error" }
+  /api/plugins/webhook/sources/{sourceId}:
+    parameters:
+      - in: path
+        name: sourceId
+        required: true
+        schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }
+    put:
+      operationId: saveWebhookSource
+      tags: [webhook]
+      description: Save a signed Webhook source. The source sends normalized Task events to POST /hooks/webhook/{sourceId}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [secret]
+              properties:
+                secret: {
+                  type: string,
+                  minLength: 32,
+                  maxLength: 256,
+                  writeOnly: true,
+                }
+                taskAgentId:
+                  type: string
+                  description: Create a Task under this agent for an unmatched event with exactly one object. Omit to disable creation.
+                holdUnmatched:
+                  type: boolean
+                  default: false
+                  description: Hold other unmatched events in the Inbox. The default ignores them.
+      responses:
+        "204": { description: Source saved. }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteWebhookSource
+      tags: [webhook]
+      description: Disable the source. Recorded events stay.
+      responses:
+        "204": { description: Source disabled. }
+        default: { $ref: "#/components/responses/Error" }
   /api/plugins/github/webhooks/{repositoryId}:
     parameters:
       - in: path

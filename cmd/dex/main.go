@@ -19,6 +19,7 @@ import (
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/service"
 	"github.com/recally-io/dex/plugins/github"
+	"github.com/recally-io/dex/plugins/webhook"
 	"golang.org/x/mod/module"
 )
 
@@ -52,7 +53,7 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		Token:        token,
 		RequireToken: requireToken,
 		// The plugins of this build. The owner turns each one on or off in the settings.
-		Plugins: []plugin.Factory{github.New},
+		Plugins: []plugin.Factory{github.New, webhook.New},
 	})
 	if err != nil {
 		return err
