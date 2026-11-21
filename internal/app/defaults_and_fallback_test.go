@@ -87,9 +87,10 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 		t.Fatalf("bot_create did not copy the default bot: %+v", listed.Agents)
 	}
 
-	// A change to the default bot does not touch existing bots.
+	// Keep the environment unchanged so the PUT tests only a model change.
 	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
 		"name": "Dex", "provider": "faux", "modelId": "shout", "thinkingLevel": "off",
+		"environmentId": template.EnvironmentID,
 	}, nil)
 	d.must(t, http.MethodGet, "/api/agents/"+quick.ID, nil, &quick)
 	if quick.ModelID != "echo" {
