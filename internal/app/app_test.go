@@ -23,6 +23,7 @@ import (
 	"github.com/recally-io/dex/internal/execenv/execenvtest"
 	"github.com/recally-io/dex/internal/mcptest"
 	"github.com/recally-io/dex/internal/plugin"
+	"github.com/recally-io/dex/plugins/email"
 	"github.com/recally-io/dex/plugins/github"
 	"github.com/recally-io/dex/plugins/webhook"
 )
@@ -73,7 +74,7 @@ func startDexHome(t *testing.T, cfg app.Config, home string) *dex {
 	cfg.FakeModel = true
 	if cfg.Plugins == nil {
 		// As in cmd/dex.
-		cfg.Plugins = []plugin.Factory{github.New, webhook.New}
+		cfg.Plugins = []plugin.Factory{github.New, webhook.New, email.New}
 	}
 	a, err := app.Start(t.Context(), cfg)
 	if err != nil {

@@ -360,7 +360,7 @@ each agent execution store. Run one dex process per data directory.
 
 ## Plugins
 
-Optional sources of Task events, such as GitHub and a generic Webhook, run in
+Optional sources of Task events, such as GitHub, a generic Webhook, and email, run in
 the dex process as plugins under `plugins/<name>`. The core in `internal/` does
 not import them, and the owner turns each one on or off. The plugin boundary,
 lifecycle, code generation, and each plugin are in [Plugins](plugins.md).

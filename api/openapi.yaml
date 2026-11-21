@@ -93,6 +93,47 @@ paths:
       responses:
         "204": { description: Pull disabled. }
         default: { $ref: "#/components/responses/Error" }
+  /api/plugins/email/sources/{sourceId}:
+    parameters:
+      - in: path
+        name: sourceId
+        required: true
+        schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }
+    put:
+      operationId: saveEmailSource
+      tags: [email]
+      description: Save a signed email source. A mail forwarding service posts raw RFC 5322 messages to POST /hooks/email/{sourceId}.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [secret]
+              properties:
+                secret: {
+                  type: string,
+                  minLength: 32,
+                  maxLength: 256,
+                  writeOnly: true,
+                }
+                taskAgentId:
+                  type: string
+                  description: Create a Task under this agent for a new thread. Omit to disable creation.
+                holdUnmatched:
+                  type: boolean
+                  default: false
+                  description: Hold other unmatched messages in the Inbox. The default ignores them.
+      responses:
+        "204": { description: Source saved. }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteEmailSource
+      tags: [email]
+      description: Disable the source. Recorded events stay.
+      responses:
+        "204": { description: Source disabled. }
+        default: { $ref: "#/components/responses/Error" }
   /api/plugins/webhook/sources/{sourceId}:
     parameters:
       - in: path

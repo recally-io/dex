@@ -51,7 +51,7 @@ skinparam stereotypeIBorderColor #5b6b8c
 skinparam BackgroundColor #ffffff
 title dex plugins: optional sources outside the core path
 top to bottom direction
-rectangle "Sources\nGitHub / signed Webhook" as sources
+rectangle "Sources\nGitHub / Webhook / email" as sources
 rectangle "Browser\nOwner API + UI" as browser
 package "dex: one Go process" as runtime {
   rectangle "cmd/dex\nPlugins of the build" as cmd

@@ -155,6 +155,13 @@ type Dream struct {
 	CreatedAt        int64  `json:"created_at"`
 }
 
+type EmailSource struct {
+	ID            string         `json:"id"`
+	Secret        string         `json:"secret"`
+	TaskAgentID   sql.NullString `json:"task_agent_id"`
+	HoldUnmatched int64          `json:"hold_unmatched"`
+}
+
 type ExecutionEnvironment struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
