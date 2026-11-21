@@ -273,6 +273,10 @@ and only the owner's request completes, cancels, or reopens a Task. Each
 timeline entry shows its author: Owner, Agent, External event, or Source not
 recorded. The agent reads external entries only as event type, author class,
 and link. Task detail links the primary Session.
+Main gets a Task alert when a source rule creates a Task, or when a review
+arrives for a wait that asks for an alert. The alert shows the Task title,
+the event type, the author class, and the link, but not the event text.
+Each event sends at most one alert.
 The Inbox also links to Routine results.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening

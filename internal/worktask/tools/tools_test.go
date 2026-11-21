@@ -20,11 +20,12 @@ func TestUserAloneChangesTaskLifecycle(t *testing.T) {
 	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	// Given Main with one input from the owner and one result of a child session.
+	// Given Main with one input from the owner, one result of a child session, and one Task alert.
+	// A Task alert has the web origin of Main, so only its kind separates it from the owner.
 	if _, err := conn.ExecContext(ctx, `INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at) VALUES (1, 'default', 'main', 7, 1)`); err != nil {
 		t.Fatal(err)
 	}
-	for _, row := range [][]string{{"owner", "message", "web"}, {"result", "task_result", "task"}} {
+	for _, row := range [][]string{{"owner", "message", "web"}, {"result", "task_result", "task"}, {"alert", "task_result", "web"}} {
 		if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, content, status, created_at, kind, origin) VALUES (?, 1, 'x', 'pending', 1, ?, ?)`, row[0], row[1], row[2]); err != nil {
 			t.Fatal(err)
 		}
@@ -39,6 +40,12 @@ func TestUserAloneChangesTaskLifecycle(t *testing.T) {
 	}
 	if _, err := s.New(ctx, call("result", "2"), engine.WorkTaskNewArgs{Title: "From a result"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a session result created a Task: %v", err)
+	}
+	if _, err := s.New(ctx, call("alert", "2a"), engine.WorkTaskNewArgs{Title: "From an alert"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a Task alert created a Task: %v", err)
+	}
+	if _, err := s.Update(ctx, call("alert", "2b"), engine.WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "cancelled"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a Task alert cancelled the Task: %v", err)
 	}
 
 	// When a session result tries to complete the Task, the change is refused, but it can record progress.

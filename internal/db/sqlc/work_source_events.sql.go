@@ -11,18 +11,19 @@ import (
 )
 
 const addWorkTaskWait = `-- name: AddWorkTaskWait :execrows
-INSERT INTO work_task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at)
-SELECT t.id, o.namespace, o.object_type, o.object_key, ?1, ?2, ?3
+INSERT INTO work_task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at, alert)
+SELECT t.id, o.namespace, o.object_type, o.object_key, ?1, ?2, ?3, ?4
 FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.agent_id
-WHERE t.id = ?4 AND t.agent_id = ?5 AND t.lifecycle = 'open' AND a.archived_at IS NULL
-AND o.namespace = ?6 AND o.object_type = ?7 AND o.object_key = ?8
-ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at
+WHERE t.id = ?5 AND t.agent_id = ?6 AND t.lifecycle = 'open' AND a.archived_at IS NULL
+AND o.namespace = ?7 AND o.object_type = ?8 AND o.object_key = ?9
+ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at, alert = excluded.alert
 `
 
 type AddWorkTaskWaitParams struct {
 	EventType  string `json:"event_type"`
 	Revision   string `json:"revision"`
 	AfterAt    int64  `json:"after_at"`
+	Alert      int64  `json:"alert"`
 	TaskID     string `json:"task_id"`
 	AgentID    string `json:"agent_id"`
 	Namespace  string `json:"namespace"`
@@ -35,6 +36,7 @@ func (q *Queries) AddWorkTaskWait(ctx context.Context, arg AddWorkTaskWaitParams
 		arg.EventType,
 		arg.Revision,
 		arg.AfterAt,
+		arg.Alert,
 		arg.TaskID,
 		arg.AgentID,
 		arg.Namespace,
@@ -64,6 +66,51 @@ func (q *Queries) ClaimWorkSourceReceipt(ctx context.Context, arg ClaimWorkSourc
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const createWorkTaskAlert = `-- name: CreateWorkTaskAlert :one
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context)
+SELECT ?1, c.id, ?2, 'null', ?1, 'web', 'task_result', 'pending', ?3, '{}'
+FROM conversations c WHERE c.agent_id = ?4 AND c.channel_key = 'main' AND c.archived_at IS NULL
+ON CONFLICT DO NOTHING
+RETURNING conversation_id
+`
+
+type CreateWorkTaskAlertParams struct {
+	ID        string `json:"id"`
+	Content   string `json:"content"`
+	CreatedAt int64  `json:"created_at"`
+	AgentID   string `json:"agent_id"`
+}
+
+// A Task alert is a system input of Main. Its ID comes from the event, so one event alerts once.
+func (q *Queries) CreateWorkTaskAlert(ctx context.Context, arg CreateWorkTaskAlertParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, createWorkTaskAlert,
+		arg.ID,
+		arg.Content,
+		arg.CreatedAt,
+		arg.AgentID,
+	)
+	var conversation_id int64
+	err := row.Scan(&conversation_id)
+	return conversation_id, err
+}
+
+const ensureWorkTaskMain = `-- name: EnsureWorkTaskMain :exec
+INSERT INTO conversations (agent_id, channel_key, title, created_at)
+SELECT a.id, 'main', a.name, ?1 FROM agents a WHERE a.id = ?2 AND a.archived_at IS NULL
+ON CONFLICT (agent_id, channel_key) DO NOTHING
+`
+
+type EnsureWorkTaskMainParams struct {
+	CreatedAt int64  `json:"created_at"`
+	AgentID   string `json:"agent_id"`
+}
+
+// Main is created on first use. An alert can be the first input of a new bot.
+func (q *Queries) EnsureWorkTaskMain(ctx context.Context, arg EnsureWorkTaskMainParams) error {
+	_, err := q.db.ExecContext(ctx, ensureWorkTaskMain, arg.CreatedAt, arg.AgentID)
+	return err
 }
 
 const findWorkTaskByObject = `-- name: FindWorkTaskByObject :one
@@ -234,7 +281,7 @@ func (q *Queries) ListWorkTaskObjects(ctx context.Context, taskID string) ([]Wor
 }
 
 const listWorkTaskWaits = `-- name: ListWorkTaskWaits :many
-SELECT w.id, w.task_id, w.namespace, w.object_type, w.object_key, w.event_type, w.revision, w.after_at, w.resolved_by FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.agent_id
+SELECT w.id, w.task_id, w.namespace, w.object_type, w.object_key, w.event_type, w.revision, w.after_at, w.resolved_by, w.alert FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.agent_id
 WHERE w.task_id = ?1 AND t.agent_id = ?2 AND a.archived_at IS NULL ORDER BY w.id
 `
 
@@ -262,6 +309,7 @@ func (q *Queries) ListWorkTaskWaits(ctx context.Context, arg ListWorkTaskWaitsPa
 			&i.Revision,
 			&i.AfterAt,
 			&i.ResolvedBy,
+			&i.Alert,
 		); err != nil {
 			return nil, err
 		}
@@ -276,11 +324,12 @@ func (q *Queries) ListWorkTaskWaits(ctx context.Context, arg ListWorkTaskWaitsPa
 	return items, nil
 }
 
-const resolveWorkTaskWaits = `-- name: ResolveWorkTaskWaits :execrows
+const resolveWorkTaskWaits = `-- name: ResolveWorkTaskWaits :many
 UPDATE work_task_waits SET resolved_by = ?1
 WHERE task_id = ?2 AND resolved_by IS NULL AND namespace = ?3
 AND object_type = ?4 AND object_key = ?5 AND event_type = ?6
 AND after_at < ?7 AND (revision = '' OR revision = ?8)
+RETURNING alert
 `
 
 type ResolveWorkTaskWaitsParams struct {
@@ -294,8 +343,8 @@ type ResolveWorkTaskWaitsParams struct {
 	EventRevision string         `json:"event_revision"`
 }
 
-func (q *Queries) ResolveWorkTaskWaits(ctx context.Context, arg ResolveWorkTaskWaitsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, resolveWorkTaskWaits,
+func (q *Queries) ResolveWorkTaskWaits(ctx context.Context, arg ResolveWorkTaskWaitsParams) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, resolveWorkTaskWaits,
 		arg.EventID,
 		arg.TaskID,
 		arg.Namespace,
@@ -306,9 +355,24 @@ func (q *Queries) ResolveWorkTaskWaits(ctx context.Context, arg ResolveWorkTaskW
 		arg.EventRevision,
 	)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected()
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var alert int64
+		if err := rows.Scan(&alert); err != nil {
+			return nil, err
+		}
+		items = append(items, alert)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setWorkSourceReceiptEvent = `-- name: SetWorkSourceReceiptEvent :exec

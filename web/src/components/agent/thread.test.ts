@@ -276,3 +276,17 @@ test("user sees silent system turn trace folded under task mark", async () => {
   expect(html).toContain("<details");
   expect(html).toContain("Internal trace (silent)");
 });
+
+test("user sees a Task alert on Main with the Task title", async () => {
+  const items: Item[] = [
+    { kind: "task", id: "task-alert:e1", taskId: "", title: "GitHub issue #1", alert: true },
+  ];
+
+  const html = await render(
+    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+  );
+
+  expect(html).toContain("Task alert");
+  expect(html).toContain("GitHub issue #1");
+  expect(html).not.toContain("Background command");
+});

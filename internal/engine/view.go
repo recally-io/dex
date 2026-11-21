@@ -15,26 +15,28 @@ import (
 
 // Item is a frontend transcript item. Execution types stay behind this boundary.
 type Item struct {
-	Kind        string         `json:"kind"`
-	ID          string         `json:"id"`
-	EntryID     int64          `json:"entryId,omitzero"`
-	At          int64          `json:"at,omitzero"`
-	Text        string         `json:"text,omitempty"`
-	Attachments []Attachment   `json:"attachments,omitempty"`
-	Origin      string         `json:"origin,omitempty"`
-	Queued      bool           `json:"queued,omitzero"`
-	Steer       bool           `json:"steer,omitzero"`
-	TaskID      string         `json:"taskId,omitempty"`
-	Title       string         `json:"title,omitempty"`
-	Name        string         `json:"name,omitempty"`
-	Args        map[string]any `json:"args,omitempty"`
-	Output      string         `json:"output,omitempty"`
-	Status      string         `json:"status,omitempty"`
-	DurationMs  *int64         `json:"durationMs,omitzero"`
-	Model       string         `json:"model,omitempty"`
-	Usage       *Usage         `json:"usage,omitzero"`
-	Reason      string         `json:"reason,omitempty"`
-	Aborted     bool           `json:"aborted,omitzero"`
+	Kind        string       `json:"kind"`
+	ID          string       `json:"id"`
+	EntryID     int64        `json:"entryId,omitzero"`
+	At          int64        `json:"at,omitzero"`
+	Text        string       `json:"text,omitempty"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+	Origin      string       `json:"origin,omitempty"`
+	Queued      bool         `json:"queued,omitzero"`
+	Steer       bool         `json:"steer,omitzero"`
+	TaskID      string       `json:"taskId,omitempty"`
+	Title       string       `json:"title,omitempty"`
+	// Alert marks a Task alert on Main. Its title is the Task title.
+	Alert      bool           `json:"alert,omitzero"`
+	Name       string         `json:"name,omitempty"`
+	Args       map[string]any `json:"args,omitempty"`
+	Output     string         `json:"output,omitempty"`
+	Status     string         `json:"status,omitempty"`
+	DurationMs *int64         `json:"durationMs,omitzero"`
+	Model      string         `json:"model,omitempty"`
+	Usage      *Usage         `json:"usage,omitzero"`
+	Reason     string         `json:"reason,omitempty"`
+	Aborted    bool           `json:"aborted,omitzero"`
 	// Failure is the reason of the newest failed run, on the error item that ends it. A client
 	// can continue that run.
 	Failure  string `json:"failure,omitempty"`
@@ -177,7 +179,7 @@ func userItem(m inputMetadata, id string, at int64, text string) Item {
 	// A withdrawn input keeps the kind of the input: task_result. An input in the log has dex.task_result.
 	// A background wake-up has no TaskID, so the kind decides.
 	if m.TaskID != "" || m.Kind == "dex.task_result" || m.Kind == "task_result" {
-		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle}
+		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle, Alert: m.HasWorkTask}
 		// The answer stays out of the projection. The user reads it in the child session.
 		var body struct {
 			Result struct {

@@ -795,17 +795,18 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
-	if input.Main && p.Kind == "message" {
+	// An owner message or a Task alert of a Task carries the Task context.
+	var workTask sqlc.WorkTask
+	if input.Main {
 		taskID, err := workTaskForInput(ctx, s.q, p.ID)
 		if err != nil {
 			return err
 		}
 		if taskID != "" {
-			task, err := s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID})
-			if err != nil {
+			if workTask, err = s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID}); err != nil {
 				return err
 			}
-			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", task.Title, task.ID)
+			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", workTask.Title, workTask.ID)
 		}
 	}
 	if input.Child {
@@ -813,6 +814,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	if p.Kind == "task_result" {
 		input.TaskID, input.TaskTitle = resultLabel(p.Content)
+		if workTask.ID != "" {
+			input.TaskTitle = workTask.Title
+		}
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
 	if err != nil {

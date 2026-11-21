@@ -25,7 +25,7 @@ func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
 	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	store := worktask.New(conn)
+	store := worktask.New(conn, nil)
 	task, err := store.Create(ctx, "default", "Review the change")
 	if err != nil {
 		t.Fatal(err)

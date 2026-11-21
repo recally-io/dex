@@ -1558,6 +1558,8 @@ type SshHostEntry struct {
 
 // TaskItem Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
 type TaskItem struct {
+	// Alert True for a Task alert on Main. The title is the Task title, and taskId is empty. The alert has only event metadata.
+	Alert   *bool        `json:"alert,omitempty"`
 	At      *int64       `json:"at,omitempty"`
 	EntryId *int64       `json:"entryId,omitempty"`
 	Id      string       `json:"id"`
@@ -1775,7 +1777,10 @@ type WorkTaskQuestion struct {
 
 // WorkTaskReviewWait defines model for WorkTaskReviewWait.
 type WorkTaskReviewWait struct {
-	AfterAt  int64  `json:"afterAt"`
+	AfterAt int64 `json:"afterAt"`
+
+	// Alert Main gets a Task alert when the wait resolves.
+	Alert    bool   `json:"alert"`
 	Id       int64  `json:"id"`
 	Resolved bool   `json:"resolved"`
 	Revision string `json:"revision"`
@@ -1909,7 +1914,10 @@ type BindTaskGitHubPullJSONBody struct {
 	RepositoryId int64 `json:"repositoryId"`
 	Wait         *struct {
 		// AfterAt Reviews must be submitted strictly after this Unix time in milliseconds.
-		AfterAt  int64  `json:"afterAt"`
+		AfterAt int64 `json:"afterAt"`
+
+		// Alert When a review resolves the wait, send Main a Task alert. The default is false.
+		Alert    *bool  `json:"alert,omitempty"`
 		Revision string `json:"revision"`
 	} `json:"wait,omitempty"`
 }

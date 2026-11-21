@@ -83,7 +83,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	store := worktask.New(conn)
+	store := worktask.New(conn, nil)
 	if err := store.LinkObject(t.Context(), "default", task.Id, github.Namespace(10), github.PullRequest(2)); err != nil {
 		t.Fatal(err)
 	}

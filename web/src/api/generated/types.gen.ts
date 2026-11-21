@@ -26,6 +26,10 @@ export type WorkTaskReviewWait = {
     revision: string;
     afterAt: number;
     resolved: boolean;
+    /**
+     * Main gets a Task alert when the wait resolves.
+     */
+    alert: boolean;
 };
 
 export type WorkTaskQuestion = {
@@ -543,6 +547,10 @@ export type TaskItem = {
      * The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
      */
     taskId: string;
+    /**
+     * True for a Task alert on Main. The title is the Task title, and taskId is empty. The alert has only event metadata.
+     */
+    alert?: boolean;
 };
 
 export type ThinkingItem = {
@@ -1273,6 +1281,10 @@ export type BindTaskGitHubPullData = {
              * Reviews must be submitted strictly after this Unix time in milliseconds.
              */
             afterAt: number;
+            /**
+             * When a review resolves the wait, send Main a Task alert. The default is false.
+             */
+            alert?: boolean;
         };
     };
     path: {

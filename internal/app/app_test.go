@@ -182,10 +182,12 @@ func (d *dex) chats(t *testing.T) []chatInfo {
 
 // item is a transcript item of the chat event stream.
 type item struct {
-	Origin  string `json:"origin"`
-	Kind    string `json:"kind"`
-	TaskID  string `json:"taskId"`
-	Title   string `json:"title"`
+	Origin string `json:"origin"`
+	Kind   string `json:"kind"`
+	TaskID string `json:"taskId"`
+	Title  string `json:"title"`
+	// Alert marks a Task alert on Main.
+	Alert   bool   `json:"alert"`
 	At      int64  `json:"at"`
 	ID      string `json:"id"`
 	EntryID int64  `json:"entryId"`
