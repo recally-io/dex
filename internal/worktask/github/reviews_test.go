@@ -45,18 +45,18 @@ func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write(body)
 	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-	if _, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", "sha256=00", body, ""); !errors.Is(err, ErrSignature) {
+	if _, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", "sha256=00", body, Rule{}); !errors.Is(err, ErrSignature) {
 		t.Fatalf("unsigned event: %v", err)
 	}
-	if _, err := AcceptWebhook(ctx, store, 11, secret, "delivery-1", "pull_request_review", signature, body, ""); !errors.Is(err, ErrPayload) {
+	if _, err := AcceptWebhook(ctx, store, 11, secret, "delivery-1", "pull_request_review", signature, body, Rule{}); !errors.Is(err, ErrPayload) {
 		t.Fatalf("wrong repository: %v", err)
 	}
-	first, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", signature, body, "")
+	first, err := AcceptWebhook(ctx, store, 10, secret, "delivery-1", "pull_request_review", signature, body, Rule{})
 	if err != nil || first == nil || first.TaskID != task.ID || first.Duplicate || first.ResolvedWaits != 1 {
 		t.Fatalf("Webhook: %+v, %v", first, err)
 	}
 	const pending = `{"id":72,"state":"PENDING"}`
-	pulled, err := AcceptReviewPage(ctx, store, 10, 2, []byte("["+pending+","+strings.Replace(review, `"approved"`, `"APPROVED"`, 1)+"]"))
+	pulled, err := AcceptReviewPage(ctx, store, 10, 2, []byte("["+pending+","+strings.Replace(review, `"approved"`, `"APPROVED"`, 1)+"]"), Rule{})
 	if err != nil || len(pulled) != 1 || pulled[0].EventID != first.EventID || !pulled[0].Duplicate {
 		t.Fatalf("Pull: %+v, %v", pulled, err)
 	}

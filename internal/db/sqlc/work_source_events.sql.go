@@ -96,6 +96,25 @@ func (q *Queries) CreateWorkTaskAlert(ctx context.Context, arg CreateWorkTaskAle
 	return conversation_id, err
 }
 
+const decideWorkSourceHold = `-- name: DecideWorkSourceHold :execrows
+UPDATE work_source_holds SET decision = ?1, decided_at = ?2
+WHERE event_id = ?3 AND decision IS NULL
+`
+
+type DecideWorkSourceHoldParams struct {
+	Decision  sql.NullString `json:"decision"`
+	DecidedAt sql.NullInt64  `json:"decided_at"`
+	EventID   string         `json:"event_id"`
+}
+
+func (q *Queries) DecideWorkSourceHold(ctx context.Context, arg DecideWorkSourceHoldParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, decideWorkSourceHold, arg.Decision, arg.DecidedAt, arg.EventID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const ensureWorkTaskMain = `-- name: EnsureWorkTaskMain :exec
 INSERT INTO conversations (agent_id, channel_key, title, created_at)
 SELECT a.id, 'main', a.name, ?1 FROM agents a WHERE a.id = ?2 AND a.archived_at IS NULL
@@ -134,6 +153,32 @@ func (q *Queries) FindWorkTaskByObject(ctx context.Context, arg FindWorkTaskByOb
 		&i.Lifecycle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getWorkSourceEvent = `-- name: GetWorkSourceEvent :one
+SELECT id, namespace, change_key, event_type, objects, revision, content, source_url, occurred_at, received_at, task_id, disposition, author_login, author_association FROM work_source_events WHERE id = ?
+`
+
+func (q *Queries) GetWorkSourceEvent(ctx context.Context, id string) (WorkSourceEvent, error) {
+	row := q.db.QueryRowContext(ctx, getWorkSourceEvent, id)
+	var i WorkSourceEvent
+	err := row.Scan(
+		&i.ID,
+		&i.Namespace,
+		&i.ChangeKey,
+		&i.EventType,
+		&i.Objects,
+		&i.Revision,
+		&i.Content,
+		&i.SourceUrl,
+		&i.OccurredAt,
+		&i.ReceivedAt,
+		&i.TaskID,
+		&i.Disposition,
+		&i.AuthorLogin,
+		&i.AuthorAssociation,
 	)
 	return i, err
 }
@@ -218,6 +263,20 @@ func (q *Queries) HasWorkTaskObject(ctx context.Context, arg HasWorkTaskObjectPa
 	return count, err
 }
 
+const holdWorkSourceEvent = `-- name: HoldWorkSourceEvent :exec
+INSERT INTO work_source_holds (event_id, held_at) VALUES (?, ?)
+`
+
+type HoldWorkSourceEventParams struct {
+	EventID string `json:"event_id"`
+	HeldAt  int64  `json:"held_at"`
+}
+
+func (q *Queries) HoldWorkSourceEvent(ctx context.Context, arg HoldWorkSourceEventParams) error {
+	_, err := q.db.ExecContext(ctx, holdWorkSourceEvent, arg.EventID, arg.HeldAt)
+	return err
+}
+
 const linkWorkTaskObject = `-- name: LinkWorkTaskObject :execrows
 INSERT INTO work_task_objects (namespace, object_type, object_key, task_id)
 SELECT ?1, ?2, ?3, t.id FROM work_tasks t JOIN agents a ON a.id = t.agent_id
@@ -246,6 +305,62 @@ func (q *Queries) LinkWorkTaskObject(ctx context.Context, arg LinkWorkTaskObject
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const listHeldWorkSourceEvents = `-- name: ListHeldWorkSourceEvents :many
+SELECT e.id, e.namespace, e.event_type, e.objects, e.content, e.source_url, e.occurred_at,
+  e.disposition, e.author_login, e.author_association, h.held_at
+FROM work_source_holds h JOIN work_source_events e ON e.id = h.event_id
+WHERE h.decision IS NULL ORDER BY h.held_at DESC, e.id DESC LIMIT 100
+`
+
+type ListHeldWorkSourceEventsRow struct {
+	ID                string `json:"id"`
+	Namespace         string `json:"namespace"`
+	EventType         string `json:"event_type"`
+	Objects           string `json:"objects"`
+	Content           string `json:"content"`
+	SourceUrl         string `json:"source_url"`
+	OccurredAt        int64  `json:"occurred_at"`
+	Disposition       string `json:"disposition"`
+	AuthorLogin       string `json:"author_login"`
+	AuthorAssociation string `json:"author_association"`
+	HeldAt            int64  `json:"held_at"`
+}
+
+func (q *Queries) ListHeldWorkSourceEvents(ctx context.Context) ([]ListHeldWorkSourceEventsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listHeldWorkSourceEvents)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHeldWorkSourceEventsRow{}
+	for rows.Next() {
+		var i ListHeldWorkSourceEventsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Namespace,
+			&i.EventType,
+			&i.Objects,
+			&i.Content,
+			&i.SourceUrl,
+			&i.OccurredAt,
+			&i.Disposition,
+			&i.AuthorLogin,
+			&i.AuthorAssociation,
+			&i.HeldAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listWorkTaskObjects = `-- name: ListWorkTaskObjects :many
@@ -373,6 +488,20 @@ func (q *Queries) ResolveWorkTaskWaits(ctx context.Context, arg ResolveWorkTaskW
 		return nil, err
 	}
 	return items, nil
+}
+
+const setWorkSourceEventTask = `-- name: SetWorkSourceEventTask :exec
+UPDATE work_source_events SET task_id = ? WHERE id = ?
+`
+
+type SetWorkSourceEventTaskParams struct {
+	TaskID sql.NullString `json:"task_id"`
+	ID     string         `json:"id"`
+}
+
+func (q *Queries) SetWorkSourceEventTask(ctx context.Context, arg SetWorkSourceEventTaskParams) error {
+	_, err := q.db.ExecContext(ctx, setWorkSourceEventTask, arg.TaskID, arg.ID)
+	return err
 }
 
 const setWorkSourceReceiptEvent = `-- name: SetWorkSourceReceiptEvent :exec

@@ -9,11 +9,16 @@ import (
 )
 
 // SaveGitHubWebhook replaces the write-only secret for one repository.
-func (s *Service) SaveGitHubWebhook(ctx context.Context, repositoryID int64, secret, issueAgentID string) error {
+// holdUnmatched keeps Webhook and Pull events that match no Task for the owner.
+func (s *Service) SaveGitHubWebhook(ctx context.Context, repositoryID int64, secret, issueAgentID string, holdUnmatched bool) error {
 	if repositoryID <= 0 || len(secret) < 32 || len(secret) > 256 {
 		return fmt.Errorf("%w: use a positive repository ID and a secret of 32 to 256 bytes", ErrInvalid)
 	}
-	n, err := s.q.SaveGitHubWebhook(ctx, sqlc.SaveGitHubWebhookParams{RepositoryID: repositoryID, Secret: secret, IssueAgentID: sql.NullString{String: issueAgentID, Valid: issueAgentID != ""}})
+	hold := int64(0)
+	if holdUnmatched {
+		hold = 1
+	}
+	n, err := s.q.SaveGitHubWebhook(ctx, sqlc.SaveGitHubWebhookParams{RepositoryID: repositoryID, Secret: secret, IssueAgentID: sql.NullString{String: issueAgentID, Valid: issueAgentID != ""}, HoldUnmatched: hold})
 	if err == nil && n == 0 {
 		return fmt.Errorf("%w: select an active agent for new GitHub issues", ErrInvalid)
 	}

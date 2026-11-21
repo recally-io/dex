@@ -1,0 +1,50 @@
+package server
+
+import (
+	"context"
+	"encoding/json/v2"
+
+	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/worktask"
+)
+
+func (h *handler) ListHeldEvents(ctx context.Context, _ api.ListHeldEventsRequestObject) (api.ListHeldEventsResponseObject, error) {
+	rows, err := h.WorkTasks.ListHeld(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.HeldEvent, 0, len(rows))
+	for _, row := range rows {
+		var objects []worktask.Object
+		if err := json.Unmarshal([]byte(row.Objects), &objects); err != nil {
+			return nil, err
+		}
+		refs := make([]struct {
+			Key  string `json:"key"`
+			Type string `json:"type"`
+		}, len(objects))
+		for i, object := range objects {
+			refs[i].Key, refs[i].Type = object.Key, object.Type
+		}
+		out = append(out, api.HeldEvent{
+			Id: row.ID, Namespace: row.Namespace, EventType: row.EventType, Objects: refs, Reason: api.HeldEventReason(row.Disposition),
+			Content: row.Content, SourceUrl: row.SourceUrl, AuthorLogin: row.AuthorLogin, AuthorAssociation: row.AuthorAssociation,
+			OccurredAt: row.OccurredAt, HeldAt: row.HeldAt,
+		})
+	}
+	return api.ListHeldEvents200JSONResponse{Events: out}, nil
+}
+
+func (h *handler) AttachHeldEvent(ctx context.Context, req api.AttachHeldEventRequestObject) (api.AttachHeldEventResponseObject, error) {
+	if err := h.WorkTasks.AttachHeld(ctx, req.EventId, req.Body.AgentId, req.Body.TaskId); err != nil {
+		return nil, workTaskError(err)
+	}
+	return api.AttachHeldEvent204Response{}, nil
+}
+
+func (h *handler) DismissHeldEvent(ctx context.Context, req api.DismissHeldEventRequestObject) (api.DismissHeldEventResponseObject, error) {
+	if err := h.WorkTasks.DismissHeld(ctx, req.EventId); err != nil {
+		return nil, err
+	}
+	return api.DismissHeldEvent204Response{}, nil
+}

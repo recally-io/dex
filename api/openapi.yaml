@@ -116,6 +116,10 @@ paths:
                 issueAgentId:
                   type: string
                   description: Create Tasks for opened Issues under this agent. Omit to disable creation.
+                holdUnmatched:
+                  type: boolean
+                  default: false
+                  description: Hold Webhook and Pull events that match no Task in the Inbox. The default ignores them.
       responses:
         "204": { description: Webhook configuration saved. }
         default: { $ref: "#/components/responses/Error" }
@@ -272,6 +276,59 @@ paths:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/InboxItem" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/inbox/held-events:
+    get:
+      operationId: listHeldEvents
+      description: The newest 100 source events that wait for the owner.
+      responses:
+        "200":
+          description: Held events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/HeldEvent" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/inbox/held-events/{eventId}/attach:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: attachHeldEvent
+      description: Add a held event to an open Task and link its objects that have no Task. This does not resolve a wait or alert Main.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId, taskId]
+              properties:
+                agentId: { type: string }
+                taskId: { type: string }
+      responses:
+        "204": { description: Event attached. }
+        "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/inbox/held-events/{eventId}/dismiss:
+    parameters:
+      - in: path
+        name: eventId
+        required: true
+        schema: { type: string }
+    post:
+      operationId: dismissHeldEvent
+      description: Remove a held event from the Inbox. Dex keeps the event record.
+      responses:
+        "204": { description: Event dismissed. }
+        "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
   /api/inbox/{runId}/read:
     parameters:
@@ -2203,6 +2260,45 @@ components:
         id: { type: integer, format: int64 }
         agentId: { type: string }
         title: { type: string }
+    HeldEvent:
+      type: object
+      required: [
+        id,
+        namespace,
+        eventType,
+        objects,
+        reason,
+        content,
+        sourceUrl,
+        authorLogin,
+        authorAssociation,
+        occurredAt,
+        heldAt,
+      ]
+      properties:
+        id: { type: string }
+        namespace: { type: string }
+        eventType: { type: string }
+        objects:
+          type: array
+          items:
+            type: object
+            required: [type, key]
+            properties:
+              type: { type: string }
+              key: { type: string }
+        reason:
+          type: string
+          enum: [unmatched, conflict]
+          description: Unmatched means no Task links an object. Conflict means the objects link to different Tasks.
+        content:
+          type: string
+          description: The event text from the source. Show it to the owner only.
+        sourceUrl: { type: string }
+        authorLogin: { type: string }
+        authorAssociation: { type: string }
+        occurredAt: { type: integer, format: int64 }
+        heldAt: { type: integer, format: int64 }
     WorkTaskEntry:
       type: object
       required: [id, author, content, createdAt]
