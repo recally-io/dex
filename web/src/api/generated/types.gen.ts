@@ -15,14 +15,23 @@ export type WorkTask = {
     updatedAt: number;
 };
 
-export type WorkTaskGitHubPull = {
-    repositoryId: number;
-    pullNumber: number;
-    waits: Array<WorkTaskReviewWait>;
+/**
+ * An external object linked to the Task, such as a GitHub PR. The source that owns the namespace gives the meaning of type and key.
+ *
+ */
+export type WorkTaskLink = {
+    namespace: string;
+    type: string;
+    key: string;
+    waits: Array<WorkTaskWait>;
 };
 
-export type WorkTaskReviewWait = {
+export type WorkTaskWait = {
     id: number;
+    /**
+     * The event type that resolves the wait.
+     */
+    event: string;
     revision: string;
     afterAt: number;
     resolved: boolean;
@@ -1544,7 +1553,7 @@ export type GetWorkTaskResponses = {
         session?: WorkTaskSession;
         entries: Array<WorkTaskEntry>;
         questions: Array<WorkTaskQuestion>;
-        githubPulls: Array<WorkTaskGitHubPull>;
+        links: Array<WorkTaskLink>;
     };
 };
 

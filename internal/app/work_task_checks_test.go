@@ -35,11 +35,11 @@ func TestUserSeesCIOnlyAsATimelineEntry(t *testing.T) {
 	// Then the Task has one entry per completion, the wait stays open, and nothing alerts Main or waits in the Inbox.
 	var detail api.GetWorkTask200JSONResponse
 	d.must(t, http.MethodGet, path, nil, &detail)
-	t.Logf("artifact: entries=%+v pulls=%+v", detail.Entries, detail.GithubPulls)
+	t.Logf("artifact: entries=%+v links=%+v", detail.Entries, detail.Links)
 	if len(detail.Entries) != 2 || detail.Entries[0].EventId == nil || detail.Entries[0].Content != "GitHub checks: github-actions failure" {
 		t.Fatalf("CI must add one external entry per completion: %+v", detail.Entries)
 	}
-	if waits := detail.GithubPulls[0].Waits; len(waits) != 1 || waits[0].Resolved {
+	if waits := detail.Links[0].Waits; len(waits) != 1 || waits[0].Resolved {
 		t.Fatalf("CI must not resolve a review wait: %+v", waits)
 	}
 	if got := pendingTaskAlerts(t, d.dataDir(t)); len(got) != 0 {

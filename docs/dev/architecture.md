@@ -182,6 +182,10 @@ only their event type, author class, and source link, so text from people
 outside the bot does not reach the model. Each entry has an author: `owner`
 (a note or a message from Task detail), `agent` (a tool call), or external (a
 source event). Entries from before the author column show as unknown.
+`task_get` and `GET /api/agents/{agentId}/inbox/tasks/{taskId}` list every
+linked object as `links`: its namespace, type, and key, with the waits on that
+object. The core does not decode these values, so links stay readable when no
+source can read them.
 
 `work_task_sessions` holds the primary work Session of a Task. When the input
 that started a Main run is linked to a Task, the first `session_new` of that

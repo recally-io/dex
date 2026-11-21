@@ -68,7 +68,7 @@ func (h *handler) GetWorkTask(ctx context.Context, req api.GetWorkTaskRequestObj
 		}
 		questions = append(questions, api.WorkTaskQuestion{Id: question.ID, Text: question.Text, Options: options, Queued: question.Queued != 0})
 	}
-	out := api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions, GithubPulls: taskGitHubPulls(detail)}
+	out := api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions, Links: taskLinks(detail)}
 	if s := detail.Session; s.ID != 0 {
 		out.Session = &api.WorkTaskSession{Id: s.ID, AgentId: s.AgentID, Title: s.Title}
 	}
@@ -89,4 +89,23 @@ func (h *handler) AppendWorkTaskNote(ctx context.Context, req api.AppendWorkTask
 		return nil, workTaskError(err)
 	}
 	return api.AppendWorkTaskNote201JSONResponse(workTaskEntry(row)), nil
+}
+
+// taskLinks groups the waits of a Task under the objects they watch.
+func taskLinks(detail worktask.Detail) []api.WorkTaskLink {
+	type key struct{ namespace, objectType, object string }
+	waits := make(map[key][]api.WorkTaskWait)
+	for _, w := range detail.Waits {
+		k := key{w.Namespace, w.ObjectType, w.ObjectKey}
+		waits[k] = append(waits[k], api.WorkTaskWait{Id: w.ID, Event: w.EventType, Revision: w.Revision, AfterAt: w.AfterAt, Resolved: w.ResolvedBy.Valid, Alert: w.Alert == 1})
+	}
+	links := make([]api.WorkTaskLink, 0, len(detail.Objects))
+	for _, o := range detail.Objects {
+		link := api.WorkTaskLink{Namespace: o.Namespace, Type: o.ObjectType, Key: o.ObjectKey, Waits: waits[key{o.Namespace, o.ObjectType, o.ObjectKey}]}
+		if link.Waits == nil {
+			link.Waits = []api.WorkTaskWait{}
+		}
+		links = append(links, link)
+	}
+	return links
 }

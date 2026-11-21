@@ -1800,15 +1800,16 @@ type WorkTaskEntry struct {
 // WorkTaskEntryAuthor Who wrote the entry. Unknown marks an entry from before authors were recorded.
 type WorkTaskEntryAuthor string
 
-// WorkTaskGitHubPull defines model for WorkTaskGitHubPull.
-type WorkTaskGitHubPull struct {
-	PullNumber   int64                `json:"pullNumber"`
-	RepositoryId int64                `json:"repositoryId"`
-	Waits        []WorkTaskReviewWait `json:"waits"`
-}
-
 // WorkTaskLifecycle defines model for WorkTaskLifecycle.
 type WorkTaskLifecycle string
+
+// WorkTaskLink An external object linked to the Task, such as a GitHub PR. The source that owns the namespace gives the meaning of type and key.
+type WorkTaskLink struct {
+	Key       string         `json:"key"`
+	Namespace string         `json:"namespace"`
+	Type      string         `json:"type"`
+	Waits     []WorkTaskWait `json:"waits"`
+}
 
 // WorkTaskQuestion defines model for WorkTaskQuestion.
 type WorkTaskQuestion struct {
@@ -1818,22 +1819,25 @@ type WorkTaskQuestion struct {
 	Text    string   `json:"text"`
 }
 
-// WorkTaskReviewWait defines model for WorkTaskReviewWait.
-type WorkTaskReviewWait struct {
-	AfterAt int64 `json:"afterAt"`
-
-	// Alert Main gets a Task alert when the wait resolves.
-	Alert    bool   `json:"alert"`
-	Id       int64  `json:"id"`
-	Resolved bool   `json:"resolved"`
-	Revision string `json:"revision"`
-}
-
 // WorkTaskSession The primary work Session of the Task.
 type WorkTaskSession struct {
 	AgentId string `json:"agentId"`
 	Id      int64  `json:"id"`
 	Title   string `json:"title"`
+}
+
+// WorkTaskWait defines model for WorkTaskWait.
+type WorkTaskWait struct {
+	AfterAt int64 `json:"afterAt"`
+
+	// Alert Main gets a Task alert when the wait resolves.
+	Alert bool `json:"alert"`
+
+	// Event The event type that resolves the wait.
+	Event    string `json:"event"`
+	Id       int64  `json:"id"`
+	Resolved bool   `json:"resolved"`
+	Revision string `json:"revision"`
 }
 
 // AgentId defines model for AgentId.
@@ -9606,9 +9610,9 @@ type GetWorkTaskResponseObject interface {
 }
 
 type GetWorkTask200JSONResponse struct {
-	Entries     []WorkTaskEntry      `json:"entries"`
-	GithubPulls []WorkTaskGitHubPull `json:"githubPulls"`
-	Questions   []WorkTaskQuestion   `json:"questions"`
+	Entries   []WorkTaskEntry    `json:"entries"`
+	Links     []WorkTaskLink     `json:"links"`
+	Questions []WorkTaskQuestion `json:"questions"`
 
 	// Session The primary work Session of the Task.
 	Session *WorkTaskSession `json:"session,omitempty"`
