@@ -1,0 +1,176 @@
+# Plugins
+
+This document is for developers who change or add a plugin. A plugin is an
+optional source of Task events, such as GitHub or a generic Webhook. It runs in the dex process, but its code and its behavior stay out of
+the core path. The core works the same with every plugin off.
+
+![Plugin boundary and startup](../../assets/plugins.png)
+
+Source: [plugins.puml](../../assets/src/plugins.puml).
+
+## Boundary
+
+| Part                | Owns                                                                     |
+| ------------------- | ------------------------------------------------------------------------ |
+| `internal/plugin`   | The seam: `Plugin`, `Factory`, `Deps`, and `Job`                         |
+| `internal/app`      | Builds the plugins, reads `plugin_settings`, and mounts the enabled ones |
+| `plugins/<name>`    | One source: its hooks, API, queries, jobs, tools, and event parsing      |
+| `internal/worktask` | The event store, routing, holds, waits, links, and Task alerts           |
+| `cmd/dex`           | The list of plugins in this build (`app.Config.Plugins`)                 |
+
+The core in `internal/` never imports a package in `plugins/`. A plugin can
+import the core, but not another plugin. Shared code that two plugins need goes
+into `internal/plugin`. A plugin gets only `plugin.Deps`: the control database
+and the Task event store. It writes Task state only through
+`internal/worktask`, so every source shares one set of routing, hold, and
+replay rules. A plugin sets the namespace of its events on the server, for
+example `github.com/repository/<id>` or `webhook/<sourceId>`. A delivery cannot
+choose the namespace, so one source cannot reach the objects of another.
+
+## What a plugin adds
+
+A `Factory` returns one `Plugin`. Each field is optional, and a zero field adds
+nothing.
+
+- `Hooks`: routes under `/hooks/<name>/`, without the access token. The server
+  wraps them in `HookLimit`, the largest request body. A plugin that has hooks
+  must set a limit. A hook authenticates its own deliveries, for example with
+  an HMAC signature header.
+- `API`: routes under `/api/plugins/<name>/`, behind the access token.
+- `Jobs`: scheduler jobs, named `<name>/<job>`. A job reads durable state, so
+  a missed run is safe.
+- `Tools`: Task link tools. The plugin parses the arguments into a
+  `worktask.Link`. The core adds the Task `id`, checks the caller, and writes
+  the link and an optional wait with the tool replay record. Each tool adds one
+  paragraph to the Task rules.
+
+## Lifecycle
+
+1. At start, `internal/app` calls every factory of the build. A factory only
+   builds handlers and starts no work.
+2. dex rejects a name that is not lowercase ASCII letters, a name used twice,
+   and hooks without a body limit.
+3. dex keeps the plugins whose name has `enabled = 1` in `plugin_settings`. A
+   plugin without a row is off. The migration that adds the table turns
+   `github` on, because GitHub ran before plugins existed. dex logs a warning
+   for an enabled name that is not in the build.
+4. dex mounts the hooks and API of the enabled plugins, registers their jobs,
+   and gives their tools to the engine.
+
+The owner turns a plugin on or off with `PUT /api/settings/plugins/{name}` or
+in General settings. `GET /api/settings/plugins` gives each plugin of the build
+with its stored choice and whether it runs now. The choice applies after a
+restart. Deliberate limit: reload the plugin routes, jobs, and tools in place
+if restarts become a problem.
+
+`GET /api/health` lists the running plugins in `plugins`. The web UI keeps the
+components of a plugin in `web/src/plugins/<name>/` and renders them only when
+the plugin runs. A plugin that is off has no hooks or API (`404`), jobs, tools,
+or rules. Its tables, stored events, links, and waits stay. Task detail shows
+each link as namespace, type, and key, so the core needs no plugin code to show
+it.
+
+## API, store, and schema
+
+- The plugin operations in `api/openapi.yaml` carry the plugin name as their
+  tag. The core server config excludes these tags. Each plugin generates its
+  own strict server into `plugins/<name>/api` from
+  `plugins/<name>/api/oapi-codegen.yaml`, which includes only its tag. The web
+  client is generated from the whole spec.
+- A plugin owns its queries in `plugins/<name>/queries` and generates
+  `plugins/<name>/store` with its own `sqlc.yaml` target.
+- The core migrations in `internal/db/migrations` stay the only schema source.
+  A plugin table exists when the plugin is off, so turning a plugin on needs no
+  migration.
+
+## Add a plugin
+
+1. Add `plugins/<name>` with `New(plugin.Deps) plugin.Plugin`.
+2. Add its operations to `api/openapi.yaml` with tag `<name>`. Add the tag to
+   `exclude-tags` in `api/oapi-codegen.yaml`, and add
+   `plugins/<name>/api/oapi-codegen.yaml`.
+3. Add its tables in a core migration, its queries in
+   `plugins/<name>/queries`, and a `sqlc.yaml` target.
+4. Add the factory to `cmd/dex` and to the default list in the app test
+   helper. Do not add a `plugin_settings` row, so the plugin starts off.
+5. Run `mise run generate:api` and `mise run generate:db`. The drift checks
+   cover every `plugins/*` directory.
+6. Add an E2E test that turns the plugin on, restarts dex, and uses its hook or
+   API.
+
+## Current plugins
+
+| Plugin    | Default | Hook                                | API                                |
+| --------- | ------- | ----------------------------------- | ---------------------------------- |
+| `github`  | on      | `POST /hooks/github/{repositoryId}` | `/api/plugins/github/...`          |
+| `webhook` | off     | `POST /hooks/webhook/{sourceId}`    | `/api/plugins/webhook/sources/...` |
+
+## GitHub
+
+The GitHub review adapter accepts a signed Webhook body or a page from the
+GitHub REST API. Both use the repository ID as the namespace and the review
+ID as the change key. A submitted review identifies the PR, the commit, and
+the submission time. The adapter skips pending and dismissed reviews. Dex
+records the author login and association. GitHub events from an `OWNER`,
+`MEMBER`, or `COLLABORATOR` with a login can create a Task or resolve a wait.
+Other authors can add to a linked Task's timeline, but cannot change waits.
+External timeline entries carry a source event ID.
+
+A signed `check_suite` delivery with the `completed` action adds one timeline
+entry to each linked PR of this repository. The entry gives the app and the
+conclusion. The change key includes the suite ID and its update time, so a
+rerun adds a new entry and a redelivery does not. CI events are record-only.
+They cannot create a Task, resolve a wait, send a Task alert, or be held as
+unmatched. GitHub lists no PR for a branch in a fork, and Pull does not read
+checks, so Dex does not record those suites.
+
+The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
+An administrator saves or rotates a write-only secret with
+`PUT /api/plugins/github/webhooks/{repositoryId}` and disables the hook with
+`DELETE` on the same path. Set `issueAgentId` to an active bot on the same PUT
+to create Tasks for signed `issues.opened` deliveries. Omit it to disable Task
+creation. Set `holdUnmatched` to hold Webhook and Pull events that match no
+Task. The poller reads this flag from the Webhook configuration of the
+repository, so Pull holds nothing for a repository without one. Dex first checks for an existing Issue link, then stores any new
+Task, its link, and the opening event in one transaction. The issue title and
+body are timeline data.
+The hook does not accept the management token as a signature. It accepts a
+request body of at most 2 MiB and returns `204` after the event commits or
+when a signed delivery needs no action. A failed write returns `503`. To
+receive deliveries from GitHub, expose only the hook path through a public
+HTTPS proxy. Keep the management routes private.
+
+The controller polls each PR configured through
+`PUT /api/plugins/github/review-pulls/{repositoryId}/{pullNumber}` once per
+minute. This API accepts a write-only GitHub token. `DELETE` on the same path
+removes the configuration. The poller resolves the repository ID, reads up to
+20 review pages, and uses the same event store as the hook. It saves an ETag
+only after all entries are accepted and the result fits on one non-full page.
+A failed pull leaves the checkpoint unchanged. A retry does not duplicate
+previously committed reviews.
+
+The owner can bind a PR to a Task with
+`PUT /api/plugins/github/agents/{agentId}/tasks/{taskId}/pull`. Dex stores the
+PR link and optional review wait in one transaction. Reviews on the linked
+PR go to the Task timeline. Only a review of the specified revision, submitted
+after the wait boundary, resolves that wait. Binding does not start a run.
+Set `wait.alert` to `true` to send a Task alert when that review arrives.
+
+## Webhook
+
+The Webhook plugin accepts normalized Task events from a generic source, such
+as a calendar bridge. It is off by default. A source sends signed deliveries to
+`POST /hooks/webhook/{sourceId}`. An administrator saves the source with
+`PUT /api/plugins/webhook/sources/{sourceId}` and disables it with `DELETE` on
+the same path. The source ID uses lowercase letters, digits, and dashes. Each
+delivery has an `X-Dex-Delivery` ID, which is the receipt key, and an
+`X-Dex-Signature` header of the form `sha256=<hex HMAC of the body>`. The JSON
+body has `type`, `objects` (1 to 16 typed references), and `occurredAt` (RFC
+3339). Optional fields are `changeKey`, `revision`, `title`, `content`, and an
+HTTPS `sourceUrl`. The namespace is `webhook/<sourceId>`. Dex sets it on the
+server, so a source cannot reach the objects of GitHub or another source. The
+author class is `SOURCE`. Set `taskAgentId` to create a Task for an unmatched
+event with exactly one object, with `title` as the Task title. Set
+`holdUnmatched` to hold other unmatched events. The hook accepts a body of at
+most 2 MiB. The source uses the same event store, routing, holds, and Task
+alerts as GitHub. It cannot add a wait, and it has no link tool.
