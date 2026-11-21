@@ -12,7 +12,7 @@ Source: [plugins.puml](../../assets/src/plugins.puml).
 
 | Part                | Owns                                                                     |
 | ------------------- | ------------------------------------------------------------------------ |
-| `internal/plugin`   | The seam: `Plugin`, `Factory`, `Deps`, and `Job`                         |
+| `internal/plugin`   | The seam: `Plugin`, `Factory`, `Deps`, `Job`, and `ValidSignature`       |
 | `internal/app`      | Builds the plugins, reads `plugin_settings`, and mounts the enabled ones |
 | `plugins/<name>`    | One source: its hooks, API, queries, jobs, tools, and event parsing      |
 | `internal/worktask` | The event store, routing, holds, waits, links, and Task alerts           |
@@ -35,7 +35,7 @@ nothing.
 - `Hooks`: routes under `/hooks/<name>/`, without the access token. The server
   wraps them in `HookLimit`, the largest request body. A plugin that has hooks
   must set a limit. A hook authenticates its own deliveries, for example with
-  an HMAC signature header.
+  `plugin.ValidSignature` for a `sha256=<hex HMAC>` header.
 - `API`: routes under `/api/plugins/<name>/`, behind the access token.
 - `Jobs`: scheduler jobs, named `<name>/<job>`. A job reads durable state, so
   a missed run is safe.
@@ -104,6 +104,7 @@ it.
 | --------- | ------- | ----------------------------------- | ---------------------------------- |
 | `github`  | on      | `POST /hooks/github/{repositoryId}` | `/api/plugins/github/...`          |
 | `webhook` | off     | `POST /hooks/webhook/{sourceId}`    | `/api/plugins/webhook/sources/...` |
+| `email`   | off     | `POST /hooks/email/{sourceId}`      | `/api/plugins/email/sources/...`   |
 
 ## GitHub
 
@@ -174,3 +175,30 @@ event with exactly one object, with `title` as the Task title. Set
 `holdUnmatched` to hold other unmatched events. The hook accepts a body of at
 most 2 MiB. The source uses the same event store, routing, holds, and Task
 alerts as GitHub. It cannot add a wait, and it has no link tool.
+
+## Email
+
+The email plugin accepts forwarded mail of a selected address. It is off by
+default. A mail forwarding service posts one raw RFC 5322 message as the body
+of `POST /hooks/email/{sourceId}`, with the `X-Dex-Delivery` and
+`X-Dex-Signature` headers of the Webhook plugin. An administrator saves the
+source with `PUT /api/plugins/email/sources/{sourceId}` and disables it with
+`DELETE` on the same path. The namespace is `email/<sourceId>`, and the author
+class is `SOURCE`.
+
+The parser uses only the Go standard library. The event type is
+`email.received`, and the change key is the Message-ID, so a retry does not add
+a second entry. `Message-ID`, `In-Reply-To`, and `References` become `message`
+objects, newest first, up to 16. A key longer than 200 bytes becomes its
+SHA-256 hash. The Subject is the Task title. The text is the first `text/plain`
+part. Dex decodes quoted-printable and base64, and drops HTML parts, files, and
+bytes that are not UTF-8. The From header stays in the text only, because
+anyone can forge it.
+
+Set `taskAgentId` to create a Task for a new thread, which has one object. A
+reply finds the Task of a linked reference. A message whose references link to
+different Tasks is a conflict. A reply to a thread that Dex never saw has more
+than one object, so Dex holds it with `holdUnmatched` or ignores it. A message
+above 2 MiB gets `413`, so the forwarder must remove large files first. Dex
+does not read a mailbox: IMAP Pull needs a client that the standard library
+does not have.

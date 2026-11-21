@@ -30,7 +30,7 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/settings/plugins/unknown", map[string]bool{"enabled": true}, nil, http.StatusNotFound)
 	var plugins api.ListPlugins200JSONResponse
 	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
-	if !slices.Equal(plugins.Plugins, []api.PluginSetting{{Name: "github", Enabled: false, Running: true}, {Name: "webhook", Enabled: false, Running: false}}) {
+	if !slices.Equal(plugins.Plugins, []api.PluginSetting{{Name: "github", Enabled: false, Running: true}, {Name: "webhook", Enabled: false, Running: false}, {Name: "email", Enabled: false, Running: false}}) {
 		t.Fatalf("the choice must wait for a restart: %+v", plugins.Plugins)
 	}
 	d.stop()

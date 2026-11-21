@@ -284,6 +284,9 @@ When the Webhook plugin is on, another service, such as a calendar, can send
 signed events to a Webhook source. A source rule can open a Task for a new
 object, and later events of that object update the same Task. The Webhook
 plugin starts off.
+When the email plugin is on, a mail forwarding service can post the messages
+of a selected address. A new thread opens a Task, and a reply in that thread
+updates the same Task. The email plugin starts off.
 The Inbox holds an event when its links point to different Tasks. A source
 rule can also hold an event that matches no Task. Dex holds only events from
 trusted authors, or events with conflicting links. The owner attaches a held

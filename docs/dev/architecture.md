@@ -135,7 +135,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
 | [Agents](agents.md)           | Agents and the HTTP API, settings, memory, and bot tools                   |
 | [Sessions](sessions.md)       | Main, Chats, child sessions, internal delegation, and session environments |
 | [Tasks](tasks.md)             | The Task Inbox, the event store, holds, Task alerts, and Task tools        |
-| [Plugins](plugins.md)         | Optional Task sources: GitHub, Webhook, and the plugin boundary            |
+| [Plugins](plugins.md)         | Optional Task sources: GitHub, Webhook, email, and the plugin boundary     |
 | [Execution](execution.md)     | The native engine boundary, background commands, and transcripts           |
 | [Files](files.md)             | Artifacts, file results, channel file delivery, and attachments            |
 | [Channels](channels.md)       | Telegram, shared channels, Feishu and Lark, and WeChat                     |

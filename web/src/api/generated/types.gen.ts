@@ -1419,6 +1419,70 @@ export type SaveGitHubReviewPullResponses = {
 
 export type SaveGitHubReviewPullResponse = SaveGitHubReviewPullResponses[keyof SaveGitHubReviewPullResponses];
 
+export type DeleteEmailSourceData = {
+    body?: never;
+    path: {
+        sourceId: string;
+    };
+    query?: never;
+    url: '/api/plugins/email/sources/{sourceId}';
+};
+
+export type DeleteEmailSourceErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteEmailSourceError = DeleteEmailSourceErrors[keyof DeleteEmailSourceErrors];
+
+export type DeleteEmailSourceResponses = {
+    /**
+     * Source disabled.
+     */
+    204: void;
+};
+
+export type DeleteEmailSourceResponse = DeleteEmailSourceResponses[keyof DeleteEmailSourceResponses];
+
+export type SaveEmailSourceData = {
+    body: {
+        secret: string;
+        /**
+         * Create a Task under this agent for a new thread. Omit to disable creation.
+         */
+        taskAgentId?: string;
+        /**
+         * Hold other unmatched messages in the Inbox. The default ignores them.
+         */
+        holdUnmatched?: boolean;
+    };
+    path: {
+        sourceId: string;
+    };
+    query?: never;
+    url: '/api/plugins/email/sources/{sourceId}';
+};
+
+export type SaveEmailSourceErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SaveEmailSourceError = SaveEmailSourceErrors[keyof SaveEmailSourceErrors];
+
+export type SaveEmailSourceResponses = {
+    /**
+     * Source saved.
+     */
+    204: void;
+};
+
+export type SaveEmailSourceResponse = SaveEmailSourceResponses[keyof SaveEmailSourceResponses];
+
 export type DeleteWebhookSourceData = {
     body?: never;
     path: {
