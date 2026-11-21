@@ -3,12 +3,12 @@
 #MISE depends=["build:web"]
 set -euo pipefail
 
-package="${1:?Pass ./internal/app or ./internal/chat}"
+package="${1:?Pass ./internal/chat}"
 index="${2:?Pass a zero-based shard index}"
 count="${3:?Pass the shard count}"
 case "$package" in
-  ./internal/app|./internal/chat) ;;
-  *) echo "Expected ./internal/app or ./internal/chat." >&2; exit 2 ;;
+  ./internal/chat) ;;
+  *) echo "Expected ./internal/chat. check:app runs ./internal/app." >&2; exit 2 ;;
 esac
 name="${package##*/}"
 if [[ ! "$index" =~ ^(0|[1-9][0-9]*)$ || ! "$count" =~ ^[1-9][0-9]*$ ]] || (( index >= count )); then

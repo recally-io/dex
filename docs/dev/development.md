@@ -75,7 +75,8 @@ Run `mise tasks` for the full list. The main tasks:
 | `build`             | Builds `bin/dex` for this platform                                                                               |
 | `check`             | All checks; CI runs its steps in jobs                                                                            |
 | `check:quick`       | Static checks and the tests of changed Go packages, without `internal/app`; the pre-push hook runs it            |
-| `check:go`          | golangci-lint, `go build`, `go test -race`                                                                       |
+| `check:go`          | golangci-lint, `go build`, `go test -race`; `internal/app` runs without `-race`                                  |
+| `check:app`         | The `internal/app` tests without the race detector, as in CI                                                     |
 | `check:native`      | Checks removed backend paths, rejects PiG TUI and extension-host imports, and builds four platforms with cgo off |
 | `generate:diagrams` | Renders the architecture and message-flow PNGs from PlantUML                                                     |
 | `generate:db`       | Regenerates `internal/db/sqlc`                                                                                   |
@@ -96,6 +97,7 @@ stdio servers. They do not call production services.
 
 Run `mise run check:go` after a Go or PiG dependency change. It builds the web
 assets, runs lint, builds the packages, and runs tests with the race detector.
+The `internal/app` tests run without it.
 `mise run check:native` also builds darwin and linux for amd64 and arm64
 with `CGO_ENABLED=0`. It checks that tracked backend-worker files and PiG TUI
 or extension-host dependencies are absent.

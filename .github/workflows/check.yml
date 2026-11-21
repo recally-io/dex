@@ -23,8 +23,8 @@ concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# The jobs run every step of `mise run check`. App and chat race tests use separate partitions;
-# the Go job runs lint, builds, and all other packages. Keep coverage equal to mise.toml.
+# The jobs run every step of `mise run check`. App tests run in one job without the race detector,
+# chat race tests use separate partitions, and the Go job runs lint, builds, and all other packages. Keep coverage equal to mise.toml.
 jobs:
   lint:
     name: Lint and drift
@@ -92,15 +92,11 @@ jobs:
             ~/go/pkg/mod
           key: ${{ steps.go-cache.outputs.cache-primary-key }}
 
-  # App tests dominate the workflow. Every discovered test belongs to exactly one partition.
+  # The race detector made app tests several times slower for little gain, so they run without it.
   app:
-    name: App race tests (${{ matrix.shard }})
+    name: App tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jdx/mise-action@v5.2.8
@@ -118,11 +114,11 @@ jobs:
             go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-
       - run: mise run install
-      - run: mise run check:go-shard ./internal/app ${{ strategy.job-index }} ${{ strategy.job-total }}
+      - run: mise run check:app
       - if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: app-tests-${{ matrix.shard }}
+          name: app-tests
           path: .local/ci/
           include-hidden-files: true
           retention-days: 7
