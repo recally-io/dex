@@ -87,10 +87,10 @@ tail -f ~/Library/Logs/dex-agent.log                 # what it does
 
 The state directory holds `device.json`, which contains the Dex origin, the
 environment ID, and the machine token. Multiple bots can use the same machine.
-Each bot starts in `workspaces/<bot-id>/` in the state directory. Dex uses the
-bot ID to select this path, regardless of the environment ID. All bots run as
-the same account. Separate workspaces do not restrict which files a bot can read
-or change.
+Each bot starts in `workspaces/<bot-id>/workspace` in the state directory. SSH
+and runner use the same `<base>/<bot-id>/workspace` layout. The base directory
+depends on the backend. All bots on a runner use the same account. Separate
+workspaces do not restrict which files a bot can read or change.
 
 To stop the agent without removing the machine:
 

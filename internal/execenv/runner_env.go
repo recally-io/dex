@@ -38,11 +38,12 @@ func (b runnerBackend) open(ctx context.Context, agentID string, spec Environmen
 	if session == nil {
 		return nil, runner.ErrOffline
 	}
-	workspace := path.Join(path.Dir(session.Info().Workspace), "workspaces", agentID)
-	if err := session.Call(ctx, runner.MethodMakeDir, &runner.MakeDirParams{Path: workspace, Recursive: new(true)}, nil); err != nil {
+	base := path.Join(path.Dir(session.Info().Workspace), "workspaces")
+	h := &runnerHandle{id: spec.ID, client: session, workspace: remoteBotWorkspace(base, "/", agentID)}
+	if err := createRemoteBotWorkspace(ctx, h); err != nil {
 		return nil, fmt.Errorf("create runner workspace: %w", err)
 	}
-	return &runnerHandle{id: spec.ID, client: session, workspace: workspace}, nil
+	return h, nil
 }
 
 func (b runnerBackend) changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {

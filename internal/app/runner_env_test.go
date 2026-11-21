@@ -160,7 +160,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	other.send(`test ! -e note.txt && printf 'second' > note.txt && cat note.txt`)
 	other.watch().until(t, "second bot writes its own file", answeredWith("bash: second"))
 	for botID, want := range map[string]string{bot.ID: "first", second.ID: "second"} {
-		file := filepath.Join(machineState, "workspaces", botID, "note.txt")
+		file := filepath.Join(machineState, "workspaces", botID, "workspace", "note.txt")
 		got, err := os.ReadFile(file)
 		if err != nil || string(got) != want {
 			t.Fatalf("bot %s file = %q, want %q (err %v)", botID, got, want, err)
