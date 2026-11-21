@@ -209,9 +209,10 @@ type GithubReviewPull struct {
 }
 
 type GithubWebhookSetting struct {
-	RepositoryID int64          `json:"repository_id"`
-	Secret       string         `json:"secret"`
-	IssueAgentID sql.NullString `json:"issue_agent_id"`
+	RepositoryID  int64          `json:"repository_id"`
+	Secret        string         `json:"secret"`
+	IssueAgentID  sql.NullString `json:"issue_agent_id"`
+	HoldUnmatched int64          `json:"hold_unmatched"`
 }
 
 type OnePassword struct {
@@ -457,6 +458,13 @@ type WorkSourceEvent struct {
 	Disposition       string         `json:"disposition"`
 	AuthorLogin       string         `json:"author_login"`
 	AuthorAssociation string         `json:"author_association"`
+}
+
+type WorkSourceHold struct {
+	EventID   string         `json:"event_id"`
+	HeldAt    int64          `json:"held_at"`
+	Decision  sql.NullString `json:"decision"`
+	DecidedAt sql.NullInt64  `json:"decided_at"`
 }
 
 type WorkSourceReceipt struct {

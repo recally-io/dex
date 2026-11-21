@@ -277,6 +277,11 @@ Main gets a Task alert when a source rule creates a Task, or when a review
 arrives for a wait that asks for an alert. The alert shows the Task title,
 the event type, the author class, and the link, but not the event text.
 Each event sends at most one alert.
+The Inbox holds an event when its links point to different Tasks. A source
+rule can also hold an event that matches no Task. Dex holds only events from
+trusted authors, or events with conflicting links. The owner attaches a held
+event to an open Task or dismisses it. An attach links the event's free objects
+to the Task, so later events go there. A decision does not alert Main.
 The Inbox also links to Routine results.
 Routine result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening

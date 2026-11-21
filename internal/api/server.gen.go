@@ -332,6 +332,24 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for HeldEventReason.
+const (
+	Conflict  HeldEventReason = "conflict"
+	Unmatched HeldEventReason = "unmatched"
+)
+
+// Valid indicates whether the value is a known member of the HeldEventReason enum.
+func (e HeldEventReason) Valid() bool {
+	switch e {
+	case Conflict:
+		return true
+	case Unmatched:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ItemEventType.
 const (
 	ItemEventTypeItem ItemEventType = "item"
@@ -1228,6 +1246,31 @@ type Health struct {
 // HealthStatus defines model for Health.Status.
 type HealthStatus string
 
+// HeldEvent defines model for HeldEvent.
+type HeldEvent struct {
+	AuthorAssociation string `json:"authorAssociation"`
+	AuthorLogin       string `json:"authorLogin"`
+
+	// Content The event text from the source. Show it to the owner only.
+	Content   string `json:"content"`
+	EventType string `json:"eventType"`
+	HeldAt    int64  `json:"heldAt"`
+	Id        string `json:"id"`
+	Namespace string `json:"namespace"`
+	Objects   []struct {
+		Key  string `json:"key"`
+		Type string `json:"type"`
+	} `json:"objects"`
+	OccurredAt int64 `json:"occurredAt"`
+
+	// Reason Unmatched means no Task links an object. Conflict means the objects link to different Tasks.
+	Reason    HeldEventReason `json:"reason"`
+	SourceUrl string          `json:"sourceUrl"`
+}
+
+// HeldEventReason Unmatched means no Task links an object. Conflict means the objects link to different Tasks.
+type HeldEventReason string
+
 // HistoryPage defines model for HistoryPage.
 type HistoryPage struct {
 	Items      []Item `json:"items"`
@@ -1953,6 +1996,12 @@ type ListInboxParams struct {
 	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
 }
 
+// AttachHeldEventJSONBody defines parameters for AttachHeldEvent.
+type AttachHeldEventJSONBody struct {
+	AgentId string `json:"agentId"`
+	TaskId  string `json:"taskId"`
+}
+
 // ListWorkTasksParams defines parameters for ListWorkTasks.
 type ListWorkTasksParams struct {
 	IncludeClosed *bool `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
@@ -1965,6 +2014,9 @@ type SaveGitHubReviewPullJSONBody struct {
 
 // SaveGitHubWebhookJSONBody defines parameters for SaveGitHubWebhook.
 type SaveGitHubWebhookJSONBody struct {
+	// HoldUnmatched Hold Webhook and Pull events that match no Task in the Inbox. The default ignores them.
+	HoldUnmatched *bool `json:"holdUnmatched,omitempty"`
+
 	// IssueAgentId Create Tasks for opened Issues under this agent. Omit to disable creation.
 	IssueAgentId *string `json:"issueAgentId,omitempty"`
 	Secret       *string `json:"secret,omitempty"`
@@ -2047,6 +2099,9 @@ type CreateUploadMultipartRequestBody CreateUploadMultipartBody
 
 // PreviewScheduleJSONRequestBody defines body for PreviewSchedule for application/json ContentType.
 type PreviewScheduleJSONRequestBody = ScheduleInput
+
+// AttachHeldEventJSONRequestBody defines body for AttachHeldEvent for application/json ContentType.
+type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = NewSession
@@ -2783,6 +2838,15 @@ type ServerInterface interface {
 
 	// (GET /api/inbox)
 	ListInbox(w http.ResponseWriter, r *http.Request, params ListInboxParams)
+
+	// (GET /api/inbox/held-events)
+	ListHeldEvents(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/inbox/held-events/{eventId}/attach)
+	AttachHeldEvent(w http.ResponseWriter, r *http.Request, eventId string)
+
+	// (POST /api/inbox/held-events/{eventId}/dismiss)
+	DismissHeldEvent(w http.ResponseWriter, r *http.Request, eventId string)
 
 	// (GET /api/inbox/tasks)
 	ListWorkTasks(w http.ResponseWriter, r *http.Request, params ListWorkTasksParams)
@@ -5153,6 +5217,72 @@ func (siw *ServerInterfaceWrapper) ListInbox(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// ListHeldEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListHeldEvents(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHeldEvents(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AttachHeldEvent operation middleware
+func (siw *ServerInterfaceWrapper) AttachHeldEvent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "eventId" -------------
+	var eventId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "eventId", r.PathValue("eventId"), &eventId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "eventId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AttachHeldEvent(w, r, eventId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissHeldEvent operation middleware
+func (siw *ServerInterfaceWrapper) DismissHeldEvent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "eventId" -------------
+	var eventId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "eventId", r.PathValue("eventId"), &eventId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "eventId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissHeldEvent(w, r, eventId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListWorkTasks operation middleware
 func (siw *ServerInterfaceWrapper) ListWorkTasks(w http.ResponseWriter, r *http.Request) {
 
@@ -5882,6 +6012,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.AppendWorkTaskNote)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work", wrapper.GetWork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/held-events", wrapper.ListHeldEvents)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/held-events/{eventId}/attach", wrapper.AttachHeldEvent)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/held-events/{eventId}/dismiss", wrapper.DismissHeldEvent)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/read", wrapper.ReadInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/{runId}/dismiss", wrapper.DismissInboxItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/session", wrapper.CreateSession)
@@ -10180,6 +10313,141 @@ func (response ListInboxdefaultJSONResponse) VisitListInboxResponse(w http.Respo
 	return err
 }
 
+type ListHeldEventsRequestObject struct {
+}
+
+type ListHeldEventsResponseObject interface {
+	VisitListHeldEventsResponse(w http.ResponseWriter) error
+}
+
+type ListHeldEvents200JSONResponse struct {
+	Events []HeldEvent `json:"events"`
+}
+
+func (response ListHeldEvents200JSONResponse) VisitListHeldEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListHeldEventsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response ListHeldEventsdefaultJSONResponse) VisitListHeldEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachHeldEventRequestObject struct {
+	EventId string `json:"eventId"`
+	Body    *AttachHeldEventJSONRequestBody
+}
+
+type AttachHeldEventResponseObject interface {
+	VisitAttachHeldEventResponse(w http.ResponseWriter) error
+}
+
+type AttachHeldEvent204Response struct {
+}
+
+func (response AttachHeldEvent204Response) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AttachHeldEvent404JSONResponse struct{ ErrorJSONResponse }
+
+func (response AttachHeldEvent404JSONResponse) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachHeldEventdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response AttachHeldEventdefaultJSONResponse) VisitAttachHeldEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissHeldEventRequestObject struct {
+	EventId string `json:"eventId"`
+}
+
+type DismissHeldEventResponseObject interface {
+	VisitDismissHeldEventResponse(w http.ResponseWriter) error
+}
+
+type DismissHeldEvent204Response struct {
+}
+
+func (response DismissHeldEvent204Response) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DismissHeldEvent404JSONResponse struct{ ErrorJSONResponse }
+
+func (response DismissHeldEvent404JSONResponse) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DismissHeldEventdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response DismissHeldEventdefaultJSONResponse) VisitDismissHeldEventResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListWorkTasksRequestObject struct {
 	Params ListWorkTasksParams
 }
@@ -11736,6 +12004,15 @@ type StrictServerInterface interface {
 
 	// (GET /api/inbox)
 	ListInbox(ctx context.Context, request ListInboxRequestObject) (ListInboxResponseObject, error)
+
+	// (GET /api/inbox/held-events)
+	ListHeldEvents(ctx context.Context, request ListHeldEventsRequestObject) (ListHeldEventsResponseObject, error)
+
+	// (POST /api/inbox/held-events/{eventId}/attach)
+	AttachHeldEvent(ctx context.Context, request AttachHeldEventRequestObject) (AttachHeldEventResponseObject, error)
+
+	// (POST /api/inbox/held-events/{eventId}/dismiss)
+	DismissHeldEvent(ctx context.Context, request DismissHeldEventRequestObject) (DismissHeldEventResponseObject, error)
 
 	// (GET /api/inbox/tasks)
 	ListWorkTasks(ctx context.Context, request ListWorkTasksRequestObject) (ListWorkTasksResponseObject, error)
@@ -13945,6 +14222,89 @@ func (sh *strictHandler) ListInbox(w http.ResponseWriter, r *http.Request, param
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListInboxResponseObject); ok {
 		if err := validResponse.VisitListInboxResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListHeldEvents operation middleware
+func (sh *strictHandler) ListHeldEvents(w http.ResponseWriter, r *http.Request) {
+	var request ListHeldEventsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListHeldEvents(ctx, request.(ListHeldEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListHeldEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListHeldEventsResponseObject); ok {
+		if err := validResponse.VisitListHeldEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AttachHeldEvent operation middleware
+func (sh *strictHandler) AttachHeldEvent(w http.ResponseWriter, r *http.Request, eventId string) {
+	var request AttachHeldEventRequestObject
+
+	request.EventId = eventId
+
+	var body AttachHeldEventJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AttachHeldEvent(ctx, request.(AttachHeldEventRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AttachHeldEvent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AttachHeldEventResponseObject); ok {
+		if err := validResponse.VisitAttachHeldEventResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DismissHeldEvent operation middleware
+func (sh *strictHandler) DismissHeldEvent(w http.ResponseWriter, r *http.Request, eventId string) {
+	var request DismissHeldEventRequestObject
+
+	request.EventId = eventId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DismissHeldEvent(ctx, request.(DismissHeldEventRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DismissHeldEvent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DismissHeldEventResponseObject); ok {
+		if err := validResponse.VisitDismissHeldEventResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

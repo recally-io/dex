@@ -45,7 +45,9 @@ it; a message sends only upload IDs.
 
 The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
 Bot links open Main. The right Chats sidebar starts closed. The global sidebar
-links to `/inbox`, which lists Tasks and Routine results across bots.
+links to `/inbox`, which lists Tasks, held events, and Routine results across bots.
+A held event shows its type, reason, author, source link, and text. The owner
+attaches it to an open Task or dismisses it.
 `/a/{agentId}/inbox/{taskId}` opens a Task only under the bot that owns it.
 On an open Task, the owner can link a GitHub PR by repository ID and PR number.
 An optional commit SHA sets a wait for a review submitted after the form is

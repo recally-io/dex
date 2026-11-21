@@ -66,3 +66,22 @@ SELECT @id, c.id, @content, 'null', @id, 'web', 'task_result', 'pending', @creat
 FROM conversations c WHERE c.agent_id = @agent_id AND c.channel_key = 'main' AND c.archived_at IS NULL
 ON CONFLICT DO NOTHING
 RETURNING conversation_id;
+
+-- name: HoldWorkSourceEvent :exec
+INSERT INTO work_source_holds (event_id, held_at) VALUES (?, ?);
+
+-- name: ListHeldWorkSourceEvents :many
+SELECT e.id, e.namespace, e.event_type, e.objects, e.content, e.source_url, e.occurred_at,
+  e.disposition, e.author_login, e.author_association, h.held_at
+FROM work_source_holds h JOIN work_source_events e ON e.id = h.event_id
+WHERE h.decision IS NULL ORDER BY h.held_at DESC, e.id DESC LIMIT 100;
+
+-- name: GetWorkSourceEvent :one
+SELECT * FROM work_source_events WHERE id = ?;
+
+-- name: DecideWorkSourceHold :execrows
+UPDATE work_source_holds SET decision = @decision, decided_at = @decided_at
+WHERE event_id = @event_id AND decision IS NULL;
+
+-- name: SetWorkSourceEventTask :exec
+UPDATE work_source_events SET task_id = ? WHERE id = ?;

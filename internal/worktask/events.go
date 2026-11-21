@@ -31,8 +31,11 @@ type Event struct {
 	Revision, Content, SourceURL           string
 	AuthorLogin, AuthorAssociation         string
 	OccurredAt                             int64
-	// RecordOnly prevents an event from creating a Task or resolving a wait.
+	// RecordOnly prevents an event from creating a Task, resolving a wait, or being held.
 	RecordOnly bool
+	// HoldUnmatched keeps an unmatched event for the owner. Without it Dex records and ignores the event.
+	// Dex always holds a conflict.
+	HoldUnmatched bool
 }
 
 // Receipt identifies the committed event and its routing result.
@@ -42,6 +45,8 @@ type Receipt struct {
 	ResolvedWaits                int64
 	// Alerted is true when the event added a Task alert to Main.
 	Alerted bool
+	// Held is true when the event waits for the owner in the Inbox.
+	Held bool
 }
 
 // Wait matches one type of change on a linked object after a strict time boundary.
@@ -222,6 +227,13 @@ func (s *Service) store(ctx context.Context, event Event, agentID, title string)
 	}
 	receipt := Receipt{EventID: id, TaskID: task.ID, Disposition: disposition}
 	if task.ID == "" {
+		// An outsider can send many unmatched events, so only a trusted author fills the Inbox.
+		receipt.Held = disposition == "conflict" || event.HoldUnmatched && !event.RecordOnly
+		if receipt.Held {
+			if err := q.HoldWorkSourceEvent(ctx, sqlc.HoldWorkSourceEventParams{EventID: id, HeldAt: now}); err != nil {
+				return Receipt{}, 0, err
+			}
+		}
 		return receipt, 0, tx.Commit()
 	}
 	resolved, alertWaits, err := applyEvent(ctx, q, task, event, id, now)

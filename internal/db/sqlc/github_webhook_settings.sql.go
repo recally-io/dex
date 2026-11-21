@@ -20,33 +20,45 @@ func (q *Queries) DeleteGitHubWebhook(ctx context.Context, repositoryID int64) e
 }
 
 const getGitHubWebhook = `-- name: GetGitHubWebhook :one
-SELECT repository_id, secret, issue_agent_id FROM github_webhook_settings WHERE repository_id = ?
+SELECT repository_id, secret, issue_agent_id, hold_unmatched FROM github_webhook_settings WHERE repository_id = ?
 `
 
 func (q *Queries) GetGitHubWebhook(ctx context.Context, repositoryID int64) (GithubWebhookSetting, error) {
 	row := q.db.QueryRowContext(ctx, getGitHubWebhook, repositoryID)
 	var i GithubWebhookSetting
-	err := row.Scan(&i.RepositoryID, &i.Secret, &i.IssueAgentID)
+	err := row.Scan(
+		&i.RepositoryID,
+		&i.Secret,
+		&i.IssueAgentID,
+		&i.HoldUnmatched,
+	)
 	return i, err
 }
 
 const saveGitHubWebhook = `-- name: SaveGitHubWebhook :execrows
-INSERT INTO github_webhook_settings (repository_id, secret, issue_agent_id)
-SELECT ?1, ?2, ?3
+INSERT INTO github_webhook_settings (repository_id, secret, issue_agent_id, hold_unmatched)
+SELECT ?1, ?2, ?3, ?4
 WHERE ?3 IS NULL OR EXISTS (
   SELECT 1 FROM agents a WHERE a.id = ?3 AND a.archived_at IS NULL
 )
-ON CONFLICT (repository_id) DO UPDATE SET secret = excluded.secret, issue_agent_id = excluded.issue_agent_id
+ON CONFLICT (repository_id) DO UPDATE SET secret = excluded.secret, issue_agent_id = excluded.issue_agent_id,
+  hold_unmatched = excluded.hold_unmatched
 `
 
 type SaveGitHubWebhookParams struct {
-	RepositoryID int64          `json:"repository_id"`
-	Secret       string         `json:"secret"`
-	IssueAgentID sql.NullString `json:"issue_agent_id"`
+	RepositoryID  int64          `json:"repository_id"`
+	Secret        string         `json:"secret"`
+	IssueAgentID  sql.NullString `json:"issue_agent_id"`
+	HoldUnmatched int64          `json:"hold_unmatched"`
 }
 
 func (q *Queries) SaveGitHubWebhook(ctx context.Context, arg SaveGitHubWebhookParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, saveGitHubWebhook, arg.RepositoryID, arg.Secret, arg.IssueAgentID)
+	result, err := q.db.ExecContext(ctx, saveGitHubWebhook,
+		arg.RepositoryID,
+		arg.Secret,
+		arg.IssueAgentID,
+		arg.HoldUnmatched,
+	)
 	if err != nil {
 		return 0, err
 	}

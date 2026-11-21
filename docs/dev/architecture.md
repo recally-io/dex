@@ -95,6 +95,19 @@ Tasks, Dex records the conflict without changing a Task. An event resolves a
 wait only on an open Task, when the object, event type, time boundary, and any
 specified revision match. This store does not call the model.
 
+Dex holds an event for the owner in `work_source_holds` when its links
+conflict. It also holds an unmatched event when the source rule sets
+`HoldUnmatched` and the author is not record-only. Otherwise Dex records an
+unmatched event and ignores it. The hold commits in the same transaction as
+the event, so a replay does not hold it again. `GET /api/inbox/held-events`
+lists the newest 100 open holds. The owner can attach a held event to an open
+Task with `POST /api/inbox/held-events/{eventId}/attach`. The attach adds the
+event to the Task timeline and links each event object that has no Task, so
+later events of those objects route to the Task. An object linked to another
+Task keeps its link. `POST /api/inbox/held-events/{eventId}/dismiss` removes
+the event from the Inbox and keeps the record. Neither decision resolves a
+wait or sends a Task alert.
+
 The GitHub review adapter accepts a signed Webhook body or a page from the
 GitHub REST API. Both use the repository ID as the namespace and the review
 ID as the change key. A submitted review identifies the PR, the commit, and
@@ -109,7 +122,9 @@ An administrator saves or rotates a write-only secret with
 `PUT /api/settings/github-webhooks/{repositoryId}` and disables the hook with
 `DELETE` on the same path. Set `issueAgentId` to an active bot on the same PUT
 to create Tasks for signed `issues.opened` deliveries. Omit it to disable Task
-creation. Dex first checks for an existing Issue link, then stores any new
+creation. Set `holdUnmatched` to hold Webhook and Pull events that match no
+Task. The poller reads this flag from the Webhook configuration of the
+repository, so Pull holds nothing for a repository without one. Dex first checks for an existing Issue link, then stores any new
 Task, its link, and the opening event in one transaction. The issue title and
 body are timeline data.
 The hook does not accept the management token as a signature. It accepts a

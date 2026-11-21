@@ -1,0 +1,78 @@
+package worktask
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json/v2"
+	"errors"
+	"time"
+
+	"github.com/recally-io/dex/internal/db/sqlc"
+)
+
+// ListHeld returns the newest 100 events that wait for the owner.
+func (s *Service) ListHeld(ctx context.Context) ([]sqlc.ListHeldWorkSourceEventsRow, error) {
+	return s.q.ListHeldWorkSourceEvents(ctx)
+}
+
+// AttachHeld adds a held event to the timeline of an open Task and links its free objects there,
+// so later events of those objects route to the Task. An object linked to another Task keeps its link.
+// The owner decision does not resolve a wait or alert Main, because the event arrived before it.
+func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	now := time.Now().UnixMilli()
+	// The decision is the first write, so the transaction takes the SQLite writer before it reads.
+	if err := decideHold(ctx, q, eventID, "attached", now); err != nil {
+		return err
+	}
+	event, err := q.GetWorkSourceEvent(ctx, eventID)
+	if err != nil {
+		return err
+	}
+	task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: agentID})
+	if err != nil {
+		return err
+	}
+	if task.Lifecycle != "open" {
+		return ErrInvalid
+	}
+	var objects []Object
+	if err := json.Unmarshal([]byte(event.Objects), &objects); err != nil {
+		return err
+	}
+	for _, object := range objects {
+		if err := linkObject(ctx, q, agentID, taskID, event.Namespace, object); err != nil && !errors.Is(err, ErrObjectConflict) {
+			return err
+		}
+	}
+	if err := q.SetWorkSourceEventTask(ctx, sqlc.SetWorkSourceEventTaskParams{TaskID: sql.NullString{String: taskID, Valid: true}, ID: eventID}); err != nil {
+		return err
+	}
+	if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: taskID, AgentID: agentID, Content: event.Content, CreatedAt: now, EventID: sql.NullString{String: eventID, Valid: true}}); err != nil {
+		return err
+	}
+	if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: taskID, At: now}); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DismissHeld removes a held event from the Inbox. The event stays recorded.
+func (s *Service) DismissHeld(ctx context.Context, eventID string) error {
+	return decideHold(ctx, s.q, eventID, "dismissed", time.Now().UnixMilli())
+}
+
+func decideHold(ctx context.Context, q *sqlc.Queries, eventID, decision string, now int64) error {
+	n, err := q.DecideWorkSourceHold(ctx, sqlc.DecideWorkSourceHoldParams{
+		EventID: eventID, Decision: sql.NullString{String: decision, Valid: true}, DecidedAt: sql.NullInt64{Int64: now, Valid: true},
+	})
+	if err == nil && n == 0 {
+		return sql.ErrNoRows
+	}
+	return err
+}

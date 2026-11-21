@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -67,6 +68,10 @@ func (p *Puller) pull(ctx context.Context, row sqlc.GithubReviewPull) error {
 	if err := json.Unmarshal(body, &repo); err != nil || repo.ID != row.RepositoryID || !repositoryName.MatchString(repo.FullName) || strings.HasSuffix(repo.FullName, "/.") || strings.HasSuffix(repo.FullName, "/..") {
 		return errors.New("GitHub returned the wrong repository")
 	}
+	rule, err := p.rule(ctx, row.RepositoryID)
+	if err != nil {
+		return err
+	}
 	for page := 1; page <= maxReviewPages; page++ {
 		previous := ""
 		if page == 1 {
@@ -80,7 +85,7 @@ func (p *Puller) pull(ctx context.Context, row sqlc.GithubReviewPull) error {
 		if unchanged {
 			return nil
 		}
-		_, count, err := acceptReviewPage(ctx, p.store, row.RepositoryID, row.PullNumber, body)
+		_, count, err := acceptReviewPage(ctx, p.store, row.RepositoryID, row.PullNumber, body, rule)
 		if err != nil {
 			return err
 		}
@@ -95,6 +100,16 @@ func (p *Puller) pull(ctx context.Context, row sqlc.GithubReviewPull) error {
 		return p.q.AdvanceGitHubReviewPull(ctx, sqlc.AdvanceGitHubReviewPullParams{RepositoryID: row.RepositoryID, PullNumber: row.PullNumber, ConfigurationID: row.ConfigurationID, PreviousEtag: row.Etag, NextEtag: next})
 	}
 	return errors.New("GitHub review page limit exceeded")
+}
+
+// rule reads the Webhook rule of the repository, so Pull and the Webhook hold the same reviews.
+// Without a Webhook configuration Pull holds nothing.
+func (p *Puller) rule(ctx context.Context, repositoryID int64) (Rule, error) {
+	config, err := p.q.GetGitHubWebhook(ctx, repositoryID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Rule{}, nil
+	}
+	return Rule{HoldUnmatched: config.HoldUnmatched == 1}, err
 }
 
 func (p *Puller) get(ctx context.Context, path, token, etag string) ([]byte, http.Header, bool, error) {

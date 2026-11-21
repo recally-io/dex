@@ -21,6 +21,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { TaskGitHubPulls } from "../components/task-github-pulls";
+import { HeldEvents } from "../components/held-events";
 import { inboxOptions } from "../lib/inbox";
 import { newId } from "../lib/utils";
 
@@ -116,6 +117,7 @@ export function TaskInboxPage() {
           <Empty title="No tasks">Create a task to track work here.</Empty>
         )}
       </Section>
+      <HeldEvents tasks={tasks.data?.tasks ?? []} />
       <Section title="Routine results">
         {routines.isPending ? (
           <Loading />

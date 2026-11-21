@@ -48,6 +48,29 @@ export type WorkTaskSession = {
     title: string;
 };
 
+export type HeldEvent = {
+    id: string;
+    namespace: string;
+    eventType: string;
+    objects: Array<{
+        type: string;
+        key: string;
+    }>;
+    /**
+     * Unmatched means no Task links an object. Conflict means the objects link to different Tasks.
+     */
+    reason: 'unmatched' | 'conflict';
+    /**
+     * The event text from the source. Show it to the owner only.
+     */
+    content: string;
+    sourceUrl: string;
+    authorLogin: string;
+    authorAssociation: string;
+    occurredAt: number;
+    heldAt: number;
+};
+
 export type WorkTaskEntry = {
     id: number;
     /**
@@ -1405,6 +1428,10 @@ export type SaveGitHubWebhookData = {
          * Create Tasks for opened Issues under this agent. Omit to disable creation.
          */
         issueAgentId?: string;
+        /**
+         * Hold Webhook and Pull events that match no Task in the Inbox. The default ignores them.
+         */
+        holdUnmatched?: boolean;
     };
     path: {
         repositoryId: number;
@@ -1636,6 +1663,98 @@ export type ListInboxResponses = {
 };
 
 export type ListInboxResponse = ListInboxResponses[keyof ListInboxResponses];
+
+export type ListHeldEventsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/inbox/held-events';
+};
+
+export type ListHeldEventsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListHeldEventsError = ListHeldEventsErrors[keyof ListHeldEventsErrors];
+
+export type ListHeldEventsResponses = {
+    /**
+     * Held events.
+     */
+    200: {
+        events: Array<HeldEvent>;
+    };
+};
+
+export type ListHeldEventsResponse = ListHeldEventsResponses[keyof ListHeldEventsResponses];
+
+export type AttachHeldEventData = {
+    body: {
+        agentId: string;
+        taskId: string;
+    };
+    path: {
+        eventId: string;
+    };
+    query?: never;
+    url: '/api/inbox/held-events/{eventId}/attach';
+};
+
+export type AttachHeldEventErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type AttachHeldEventError = AttachHeldEventErrors[keyof AttachHeldEventErrors];
+
+export type AttachHeldEventResponses = {
+    /**
+     * Event attached.
+     */
+    204: void;
+};
+
+export type AttachHeldEventResponse = AttachHeldEventResponses[keyof AttachHeldEventResponses];
+
+export type DismissHeldEventData = {
+    body?: never;
+    path: {
+        eventId: string;
+    };
+    query?: never;
+    url: '/api/inbox/held-events/{eventId}/dismiss';
+};
+
+export type DismissHeldEventErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DismissHeldEventError = DismissHeldEventErrors[keyof DismissHeldEventErrors];
+
+export type DismissHeldEventResponses = {
+    /**
+     * Event dismissed.
+     */
+    204: void;
+};
+
+export type DismissHeldEventResponse = DismissHeldEventResponses[keyof DismissHeldEventResponses];
 
 export type ReadInboxItemData = {
     body?: never;
