@@ -12,6 +12,7 @@ SELECT * FROM email_sources WHERE id = ?;
 
 -- name: DeleteEmailSource :exec
 DELETE FROM email_sources WHERE id = ?;
+<<<<<<< HEAD
 
 -- name: SaveEmailIMAPPull :execrows
 -- A new configuration starts a new cursor.
@@ -33,3 +34,5 @@ FROM email_imap_pulls p JOIN email_sources s ON s.id = p.source_id ORDER BY p.so
 -- A cursor of a replaced configuration does not apply.
 UPDATE email_imap_pulls SET uid_validity = @uid_validity, last_uid = @last_uid
 WHERE source_id = @source_id AND configuration_id = @configuration_id;
+=======
+>>>>>>> origin/main

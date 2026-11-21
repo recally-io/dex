@@ -1419,6 +1419,7 @@ export type SaveGitHubReviewPullResponses = {
 
 export type SaveGitHubReviewPullResponse = SaveGitHubReviewPullResponses[keyof SaveGitHubReviewPullResponses];
 
+<<<<<<< HEAD
 export type DeleteEmailImapPullData = {
     body?: never;
     path: {
@@ -1484,6 +1485,8 @@ export type SaveEmailImapPullResponses = {
 
 export type SaveEmailImapPullResponse = SaveEmailImapPullResponses[keyof SaveEmailImapPullResponses];
 
+=======
+>>>>>>> origin/main
 export type DeleteEmailSourceData = {
     body?: never;
     path: {
