@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getWorkTaskOptions } from "../api/generated/@tanstack/react-query.gen";
 import { bindTaskGitHubPull } from "../api/generated/sdk.gen";
-import type { BindTaskGitHubPullData, WorkTaskGitHubPull } from "../api/generated/types.gen";
+import type { BindTaskGitHubPullData, WorkTaskLink, WorkTaskWait } from "../api/generated/types.gen";
 import { Failure } from "./feedback";
 import { Section } from "./page";
 import { Button } from "./ui/button";
@@ -13,13 +13,20 @@ function positiveId(value: string) {
   return /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
 }
 
-export function TaskGitHubPulls({
+function waitState(wait: WorkTaskWait, open: boolean) {
+  if (wait.resolved) return "Received";
+
+  return open ? "Waiting" : "Paused";
+}
+
+// A link shows its source identifiers as they are, so links stay readable without their source.
+export function TaskLinks({
   path,
-  pulls,
+  links,
   open,
 }: {
   path: BindTaskGitHubPullData["path"];
-  pulls: WorkTaskGitHubPull[];
+  links: WorkTaskLink[];
   open: boolean;
 }) {
   const [repository, setRepository] = useState("");
@@ -39,27 +46,23 @@ export function TaskGitHubPulls({
   });
 
   return (
-    <Section title="GitHub pull requests">
-      {pulls.length ? (
+    <Section title="Links">
+      {links.length ? (
         <ul className="divide-y divide-border">
-          {pulls.map((pull) => (
-            <li key={`${pull.repositoryId}:${pull.pullNumber}`} className="space-y-2 py-3">
-              <p>
-                PR #{pull.pullNumber} · Repository {pull.repositoryId}
+          {links.map((link) => (
+            <li key={`${link.namespace}:${link.type}:${link.key}`} className="space-y-2 py-3">
+              <p className="break-words">
+                {link.type} {link.key} · <span className="text-muted-foreground">{link.namespace}</span>
               </p>
-              {pull.waits.length ? (
+              {link.waits.length ? (
                 <ul className="space-y-1 text-sm text-muted-foreground">
-                  {pull.waits.map((wait) => (
+                  {link.waits.map((wait) => (
                     <li key={wait.id} className="break-words">
                       <span>
-                        {wait.resolved
-                          ? "Review received"
-                          : open
-                            ? "Waiting for review"
-                            : "Review wait paused"}
+                        {waitState(wait, open)} {wait.event}
                       </span>
                       {" · "}
-                      {wait.revision ? <code>{wait.revision}</code> : "Any commit"}
+                      {wait.revision ? <code>{wait.revision}</code> : "Any revision"}
                       {" · After "}
                       <span>{new Date(wait.afterAt).toLocaleString()}</span>
                     </li>
@@ -70,7 +73,7 @@ export function TaskGitHubPulls({
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">No pull requests linked.</p>
+        <p className="text-sm text-muted-foreground">No links.</p>
       )}
       {open ? (
         <form

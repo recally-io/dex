@@ -61,12 +61,12 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 	deliverGitHub(t, d, secret, "review-3", "pull_request_review", review(3, 7, "MEMBER"))
 	var detail api.GetWorkTask200JSONResponse
 	d.must(t, http.MethodGet, "/api/agents/default/inbox/tasks/"+task.Id, nil, &detail)
-	t.Logf("artifact: task entries=%+v pulls=%+v", detail.Entries, detail.GithubPulls)
+	t.Logf("artifact: task entries=%+v links=%+v", detail.Entries, detail.Links)
 	if len(detail.Entries) != 2 || !strings.Contains(detail.Entries[0].Content, "Review 3") || !strings.Contains(detail.Entries[1].Content, "Review 1") {
 		t.Fatalf("the Task must show the attached review and the next one: %+v", detail.Entries)
 	}
-	if len(detail.GithubPulls) != 1 || detail.GithubPulls[0].PullNumber != 7 {
-		t.Fatalf("the attach must link the PR: %+v", detail.GithubPulls)
+	if len(detail.Links) != 1 || detail.Links[0].Type != "pull_request" || detail.Links[0].Key != "7" {
+		t.Fatalf("the attach must link the PR: %+v", detail.Links)
 	}
 	d.must(t, http.MethodGet, "/api/inbox/held-events", nil, &held)
 	if len(held.Events) != 0 {

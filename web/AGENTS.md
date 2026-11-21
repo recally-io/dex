@@ -52,8 +52,9 @@ links of an attach. The owner can also dismiss the event.
 `/a/{agentId}/inbox/{taskId}` opens a Task only under the bot that owns it.
 On an open Task, the owner can link a GitHub PR by repository ID and PR number.
 An optional commit SHA sets a wait for a review submitted after the form is
-submitted. The Task shows its primary Session link, then its linked PRs and
-wait states, above the timeline. Each timeline entry shows its author.
+submitted. The Task shows its primary Session link, then its links and
+wait states, above the timeline. A link shows its type, key, and namespace as
+stored, for example `pull_request 7` in `github.com/repository/10`. Each timeline entry shows its author.
 Routine history links to run transcripts and saved results.
 The routine dialog offers "Follow bot", `local`, and the SSH environments. It
 keeps a saved environment that the list no longer shows, and a change of the

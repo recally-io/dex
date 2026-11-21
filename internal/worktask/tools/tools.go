@@ -117,7 +117,7 @@ func (s *Service) Get(ctx context.Context, c engine.TaskContext, id string) (eng
 	if err != nil {
 		return engine.WorkTaskDetail{}, err
 	}
-	detail := engine.WorkTaskDetail{WorkTaskInfo: info, Entries: []engine.WorkTaskEntryInfo{}, Questions: []engine.WorkTaskQuestionInfo{}, GitHubPulls: []engine.WorkTaskPullInfo{}}
+	detail := engine.WorkTaskDetail{WorkTaskInfo: info, Entries: []engine.WorkTaskEntryInfo{}, Questions: []engine.WorkTaskQuestionInfo{}, Links: []engine.WorkTaskLinkInfo{}}
 	entries, err := q.ListWorkTaskTimeline(ctx, sqlc.ListWorkTaskTimelineParams{TaskID: task.ID, MaxRows: timelineEntries})
 	if err != nil {
 		return engine.WorkTaskDetail{}, err
@@ -141,17 +141,13 @@ func (s *Service) Get(ctx context.Context, c engine.TaskContext, id string) (eng
 		return engine.WorkTaskDetail{}, err
 	}
 	for _, object := range objects {
-		repo, pull, ok := github.PullCoordinates(object.Namespace, worktask.Object{Type: object.ObjectType, Key: object.ObjectKey})
-		if !ok {
-			continue
-		}
-		info := engine.WorkTaskPullInfo{RepositoryID: repo, PullNumber: pull, Waits: []engine.WorkTaskWaitInfo{}}
+		link := engine.WorkTaskLinkInfo{Namespace: object.Namespace, Type: object.ObjectType, Key: object.ObjectKey, Waits: []engine.WorkTaskWaitInfo{}}
 		for _, w := range waits {
-			if w.Namespace == object.Namespace && w.ObjectType == object.ObjectType && w.ObjectKey == object.ObjectKey && w.EventType == github.ReviewSubmitted {
-				info.Waits = append(info.Waits, engine.WorkTaskWaitInfo{Revision: w.Revision, Resolved: w.ResolvedBy.Valid, AlertMain: w.Alert == 1})
+			if w.Namespace == object.Namespace && w.ObjectType == object.ObjectType && w.ObjectKey == object.ObjectKey {
+				link.Waits = append(link.Waits, engine.WorkTaskWaitInfo{Event: w.EventType, Revision: w.Revision, Resolved: w.ResolvedBy.Valid, AlertMain: w.Alert == 1})
 			}
 		}
-		detail.GitHubPulls = append(detail.GitHubPulls, info)
+		detail.Links = append(detail.Links, link)
 	}
 	return detail, tx.Commit()
 }

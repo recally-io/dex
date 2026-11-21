@@ -193,7 +193,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [task, entries, questions, githubPulls]
+                required: [task, entries, questions, links]
                 properties:
                   task: { $ref: "#/components/schemas/WorkTask" }
                   session: { $ref: "#/components/schemas/WorkTaskSession" }
@@ -205,9 +205,9 @@ paths:
                     type: array,
                     items: { $ref: "#/components/schemas/WorkTaskQuestion" },
                   }
-                  githubPulls:
+                  links:
                     type: array
-                    items: { $ref: "#/components/schemas/WorkTaskGitHubPull" }
+                    items: { $ref: "#/components/schemas/WorkTaskLink" }
         default: { $ref: "#/components/responses/Error" }
     patch:
       operationId: setWorkTaskLifecycle
@@ -2224,20 +2224,28 @@ components:
         lifecycle: { $ref: "#/components/schemas/WorkTaskLifecycle" }
         createdAt: { type: integer, format: int64 }
         updatedAt: { type: integer, format: int64 }
-    WorkTaskGitHubPull:
+    WorkTaskLink:
       type: object
-      required: [repositoryId, pullNumber, waits]
+      description: >
+        An external object linked to the Task, such as a GitHub PR. The source
+        that owns the namespace gives the meaning of type and key.
+      required: [namespace, type, key, waits]
       properties:
-        repositoryId: { type: integer, format: int64 }
-        pullNumber: { type: integer, format: int64 }
+        namespace: { type: string }
+        type: { type: string }
+        key: { type: string }
         waits:
           type: array
-          items: { $ref: "#/components/schemas/WorkTaskReviewWait" }
-    WorkTaskReviewWait:
+          items: { $ref: "#/components/schemas/WorkTaskWait" }
+    WorkTaskWait:
       type: object
-      required: [id, revision, afterAt, resolved, alert]
+      required: [id, event, revision, afterAt, resolved, alert]
       properties:
         id: { type: integer, format: int64 }
+        event: {
+          type: string,
+          description: The event type that resolves the wait.,
+        }
         revision: { type: string }
         afterAt: { type: integer, format: int64 }
         resolved: { type: boolean }

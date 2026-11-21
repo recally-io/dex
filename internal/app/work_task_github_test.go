@@ -81,9 +81,10 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 		t.Helper()
 		var detail api.GetWorkTask200JSONResponse
 		d.must(t, http.MethodGet, path, nil, &detail)
-		pulls := detail.GithubPulls
-		if len(pulls) != 1 || len(pulls[0].Waits) != 1 || pulls[0].Waits[0].Resolved != want {
-			t.Fatalf("wait resolution must be %t: %+v", want, pulls)
+		// The Issue Task links its issue first and then the PR.
+		links := detail.Links
+		if len(links) != 2 || links[0].Type != "issue" || len(links[0].Waits) != 0 || links[1].Type != "pull_request" || len(links[1].Waits) != 1 || links[1].Waits[0].Resolved != want {
+			t.Fatalf("wait resolution must be %t: %+v", want, links)
 		}
 		return detail
 	}

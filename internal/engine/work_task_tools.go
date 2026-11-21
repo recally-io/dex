@@ -83,13 +83,17 @@ type WorkTaskQuestionInfo struct {
 	Queued bool   `json:"queued"`
 }
 
-type WorkTaskPullInfo struct {
-	RepositoryID int64              `json:"repositoryId"`
-	PullNumber   int64              `json:"pullNumber"`
-	Waits        []WorkTaskWaitInfo `json:"waits"`
+// WorkTaskLinkInfo is an external object linked to a Task. The source that owns the namespace gives
+// the meaning of type and key.
+type WorkTaskLinkInfo struct {
+	Namespace string             `json:"namespace"`
+	Type      string             `json:"type"`
+	Key       string             `json:"key"`
+	Waits     []WorkTaskWaitInfo `json:"waits"`
 }
 
 type WorkTaskWaitInfo struct {
+	Event     string `json:"event"`
 	Revision  string `json:"revision"`
 	Resolved  bool   `json:"resolved"`
 	AlertMain bool   `json:"alertMain"`
@@ -97,9 +101,9 @@ type WorkTaskWaitInfo struct {
 
 type WorkTaskDetail struct {
 	WorkTaskInfo
-	Entries     []WorkTaskEntryInfo    `json:"entries"`
-	Questions   []WorkTaskQuestionInfo `json:"openQuestions"`
-	GitHubPulls []WorkTaskPullInfo     `json:"githubPulls"`
+	Entries   []WorkTaskEntryInfo    `json:"entries"`
+	Questions []WorkTaskQuestionInfo `json:"openQuestions"`
+	Links     []WorkTaskLinkInfo     `json:"links"`
 }
 
 func workTaskExtension(agentID string, handlers WorkTaskTools) *durable.Extension {
@@ -109,7 +113,7 @@ func workTaskExtension(agentID string, handlers WorkTaskTools) *durable.Extensio
 		sessionTool(agentID, "task_list", "List the Tasks of this bot, most recently updated first, up to 50. A Task is a tracking record in the owner's Inbox. It does not run work.",
 			objectSchema(nil, map[string]any{"lifecycle": map[string]any{"type": "string", "enum": []string{"open", "all"}, "description": "open (the default) or all, which also lists completed and cancelled Tasks."}}),
 			handlers.List != nil, handlers.List),
-		sessionTool(agentID, "task_get", "Read one Task: its primary Session, linked GitHub PRs and waits, open questions, and the latest 20 timeline entries. External entries have no text.",
+		sessionTool(agentID, "task_get", "Read one Task: its primary Session, linked external objects and their waits, open questions, and the latest 20 timeline entries. External entries have no text.",
 			objectSchema([]string{"id"}, map[string]any{"id": id}), handlers.Get != nil,
 			func(ctx context.Context, c TaskContext, a struct {
 				ID string `json:"id"`

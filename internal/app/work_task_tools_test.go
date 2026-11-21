@@ -75,7 +75,7 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 	// Then task_get shows the external entry without its text, and the wait as resolved.
 	var got engine.WorkTaskDetail
 	taskToolJSON(t, d, main.ID, "task_get", map[string]string{"id": task.ID}, &got)
-	if len(got.Entries) != 4 || len(got.GitHubPulls) != 1 || len(got.GitHubPulls[0].Waits) != 1 || !got.GitHubPulls[0].Waits[0].Resolved {
+	if len(got.Entries) != 4 || len(got.Links) != 1 || len(got.Links[0].Waits) != 1 || !got.Links[0].Waits[0].Resolved || got.Links[0].Waits[0].Event != "review.submitted" {
 		t.Fatalf("unexpected Task detail: %+v", got)
 	}
 	external, agent, owner := got.Entries[0], got.Entries[1], got.Entries[2]
