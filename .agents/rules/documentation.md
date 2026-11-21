@@ -6,14 +6,15 @@ Read this before you write or change a document or a diagram.
 - `docs/product.md`: users, problem, scope, non-goals.
 - `docs/dev/architecture.md`: subsystems, sources of truth, flows, failure
   behavior.
+- `docs/dev/plugins.md`: the plugin boundary, lifecycle, and each plugin.
 - `web/AGENTS.md`: frontend routes, state, and conventions.
 - `assets/src/<name>.<ext>`: architecture and flow figures.
 - `.local/`: plans and reports; ignored by Git.
 
 ## Architecture docs
 
-The architecture docs are `docs/dev/architecture.md`, `web/AGENTS.md`, and
-the figures in `assets/`. Together they are the single source of truth for the
+The architecture docs are `docs/dev/architecture.md`, `docs/dev/plugins.md`,
+`web/AGENTS.md`, and the figures in `assets/`. Together they are the single source of truth for the
 current design. They describe how the system works now, not its history.
 
 - When a change makes an architecture doc wrong, update that doc in the same
