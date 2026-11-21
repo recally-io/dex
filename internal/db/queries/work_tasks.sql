@@ -18,8 +18,8 @@ WHERE work_tasks.id = @id AND work_tasks.agent_id = @agent_id AND EXISTS (SELECT
 RETURNING *;
 
 -- name: InsertWorkTaskEntry :one
-INSERT INTO work_task_entries (task_id, content, created_at)
-SELECT t.id, @content, @created_at FROM work_tasks t JOIN agents a ON a.id = t.agent_id
+INSERT INTO work_task_entries (task_id, content, created_at, event_id)
+SELECT t.id, @content, @created_at, sqlc.narg(event_id) FROM work_tasks t JOIN agents a ON a.id = t.agent_id
 WHERE t.id = @task_id AND t.agent_id = @agent_id AND a.archived_at IS NULL
 RETURNING *;
 

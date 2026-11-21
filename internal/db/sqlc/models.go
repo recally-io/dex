@@ -200,6 +200,20 @@ type ForkReceipt struct {
 	ForkID      int64  `json:"fork_id"`
 }
 
+type GithubReviewPull struct {
+	RepositoryID    int64  `json:"repository_id"`
+	PullNumber      int64  `json:"pull_number"`
+	Token           string `json:"token"`
+	ConfigurationID string `json:"configuration_id"`
+	Etag            string `json:"etag"`
+}
+
+type GithubWebhookSetting struct {
+	RepositoryID int64          `json:"repository_id"`
+	Secret       string         `json:"secret"`
+	IssueAgentID sql.NullString `json:"issue_agent_id"`
+}
+
 type OnePassword struct {
 	ID                  int64  `json:"id"`
 	Mode                string `json:"mode"`
@@ -428,6 +442,29 @@ type WechatSetting struct {
 	Owner   string `json:"owner"`
 }
 
+type WorkSourceEvent struct {
+	ID                string         `json:"id"`
+	Namespace         string         `json:"namespace"`
+	ChangeKey         sql.NullString `json:"change_key"`
+	EventType         string         `json:"event_type"`
+	Objects           string         `json:"objects"`
+	Revision          string         `json:"revision"`
+	Content           string         `json:"content"`
+	SourceUrl         string         `json:"source_url"`
+	OccurredAt        int64          `json:"occurred_at"`
+	ReceivedAt        int64          `json:"received_at"`
+	TaskID            sql.NullString `json:"task_id"`
+	Disposition       string         `json:"disposition"`
+	AuthorLogin       string         `json:"author_login"`
+	AuthorAssociation string         `json:"author_association"`
+}
+
+type WorkSourceReceipt struct {
+	Namespace  string `json:"namespace"`
+	ReceiptKey string `json:"receipt_key"`
+	EventID    string `json:"event_id"`
+}
+
 type WorkTask struct {
 	ID        string `json:"id"`
 	AgentID   string `json:"agent_id"`
@@ -438,13 +475,33 @@ type WorkTask struct {
 }
 
 type WorkTaskEntry struct {
-	ID        int64  `json:"id"`
-	TaskID    string `json:"task_id"`
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"created_at"`
+	ID        int64          `json:"id"`
+	TaskID    string         `json:"task_id"`
+	Content   string         `json:"content"`
+	CreatedAt int64          `json:"created_at"`
+	EventID   sql.NullString `json:"event_id"`
 }
 
 type WorkTaskInput struct {
 	SubmissionID string `json:"submission_id"`
 	TaskID       string `json:"task_id"`
+}
+
+type WorkTaskObject struct {
+	Namespace  string `json:"namespace"`
+	ObjectType string `json:"object_type"`
+	ObjectKey  string `json:"object_key"`
+	TaskID     string `json:"task_id"`
+}
+
+type WorkTaskWait struct {
+	ID         int64          `json:"id"`
+	TaskID     string         `json:"task_id"`
+	Namespace  string         `json:"namespace"`
+	ObjectType string         `json:"object_type"`
+	ObjectKey  string         `json:"object_key"`
+	EventType  string         `json:"event_type"`
+	Revision   string         `json:"revision"`
+	AfterAt    int64          `json:"after_at"`
+	ResolvedBy sql.NullString `json:"resolved_by"`
 }

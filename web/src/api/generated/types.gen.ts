@@ -24,6 +24,10 @@ export type WorkTaskQuestion = {
 
 export type WorkTaskEntry = {
     id: number;
+    /**
+     * Present for an external timeline entry.
+     */
+    eventId?: string;
     content: string;
     createdAt: number;
 };
@@ -1232,6 +1236,124 @@ export type AutomationId = string;
 export type ChatId = number;
 
 export type EnvironmentId = string;
+
+export type DeleteGitHubReviewPullData = {
+    body?: never;
+    path: {
+        repositoryId: number;
+        pullNumber: number;
+    };
+    query?: never;
+    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}';
+};
+
+export type DeleteGitHubReviewPullErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteGitHubReviewPullError = DeleteGitHubReviewPullErrors[keyof DeleteGitHubReviewPullErrors];
+
+export type DeleteGitHubReviewPullResponses = {
+    /**
+     * Pull disabled.
+     */
+    204: void;
+};
+
+export type DeleteGitHubReviewPullResponse = DeleteGitHubReviewPullResponses[keyof DeleteGitHubReviewPullResponses];
+
+export type SaveGitHubReviewPullData = {
+    body: {
+        token: string;
+    };
+    path: {
+        repositoryId: number;
+        pullNumber: number;
+    };
+    query?: never;
+    url: '/api/settings/github-review-pulls/{repositoryId}/{pullNumber}';
+};
+
+export type SaveGitHubReviewPullErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SaveGitHubReviewPullError = SaveGitHubReviewPullErrors[keyof SaveGitHubReviewPullErrors];
+
+export type SaveGitHubReviewPullResponses = {
+    /**
+     * Pull configuration saved.
+     */
+    204: void;
+};
+
+export type SaveGitHubReviewPullResponse = SaveGitHubReviewPullResponses[keyof SaveGitHubReviewPullResponses];
+
+export type DeleteGitHubWebhookData = {
+    body?: never;
+    path: {
+        repositoryId: number;
+    };
+    query?: never;
+    url: '/api/settings/github-webhooks/{repositoryId}';
+};
+
+export type DeleteGitHubWebhookErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type DeleteGitHubWebhookError = DeleteGitHubWebhookErrors[keyof DeleteGitHubWebhookErrors];
+
+export type DeleteGitHubWebhookResponses = {
+    /**
+     * Webhook disabled.
+     */
+    204: void;
+};
+
+export type DeleteGitHubWebhookResponse = DeleteGitHubWebhookResponses[keyof DeleteGitHubWebhookResponses];
+
+export type SaveGitHubWebhookData = {
+    body: {
+        secret: string;
+        /**
+         * Create Tasks for opened Issues under this agent. Omit to disable creation.
+         */
+        issueAgentId?: string;
+    };
+    path: {
+        repositoryId: number;
+    };
+    query?: never;
+    url: '/api/settings/github-webhooks/{repositoryId}';
+};
+
+export type SaveGitHubWebhookErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SaveGitHubWebhookError = SaveGitHubWebhookErrors[keyof SaveGitHubWebhookErrors];
+
+export type SaveGitHubWebhookResponses = {
+    /**
+     * Webhook configuration saved.
+     */
+    204: void;
+};
+
+export type SaveGitHubWebhookResponse = SaveGitHubWebhookResponses[keyof SaveGitHubWebhookResponses];
 
 export type ListWorkTasksData = {
     body?: never;

@@ -32,6 +32,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/worktask"
+	"github.com/recally-io/dex/internal/worktask/github"
 	"github.com/recally-io/dex/web"
 )
 
@@ -129,16 +130,22 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
+	mux.HandleFunc("POST /hooks/github/{repositoryId}", h.receiveGitHubWebhook)
+	mux.HandleFunc("/hooks/", http.NotFound)
 	mux.Handle("/", web.Handler())
 	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
 	// multipart headers.
 	small, uploads := http.MaxBytesHandler(mux, 256<<10), http.MaxBytesHandler(mux, upload.MaxSize+64<<10)
+	webhooks := http.MaxBytesHandler(mux, github.MaxPayload)
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w = &responseWriter{ResponseWriter: w}
 		parts := strings.Split(r.URL.Path, "/")
-		if len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads" {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/hooks/github/"):
+			webhooks.ServeHTTP(w, r)
+		case len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads":
 			uploads.ServeHTTP(w, r)
-		} else {
+		default:
 			small.ServeHTTP(w, r)
 		}
 	})

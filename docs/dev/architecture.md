@@ -87,6 +87,46 @@ answer it before channel delivery. When no question remains active, settlement
 promotes the oldest unanswered question from a settled turn and writes its
 Outbox entry in the same transaction. Stop and Clear close all such questions.
 
+The Task event store accepts normalized events. It stores receipt keys and
+upstream change keys separately. A receipt, its routing result, the timeline
+entry, and any wait resolutions commit in one transaction. Object links use a
+source namespace, object type, and object key. If links point to different
+Tasks, Dex records the conflict without changing a Task. An event resolves a
+wait only on an open Task, when the object, event type, time boundary, and any
+specified revision match. This store does not call the model.
+
+The GitHub review adapter accepts a signed Webhook body or a page from the
+GitHub REST API. Both use the repository ID as the namespace and the review
+ID as the change key. A submitted review identifies the PR, the commit, and
+the submission time. The adapter skips pending and dismissed reviews. Dex
+records the author login and association. GitHub events from an `OWNER`,
+`MEMBER`, or `COLLABORATOR` with a login can create a Task or resolve a wait.
+Other authors can add to a linked Task's timeline, but cannot change waits.
+External timeline entries carry a source event ID.
+
+The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
+An administrator saves or rotates a write-only secret with
+`PUT /api/settings/github-webhooks/{repositoryId}` and disables the hook with
+`DELETE` on the same path. Set `issueAgentId` to an active bot on the same PUT
+to create Tasks for signed `issues.opened` deliveries. Omit it to disable Task
+creation. Dex first checks for an existing Issue link, then stores any new
+Task, its link, and the opening event in one transaction. The issue title and
+body are timeline data. Opening an issue does not send an input to Main.
+The hook does not accept the management token as a signature. It accepts a
+request body of at most 2 MiB and returns `204` after the event commits or
+when a signed delivery needs no action. A failed write returns `503`. To
+receive deliveries from GitHub, expose only the hook path through a public
+HTTPS proxy. Keep the management routes private.
+
+The controller polls each PR configured through
+`PUT /api/settings/github-review-pulls/{repositoryId}/{pullNumber}` once per
+minute. This API accepts a write-only GitHub token. `DELETE` on the same path
+removes the configuration. The poller resolves the repository ID, reads up to
+20 review pages, and uses the same event store as the hook. It saves an ETag
+only after all entries are accepted and the result fits on one non-full page.
+A failed pull leaves the checkpoint unchanged. A retry does not duplicate
+previously committed reviews.
+
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |

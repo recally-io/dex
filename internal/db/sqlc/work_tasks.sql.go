@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 )
 
 const associateWorkTaskInput = `-- name: AssociateWorkTaskInput :exec
@@ -80,23 +81,25 @@ func (q *Queries) GetWorkTask(ctx context.Context, arg GetWorkTaskParams) (WorkT
 }
 
 const insertWorkTaskEntry = `-- name: InsertWorkTaskEntry :one
-INSERT INTO work_task_entries (task_id, content, created_at)
-SELECT t.id, ?1, ?2 FROM work_tasks t JOIN agents a ON a.id = t.agent_id
-WHERE t.id = ?3 AND t.agent_id = ?4 AND a.archived_at IS NULL
-RETURNING id, task_id, content, created_at
+INSERT INTO work_task_entries (task_id, content, created_at, event_id)
+SELECT t.id, ?1, ?2, ?3 FROM work_tasks t JOIN agents a ON a.id = t.agent_id
+WHERE t.id = ?4 AND t.agent_id = ?5 AND a.archived_at IS NULL
+RETURNING id, task_id, content, created_at, event_id
 `
 
 type InsertWorkTaskEntryParams struct {
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"created_at"`
-	TaskID    string `json:"task_id"`
-	AgentID   string `json:"agent_id"`
+	Content   string         `json:"content"`
+	CreatedAt int64          `json:"created_at"`
+	EventID   sql.NullString `json:"event_id"`
+	TaskID    string         `json:"task_id"`
+	AgentID   string         `json:"agent_id"`
 }
 
 func (q *Queries) InsertWorkTaskEntry(ctx context.Context, arg InsertWorkTaskEntryParams) (WorkTaskEntry, error) {
 	row := q.db.QueryRowContext(ctx, insertWorkTaskEntry,
 		arg.Content,
 		arg.CreatedAt,
+		arg.EventID,
 		arg.TaskID,
 		arg.AgentID,
 	)
@@ -106,12 +109,13 @@ func (q *Queries) InsertWorkTaskEntry(ctx context.Context, arg InsertWorkTaskEnt
 		&i.TaskID,
 		&i.Content,
 		&i.CreatedAt,
+		&i.EventID,
 	)
 	return i, err
 }
 
 const listWorkTaskEntries = `-- name: ListWorkTaskEntries :many
-SELECT id, task_id, content, created_at FROM work_task_entries WHERE task_id = ? ORDER BY id DESC LIMIT 100
+SELECT id, task_id, content, created_at, event_id FROM work_task_entries WHERE task_id = ? ORDER BY id DESC LIMIT 100
 `
 
 func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]WorkTaskEntry, error) {
@@ -128,6 +132,7 @@ func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]Wor
 			&i.TaskID,
 			&i.Content,
 			&i.CreatedAt,
+			&i.EventID,
 		); err != nil {
 			return nil, err
 		}
