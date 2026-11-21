@@ -36,6 +36,19 @@ type DirectoryListing struct {
 	Truncated bool             `json:"truncated"`
 }
 
+func remoteBotWorkspace(base, sep, agentID string) string {
+	return joinRemoteSegments(base, sep, agentID, "workspace")
+}
+
+func createRemoteBotWorkspace(ctx context.Context, h lease) error {
+	workspace := h.Workspace()
+	env, err := h.Env(ctx, workspace, nil)
+	if err != nil {
+		return err
+	}
+	return env.CreateDir(ctx, workspace, &durableenv.CreateDirOptions{Recursive: new(true)})
+}
+
 // StageUpload copies a regular local file at relPath inside localWorkspace into remoteWorkspace.
 func StageUpload(ctx context.Context, env durableenv.ExecutionEnv, localWorkspace, remoteWorkspace, relPath string) error {
 	cleanSlash, err := validateRelativePath(relPath)

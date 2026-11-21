@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Remote Machines**: Allow multiple bots to share a runner. Each bot starts in `workspaces/<bot-id>/workspace` under the runner state directory. Dex leaves files in the old `workspace/` directory in place (#230).
+  - **Rollback to v0.19.0**: Back up `control.sqlite` before the upgrade. Replacing the binary alone does not restore the single-bot limit. Before starting v0.19.0, restore the pre-upgrade database backup or reduce each runner to at most one active bot and apply the database downgrade. Restoring the backup discards database changes since the backup. v0.19.0 uses `workspace/` again and does not move files from the new directories.
+
 ## [v0.19.0] - 2026-11-21
 
 ### Added
