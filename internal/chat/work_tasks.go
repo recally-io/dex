@@ -69,7 +69,7 @@ func recordWorkTaskMessage(ctx context.Context, q *sqlc.Queries, agentID, taskID
 		return err
 	}
 	if m.Content != "" {
-		if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: taskID, AgentID: agentID, Content: m.Content, CreatedAt: now}); err != nil {
+		if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: taskID, AgentID: agentID, Content: m.Content, CreatedAt: now, Author: "owner"}); err != nil {
 			return err
 		}
 	}

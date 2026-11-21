@@ -36,6 +36,7 @@ import (
 	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/internal/worktask/github"
+	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 )
 
 // DefaultAgentID is the agent that the web UI talks to.
@@ -287,6 +288,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Tasks:     tools,
 		Routines:  routines,
 		Bots:      botTools.Handlers(),
+		WorkTasks: worktasktools.New(conn).Handlers(),
 		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
 			row, err := q.GetAgent(ctx, agentID)
 			if err != nil {

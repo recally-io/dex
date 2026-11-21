@@ -367,6 +367,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := errors.Join(registry.Install(botReadExtension(agentID, a.config.Bots)), registry.Install(botManageExtension(agentID, a.config.Bots))); err != nil {
 		return nil, err
 	}
+	if err := registry.Install(workTaskExtension(agentID, a.config.WorkTasks)); err != nil {
+		return nil, err
+	}
 	if err := registry.Install(childExtension()); err != nil {
 		return nil, err
 	}

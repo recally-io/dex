@@ -81,16 +81,17 @@ func (q *Queries) GetWorkTask(ctx context.Context, arg GetWorkTaskParams) (WorkT
 }
 
 const insertWorkTaskEntry = `-- name: InsertWorkTaskEntry :one
-INSERT INTO work_task_entries (task_id, content, created_at, event_id)
-SELECT t.id, ?1, ?2, ?3 FROM work_tasks t JOIN agents a ON a.id = t.agent_id
-WHERE t.id = ?4 AND t.agent_id = ?5 AND a.archived_at IS NULL
-RETURNING id, task_id, content, created_at, event_id
+INSERT INTO work_task_entries (task_id, content, created_at, event_id, author)
+SELECT t.id, ?1, ?2, ?3, ?4 FROM work_tasks t JOIN agents a ON a.id = t.agent_id
+WHERE t.id = ?5 AND t.agent_id = ?6 AND a.archived_at IS NULL
+RETURNING id, task_id, content, created_at, event_id, author
 `
 
 type InsertWorkTaskEntryParams struct {
 	Content   string         `json:"content"`
 	CreatedAt int64          `json:"created_at"`
 	EventID   sql.NullString `json:"event_id"`
+	Author    string         `json:"author"`
 	TaskID    string         `json:"task_id"`
 	AgentID   string         `json:"agent_id"`
 }
@@ -100,6 +101,7 @@ func (q *Queries) InsertWorkTaskEntry(ctx context.Context, arg InsertWorkTaskEnt
 		arg.Content,
 		arg.CreatedAt,
 		arg.EventID,
+		arg.Author,
 		arg.TaskID,
 		arg.AgentID,
 	)
@@ -110,12 +112,13 @@ func (q *Queries) InsertWorkTaskEntry(ctx context.Context, arg InsertWorkTaskEnt
 		&i.Content,
 		&i.CreatedAt,
 		&i.EventID,
+		&i.Author,
 	)
 	return i, err
 }
 
 const listWorkTaskEntries = `-- name: ListWorkTaskEntries :many
-SELECT id, task_id, content, created_at, event_id FROM work_task_entries WHERE task_id = ? ORDER BY id DESC LIMIT 100
+SELECT id, task_id, content, created_at, event_id, author FROM work_task_entries WHERE task_id = ? ORDER BY id DESC LIMIT 100
 `
 
 func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]WorkTaskEntry, error) {
@@ -133,6 +136,7 @@ func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]Wor
 			&i.Content,
 			&i.CreatedAt,
 			&i.EventID,
+			&i.Author,
 		); err != nil {
 			return nil, err
 		}

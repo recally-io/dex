@@ -480,6 +480,7 @@ type WorkTaskEntry struct {
 	Content   string         `json:"content"`
 	CreatedAt int64          `json:"created_at"`
 	EventID   sql.NullString `json:"event_id"`
+	Author    string         `json:"author"`
 }
 
 type WorkTaskInput struct {
@@ -492,6 +493,20 @@ type WorkTaskObject struct {
 	ObjectType string `json:"object_type"`
 	ObjectKey  string `json:"object_key"`
 	TaskID     string `json:"task_id"`
+}
+
+type WorkTaskSession struct {
+	TaskID         string `json:"task_id"`
+	ConversationID int64  `json:"conversation_id"`
+}
+
+type WorkTaskToolOperation struct {
+	Key             string `json:"key"`
+	AgentID         string `json:"agent_id"`
+	ConversationID  int64  `json:"conversation_id"`
+	SourceRequestID string `json:"source_request_id"`
+	Action          string `json:"action"`
+	Result          string `json:"result"`
 }
 
 type WorkTaskWait struct {

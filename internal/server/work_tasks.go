@@ -1,6 +1,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -15,9 +16,10 @@ func workTask(t sqlc.WorkTask) api.WorkTask {
 }
 
 func workTaskEntry(e sqlc.WorkTaskEntry) api.WorkTaskEntry {
-	out := api.WorkTaskEntry{Id: e.ID, Content: e.Content, CreatedAt: e.CreatedAt}
+	out := api.WorkTaskEntry{Id: e.ID, Author: api.WorkTaskEntryAuthor(cmp.Or(e.Author, "unknown")), Content: e.Content, CreatedAt: e.CreatedAt}
 	if e.EventID.Valid {
 		out.EventId = new(e.EventID.String)
+		out.Author = api.WorkTaskEntryAuthorExternal
 	}
 	return out
 }
@@ -66,7 +68,11 @@ func (h *handler) GetWorkTask(ctx context.Context, req api.GetWorkTaskRequestObj
 		}
 		questions = append(questions, api.WorkTaskQuestion{Id: question.ID, Text: question.Text, Options: options, Queued: question.Queued != 0})
 	}
-	return api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions, GithubPulls: taskGitHubPulls(detail)}, nil
+	out := api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions, GithubPulls: taskGitHubPulls(detail)}
+	if s := detail.Session; s.ID != 0 {
+		out.Session = &api.WorkTaskSession{Id: s.ID, AgentId: s.AgentID, Title: s.Title}
+	}
+	return out, nil
 }
 
 func (h *handler) SetWorkTaskLifecycle(ctx context.Context, req api.SetWorkTaskLifecycleRequestObject) (api.SetWorkTaskLifecycleResponseObject, error) {

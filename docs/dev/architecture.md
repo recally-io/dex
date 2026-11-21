@@ -133,6 +133,27 @@ PR link and optional review wait in one transaction. Reviews on the linked
 PR go to the Task timeline. Only a review of the specified revision, submitted
 after the wait boundary, resolves that wait. Binding does not start a run.
 
+Main and writable Chats have the `task_list`, `task_get`, `task_new`,
+`task_update`, and `task_append` tools (`internal/worktask/tools`). They record
+work and never start, steer, or stop a Session. The tools see only the Tasks of
+the caller's bot. `task_new` and a lifecycle change need a run that a person
+started on the web or a channel. A session result, a timer, or an external
+event cannot create, complete, cancel, or reopen a Task. Each change commits
+with a replay record under the tool key, so a replayed call does not add a
+second Task or entry. `task_get` returns the latest 20 entries, cuts each
+entry to 2000 characters, and omits the text of external entries. It gives
+only their event type, author class, and source link, so text from people
+outside the bot does not reach the model. Each entry has an author: `owner`
+(a note or a message from Task detail), `agent` (a tool call), or external (a
+source event). Entries from before the author column show as unknown.
+
+`work_task_sessions` holds the primary work Session of a Task. When the input
+that started a Main run is linked to a Task, the first `session_new` of that
+run links its child, in the same transaction as the child. A later child does
+not replace it. `task_update` with `session` sets any child of the caller.
+`task_update` with `githubPull` links a PR and can add a review wait that
+starts at the call time.
+
 | Data                                 | Owner             | Location                                                                                               |
 | ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
 | Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |

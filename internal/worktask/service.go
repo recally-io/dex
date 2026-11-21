@@ -16,6 +16,30 @@ import (
 // ErrInvalid means a Task command has invalid fields.
 var ErrInvalid = errors.New("invalid task command")
 
+// Authors of timeline entries that have no source event.
+const (
+	AuthorOwner = "owner"
+	AuthorAgent = "agent"
+)
+
+// Title returns the trimmed title, or ErrInvalid when it is empty or longer than 160 characters.
+func Title(title string) (string, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || utf8.RuneCountInString(title) > 160 {
+		return "", ErrInvalid
+	}
+	return title, nil
+}
+
+// Content returns the trimmed entry text, or ErrInvalid when it is empty or longer than 32000 characters.
+func Content(content string) (string, error) {
+	content = strings.TrimSpace(content)
+	if content == "" || utf8.RuneCountInString(content) > 32000 {
+		return "", ErrInvalid
+	}
+	return content, nil
+}
+
 // Service stores Tasks in the control database.
 type Service struct {
 	db *sql.DB
@@ -32,13 +56,15 @@ type Detail struct {
 	Questions []sqlc.Question
 	Objects   []sqlc.WorkTaskObject
 	Waits     []sqlc.WorkTaskWait
+	// Session is the primary work Session. Its ID is zero when no Session is linked.
+	Session sqlc.GetWorkTaskSessionRow
 }
 
 // Create starts tracking work without starting a session.
 func (s *Service) Create(ctx context.Context, agentID, title string) (sqlc.WorkTask, error) {
-	title = strings.TrimSpace(title)
-	if title == "" || utf8.RuneCountInString(title) > 160 {
-		return sqlc.WorkTask{}, ErrInvalid
+	title, err := Title(title)
+	if err != nil {
+		return sqlc.WorkTask{}, err
 	}
 	return s.q.CreateWorkTask(ctx, sqlc.CreateWorkTaskParams{ID: uuid.NewV7().String(), AgentID: agentID, Title: title, At: time.Now().UnixMilli()})
 }
@@ -76,7 +102,11 @@ func (s *Service) Detail(ctx context.Context, agentID, id string) (Detail, error
 	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits}, tx.Commit()
+	session, err := q.GetWorkTaskSession(ctx, task.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Detail{}, err
+	}
+	return Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits, Session: session}, tx.Commit()
 }
 
 // SetLifecycle applies an explicit owner decision without changing run state.
@@ -91,9 +121,9 @@ func (s *Service) SetLifecycle(ctx context.Context, agentID, id, lifecycle strin
 
 // Append records an owner note without starting a run.
 func (s *Service) Append(ctx context.Context, agentID, id, content string) (sqlc.WorkTaskEntry, error) {
-	content = strings.TrimSpace(content)
-	if content == "" || utf8.RuneCountInString(content) > 32000 {
-		return sqlc.WorkTaskEntry{}, ErrInvalid
+	content, err := Content(content)
+	if err != nil {
+		return sqlc.WorkTaskEntry{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -102,7 +132,7 @@ func (s *Service) Append(ctx context.Context, agentID, id, content string) (sqlc
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
 	now := time.Now().UnixMilli()
-	entry, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: id, AgentID: agentID, Content: content, CreatedAt: now})
+	entry, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: id, AgentID: agentID, Content: content, CreatedAt: now, Author: AuthorOwner})
 	if err != nil {
 		return sqlc.WorkTaskEntry{}, err
 	}

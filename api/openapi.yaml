@@ -189,6 +189,7 @@ paths:
                 required: [task, entries, questions, githubPulls]
                 properties:
                   task: { $ref: "#/components/schemas/WorkTask" }
+                  session: { $ref: "#/components/schemas/WorkTaskSession" }
                   entries: {
                     type: array,
                     items: { $ref: "#/components/schemas/WorkTaskEntry" },
@@ -2188,11 +2189,23 @@ components:
         text: { type: string }
         options: { type: array, items: { type: string } }
         queued: { type: boolean }
-    WorkTaskEntry:
+    WorkTaskSession:
       type: object
-      required: [id, content, createdAt]
+      description: The primary work Session of the Task.
+      required: [id, agentId, title]
       properties:
         id: { type: integer, format: int64 }
+        agentId: { type: string }
+        title: { type: string }
+    WorkTaskEntry:
+      type: object
+      required: [id, author, content, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        author:
+          type: string
+          enum: [owner, agent, external, unknown]
+          description: Who wrote the entry. Unknown marks an entry from before authors were recorded.
         eventId: {
           type: string,
           description: Present for an external timeline entry.,

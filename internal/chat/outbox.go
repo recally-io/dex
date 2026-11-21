@@ -15,6 +15,9 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
+// UserOrigin reports whether a person on the web or a channel wrote an input with this origin.
+func UserOrigin(origin string) bool { return isUserOrigin(origin) }
+
 func isUserOrigin(origin string) bool {
 	return origin == "web" ||
 		strings.HasPrefix(origin, "telegram:") ||
