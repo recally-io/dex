@@ -2,7 +2,7 @@
 #MISE description="Render the architecture, message-flow, always-on-flow, and plugins figures from PlantUML"
 set -euo pipefail
 
-documd assets/src/architecture.puml assets/architecture.png
-documd assets/src/message-flow.puml assets/message-flow.png
-documd assets/src/always-on-flow.puml assets/always-on-flow.png
-documd assets/src/plugins.puml assets/plugins.png
+documd docs/assets/src/architecture.puml docs/assets/architecture.png
+documd docs/assets/src/message-flow.puml docs/assets/message-flow.png
+documd docs/assets/src/always-on-flow.puml docs/assets/always-on-flow.png
+documd docs/assets/src/plugins.puml docs/assets/plugins.png

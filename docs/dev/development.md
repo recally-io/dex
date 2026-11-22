@@ -50,9 +50,17 @@ Use another `--port` when two dev servers run at once, and set `DEX_API_URL` for
 `dev:web`. A machine needs an HTTPS origin, so to test the machine flow locally,
 serve the dev server through `tailscale serve --bg https / http://127.0.0.1:18787`
 and open the UI at that address. `mise run dev:machine-release` refreshes the
-development archives after a change to `cmd/dex-agent`; see
+development archives after a change to `cmd/dex-agent` or its service templates; see
 [remote machines](../remote-machines.md). Outside `dev:server`, dex reads
 `DEX_DATA_DIR` (default `~/.dex`) and `DEX_ADDR` (default `127.0.0.1:8787`).
+
+## Packaging and scripts
+
+The dex-agent service templates are in `cmd/dex-agent/packaging/`. Both
+GoReleaser and the development build put the templates at the root of each
+dex-agent archive. The server embeds `internal/server/install-machine.sh` and
+serves it at `/install-machine.sh`. The root `install.sh` is the public raw
+GitHub entry point for installing dex. Run repository tasks through mise.
 
 ## Legacy checkout cleanup
 
@@ -111,9 +119,9 @@ credentials for that check.
 
 ## Diagrams
 
-Edit `assets/src/architecture.puml` or `assets/src/message-flow.puml`, then run
-`mise run generate:diagrams`. Inspect both PNGs in `assets/`. Keep each source
-and its PNG in the same change.
+Edit the PlantUML sources in `docs/assets/src/`, then run
+`mise run generate:diagrams`. Inspect the PNGs in `docs/assets/`. Keep each
+source and its PNG in the same change.
 
 ## Debug
 

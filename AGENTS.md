@@ -26,7 +26,7 @@ references here.
 
 The architecture docs are the single source of truth for the current design:
 `docs/dev/architecture.md`, the subsystem documents that it links,
-`web/AGENTS.md`, and the figures in `assets/`.
+`web/AGENTS.md`, and the figures in `docs/assets/`.
 When a change makes any of them wrong, update it in the same commit. Do not
 add architecture decision records (ADRs) or other decision logs, and do not
 commit them. Put the reason for a decision in the commit message or the PR

@@ -39,9 +39,9 @@ archives:
     files:
       - src: docs/remote-machines.md
         dst: remote-machines.md
-      - src: contrib/dex-agent.service
+      - src: cmd/dex-agent/packaging/dex-agent.service
         dst: dex-agent.service
-      - src: contrib/com.recally.dex-agent.plist
+      - src: cmd/dex-agent/packaging/com.recally.dex-agent.plist
         dst: com.recally.dex-agent.plist
 
 checksum:
