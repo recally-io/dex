@@ -15,7 +15,6 @@ type Part struct {
 	Rich    *RichMessage `json:"rich,omitempty"`
 	Buttons []Button     `json:"buttons,omitempty"`
 	Text    string       `json:"text,omitempty"`
-	Literal bool         `json:"literal,omitempty"` // Deliver Text without a Markdown card.
 	File    *File        `json:"file,omitempty"`
 	Group   []File       `json:"group,omitempty"`
 }

@@ -1072,36 +1072,6 @@ paths:
               schema: { $ref: "#/components/schemas/FeishuSetup" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/feedback/draft:
-    post:
-      operationId: buildFeedbackDraft
-      description: Preview user-entered text for a public Dex issue without storing or publishing it.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [title, description]
-              properties:
-                title: { type: string, maxLength: 120 }
-                description: { type: string, maxLength: 1500 }
-      responses:
-        "200":
-          description: The draft and the fixed public issue destination.
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [title, description, repository, newIssueUrl]
-                properties:
-                  title: { type: string }
-                  description: { type: string }
-                  repository: { type: string }
-                  newIssueUrl: { type: string }
-        "400": { $ref: "#/components/responses/Error" }
-        default: { $ref: "#/components/responses/Error" }
-
   /api/automations/preview:
     post:
       operationId: previewSchedule

@@ -261,7 +261,8 @@ below. The reply shows only those fields and gives a clean link to the public
 `recally-io/dex` new-issue page. The user copies the draft and submits it in
 GitHub. Telegram groups and topics apply their usual sender and mention gates
 and receive only a private-chat prompt. Dex does not save their command text
-or download any media attached to that command.
+or download any media attached to that command. Drafts with Markdown code fences
+or drafts too large for one reply can use the Web form instead.
 
 Feedback uses the existing command receipt to deduplicate incoming updates
 and retry delivery. Until delivery ends, the pending receipt holds the private

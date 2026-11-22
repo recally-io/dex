@@ -142,7 +142,7 @@ func (m *Manager) rememberQuestionMessage(ctx context.Context, q *sqlc.Queries, 
 	return q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{AgentID: m.agentID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
 }
 
-func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string, index int, part channel.Part) (channel.Receipt, error) {
+func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string, index int, part channel.Part, redactError bool) (channel.Receipt, error) {
 	var err error
 	if part.File != nil {
 		file := *part.File
@@ -168,6 +168,14 @@ func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string
 	var receipt channel.Receipt
 	if err == nil {
 		receipt, err = bot.Send(ctx, peer, id, index, part)
+	}
+	// A platform error can quote the private draft. Keep only the disposition.
+	if redactError && err != nil {
+		if errors.Is(err, channel.ErrPermanent) {
+			err = channel.ErrPermanent
+		} else {
+			err = errors.New("feedback reply delivery failed")
+		}
 	}
 	if errors.Is(err, channel.ErrPermanent) {
 		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", index, "err", err)

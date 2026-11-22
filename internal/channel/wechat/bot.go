@@ -215,9 +215,7 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	if reply.Status != "done" {
 		text = "No answer. Please try again."
 	}
-	if !reply.Literal {
-		text = filterMarkdown(text)
-	}
+	text = filterMarkdown(text)
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}

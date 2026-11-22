@@ -120,7 +120,16 @@ func feedbackReply(text string) string {
 	if err != nil {
 		return "Draft not ready: " + err.Error() + ". " + feedbackInstructions
 	}
-	return feedback.PublicWarning + " Copy the title and description below. Submit with your own GitHub account:\n" + feedback.IssueURL + "\n\nTitle: " + draft.Title + "\n\nDescription:\n" + draft.Description
+	const fence = "```"
+	if strings.Contains(draft.Title, fence) || strings.Contains(draft.Description, fence) {
+		return "This draft contains code fences. Remove them or use Feedback in Web."
+	}
+	answer := feedback.PublicWarning + " Copy the title and description below. Submit with your own GitHub account:\n\n" + feedback.IssueURL + "\n\n" + fence + "\nTitle: " + draft.Title + "\n\nDescription:\n" + draft.Description + "\n" + fence
+	// A Feishu text part holds 4000 bytes. Keep both fence markers in the same part.
+	if len(answer) > 4000 {
+		return "This draft is too long for one channel reply. Shorten it or use Feedback in Web."
+	}
+	return answer
 }
 
 func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
@@ -205,13 +214,13 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 			return err
 		}
 	}
-	literal := r.Command == channel.FeedbackCommand
-	parts := bot.Parts(channel.Reply{Status: "done", Answer: r.Answer, Literal: literal})
+	privateDraft := r.Command == channel.FeedbackCommand
+	parts := bot.Parts(channel.Reply{Status: "done", Answer: r.Answer})
 	if r.RenderedReply != "" {
 		if err := json.Unmarshal([]byte(r.RenderedReply), &parts); err != nil {
 			return err
 		}
-	} else if telegram && !literal && r.Answer != "" {
+	} else if telegram && !privateDraft && r.Answer != "" {
 		target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Peer, identity)
 		if err != nil {
 			return err
@@ -233,17 +242,7 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 		}
 	}
 	for i, part := range parts {
-		if literal {
-			// A platform error can quote its payload. Do not log or publish any of it.
-			if _, err := bot.Send(ctx, r.Peer, r.SourceKey, i, part); err != nil && !errors.Is(err, channel.ErrPermanent) {
-				if retry, ok := errors.AsType[*channel.RetryError](err); ok {
-					return &channel.RetryError{After: retry.After, Err: errors.New("feedback reply delivery failed")}
-				}
-				return errors.New("feedback reply delivery failed")
-			}
-			continue
-		}
-		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
+		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part, privateDraft); err != nil {
 			return fmt.Errorf("send command reply: %w", err)
 		}
 	}

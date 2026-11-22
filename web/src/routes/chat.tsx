@@ -475,7 +475,6 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       name: "feedback",
       args: "",
       help: "Prepare a public GitHub issue draft.",
-      availableWhenDisabled: true,
       run: async () => {
         setFeedbackOpen(true);
 

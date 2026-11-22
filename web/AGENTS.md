@@ -77,10 +77,9 @@ screen. Task conversations are read-only while queued or running and writable
 after they end.
 The bot header opens the Sessions page and creates new sessions. Legacy Sessions and transcript URLs remain readable.
 
-The chat composer offers Feedback and `/feedback` even without a model. Both
-open an empty form. The preview request sends only its title and description
-and writes nothing to Dex storage. Form and preview state stay in the dialog;
-closing it discards them. The link opens the public Dex repository without
+The chat composer offers Feedback, even without a model, and a `/feedback`
+slash command when the composer is enabled. Both open an empty form. The
+preview stays in the dialog. It sends no request and closing it discards it. The link opens the public Dex repository without
 prefilling any text.
 
 The old `/settings/<section>` addresses redirect to the new pages.

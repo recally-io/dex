@@ -183,9 +183,6 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	if reply.Literal {
-		return []channel.Part{{Text: text, Literal: true}}
-	}
 	return channel.TextParts(parts(text))
 }
 
@@ -193,22 +190,6 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 func (b *Bot) Send(ctx context.Context, peer, id string, index int, part channel.Part) (channel.Receipt, error) {
 	if part.File != nil {
 		return channel.Receipt{}, fmt.Errorf("%w: Feishu file delivery is unavailable", channel.ErrPermanent)
-	}
-	if part.Literal {
-		b.mu.Lock()
-		defer b.mu.Unlock()
-		owner := b.cfg.OwnerID
-		if owner == "" || peer != "feishu:"+owner {
-			return channel.Receipt{}, channel.ErrPermanent
-		}
-		remote, err := b.client.Send(ctx, owner, "text", textContent(part.Text), deliveryUUID(id, index))
-		if permanentAPIError(err) {
-			return channel.Receipt{}, channel.ErrPermanent
-		}
-		if err != nil {
-			return channel.Receipt{}, errors.New("feishu: could not send text reply")
-		}
-		return channel.Receipt{MessageIDs: []string{remote}}, nil
 	}
 	remote, err := b.sendText(ctx, peer, id, index, part.Text)
 	receipt := channel.Receipt{}

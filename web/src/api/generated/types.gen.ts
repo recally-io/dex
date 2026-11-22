@@ -3095,43 +3095,6 @@ export type PollFeishuResponses = {
 
 export type PollFeishuResponse = PollFeishuResponses[keyof PollFeishuResponses];
 
-export type BuildFeedbackDraftData = {
-    body: {
-        title: string;
-        description: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/feedback/draft';
-};
-
-export type BuildFeedbackDraftErrors = {
-    /**
-     * The request failed.
-     */
-    400: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type BuildFeedbackDraftError = BuildFeedbackDraftErrors[keyof BuildFeedbackDraftErrors];
-
-export type BuildFeedbackDraftResponses = {
-    /**
-     * The draft and the fixed public issue destination.
-     */
-    200: {
-        title: string;
-        description: string;
-        repository: string;
-        newIssueUrl: string;
-    };
-};
-
-export type BuildFeedbackDraftResponse = BuildFeedbackDraftResponses[keyof BuildFeedbackDraftResponses];
-
 export type PreviewScheduleData = {
     body: ScheduleInput;
     path?: never;

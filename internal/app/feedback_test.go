@@ -105,7 +105,7 @@ func TestUserTelegramPrivateFeedbackRetryDoesNotCreateASecondDraft(t *testing.T)
 	d = startDex(t, dir, f.srv.URL)
 	// Then the pending reply succeeds after a restart without including the quote, and leaves only the receipt.
 	got := f.next(t)
-	if got.ChatID != 7 || !strings.Contains(got.Text, "A private title") || !strings.Contains(got.Text, "A private description") || strings.Contains(got.Text, "UNRELATED_QUOTE") {
+	if got.ChatID != 7 || !strings.Contains(got.RichHTML, `<a href="`+feedbackURL+`">`) || !strings.Contains(got.RichHTML, "<pre><code>") || !strings.Contains(got.Text, "A private title") || !strings.Contains(got.Text, "A private description") || strings.Contains(got.Text, "UNRELATED_QUOTE") {
 		t.Fatalf("unexpected private reply: %+v", got)
 	}
 	eventually(t, "one delivered feedback receipt with no reply content", func() (bool, any) {
@@ -116,21 +116,17 @@ func TestUserTelegramPrivateFeedbackRetryDoesNotCreateASecondDraft(t *testing.T)
 	assertNoStoredInput(t, d)
 }
 
-func TestUserPreviewsFeedbackOnWebWithoutWritingToChat(t *testing.T) {
+func TestUserChannelFeedbackWithFenceGetsAnInstructionInsteadOfAnUnsafePreview(t *testing.T) {
 	t.Parallel()
-	// Given a clean server with no configured model.
-	d := startDex(t, t.TempDir(), "")
-	// When the user requests a preview.
-	var got struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Repository  string `json:"repository"`
-		NewIssueURL string `json:"newIssueUrl"`
-	}
-	d.must(t, http.MethodPost, "/api/feedback/draft", map[string]string{"title": "Title <literal>", "description": "Line one\n*Line two*"}, &got)
-	// Then the response contains only the entered fields and fixed public destination.
-	if got.Title != "Title <literal>" || got.Description != "Line one\n*Line two*" || got.Repository != "recally-io/dex" || got.NewIssueURL != feedbackURL {
-		t.Fatalf("unexpected draft: %+v", got)
+	// Given a paired private chat.
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	// When the user enters a draft with an embedded Markdown fence.
+	f.message(1, 42, 7, "/feedback PRIVATE_TITLE\nDescription\n```\nPRIVATE_CODE\n```")
+	// Then the response explains the limit without echoing the draft or admitting it to the model.
+	got := f.next(t)
+	if !strings.Contains(got.Text, "code fences") || !strings.Contains(got.Text, "Web") || strings.Contains(got.Text, "PRIVATE_") {
+		t.Fatalf("unexpected feedback reply: %+v", got)
 	}
 	assertNoStoredInput(t, d)
 }

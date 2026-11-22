@@ -46,10 +46,9 @@ type Bot interface {
 
 // Reply is the settled answer or the reason no answer is available.
 type Reply struct {
-	Status  string // "done" or "unanswered"
-	Answer  string
-	Reason  string
-	Literal bool // render verbatim, without interpreting user text as Markdown
+	Status string // "done" or "unanswered"
+	Answer string
+	Reason string
 }
 
 const FeedbackCommand = "/feedback"

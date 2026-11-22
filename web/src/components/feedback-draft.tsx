@@ -1,6 +1,4 @@
 import { useId, useState } from "react";
-import { buildFeedbackDraft } from "../api/generated";
-import type { BuildFeedbackDraftResponse } from "../api/generated";
 import { Modal } from "./dialog";
 import { Button, buttonVariants } from "./ui/button";
 import { Input } from "./ui/input";
@@ -11,31 +9,11 @@ export function FeedbackDraft({ onClose }: { onClose: () => void }) {
   const id = useId();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [draft, setDraft] = useState<BuildFeedbackDraftResponse>();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
+  const [preview, setPreview] = useState(false);
   const [status, setStatus] = useState("");
-
-  async function preview() {
-    setPending(true);
-    setError("");
-
-    try {
-      const result = await buildFeedbackDraft({ body: { title, description }, cache: "no-store" });
-
-      if (result.data) setDraft(result.data);
-      else
-        setError(
-          result.response?.status === 400
-            ? (result.error?.error ?? "Check the draft fields.")
-            : "Could not preview the draft. Try again.",
-        );
-    } catch {
-      setError("Could not preview the draft. Try again.");
-    } finally {
-      setPending(false);
-    }
-  }
+  const draftTitle = title.trim();
+  const draftDescription = description.trim();
+  const valid = !!draftTitle && !!draftDescription;
 
   async function copy(text: string, field: string) {
     try {
@@ -49,36 +27,36 @@ export function FeedbackDraft({ onClose }: { onClose: () => void }) {
   return (
     <Modal
       title="Feedback"
-      description={`${draft?.repository ?? "recally-io/dex"} is public. Remove secrets and private details before posting. Dex does not post on your behalf.`}
+      description="recally-io/dex is public. Remove secrets and private details before posting. Dex does not post on your behalf."
       onClose={onClose}
-      pending={pending}
       footer={
         <>
-          <Button type="button" variant="ghost" onClick={onClose} disabled={pending}>
+          <Button type="button" variant="ghost" onClick={onClose}>
             Close
           </Button>
-          {draft ? (
+          {preview ? (
             <>
               <Button
                 type="button"
                 variant="secondary"
                 onClick={() => {
-                  setDraft(undefined);
+                  setPreview(false);
                   setStatus("");
                 }}
               >
                 Edit draft
               </Button>
-              <a href={draft.newIssueUrl} target="_blank" rel="noreferrer" className={buttonVariants()}>
+              <a
+                href="https://github.com/recally-io/dex/issues/new"
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants()}
+              >
                 Open GitHub new issue
               </a>
             </>
           ) : (
-            <Button
-              type="submit"
-              form={`${id}-feedback`}
-              disabled={pending || !title.trim() || !description.trim()}
-            >
+            <Button type="submit" form={`${id}-feedback`} disabled={!valid}>
               Preview draft
             </Button>
           )}
@@ -91,26 +69,26 @@ export function FeedbackDraft({ onClose }: { onClose: () => void }) {
         onSubmit={(event) => {
           event.preventDefault();
 
-          if (!draft && !pending) void preview();
+          if (valid) setPreview(true);
         }}
       >
         <div className="grid gap-2">
           <Label htmlFor={`${id}-title`}>Title</Label>
           <Input
             id={`${id}-title`}
-            value={draft?.title ?? title}
+            value={preview ? draftTitle : title}
             onChange={(event) => setTitle(event.target.value)}
-            readOnly={!!draft || pending}
+            readOnly={preview}
             required
             maxLength={120}
           />
-          {draft ? (
+          {preview ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="justify-self-start"
-              onClick={() => void copy(draft.title, "Title")}
+              onClick={() => void copy(draftTitle, "Title")}
             >
               Copy title
             </Button>
@@ -120,34 +98,29 @@ export function FeedbackDraft({ onClose }: { onClose: () => void }) {
           <Label htmlFor={`${id}-description`}>Description</Label>
           <Textarea
             id={`${id}-description`}
-            value={draft?.description ?? description}
+            value={preview ? draftDescription : description}
             onChange={(event) => setDescription(event.target.value)}
-            readOnly={!!draft || pending}
+            readOnly={preview}
             required
             maxLength={1500}
             rows={6}
           />
-          {draft ? (
+          {preview ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
               className="justify-self-start"
-              onClick={() => void copy(draft.description, "Description")}
+              onClick={() => void copy(draftDescription, "Description")}
             >
               Copy description
             </Button>
           ) : null}
         </div>
       </form>
-      {draft ? (
+      {preview ? (
         <p className="text-xs text-muted-foreground">
           Copy the draft into GitHub and submit it with your own account.
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-xs text-destructive">
-          {error}
         </p>
       ) : null}
       {status ? (

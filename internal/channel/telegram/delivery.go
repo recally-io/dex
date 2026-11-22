@@ -2,12 +2,10 @@ package telegram
 
 import (
 	"fmt"
-	"html"
 	"strconv"
 	"strings"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/feedback"
 )
 
 // Parts freezes all text as Rich Messages.
@@ -18,15 +16,6 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	}
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
-	}
-	if reply.Literal {
-		// Only the fixed, app-supplied link becomes markup. The copyable block is literal.
-		header, draft, hasDraft := strings.Cut(text, "\n"+feedback.IssueURL+"\n\n")
-		rich := "<p>" + html.EscapeString(header) + "</p>"
-		if hasDraft {
-			rich += `<p><a href="` + feedback.IssueURL + `">Open GitHub new issue</a></p><pre><code>` + html.EscapeString(draft) + "</code></pre>"
-		}
-		return []channel.Part{{Rich: &channel.RichMessage{Version: 1, HTML: rich}}}
 	}
 	return renderRich(text)
 }
