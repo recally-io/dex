@@ -21,12 +21,12 @@ func fakeShell(t *testing.T, rc string) string {
 }
 
 func TestUserToolsSeeTheLoginShellEnvironment(t *testing.T) {
-	// Given a login shell whose rc file prints a greeting and exports a value.
-	shell := fakeShell(t, "echo 'welcome back'\nexport FROM_RC='rc value'")
+	// Given a login shell whose rc file prints a greeting and replaces PATH with a custom directory.
+	t.Setenv("SHELL", fakeShell(t, "echo 'welcome back'\nexport FROM_RC='rc value' PATH=/home/test/bin"))
 	// When dex captures the environment from a small process environment.
-	env, err := captureShellEnv(t.Context(), shell, []string{"PATH=/usr/bin:/bin", "HOME=/home/test"}, 5*time.Second)
+	env, err := captureShellEnv(t.Context(), []string{"PATH=/usr/bin:/bin", "HOME=/home/test"}, 5*time.Second, false)
 	// Then the export and the inherited values are present, and the greeting is not.
-	if err != nil || env["FROM_RC"] != "rc value" || env["HOME"] != "/home/test" {
+	if err != nil || env["FROM_RC"] != "rc value" || env["HOME"] != "/home/test" || env["PATH"] != "/home/test/bin" {
 		t.Fatalf("environment: %v %v", env, err)
 	}
 	for key, value := range env {
@@ -38,10 +38,10 @@ func TestUserToolsSeeTheLoginShellEnvironment(t *testing.T) {
 
 func TestUserHungLoginShellDoesNotBlockTools(t *testing.T) {
 	// Given an rc file that starts a background job and never returns.
-	shell := fakeShell(t, "sleep 60 &\nsleep 60")
+	t.Setenv("SHELL", fakeShell(t, "sleep 60 &\nsleep 60"))
 	started := time.Now()
 	// When dex captures the environment with a short limit.
-	_, err := captureShellEnv(t.Context(), shell, []string{"PATH=/usr/bin:/bin"}, 300*time.Millisecond)
+	_, err := captureShellEnv(t.Context(), []string{"PATH=/usr/bin:/bin"}, 300*time.Millisecond, false)
 	// Then the capture fails soon, also with the background job alive.
 	if err == nil || time.Since(started) > 3*time.Second {
 		t.Fatalf("capture: %v after %s", err, time.Since(started))
@@ -50,9 +50,9 @@ func TestUserHungLoginShellDoesNotBlockTools(t *testing.T) {
 
 func TestUserRcBackgroundJobDoesNotLoseTheEnvironment(t *testing.T) {
 	// Given an rc file that starts a job which keeps stdout open after the shell exits.
-	shell := fakeShell(t, "export FROM_RC=kept\n(sleep 2) &")
+	t.Setenv("SHELL", fakeShell(t, "export FROM_RC=kept\n(sleep 2) &"))
 	// When dex captures the environment.
-	env, err := captureShellEnv(t.Context(), shell, []string{"PATH=/usr/bin:/bin"}, 5*time.Second)
+	env, err := captureShellEnv(t.Context(), []string{"PATH=/usr/bin:/bin"}, 5*time.Second, false)
 	// Then the complete output still counts.
 	if err != nil || env["FROM_RC"] != "kept" {
 		t.Fatalf("environment: %v %v", env["FROM_RC"], err)

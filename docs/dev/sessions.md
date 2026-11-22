@@ -316,9 +316,10 @@ At startup, a runner uses a bounded interactive login shell probe on its own
 host to get only the exported `PATH`. The probe passes through the service's
 `ZDOTDIR` and `XDG_CONFIG_HOME` when set, so the shell can find its startup
 files. It does not add those variables to the tool defaults. The probe uses
-`/usr/bin/printenv` directly, without a `PATH` lookup. If that file is missing
-or the probe otherwise fails, the runner logs the reason without profile
-output or values, and tools keep the service `PATH`. Bash tool
+the same `/usr/bin/env -0` command as Local, without a `PATH` lookup. The
+runner limits the probe output and keeps only the `PATH` entry. If the probe
+fails, the runner logs the reason without profile output or values, and
+tools keep the service `PATH`. Bash tool
 commands still run in a non-login, non-interactive shell. An explicit command
 `PATH` takes precedence; commands that disable environment inheritance do not
 receive the login or service `PATH`.

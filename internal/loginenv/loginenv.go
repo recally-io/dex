@@ -3,10 +3,8 @@ package loginenv
 
 import (
 	"bytes"
-	"cmp"
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
@@ -18,14 +16,12 @@ import (
 )
 
 const (
-	marker  = "__DEX_LOGIN_ENV__"
-	timeout = 10 * time.Second
+	marker        = "__DEX_LOGIN_ENV__"
+	timeout       = 10 * time.Second
+	pathOutputMax = 64 << 10
 )
 
-var (
-	envName             = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	errProbeOutputLimit = errors.New("profile output limit")
-)
+var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Environment captures local tool exports. The shell starts from base, not from the Dex
 // process environment, so Dex settings such as DEX_TOKEN do not reach it.
@@ -34,43 +30,12 @@ func Environment(ctx context.Context, base map[string]string) (map[string]string
 	for key, value := range base {
 		environ = append(environ, key+"="+value)
 	}
-	return captureShellEnv(ctx, cmp.Or(loginShell(ctx), "/bin/sh"), environ, timeout)
+	return captureShellEnv(ctx, environ, timeout, false)
 }
 
-func captureShellEnv(ctx context.Context, shell string, environ []string, limit time.Duration) (map[string]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, limit)
-	defer cancel()
-	data, err := probe(ctx, shell, environ, "env -0", 0)
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("login shell %s did not finish in %s", shell, limit)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("login shell %s: %w", shell, err)
-	}
-	env := map[string]string{}
-	for item := range bytes.SplitSeq(data, []byte{0}) {
-		if key, value, ok := strings.Cut(string(item), "="); ok && envName.MatchString(key) {
-			env[key] = value
-		}
-	}
-	if len(env) == 0 {
-		return nil, fmt.Errorf("login shell %s printed no environment", shell)
-	}
-	return env, nil
-}
-
-// Path captures only the exported PATH. Its errors are fixed diagnostic categories and
-// never contain the shell path, profile output, or any environment values.
+// Path keeps only the exported PATH. The probe never logs shell paths, profile
+// output, or environment values.
 func Path(ctx context.Context) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	shell := loginShell(ctx)
-	if ctx.Err() != nil {
-		return "", probeContextError(ctx)
-	}
-	if shell == "" {
-		return "", errors.New("account shell unavailable")
-	}
 	// Preserve the startup file locations for Zsh and Fish without expanding tool defaults.
 	keys := [...]string{"PATH", "HOME", "TMPDIR", "LANG", "USER", "SHELL", "ZDOTDIR", "XDG_CONFIG_HOME"}
 	// A non-nil environment prevents os/exec from supplying the process environment.
@@ -80,55 +45,19 @@ func Path(ctx context.Context) (string, error) {
 			environ = append(environ, key+"="+value)
 		}
 	}
-	// The absolute printenv works even when the profile sets PATH to only custom dirs.
-	// NUL ends the record before any output from logout hooks.
-	data, err := probe(ctx, shell, environ, `/usr/bin/printenv PATH; printf '\000'`, 64<<10)
-	if ctx.Err() != nil {
-		return "", probeContextError(ctx)
-	}
-	if errors.Is(err, errProbeOutputLimit) {
-		return "", errProbeOutputLimit
-	}
-	if _, ok := errors.AsType[*exec.ExitError](err); ok {
-		return "", errors.New("login shell exited unsuccessfully")
-	}
-	if err != nil {
-		return "", errors.New("login shell could not run")
-	}
-	record, _, ended := bytes.Cut(data, []byte{0})
-	path, newline := bytes.CutSuffix(record, []byte{'\n'})
-	if !ended || !newline || len(path) == 0 {
-		return "", errors.New("no exported PATH")
-	}
-	return string(path), nil
+	env, err := captureShellEnv(ctx, environ, timeout, true)
+	return env["PATH"], err
 }
 
-func probeContextError(ctx context.Context) error {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return errors.New("probe timed out")
+func captureShellEnv(ctx context.Context, environ []string, limit time.Duration, pathOnly bool) (map[string]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	shell := loginShell(ctx)
+	if shell == "" && !pathOnly {
+		shell = "/bin/sh" // Keep the Local default when the account shell is unknown.
 	}
-	return errors.New("probe canceled")
-}
-
-type probeOutput struct {
-	buf      bytes.Buffer
-	limit    int // zero leaves Local's existing full environment capture unbounded by size
-	overflow bool
-}
-
-func (b *probeOutput) Write(data []byte) (int, error) {
-	n := len(data)
-	if b.limit > 0 {
-		n = min(n, b.limit-b.buf.Len())
-		b.overflow = b.overflow || n < len(data)
-	}
-	_, _ = b.buf.Write(data[:n])
-	return len(data), nil
-}
-
-// probe runs the login shell and removes any stdout before the capture marker.
-func probe(ctx context.Context, shell string, environ []string, command string, limit int) ([]byte, error) {
-	command = "printf '%s' " + marker + "; " + command
+	// Use an absolute capture command: the profile may replace PATH entirely.
+	const command = "printf '%s' " + marker + "; /usr/bin/env -0"
 	cmd := exec.CommandContext(ctx, shell, "-l", "-i", "-c", command) //nolint:gosec // The shell is the user's own login shell.
 	cmd.Env = environ
 	// A new session has no controlling terminal. On timeout, stop the process group,
@@ -136,19 +65,60 @@ func probe(ctx context.Context, shell string, environ []string, command string, 
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	cmd.WaitDelay = time.Second
-	out := probeOutput{limit: limit}
-	cmd.Stdout = &out
+	var out cappedOutput
+	cmd.Stdout = &out.buf
+	if pathOnly {
+		cmd.Stdout = &out
+	}
 	err := cmd.Run()
-	if out.overflow {
-		return nil, errProbeOutputLimit
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return nil, errors.New("probe timed out")
+	case ctx.Err() != nil:
+		return nil, errors.New("probe canceled")
+	case out.overflow:
+		return nil, errors.New("profile output limit")
+	case err != nil && !errors.Is(err, exec.ErrWaitDelay):
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
+			return nil, errors.New("login shell exited unsuccessfully")
+		}
+		return nil, errors.New("login shell could not run")
 	}
-	// A profile's background job can keep stdout open after the shell exits. Keep any
-	// complete output when only the wait for the pipe failed.
-	if err != nil && !errors.Is(err, exec.ErrWaitDelay) {
-		return nil, err
-	}
+
+	// A background job can keep stdout open after the shell exits. Keep only
+	// complete records, ignoring output before the marker or after the last NUL.
 	_, data, _ := bytes.Cut(out.buf.Bytes(), []byte(marker))
-	return data, nil
+	data, _, ended := bytes.CutLast(data, []byte{0})
+	if !ended {
+		data = nil
+	}
+	env := map[string]string{}
+	for item := range bytes.SplitSeq(data, []byte{0}) {
+		if key, value, ok := bytes.Cut(item, []byte{'='}); ok &&
+			(!pathOnly || string(key) == "PATH") && envName.Match(key) {
+			env[string(key)] = string(value)
+		}
+	}
+	if pathOnly && env["PATH"] == "" {
+		return nil, errors.New("no exported PATH")
+	}
+	if len(env) == 0 {
+		return nil, errors.New("login shell printed no environment")
+	}
+	return env, nil
+}
+
+// cappedOutput bounds Runner stdout while continuing to drain the pipe.
+type cappedOutput struct {
+	buf      bytes.Buffer
+	overflow bool
+}
+
+func (b *cappedOutput) Write(data []byte) (int, error) {
+	n := min(len(data), pathOutputMax-b.buf.Len())
+	b.overflow = b.overflow || n < len(data)
+	_, _ = b.buf.Write(data[:n])
+	return len(data), nil
 }
 
 // loginShell uses SHELL when set, else looks up the current user's account shell.
