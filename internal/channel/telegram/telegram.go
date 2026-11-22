@@ -68,10 +68,29 @@ func (c Config) botID() string {
 	return id
 }
 
+type inbound interface {
+	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	ReceivedSource(ctx context.Context, source string) (bool, error)
+	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Report(name string, status channel.Status)
+	TelegramInputAllowed(ctx context.Context, peer string, source chat.ChannelContext) (bool, error)
+	GroupUploads(ctx context.Context, peer string, source chat.ChannelContext) (*upload.Store, error)
+	ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity chat.ChannelContext) (bool, error)
+	SetTelegramRetryAt(ctx context.Context, token string, until int64) error
+	SpeechInput(ctx context.Context, source string) (*chat.Message, bool, error)
+	Transcribe(ctx context.Context, peer, source string, msg chat.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (chat.Message, error)
+	FinishSpeechInput(ctx context.Context, source string, album bool) error
+	KnownTelegramAlbum(ctx context.Context, peer string, identity chat.ChannelContext) (bool, error)
+	StoreTelegramAlbum(ctx context.Context, peer, source string, msg chat.Message) error
+	ReadyTelegramAlbums(ctx context.Context) ([]chat.TelegramAlbum, time.Duration, error)
+	FinishTelegramAlbum(ctx context.Context, source string) error
+	CleanupTelegramAlbums(ctx context.Context, store *upload.Store) error
+}
+
 // Bot is one Telegram bot that talks to one agent.
 type Bot struct {
 	cfg       Config
-	chats     *channel.Manager
+	chats     inbound
 	client    *http.Client
 	previewMu sync.Mutex
 	previews  map[string]*preview
@@ -82,7 +101,7 @@ type Bot struct {
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
-func New(cfg Config, chats *channel.Manager) *Bot {
+func New(cfg Config, chats inbound) *Bot {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://api.telegram.org"
 	}
@@ -162,8 +181,9 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if m == nil || m.From == nil || !m.hasContent() {
 		return nil
 	}
+	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
 	if m.Chat.Type == "group" || m.Chat.Type == "supergroup" {
-		return b.receiveGroup(ctx, u, m, edited)
+		return b.receiveGroup(ctx, source, m, edited)
 	}
 	if m.Chat.Type != "private" {
 		return nil
@@ -196,7 +216,6 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if !allowed {
 		return nil
 	}
-	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
 	if selected, _ := m.selectedMedia(); selected != nil {
 		received, err := b.chats.ReceivedSource(ctx, source)
 		if err != nil {
@@ -217,31 +236,15 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if staged != nil {
 		attachments = staged.Attachments
 	} else {
-		attachments, err = b.download(ctx, m)
+		attachments, err = b.downloadTo(ctx, m, b.cfg.Uploads)
 	}
 	if err != nil {
-		permanent := errors.Is(err, upload.ErrTooLarge) || errors.Is(err, upload.ErrInvalidName)
-		if e, ok := errors.AsType[*apiError](err); ok && e.Code == 400 {
-			permanent = true
-		}
-		if !permanent {
-			return err
-		}
-		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Send a supported file under 20 MB.")
+		return b.rejectAttachment(ctx, peer, err)
 	}
-	content := m.body()
-	if m.ForwardOrigin != nil {
-		content = "Forwarded message:\n" + content
-	}
-	if edited {
-		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
-	}
-	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
+	incoming := m.inbound(m.body(), edited, attachments, identity)
+	content := incoming.Content
 	if _, kind := m.selectedMedia(); kind != "" {
 		incoming.ChannelContext.MediaKind = kind
-	}
-	if m.ReplyTo != nil {
-		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
 	}
 	if staged != nil {
 		incoming = *staged
@@ -262,15 +265,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 			return err
 		}
 	}
-	var receiveErr error
-	if m.MediaGroupID != "" && len(attachments) > 0 {
-		receiveErr = b.chats.StoreTelegramAlbum(ctx, peer, source, incoming)
-		if receiveErr == nil {
-			b.WakeMedia()
-		}
-	} else {
-		receiveErr = b.chats.Receive(ctx, peer, source, incoming)
-	}
+	receiveErr := b.submitInput(ctx, peer, source, incoming, m.MediaGroupID != "" && len(attachments) > 0)
 	if len(attachments) > 0 {
 		// A committed receipt can own the files even when admission returns an error.
 		receipt, lookupErr := b.chats.Source(context.WithoutCancel(ctx), source)

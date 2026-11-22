@@ -1,4 +1,4 @@
-package channel_test
+package delivery_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -62,7 +62,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 		}
 	}
 	create("concurrent-button")
-	managers := []*channel.Manager{channel.New(ctx, conn, service, "bot"), channel.New(ctx, conn, service, "bot")}
+	managers := []*delivery.Manager{delivery.New(ctx, conn, service, "bot"), delivery.New(ctx, conn, service, "bot")}
 	defer func() {
 		for _, manager := range managers {
 			manager.Close()

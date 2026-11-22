@@ -5,7 +5,24 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/engine"
 )
+
+func (m *message) inbound(content string, edited bool, attachments []engine.Attachment, identity chat.ChannelContext) chat.Message {
+	if m.ForwardOrigin != nil {
+		content = "Forwarded message:\n" + content
+	}
+	if edited {
+		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
+	}
+	msg := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
+	if m.ReplyTo != nil {
+		msg.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
+	}
+	return msg
+}
 
 func (m *message) selectedMedia() (*media, string) {
 	for _, candidate := range []struct {

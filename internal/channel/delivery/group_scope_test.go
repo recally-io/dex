@@ -1,4 +1,4 @@
-package channel_test
+package delivery_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -40,7 +40,7 @@ func TestUserGroupIdentityCannotAcquireMainThroughCommandPeer(t *testing.T) {
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()
 	defer func() { cancel(); <-done }()
-	manager := channel.New(ctx, conn, service, "bot")
+	manager := delivery.New(ctx, conn, service, "bot")
 	defer manager.Close()
 	// When group identity is mislabeled as a positive private command peer, reject before Main is touched.
 	err = manager.Receive(ctx, "telegram:42", "mismatched-group-command", chat.Message{Content: "/clear", ChannelContext: chat.ChannelContext{AccountID: "123", SenderID: "42", ChatID: -100, TopicID: 7}})

@@ -234,13 +234,13 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 500, "description": "temporary media failure"})
 			return
 		}
-		f.mediaSent <- media
 		f.mediaSuccesses.Add(1)
 		f.mu.Lock()
 		f.nextID++
-		id := f.nextID
+		media.ID = f.nextID
 		f.mu.Unlock()
-		_ = json.MarshalWrite(w, map[string]any{"ok": true, "result": map[string]any{"message_id": id}})
+		f.mediaSent <- media
+		_ = json.MarshalWrite(w, map[string]any{"ok": true, "result": map[string]any{"message_id": media.ID}})
 		return
 	}
 	switch method {

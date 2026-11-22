@@ -5,7 +5,20 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+
+	"github.com/recally-io/dex/internal/chat"
 )
+
+func (b *Bot) submitInput(ctx context.Context, peer, source string, msg chat.Message, albumMember bool) error {
+	if !albumMember {
+		return b.chats.Receive(ctx, peer, source, msg)
+	}
+	if err := b.chats.StoreTelegramAlbum(ctx, peer, source, msg); err != nil {
+		return err
+	}
+	b.WakeMedia()
+	return nil
+}
 
 // WakeMedia wakes collection after a stored member, a scope reset or native delivery.
 func (b *Bot) WakeMedia() {
