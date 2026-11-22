@@ -2126,7 +2126,7 @@ func (q *Queries) UpsertProvider(ctx context.Context, arg UpsertProviderParams) 
 const withdrawSubmission = `-- name: WithdrawSubmission :execrows
 UPDATE submissions SET status = 'unanswered', answer = NULL, reason = 'withdrawn',
     settled_at = coalesce(settled_at, ?1), delivered_at = coalesce(delivered_at, ?1)
-WHERE id = ?2 AND kind = 'message'
+WHERE id = ?2 AND kind IN ('message', 'task_result')
 AND (status = 'pending' OR (status = 'unanswered' AND reason = 'aborted'))
 `
 

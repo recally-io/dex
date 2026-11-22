@@ -450,3 +450,34 @@ func (q *Queries) ListMonitorsByConversation(ctx context.Context, conversationID
 	}
 	return items, nil
 }
+
+const listPendingMonitorEvents = `-- name: ListPendingMonitorEvents :many
+SELECT s.id FROM monitors m JOIN submissions s ON s.conversation_id = m.conversation_id
+WHERE m.id = ? AND s.kind = 'task_result' AND s.source_key = s.id
+  AND (s.status = 'pending' OR (s.status = 'unanswered' AND s.reason = 'aborted'))
+  AND (s.id = m.fire_submission_id OR substr(s.id, 1, length(m.id) + 9) = 'monitor:' || m.id || ':')
+ORDER BY s.rowid
+`
+
+func (q *Queries) ListPendingMonitorEvents(ctx context.Context, id string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingMonitorEvents, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

@@ -236,31 +236,7 @@ func (s *Service) ToolMonitorCancel(ctx context.Context, r engine.TaskContext, i
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	tx, q, err := s.writeTransaction(ctx)
-	if err != nil {
-		return engine.MonitorInfo{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := q.CancelMonitor(ctx, sqlc.CancelMonitorParams{
-		ID:             id,
-		ConversationID: conv.ID,
-		UpdatedAt:      s.now().UnixMilli(),
-	}); err != nil {
-		return engine.MonitorInfo{}, err
-	}
-	row, err := q.GetMonitor(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && row.ConversationID != conv.ID) {
-		return engine.MonitorInfo{}, errors.New("monitor not found")
-	}
-	if err != nil {
-		return engine.MonitorInfo{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return engine.MonitorInfo{}, err
-	}
-	return monitorInfo(row), nil
+	return s.cancelMonitor(ctx, conv.AgentID, conv.ID, id)
 }
 
 // ListMonitors returns active and recent follow-up monitors of a chat.
@@ -284,6 +260,50 @@ func (s *Service) CancelMonitor(ctx context.Context, agentID string, chatID int6
 	if _, err := s.Get(ctx, agentID, chatID); err != nil {
 		return engine.MonitorInfo{}, err
 	}
+	return s.cancelMonitor(ctx, agentID, chatID, monitorID)
+}
+
+func (s *Service) cancelMonitor(ctx context.Context, agentID string, chatID int64, monitorID string) (engine.MonitorInfo, error) {
+	unlock, err := s.lockAgent(ctx, agentID)
+	if err != nil {
+		return engine.MonitorInfo{}, err
+	}
+	defer func() { unlock(); s.Wake() }()
+	s.admissionMu.RLock()
+	defer s.admissionMu.RUnlock()
+	if s.leaseUntil.Load() != 0 {
+		return engine.MonitorInfo{}, engine.ErrMaintenance
+	}
+	row, err := s.q.GetMonitor(ctx, monitorID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.ConversationID != chatID || row.AgentID != agentID)) {
+		return engine.MonitorInfo{}, ErrNotFound
+	}
+	if err != nil {
+		return engine.MonitorInfo{}, err
+	}
+	conv, err := s.q.GetConversation(ctx, chatID)
+	if err != nil {
+		return engine.MonitorInfo{}, err
+	}
+	events, err := s.q.ListPendingMonitorEvents(ctx, row.ID)
+	if err != nil {
+		return engine.MonitorInfo{}, err
+	}
+	ref := engine.Ref{AgentID: agentID, ID: cmp.Or(row.TargetExecutionID, conv.ExecutionID.Int64), Scope: conv.ExecutionScope}
+	var withdrawn []string
+	for _, id := range events {
+		if ref.ID != 0 {
+			outcome, err := s.engine.Withdraw(ctx, ref, id)
+			if err != nil {
+				return engine.MonitorInfo{}, err
+			}
+			if outcome == engine.Placed {
+				continue
+			}
+		}
+		withdrawn = append(withdrawn, id)
+	}
+	// Commit only after native withdrawal. A failed write can retry against the same request IDs.
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
@@ -291,17 +311,16 @@ func (s *Service) CancelMonitor(ctx context.Context, agentID string, chatID int6
 		return engine.MonitorInfo{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := q.CancelMonitor(ctx, sqlc.CancelMonitorParams{
-		ID:             monitorID,
-		ConversationID: chatID,
-		UpdatedAt:      s.now().UnixMilli(),
-	}); err != nil {
+	now := s.now().UnixMilli()
+	for _, id := range withdrawn {
+		if _, err := q.WithdrawSubmission(ctx, sqlc.WithdrawSubmissionParams{ID: id, Now: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
+			return engine.MonitorInfo{}, err
+		}
+	}
+	if _, err := q.CancelMonitor(ctx, sqlc.CancelMonitorParams{ID: row.ID, ConversationID: chatID, UpdatedAt: now}); err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	row, err := q.GetMonitor(ctx, monitorID)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && row.ConversationID != chatID) {
-		return engine.MonitorInfo{}, ErrNotFound
-	}
+	row, err = q.GetMonitor(ctx, monitorID)
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
@@ -429,7 +448,7 @@ func monitorForEvent(ctx context.Context, q *sqlc.Queries, eventID string) (sqlc
 	return q.GetMonitorByFireSubmission(ctx, sql.NullString{String: eventID, Valid: true})
 }
 
-// AuthorizeMonitor checks queued native follow-ups against current control state.
+// AuthorizeMonitor rechecks a follow-up immediately before native admission.
 func (s *Service) AuthorizeMonitor(ctx context.Context, caller engine.TaskContext) error {
 	source, err := s.q.GetSubmission(ctx, caller.SourceRequestID)
 	if err != nil {

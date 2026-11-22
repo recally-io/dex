@@ -308,6 +308,9 @@ known. A committed baseline and the next due time survive restart. Dex
 commits the result and any follow-up intent together with a stable request
 ID. The normal session dispatcher admits that intent as a follow-up, not a
 steer. Stop, Clear, cancellation, archive, and changed target authority block
-stale results. Queued native events check authority again before generation
-or tool execution. Dex does not send a check or event to a different session
-or execution environment. Routines use their own existing path.
+stale results. Dex rechecks the target before native admission. Cancellation
+withdraws any Monitor inputs that are still queued. It does not interrupt a
+prompt that already started. An in-flight check can finish within its time
+limit, but it cannot queue a new prompt after cancellation. Dex does not move
+a scheduled check to a different session, environment, or project directory.
+Routines use their own existing path.

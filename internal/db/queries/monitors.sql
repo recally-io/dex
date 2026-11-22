@@ -67,3 +67,10 @@ SELECT @id, t.conversation_id, @content, 'null', @id, root.origin, 'task_result'
 FROM monitors t JOIN submissions root ON root.id = t.root_request_id
 WHERE t.id = @monitor_id
 ON CONFLICT DO NOTHING;
+
+-- name: ListPendingMonitorEvents :many
+SELECT s.id FROM monitors m JOIN submissions s ON s.conversation_id = m.conversation_id
+WHERE m.id = ? AND s.kind = 'task_result' AND s.source_key = s.id
+  AND (s.status = 'pending' OR (s.status = 'unanswered' AND s.reason = 'aborted'))
+  AND (s.id = m.fire_submission_id OR substr(s.id, 1, length(m.id) + 9) = 'monitor:' || m.id || ':')
+ORDER BY s.rowid;

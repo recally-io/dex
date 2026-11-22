@@ -389,24 +389,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, store.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	var h harness.Harness
-	if authorize := a.config.Tasks.AuthorizeMonitor; authorize != nil {
-		guard := monitorGuard(agentID, store, func(guardCtx context.Context, c TaskContext) error {
-			if err := authorize(guardCtx, c); err != nil {
-				return err
-			}
-			_, err := envs.session(guardCtx, c.ConversationID)
-			return err
-		}, func(abortCtx context.Context, task durable.TaskId) error {
-			_, err := h.AbortTask(abortCtx, task)
-			return err
-		})
-		if err := registry.Install(guard); err != nil {
-			return nil, err
-		}
-		extensions = append(extensions, guard)
-	}
-	h, err = harness.OpenHarness(ctx, store, harness.HarnessOptions{
+	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
 		Models: a.modelsFor(agentID), Registry: registry,
 		Settings: func() *harness.HarnessSettings {
 			return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll, FollowUpMode: durable.QueueAll}

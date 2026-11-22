@@ -129,9 +129,8 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 	if _, err := r.service.SetProject(t.Context(), "bot", id, cwd); err != nil {
 		t.Fatal(err)
 	}
-	args := engine.MonitorSetArgs{DelaySeconds: 60, MaxRuns: 1, Prompt: "wait for fixture", CheckCommand: `printf test > started; sleep 15; exit 10`}
-	// A real shell with only a private synthetic marker; it waits for a bounded duration until cancelled.
-
+	args := engine.MonitorSetArgs{DelaySeconds: 60, MaxRuns: 1, Prompt: "wait for fixture", CheckCommand: `printf test > started; for i in {1..100}; do test -f release && break; sleep .05; done; exit 10`}
+	// A real shell waits on a private synthetic fixture for a bounded duration.
 	info, err := r.service.ToolMonitorSet(t.Context(), source, args)
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +152,9 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 	if err != nil || got.State != "cancelled" {
 		t.Fatalf("cancel: %+v, %v", got, err)
 	}
+	if err := os.WriteFile(filepath.Join(cwd, "release"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case err := <-done:
 		done <- err
@@ -160,7 +162,7 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 			t.Fatal(err)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("cancellation did not stop the check")
+		t.Fatal("bounded check did not finish after fixture release")
 	}
 	if _, err := r.q.GetSubmission(t.Context(), fmt.Sprintf("monitor:%s:1", info.ID)); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("cancelled check enqueued a result: %v", err)
@@ -207,7 +209,7 @@ func listedMonitor(t *testing.T, r *nativeTest, id int64, monitor string) engine
 	return engine.MonitorInfo{}
 }
 
-func TestUserMonitorQueuesWithoutSteeringAndRechecksCancellation(t *testing.T) {
+func TestUserMonitorQueuesWithoutSteeringAndWithdrawsOnCancel(t *testing.T) {
 	r := startNative(t, "bash")
 	id, source := taskParent(t, r)
 	now := r.service.now()
@@ -242,16 +244,52 @@ func TestUserMonitorQueuesWithoutSteeringAndRechecksCancellation(t *testing.T) {
 	if err != nil || !got.AdmittedAt.Valid || got.Status != "pending" || got.WhenBusy != "followUp" {
 		t.Fatalf("not a native follow-up: %+v, %v", got, err)
 	}
+	// A second event commits to control while the first is still queued natively.
+	now = now.Add(time.Minute)
+	if err := r.service.FireDueMonitors(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	second := "monitor:" + info.ID + ":2"
 	if _, err := r.service.CancelMonitor(t.Context(), "bot", id, info.ID); err != nil {
 		t.Fatal(err)
+	}
+	for _, id := range []string{event, second} {
+		receipt, err := r.q.GetSubmission(t.Context(), id)
+		if err != nil || receipt.Status != "unanswered" || receipt.Reason.String != "withdrawn" || receipt.Answer.Valid {
+			t.Fatalf("queued follow-up was not withdrawn: %+v, %v", receipt, err)
+		}
 	}
 	if err := os.WriteFile(filepath.Join(cwd, "release"), nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 	awaitReceipt(t, r, "busy-run")
-	awaitReceipt(t, r, event)
-	got, err = r.q.GetSubmission(t.Context(), event)
-	if err != nil || got.Status != "unanswered" || got.Answer.Valid {
-		t.Fatalf("cancelled queued follow-up reached the model: %+v, %v", got, err)
+	if receipt, err := r.q.GetSubmission(t.Context(), "busy-run"); err != nil || receipt.Status != "done" {
+		t.Fatalf("cancellation also stopped the busy turn: %+v, %v", receipt, err)
+	}
+}
+
+func TestUserMonitorDoesNotFollowAChangedProject(t *testing.T) {
+	r := startNative(t, "echo")
+	id, source := taskParent(t, r)
+	now := r.service.now()
+	r.service.now = func() time.Time { return now }
+	if _, err := r.service.SetProject(t.Context(), "bot", id, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, CheckCommand: `exit 10`, Prompt: "synthetic project check"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// This is the same native session, but a later command would use a different directory.
+	if _, err := r.service.SetProject(t.Context(), "bot", id, t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Minute)
+	if err := r.service.FireDueMonitors(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	got := listedMonitor(t, r, id, info.ID)
+	if got.State != "cancelled" || got.Outcome != "monitor target or authority is no longer valid" || got.Runs != 0 {
+		t.Fatalf("monitor followed a project change: %+v", got)
 	}
 }

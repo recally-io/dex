@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"strings"
 	"time"
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
@@ -95,4 +96,9 @@ func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string,
 		return "", true, nil
 	}
 	return hex.EncodeToString(hash.Sum(nil)), result.ExitCode == MonitorTerminalExit, nil
+}
+
+// IsMonitorEvent recognizes current request IDs and frozen pre-upgrade receipts.
+func IsMonitorEvent(request string) bool {
+	return strings.HasPrefix(request, "monitor:") || strings.HasPrefix(request, "timer:")
 }

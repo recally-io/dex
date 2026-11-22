@@ -76,28 +76,8 @@ func (s *Service) fireMonitor(ctx context.Context, id string) error {
 		_, err = monitorTarget(ctx, s.q, current)
 		return err
 	}
-	// Lifecycle writes own the durable cancellation. Poll while the process runs so Stop,
-	// Clear, archive, or a revoked grant also cancels the Bash context on its original host.
-	stopped := make(chan struct{})
-	go func() {
-		defer close(stopped)
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-checkCtx.Done():
-				return
-			case <-ticker.C:
-				if verify(checkCtx) != nil {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
 	hash, terminal, checkErr := s.engine.MonitorCheck(checkCtx, engine.Ref{AgentID: row.AgentID, ID: target.ExecutionID.Int64}, target.Cwd, row.CheckCommand, verify)
-	cancel()
-	<-stopped
+
 	if ctx.Err() != nil {
 		// Leave the durable claim for startup to settle as interrupted. Never replay an
 		// ambiguous shell operation, and do not dispatch a late event during shutdown.
@@ -158,6 +138,14 @@ func monitorResultParams(row sqlc.Monitor, now time.Time) sqlc.FinishMonitorPara
 }
 
 func (s *Service) finishMonitor(ctx context.Context, row sqlc.Monitor, result monitorResult) error {
+	// Order event insertion with admission and native withdrawal. The shell never holds this gate.
+	unlock, err := s.lockAgent(ctx, row.AgentID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	s.admissionMu.RLock()
+	defer s.admissionMu.RUnlock()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
