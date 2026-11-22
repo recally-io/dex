@@ -12,8 +12,8 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 )
 
-func TestUserRunnerBashFindsLoginToolsWithoutBecomingALoginShell(t *testing.T) {
-	// Given a service account with a Zsh profile in an isolated home.
+func TestUserRunnerBashFindsLoginToolsFromCustomZshConfig(t *testing.T) {
+	// Given a service account with Zsh startup files in an isolated ZDOTDIR.
 	if _, err := os.Stat("/bin/zsh"); err != nil {
 		t.Skip("/bin/zsh is not installed")
 	}
@@ -23,17 +23,24 @@ func TestUserRunnerBashFindsLoginToolsWithoutBecomingALoginShell(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin")
 	t.Setenv("DEX_FIXTURE_SERVICE_ONLY", "service-value")
 	t.Setenv("DEX_FIXTURE_RC_ONLY", "")
-	bin := filepath.Join(home, "bin")
-	if err := os.Mkdir(bin, 0o700); err != nil {
-		t.Fatal(err)
+	bin, zdot, xdg := filepath.Join(home, "bin"), filepath.Join(home, "zsh"), filepath.Join(home, "xdg")
+	t.Setenv("ZDOTDIR", zdot)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	for _, dir := range []string{bin, zdot, xdg} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
 	}
+	writeFixture(t, filepath.Join(xdg, "dex-fixture-marker"), "", 0o600)
 	writeFixture(t, filepath.Join(bin, "dex-fixture-cli"), "#!/bin/sh\nprintf 'found'\n", 0o700)
-	writeFixture(t, filepath.Join(home, ".zprofile"), `export DEX_FIXTURE_LOGIN=1`, 0o600)
-	rc := filepath.Join(home, ".zshrc")
+	writeFixture(t, filepath.Join(zdot, ".zprofile"), `export DEX_FIXTURE_LOGIN=1`, 0o600)
+	rc := filepath.Join(zdot, ".zshrc")
 	writeFixture(t, rc, `
 [[ $DEX_FIXTURE_LOGIN = 1 && -z $DEX_FIXTURE_SERVICE_ONLY ]] || exit 42
+[[ $XDG_CONFIG_HOME = "$HOME/xdg" && -f $XDG_CONFIG_HOME/dex-fixture-marker ]] || exit 44
 printf 'synthetic profile greeting\n'
-export PATH="$HOME/bin:$PATH"
+export PATH="$HOME/bin"
+export ZDOTDIR="$HOME/probe-only-zsh" XDG_CONFIG_HOME="$HOME/probe-only-xdg"
 export DEX_FIXTURE_RC_ONLY=profile-value
 `, 0o600)
 
@@ -54,7 +61,8 @@ export DEX_FIXTURE_RC_ONLY=profile-value
 if shopt -q login_shell || [[ $- == *i* ]]; then exit 1; fi
 [[ -n $BASH_VERSION && -z $DEX_FIXTURE_RC_ONLY && $DEX_FIXTURE_SERVICE_ONLY = service-value ]] || exit 2
 if ! command -v dex-fixture-cli >/dev/null; then echo 'login PATH did not resolve fixture CLI'; exit 3; fi
-[[ $(dex-fixture-cli) = found ]]
+[[ $(dex-fixture-cli) = found ]] || exit 4
+[[ $ZDOTDIR = "$HOME/zsh" && $XDG_CONFIG_HOME = "$HOME/xdg" ]]
 `
 	runBash(env.ShellExecOptions{}, ordinaryBash)
 
@@ -64,7 +72,7 @@ if ! command -v dex-fixture-cli >/dev/null; then echo 'login PATH did not resolv
 
 	// An explicit PATH wins, and disabling inheritance removes both service and login PATH.
 	runBash(env.ShellExecOptions{Env: map[string]string{"PATH": "/bin"}}, `[[ $PATH = /bin ]] && ! command -v dex-fixture-cli`)
-	runBash(env.ShellExecOptions{InheritEnv: new(false)}, `[[ -z $DEX_FIXTURE_SERVICE_ONLY ]] && ! command -v dex-fixture-cli`)
+	runBash(env.ShellExecOptions{InheritEnv: new(false)}, `[[ -z $DEX_FIXTURE_SERVICE_ONLY && -z $ZDOTDIR && -z $XDG_CONFIG_HOME ]] && ! command -v dex-fixture-cli`)
 	runBash(env.ShellExecOptions{InheritEnv: new(false), Env: map[string]string{"PATH": "/bin"}}, `[[ $PATH = /bin && -z $DEX_FIXTURE_SERVICE_ONLY ]]`)
 }
 

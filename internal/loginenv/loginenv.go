@@ -78,7 +78,8 @@ func Path(ctx context.Context) (string, error) {
 	if name := filepath.Base(shell); name == "nologin" || name == "false" {
 		return "", errors.New("login disabled")
 	}
-	keys := [...]string{"PATH", "HOME", "TMPDIR", "LANG", "USER", "SHELL"}
+	// Preserve the startup file locations for Zsh and Fish without expanding tool defaults.
+	keys := [...]string{"PATH", "HOME", "TMPDIR", "LANG", "USER", "SHELL", "ZDOTDIR", "XDG_CONFIG_HOME"}
 	// A non-nil environment prevents os/exec from supplying the process environment.
 	environ := make([]string, 0, len(keys))
 	for _, key := range keys {
