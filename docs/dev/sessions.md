@@ -355,9 +355,10 @@ serves the Harness `Env` hook, the `bash` tool, background commands, upload
 staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
 agent keeps one lease for each environment that its sessions use, and closes the
 leases on reload and close. A bot with an unavailable default can still run
-a session that selects another environment. Work that follows an unavailable
-default reports the failure. A later call retries opening that default; an idle
-reload restores any MCP tools that could not load. The resolver checks the
+a session that selects another environment. New input that follows an
+unavailable default waits for that environment before native admission. Later
+attempts retry opening the default; an idle reload restores any MCP tools that
+could not load. The resolver checks the
 environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. A changed stamp

@@ -65,7 +65,9 @@ func (e *environments) session(ctx context.Context, conversationID int64) (sessi
 			return sessionEnv{}, err
 		}
 	}
-	return e.byID(ctx, id)
+	s, err := e.byID(ctx, id)
+	s.ID = id
+	return s, err
 }
 
 // byID returns the lease of an explicit environment, or the agent's own environment for an empty id.

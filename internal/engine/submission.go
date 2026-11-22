@@ -118,11 +118,12 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if ref.Scope != "" {
 			inputDirectory = ""
 		} else if envs := a.environments(ref.AgentID); envs != nil {
-			// An unavailable environment fails only an input with attachments: its tool calls report
-			// the reason, and the chat stays usable.
+			// Inputs that follow the bot wait for its default before native admission. An
+			// explicit selection can still report an unavailable target through its tools,
+			// but an attachment must wait until it can be staged in the selected workspace.
 			s, envErr := envs.session(ctx, ref.ID)
 			if envErr != nil {
-				if len(input.Attachments) > 0 {
+				if s.ID == "" || len(input.Attachments) > 0 {
 					return nil, envErr
 				}
 				inputDirectory = ""

@@ -418,15 +418,15 @@ func TestUserRecoversBotDefaultEnvironmentAfterDialFailure(t *testing.T) {
 		t.Fatalf("explicit local with default unreachable: %q", got)
 	}
 	following := d.newSession(t).ID
-	if got := taskTurn(t, d, following, marker); !strings.Contains(got, "Connection refused") {
-		t.Fatalf("unreachable default must report the dial failure: %q", got)
+	request := d.send(t, following, marker)
+	w := d.watch(t, following)
+	// The local session can run, but the following input must wait in Dex, not enter PiG.
+	var admitted sql.NullInt64
+	if err := sessionDB(t, d).QueryRowContext(t.Context(), "SELECT admitted_at FROM submissions WHERE id = ?", request).Scan(&admitted); err != nil || admitted.Valid {
+		t.Fatalf("unreachable default must leave input pending: admitted=%+v err=%v", admitted, err)
 	}
-
 	ssh.Allow(t, host)
-	eventually(t, "default SSH command after the host returns", func() (bool, any) {
-		got := taskTurn(t, d, following, marker)
-		return got == "bash: ssh-fake-ok", got
-	})
+	w.until(t, "queued command runs on the recovered default SSH host", answered("bash: ssh-fake-ok"))
 }
 
 // Given a non-default E2B sandbox, when it serves short commands and then
