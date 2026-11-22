@@ -369,9 +369,6 @@ func (r *agentResources) closeExtras(ctx context.Context) error {
 	if r.envs != nil {
 		errs = append(errs, r.envs.close(ctx))
 	}
-	if r.execHandle != nil {
-		errs = append(errs, r.execHandle.Close(ctx))
-	}
 	if r.groupRoot != nil {
 		errs = append(errs, r.groupRoot.Close())
 	}

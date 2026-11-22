@@ -12,6 +12,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
@@ -397,17 +398,16 @@ func (r *e2bRuntime) openOverride(ctx context.Context, agentID string, spec Envi
 	if err != nil {
 		return nil, err
 	}
-	closeSandbox := func(ctx context.Context) error {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer cancel()
-		return ctrl.killSandbox(ctx, sb.SandboxID)
+	envd := ctrl.envdFor(sb)
+	override := &e2bOverride{
+		ctrl: ctrl, id: sb.SandboxID, envd: envd, timeout: *cfg.TimeoutSeconds,
+		renewAfter: time.Now().Add(e2bOverrideRenewInterval(*cfg.TimeoutSeconds)),
 	}
 	defer func() {
 		if resultErr != nil {
-			resultErr = errors.Join(resultErr, closeSandbox(ctx))
+			resultErr = errors.Join(resultErr, override.close(ctx))
 		}
 	}()
-	envd := ctrl.envdFor(sb)
 	vars, err := envd.getEnvs(ctx)
 	if err != nil {
 		return nil, err
@@ -419,8 +419,71 @@ func (r *e2bRuntime) openOverride(ctx context.Context, agentID string, spec Envi
 	}
 	return &e2bHandle{
 		rt: r, agentID: agentID, spec: spec, home: home, workspace: workspace, timeoutSec: *cfg.TimeoutSeconds,
-		override: &cachedE2BSession{envd: envd, sandboxID: sb.SandboxID}, closeOverride: closeSandbox,
+		override: override,
 	}, nil
+}
+
+// e2bOverride owns one sandbox ID. Acquired clients never move to a new sandbox.
+// The engine can replace the lease after the provider confirms that it expired.
+type e2bOverride struct {
+	ctrl    *e2bControlClient
+	id      string
+	timeout int
+	gone    atomic.Bool
+
+	mu         sync.Mutex
+	envd       *envdClient
+	renewAfter time.Time
+	closed     bool
+}
+
+func e2bOverrideRenewInterval(timeout int) time.Duration {
+	return min(e2bConnectCacheTTL, time.Duration(timeout)*time.Second/2)
+}
+
+func (o *e2bOverride) acquire(ctx context.Context) (*envdClient, string, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, "", err
+	}
+	if o.closed || o.gone.Load() {
+		return nil, "", fmt.Errorf("%w: the selected E2B sandbox expired or closed", ErrUnavailable)
+	}
+	if !time.Now().Before(o.renewAfter) {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		started := time.Now()
+		sb, err := reconnectSandbox(ctx, o.ctrl, o.id, o.timeout, o.envd.accessToken)
+		if err != nil {
+			return nil, "", fmt.Errorf("renew the selected E2B sandbox: %w", err)
+		}
+		if sb == nil {
+			o.gone.Store(true)
+			return nil, "", fmt.Errorf("%w: the selected E2B sandbox expired", ErrUnavailable)
+		}
+		if sb.SandboxID != o.id {
+			return nil, "", fmt.Errorf("%w: E2B returned a different sandbox for renewal", ErrUnavailable)
+		}
+		if sb.EnvdAccessToken == "" {
+			sb.EnvdAccessToken = o.envd.accessToken
+		}
+		o.envd = o.ctrl.envdFor(sb)
+		o.renewAfter = started.Add(e2bOverrideRenewInterval(o.timeout))
+	}
+	return o.envd, o.id, nil
+}
+
+func (o *e2bOverride) close(ctx context.Context) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed || o.gone.Load() {
+		return nil
+	}
+	o.closed = true
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	return o.ctrl.killSandbox(ctx, o.id)
 }
 
 // changed keeps no per-environment state: acquire compares the spec of each cached session.
@@ -470,25 +533,26 @@ func resolveE2BWorkspace(configured, home string) string {
 }
 
 type e2bHandle struct {
-	rt            *e2bRuntime
-	agentID       string
-	spec          EnvironmentSpec
-	home          string
-	workspace     string
-	timeoutSec    int
-	override      *cachedE2BSession
-	closeOverride func(context.Context) error
+	rt         *e2bRuntime
+	agentID    string
+	spec       EnvironmentSpec
+	home       string
+	workspace  string
+	timeoutSec int
+	override   *e2bOverride
 }
 
 func (h *e2bHandle) Kind() Kind        { return KindE2B }
 func (h *e2bHandle) Workspace() string { return h.workspace }
 func (h *e2bHandle) Home() string      { return h.home }
 func (h *e2bHandle) Close(ctx context.Context) error {
-	if h.closeOverride != nil {
-		return h.closeOverride(ctx)
+	if h.override != nil {
+		return h.override.close(ctx)
 	}
 	return nil
 }
+
+func (h *e2bHandle) expired() bool { return h.override != nil && h.override.gone.Load() }
 
 func (h *e2bHandle) Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error) {
 	if err := ctx.Err(); err != nil {
@@ -498,8 +562,12 @@ func (h *e2bHandle) Env(ctx context.Context, cwd string, extraEnv map[string]str
 	if trimmed := strings.TrimSpace(cwd); trimmed != "" {
 		resolvedCwd = resolveE2BTarget(h.home, h.workspace, trimmed)
 	}
+	id := "e2b:" + h.agentID
+	if h.override != nil {
+		id += ":" + h.override.id
+	}
 	return &e2bExecEnv{
-		id:         "e2b:" + h.agentID,
+		id:         id,
 		cwd:        resolvedCwd,
 		home:       h.home,
 		timeoutSec: h.timeoutSec,

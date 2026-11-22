@@ -75,10 +75,18 @@ type agentExtensions struct {
 	execHandle execenv.Handle
 	skillsMu   sync.Mutex
 	skillStamp string
-	// sessionSkills resolves the same target as the command and file tools.
-	sessionSkills      func(context.Context, durable.ConversationId) (*agentExtensions, error)
+	// sessionPrompts requires the harness to supply the bound target, never a default fallback.
+	sessionPrompts     bool
 	defaultUnavailable bool
 }
+
+// sessionPromptEnv keeps the skill mirror and the prompt's file client on the
+// same lease even if another request replaces an expired sandbox.
+type sessionPromptEnv struct {
+	durableenv.ExecutionEnv
+	files *agentExtensions
+}
+
 type loadedExtensions struct {
 	Extension   *durable.Extension
 	Env         map[string]string
@@ -612,15 +620,12 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	guide := extensionGuide(a.levels, secretsGuide(op, opPath), envScopeGuide(s.info.Env, opPath))
 	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(renderCtx context.Context, input durable.PromptInput) (*string, error) {
 		target := a
-		if a.sessionSkills != nil {
-			if input.Env == nil {
+		if a.sessionPrompts {
+			bound, ok := input.Env.(*sessionPromptEnv)
+			if !ok {
 				return nil, nil
 			}
-			var err error
-			target, err = a.sessionSkills(renderCtx, input.ConversationId)
-			if err != nil {
-				return nil, err
-			}
+			target = bound.files
 		}
 		cwd := target.workspace
 		if input.Env != nil {
@@ -633,7 +638,7 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 		return skillsText(target.skillsContext(renderCtx, input.Env, cwd, &errs)), nil
 	}}}
 	loaded.Extension.Sections = append(loaded.Extension.Sections, &durable.PromptSection{Key: "project", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
-		if a.sessionSkills != nil && input.Env == nil {
+		if a.sessionPrompts && input.Env == nil {
 			return nil, nil
 		}
 		cwd := a.workspace

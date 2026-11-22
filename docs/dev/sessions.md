@@ -355,7 +355,9 @@ serves the Harness `Env` hook, the `bash` tool, background commands, upload
 staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
 agent keeps one lease for each environment that its sessions use, and closes the
 leases on reload and close. A bot with an unavailable default can still run
-a session that selects another environment. Before each call the resolver checks the
+a session that selects another environment. Work that follows an unavailable
+default reports the failure. A later call retries opening that default; an idle
+reload restores any MCP tools that could not load. The resolver checks the
 environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. A changed stamp
@@ -373,7 +375,10 @@ setting. An explicit selection of that same default uses the same lease.
 A non-default E2B selection uses a separate sandbox per open bot and environment.
 Dex deletes it on lease close. It expires rather than auto-pauses if Dex cannot
 close it. It does not survive a reload or restart; do not rely on it for
-persistent files. An expired sandbox fails calls until the lease is reopened.
+persistent files. Operations renew its timeout while it is in use, including
+short commands. A confirmed expiry fails the operation without replay. Later
+work opens a fresh sandbox in the same selected environment; old files do not
+carry over.
 Routines still support explicit local and SSH overrides only.
 
 A web chat selects its environment before its first message

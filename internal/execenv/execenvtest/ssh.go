@@ -109,6 +109,14 @@ func (f *FakeSSHFixture) Refuse(t *testing.T, host string) {
 	}
 }
 
+// Allow makes later ssh runs to a previously refused host dial again.
+func (f *FakeSSHFixture) Allow(t *testing.T, host string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(f.stateDir, "refuse-"+host)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func runFakeSSH(stateDir string, sshArgs []string) int {
 	if len(sshArgs) == 0 {
 		return 255

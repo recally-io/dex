@@ -24,14 +24,7 @@ const (
 
 // IsRegisteredKind reports whether a stored environment kind can be selected.
 func IsRegisteredKind(kind Kind) bool {
-	switch kind {
-	case KindPiEnv, KindE2B, KindRunner:
-		return true
-	case KindLocal:
-		return false
-	default:
-		return false
-	}
+	return kind == KindPiEnv || kind == KindE2B || kind == KindRunner
 }
 
 // ErrInvalidPath is returned when a requested project or directory path fails validation.
@@ -86,6 +79,16 @@ type stampedHandle struct {
 }
 
 func (h stampedHandle) Stamp() string { return h.stamp }
+
+// LeaseExpired reports that the provider confirmed that a disposable lease is
+// gone. A caller can reopen the same selection, but must not retry the failed operation.
+func LeaseExpired(h Handle) bool {
+	if wrapped, ok := h.(stampedHandle); ok {
+		l, ok := wrapped.lease.(interface{ expired() bool })
+		return ok && l.expired()
+	}
+	return false
+}
 
 // backend is one remote environment kind. Each method gets the stored spec of one environment.
 type backend interface {

@@ -37,7 +37,6 @@ type agentResources struct {
 	harness        harness.Harness
 	store          durable.Storage
 	loaded         *loadedExtensions
-	execHandle     execenv.Handle
 	execStamp      string
 	envs           *environments
 	groupRoot      *os.Root
@@ -306,14 +305,12 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		// Remember the stamp so a reconnect can reload the default and its MCP tools.
 		execStamp, _ = a.config.ExecEnv.Stamp(ctx, agentID, "")
 	}
-	defer func() {
-		if resultErr != nil && execHandle != nil {
-			resultErr = errors.Join(resultErr, execHandle.Close(context.WithoutCancel(ctx)))
-		}
-	}()
 	files := a.files(agentID, execHandle)
 	files.defaultUnavailable = ownErr != nil
-	envs := &environments{agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, own: execHandle, ownErr: ownErr, files: files}
+	envs := &environments{
+		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
+		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
+	}
 	defer func() {
 		if resultErr != nil {
 			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
@@ -322,10 +319,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	session := func(ctx context.Context, id durable.ConversationId) (sessionEnv, error) {
 		return envs.session(ctx, int64(id))
 	}
-	files.sessionSkills = func(ctx context.Context, id durable.ConversationId) (*agentExtensions, error) {
-		s, err := session(ctx, id)
-		return s.Files, err
-	}
+	files.sessionPrompts = true
 	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -409,7 +403,11 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			if target.Cwd != nil {
 				cwd = *target.Cwd
 			}
-			return s.Handle.Env(envCtx, cwd, s.Vars)
+			exec, err := s.Handle.Env(envCtx, cwd, s.Vars)
+			if err != nil {
+				return nil, err
+			}
+			return &sessionPromptEnv{ExecutionEnv: exec, files: s.Files}, nil
 		},
 		OnReport: func(report durable.Report) {
 			slog.Error("agent execution", "agent", agentID, "type", report.Kind, "error", report.Error)
@@ -418,7 +416,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, store: store, loaded: loaded, execHandle: execHandle, execStamp: execStamp, envs: envs}, nil
+	return &agentResources{harness: h, store: store, loaded: loaded, execStamp: execStamp, envs: envs}, nil
 }
 
 // Withdrawal and abort marks commit before the paused Harness can run saved work.
@@ -1266,7 +1264,8 @@ func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
 	for id, state := range loaded {
 		currentExt := a.files(id, nil).stamp()
 		currentExec, err := a.config.ExecEnv.Stamp(ctx, id, "")
-		if currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
+		_, restoreMCP := state.envs.defaultFiles()
+		if restoreMCP || currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
 			stale[id] = currentExt + "|" + currentExec
 		}
 	}
@@ -1286,9 +1285,11 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	var info ExtensionInfo
 	var err, stampErr error
 	var currentExec string
+	var restoreMCP bool
 	if resource != nil {
 		currentExec, stampErr = a.config.ExecEnv.Stamp(ctx, agentID, "")
-		files := resource.envs.files
+		files, needsReload := resource.envs.defaultFiles()
+		restoreMCP = needsReload
 		if stampErr != nil || currentExec != resource.execStamp {
 			// Show the stored configuration, not project skills from a stale handle.
 			files = a.files(agentID, nil)
@@ -1307,7 +1308,7 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	}
 	if resource != nil {
 		info.Servers = resource.loaded.serverInfo()
-		info.ReloadPending = a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
+		info.ReloadPending = restoreMCP || a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
 	}
 	return info, nil
 }

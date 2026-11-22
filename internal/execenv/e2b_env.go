@@ -38,13 +38,17 @@ type e2bExecEnv struct {
 
 func (e *e2bExecEnv) acquire(ctx context.Context) (*envdClient, string, error) {
 	if s := e.handle.override; s != nil {
-		return s.envd, s.sandboxID, ctx.Err()
+		return s.acquire(ctx)
 	}
 	session, err := e.handle.rt.acquire(ctx, e.handle.agentID, e.handle.spec)
 	return session.envd, session.sandboxID, err
 }
 
 func (e *e2bExecEnv) renew(ctx context.Context, sbID string) {
+	if o := e.handle.override; o != nil {
+		_, _, _ = o.acquire(ctx)
+		return
+	}
 	if cfg, parseErr := parseE2BConfig(e.handle.spec.Config); parseErr == nil {
 		_ = e.handle.rt.control(cfg, e.handle.spec.Secret).setTimeout(ctx, sbID, e.handle.timeoutSec)
 	}
@@ -435,6 +439,9 @@ func (e *e2bExecEnv) Exec(ctx context.Context, command any, options *durableenv.
 	// Keep sandbox TTL alive during long-running commands; E2B autoPause handles idle periods.
 	if e.handle != nil && sbID != "" && e.timeoutSec > 0 {
 		interval := max(time.Duration(e.timeoutSec)*time.Second/2, 5*time.Second)
+		if e.handle.override != nil {
+			interval = e2bOverrideRenewInterval(e.timeoutSec)
+		}
 		go func() {
 			ticker := time.NewTicker(interval)
 			defer ticker.Stop()

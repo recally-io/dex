@@ -395,3 +395,69 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 		t.Fatalf("pinned bash after change=%q", out)
 	}
 }
+
+// Given a bot whose default SSH host is down, when the host comes back, then a
+// following chat can use it without a settings change or a manual reload.
+func TestUserRecoversBotDefaultEnvironmentAfterDialFailure(t *testing.T) {
+	ssh := execenvtest.NewFakeSSH(t)
+	d := startDexWith(t, app.Config{DataDir: t.TempDir(), SSHProgram: ssh.SSHProgram})
+	const host = "recovery.internal"
+	var saved apiEnvironment
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+		"name": "Recovery SSH", "kind": "pi-env", "config": map[string]any{"host": host, "user": "dev"},
+	}, &saved, http.StatusCreated)
+	ssh.Refuse(t, host)
+	var bot apiAgent
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	bot.Provider, bot.ModelID, bot.EnvironmentID = "faux", "bash", saved.ID
+	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+	local := d.newSession(t).ID
+	d.must(t, http.MethodPut, chatPath(local, "environment"), map[string]string{"environmentId": "local"}, nil)
+	const marker = `printf '%s' "${REMOTE_SSH_MARKER:-local}"`
+	if got := taskTurn(t, d, local, marker); got != "bash: local" {
+		t.Fatalf("explicit local with default unreachable: %q", got)
+	}
+	following := d.newSession(t).ID
+	if got := taskTurn(t, d, following, marker); !strings.Contains(got, "Connection refused") {
+		t.Fatalf("unreachable default must report the dial failure: %q", got)
+	}
+
+	ssh.Allow(t, host)
+	eventually(t, "default SSH command after the host returns", func() (bool, any) {
+		got := taskTurn(t, d, following, marker)
+		return got == "bash: ssh-fake-ok", got
+	})
+}
+
+// Given a non-default E2B sandbox, when it serves short commands and then
+// expires, then commands renew the lease and later work opens a fresh sandbox.
+func TestUserRecoversAnExpiredSandboxOverride(t *testing.T) {
+	fake := execenvtest.NewFakeE2B(t, "test-e2b-lease-secret")
+	d := startDexWith(t, app.Config{DataDir: t.TempDir(), E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
+	var saved apiEnvironment
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+		"name": "Short lease", "kind": "e2b", "secret": "test-e2b-lease-secret", "config": map[string]any{"timeoutSeconds": 2},
+	}, &saved, http.StatusCreated)
+	d.setModel(t, "bash")
+	chat := d.newSession(t).ID
+	d.must(t, http.MethodPut, chatPath(chat, "environment"), map[string]string{"environmentId": saved.ID}, nil)
+	if got := taskTurn(t, d, chat, `printf %s "$REMOTE_E2B_MARKER" > marker; cat marker`); got != "bash: e2b-fake-ok" {
+		t.Fatalf("first sandbox command: %q", got)
+	}
+	eventually(t, "short commands renew the same sandbox", func() (bool, any) {
+		got := taskTurn(t, d, chat, `cat marker`)
+		counts := fake.Counts()
+		return got == "bash: e2b-fake-ok" && counts.Created == 1 && counts.Renewed+counts.Connected > 0, counts
+	})
+
+	fake.SimulateExpire("sbx-1")
+	eventually(t, "a fresh sandbox on the same selected environment", func() (bool, any) {
+		got := taskTurn(t, d, chat, `test ! -e marker && printf '%s' "$REMOTE_E2B_MARKER"`)
+		counts := fake.Counts()
+		return got == "bash: e2b-fake-ok" && counts.Created == 2, fmt.Sprintf("%q %+v", got, counts)
+	})
+	d.stop()
+	if counts := fake.Counts(); counts.Killed != 1 {
+		t.Fatalf("closing Dex must delete the replacement sandbox: %+v", counts)
+	}
+}

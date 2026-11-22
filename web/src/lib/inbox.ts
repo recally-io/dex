@@ -33,12 +33,19 @@ export function resultQuote(
 }
 
 // continuationEnvironment returns the environment that a chat about a run selects. The run's
-// paths and files exist only where it ran, so the chat pins local or the SSH or runner environment of the run. An E2B selection does not guarantee the
-// same sandbox, and an older run may record no environment. Stop rather than guess.
+// paths and files exist only where it ran, so the chat pins local, SSH, or Runner.
+// An E2B selection does not identify the exact sandbox. Older runs may record
+// no environment. Stop rather than guess.
 export function continuationEnvironment(ranIn: string, environments: AgentEnvironments["environments"]) {
   const env = environments.find((e) => e.id === ranIn);
 
   if (env && env.kind !== "e2b" && env.status === "available") return env.id;
+
+  if (env?.kind === "runner" && env.status === "offline") {
+    throw new Error(
+      `This result ran on ${env.name}, which is offline. Try again when the runner reconnects.`,
+    );
+  }
 
   const where = ranIn
     ? `ran in ${env?.name ?? ranIn}, which cannot continue this run`
