@@ -97,6 +97,31 @@ func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCom
 	return err
 }
 
+const createFeedbackCommand = `-- name: CreateFeedbackCommand :exec
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer)
+VALUES (?, ?, ?, 'main', '/feedback', ?, 1, ?) ON CONFLICT DO NOTHING
+`
+
+type CreateFeedbackCommandParams struct {
+	AgentID        string `json:"agent_id"`
+	SourceKey      string `json:"source_key"`
+	Peer           string `json:"peer"`
+	ChannelContext string `json:"channel_context"`
+	Answer         string `json:"answer"`
+}
+
+// The existing command receipt is the outbox. Store the reply atomically with its source key.
+func (q *Queries) CreateFeedbackCommand(ctx context.Context, arg CreateFeedbackCommandParams) error {
+	_, err := q.db.ExecContext(ctx, createFeedbackCommand,
+		arg.AgentID,
+		arg.SourceKey,
+		arg.Peer,
+		arg.ChannelContext,
+		arg.Answer,
+	)
+	return err
+}
+
 const feishuCredentialOwner = `-- name: FeishuCredentialOwner :one
 SELECT a.id, a.name FROM agents a JOIN feishu_settings s ON s.agent_id = a.id WHERE s.app_id = ?
 `
@@ -382,7 +407,9 @@ func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelReplies
 }
 
 const markChannelCommandDelivered = `-- name: MarkChannelCommandDelivered :exec
-UPDATE channel_commands SET delivered_at = ? WHERE source_key = ?
+UPDATE channel_commands SET delivered_at = ?1,
+    answer = CASE WHEN command = '/feedback' THEN '' ELSE answer END
+WHERE source_key = ?2
 `
 
 type MarkChannelCommandDeliveredParams struct {

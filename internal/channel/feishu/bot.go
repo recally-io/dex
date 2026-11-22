@@ -117,6 +117,14 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	} else if received {
 		return nil
 	}
+	peer := "feishu:" + m.Sender
+	if channel.IsFeedbackCommand(m.Text) {
+		text := channel.FeedbackCommand
+		if m.PlainText {
+			text = m.Text
+		}
+		return b.manager.Receive(botCtx, peer, source, chat.Message{Content: text})
+	}
 	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo, ChannelContext: chat.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender, MessageID: m.ID}}
 	stored := false
 	defer func() {
@@ -149,7 +157,6 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 			return err
 		}
 	}
-	peer := "feishu:" + m.Sender
 	receiveErr := b.manager.Receive(botCtx, peer, source, msg)
 	// Preserve files when the receipt query fails or the receipt committed before admission.
 	receipt, err := b.manager.Source(context.WithoutCancel(sessionCtx), source)

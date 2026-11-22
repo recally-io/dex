@@ -64,7 +64,7 @@ func (m *Manager) completeTelegram(ctx context.Context, c sqlc.ChannelCommand) (
 func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, target chat.Chat, identity chat.ChannelContext) (string, bool, error) {
 	switch c.Command {
 	case "/menu", "/help":
-		return "Current conversation\n\n/help and /menu open these controls. /status shows this conversation. /settings shows Telegram preferences. /sessions lists its direct children. /workflows lists saved child workflows. /run <child ID> [message] resumes a saved child as its initiating sender. /question shows its open question. /stop stops only this conversation and its permitted child work. /clear and /new clear only this conversation.\n\nGroup controls never grant private Routines, bot administration or global session access.", true, nil
+		return "Current conversation\n\n/help and /menu open these controls. /status shows this conversation. /settings shows Telegram preferences. /sessions lists its direct children. /workflows lists saved child workflows. /run <child ID> [message] resumes a saved child as its initiating sender. /question shows its open question. /stop stops only this conversation and its permitted child work. /clear and /new clear only this conversation. Use /feedback in private for a public GitHub issue draft.\n\nGroup controls never grant private Routines, bot administration or global session access.", true, nil
 	case "/status":
 		count, err := m.q.PendingCount(ctx, target.ID)
 		pending := count > 0

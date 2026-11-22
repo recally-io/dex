@@ -108,13 +108,14 @@ so dex needs no public URL.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
 - The bot registers `/menu`, `/status`, `/settings`, `/sessions`, `/workflows`,
-  `/question`, `/clear`, `/stop`, and `/help` with `setMyCommands`.
+  `/question`, `/clear`, `/stop`, `/feedback`, and `/help` with `setMyCommands`.
   The channel manager owns command execution and deduplication.
 - Each update has a stable source key: `telegram:<bot id>:<update id>`.
   A repeated update does not create another submission. An edited message creates
   a new correction input. It does not replace the earlier input or undo its actions.
   Reply, quote, and forward context cannot change sender authorization. Attachments
-  and forwarded or edited command text do not execute shared channel controls.
+  and forwarded or edited command text do not execute chat controls. Feedback
+  discards captions and forwarded text from its draft.
 - Goldmark parses all text into versioned Rich Message HTML parts, including
   plain replies, lists, code, tables, menus and text notifications. `sendRichMessage`
   sends each frozen part. Lists keep their ordered or bullet markers. Raw HTML
@@ -255,6 +256,22 @@ replay uses that answer without another withdrawal or native abort. The reply
 confirms the cancellation request and states that processes and remote
 work can continue. A stop error does not block later messages or other replies.
 
+`/feedback` is independent of the model and conversation. In a paired private
+chat, send `/feedback Title` on the first line and the description on the lines
+below. The reply shows only those fields and gives a clean link to the public
+`recally-io/dex` new-issue page. The user copies the draft and submits it in
+GitHub. Telegram groups and topics apply their usual sender and mention gates
+and receive only a private-chat prompt. Dex does not save their command text
+or download any media attached to that command. Drafts with Markdown code fences
+or drafts too large for one reply can use the Web form instead.
+
+Feedback uses the existing command receipt to deduplicate incoming updates
+and retry delivery. Until delivery ends, the pending receipt holds the private
+reply in `control.sqlite`. Dex clears the reply from the receipt when it is
+sent or permanently skipped; the source key and routing facts remain. There is
+no feedback store, model input, or GitHub write. The reply remains on the
+messaging platform like any other message.
+
 Each platform has one durable sender. Settlement wakes the origin's sender.
 Main Stop wakes all senders for withdrawn input. At start
 and after a failed send, it reads settled submissions and command replies
@@ -318,7 +335,7 @@ The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language
 in Markdown fences. Repeated `/pair` messages never reach the agent.
 Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
-The shared channel manager handles `/clear`, `/new`, `/stop`, and `/help`. A source key contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
+The shared channel manager handles `/clear`, `/new`, `/stop`, `/help`, and `/feedback`. A source key contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
 input after durable admission succeeds. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.
