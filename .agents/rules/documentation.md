@@ -9,14 +9,14 @@ Read this before you write or change a document or a diagram.
 - `docs/dev/<subsystem>.md`: the details of one subsystem, such as
   `plugins.md` or `tasks.md`. Add a row to the index for a new one.
 - `web/AGENTS.md`: frontend routes, state, and conventions.
-- `assets/src/<name>.<ext>`: architecture and flow figures.
+- `docs/assets/src/<name>.<ext>`: architecture and flow figures.
 - `.local/`: plans and reports; ignored by Git.
 
 ## Architecture docs
 
 The architecture docs are `docs/dev/architecture.md`, the subsystem documents
-that it links, `web/AGENTS.md`, and the figures in `assets/`. Together they are the single source of truth for the
-current design. They describe how the system works now, not its history.
+that it links, `web/AGENTS.md`, and the figures in `docs/assets/`. Together
+they are the single source of truth for the current design. They describe how the system works now, not its history.
 
 - When a change makes an architecture doc wrong, update that doc in the same
   commit. This includes a change to a subsystem, a contract, a flow, or a
@@ -32,7 +32,7 @@ Write English in ASD-STE100 style: short sentences, active voice, one meaning
 per word. Use `mise run <task>` in commands. Link to the source of truth
 instead of copying it.
 
-Figures: write the source in `assets/src/<name>.<ext>` and render it with
-`documd assets/src/<name>.<ext> assets/<name>.png`. Read the `documd-visuals`
+Figures: write the source in `docs/assets/src/<name>.<ext>` and render it with
+`documd docs/assets/src/<name>.<ext> docs/assets/<name>.png`. Read the `documd-visuals`
 skill before you draw. Embed the PNG and link the source next to it. Look at
 the PNG before you commit, and commit the source and the PNG together.

@@ -9,7 +9,7 @@
     "web/**",
     "internal/db/sqlc/**",
     ".agents/skills/**",
-    "assets/*.png"
+    "docs/assets/*.png"
   ],
   "plugins": [
     "npm:@dprint/json@0.25.2",

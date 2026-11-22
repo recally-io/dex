@@ -6,9 +6,9 @@ its own document, listed in [Subsystems](#subsystems).
 
 ## Runtime overview
 
-![Runtime boundaries and data owners](../../assets/architecture.png)
+![Runtime boundaries and data owners](../assets/architecture.png)
 
-Source: [architecture.puml](../../assets/src/architecture.puml).
+Source: [architecture.puml](../assets/src/architecture.puml).
 
 dex runs HTTP, channels, business services, and agent execution in one Go
 process. Business services call `internal/engine` directly. The engine uses
@@ -86,9 +86,9 @@ each agent execution store. Run one dex process per data directory.
 
 ## Message flow
 
-![Message flow](../../assets/message-flow.png)
+![Message flow](../assets/message-flow.png)
 
-Source: [message-flow.puml](../../assets/src/message-flow.puml)
+Source: [message-flow.puml](../assets/src/message-flow.puml)
 
 1. The browser opens `GET /api/agents/{agentId}/chats/main`, then sends
    `POST /api/agents/{agentId}/chats/{id}/messages` with a client UUID.
