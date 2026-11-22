@@ -49,6 +49,17 @@ func startNative(t *testing.T, model string) *nativeTest {
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return service.ToolReadDreamMessage(ctx, c, request)
 		},
+		Outbox: engine.OutboxTools{
+			NotifyUser: func(ctx context.Context, c engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
+				return service.ToolNotifyUser(ctx, c, a)
+			},
+			ReportParent: func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
+				return service.ToolReportParent(ctx, c, a)
+			},
+			StaySilent: func(ctx context.Context, c engine.TaskContext, a engine.StaySilentArgs) error {
+				return service.ToolStaySilent(ctx, c, a)
+			},
+		},
 		Sessions: engine.SessionTools{
 			New: func(ctx context.Context, c engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
 				return service.ToolSessionNew(ctx, c, a)

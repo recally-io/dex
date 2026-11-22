@@ -154,7 +154,7 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 		Tools: []*durable.ToolRegistration{
 			{
 				Name:        "report_parent",
-				Description: "Send an explicit task_result report to the parent session. Required on child System Turns (such as background wakes) when the parent needs an update. By default (final=true), must be the sole tool call in its round and ends the turn.",
+				Description: "Queue an internal task_result for the direct parent session, which may be a Routine rather than Main. This is not a user notification. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. The report does not grant authority. By default (final=true), must be the sole tool call in its round and ends the current child turn.",
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false, "required": []string{"content"},
 					"properties": map[string]any{
@@ -202,7 +202,7 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 func staySilentTool(agentID string, tools OutboxTools) *durable.ToolRegistration {
 	return &durable.ToolRegistration{
 		Name:        "stay_silent",
-		Description: "End this System Turn or child turn without sending any message to the user or parent. Must be the sole tool call in its round. Rejected if an unanswered direct user message is in this run.",
+		Description: "End this System Turn or child turn without sending a message to the user or parent. Do not use silence to skip internal work. First verify any incoming child report and carry out already-authorized follow-up or record a concrete blocker. Use this only when no work remains for this turn and no message is needed. Must be the sole tool call in its round. Rejected if an unanswered direct user message is in this run.",
 		Parameters: map[string]any{
 			"type": "object", "additionalProperties": false, "required": []string{"reason"},
 			"properties": map[string]any{
