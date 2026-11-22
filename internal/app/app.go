@@ -19,9 +19,10 @@ import (
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/background"
-	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
+	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -34,7 +35,6 @@ import (
 	"github.com/recally-io/dex/internal/server"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
-	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worktask"
 	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 )
@@ -330,7 +330,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	routineTools = automation.NewToolService(conn, automations, chats.WakeConversation)
 	hub = live.New(chats, native)
-	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*channel.Manager)}
+	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*delivery.Manager)}
 	a := &App{db: conn, engine: native, envs: envs, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.
 		if err != nil {

@@ -19,17 +19,27 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
+type inbound interface {
+	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	ReceivedSource(ctx context.Context, source string) (bool, error)
+	CommandReceived(ctx context.Context, source string) (bool, error)
+	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Report(name string, status channel.Status)
+	Pending(ctx context.Context, peer string) (bool, error)
+}
+
 // Bot is one owner-only iLink account. The channel manager sends its durable replies.
 type Bot struct {
 	cfg      Config
 	client   *client
 	q        *sqlc.Queries
-	channels *channel.Manager
+	channels inbound
 	uploads  *upload.Store
 }
 
-// New connects a saved account to the shared channel manager.
-func New(cfg Config, options Options, q *sqlc.Queries, channels *channel.Manager, uploads *upload.Store) *Bot {
+// New connects a saved account to the shared channel manager. The bot uses q
+// only for wechat_runtime; the manager owns channel command receipts.
+func New(cfg Config, options Options, q *sqlc.Queries, channels inbound, uploads *upload.Store) *Bot {
 	return &Bot{cfg: cfg, client: newClient(options), q: q, channels: channels, uploads: uploads}
 }
 
@@ -158,11 +168,11 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 	} else if received {
 		return nil
 	}
-	if _, err := b.q.GetChannelCommand(ctx, source); err == nil {
+	if received, err := b.channels.CommandReceived(ctx, source); err != nil {
+		return err
+	} else if received {
 		// Receive completes interrupted commands without repeating attachment side effects.
 		return b.channels.Receive(ctx, "wechat:"+b.cfg.Owner, source, chat.Message{})
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return err
 	}
 	input, err := b.convert(ctx, msg.Items)
 	stored := false
@@ -194,7 +204,7 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 }
 
 // Parts filters Markdown and splits the final text into at most 2000 runes per part.
-func (b *Bot) Parts(reply chat.Reply) []channel.Part {
+func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer. Please try again."

@@ -17,11 +17,18 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
+type inbound interface {
+	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	ReceivedSource(ctx context.Context, source string) (bool, error)
+	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Report(name string, status channel.Status)
+}
+
 // Bot connects the platform to durable admission, uploads and replies.
 type Bot struct {
 	cfg      Config
 	client   *client
-	manager  *channel.Manager
+	manager  inbound
 	watch    func(context.Context, int64) (io.ReadCloser, error)
 	uploads  *upload.Store
 	pair     func(context.Context, string, string) (bool, error)
@@ -31,7 +38,7 @@ type Bot struct {
 }
 
 // New creates a bot. pair atomically consumes a manual setup code.
-func New(cfg Config, manager *channel.Manager, watch func(context.Context, int64) (io.ReadCloser, error), uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
+func New(cfg Config, manager inbound, watch func(context.Context, int64) (io.ReadCloser, error), uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
 	return &Bot{cfg: cfg, client: newClient(cfg), manager: manager, watch: watch, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
 }
 
@@ -161,7 +168,7 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 }
 
 // Parts renders final replies. The durable sender records each confirmed part.
-func (b *Bot) Parts(reply chat.Reply) []channel.Part {
+func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer: " + reply.Reason

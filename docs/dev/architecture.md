@@ -22,7 +22,8 @@ for the web UI; the installed service needs neither runtime.
 
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
-`internal/engine`; platform adapters use `internal/channel` for commands and
+`internal/engine`. Platform adapters implement the `internal/channel` contract.
+`internal/channel/delivery` owns commands and
 durable reply delivery. The engine does not import dex business packages.
 
 Tools and stdio MCP servers can start child processes. Bash has a default

@@ -1,4 +1,4 @@
-package channel
+package delivery
 
 import (
 	"bytes"
@@ -13,17 +13,20 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/speech"
 )
 
-type telegramBot interface {
-	GroupParts([]Part) []Part
+// TelegramHooks provides optional Telegram operations used by the durable sender.
+
+type TelegramHooks interface {
+	GroupParts([]channel.Part) []channel.Part
 	WakeMedia()
 	Finish(ctx context.Context, peer string, source chat.ChannelContext, status string) error
-	Control(ctx context.Context, peer string, remote RemoteMessage, args engine.TelegramRequest) (Receipt, error)
+	Control(ctx context.Context, peer string, remote channel.RemoteMessage, args engine.TelegramRequest) (channel.Receipt, error)
 }
 
 func (m *Manager) telegramCaller(ctx context.Context, caller engine.TaskContext) (sqlc.Submission, chat.ChannelContext, error) {
@@ -82,7 +85,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 			if target.AccountID != identity.AccountID || target.SenderID != identity.SenderID {
 				continue
 			}
-			var ids []RemoteMessage
+			var ids []channel.RemoteMessage
 			if err := json.Unmarshal([]byte(row.ChannelRemoteIds), &ids); err != nil {
 				return result, err
 			}
@@ -154,7 +157,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 		err := json.Unmarshal([]byte(existing.ResultJson), &result)
 		return result, err
 	}
-	transport, ok := runtime.bot.(telegramBot)
+	transport, ok := runtime.bot.(TelegramHooks)
 	if !ok {
 		return engine.TelegramResult{}, errors.New("telegram control transport is unavailable")
 	}
@@ -168,7 +171,7 @@ func (m *Manager) TelegramAction(ctx context.Context, caller engine.TaskContext,
 	if callErr != nil {
 		state = "unknown"
 		reason = callErr.Error()
-		if errors.Is(callErr, ErrPermanent) {
+		if errors.Is(callErr, channel.ErrPermanent) {
 			state = "failed"
 		}
 	}
@@ -277,7 +280,7 @@ func (m *Manager) speak(ctx context.Context, caller engine.TaskContext, source s
 	return engine.TelegramResult{Status: "native audio queued", Text: text}, nil
 }
 
-func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, identity chat.ChannelContext, id string) ([]RemoteMessage, error) {
+func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, identity chat.ChannelContext, id string) ([]channel.RemoteMessage, error) {
 	if key, ok := strings.CutPrefix(id, "operation:"); ok {
 		effect, err := m.q.GetTelegramEffect(ctx, key)
 		if err != nil {
@@ -299,9 +302,9 @@ func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, ident
 		}
 		var result engine.TelegramResult
 		err = json.Unmarshal([]byte(effect.ResultJson), &result)
-		messages := make([]RemoteMessage, len(result.MessageIDs))
+		messages := make([]channel.RemoteMessage, len(result.MessageIDs))
 		for i, id := range result.MessageIDs {
-			messages[i] = RemoteMessage{ID: id, Kind: result.MessageKind}
+			messages[i] = channel.RemoteMessage{ID: id, Kind: result.MessageKind}
 		}
 		return messages, err
 	}
@@ -316,7 +319,7 @@ func (m *Manager) telegramIDs(ctx context.Context, source sqlc.Submission, ident
 	if target.ConversationID != source.ConversationID || target.Origin != source.Origin || target.ChannelRevoked != 0 || !target.DeliveredAt.Valid || targetIdentity.AccountID != identity.AccountID || targetIdentity.SenderID != identity.SenderID {
 		return nil, errors.New("telegram delivery is outside the current sender and peer")
 	}
-	var ids []RemoteMessage
+	var ids []channel.RemoteMessage
 	err = json.Unmarshal([]byte(target.ChannelRemoteIds), &ids)
 	return ids, err
 }

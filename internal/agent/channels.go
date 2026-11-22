@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/wechat"
+	"github.com/recally-io/dex/internal/channel/wechat"
 )
 
 var ErrCredentialInUse = errors.New("channel credential already in use")

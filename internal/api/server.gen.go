@@ -21,9 +21,9 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/telegram"
+	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/wechat"
 )
 
 // Defines values for AppendEventType.

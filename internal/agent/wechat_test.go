@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/wechat"
 )
 
 func TestUserWechatCanceledActivationRetainsCandidate(t *testing.T) {

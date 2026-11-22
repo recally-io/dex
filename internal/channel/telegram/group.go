@@ -3,14 +3,12 @@ package telegram
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/recally-io/dex/internal/chat"
-	"github.com/recally-io/dex/internal/upload"
 )
 
 func (b *Bot) groupText(ctx context.Context, m *message) (string, bool, error) {
@@ -43,7 +41,7 @@ func (b *Bot) groupText(ctx context.Context, m *message) (string, bool, error) {
 	return strings.TrimSpace(mention.ReplaceAllString(text, "$1")), replied || mentioned || acceptUnmentioned, nil
 }
 
-func (b *Bot) receiveGroup(ctx context.Context, u update, m *message, edited bool) error {
+func (b *Bot) receiveGroup(ctx context.Context, source string, m *message, edited bool) error {
 	if m.Chat.ID >= 0 || m.From.ID <= 0 || m.From.IsBot || !slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
 		return nil
 	}
@@ -72,7 +70,6 @@ func (b *Bot) receiveGroup(ctx context.Context, u update, m *message, edited boo
 	if !triggered {
 		return nil
 	}
-	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
 	if received, err := b.chats.ReceivedSource(ctx, source); err != nil {
 		return err
 	} else if received {
@@ -85,35 +82,11 @@ func (b *Bot) receiveGroup(ctx context.Context, u update, m *message, edited boo
 	defer store.Close()
 	attachments, err := b.downloadTo(ctx, m, store)
 	if err != nil {
-		permanent := errors.Is(err, upload.ErrTooLarge) || errors.Is(err, upload.ErrInvalidName)
-		if api, ok := errors.AsType[*apiError](err); ok && api.Code == 400 {
-			permanent = true
-		}
-		if !permanent {
-			return err
-		}
-		return b.controlPeerReply(ctx, peer, "Cannot read this attachment. Send a supported file under 20 MB.")
-	}
-	if m.ForwardOrigin != nil {
-		content = "Forwarded message:\n" + content
-	}
-	if edited {
-		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
-	}
-	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
-	if m.ReplyTo != nil {
-		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
+		return b.rejectAttachment(ctx, peer, err)
 	}
 	// A group retains original audio. It never borrows the private speech consent or provider.
-	var receiveErr error
-	if m.MediaGroupID != "" && len(attachments) > 0 {
-		receiveErr = b.chats.StoreTelegramAlbum(ctx, peer, source, incoming)
-		if receiveErr == nil {
-			b.WakeMedia()
-		}
-	} else {
-		receiveErr = b.chats.Receive(ctx, peer, source, incoming)
-	}
+	incoming := m.inbound(content, edited, attachments, identity)
+	receiveErr := b.submitInput(ctx, peer, source, incoming, m.MediaGroupID != "" && len(attachments) > 0)
 	if len(attachments) > 0 {
 		receipt, lookupErr := b.chats.Source(context.WithoutCancel(ctx), source)
 		if lookupErr == nil && receipt.ID == "" && !receipt.Staged {

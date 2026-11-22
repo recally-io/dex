@@ -6,22 +6,27 @@ import (
 	"sync"
 
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/delivery"
+	"github.com/recally-io/dex/internal/channel/telegram"
+
 	"github.com/recally-io/dex/internal/chat"
 )
+
+var _ delivery.TelegramHooks = (*telegram.Bot)(nil)
 
 type channelRegistry struct {
 	mu       sync.Mutex
 	ctx      context.Context
 	db       *sql.DB
 	chats    *chat.Service
-	managers map[string]*channel.Manager
+	managers map[string]*delivery.Manager
 }
 
-func (r *channelRegistry) Agent(id string) *channel.Manager {
+func (r *channelRegistry) Agent(id string) *delivery.Manager {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.managers[id] == nil {
-		r.managers[id] = channel.New(r.ctx, r.db, r.chats, id)
+		r.managers[id] = delivery.New(r.ctx, r.db, r.chats, id)
 	}
 	return r.managers[id]
 }
@@ -48,7 +53,7 @@ func (r *channelRegistry) Notify(key string) {
 
 func (r *channelRegistry) Close() {
 	r.mu.Lock()
-	managers := make([]*channel.Manager, 0, len(r.managers))
+	managers := make([]*delivery.Manager, 0, len(r.managers))
 	for _, manager := range r.managers {
 		managers = append(managers, manager)
 	}

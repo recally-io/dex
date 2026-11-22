@@ -3814,7 +3814,7 @@ components:
     WechatLogin:
       x-go-type: wechat.LoginView
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/wechat
+        path: github.com/recally-io/dex/internal/channel/wechat
       type: object
       required: [id, status, qrContent, active]
       properties:

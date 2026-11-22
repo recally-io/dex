@@ -1,4 +1,4 @@
-package channel
+package delivery
 
 import (
 	"context"
@@ -11,15 +11,10 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
-
-// Button is a Telegram action reference. The adapter signs it with its current bot token.
-type Button struct {
-	Text string `json:"text"`
-	Data string `json:"data"`
-}
 
 type menuAction struct{ text, action, object string }
 
@@ -207,7 +202,7 @@ func questionActions(question sqlc.Question) ([]menuAction, error) {
 	return out, nil
 }
 
-func (m *Manager) addButtons(ctx context.Context, parts []Part, source, peer string, identity chat.ChannelContext, target chat.Chat, actions []menuAction) ([]Part, error) {
+func (m *Manager) addButtons(ctx context.Context, parts []channel.Part, source, peer string, identity chat.ChannelContext, target chat.Chat, actions []menuAction) ([]channel.Part, error) {
 	if len(actions) == 0 {
 		return parts, nil
 	}
@@ -237,7 +232,7 @@ func (m *Manager) addButtons(ctx context.Context, parts []Part, source, peer str
 		if err != nil {
 			return nil, err
 		}
-		parts[index].Buttons = append(parts[index].Buttons, Button{Text: stored.Label, Data: stored.ID})
+		parts[index].Buttons = append(parts[index].Buttons, channel.Button{Text: stored.Label, Data: stored.ID})
 	}
 	return parts, nil
 }

@@ -24,13 +24,6 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// Reply is the outcome of one message.
-type Reply struct {
-	Status string `json:"status"` // "done" or "unanswered"
-	Answer string `json:"answer,omitempty"`
-	Reason string `json:"reason,omitempty"`
-}
-
 // Chat is one conversation on one channel.
 type Chat struct {
 	Cwd string
