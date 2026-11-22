@@ -27,6 +27,7 @@ import (
 // of the real service. getUpdates returns every queued update with an ID at or above the offset,
 // as Telegram does.
 type fakeTelegram struct {
+	reactGate      *reactionGate
 	fileGate       <-chan struct{}
 	draftGate      <-chan struct{}
 	pollStarted    chan struct{}
@@ -330,6 +331,10 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 				}
 				m.Text += reaction.Emoji
 			}
+		}
+		if method == "setMessageReaction" && f.reactGate != nil && !f.reactGate.handle(r, fmt.Sprint(m.MessageID), m.Text) {
+			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": 60}})
+			return
 		}
 		if method == "setMyCommands" {
 			for _, command := range m.Commands {

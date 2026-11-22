@@ -81,8 +81,38 @@ func (q *Queries) FreezeOutboxMessage(ctx context.Context, arg FreezeOutboxMessa
 	return err
 }
 
+const getChannelReactionReceipt = `-- name: GetChannelReactionReceipt :one
+SELECT s.status, s.reason, s.exit_action, s.required_reply_id,
+       coalesce(o.status, '') AS reply_status, coalesce(o.skipped_part, 0) AS skipped_part
+FROM submissions s LEFT JOIN outbox_messages o ON o.id = s.required_reply_id
+WHERE s.id = ?
+`
+
+type GetChannelReactionReceiptRow struct {
+	Status          string         `json:"status"`
+	Reason          sql.NullString `json:"reason"`
+	ExitAction      string         `json:"exit_action"`
+	RequiredReplyID string         `json:"required_reply_id"`
+	ReplyStatus     string         `json:"reply_status"`
+	SkippedPart     int64          `json:"skipped_part"`
+}
+
+func (q *Queries) GetChannelReactionReceipt(ctx context.Context, id string) (GetChannelReactionReceiptRow, error) {
+	row := q.db.QueryRowContext(ctx, getChannelReactionReceipt, id)
+	var i GetChannelReactionReceiptRow
+	err := row.Scan(
+		&i.Status,
+		&i.Reason,
+		&i.ExitAction,
+		&i.RequiredReplyID,
+		&i.ReplyStatus,
+		&i.SkippedPart,
+	)
+	return i, err
+}
+
 const getOutboxByDedupKey = `-- name: GetOutboxByDedupKey :one
-SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at FROM outbox_messages WHERE dedup_key = ?
+SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part FROM outbox_messages WHERE dedup_key = ?
 `
 
 func (q *Queries) GetOutboxByDedupKey(ctx context.Context, dedupKey string) (OutboxMessage, error) {
@@ -112,6 +142,7 @@ func (q *Queries) GetOutboxByDedupKey(ctx context.Context, dedupKey string) (Out
 		&i.DismissedAt,
 		&i.CreatedAt,
 		&i.DeliveredAt,
+		&i.SkippedPart,
 	)
 	return i, err
 }
@@ -149,7 +180,7 @@ func (q *Queries) GetOutboxFileBySubmission(ctx context.Context, arg GetOutboxFi
 }
 
 const getOutboxMessage = `-- name: GetOutboxMessage :one
-SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at FROM outbox_messages WHERE id = ?
+SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part FROM outbox_messages WHERE id = ?
 `
 
 func (q *Queries) GetOutboxMessage(ctx context.Context, id string) (OutboxMessage, error) {
@@ -179,6 +210,7 @@ func (q *Queries) GetOutboxMessage(ctx context.Context, id string) (OutboxMessag
 		&i.DismissedAt,
 		&i.CreatedAt,
 		&i.DeliveredAt,
+		&i.SkippedPart,
 	)
 	return i, err
 }
@@ -546,6 +578,15 @@ func (q *Queries) MarkOutboxDelivered(ctx context.Context, arg MarkOutboxDeliver
 	return err
 }
 
+const markOutboxPartSkipped = `-- name: MarkOutboxPartSkipped :exec
+UPDATE outbox_messages SET skipped_part = 1 WHERE id = ?
+`
+
+func (q *Queries) MarkOutboxPartSkipped(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, markOutboxPartSkipped, id)
+	return err
+}
+
 const queueOutboxFile = `-- name: QueueOutboxFile :execrows
 INSERT INTO outbox_files (id, agent_id, operation_key, submission_id, name, mime_type, body)
 SELECT ?1, c.agent_id, ?2, s.id, ?3, ?4, ?5
@@ -611,6 +652,22 @@ type SetOutboxErrorParams struct {
 
 func (q *Queries) SetOutboxError(ctx context.Context, arg SetOutboxErrorParams) error {
 	_, err := q.db.ExecContext(ctx, setOutboxError, arg.RetryAt, arg.Reason, arg.ID)
+	return err
+}
+
+const setRequiredChannelReply = `-- name: SetRequiredChannelReply :exec
+UPDATE submissions SET required_reply_id = ?1
+WHERE id = ?2 AND kind = 'message'
+  AND (origin LIKE 'telegram:%' OR origin LIKE 'feishu:%')
+`
+
+type SetRequiredChannelReplyParams struct {
+	OutboxID     string `json:"outbox_id"`
+	SubmissionID string `json:"submission_id"`
+}
+
+func (q *Queries) SetRequiredChannelReply(ctx context.Context, arg SetRequiredChannelReplyParams) error {
+	_, err := q.db.ExecContext(ctx, setRequiredChannelReply, arg.OutboxID, arg.SubmissionID)
 	return err
 }
 

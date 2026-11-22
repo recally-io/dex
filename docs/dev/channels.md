@@ -140,8 +140,9 @@ so dex needs no public URL.
   lookup use one lock; attachment downloads do not hold this lock.
   Saved `options.preview` can select drafts, message edits, or no previews and
   no typing. `options.silent` applies to new text, media, and copied or forwarded
-  messages. Optional reactions show input processing and final status. Terminal
-  reaction retries do not repeat already confirmed reply parts.
+  messages. `options.reactions` is on by default for private chats. An explicit
+  `false` stays off. `options.groupReactions` is a separate opt-in and does not
+  change sender or topic authorization.
 - Incoming rich messages keep bounded text from paragraphs, inline formatting,
   tables and nested blocks. The iterative reader caps text at 65536 characters,
   work at 20000 steps and JSON nesting at 64; a limit adds an explicit note.
@@ -266,6 +267,16 @@ Delivery is at least once: a crash between platform success and the local
 commit can duplicate one part. Migration marks old settled replies as delivered
 because earlier versions did not record delivery success.
 
+Telegram and Feishu/Lark can show status on an authorized incoming message.
+`delivery` starts observing only after the input intent commits. The native
+submission must enter a run before processing appears. Success needs a settled
+input and confirmation of every part of its required reply, if any. A skipped
+part is not confirmation. Failure and cancellation use distinct reactions.
+Access is checked again before any reaction. A short-lived observer serializes
+changes for its message; slow, rejected, and unknown reaction requests never
+control intake or the reply sender's retries. Commands and Telegram edits do not reset a message's status. Dex can drop reactions under
+load, after a timeout, or when the bot stops. It does not retry or replay them.
+
 ## Feishu and Lark
 
 [`feishu.Bot`](../../internal/channel/feishu/bot.go) receives private messages through
@@ -294,6 +305,14 @@ saves the creator's `open_id` with the app credentials through
 `settings.Service`. Manual setup requires a one-time code sent in a private
 message. The code expires after 10 minutes. A credential change clears owner
 authorization. The settings API never returns the saved app secret.
+
+Private status reactions are on unless `reactions` is explicitly false. The
+existing `im:message` permission covers adding and deleting reactions. Dex does
+not request new scopes. When a permission or a message does not allow a
+reaction, replies still work. Feishu and Lark need a delete followed by an add
+to replace a reaction. Dex uses the ID returned by the add; it does not list
+reactions or remove a user's reaction. Restart can leave the old reaction in
+place.
 
 The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language

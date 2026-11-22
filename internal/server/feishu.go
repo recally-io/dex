@@ -14,7 +14,7 @@ func (h *handler) GetFeishu(ctx context.Context, _ api.GetFeishuRequestObject) (
 	return api.GetFeishu200JSONResponse(view), nil
 }
 func (h *handler) SetFeishu(ctx context.Context, req api.SetFeishuRequestObject) (api.SetFeishuResponseObject, error) {
-	view, err := h.Agents.SetFeishu(ctx, agentID(ctx), req.Body.AppId, req.Body.AppSecret, req.Body.Brand)
+	view, err := h.Agents.SetFeishu(ctx, agentID(ctx), req.Body.AppId, req.Body.AppSecret, req.Body.Brand, req.Body.Reactions)
 	if err != nil {
 		return nil, err
 	}

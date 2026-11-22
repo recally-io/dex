@@ -75,6 +75,7 @@ type ChannelContext struct {
 	AccountID   string `json:"accountId,omitempty"`
 	SenderID    string `json:"senderId,omitempty"`
 	MessageID   string `json:"messageId,omitempty"`
+	Edited      bool   `json:"edited,omitzero"`
 	MediaKind   string `json:"mediaKind,omitempty"`
 	MediaGroup  string `json:"mediaGroup,omitempty"`
 }
@@ -119,11 +120,13 @@ const titleLength = 60
 
 // Service stores receipts and projects native execution outcomes.
 type Service struct {
-	q       *sqlc.Queries
-	engine  *engine.Agents
-	now     func() time.Time
-	notify  func(origin string)
-	changed func(chatID int64)
+	q                *sqlc.Queries
+	engine           *engine.Agents
+	now              func() time.Time
+	notify           func(origin string)
+	channelIntake    func(agent, origin, id string, source ChannelContext)
+	channelAdmission func(agent, origin, id string, sub *engine.Submission)
+	changed          func(chatID int64)
 	// OnBotArchived runs after a transaction that archived a bot has committed. Optional.
 	OnBotArchived func(agentID string)
 
@@ -284,6 +287,12 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 		return 0, ErrNoModel
 	}
 	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m)
+}
+
+// ConfigureChannelReceipts connects best-effort observations before the service starts.
+// Neither callback may wait on transport or execution.
+func (s *Service) ConfigureChannelReceipts(intake func(string, string, string, ChannelContext), admission func(string, string, string, *engine.Submission)) {
+	s.channelIntake, s.channelAdmission = intake, admission
 }
 
 // SubmitMessage stores a channel update with its attachments and source identity.
@@ -512,6 +521,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		}
 		if created > 0 {
 			archived = decision.archive
+			if s.channelIntake != nil && sourceKey != "" && m.ChannelContext.MessageID != "" && !m.QuestionOnly {
+				s.channelIntake(agentID, origin, m.ID, m.ChannelContext)
+			}
 		}
 		if created == 0 {
 			id := m.ID
@@ -818,6 +830,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
 		}
 		return s.admissionError(ctx, p.ID, err)
+	}
+	if s.channelAdmission != nil {
+		s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
 	}
 	if err = s.markAdmitted(ctx, p.ID); err != nil {
 		return err

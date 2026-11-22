@@ -15,6 +15,7 @@ func (m *message) inbound(content string, edited bool, attachments []engine.Atta
 		content = "Forwarded message:\n" + content
 	}
 	if edited {
+		identity.Edited = true
 		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
 	}
 	msg := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
