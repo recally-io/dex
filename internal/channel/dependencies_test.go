@@ -16,6 +16,9 @@ func TestChannelImportBoundaries(t *testing.T) {
 			adapters = append(adapters, pkg)
 		}
 	}
+	if len(adapters) == 0 {
+		t.Fatalf("go list found no channel adapters under %s", root)
+	}
 	packages := append([]string{root, delivery}, adapters...)
 	for _, pkg := range packages {
 		t.Run(pkg, func(t *testing.T) {
