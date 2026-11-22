@@ -53,7 +53,6 @@ type Automation struct {
 	Prompt               string         `json:"prompt"`
 	Schedule             string         `json:"schedule"`
 	TimeZone             string         `json:"time_zone"`
-	Session              string         `json:"session"`
 	Enabled              int64          `json:"enabled"`
 	NextDueAt            sql.NullInt64  `json:"next_due_at"`
 	CreatedAt            int64          `json:"created_at"`
@@ -62,6 +61,8 @@ type Automation struct {
 	NotificationRoute    string         `json:"notification_route"`
 	NotificationTargetID sql.NullString `json:"notification_target_id"`
 	EnvironmentID        string         `json:"environment_id"`
+	Session              string         `json:"session"`
+	TargetConversationID sql.NullInt64  `json:"target_conversation_id"`
 }
 
 type AutomationRun struct {

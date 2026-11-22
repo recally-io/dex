@@ -356,9 +356,6 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			return nil, err
 		}
 	}
-	if err := registry.Install(checkExtension(agentID, a.config.Tasks.ReportCheck)); err != nil {
-		return nil, err
-	}
 	if err := registry.Install(frontDeskExtension()); err != nil {
 		return nil, err
 	}
@@ -389,6 +386,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, store.Close(context.WithoutCancel(ctx)))
 		}
 	}()
+	if err := errors.Join(registry.Install(checkExtension(agentID, a.config.Tasks.ReportCheck, nil)), registry.Install(checkExtension(agentID, a.config.Tasks.ReportCheck, store))); err != nil {
+		return nil, err
+	}
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
 		Models: a.modelsFor(agentID), Registry: registry,
 		Settings: func() *harness.HarnessSettings {

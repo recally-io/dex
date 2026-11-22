@@ -6,6 +6,7 @@ import {
   createAutomationMutation,
   getNotificationTargetsOptions,
   listAgentEnvironmentsOptions,
+  listAutomationTargetsOptions,
   updateAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { previewSchedule } from "../api/generated/sdk.gen";
@@ -45,6 +46,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   const [at, setAt] = useState(existing?.schedule.at ? localDateTime(existing.schedule.at) : "");
   const [timeZone, setTimeZone] = useState(existing?.timeZone ?? browserZone);
   const [session, setSession] = useState<AutomationInput["session"]>(existing?.session ?? "new");
+  const [targetId, setTargetId] = useState(existing?.targetConversationId ?? 0);
   const [enabled, setEnabled] = useState(existing?.enabled ?? true);
 
   const [notification, setNotification] = useState(
@@ -54,7 +56,17 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   );
 
   const targets = useQuery(getNotificationTargetsOptions({ path: { agentId } }));
-  const environments = useQuery(listAgentEnvironmentsOptions({ path: { agentId } }));
+  const bound = session === "session";
+
+  const sessions = useQuery({
+    ...listAutomationTargetsOptions({ path: { agentId } }),
+    enabled: bound,
+    staleTime: 0,
+  });
+
+  const targetsForRoutine = sessions.data?.targets ?? [];
+  const validTarget = !bound || targetsForRoutine.some((target) => target.id === targetId);
+  const environments = useQuery({ ...listAgentEnvironmentsOptions({ path: { agentId } }), enabled: !bound });
   const environmentList = environments.data?.environments ?? [];
   const own = environmentList.find((env) => env.default);
 
@@ -136,7 +148,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   return (
     <Modal
       title={existing ? "Edit routine" : "New routine"}
-      description="Set a prompt and a schedule. The bot's model and instructions run every routine."
+      description="Set a prompt and a schedule, and choose where the routine runs."
       pending={pending}
       onClose={onClose}
       footer={
@@ -148,7 +160,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             variant="default"
             type="submit"
             form={formId}
-            disabled={pending || !validSchedule || !name.trim() || !prompt.trim()}
+            disabled={pending || !validSchedule || !validTarget || !name.trim() || !prompt.trim()}
           >
             {pending ? (
               <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
@@ -164,13 +176,14 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
         onSubmit={(event) => {
           event.preventDefault();
 
-          if (!validSchedule || pending) return;
+          if (!validSchedule || !validTarget || pending) return;
 
           const body = {
             name: name.trim(),
             prompt: prompt.trim(),
-            cwd: cwd.trim(),
-            environmentId,
+            cwd: bound ? undefined : cwd.trim(),
+            environmentId: bound ? undefined : environmentId,
+            targetConversationId: bound ? targetId : undefined,
             schedule,
             timeZone,
             session,
@@ -202,7 +215,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             />
           )}
         </Field>
-        {choices.length > 0 || environmentId ? (
+        {!bound && (choices.length > 0 || environmentId) ? (
           <Field
             label="Environment"
             hint="Runs use only this environment. A run is skipped when it is removed or unreachable. Changing it clears the project directory."
@@ -229,19 +242,21 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             )}
           </Field>
         ) : null}
-        <Field
-          label="Project directory"
-          hint="Use an absolute directory in the environment of the routine. Leave empty to use its workspace."
-        >
-          {({ id, describedBy }) => (
-            <Input
-              id={id}
-              aria-describedby={describedBy}
-              value={cwd}
-              onChange={(e) => setCwd(e.target.value)}
-            />
-          )}
-        </Field>
+        {!bound ? (
+          <Field
+            label="Project directory"
+            hint="Use an absolute directory in the environment of the routine. Leave empty to use its workspace."
+          >
+            {({ id, describedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={describedBy}
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
+              />
+            )}
+          </Field>
+        ) : null}
         <Field
           label="Send result to"
           hint="Notifications go only to an authorized recipient. The primary channel is configured on the Channels page."
@@ -357,7 +372,9 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             hint={
               session === "reuse"
                 ? "The bot sees earlier runs. The session grows with each run. When the session is busy, the run is skipped."
-                : "Each run starts fresh."
+                : bound
+                  ? "Runs join the selected session as follow-ups, using its environment and project."
+                  : "Each run starts fresh."
             }
           >
             {({ id, describedBy }) => (
@@ -365,14 +382,47 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
                 id={id}
                 aria-describedby={describedBy}
                 value={session}
-                onChange={(e) => setSession(e.target.value === "reuse" ? "reuse" : "new")}
+                onChange={(e) =>
+                  setSession(
+                    e.target.value === "session" ? "session" : e.target.value === "reuse" ? "reuse" : "new",
+                  )
+                }
               >
                 <option value="new">New session each run</option>
                 <option value="reuse">One session for this routine</option>
+                <option value="session">Existing session</option>
               </Select>
             )}
           </Field>
         </div>
+        {bound ? (
+          <Field label="Target session" hint="Only writable, unarchived sessions of this bot are listed.">
+            {({ id, describedBy }) => (
+              <Select
+                id={id}
+                aria-describedby={describedBy}
+                value={validTarget ? targetId : 0}
+                onChange={(e) => setTargetId(Number(e.target.value))}
+              >
+                <option value={0}>
+                  {sessions.isPending
+                    ? "Loading sessions…"
+                    : targetId
+                      ? "Saved target is unavailable — choose a session"
+                      : "Choose a session"}
+                </option>
+                {targetsForRoutine.map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.main ? "Main" : `${target.title || "Untitled session"} · #${target.id}`}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        ) : null}
+        {bound && sessions.isError ? (
+          <Failure title="Could not load sessions" error={sessions.error} />
+        ) : null}
         <div className="flex items-center justify-between gap-3">
           <span className="text-[12.5px] font-medium text-foreground">Enabled</span>
           <Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Enabled" />

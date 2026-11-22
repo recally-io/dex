@@ -799,7 +799,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err = json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
-	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
+	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy, RoutineReporting: p.RoutinePending != 0 || p.Origin == "automation"}
 	// An owner message or a Task alert of a Task carries the Task context.
 	var workTask sqlc.WorkTask
 	if input.Main {

@@ -62,6 +62,8 @@ type Input struct {
 	Attachments                              []Attachment
 	Options
 	Automation bool
+	// RoutineReporting keeps report_check installed while a bound Routine input is pending.
+	RoutineReporting bool
 	// Child marks an input to a conversation that has a parent. A child has no session tools and no
 	// routine tools, and it gets the child rules.
 	Child bool

@@ -46,14 +46,15 @@ var ErrNotFound = errors.New("automation not found")
 
 // Input is what the user sets.
 type Input struct {
-	Notification *engine.RoutineNotification `json:"notification,omitempty"`
-	Cwd          string                      `json:"cwd"`
-	Name         string                      `json:"name"`
-	Prompt       string                      `json:"prompt"`
-	Schedule     Schedule                    `json:"schedule"`
-	TimeZone     string                      `json:"timeZone"`
-	Session      string                      `json:"session"` // new or reuse
-	Enabled      bool                        `json:"enabled"`
+	Notification         *engine.RoutineNotification `json:"notification,omitempty"`
+	Cwd                  string                      `json:"cwd"`
+	Name                 string                      `json:"name"`
+	Prompt               string                      `json:"prompt"`
+	Schedule             Schedule                    `json:"schedule"`
+	TimeZone             string                      `json:"timeZone"`
+	Session              string                      `json:"session"` // new, reuse, or session
+	TargetConversationID int64                       `json:"targetConversationId,omitzero"`
+	Enabled              bool                        `json:"enabled"`
 	// EnvironmentID is local or an SSH environment ID. Empty follows the environment of the bot.
 	EnvironmentID string `json:"environmentId"`
 }
@@ -92,11 +93,13 @@ type Run struct {
 // Service manages automations for all agents.
 type Service struct {
 	q          *sqlc.Queries
-	enqueue    func(context.Context, chat.AutomationInput) (int64, bool, error)
+	enqueue    func(context.Context, chat.AutomationInput) (chat.AutomationInputResult, error)
+	db         *sql.DB
 	now        func() time.Time
 	wakeOutbox func(context.Context, string)
 	// probe opens an SSH environment of a run before its input; nil skips the check.
-	probe func(ctx context.Context, agentID, environmentID string) error
+	probe  func(ctx context.Context, agentID, environmentID string) error
+	status func(ctx context.Context, agentID, environmentID string) string
 }
 
 // ConfigureProbe sets the check that an SSH environment is reachable before a run. A run on an
@@ -105,9 +108,14 @@ func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, enviro
 	s.probe = probe
 }
 
+// ConfigureEnvironmentStatus lets a bound Routine detect an offline target without opening it.
+func (s *Service) ConfigureEnvironmentStatus(status func(context.Context, string, string) string) {
+	s.status = status
+}
+
 // New returns a Service. Call Check every minute.
-func New(q *sqlc.Queries, chats *chat.Service, now func() time.Time) *Service {
-	s := &Service{q: q, now: now}
+func New(conn *sql.DB, chats *chat.Service, now func() time.Time) *Service {
+	s := &Service{db: conn, q: sqlc.New(conn), now: now}
 	if chats != nil {
 		s.enqueue = chats.EnqueueAutomation
 		s.wakeOutbox = chats.WakeRoutineOutbox
@@ -129,11 +137,24 @@ func invalid(reason string) error { return fmt.Errorf("%w: %s", ErrInvalid, reas
 
 // clean validates in and returns it with a clean schedule, and its time zone.
 func clean(in Input) (Input, *time.Location, error) {
-	cwd, err := chat.ProjectPath(in.Cwd)
-	if err != nil {
-		return in, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+	switch in.Session {
+	case "session":
+		if in.TargetConversationID <= 0 {
+			return in, nil, invalid("choose a target session")
+		}
+		in.Cwd, in.EnvironmentID = "", ""
+	case "new", "reuse":
+		if in.TargetConversationID != 0 {
+			return in, nil, invalid("only session mode accepts a target session")
+		}
+		cwd, err := chat.ProjectPath(in.Cwd)
+		if err != nil {
+			return in, nil, fmt.Errorf("%w: %w", ErrInvalid, err)
+		}
+		in.Cwd = cwd
+	default:
+		return in, nil, invalid("the session must be new, reuse, or session")
 	}
-	in.Cwd = cwd
 	if n := in.Notification; n != nil {
 		if (n.Mode != "none" && n.Mode != "default" && n.Mode != "target") || (n.Mode == "target") != (n.TargetID != "") {
 			return in, nil, invalid("invalid notification route")
@@ -146,9 +167,6 @@ func clean(in Input) (Input, *time.Location, error) {
 	}
 	if in.Prompt == "" || utf8.RuneCountInString(in.Prompt) > maxPrompt {
 		return in, nil, invalid("the prompt must have 1 to 32000 characters")
-	}
-	if in.Session != "new" && in.Session != "reuse" {
-		return in, nil, invalid("the session must be new or reuse")
 	}
 	loc, err := location(in.TimeZone)
 	if err != nil {
@@ -195,10 +213,51 @@ func millis(times []time.Time) []int64 {
 	return out
 }
 
+// saveBound orders target validation and the binding write against archive and delete.
+// Tool mutations already hold the writer and use a transaction-local service.
+func (s *Service) saveBound(ctx context.Context, save func(*Service) (Automation, error)) (Automation, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Automation{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	local := *s
+	local.db, local.q = nil, s.q.WithTx(tx)
+	if err := local.q.LockRoutineTools(ctx); err != nil {
+		return Automation{}, err
+	}
+	a, err := save(&local)
+	if err != nil {
+		return Automation{}, err
+	}
+	return a, tx.Commit()
+}
+
+func (s *Service) checkTarget(ctx context.Context, agentID string, in Input) error {
+	if in.Session != "session" {
+		return nil
+	}
+	_, err := chat.AutomationTarget(ctx, s.q, agentID, targetID(in))
+	if errors.Is(err, chat.ErrAutomationTarget) {
+		return invalid(err.Error())
+	}
+	return err
+}
+
+func targetID(in Input) sql.NullInt64 {
+	return sql.NullInt64{Int64: in.TargetConversationID, Valid: in.TargetConversationID != 0}
+}
+
 // Create stores a new automation.
 func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automation, error) {
+	if in.Session == "session" && s.db != nil {
+		return s.saveBound(ctx, func(local *Service) (Automation, error) { return local.Create(ctx, agentID, in) })
+	}
 	in, loc, err := clean(in)
 	if err != nil {
+		return Automation{}, err
+	}
+	if err := s.checkTarget(ctx, agentID, in); err != nil {
 		return Automation{}, err
 	}
 	if err := s.checkEnvironment(ctx, in.EnvironmentID, ""); err != nil {
@@ -223,12 +282,18 @@ func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automat
 
 // Update changes an automation. Its next time counts from now, so a change never runs a past time.
 func (s *Service) Update(ctx context.Context, agentID string, id string, in Input) (Automation, error) {
+	if in.Session == "session" && s.db != nil {
+		return s.saveBound(ctx, func(local *Service) (Automation, error) { return local.Update(ctx, agentID, id, in) })
+	}
 	in, loc, err := clean(in)
 	if err != nil {
 		return Automation{}, err
 	}
 	row, err := s.get(ctx, agentID, id)
 	if err != nil {
+		return Automation{}, err
+	}
+	if err := s.checkTarget(ctx, agentID, in); err != nil {
 		return Automation{}, err
 	}
 	if err := s.checkEnvironment(ctx, in.EnvironmentID, row.EnvironmentID); err != nil {
@@ -245,7 +310,7 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	_, err = s.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{
 		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
 		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID,
-		EnvironmentID: row.EnvironmentID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: agentID,
+		EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: agentID,
 	})
 	if err != nil {
 		return Automation{}, err
@@ -299,7 +364,7 @@ func fill(row *sqlc.Automation, in Input, loc *time.Location, now time.Time) err
 	if in.Enabled && in.Schedule.Kind == "once" && !time.UnixMilli(in.Schedule.At).After(now) {
 		return invalid("the time is in the past")
 	}
-	row.Cwd, row.EnvironmentID = in.Cwd, in.EnvironmentID
+	row.Cwd, row.EnvironmentID, row.TargetConversationID = in.Cwd, in.EnvironmentID, targetID(in)
 	row.Name, row.Prompt, row.Schedule, row.TimeZone, row.Session = in.Name, in.Prompt, string(sched), in.TimeZone, in.Session
 	row.Enabled, row.NextDueAt = 0, sql.NullInt64{}
 	if in.Enabled {
@@ -339,6 +404,11 @@ func (s *Service) get(ctx context.Context, agentID string, id string) (sqlc.Auto
 	return row, err
 }
 
+// ListTargetCandidates returns the bot's existing conversations for the Routine picker.
+func (s *Service) ListTargetCandidates(ctx context.Context, agentID string) ([]sqlc.Conversation, error) {
+	return s.q.ListRoutineTargetCandidates(ctx, agentID)
+}
+
 // List returns all automations, oldest first.
 func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error) {
 	rows, err := s.q.ListAutomations(ctx, agentID)
@@ -357,7 +427,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
 		Notification: &engine.RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
-		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, EnvironmentID: row.EnvironmentID,
+		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID.Int64,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.Schedule), &a.Schedule); err != nil {
@@ -486,7 +556,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 // no new input. A nil pre checks the environment here; the check does network I/O, so it never
 // runs in a transaction.
 func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string, pre *Target) (Run, error) {
-	if skip == "" {
+	if skip == "" && row.Session != "session" {
 		agent, err := s.q.GetAgent(ctx, row.AgentID)
 		if err != nil {
 			return Run{}, err
@@ -524,16 +594,16 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	}
 	// The input stores row only while row is current: the preflight gives an edit time to commit.
 	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, EnvironmentID: row.EnvironmentID, Target: pre.ID, Skip: pre.Skip, Expected: &row}
-	chatID, created, err := s.enqueue(ctx, input)
+	result, err := s.enqueue(ctx, input)
 	if !due.Valid && errors.Is(err, chat.ErrAutomationChanged) {
 		// A scheduled run checks again next minute; a manual run tells the caller.
 		err = fmt.Errorf("%w: the routine changed during its check; run it again", engine.ErrBusy)
 	}
 	switch {
-	case created && chatID == 0:
-		run.Status, run.Reason = "skipped", pre.Skip
-	case created:
-		run.Status, run.ChatID = "running", chatID
+	case result.Created && result.ConversationID == 0:
+		run.Status, run.Reason = "skipped", result.Skip
+	case result.Created:
+		run.Status, run.ChatID = "running", result.ConversationID
 	}
 	return run, err
 }
@@ -552,8 +622,22 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 	if err != nil {
 		return Target{}, err
 	}
-	id := cmp.Or(row.EnvironmentID, agent.EnvironmentID, execenv.LocalID)
+	environmentID := row.EnvironmentID
+	if row.Session == "session" {
+		conv, err := chat.AutomationTarget(ctx, s.q, row.AgentID, row.TargetConversationID)
+		if errors.Is(err, chat.ErrAutomationTarget) {
+			return Target{Skip: err.Error()}, nil
+		}
+		if err != nil {
+			return Target{}, err
+		}
+		environmentID = conv.EnvironmentID
+	}
+	id := cmp.Or(environmentID, agent.EnvironmentID, execenv.LocalID)
 	skip, err := s.unavailable(ctx, row.AgentID, id)
+	if skip == "" && err == nil && row.Session == "session" && s.status != nil && s.status(ctx, row.AgentID, id) != "available" {
+		skip = chat.RoutineUnavailableEnvironment(id)
+	}
 	return Target{ID: id, Skip: skip}, err
 }
 

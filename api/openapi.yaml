@@ -2256,6 +2256,23 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/automations/targets:
+    get:
+      operationId: listAutomationTargets
+      parameters:
+        - $ref: "#/components/parameters/AgentId"
+      responses:
+        "200":
+          description: Existing sessions that can be used by a Routine of this bot.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [targets]
+                properties:
+                  targets:
+                    type: array
+                    items: { $ref: "#/components/schemas/AutomationTarget" }
   /api/agents/{agentId}/automations/{automationId}:
     parameters:
       - in: path
@@ -2852,6 +2869,14 @@ components:
               platform: { type: string, enum: [telegram, feishu, wechat] }
               peer: { type: string }
 
+    AutomationTarget:
+      type: object
+      required: [id, title, main]
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        main: { type: boolean }
+
     AutomationInput:
       x-go-type: automation.Input
       x-go-type-import:
@@ -2868,10 +2893,15 @@ components:
         timeZone: { type: string }
         session:
           type: string
-          enum: [new, reuse]
-          description: >
-            new: each run starts a new chat. reuse: all runs use one chat; a
-            run is skipped while that chat is busy.
+          enum: [new, reuse, session]
+          description: >-
+            New starts a new chat each run. Reuse uses one dedicated chat.
+            Session sends a follow-up to an existing chat and uses its environment and directory.
+        targetConversationId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Required in session mode. Absent if the saved target was deleted.
         enabled: { type: boolean }
         environmentId:
           type: string

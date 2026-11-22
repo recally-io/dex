@@ -385,6 +385,12 @@ export type NotificationTargets = {
     }>;
 };
 
+export type AutomationTarget = {
+    id: number;
+    title: string;
+    main: boolean;
+};
+
 export type AutomationInput = {
     name: string;
     prompt: string;
@@ -395,10 +401,13 @@ export type AutomationInput = {
     schedule: Schedule;
     timeZone: string;
     /**
-     * new: each run starts a new chat. reuse: all runs use one chat; a run is skipped while that chat is busy.
-     *
+     * New starts a new chat each run. Reuse uses one dedicated chat. Session sends a follow-up to an existing chat and uses its environment and directory.
      */
-    session: 'new' | 'reuse';
+    session: 'new' | 'reuse' | 'session';
+    /**
+     * Required in session mode. Absent if the saved target was deleted.
+     */
+    targetConversationId?: number;
     enabled: boolean;
     /**
      * local or an SSH environment ID for the runs. Empty follows the bot's environment. A run never uses another environment: when this one was removed, the run is skipped with a reason. A reused chat that ran in another environment stays readable, and the run starts a new chat. An update can keep a removed environment.
@@ -4795,6 +4804,26 @@ export type CreateAutomationResponses = {
 };
 
 export type CreateAutomationResponse = CreateAutomationResponses[keyof CreateAutomationResponses];
+
+export type ListAutomationTargetsData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/automations/targets';
+};
+
+export type ListAutomationTargetsResponses = {
+    /**
+     * Existing sessions that can be used by a Routine of this bot.
+     */
+    200: {
+        targets: Array<AutomationTarget>;
+    };
+};
+
+export type ListAutomationTargetsResponse = ListAutomationTargetsResponses[keyof ListAutomationTargetsResponses];
 
 export type DeleteAutomationData = {
     body?: never;

@@ -12,7 +12,6 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/automation"
-	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 )
 
@@ -140,8 +139,7 @@ func TestUserRoutineToolReplayReturnsCommittedMutationsAfterRestart(t *testing.T
 	startDex(t, data, "")
 	// When durable execution retries the same identity after the result boundary,
 	// a fresh business service uses the committed operation, even after settlement.
-	q := sqlc.New(conn)
-	service := automation.New(q, nil, time.Now) // Read service; mutations bind the real transactional input writer.
+	service := automation.New(conn, nil, time.Now) // Read service; mutations bind the real transactional input writer.
 	tools := automation.NewToolService(conn, service, func(int64) {})
 	for range 2 {
 		replay, err := tools.Create(t.Context(), createSource, engine.RoutinePatch{})
@@ -177,8 +175,7 @@ func TestUserRoutineBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Scoped", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
 	conn := sessionDB(t, d)
 	source := savedRoutineCaller(t, conn, "create")
-	q := sqlc.New(conn)
-	tools := automation.NewToolService(conn, automation.New(q, nil, time.Now), func(int64) {})
+	tools := automation.NewToolService(conn, automation.New(conn, nil, time.Now), func(int64) {})
 	// When another bot, execution, input kind, or hidden conversation claims that source,
 	// every business operation rejects it, including reads and replay.
 	reject := func(c engine.TaskContext) {

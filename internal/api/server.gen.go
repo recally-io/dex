@@ -876,6 +876,13 @@ type AutomationRunList struct {
 	Runs []AutomationRun `json:"runs"`
 }
 
+// AutomationTarget defines model for AutomationTarget.
+type AutomationTarget struct {
+	Id    int64  `json:"id"`
+	Main  bool   `json:"main"`
+	Title string `json:"title"`
+}
+
 // BoundaryItem defines model for BoundaryItem.
 type BoundaryItem struct {
 	// At The boundary time in milliseconds.
@@ -2649,6 +2656,9 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/automations)
 	CreateAutomation(w http.ResponseWriter, r *http.Request, agentId string)
 
+	// (GET /api/agents/{agentId}/automations/targets)
+	ListAutomationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
 	// (DELETE /api/agents/{agentId}/automations/{automationId})
 	DeleteAutomation(w http.ResponseWriter, r *http.Request, agentId string, automationId AutomationId)
 
@@ -3206,6 +3216,32 @@ func (siw *ServerInterfaceWrapper) CreateAutomation(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateAutomation(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAutomationTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListAutomationTargets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAutomationTargets(w, r, agentId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5962,6 +5998,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/extensions/reload", wrapper.ReloadExtensions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/automations", wrapper.ListAutomations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/automations", wrapper.CreateAutomation)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/automations/targets", wrapper.ListAutomationTargets)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/automations/{automationId}", wrapper.DeleteAutomation)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/automations/{automationId}", wrapper.GetAutomation)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/automations/{automationId}", wrapper.UpdateAutomation)
@@ -6608,6 +6645,30 @@ func (response CreateAutomationdefaultJSONResponse) VisitCreateAutomationRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAutomationTargetsRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type ListAutomationTargetsResponseObject interface {
+	VisitListAutomationTargetsResponse(w http.ResponseWriter) error
+}
+
+type ListAutomationTargets200JSONResponse struct {
+	Targets []AutomationTarget `json:"targets"`
+}
+
+func (response ListAutomationTargets200JSONResponse) VisitListAutomationTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -11589,6 +11650,9 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/automations)
 	CreateAutomation(ctx context.Context, request CreateAutomationRequestObject) (CreateAutomationResponseObject, error)
 
+	// (GET /api/agents/{agentId}/automations/targets)
+	ListAutomationTargets(ctx context.Context, request ListAutomationTargetsRequestObject) (ListAutomationTargetsResponseObject, error)
+
 	// (DELETE /api/agents/{agentId}/automations/{automationId})
 	DeleteAutomation(ctx context.Context, request DeleteAutomationRequestObject) (DeleteAutomationResponseObject, error)
 
@@ -12202,6 +12266,32 @@ func (sh *strictHandler) CreateAutomation(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(CreateAutomationResponseObject); ok {
 		if err := validResponse.VisitCreateAutomationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAutomationTargets operation middleware
+func (sh *strictHandler) ListAutomationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request ListAutomationTargetsRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAutomationTargets(ctx, request.(ListAutomationTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAutomationTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAutomationTargetsResponseObject); ok {
+		if err := validResponse.VisitListAutomationTargetsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

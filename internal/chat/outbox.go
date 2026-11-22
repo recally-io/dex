@@ -543,7 +543,7 @@ func (s *Service) WakeRoutineOutbox(ctx context.Context, runID string) {
 func routineFailure(run sqlc.AutomationRun) bool {
 	if run.Status == "skipped" {
 		switch run.Reason.String {
-		case RoutineSkipNoModel, RoutineSkipMissed:
+		case RoutineSkipNoModel, RoutineSkipMissed, routineSkipTargetSession:
 			return true
 		default:
 			reason := run.Reason.String

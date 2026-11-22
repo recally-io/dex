@@ -28,15 +28,16 @@ type RoutineNotification struct {
 
 // RoutinePatch preserves omitted fields, including enabled=false and cwd="".
 type RoutinePatch struct {
-	Notification *RoutineNotification `json:"notification,omitempty"`
-	ID           string               `json:"id,omitempty"`
-	Name         *string              `json:"name,omitempty"`
-	Prompt       *string              `json:"prompt,omitempty"`
-	Schedule     *RoutineSchedule     `json:"schedule,omitempty"`
-	TimeZone     *string              `json:"timeZone,omitempty"`
-	Session      *string              `json:"session,omitempty"`
-	Enabled      *bool                `json:"enabled,omitempty"`
-	Cwd          *string              `json:"cwd,omitempty"`
+	Notification         *RoutineNotification `json:"notification,omitempty"`
+	ID                   string               `json:"id,omitempty"`
+	Name                 *string              `json:"name,omitempty"`
+	Prompt               *string              `json:"prompt,omitempty"`
+	Schedule             *RoutineSchedule     `json:"schedule,omitempty"`
+	TimeZone             *string              `json:"timeZone,omitempty"`
+	Session              *string              `json:"session,omitempty"`
+	TargetConversationID *int64               `json:"targetConversationId,omitempty"`
+	Enabled              *bool                `json:"enabled,omitempty"`
+	Cwd                  *string              `json:"cwd,omitempty"`
 	// EnvironmentID is local or an SSH environment ID; empty follows the environment of the bot.
 	EnvironmentID *string `json:"environmentId,omitempty"`
 }
@@ -55,21 +56,22 @@ type RoutineRun struct {
 }
 
 type RoutineInfo struct {
-	Notification  *RoutineNotification `json:"notification,omitempty"`
-	ID            string               `json:"id"`
-	Name          string               `json:"name"`
-	Prompt        string               `json:"prompt,omitempty"`
-	Schedule      RoutineSchedule      `json:"schedule"`
-	TimeZone      string               `json:"timeZone"`
-	Session       string               `json:"session"`
-	Enabled       bool                 `json:"enabled"`
-	Cwd           string               `json:"cwd"`
-	EnvironmentID string               `json:"environmentId"`
-	NextRuns      []int64              `json:"nextRuns"`
-	LastRun       *RoutineRun          `json:"lastRun,omitempty"`
-	CreatedAt     int64                `json:"createdAt"`
-	UpdatedAt     int64                `json:"updatedAt"`
-	Runs          []RoutineRun         `json:"runs,omitempty"`
+	Notification         *RoutineNotification `json:"notification,omitempty"`
+	ID                   string               `json:"id"`
+	Name                 string               `json:"name"`
+	Prompt               string               `json:"prompt,omitempty"`
+	Schedule             RoutineSchedule      `json:"schedule"`
+	TimeZone             string               `json:"timeZone"`
+	Session              string               `json:"session"`
+	TargetConversationID int64                `json:"targetConversationId,omitzero"`
+	Enabled              bool                 `json:"enabled"`
+	Cwd                  string               `json:"cwd"`
+	EnvironmentID        string               `json:"environmentId"`
+	NextRuns             []int64              `json:"nextRuns"`
+	LastRun              *RoutineRun          `json:"lastRun,omitempty"`
+	CreatedAt            int64                `json:"createdAt"`
+	UpdatedAt            int64                `json:"updatedAt"`
+	Runs                 []RoutineRun         `json:"runs,omitempty"`
 }
 
 // RoutineTools binds tool calls to business services without a transport.
@@ -94,7 +96,7 @@ func routineExtension(agentID string, handlers RoutineTools) *durable.Extension 
 		variant("once", map[string]any{"at": map[string]any{"type": "integer", "minimum": 1, "description": "Unix milliseconds."}}, "at"),
 	}}
 	props := func() map[string]any {
-		return map[string]any{"notification": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"mode"}, "properties": map[string]any{"mode": map[string]any{"type": "string", "enum": []string{"none", "default", "target"}}, "targetId": str()}}, "name": str(), "prompt": str(), "schedule": schedule, "timeZone": map[string]any{"type": "string", "description": "Explicit IANA time zone, for example Asia/Shanghai or UTC."}, "session": map[string]any{"type": "string", "enum": []string{"new", "reuse"}}, "enabled": map[string]any{"type": "boolean"}, "cwd": map[string]any{"type": "string", "description": "Absolute project directory. Omit to inherit this conversation. Empty uses the agent workspace."}, "environmentId": map[string]any{"type": "string", "description": "local or an SSH environment ID from environment_list. Omit to inherit the environment of this conversation. Empty follows the environment of this bot. A run never uses another environment: when this one is removed, runs are skipped. A new environment drops the inherited cwd."}}
+		return map[string]any{"notification": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"mode"}, "properties": map[string]any{"mode": map[string]any{"type": "string", "enum": []string{"none", "default", "target"}}, "targetId": str()}}, "name": str(), "prompt": str(), "schedule": schedule, "timeZone": map[string]any{"type": "string", "description": "Explicit IANA time zone, for example Asia/Shanghai or UTC."}, "session": map[string]any{"type": "string", "enum": []string{"new", "reuse", "session"}}, "targetConversationId": map[string]any{"type": "integer", "minimum": 1, "description": "Required in session mode. An existing writable session of this bot."}, "enabled": map[string]any{"type": "boolean"}, "cwd": map[string]any{"type": "string", "description": "Absolute project directory. Omit to inherit this conversation. Empty uses the agent workspace."}, "environmentId": map[string]any{"type": "string", "description": "local or an SSH environment ID from environment_list. Omit to inherit the environment of this conversation. Empty follows the environment of this bot. A run never uses another environment: when this one is removed, runs are skipped. A new environment drops the inherited cwd."}}
 	}
 	create := map[string]any{"type": "object", "properties": props(), "required": []string{"name", "prompt", "schedule", "timeZone"}, "additionalProperties": false}
 	updateProps := props()

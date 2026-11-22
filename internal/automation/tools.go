@@ -50,7 +50,7 @@ func toolRun(r Run) engine.RoutineRun {
 }
 
 func routineView(a Automation) engine.RoutineInfo {
-	out := engine.RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: engine.RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, Enabled: a.Enabled, Cwd: a.Cwd, EnvironmentID: a.EnvironmentID, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
+	out := engine.RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: engine.RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, TargetConversationID: a.TargetConversationID, Enabled: a.Enabled, Cwd: a.Cwd, EnvironmentID: a.EnvironmentID, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	if a.LastRun != nil {
 		out.LastRun = new(toolRun(*a.LastRun))
 	}
@@ -127,7 +127,7 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	}
 	local := &Service{
 		q: q,
-		enqueue: func(ctx context.Context, in chat.AutomationInput) (int64, bool, error) {
+		enqueue: func(ctx context.Context, in chat.AutomationInput) (chat.AutomationInputResult, error) {
 			return chat.StoreAutomationInput(ctx, q, in)
 		},
 		now: s.service.now,
@@ -174,6 +174,12 @@ func applyPatch(in *Input, p engine.RoutinePatch) {
 	}
 	if p.Session != nil {
 		in.Session = *p.Session
+		if in.Session != "session" {
+			in.TargetConversationID = 0
+		}
+	}
+	if p.TargetConversationID != nil {
+		in.TargetConversationID = *p.TargetConversationID
 	}
 	if p.Enabled != nil {
 		in.Enabled = *p.Enabled
@@ -239,12 +245,15 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p engine
 			if err := local.checkEnvironment(ctx, cleanIn.EnvironmentID, row.EnvironmentID); err != nil {
 				return nil, err
 			}
-			row.Cwd, row.EnvironmentID = cleanIn.Cwd, cleanIn.EnvironmentID
+			if err := local.checkTarget(ctx, c.AgentID, cleanIn); err != nil {
+				return nil, err
+			}
+			row.Cwd, row.EnvironmentID, row.TargetConversationID = cleanIn.Cwd, cleanIn.EnvironmentID, targetID(cleanIn)
 			row.Name = cleanIn.Name
 			row.Prompt = cleanIn.Prompt
 			row.Session = cleanIn.Session
 			row.UpdatedAt = local.now().UnixMilli()
-			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, EnvironmentID: row.EnvironmentID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: row.AgentID})
+			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: row.AgentID})
 			if err != nil {
 				return nil, err
 			}
@@ -263,17 +272,21 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 	// transaction compares the environment again.
 	// A missing routine is left to the transaction, so a retry of a stored call still replays.
 	var pre *Target
+	var preRow sqlc.Automation
 	if row, err := s.service.get(ctx, c.AgentID, id); err == nil {
 		t, err := s.service.Preflight(ctx, row)
 		if err != nil {
 			return out, err
 		}
-		pre = &t
+		pre, preRow = &t, row
 	}
 	err := s.mutate(ctx, c, "run", func(local *Service, _ sqlc.Conversation) (any, error) {
 		row, err := local.get(ctx, c.AgentID, id)
 		if err != nil {
 			return nil, err
+		}
+		if row.Session == "session" && pre != nil && row.TargetConversationID.Valid && (preRow.Session != row.Session || preRow.TargetConversationID != row.TargetConversationID) {
+			return nil, fmt.Errorf("%w: the routine target changed during its check; run it again", engine.ErrBusy)
 		}
 		r, err := local.admit(ctx, row, sql.NullInt64{}, "", pre)
 		return toolRun(r), err
