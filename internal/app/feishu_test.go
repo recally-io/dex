@@ -23,6 +23,7 @@ import (
 
 // This server is the platform boundary. dex, SQLite and the worker remain real.
 type fakeFeishu struct {
+	reactGate            *reactionGate
 	pingInterval         int
 	conn                 *websocket.Conn
 	server               *httptest.Server
@@ -150,6 +151,31 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 		f.mu.Unlock()
 		_, _ = fmt.Fprintf(w, `{"code":0,"tenant_access_token":%q,"expire":7200}`, token)
 	default:
+		if message, path, ok := strings.Cut(strings.TrimPrefix(r.URL.Path, "/open-apis/im/v1/messages/"), "/reactions"); ok {
+			if r.Method == http.MethodDelete {
+				if f.reactGate != nil {
+					f.reactGate.handle(r, message, "delete:"+strings.TrimPrefix(path, "/"))
+				}
+				_, _ = w.Write([]byte(`{"code":0}`))
+				return
+			}
+			var input struct {
+				Reaction struct {
+					Emoji string `json:"emoji_type"`
+				} `json:"reaction_type"`
+			}
+			if err := json.UnmarshalRead(r.Body, &input); err != nil {
+				http.Error(w, "invalid reaction", http.StatusBadRequest)
+				return
+			}
+			if f.reactGate != nil && !f.reactGate.handle(r, message, input.Reaction.Emoji) {
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(`{"code":99991400}`))
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"code":0,"data":{"reaction_id":%q}}`, "remote-"+input.Reaction.Emoji)
+			return
+		}
 		if strings.Contains(r.URL.Path, "/resources/") {
 			f.mu.Lock()
 			status, size := f.resourceStatus, f.resourceSize
@@ -973,7 +999,8 @@ func TestUserFeishuReceivesLocalizedPostAndRefreshesExpiredToken(t *testing.T) {
 	f.mu.Lock()
 	tokenReqs, headers := f.tokenRequests, append([]string(nil), f.replyAuthHeaders...)
 	f.mu.Unlock()
-	if tokenReqs < 2 || !strings.Contains(strings.Join(headers, ","), "Bearer tenant-token-2") {
+	// An independent reaction client can acquire another token before the reply refresh.
+	if tokenReqs < 2 || len(headers) < 2 || headers[len(headers)-1] == "Bearer tenant-token-1" {
 		t.Fatalf("expired tenant token was not refreshed: tokenReqs=%d headers=%v", tokenReqs, headers)
 	}
 }

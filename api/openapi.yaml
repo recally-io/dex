@@ -3883,7 +3883,12 @@ components:
           description: Require a mention or reply to this bot for group input. Off by default for individually authorized senders. This does not grant access to private resources.
         silent: { type: boolean, default: false }
         preview: { type: string, enum: ["", auto, edit, draft, "off"] }
-        reactions: { type: boolean, default: false }
+        reactions:
+          type: boolean
+          description: Private chat status reactions. On when unset; false explicitly disables them.
+        groupReactions:
+          type: boolean
+          description: Opt in to status reactions for authorized group inputs. Off when unset.
         stt: { $ref: "#/components/schemas/TelegramSpeechOptions" }
         tts: { $ref: "#/components/schemas/TelegramSpeechOptions" }
 
@@ -3937,6 +3942,9 @@ components:
         appId: { type: string }
         brand: { type: string }
         paired: { type: boolean }
+        reactions:
+          type: boolean
+          description: Private chat status reactions. On when unset; false explicitly disables them.
         status: { type: string }
         error: { type: string }
 
@@ -3963,6 +3971,9 @@ components:
           type: string
           description: Write-only. Empty keeps the secret for the same App ID and brand.
         brand: { type: string }
+        reactions:
+          type: boolean
+          description: Omission preserves the saved preference. False disables private chat status reactions.
 
     FeishuBrand:
       type: object

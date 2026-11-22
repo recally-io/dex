@@ -26,20 +26,23 @@ type inbound interface {
 
 // Bot connects the platform to durable admission, uploads and replies.
 type Bot struct {
-	cfg      Config
-	client   *client
-	manager  inbound
-	watch    func(context.Context, int64) (io.ReadCloser, error)
-	uploads  *upload.Store
-	pair     func(context.Context, string, string) (bool, error)
-	mu       sync.Mutex // one owner's traffic; per preview if outbound latency blocks admission
-	previews map[string]*preview
-	wg       sync.WaitGroup
+	cfg       Config
+	client    *client
+	reactions *client
+	manager   inbound
+	watch     func(context.Context, int64) (io.ReadCloser, error)
+	uploads   *upload.Store
+	pair      func(context.Context, string, string) (bool, error)
+	mu        sync.Mutex // one owner's traffic; per preview if outbound latency blocks admission
+	previews  map[string]*preview
+	wg        sync.WaitGroup
 }
 
 // New creates a bot. pair atomically consumes a manual setup code.
 func New(cfg Config, manager inbound, watch func(context.Context, int64) (io.ReadCloser, error), uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
-	return &Bot{cfg: cfg, client: newClient(cfg), manager: manager, watch: watch, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
+	reactionClient := newClient(cfg)
+	reactionClient.once = true
+	return &Bot{cfg: cfg, client: newClient(cfg), reactions: reactionClient, manager: manager, watch: watch, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
 }
 
 // Run receives events until the manager cancels it.
@@ -114,7 +117,7 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	} else if received {
 		return nil
 	}
-	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo}
+	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo, ChannelContext: chat.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender, MessageID: m.ID}}
 	stored := false
 	defer func() {
 		if !stored {

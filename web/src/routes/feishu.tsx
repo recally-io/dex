@@ -10,7 +10,7 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { Button } from "../components/ui/button";
 import { Failure } from "../components/feedback";
-import { Field, Input } from "../components/form";
+import { Field, Input, Select } from "../components/form";
 import { Facts, Mono, Note, Panel, Section } from "../components/page";
 import { HowToUse, Notifications, Steps, TurnOff } from "../components/channel-kit";
 import { Confirm } from "../components/confirm";
@@ -22,7 +22,9 @@ export function FeishuChannel() {
   const saved = useQuery({ ...getFeishuOptions({ path: { agentId } }), refetchInterval: 3000 });
   const [selectedBrand, setBrand] = useState<string | null>(null);
   const brand = selectedBrand ?? saved.data?.brand ?? "feishu";
-  const [appId, setAppId] = useState("");
+  const [editedAppId, setAppId] = useState<string | null>(null);
+  const appId = editedAppId ?? saved.data?.appId ?? "";
+  const [reactions, setReactions] = useState<boolean | undefined>(undefined);
   const [appSecret, setAppSecret] = useState("");
   const [setup, setSetup] = useState<FeishuSetup | null>(null);
   const [qrError, setQrError] = useState("");
@@ -55,6 +57,8 @@ export function FeishuChannel() {
     ...setFeishuMutation({ path: { agentId } }),
     onSuccess: (data) => {
       setAppSecret("");
+      setAppId(null);
+      setReactions(undefined);
       setSetup(data);
       void refresh();
     },
@@ -171,19 +175,11 @@ export function FeishuChannel() {
           onSubmit={(e) => {
             e.preventDefault();
             setSetup(null);
-            save.mutate({ path: { agentId }, body: { appId, appSecret, brand } });
+            save.mutate({ path: { agentId }, body: { appId, appSecret, brand, reactions } });
           }}
         >
           <Field label="App ID">
-            {({ id }) => (
-              <Input
-                id={id}
-                required
-                value={appId}
-                placeholder={saved.data?.appId}
-                onChange={(e) => setAppId(e.target.value)}
-              />
-            )}
+            {({ id }) => <Input id={id} required value={appId} onChange={(e) => setAppId(e.target.value)} />}
           </Field>
           <Field label="App Secret" hint="Write-only. Leave empty to keep the secret for the same app.">
             {({ id }) => (
@@ -194,6 +190,18 @@ export function FeishuChannel() {
                 value={appSecret}
                 onChange={(e) => setAppSecret(e.target.value)}
               />
+            )}
+          </Field>
+          <Field label="Private chat status reactions" hint="Show the status on your incoming message.">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={(reactions ?? saved.data?.reactions) === false ? "off" : "on"}
+                onChange={(e) => setReactions(e.target.value === "on")}
+              >
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </Select>
             )}
           </Field>
           <div>

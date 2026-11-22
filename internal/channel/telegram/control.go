@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
 )
 
@@ -87,25 +86,4 @@ func (b *Bot) presentation(params map[string]any, method string) {
 	if b.cfg.Options.Silent && (method == "sendRichMessage" || method == "copyMessage" || method == "forwardMessage") {
 		params["disable_notification"] = true
 	}
-}
-
-func (b *Bot) reaction(ctx context.Context, peer, remote, emoji string) error {
-	_, err := b.Control(ctx, peer, channel.RemoteMessage{ID: remote}, engine.TelegramRequest{Action: "react", Emoji: emoji})
-	return err
-}
-
-// Finish runs before the durable outbox is complete, so an interrupted reaction can resume.
-func (b *Bot) Finish(ctx context.Context, peer string, source chat.ChannelContext, status string) error {
-	if !b.cfg.Options.Reactions || source.MessageID == "" {
-		return nil
-	}
-	emoji := "👍"
-	if status != "done" {
-		emoji = "👎"
-	}
-	err := b.reaction(ctx, peer, source.MessageID, emoji)
-	if errors.Is(err, channel.ErrPermanent) {
-		return nil
-	}
-	return err
 }
