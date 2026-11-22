@@ -26,8 +26,12 @@ type media struct {
 	IsVideo    bool   `json:"is_video"`
 }
 
-func (b *Bot) download(ctx context.Context, m *message) ([]engine.Attachment, error) {
-	return b.downloadTo(ctx, m, b.cfg.Uploads)
+func (b *Bot) rejectAttachment(ctx context.Context, peer string, err error) error {
+	api, ok := errors.AsType[*apiError](err)
+	if errors.Is(err, upload.ErrTooLarge) || errors.Is(err, upload.ErrInvalidName) || (ok && api.Code == 400) {
+		return b.controlPeerReply(ctx, peer, "Cannot read this attachment. Send a supported file under 20 MB.")
+	}
+	return err
 }
 
 func (b *Bot) downloadTo(ctx context.Context, m *message, store *upload.Store) ([]engine.Attachment, error) {

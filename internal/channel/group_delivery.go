@@ -15,14 +15,14 @@ func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot Bot, r
 			if err != nil {
 				return err
 			}
-			return m.confirmPart(ctx, r, receipt, remotes)
+			return m.confirmDelivery(ctx, r, receipt, remotes, false)
 		}
 		// Commit the mode before any fallback request. Unknown group outcomes never enter this path.
 		if err := m.q.StartOutboxGroupFallback(ctx, sqlc.StartOutboxGroupFallbackParams{ID: r.ID, Part: int64(index)}); err != nil {
 			return err
 		}
-		if r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
-			if err := m.q.StartChannelGroupFallback(ctx, sqlc.StartChannelGroupFallbackParams{ID: r.SourceSubmissionID.String, Part: int64(index)}); err != nil {
+		if source := legacyReplySource(r); source.Valid {
+			if err := m.q.StartChannelGroupFallback(ctx, sqlc.StartChannelGroupFallbackParams{ID: source.String, Part: int64(index)}); err != nil {
 				return err
 			}
 		}

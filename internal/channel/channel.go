@@ -398,18 +398,60 @@ func (m *Manager) sendPart(ctx context.Context, bot Bot, peer, id string, index 
 	}
 	if errors.Is(err, ErrPermanent) {
 		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", index, "err", err)
-		if stored := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: id, Reason: err.Error()}); stored != nil {
-			return Receipt{}, stored
-		}
-		if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: id, Reason: err.Error()}); stored != nil {
-			return Receipt{}, stored
-		}
-		return Receipt{}, nil
+		return Receipt{}, m.saveDeliveryError(ctx, id, sql.NullString{String: id, Valid: true}, 0, err)
 	}
 	if err == nil && len(part.Buttons) > 0 && len(receipt.MessageIDs) == 1 {
 		err = m.q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: id, Part: int64(index), MessageID: receipt.MessageIDs[0]})
 	}
 	return receipt, err
+}
+
+// sendCommandReply skips delivery if the Telegram actor is no longer authorized.
+// The sender closes the command receipt in both the sent and skipped cases.
+func (m *Manager) sendCommandReply(ctx context.Context, bot Bot, r sqlc.ChannelCommand) error {
+	telegram := strings.HasPrefix(r.Peer, "telegram:")
+	var identity chat.ChannelContext
+	if telegram {
+		if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
+			return err
+		}
+		allowed, err := m.TelegramInputAllowed(ctx, r.Peer, identity)
+		if err != nil || !allowed {
+			return err
+		}
+	}
+	parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
+	if r.RenderedReply != "" {
+		if err := json.Unmarshal([]byte(r.RenderedReply), &parts); err != nil {
+			return err
+		}
+	} else if telegram && r.Answer != "" {
+		target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Peer, identity)
+		if err != nil {
+			return err
+		}
+		actions, err := m.menuActions(ctx, r.Command, target)
+		if err != nil {
+			return err
+		}
+		parts, err = m.addButtons(ctx, parts, r.SourceKey, r.Peer, identity, target, actions)
+		if err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(parts)
+		if err != nil {
+			return err
+		}
+		if err := m.q.FreezeTelegramCommandReply(ctx, sqlc.FreezeTelegramCommandReplyParams{SourceKey: r.SourceKey, RenderedReply: string(encoded)}); err != nil {
+			return err
+		}
+	}
+	for i, part := range parts {
+		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
+			return fmt.Errorf("send command reply: %w", err)
+		}
+	}
+	return nil
 }
 
 func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
@@ -433,58 +475,10 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		return err
 	}
 	for _, r := range acks {
-		if strings.HasPrefix(r.Peer, "telegram:") {
-			var source chat.ChannelContext
-			if err := json.Unmarshal([]byte(r.ChannelContext), &source); err != nil {
-				return err
-			}
-			allowed, err := m.TelegramInputAllowed(ctx, r.Peer, source)
-			if err != nil {
-				return err
-			}
-			if !allowed {
-				if err := m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
-					return err
-				}
-				continue
-			}
+		if err := m.sendCommandReply(ctx, bot, r); err != nil {
+			return err
 		}
-		parts := bot.Parts(chat.Reply{Status: "done", Answer: r.Answer})
-		if r.RenderedReply != "" {
-			if err := json.Unmarshal([]byte(r.RenderedReply), &parts); err != nil {
-				return err
-			}
-		} else if strings.HasPrefix(r.Peer, "telegram:") && r.Answer != "" {
-			var identity chat.ChannelContext
-			if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
-				return err
-			}
-			target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Peer, identity)
-			if err != nil {
-				return err
-			}
-			actions, err := m.menuActions(ctx, r.Command, target)
-			if err != nil {
-				return err
-			}
-			parts, err = m.addButtons(ctx, parts, r.SourceKey, r.Peer, identity, target, actions)
-			if err != nil {
-				return err
-			}
-			encoded, err := json.Marshal(parts)
-			if err != nil {
-				return err
-			}
-			if err := m.q.FreezeTelegramCommandReply(ctx, sqlc.FreezeTelegramCommandReplyParams{SourceKey: r.SourceKey, RenderedReply: string(encoded)}); err != nil {
-				return err
-			}
-		}
-		for i, part := range parts {
-			if _, err = m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
-				return fmt.Errorf("send command reply: %w", err)
-			}
-		}
-		if err = m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
+		if err := m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 			return err
 		}
 	}
@@ -526,13 +520,8 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 				if flood, ok := errors.AsType[*RetryError](err); ok {
 					retryAt = time.Now().Add(flood.After).UnixMilli()
 				}
-				if stored := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, RetryAt: retryAt, Reason: err.Error()}); stored != nil {
+				if stored := m.saveDeliveryError(ctx, r.ID, legacyReplySource(r), retryAt, err); stored != nil {
 					return errors.Join(err, stored)
-				}
-				if r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
-					if stored := m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: r.SourceSubmissionID.String, RetryAt: retryAt, Reason: err.Error()}); stored != nil {
-						return errors.Join(err, stored)
-					}
 				}
 				return err
 			}
@@ -549,7 +538,8 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 					return err
 				}
 				if err := finished.Finish(ctx, r.Peer, source, outboxReplyStatus(r)); err != nil {
-					if saved := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, RetryAt: time.Now().Add(5 * time.Second).UnixMilli(), Reason: err.Error()}); saved != nil {
+					// A final reaction retries independently of the legacy reply cursor.
+					if saved := m.saveDeliveryError(ctx, r.ID, sql.NullString{}, time.Now().Add(5*time.Second).UnixMilli(), err); saved != nil {
 						return errors.Join(err, saved)
 					}
 					return err
@@ -560,8 +550,8 @@ func (m *Manager) flush(ctx context.Context, name string, bot Bot) error {
 		if err := m.q.MarkOutboxDelivered(ctx, sqlc.MarkOutboxDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
 			return err
 		}
-		if r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
-			if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.SourceSubmissionID.String, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
+		if source := legacyReplySource(r); source.Valid {
+			if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: source.String, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
 				return err
 			}
 		}

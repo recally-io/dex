@@ -162,8 +162,9 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if m == nil || m.From == nil || !m.hasContent() {
 		return nil
 	}
+	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
 	if m.Chat.Type == "group" || m.Chat.Type == "supergroup" {
-		return b.receiveGroup(ctx, u, m, edited)
+		return b.receiveGroup(ctx, source, m, edited)
 	}
 	if m.Chat.Type != "private" {
 		return nil
@@ -196,7 +197,6 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if !allowed {
 		return nil
 	}
-	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
 	if selected, _ := m.selectedMedia(); selected != nil {
 		received, err := b.chats.ReceivedSource(ctx, source)
 		if err != nil {
@@ -217,31 +217,15 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if staged != nil {
 		attachments = staged.Attachments
 	} else {
-		attachments, err = b.download(ctx, m)
+		attachments, err = b.downloadTo(ctx, m, b.cfg.Uploads)
 	}
 	if err != nil {
-		permanent := errors.Is(err, upload.ErrTooLarge) || errors.Is(err, upload.ErrInvalidName)
-		if e, ok := errors.AsType[*apiError](err); ok && e.Code == 400 {
-			permanent = true
-		}
-		if !permanent {
-			return err
-		}
-		return b.controlReply(ctx, m.Chat.ID, "Cannot read this attachment. Send a supported file under 20 MB.")
+		return b.rejectAttachment(ctx, peer, err)
 	}
-	content := m.body()
-	if m.ForwardOrigin != nil {
-		content = "Forwarded message:\n" + content
-	}
-	if edited {
-		content = fmt.Sprintf("Correction to Telegram message %d (earlier actions are not undone):\n%s", m.ID, content)
-	}
-	incoming := chat.Message{Content: content, Attachments: attachments, ChannelNote: m.contextNote(), ChannelContext: identity}
+	incoming := m.inbound(m.body(), edited, attachments, identity)
+	content := incoming.Content
 	if _, kind := m.selectedMedia(); kind != "" {
 		incoming.ChannelContext.MediaKind = kind
-	}
-	if m.ReplyTo != nil {
-		incoming.ReplyTo = strconv.FormatInt(m.ReplyTo.ID, 10)
 	}
 	if staged != nil {
 		incoming = *staged
@@ -262,15 +246,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 			return err
 		}
 	}
-	var receiveErr error
-	if m.MediaGroupID != "" && len(attachments) > 0 {
-		receiveErr = b.chats.StoreTelegramAlbum(ctx, peer, source, incoming)
-		if receiveErr == nil {
-			b.WakeMedia()
-		}
-	} else {
-		receiveErr = b.chats.Receive(ctx, peer, source, incoming)
-	}
+	receiveErr := b.submitInput(ctx, peer, source, incoming, m.MediaGroupID != "" && len(attachments) > 0)
 	if len(attachments) > 0 {
 		// A committed receipt can own the files even when admission returns an error.
 		receipt, lookupErr := b.chats.Source(context.WithoutCancel(ctx), source)

@@ -264,8 +264,23 @@ func (m *Manager) authorizedReply(ctx context.Context, platform, peer, channelCo
 	return false, nil
 }
 
-func (m *Manager) confirmPart(ctx context.Context, r sqlc.ListPendingOutboxMessagesRow, receipt Receipt, remotes *[]RemoteMessage) error {
-	return m.confirmDelivery(ctx, r, receipt, remotes, false)
+// legacyReplySource identifies the submissions row whose delivery cursor mirrors the outbox.
+func legacyReplySource(r sqlc.ListPendingOutboxMessagesRow) sql.NullString {
+	if r.Kind == "reply" || r.Kind == "question" {
+		return r.SourceSubmissionID
+	}
+	return sql.NullString{}
+}
+
+func (m *Manager) saveDeliveryError(ctx context.Context, id string, legacySource sql.NullString, retryAt int64, cause error) error {
+	reason := cause.Error()
+	if err := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: id, RetryAt: retryAt, Reason: reason}); err != nil {
+		return err
+	}
+	if legacySource.Valid {
+		return m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: legacySource.String, RetryAt: retryAt, Reason: reason})
+	}
+	return nil
 }
 
 func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxMessagesRow, receipt Receipt, remotes *[]RemoteMessage, member bool) error {
@@ -293,15 +308,16 @@ func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxM
 	if err != nil {
 		return err
 	}
+	source := legacyReplySource(r)
 	if member {
 		err = q.AdvanceOutboxGroupMember(ctx, sqlc.AdvanceOutboxGroupMemberParams{ID: r.ID, RemoteIds: string(encoded)})
-		if err == nil && r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
-			err = q.AdvanceChannelGroupMember(ctx, sqlc.AdvanceChannelGroupMemberParams{ID: r.SourceSubmissionID.String, RemoteIds: string(encoded)})
+		if err == nil && source.Valid {
+			err = q.AdvanceChannelGroupMember(ctx, sqlc.AdvanceChannelGroupMemberParams{ID: source.String, RemoteIds: string(encoded)})
 		}
 	} else {
 		err = q.AdvanceOutboxMessage(ctx, sqlc.AdvanceOutboxMessageParams{ID: r.ID, RemoteIds: string(encoded)})
-		if err == nil && r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
-			err = q.AdvanceChannelReply(ctx, sqlc.AdvanceChannelReplyParams{ID: r.SourceSubmissionID.String, RemoteIds: string(encoded)})
+		if err == nil && source.Valid {
+			err = q.AdvanceChannelReply(ctx, sqlc.AdvanceChannelReplyParams{ID: source.String, RemoteIds: string(encoded)})
 		}
 	}
 	if err != nil {
