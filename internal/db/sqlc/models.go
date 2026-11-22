@@ -176,13 +176,14 @@ type ExecutionEnvironment struct {
 }
 
 type FeishuSetting struct {
-	AgentID          string `json:"agent_id"`
-	AppID            string `json:"app_id"`
-	AppSecret        string `json:"app_secret"`
-	Brand            string `json:"brand"`
-	OwnerID          string `json:"owner_id"`
-	PairingCode      string `json:"pairing_code"`
-	PairingExpiresAt int64  `json:"pairing_expires_at"`
+	AgentID          string        `json:"agent_id"`
+	AppID            string        `json:"app_id"`
+	AppSecret        string        `json:"app_secret"`
+	Brand            string        `json:"brand"`
+	OwnerID          string        `json:"owner_id"`
+	PairingCode      string        `json:"pairing_code"`
+	PairingExpiresAt int64         `json:"pairing_expires_at"`
+	Reactions        sql.NullInt64 `json:"reactions"`
 }
 
 type ForkReceipt struct {
@@ -265,6 +266,7 @@ type OutboxMessage struct {
 	DismissedAt        sql.NullInt64  `json:"dismissed_at"`
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
+	SkippedPart        int64          `json:"skipped_part"`
 }
 
 type Provider struct {
@@ -370,6 +372,7 @@ type Submission struct {
 	ChannelGroupFallback int64          `json:"channel_group_fallback"`
 	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
 	ExitAction           string         `json:"exit_action"`
+	RequiredReplyID      string         `json:"required_reply_id"`
 }
 
 type TelegramAlbumMember struct {

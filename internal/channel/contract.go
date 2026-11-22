@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"unicode"
 )
 
 // ErrPermanent marks a part the platform cannot accept. The sender logs and skips it.
@@ -50,11 +51,51 @@ type Reply struct {
 	Reason string
 }
 
+const FeedbackCommand = "/feedback"
+
+// SplitCommand separates a command token from the text after it, including on multiline input.
+func SplitCommand(text string) (name, rest string) {
+	text = strings.TrimSpace(text)
+	if i := strings.IndexFunc(text, unicode.IsSpace); i >= 0 {
+		return text[:i], strings.TrimLeftFunc(text[i:], unicode.IsSpace)
+	}
+	return text, ""
+}
+
+// IsFeedbackCommand matches the full token, not a prefix of an ordinary message.
+func IsFeedbackCommand(text string) bool {
+	name, _ := SplitCommand(text)
+	return name == FeedbackCommand
+}
+
 // IsCommand reports whether trimmed channel text is a command rather than input for the model.
 func IsCommand(text string) bool {
 	switch text {
 	case "/clear", "/new", "/stop", "/help", "/menu", "/status", "/settings", "/sessions", "/workflows", "/question":
 		return true
 	}
-	return strings.HasPrefix(text, "/run ") || strings.HasPrefix(text, "/answer ")
+	return IsFeedbackCommand(text) || strings.HasPrefix(text, "/run ") || strings.HasPrefix(text, "/answer ")
+}
+
+// Reaction is the observable state of an input on its original message.
+type Reaction uint8
+
+const (
+	ReactionQueued Reaction = iota + 1
+	ReactionProcessing
+	ReactionSucceeded
+	ReactionFailed
+	ReactionCancelled
+)
+
+// ErrReactionUnknown means the platform may still apply the request. Do not
+// issue a later reaction that an earlier, unconfirmed write could overwrite.
+var ErrReactionUnknown = errors.New("channel reaction outcome unknown")
+
+// Reactor is an optional bot capability. React replaces previous (a platform
+// reaction ID when applicable) and returns the ID to use for the next change.
+// It must not use the reply sender's retry or rate-control state.
+type Reactor interface {
+	ReactionsEnabled(peer string) bool
+	React(ctx context.Context, peer, messageID, previous string, status Reaction) (string, error)
 }

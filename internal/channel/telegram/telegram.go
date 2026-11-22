@@ -126,6 +126,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		{"command": "question", "description": "Show this conversation's open question"},
 		{"command": "clear", "description": "Clear the current conversation context"},
 		{"command": "stop", "description": "Stop the current conversation and its child work"},
+		{"command": "feedback", "description": "Prepare a public GitHub issue draft in private"},
 		{"command": "help", "description": "List commands"},
 	}}, nil); err != nil {
 		slog.Warn("telegram: command menu", "err", err)
@@ -216,6 +217,26 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if !allowed {
 		return nil
 	}
+	// Dispatch from the original text before quote handling, uploads or speech.
+	first, rest := channel.SplitCommand(m.body())
+	name, bot, addressed := strings.Cut(first, "@")
+	if name == channel.FeedbackCommand {
+		if addressed {
+			username, err := b.botUsername(ctx)
+			if err != nil {
+				return err
+			}
+			if username == "" || !strings.EqualFold(bot, username) {
+				return nil
+			}
+		}
+		input := channel.FeedbackCommand
+		if m.Text != "" && m.ForwardOrigin == nil {
+			input += " " + rest
+		}
+		identity.MediaGroup = ""
+		return b.chats.Receive(ctx, peer, source, chat.Message{Content: input, ChannelContext: identity})
+	}
 	if selected, _ := m.selectedMedia(); selected != nil {
 		received, err := b.chats.ReceivedSource(ctx, source)
 		if err != nil {
@@ -248,11 +269,6 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	}
 	if staged != nil {
 		incoming = *staged
-	}
-	if b.cfg.Options.Reactions && !channel.IsCommand(content) {
-		if err := b.reaction(ctx, peer, strconv.FormatInt(m.ID, 10), "👀"); err != nil {
-			slog.Warn("telegram: processing reaction unavailable", "err", err)
-		}
 	}
 	if (incoming.ChannelContext.MediaKind == "Voice" || incoming.ChannelContext.MediaKind == "Audio") && (b.cfg.Options.STT.Enabled || staged != nil) {
 		selected, _ := m.selectedMedia()
@@ -316,6 +332,10 @@ func (b *Bot) request(ctx context.Context, method string, body io.Reader, conten
 	if err := b.waitRate(ctx); err != nil {
 		return err
 	}
+	return b.requestAPI(ctx, method, body, contentType, result, true)
+}
+
+func (b *Bot) requestAPI(ctx context.Context, method string, body io.Reader, contentType string, result any, recordFloodWait bool) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		b.cfg.APIURL+"/bot"+b.cfg.Token+"/"+method, body)
 	if err != nil {
@@ -348,7 +368,7 @@ func (b *Bot) request(ctx context.Context, method string, body io.Reader, conten
 		return fmt.Errorf("telegram %s: HTTP %d: %w", method, resp.StatusCode, err)
 	}
 	if !out.OK {
-		if out.Code == 429 && out.Parameters.RetryAfter > 0 {
+		if recordFloodWait && out.Code == 429 && out.Parameters.RetryAfter > 0 {
 			b.rateMu.Lock()
 			until := time.Now().Add(time.Duration(out.Parameters.RetryAfter) * time.Second)
 			if until.After(b.retryAt) {

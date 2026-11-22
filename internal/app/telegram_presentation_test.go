@@ -36,7 +36,7 @@ func TestUserTelegramSilentPreviewAndReactionPreferencesAffectDelivery(t *testin
 					seen = append(seen, event.Text)
 				}
 			default:
-				return len(seen) >= 2, seen
+				return len(seen) >= 2 && seen[len(seen)-1] == "👍", seen
 			}
 		}
 	})
@@ -71,6 +71,8 @@ func TestUserTelegramMessageToolsUseOnlyCurrentPeerDeliveries(t *testing.T) {
 	data := t.TempDir()
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, data, 42)
+	// Manual reactions are independent from inbound status reactions.
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false}}, nil)
 	f.message(1, 42, 42, "original")
 	original := f.next(t)
 	conn := controlWriteDB(t, data)

@@ -17,12 +17,14 @@ import (
 )
 
 type runtime struct {
-	ctx    context.Context
-	bot    channel.Bot
-	cancel context.CancelFunc
-	done   chan struct{}
-	wake   chan struct{}
-	status channel.Status
+	ctx             context.Context
+	bot             channel.Bot
+	cancel          context.CancelFunc
+	done            chan struct{}
+	wake            chan struct{}
+	status          channel.Status
+	reactions       map[string]*reactionWatch // guarded by Manager.mu
+	reactionWorkers sync.WaitGroup
 }
 
 // Manager runs bots and sends replies from durable storage.
@@ -60,7 +62,7 @@ func (m *Manager) Set(name string, bot channel.Bot) {
 		return
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), status: channel.Status{State: "running"}}
+	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), reactions: make(map[string]*reactionWatch), status: channel.Status{State: "running"}}
 	m.mu.Lock()
 	m.bots[name] = r
 	m.mu.Unlock()
@@ -72,8 +74,12 @@ func (m *Manager) Set(name string, bot channel.Bot) {
 		if err != nil && ctx.Err() == nil {
 			m.Report(name, channel.Status{State: "error", Reason: err.Error()})
 		}
+		// Cancel under the same lock that admits reaction workers, then join them.
+		m.mu.Lock()
 		cancel()
+		m.mu.Unlock()
 		wg.Wait()
+		r.reactionWorkers.Wait()
 	}()
 }
 

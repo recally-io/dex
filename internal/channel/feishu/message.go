@@ -17,6 +17,7 @@ type message struct {
 	// ReplyTo is the ID of the message that this message quotes. It is empty for a plain message.
 	ReplyTo   string
 	Resources []resource
+	PlainText bool
 }
 
 // parseMessage extracts the supported content without retaining platform data.
@@ -72,6 +73,7 @@ func parseMessage(data []byte) (message, error) {
 		switch raw.Type {
 		case "text":
 			m.Text = content.Text
+			m.PlainText = true
 		case "image":
 			if content.ImageKey == "" {
 				return m, errors.New("image has no key")

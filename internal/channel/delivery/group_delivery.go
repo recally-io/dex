@@ -11,7 +11,7 @@ import (
 // sendReplyPart confirms either the whole group or one fallback member at a time.
 func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot channel.Bot, r sqlc.ListPendingOutboxMessagesRow, index int, part channel.Part, remotes *[]channel.RemoteMessage) error {
 	if len(part.Group) == 0 || r.GroupFallback == 0 {
-		receipt, err := m.sendPart(ctx, bot, r.Peer, r.ID, index, part)
+		receipt, err := m.sendPart(ctx, bot, r.Peer, r.ID, index, part, false)
 		if !errors.Is(err, channel.ErrGroupRejected) {
 			if err != nil {
 				return err
@@ -37,7 +37,7 @@ func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot channe
 			return errors.New("destination no longer authorized during group fallback")
 		}
 		file := part.Group[member]
-		receipt, err := m.sendPart(ctx, bot, r.Peer, r.ID, index, channel.Part{File: &file})
+		receipt, err := m.sendPart(ctx, bot, r.Peer, r.ID, index, channel.Part{File: &file}, false)
 		if err != nil {
 			return err
 		}

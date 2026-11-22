@@ -19,9 +19,16 @@ import (
 // Cancelling Wait does not cancel the admitted execution.
 type Submission struct {
 	ID      int64
+	native  durable.Submission
 	done    chan struct{}
 	outcome Outcome
 	err     error
+}
+
+// Running reports whether native execution has placed this input in an active run.
+func (s *Submission) Running(ctx context.Context) (bool, error) {
+	record, err := s.native.Status(ctx)
+	return record.Status == durable.SubmissionPlaced, err
 }
 
 func (s *Submission) Wait(ctx context.Context) (Outcome, error) {
@@ -209,7 +216,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 
 func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission) *Submission {
 	var err error
-	result := &Submission{ID: int64(native.Id()), done: make(chan struct{})}
+	result := &Submission{ID: int64(native.Id()), native: native, done: make(chan struct{})}
 	var stopActivity func()
 	if input.Child {
 		stopActivity, err = a.startActivityWatch(ctx, ref, conversation, input)

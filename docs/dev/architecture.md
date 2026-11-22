@@ -110,6 +110,8 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    business receipt. The channel outbox reads settled receipts and records
    confirmed reply parts. A restart reacquires native outcomes by request ID;
    it does not restart a second execution loop in control.
+   Telegram and Feishu/Lark status reactions observe these facts independently
+   of the outbox. See [Channels](channels.md#shared-channels).
 
 A fork request can carry a UUID. Control commits its receipt with the new Chat.
 A retry with the same source and boundary returns that Chat; a mismatch returns

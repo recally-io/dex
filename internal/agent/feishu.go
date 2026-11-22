@@ -18,12 +18,13 @@ import (
 
 // Feishu is the public view. It never contains the app secret or pairing code.
 type Feishu struct {
-	Status  string `json:"status"`
-	Error   string `json:"error"`
-	Enabled bool   `json:"enabled"`
-	AppID   string `json:"appId"`
-	Brand   string `json:"brand"`
-	Paired  bool   `json:"paired"`
+	Status    string `json:"status"`
+	Error     string `json:"error"`
+	Enabled   bool   `json:"enabled"`
+	AppID     string `json:"appId"`
+	Brand     string `json:"brand"`
+	Paired    bool   `json:"paired"`
+	Reactions *bool  `json:"reactions,omitempty"`
 }
 
 // FeishuSetup is a short-lived app creation or pairing session.
@@ -57,7 +58,11 @@ func (s *Service) FeishuConfig(ctx context.Context, agentID string) (*feishu.Con
 	if err != nil {
 		return nil, err
 	}
-	return &feishu.Config{AppID: row.AppID, AppSecret: row.AppSecret, Brand: row.Brand, OwnerID: row.OwnerID, APIURL: s.feishuAPIURL}, nil
+	var reactions *bool
+	if row.Reactions.Valid {
+		reactions = new(row.Reactions.Int64 == 1)
+	}
+	return &feishu.Config{Reactions: reactions, AppID: row.AppID, AppSecret: row.AppSecret, Brand: row.Brand, OwnerID: row.OwnerID, APIURL: s.feishuAPIURL}, nil
 }
 
 // GetFeishu returns the saved public configuration.
@@ -70,13 +75,13 @@ func (s *Service) GetFeishu(ctx context.Context, agentID string) (Feishu, error)
 		return Feishu{Brand: "feishu", Status: "off"}, nil
 	}
 	runtime := s.ChannelStatus(agentID, "feishu")
-	return Feishu{Enabled: true, AppID: cfg.AppID, Brand: cfg.Brand, Paired: cfg.OwnerID != "", Status: runtime.State, Error: runtime.Reason}, nil
+	return Feishu{Enabled: true, Reactions: cfg.Reactions, AppID: cfg.AppID, Brand: cfg.Brand, Paired: cfg.OwnerID != "", Status: runtime.State, Error: runtime.Reason}, nil
 }
 
 func validBrand(brand string) bool { return brand == "feishu" || brand == "lark" }
 
 // SetFeishu saves manual credentials and resets owner authorization on a credential change.
-func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, brand string) (FeishuSetup, error) {
+func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, brand string, reactions *bool) (FeishuSetup, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	appID = strings.TrimSpace(appID)
@@ -84,11 +89,14 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 	if !validBrand(brand) || appID == "" {
 		return FeishuSetup{}, fmt.Errorf("%w: enter an App ID and choose Feishu or Lark", ErrInvalid)
 	}
-	cfg := feishu.Config{AppID: appID, AppSecret: secret, Brand: brand, APIURL: s.feishuAPIURL}
+	cfg := feishu.Config{Reactions: reactions, AppID: appID, AppSecret: secret, Brand: brand, APIURL: s.feishuAPIURL}
 	// Pairing uses TryLock, so the snapshot remains valid while the old bot joins.
 	saved, err := s.FeishuConfig(ctx, agentID)
 	if err != nil {
 		return FeishuSetup{}, err
+	}
+	if saved != nil && cfg.Reactions == nil {
+		cfg.Reactions = saved.Reactions
 	}
 	s.onFeishu(agentID, nil)
 	savedNew := false
@@ -133,7 +141,14 @@ func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Con
 	if err := s.checkCredential(ctx, agentID, "feishu", cfg.AppID); err != nil {
 		return err
 	}
-	if err := s.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{AgentID: agentID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()}); err != nil {
+	var reactions sql.NullInt64
+	if cfg.Reactions != nil {
+		reactions.Valid = true
+		if *cfg.Reactions {
+			reactions.Int64 = 1
+		}
+	}
+	if err := s.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{Reactions: reactions, AgentID: agentID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()}); err != nil {
 		return err
 	}
 	s.onFeishu(agentID, &cfg)
@@ -235,6 +250,9 @@ func (s *Service) PollFeishu(ctx context.Context, agentID string, id string) (Fe
 	saved, err := s.FeishuConfig(ctx, agentID)
 	if err != nil {
 		return FeishuSetup{}, err
+	}
+	if saved != nil {
+		cfg.Reactions = saved.Reactions
 	}
 	s.onFeishu(agentID, nil)
 	if err := s.saveFeishu(ctx, agentID, cfg, ""); err != nil {

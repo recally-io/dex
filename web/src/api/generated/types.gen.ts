@@ -1191,7 +1191,14 @@ export type TelegramOptions = {
     requireMention?: boolean;
     silent?: boolean;
     preview?: '' | 'auto' | 'edit' | 'draft' | 'off';
+    /**
+     * Private chat status reactions. On when unset; false explicitly disables them.
+     */
     reactions?: boolean;
+    /**
+     * Opt in to status reactions for authorized group inputs. Off when unset.
+     */
+    groupReactions?: boolean;
     stt?: TelegramSpeechOptions;
     tts?: TelegramSpeechOptions;
 };
@@ -1230,6 +1237,10 @@ export type Feishu = {
     appId: string;
     brand: string;
     paired: boolean;
+    /**
+     * Private chat status reactions. On when unset; false explicitly disables them.
+     */
+    reactions?: boolean;
     status: string;
     error: string;
 };
@@ -1250,6 +1261,10 @@ export type FeishuInput = {
      */
     appSecret: string;
     brand: string;
+    /**
+     * Omission preserves the saved preference. False disables private chat status reactions.
+     */
+    reactions?: boolean;
 };
 
 export type FeishuBrand = {

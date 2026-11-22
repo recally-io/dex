@@ -46,6 +46,7 @@ import {
 import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
+import { FeedbackDraft } from "../components/feedback-draft";
 import { MainPane, Note } from "../components/page";
 import { Button, buttonVariants } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -279,6 +280,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
   const app = useApp();
   const [localDraft, setLocalDraft] = useState("");
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const draft = main ? app.composer.text : localDraft;
   const setDraft = main ? app.setComposerText : setLocalDraft;
 
@@ -471,6 +473,16 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   const commands: SlashCommand[] = [
     {
+      name: "feedback",
+      args: "",
+      help: "Prepare a public GitHub issue draft.",
+      run: async () => {
+        setFeedbackOpen(true);
+
+        return true;
+      },
+    },
+    {
       name: "clear",
       aliases: ["new"],
       args: "[handoff]",
@@ -627,12 +639,17 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       ) : null}
       <Composer
         controls={
-          chat.data &&
-          (chat.data.main ? (
-            <ChatActivity chatId={chat.data.id} writable={!chat.data.readOnly} />
-          ) : (
-            <SessionSettings chat={chat.data} settings={settings} started={!blank} />
-          ))
+          <div className="flex min-w-0 items-center gap-1">
+            {chat.data &&
+              (chat.data.main ? (
+                <ChatActivity chatId={chat.data.id} writable={!chat.data.readOnly} />
+              ) : (
+                <SessionSettings chat={chat.data} settings={settings} started={!blank} />
+              ))}
+            <Button type="button" variant="ghost" size="sm" onClick={() => setFeedbackOpen(true)}>
+              Feedback
+            </Button>
+          </div>
         }
         commands={commands}
         fix={
@@ -755,6 +772,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   return (
     <>
+      {feedbackOpen ? <FeedbackDraft onClose={() => setFeedbackOpen(false)} /> : null}
       <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
         <ThreadContext.Provider value={threads}>
           <div className="relative flex min-h-0 flex-1">

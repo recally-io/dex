@@ -81,6 +81,11 @@ The chat activity panel lists the session's Monitors and Outbox entries. It
 shows the Monitor mode, attempt limit, and latest outcome. The user can cancel
 an active Monitor here. Monitor creation uses the session tool, not this panel.
 
+The chat composer offers Feedback, even without a model, and a `/feedback`
+slash command when the composer is enabled. Both open an empty form. The
+preview stays in the dialog. It sends no request and closing it discards it. The link opens the public Dex repository without
+prefilling any text.
+
 The old `/settings/<section>` addresses redirect to the new pages.
 
 ## Components and theme

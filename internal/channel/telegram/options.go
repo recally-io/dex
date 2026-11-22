@@ -15,7 +15,8 @@ type Options struct {
 	RequireMention bool           `json:"requireMention"`
 	Silent         bool           `json:"silent"`
 	Preview        string         `json:"preview,omitempty"`
-	Reactions      bool           `json:"reactions"`
+	Reactions      *bool          `json:"reactions,omitempty"`
+	GroupReactions bool           `json:"groupReactions,omitzero"`
 	STT            speech.Options `json:"stt"`
 	TTS            speech.Options `json:"tts"`
 }
