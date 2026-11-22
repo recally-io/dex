@@ -144,6 +144,16 @@ func (m *Manager) Source(ctx context.Context, source string) (chat.SourceReceipt
 	return m.chats.LookupSource(ctx, m.agentID, source)
 }
 
+// CommandReceived reports whether the globally keyed command receipt exists.
+// It does not execute the command or authorize a replay; Receive does that.
+func (m *Manager) CommandReceived(ctx context.Context, source string) (bool, error) {
+	_, err := m.q.GetChannelCommand(ctx, source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // Receive stores one update or executes a shared command. A repeated source has no effect.
 func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Message) error {
 	group := strings.HasPrefix(peer, "telegram:-")
