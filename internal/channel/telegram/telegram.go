@@ -126,6 +126,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		{"command": "question", "description": "Show this conversation's open question"},
 		{"command": "clear", "description": "Clear the current conversation context"},
 		{"command": "stop", "description": "Stop the current conversation and its child work"},
+		{"command": "feedback", "description": "Prepare a public GitHub issue draft in private"},
 		{"command": "help", "description": "List commands"},
 	}}, nil); err != nil {
 		slog.Warn("telegram: command menu", "err", err)
@@ -215,6 +216,26 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	}
 	if !allowed {
 		return nil
+	}
+	// Dispatch from the original text before quote handling, uploads or speech.
+	first, rest := channel.SplitCommand(m.body())
+	name, bot, addressed := strings.Cut(first, "@")
+	if name == channel.FeedbackCommand {
+		if addressed {
+			username, err := b.botUsername(ctx)
+			if err != nil {
+				return err
+			}
+			if username == "" || !strings.EqualFold(bot, username) {
+				return nil
+			}
+		}
+		input := channel.FeedbackCommand
+		if m.Text != "" && m.ForwardOrigin == nil {
+			input += " " + rest
+		}
+		identity.MediaGroup = ""
+		return b.chats.Receive(ctx, peer, source, chat.Message{Content: input, ChannelContext: identity})
 	}
 	if selected, _ := m.selectedMedia(); selected != nil {
 		received, err := b.chats.ReceivedSource(ctx, source)

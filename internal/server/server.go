@@ -91,7 +91,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if strings.HasSuffix(r.URL.Path, "/extensions/env") {
+			if strings.HasSuffix(r.URL.Path, "/extensions/env") || r.URL.Path == "/api/feedback/draft" {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}

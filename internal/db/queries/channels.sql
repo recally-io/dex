@@ -9,6 +9,11 @@ LIMIT 1;
 INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context) VALUES (?, ?, ?, ?, ?, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING;
 
+-- name: CreateFeedbackCommand :exec
+-- The existing command receipt is the outbox. Store the reply atomically with its source key.
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer)
+VALUES (?, ?, ?, 'main', '/feedback', ?, 1, ?) ON CONFLICT DO NOTHING;
+
 -- name: GetChannelCommand :one
 SELECT * FROM channel_commands WHERE source_key = ?;
 
@@ -50,7 +55,9 @@ SELECT * FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
 AND agent_id = @agent_id AND peer LIKE @prefix || '%' ORDER BY rowid;
 
 -- name: MarkChannelCommandDelivered :exec
-UPDATE channel_commands SET delivered_at = ? WHERE source_key = ?;
+UPDATE channel_commands SET delivered_at = @delivered_at,
+    answer = CASE WHEN command = '/feedback' THEN '' ELSE answer END
+WHERE source_key = @source_key;
 
 -- name: CountChannelPending :one
 SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id

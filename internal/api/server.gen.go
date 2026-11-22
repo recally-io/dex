@@ -1997,6 +1997,12 @@ type ListDirectoriesParams struct {
 	EnvironmentId *string `form:"environmentId,omitempty" json:"environmentId,omitempty"`
 }
 
+// BuildFeedbackDraftJSONBody defines parameters for BuildFeedbackDraft.
+type BuildFeedbackDraftJSONBody struct {
+	Description string `json:"description"`
+	Title       string `json:"title"`
+}
+
 // ListInboxParams defines parameters for ListInbox.
 type ListInboxParams struct {
 	IncludeDismissed *bool `form:"includeDismissed,omitempty" json:"includeDismissed,omitempty"`
@@ -2092,6 +2098,9 @@ type CreateUploadMultipartRequestBody CreateUploadMultipartBody
 
 // PreviewScheduleJSONRequestBody defines body for PreviewSchedule for application/json ContentType.
 type PreviewScheduleJSONRequestBody = ScheduleInput
+
+// BuildFeedbackDraftJSONRequestBody defines body for BuildFeedbackDraft for application/json ContentType.
+type BuildFeedbackDraftJSONRequestBody BuildFeedbackDraftJSONBody
 
 // AttachHeldEventJSONRequestBody defines body for AttachHeldEvent for application/json ContentType.
 type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
@@ -2819,6 +2828,9 @@ type ServerInterface interface {
 
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
+
+	// (POST /api/feedback/draft)
+	BuildFeedbackDraft(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -5116,6 +5128,20 @@ func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// BuildFeedbackDraft operation middleware
+func (siw *ServerInterfaceWrapper) BuildFeedbackDraft(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BuildFeedbackDraft(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
@@ -5913,6 +5939,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu", wrapper.SetFeishu)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu/registration", wrapper.BeginFeishu)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/feishu/registration/poll", wrapper.PollFeishu)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/feedback/draft", wrapper.BuildFeedbackDraft)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/automations/preview", wrapper.PreviewSchedule)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents", wrapper.ListAgents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents", wrapper.CreateAgent)
@@ -10077,6 +10104,64 @@ func (response ListDirectoriesdefaultJSONResponse) VisitListDirectoriesResponse(
 	return err
 }
 
+type BuildFeedbackDraftRequestObject struct {
+	Body *BuildFeedbackDraftJSONRequestBody
+}
+
+type BuildFeedbackDraftResponseObject interface {
+	VisitBuildFeedbackDraftResponse(w http.ResponseWriter) error
+}
+
+type BuildFeedbackDraft200JSONResponse struct {
+	Description string `json:"description"`
+	NewIssueUrl string `json:"newIssueUrl"`
+	Repository  string `json:"repository"`
+	Title       string `json:"title"`
+}
+
+func (response BuildFeedbackDraft200JSONResponse) VisitBuildFeedbackDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BuildFeedbackDraft400JSONResponse struct{ ErrorJSONResponse }
+
+func (response BuildFeedbackDraft400JSONResponse) VisitBuildFeedbackDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BuildFeedbackDraftdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BuildFeedbackDraftdefaultJSONResponse) VisitBuildFeedbackDraftResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetHealthRequestObject struct {
 }
 
@@ -11759,6 +11844,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/directories)
 	ListDirectories(ctx context.Context, request ListDirectoriesRequestObject) (ListDirectoriesResponseObject, error)
+
+	// (POST /api/feedback/draft)
+	BuildFeedbackDraft(ctx context.Context, request BuildFeedbackDraftRequestObject) (BuildFeedbackDraftResponseObject, error)
 
 	// (GET /api/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -13893,6 +13981,37 @@ func (sh *strictHandler) ListDirectories(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListDirectoriesResponseObject); ok {
 		if err := validResponse.VisitListDirectoriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BuildFeedbackDraft operation middleware
+func (sh *strictHandler) BuildFeedbackDraft(w http.ResponseWriter, r *http.Request) {
+	var request BuildFeedbackDraftRequestObject
+
+	var body BuildFeedbackDraftJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BuildFeedbackDraft(ctx, request.(BuildFeedbackDraftRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BuildFeedbackDraft")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BuildFeedbackDraftResponseObject); ok {
+		if err := validResponse.VisitBuildFeedbackDraftResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

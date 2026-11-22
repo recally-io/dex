@@ -11,6 +11,7 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/feedback"
 )
 
 // CommandReceived reports whether the globally keyed command receipt exists.
@@ -65,6 +66,21 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
+	if channel.IsFeedbackCommand(cmd) && msg.AlbumSource == "" && len(msg.Attachments) == 0 {
+		answer := "Use /feedback in a private chat with this bot."
+		if !group {
+			answer = feedbackReply(cmd)
+		}
+		identity, err := json.Marshal(msg.ChannelContext)
+		if err != nil {
+			return err
+		}
+		if err := m.q.CreateFeedbackCommand(ctx, sqlc.CreateFeedbackCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelContext: string(identity), Answer: answer}); err != nil {
+			return err
+		}
+		m.Notify(peer)
+		return nil
+	}
 	basicCommand := cmd == "/clear" || cmd == "/new" || cmd == "/stop" || cmd == "/help"
 	if !channel.IsCommand(cmd) || !strings.HasPrefix(peer, "telegram:") && !basicCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
@@ -91,6 +107,22 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	return m.complete(ctx, command)
 }
 
+const feedbackInstructions = "Send /feedback followed by your title on the first line and your description on the lines below. " + feedback.PublicWarning
+
+// feedbackReply builds a reply from explicitly supplied text, never from a chat session.
+func feedbackReply(text string) string {
+	_, rest := channel.SplitCommand(text)
+	if rest == "" {
+		return feedbackInstructions
+	}
+	title, description, _ := strings.Cut(rest, "\n")
+	draft, err := feedback.Build(title, description)
+	if err != nil {
+		return "Draft not ready: " + err.Error() + ". " + feedbackInstructions
+	}
+	return feedback.PublicWarning + " Copy the title and description below. Submit with your own GitHub account:\n" + feedback.IssueURL + "\n\nTitle: " + draft.Title + "\n\nDescription:\n" + draft.Description
+}
+
 func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 	if c.AgentID != m.agentID || c.Completed != 0 {
 		return nil
@@ -106,7 +138,7 @@ func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
 			return err
 		}
 	}
-	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /help shows these commands."
+	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /feedback prepares a public GitHub issue draft. /help shows these commands."
 	if group {
 		answer = "/clear and /new clear only this group sender session or this topic. /stop stops only its work. Private bot management, files and routines are not available."
 	}
@@ -173,12 +205,13 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 			return err
 		}
 	}
-	parts := bot.Parts(channel.Reply{Status: "done", Answer: r.Answer})
+	literal := r.Command == channel.FeedbackCommand
+	parts := bot.Parts(channel.Reply{Status: "done", Answer: r.Answer, Literal: literal})
 	if r.RenderedReply != "" {
 		if err := json.Unmarshal([]byte(r.RenderedReply), &parts); err != nil {
 			return err
 		}
-	} else if telegram && r.Answer != "" {
+	} else if telegram && !literal && r.Answer != "" {
 		target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Peer, identity)
 		if err != nil {
 			return err
@@ -200,6 +233,16 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 		}
 	}
 	for i, part := range parts {
+		if literal {
+			// A platform error can quote its payload. Do not log or publish any of it.
+			if _, err := bot.Send(ctx, r.Peer, r.SourceKey, i, part); err != nil && !errors.Is(err, channel.ErrPermanent) {
+				if retry, ok := errors.AsType[*channel.RetryError](err); ok {
+					return &channel.RetryError{After: retry.After, Err: errors.New("feedback reply delivery failed")}
+				}
+				return errors.New("feedback reply delivery failed")
+			}
+			continue
+		}
 		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part); err != nil {
 			return fmt.Errorf("send command reply: %w", err)
 		}

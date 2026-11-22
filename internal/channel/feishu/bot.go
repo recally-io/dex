@@ -114,6 +114,14 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	} else if received {
 		return nil
 	}
+	peer := "feishu:" + m.Sender
+	if channel.IsFeedbackCommand(m.Text) {
+		text := channel.FeedbackCommand
+		if m.PlainText {
+			text = m.Text
+		}
+		return b.manager.Receive(botCtx, peer, source, chat.Message{Content: text})
+	}
 	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo}
 	stored := false
 	defer func() {
@@ -146,7 +154,6 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 			return err
 		}
 	}
-	peer := "feishu:" + m.Sender
 	receiveErr := b.manager.Receive(botCtx, peer, source, msg)
 	// Preserve files when the receipt query fails or the receipt committed before admission.
 	receipt, err := b.manager.Source(context.WithoutCancel(sessionCtx), source)
@@ -176,6 +183,9 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
+	if reply.Literal {
+		return []channel.Part{{Text: text, Literal: true}}
+	}
 	return channel.TextParts(parts(text))
 }
 
@@ -183,6 +193,22 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 func (b *Bot) Send(ctx context.Context, peer, id string, index int, part channel.Part) (channel.Receipt, error) {
 	if part.File != nil {
 		return channel.Receipt{}, fmt.Errorf("%w: Feishu file delivery is unavailable", channel.ErrPermanent)
+	}
+	if part.Literal {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		owner := b.cfg.OwnerID
+		if owner == "" || peer != "feishu:"+owner {
+			return channel.Receipt{}, channel.ErrPermanent
+		}
+		remote, err := b.client.Send(ctx, owner, "text", textContent(part.Text), deliveryUUID(id, index))
+		if permanentAPIError(err) {
+			return channel.Receipt{}, channel.ErrPermanent
+		}
+		if err != nil {
+			return channel.Receipt{}, errors.New("feishu: could not send text reply")
+		}
+		return channel.Receipt{MessageIDs: []string{remote}}, nil
 	}
 	remote, err := b.sendText(ctx, peer, id, index, part.Text)
 	receipt := channel.Receipt{}

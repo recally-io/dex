@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 )
 
@@ -19,26 +20,39 @@ func (b *Bot) groupText(ctx context.Context, m *message) (string, bool, error) {
 	if !strings.Contains(text, "@") {
 		return text, replied || acceptUnmentioned, nil
 	}
-	if b.username == "" {
-		var me user
-		if err := b.call(ctx, "getMe", map[string]any{}, &me); err != nil {
-			return "", false, err
-		}
-		b.username = me.Username
+	username, err := b.botUsername(ctx)
+	if err != nil {
+		return "", false, err
 	}
-	if b.username == "" {
+	if username == "" {
 		return text, replied || acceptUnmentioned, nil
 	}
 	first, rest, _ := strings.Cut(text, " ")
+	// Native feedback can put the title on the next line, including with @bot.
+	token, args := channel.SplitCommand(text)
+	if command, _, _ := strings.Cut(token, "@"); command == channel.FeedbackCommand {
+		first, rest = token, args
+	}
 	if command, name, ok := strings.Cut(first, "@"); strings.HasPrefix(command, "/") && ok {
-		if !strings.EqualFold(name, b.username) {
+		if !strings.EqualFold(name, username) {
 			return text, false, nil
 		}
 		return strings.TrimSpace(command + " " + rest), true, nil
 	}
-	mention := regexp.MustCompile(`(?i)(^|\s)@` + regexp.QuoteMeta(b.username) + `\b`)
+	mention := regexp.MustCompile(`(?i)(^|\s)@` + regexp.QuoteMeta(username) + `\b`)
 	mentioned := mention.MatchString(text)
 	return strings.TrimSpace(mention.ReplaceAllString(text, "$1")), replied || mentioned || acceptUnmentioned, nil
+}
+
+func (b *Bot) botUsername(ctx context.Context) (string, error) {
+	if b.username == "" {
+		var me user
+		if err := b.call(ctx, "getMe", map[string]any{}, &me); err != nil {
+			return "", err
+		}
+		b.username = me.Username
+	}
+	return b.username, nil
 }
 
 func (b *Bot) receiveGroup(ctx context.Context, source string, m *message, edited bool) error {
@@ -60,6 +74,13 @@ func (b *Bot) receiveGroup(ctx context.Context, source string, m *message, edite
 	content, triggered, err := b.groupText(ctx, m)
 	if err != nil {
 		return err
+	}
+	if channel.IsFeedbackCommand(content) {
+		if !triggered {
+			return nil
+		}
+		identity.MediaGroup = ""
+		return b.chats.Receive(ctx, peer, source, chat.Message{Content: channel.FeedbackCommand, ChannelContext: identity})
 	}
 	if !triggered && m.MediaGroupID != "" {
 		triggered, err = b.chats.KnownTelegramAlbum(ctx, peer, identity)

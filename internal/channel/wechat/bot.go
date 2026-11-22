@@ -174,6 +174,12 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 		// Receive completes interrupted commands without repeating attachment side effects.
 		return b.channels.Receive(ctx, "wechat:"+b.cfg.Owner, source, chat.Message{})
 	}
+	// Only an explicit text item can request feedback. Do not include quoted text or media.
+	for _, item := range msg.Items {
+		if item.Type == 1 && channel.IsFeedbackCommand(itemText(item)) {
+			return b.channels.Receive(ctx, "wechat:"+b.cfg.Owner, source, chat.Message{Content: itemText(item)})
+		}
+	}
 	input, err := b.convert(ctx, msg.Items)
 	stored := false
 	defer func() {
@@ -209,7 +215,9 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	if reply.Status != "done" {
 		text = "No answer. Please try again."
 	}
-	text = filterMarkdown(text)
+	if !reply.Literal {
+		text = filterMarkdown(text)
+	}
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}

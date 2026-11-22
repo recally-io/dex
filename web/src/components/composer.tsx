@@ -138,8 +138,16 @@ export function Composer({
   const [hint, setHint] = useState<{ text: string; for: string }>();
   const [active, setActive] = useState(0);
   const [dismissed, setDismissed] = useState(false);
+
+  const availableCommands = disabledReason
+    ? commands?.filter((item) => item.availableWhenDisabled)
+    : commands;
+
   const command = commands ? parseCommand(text) : undefined;
-  const options = command?.typingName && !dismissed ? matchCommands(commands ?? [], command.name) : [];
+
+  const options =
+    command?.typingName && !dismissed ? matchCommands(availableCommands ?? [], command.name) : [];
+
   const highlighted = options[Math.min(active, options.length - 1)];
   const shownHint = hint?.for === text ? hint.text : undefined;
 
@@ -168,7 +176,7 @@ export function Composer({
   }
 
   async function runCommand(name: string, arg: string) {
-    const found = findCommand(commands ?? [], name);
+    const found = findCommand(availableCommands ?? [], name);
 
     if (!found) {
       setHint({
@@ -191,7 +199,7 @@ export function Composer({
   async function send() {
     if (command) {
       // A partly typed name runs the highlighted command, as the menu shows it.
-      const exact = findCommand(commands ?? [], command.name);
+      const exact = findCommand(availableCommands ?? [], command.name);
 
       if (!exact && highlighted && command.typingName) return complete(highlighted);
 
@@ -286,7 +294,7 @@ export function Composer({
           aria-controls={options.length ? menuId : undefined}
           aria-activedescendant={highlighted ? `${menuId}-${highlighted.name}` : undefined}
           value={text}
-          disabled={!!disabledReason}
+          disabled={!!disabledReason && !availableCommands?.length}
           onChange={(e) => {
             setDismissed(false);
             setActive(0);

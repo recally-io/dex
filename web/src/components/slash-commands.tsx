@@ -9,6 +9,8 @@ export type SlashCommand = {
   help: string;
   /** Why the command cannot run now. The menu shows it greyed out with this reason. */
   unavailable?: string;
+  /** Can run when messages are blocked, without admitting chat input. */
+  availableWhenDisabled?: boolean;
   /** Resolves true when the command ran, so the composer clears the draft. */
   run: (arg: string) => Promise<boolean>;
 };
