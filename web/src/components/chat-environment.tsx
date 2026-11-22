@@ -60,7 +60,7 @@ export function ChatEnvironment({ chat, started }: { chat: Chat; started: boolea
     ) : null;
   }
 
-  if (list.length < 2) return null;
+  if (!environments.data || (list.length < 2 && own?.id === "local" && !selected)) return null;
 
   return (
     <>
@@ -74,14 +74,17 @@ export function ChatEnvironment({ chat, started }: { chat: Chat; started: boolea
         }
       >
         <option value="">Follow bot ({own?.name ?? "default"})</option>
-        {list
-          .filter((env) => !env.default)
-          .map((env) => (
-            <option key={env.id} value={env.id} disabled={env.status !== "available"}>
-              {env.name}
-              {env.status === "available" ? "" : ` (${env.status})`}
-            </option>
-          ))}
+        {selected && !list.some((env) => env.id === selected) ? (
+          <option value={selected} disabled>
+            {selected} (removed)
+          </option>
+        ) : null}
+        {list.map((env) => (
+          <option key={env.id} value={env.id} disabled={env.status !== "available"}>
+            {env.name}
+            {env.status === "available" ? "" : ` (${env.status})`}
+          </option>
+        ))}
       </Select>
       {save.isError ? (
         <span role="alert" className="truncate text-[12px] text-red">

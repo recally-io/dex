@@ -34,8 +34,7 @@ func (s *Service) SessionEnvironment(ctx context.Context, ref engine.Ref) (strin
 	return conv.EnvironmentID, nil
 }
 
-// checkEnvironment fails with ErrEnvironmentInvalid unless environmentID is LocalID or a saved
-// pi-env environment. Sessions can use E2B or runner only through their bot's default environment.
+// checkEnvironment validates an explicit selection without opening the environment.
 func checkEnvironment(ctx context.Context, q *sqlc.Queries, environmentID string) error {
 	if environmentID == execenv.LocalID {
 		return nil
@@ -47,8 +46,8 @@ func checkEnvironment(ctx context.Context, q *sqlc.Queries, environmentID string
 	if err != nil {
 		return err
 	}
-	if execenv.Kind(row.Kind) != execenv.KindPiEnv {
-		return fmt.Errorf("%w: %s is a %s environment; select local or an SSH environment", ErrEnvironmentInvalid, row.Name, row.Kind)
+	if !execenv.IsRegisteredKind(execenv.Kind(row.Kind)) {
+		return fmt.Errorf("%w: %s has unsupported environment kind %s", ErrEnvironmentInvalid, row.Name, row.Kind)
 	}
 	return nil
 }

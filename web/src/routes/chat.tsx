@@ -428,17 +428,10 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const environmentList = environments.data?.environments ?? [];
   const runsIn = chat.data?.environmentId || environmentList.find((env) => env.default)?.id;
 
-  // A fork can select only local or an SSH environment. The API cannot select "follow the bot",
-  // so a bot's own E2B or runner environment is not a fork target.
   // A fork opens as its own Chat. Edit in new chat carries the message text, not its attachments.
   const messageActions: MessageActions = {
     pending: fork.isPending,
-    forkTargets: environmentList
-      .filter(
-        (env) =>
-          (env.kind === "local" || env.kind === "pi-env") && env.id !== runsIn && env.status === "available",
-      )
-      .map((env) => ({ id: env.id, name: env.name })),
+    forkTargets: environmentList.filter((env) => env.id !== runsIn),
     fork: (entryId, before, text, environmentId) => {
       const prior = failedFork.current;
 

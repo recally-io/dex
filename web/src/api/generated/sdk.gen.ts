@@ -941,7 +941,7 @@ export const restoreAgent = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Lists the execution environments for the sessions of the agent: the environment of the agent first (default), then local and the SSH (pi-env) environments that a session can select. E2B and runner environments serve only the agent that has them as its own environment. It has no configuration and no secrets.
+ * Lists the execution environments for the sessions of the agent: the environment of the agent first (default), then local and the other registered environments. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
  *
  */
 export const listAgentEnvironments = <ThrowOnError extends boolean = false>(options: Options<ListAgentEnvironmentsData, ThrowOnError>): RequestResult<ListAgentEnvironmentsResponses, ListAgentEnvironmentsErrors, ThrowOnError> => (options.client ?? client).get<ListAgentEnvironmentsResponses, ListAgentEnvironmentsErrors, ThrowOnError>({
@@ -1089,7 +1089,7 @@ export const listRecentProjects = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Selects the execution environment of a Chat session before its first message. The command and file tools of the chat run there. Empty environmentId makes the chat follow the environment of the agent. The selection clears the project directory. The environment must be local or an SSH (pi-env) environment (400). A chat that has started answers 409: fork it instead. Read-only conversations return 403.
+ * Selects the execution environment of a Chat session before its first message. The command and file tools of the chat run there. Empty environmentId makes the chat follow the environment of the agent. The selection clears the project directory. The environment must be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers 409: fork it instead. Read-only conversations return 403.
  *
  */
 export const setChatEnvironment = <ThrowOnError extends boolean = false>(options: Options<SetChatEnvironmentData, ThrowOnError>): RequestResult<SetChatEnvironmentResponses, SetChatEnvironmentErrors, ThrowOnError> => (options.client ?? client).put<SetChatEnvironmentResponses, SetChatEnvironmentErrors, ThrowOnError>({
@@ -1211,7 +1211,7 @@ export const continueChat = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With environmentId (local or an SSH environment ID), the new Chat runs in that environment. When that moves the Chat to another environment, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without environmentId, the new Chat keeps the environment selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the environment does not exist or is not local or SSH. A scoped session with environmentId, and automation and channel sessions, return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With environmentId (local or a registered environment ID), the new Chat runs in that environment. When that moves the Chat to another environment, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without environmentId, the new Chat keeps the environment selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the environment does not exist or is not local or SSH. A scoped session with environmentId, and automation and channel sessions, return 403.
  *
  */
 export const forkChat = <ThrowOnError extends boolean = false>(options: Options<ForkChatData, ThrowOnError>): RequestResult<ForkChatResponses, ForkChatErrors, ThrowOnError> => (options.client ?? client).post<ForkChatResponses, ForkChatErrors, ThrowOnError>({

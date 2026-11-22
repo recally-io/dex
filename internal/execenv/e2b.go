@@ -295,10 +295,10 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Environme
 	if err != nil {
 		return cachedE2BSession{}, err
 	}
-	persistedID := ""
-	if row.EnvironmentID == spec.ID {
-		persistedID = strings.TrimSpace(row.EnvironmentSandboxID)
+	if row.EnvironmentID != spec.ID {
+		return cachedE2BSession{}, fmt.Errorf("%w: the bot no longer uses this default sandbox", ErrUnavailable)
 	}
+	persistedID := strings.TrimSpace(row.EnvironmentSandboxID)
 
 	r.mu.Lock()
 	cached, hasCached := r.sessions[agentID]
@@ -383,6 +383,46 @@ func (r *e2bRuntime) open(ctx context.Context, agentID string, spec EnvironmentS
 	}, nil
 }
 
+// openOverride owns one sandbox for the lifetime of the lease. It never reads or writes the
+// bot's persisted default sandbox ID. Disable auto-pause so an abandoned lease expires after a crash.
+func (r *e2bRuntime) openOverride(ctx context.Context, agentID string, spec EnvironmentSpec) (_ lease, resultErr error) {
+	cfg, err := r.validate(spec)
+	if err != nil {
+		return nil, err
+	}
+	ctrl := r.control(cfg, spec.Secret)
+	sb, err := ctrl.createSandbox(ctx, cfg.Template, *cfg.TimeoutSeconds, false, map[string]string{
+		"dex_agent_id": agentID, "dex_environment_id": spec.ID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	closeSandbox := func(ctx context.Context) error {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		return ctrl.killSandbox(ctx, sb.SandboxID)
+	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(resultErr, closeSandbox(ctx))
+		}
+	}()
+	envd := ctrl.envdFor(sb)
+	vars, err := envd.getEnvs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	home := cmp.Or(strings.TrimSpace(vars["HOME"]), "/home/user")
+	workspace := resolveE2BWorkspace(cfg.WorkspaceDir, home)
+	if err := makeEnvdDirAll(ctx, envd, workspace); err != nil {
+		return nil, err
+	}
+	return &e2bHandle{
+		rt: r, agentID: agentID, spec: spec, home: home, workspace: workspace, timeoutSec: *cfg.TimeoutSeconds,
+		override: &cachedE2BSession{envd: envd, sandboxID: sb.SandboxID}, closeOverride: closeSandbox,
+	}, nil
+}
+
 // changed keeps no per-environment state: acquire compares the spec of each cached session.
 func (*e2bRuntime) changed(context.Context, EnvironmentSpec, *EnvironmentSpec) error { return nil }
 
@@ -430,18 +470,25 @@ func resolveE2BWorkspace(configured, home string) string {
 }
 
 type e2bHandle struct {
-	rt         *e2bRuntime
-	agentID    string
-	spec       EnvironmentSpec
-	home       string
-	workspace  string
-	timeoutSec int
+	rt            *e2bRuntime
+	agentID       string
+	spec          EnvironmentSpec
+	home          string
+	workspace     string
+	timeoutSec    int
+	override      *cachedE2BSession
+	closeOverride func(context.Context) error
 }
 
-func (h *e2bHandle) Kind() Kind                  { return KindE2B }
-func (h *e2bHandle) Workspace() string           { return h.workspace }
-func (h *e2bHandle) Home() string                { return h.home }
-func (h *e2bHandle) Close(context.Context) error { return nil }
+func (h *e2bHandle) Kind() Kind        { return KindE2B }
+func (h *e2bHandle) Workspace() string { return h.workspace }
+func (h *e2bHandle) Home() string      { return h.home }
+func (h *e2bHandle) Close(ctx context.Context) error {
+	if h.closeOverride != nil {
+		return h.closeOverride(ctx)
+	}
+	return nil
+}
 
 func (h *e2bHandle) Env(ctx context.Context, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, error) {
 	if err := ctx.Err(); err != nil {

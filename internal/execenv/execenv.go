@@ -22,6 +22,18 @@ const (
 	KindRunner Kind = "runner"
 )
 
+// IsRegisteredKind reports whether a stored environment kind can be selected.
+func IsRegisteredKind(kind Kind) bool {
+	switch kind {
+	case KindPiEnv, KindE2B, KindRunner:
+		return true
+	case KindLocal:
+		return false
+	default:
+		return false
+	}
+}
+
 // ErrInvalidPath is returned when a requested project or directory path fails validation.
 var ErrInvalidPath = errors.New("invalid project directory")
 
@@ -50,8 +62,7 @@ type Handle interface {
 }
 
 // Provider opens agent execution environment handles. An empty environmentID selects the
-// environment of the agent. LocalID or a pi-env environment ID selects that environment; any
-// other selection fails Open and Stamp with ErrUnavailable.
+// environment of the agent. LocalID or a registered environment ID selects that environment.
 type Provider interface {
 	Open(ctx context.Context, agentID, environmentID string) (Handle, error)
 	// Stamp returns the current fingerprint of the selected environment.

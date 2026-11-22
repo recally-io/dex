@@ -32,8 +32,10 @@ test("a continuation chat pins the environment where the result ran", () => {
   const environments = [
     { id: "box", name: "box", kind: "pi-env", default: true, status: "available" },
     { id: "local", name: "local", kind: "local", default: false, status: "available" },
+    { id: "runner", name: "runner", kind: "runner", default: false, status: "available" },
   ];
 
+  expect(continuationEnvironment("runner", environments)).toBe("runner");
   expect(continuationEnvironment("box", environments)).toBe("box");
   expect(continuationEnvironment("local", environments)).toBe("local");
   expect(() => continuationEnvironment("", environments)).toThrow("has no recorded environment");
@@ -43,5 +45,5 @@ test("a continuation chat pins the environment where the result ran", () => {
       { id: "sandbox", name: "sandbox", kind: "e2b", default: true, status: "available" },
       ...environments,
     ]),
-  ).toThrow("ran in sandbox, which a new chat cannot use");
+  ).toThrow("ran in sandbox, which cannot continue this run");
 });

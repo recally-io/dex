@@ -75,6 +75,9 @@ type agentExtensions struct {
 	execHandle execenv.Handle
 	skillsMu   sync.Mutex
 	skillStamp string
+	// sessionSkills resolves the same target as the command and file tools.
+	sessionSkills      func(context.Context, durable.ConversationId) (*agentExtensions, error)
+	defaultUnavailable bool
 }
 type loadedExtensions struct {
 	Extension   *durable.Extension
@@ -143,6 +146,10 @@ func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, en
 		a.levels = append(a.levels, l)
 	}
 	return a
+}
+
+func (a *agentExtensions) forHandle(h execenv.Handle) *agentExtensions {
+	return &agentExtensions{levels: a.levels, agentDir: a.agentDir, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h}
 }
 
 func (a *agentExtensions) isRemote() bool {
@@ -485,7 +492,9 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 	if s.env == nil {
 		s.env = map[string]string{}
 	}
-	s.info.Skills = a.skillsContext(ctx, remoteEnv, a.workspace, &s.info.Warnings)
+	if !a.defaultUnavailable {
+		s.info.Skills = a.skillsContext(ctx, remoteEnv, a.workspace, &s.info.Warnings)
+	}
 	servers := map[string]serverEntry{}
 	valid, validEnv := true, true
 	for _, l := range a.distinct() {
@@ -592,9 +601,6 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := a.syncRemoteSkills(ctx, remoteEnv); err != nil {
-			return nil, err
-		}
 	}
 	base, op := a.env.load(ctx)
 	s := a.scan(ctx, base, remoteEnv)
@@ -605,20 +611,31 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	opPath := findOp(s.env)
 	guide := extensionGuide(a.levels, secretsGuide(op, opPath), envScopeGuide(s.info.Env, opPath))
 	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(renderCtx context.Context, input durable.PromptInput) (*string, error) {
-		// The project level follows the conversation's cwd, which the request's environment has.
-		cwd := a.workspace
-		if input.Env != nil {
-			cwd = input.Env.Cwd()
-		}
-		if a.isRemote() {
-			if err := a.syncRemoteSkills(renderCtx, input.Env); err != nil {
+		target := a
+		if a.sessionSkills != nil {
+			if input.Env == nil {
+				return nil, nil
+			}
+			var err error
+			target, err = a.sessionSkills(renderCtx, input.ConversationId)
+			if err != nil {
 				return nil, err
 			}
 		}
+		cwd := target.workspace
+		if input.Env != nil {
+			cwd = input.Env.Cwd()
+		}
+		if err := target.syncRemoteSkills(renderCtx, input.Env); err != nil {
+			return nil, err
+		}
 		errs := []string{}
-		return skillsText(a.skillsContext(renderCtx, input.Env, cwd, &errs)), nil
+		return skillsText(target.skillsContext(renderCtx, input.Env, cwd, &errs)), nil
 	}}}
 	loaded.Extension.Sections = append(loaded.Extension.Sections, &durable.PromptSection{Key: "project", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
+		if a.sessionSkills != nil && input.Env == nil {
+			return nil, nil
+		}
 		cwd := a.workspace
 		if input.Env != nil {
 			cwd = input.Env.Cwd()
@@ -632,6 +649,11 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 			return nil, context.Cause(ctx)
 		}
 		if entry.config.Disabled {
+			continue
+		}
+		if a.defaultUnavailable {
+			loaded.Servers[index].State = "failed"
+			loaded.Servers[index].Error = "the bot environment is unavailable"
 			continue
 		}
 		client, tools, err := a.connect(ctx, entry, s.env)

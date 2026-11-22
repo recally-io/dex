@@ -121,16 +121,16 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			// An unavailable environment fails only an input with attachments: its tool calls report
 			// the reason, and the chat stays usable.
 			s, envErr := envs.session(ctx, ref.ID)
-			if envErr != nil && len(input.Attachments) > 0 {
-				return nil, envErr
+			if envErr != nil {
+				if len(input.Attachments) > 0 {
+					return nil, envErr
+				}
+				inputDirectory = ""
+			} else {
+				inputDirectory = s.Handle.Workspace()
 			}
-			h := s.Handle
-			if h == nil {
-				h = a.execHandle(ref.AgentID)
-			}
-			inputDirectory = h.Workspace()
-			if h.Kind() != execenv.KindLocal && len(input.Attachments) > 0 {
-				remoteEnv, envErr := h.Env(ctx, inputDirectory, nil)
+			if envErr == nil && s.Handle.Kind() != execenv.KindLocal && len(input.Attachments) > 0 {
+				remoteEnv, envErr := s.Handle.Env(ctx, inputDirectory, nil)
 				if envErr != nil {
 					return nil, envErr
 				}

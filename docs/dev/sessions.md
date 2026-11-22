@@ -341,11 +341,10 @@ Each unscoped session runs its command and file tools in one execution
 environment. `conversations.environment_id` in `control.sqlite` is the source
 of truth. Empty means that the session follows the bot's environment
 (`agents.environment_id`). `local` or an environment ID is an explicit
-selection, which does not change when the bot's environment changes. A session
-can select only `local` or an SSH (pi-env) environment. E2B and runner
-environments are available through each bot's default environment. Each bot has
-its own E2B sandbox (`agents.environment_sandbox_id`). Bots that use the same
-runner share its connection and execute one operation at a time. SSH and runner
+selection, which does not change when the bot's environment changes. An unscoped
+session can select local or any registered SSH, runner, or E2B environment in the
+same Dex instance. Bots that use the same runner share its connection, not their
+workspaces. They execute one operation at a time. SSH and runner
 use the same `<base>/<bot-id>/workspace` layout under their respective base
 directories. These workspaces are not permission boundaries.
 
@@ -355,26 +354,38 @@ The engine resolves the environment of a session at each call, through the
 serves the Harness `Env` hook, the `bash` tool, background commands, upload
 staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
 agent keeps one lease for each environment that its sessions use, and closes the
-leases on reload and close. Before each call the resolver checks the
+leases on reload and close. A bot with an unavailable default can still run
+a session that selects another environment. Before each call the resolver checks the
 environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. A changed stamp
 makes the agent stale, so the next idle reload opens a new lease.
 
-A local session gets the full bot tool environment. A remote session gets only
-the explicit `.env` values. Skills, MCP servers, and `.env` stay at bot level:
-MCP servers run in the bot's environment. Scoped (group) sessions always use the
-bot's environment.
+A local session gets the full bot tool environment. A remote session gets the
+bot's explicit tool values and inherits the remote process environment. Skills
+from Dex and the bot are synced to the selected environment. Project skills are
+read there only. MCP servers keep their bot-level configuration and transport;
+selecting an environment does not move them or grant access to new MCP tools.
+Scoped group sessions use their separate runtime and cannot select environments.
+
+An E2B default keeps its existing persisted per-bot sandbox and auto-pause
+setting. An explicit selection of that same default uses the same lease.
+A non-default E2B selection uses a separate sandbox per open bot and environment.
+Dex deletes it on lease close. It expires rather than auto-pauses if Dex cannot
+close it. It does not survive a reload or restart; do not rely on it for
+persistent files. An expired sandbox fails calls until the lease is reopened.
+Routines still support explicit local and SSH overrides only.
 
 A web chat selects its environment before its first message
 (`PUT /api/agents/{agentId}/chats/{chatId}/environment`); a started chat answers
 409. `session_new` takes `environment`. A child of the same bot runs in its
 parent's environment unless it selects another one. A child of another bot runs
-in that bot's environment. `environment_list` shows the bot's environment, `local`,
-and the SSH environments with ID, name, kind, and status, and no configuration or secrets. Any
-bot can select `local` or any SSH environment; there is no per-bot allowlist.
+in that bot's environment unless it selects another one. `environment_list`
+shows local and the registered environments with ID, name, kind, and status,
+with the bot's default first. It does not show configuration or secrets. An
+offline runner remains listed.
 
-A fork keeps the environment selection of its source unless it selects `local` or an SSH
+A fork keeps the environment selection of its source unless it selects local or a registered
 environment (`environmentId` of `POST /api/agents/{agentId}/chats/{chatId}/fork`, `environment`
 of `session_fork`). When the effective environment changes, the fork has no cwd. When the copied
 history last ran in another environment than the fork, the engine ends the copied history with one
@@ -390,8 +401,9 @@ is checked, so a removed target does not refuse it.
 A change of the bot's environment fails with 409 while sessions that follow it
 have queued input or running background commands. After the change, those
 sessions start in the new workspace with no cwd. The backend releases the bot's
-state in the earlier environment. Explicit sessions keep their selection,
-because `local` and SSH keep no per-bot state.
+state in the earlier environment. Explicit sessions keep their selection. An
+explicit E2B session that pinned the earlier default will use a new override
+sandbox, not the released default sandbox.
 
 The migration `20261112120000_drop_tasks` drops the `tasks` and
 `task_steer_receipts` tables. An earlier migration copied the parent link and

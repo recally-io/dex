@@ -16,6 +16,7 @@ type sessionEnv struct {
 	// ID is the explicit selection of the session, or empty when it follows the agent.
 	ID     string
 	Handle execenv.Handle
+	Files  *agentExtensions
 	// Vars are the tool environment values. A remote environment gets only the explicit .env
 	// values, and its processes inherit the environment of their host (Inherit).
 	Vars    map[string]string
@@ -30,10 +31,12 @@ type environments struct {
 	// selected returns the explicit environment of a session, or empty when it follows the agent.
 	selected func(ctx context.Context, ref Ref) (string, error)
 	own      execenv.Handle
+	ownErr   error
+	files    *agentExtensions
 	loaded   *loadedExtensions
 
 	mu     sync.Mutex
-	leases map[string]execenv.Handle
+	leases map[string]sessionEnv
 }
 
 func (e *environments) vars(h execenv.Handle) (map[string]string, bool) {
@@ -62,30 +65,47 @@ func (e *environments) session(ctx context.Context, conversationID int64) (sessi
 
 // byID returns the lease of an explicit environment, or the agent's own environment for an empty id.
 func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) {
-	if id == "" {
-		vars, inherit := e.vars(e.own)
-		return sessionEnv{Handle: e.own, Vars: vars, Inherit: inherit}, nil
+	if id == "" && e.ownErr != nil {
+		return sessionEnv{}, e.ownErr
 	}
-	// The stamp check reads control storage at each call, so a removed environment
-	// stops the next tool call. A changed stamp makes the agent stale; reload replaces the lease.
-	if _, err := e.provider.Stamp(ctx, e.agentID, id); err != nil {
+	// Read control storage at every call. Never execute with a removed or stale lease.
+	stamp, err := e.provider.Stamp(ctx, e.agentID, id)
+	if err != nil {
 		return sessionEnv{}, err
+	}
+	useOwn := e.own != nil && stamp == e.own.Stamp()
+	if useOwn && id != "" && e.own.Kind() == execenv.KindE2B {
+		// A pinned E2B selection can remain after the bot changes its default. In that
+		// case, it must not use the bot's old persisted sandbox lease.
+		current, err := e.provider.Stamp(ctx, e.agentID, "")
+		useOwn = err == nil && current == stamp
+	}
+	if useOwn {
+		vars, inherit := e.vars(e.own)
+		return sessionEnv{ID: id, Handle: e.own, Files: e.files, Vars: vars, Inherit: inherit}, nil
+	}
+	if id == "" {
+		return sessionEnv{}, fmt.Errorf("%w: the bot environment changed; wait for reload", execenv.ErrUnavailable)
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	h := e.leases[id]
-	if h == nil {
-		var err error
-		if h, err = e.provider.Open(ctx, e.agentID, id); err != nil {
-			return sessionEnv{}, err
+	if s, ok := e.leases[id]; ok {
+		if stamp != s.Handle.Stamp() {
+			return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; wait for reload", execenv.ErrUnavailable)
 		}
-		if e.leases == nil {
-			e.leases = map[string]execenv.Handle{}
-		}
-		e.leases[id] = h
+		return s, nil
+	}
+	h, err := e.provider.Open(ctx, e.agentID, id)
+	if err != nil {
+		return sessionEnv{}, err
+	}
+	if e.leases == nil {
+		e.leases = map[string]sessionEnv{}
 	}
 	vars, inherit := e.vars(h)
-	return sessionEnv{ID: id, Handle: h, Vars: vars, Inherit: inherit}, nil
+	s := sessionEnv{ID: id, Handle: h, Files: e.files.forHandle(h), Vars: vars, Inherit: inherit}
+	e.leases[id] = s
+	return s, nil
 }
 
 // stale reports whether the configuration of an open explicit lease changed or became unavailable.
@@ -94,7 +114,7 @@ func (e *environments) stale(ctx context.Context) bool {
 	leases := maps.Clone(e.leases)
 	e.mu.Unlock()
 	for id, h := range leases {
-		if current, err := e.provider.Stamp(ctx, e.agentID, id); err != nil || current != h.Stamp() {
+		if current, err := e.provider.Stamp(ctx, e.agentID, id); err != nil || current != h.Handle.Stamp() {
 			return true
 		}
 	}
@@ -108,13 +128,14 @@ func (e *environments) close(ctx context.Context) error {
 	e.mu.Unlock()
 	var errs []error
 	for _, h := range leases {
-		errs = append(errs, h.Close(ctx))
+		errs = append(errs, h.Handle.Close(ctx))
 	}
 	return errors.Join(errs...)
 }
 
 // withEnvironment runs fn with the lease of environmentID for agentID: the open agent's lease, or
-// a temporary lease when the agent is not open. An empty environmentID selects the agent's own.
+// a temporary lease for the default when the agent is not open. Explicit browsing opens the
+// agent so subsequent operations see the same lease, including disposable sandboxes.
 func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID string, fn func(execenv.Handle) error) error {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
@@ -123,6 +144,11 @@ func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID str
 		return err
 	}
 	defer a.end()
+	if a.environments(agentID) == nil && environmentID != "" {
+		if _, err := a.harness(ctx, agentID, ""); err != nil {
+			return err
+		}
+	}
 	if envs := a.environments(agentID); envs != nil {
 		s, err := envs.byID(ctx, environmentID)
 		if err != nil {

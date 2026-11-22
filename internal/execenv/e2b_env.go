@@ -37,6 +37,9 @@ type e2bExecEnv struct {
 }
 
 func (e *e2bExecEnv) acquire(ctx context.Context) (*envdClient, string, error) {
+	if s := e.handle.override; s != nil {
+		return s.envd, s.sandboxID, ctx.Err()
+	}
 	session, err := e.handle.rt.acquire(ctx, e.handle.agentID, e.handle.spec)
 	return session.envd, session.sandboxID, err
 }

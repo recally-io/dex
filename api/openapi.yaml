@@ -1207,9 +1207,8 @@ paths:
       operationId: listAgentEnvironments
       description: >
         Lists the execution environments for the sessions of the agent: the environment of the
-        agent first (default), then local and the SSH (pi-env) environments that a session can
-        select. E2B and runner environments serve only the agent that has them as its own
-        environment. It has no configuration and no secrets.
+        agent first (default), then local and the other registered environments. Each entry
+        has a status, but no configuration or secrets. Registration does not guarantee connectivity.
       responses:
         "200":
           description: The session environments.
@@ -1465,7 +1464,7 @@ paths:
         Selects the execution environment of a Chat session before its first message. The command
         and file tools of the chat run there. Empty environmentId makes the chat follow the
         environment of the agent. The selection clears the project directory. The environment must
-        be local or an SSH (pi-env) environment (400). A chat that has started answers
+        be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers
         409: fork it instead. Read-only conversations return 403.
       requestBody:
         required: true
@@ -1718,8 +1717,8 @@ paths:
         when nothing comes before it, the new Chat is empty. The new Chat
         takes the model, thinking level and project of this session and does
         not run. A running session contributes only its committed entries.
-        Files on disk are not rolled back. With environmentId (local or an
-        SSH environment ID), the new Chat runs in that environment. When that
+        Files on disk are not rolled back. With environmentId (local or a
+        registered environment ID), the new Chat runs in that environment. When that
         moves the Chat to another environment, it has no project, and its
         history ends with a notice that the user and the bot see. Files,
         background tasks, and queued input stay where they are. A new Chat

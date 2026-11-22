@@ -40,3 +40,37 @@ test("adds a dex runner environment and copies its command in the same dialog", 
   await screen.getByRole("button", "Done").tap();
   await expect(screen.getByRole("heading", { name })).toBeVisible();
 });
+
+test("a new chat can select a sandbox and shows a disconnected runner", async ({ app, browser, screen }) => {
+  await app.open("/a/default");
+  const baseUrl = new URL(await browser.url()).origin;
+
+  const sandbox = await fetch(`${baseUrl}/api/settings/environments`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      name: "Local test sandbox",
+      kind: "e2b",
+      config: { apiUrl: "http://127.0.0.1:1" },
+    }),
+  });
+
+  const runner = await fetch(`${baseUrl}/api/settings/environments`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Disconnected runner", kind: "runner" }),
+  });
+
+  const chat = await fetch(`${baseUrl}/api/agents/default/chats`, { method: "POST" });
+
+  if (!sandbox.ok || !runner.ok || !chat.ok) throw new Error("Could not create chat environment fixtures");
+
+  const { id: chatId }: { id: number } = await chat.json();
+  const { id: sandboxId }: { id: string } = await sandbox.json();
+  await app.open(`/a/default/c/${chatId}`);
+  const picker = screen.getByLabel("Environment", { exact: true });
+  await picker.selectOption({ value: sandboxId });
+
+  await expect(picker).toHaveValue(sandboxId);
+  await expect(screen.getByRole("option", "Disconnected runner (offline)")).toBeDisabled();
+});

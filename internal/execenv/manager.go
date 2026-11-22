@@ -53,6 +53,7 @@ type Manager struct {
 	local    *localProvider
 	pienv    *piEnvRuntime
 	runners  *Runners
+	e2b      *e2bRuntime
 	backends map[Kind]backend
 }
 
@@ -63,15 +64,17 @@ func NewManager(cfg ManagerConfig) *Manager {
 	dataDir := filepath.Clean(cfg.DataDir)
 	pienv := newPiEnvRuntime(dataDir, cfg.SSHProgram)
 	runners := newRunners(cfg.Queries)
+	e2b := newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL)
 	return &Manager{
 		sshHome: cfg.SSHHome,
 		q:       cfg.Queries,
 		local:   newLocalProvider(dataDir, ""),
 		pienv:   pienv,
 		runners: runners,
+		e2b:     e2b,
 		backends: map[Kind]backend{
 			KindPiEnv:  pienv,
-			KindE2B:    newE2BRuntime(cfg.Queries, cfg.E2BAPIURL, cfg.E2BEnvdURL),
+			KindE2B:    e2b,
 			KindRunner: runnerBackend{runners: runners},
 		},
 	}
@@ -135,8 +138,7 @@ type binding struct {
 }
 
 // binding resolves environmentID for agentID. Empty selects the environment of the agent, with
-// its sandbox. An explicit selection is LocalID or a pi-env environment: E2B and runner
-// environments keep per-bot state or one bot per machine, so only their own bot uses them.
+// its sandbox. An explicit selection names local or a registered environment.
 func (m *Manager) binding(ctx context.Context, agentID, environmentID string) (binding, error) {
 	switch environmentID {
 	case "":
@@ -151,8 +153,8 @@ func (m *Manager) binding(ctx context.Context, agentID, environmentID string) (b
 	if err != nil {
 		return binding{}, err
 	}
-	if Kind(row.Kind) != KindPiEnv {
-		return binding{}, fmt.Errorf("%w: %s is a %s environment; a session can select only local or an SSH environment", ErrUnavailable, row.Name, row.Kind)
+	if !IsRegisteredKind(Kind(row.Kind)) {
+		return binding{}, fmt.Errorf("%w: %s has unsupported environment kind %s", ErrUnavailable, row.Name, row.Kind)
 	}
 	return binding{spec: SpecFromRow(row)}, nil
 }
@@ -212,7 +214,20 @@ func (m *Manager) Open(ctx context.Context, agentID, environmentID string) (Hand
 	}
 	// Stamp before the open: a reconnect during the open makes this handle stale, never fresh.
 	stamp := m.stamp(b, bound.spec)
-	l, err := b.open(ctx, agentID, bound.spec)
+	var l lease
+	if bound.spec.Kind == KindE2B && environmentID != "" {
+		agent, getErr := m.q.GetAgent(ctx, agentID)
+		if getErr != nil {
+			return nil, getErr
+		}
+		if agent.EnvironmentID != environmentID {
+			l, err = m.e2b.openOverride(ctx, agentID, bound.spec)
+		} else {
+			l, err = b.open(ctx, agentID, bound.spec)
+		}
+	} else {
+		l, err = b.open(ctx, agentID, bound.spec)
+	}
 	if err != nil {
 		return nil, err
 	}

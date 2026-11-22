@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 	"uuid"
@@ -26,7 +27,7 @@ type apiChatEnvironment struct {
 	EnvironmentID string `json:"environmentId"`
 }
 
-// Given a local bot and an SSH environment, when sessions select environments, then their
+// Given a local bot and saved SSH and E2B environments, when sessions select environments, then their
 // command and file tools run only in the selected environment.
 func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	const apiKey = "e2b_session_secret"
@@ -34,6 +35,9 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	fake := execenvtest.NewFakeE2B(t, apiKey)
 	cfg := app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()}
 	d := startDexWith(t, cfg)
+	writeFile(t, filepath.Join(cfg.DataDir, "agents", "default", "workspace", ".agents", "skills", "local-only", "SKILL.md"), "---\nname: local-only\ndescription: Local project skill\n---\n")
+	writeFile(t, filepath.Join(cfg.DataDir, "agents", "default", ".agents", ".env"), "BOT_MARKER=explicit\n")
+	writeFile(t, filepath.Join(cfg.DataDir, ".agents", "skills", "dex-shared", "SKILL.md"), "---\nname: dex-shared\ndescription: Shared skill\n---\n")
 
 	var remoteEnv, sandbox apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
@@ -44,7 +48,7 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 		"name": "sandbox-a", "kind": "e2b", "config": map[string]any{"template": "base", "timeoutSeconds": 300}, "secret": apiKey,
 	}, &sandbox, http.StatusCreated)
 
-	// Then the bot lists its own environment first, then the SSH environment. E2B is not a choice.
+	// Then the bot lists its own environment first, then the saved SSH and E2B environments.
 	var listed struct {
 		Environments []apiSessionEnvironment `json:"environments"`
 	}
@@ -53,8 +57,9 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 		t.Fatalf("list environments: %d %s", status, raw)
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/environments", nil, &listed)
-	if len(listed.Environments) != 2 || listed.Environments[0].ID != "local" || !listed.Environments[0].Default ||
-		listed.Environments[1] != (apiSessionEnvironment{ID: remoteEnv.ID, Name: "remote-box", Kind: "pi-env", Status: "available"}) {
+	if len(listed.Environments) != 3 || listed.Environments[0].ID != "local" || !listed.Environments[0].Default ||
+		listed.Environments[1] != (apiSessionEnvironment{ID: remoteEnv.ID, Name: "remote-box", Kind: "pi-env", Status: "available"}) ||
+		listed.Environments[2] != (apiSessionEnvironment{ID: sandbox.ID, Name: "sandbox-a", Kind: "e2b", Status: "available"}) {
 		t.Fatalf("environments=%+v", listed.Environments)
 	}
 
@@ -86,15 +91,28 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 		t.Fatalf("local bash=%q", out)
 	}
 
-	// A started chat keeps its environment. A missing or an E2B environment is refused.
+	// A started chat keeps its environment. A missing environment is refused.
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", remote), map[string]any{"environmentId": ""}, nil, http.StatusConflict)
 	fresh := d.newSession(t).ID
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", fresh), map[string]any{"environmentId": "missing"}, nil, http.StatusBadRequest)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", fresh), map[string]any{"environmentId": sandbox.ID}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", fresh), map[string]any{"environmentId": sandbox.ID}, nil)
+	if out := taskTurn(t, d, fresh, `printf '%s:%s:%s:%s' "${REMOTE_E2B_MARKER:-local}" "$BOT_MARKER" "${DEX_DATA_DIR:-unset}" "$PWD"`); !strings.Contains(out, "e2b-fake-ok:explicit:unset:") || !strings.HasSuffix(out, "/home/user/workspace") {
+		t.Fatalf("sandbox bash=%q", out)
+	}
 
-	// When the bot lists environments, then it sees the SSH environment without secrets.
+	// Then skill discovery and synchronization use the sandbox, not the bot's local project.
+	d.must(t, http.MethodPut, chatPath(fresh, "settings"), map[string]string{"provider": "faux", "modelId": "section"}, nil)
+	if out := taskTurn(t, d, fresh, "skills"); !strings.Contains(out, "/home/user/workspace/.dex/skills/dex/dex-shared/SKILL.md") || strings.Contains(out, "local-only") || strings.Contains(out, cfg.DataDir) {
+		t.Fatalf("sandbox skills=%q", out)
+	}
+	d.must(t, http.MethodPut, chatPath(fresh, "settings"), map[string]string{"provider": "faux", "modelId": "bash"}, nil)
+	if out := taskTurn(t, d, fresh, `test -f .dex/skills/dex/dex-shared/SKILL.md && printf synced`); out != "bash: synced" {
+		t.Fatalf("sandbox skill file=%q", out)
+	}
+
+	// When the bot lists environments, then it sees both environments without secrets.
 	tool := taskTool(t, d, local, "environment_list", map[string]any{})
-	if !strings.Contains(tool, remoteEnv.ID) || strings.Contains(tool, sandbox.ID) || strings.Contains(tool, apiKey) {
+	if !strings.Contains(tool, remoteEnv.ID) || !strings.Contains(tool, sandbox.ID) || strings.Contains(tool, apiKey) {
 		t.Fatalf("environment_list=%q", tool)
 	}
 
@@ -105,12 +123,19 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	if !strings.Contains(results[0].content, "ssh-fake-ok") {
 		t.Fatalf("child result=%+v", results[0])
 	}
-	if got := callSessionTool(t, d, local, "session_new", map[string]any{"title": "Sandbox", "message": "hi", "environment": sandbox.ID}); !strings.Contains(got, "SSH environment") {
-		t.Fatalf("session_new in E2B=%q", got)
+	toolJSON(t, callSessionTool(t, d, local, "session_new", map[string]any{"title": "Sandbox", "message": `printf %s "$REMOTE_E2B_MARKER"`, "provider": "faux", "modelId": "bash", "environment": sandbox.ID}), &child)
+	if results := waitResults(t, sessionDB(t, d), local, 2); !strings.Contains(results[1].content, "e2b-fake-ok") {
+		t.Fatalf("sandbox child result=%+v", results[1])
+	}
+	if n := fake.Counts().Created; n != 1 {
+		t.Fatalf("sessions of the same bot created %d sandboxes", n)
 	}
 
 	// After a restart the chat still runs on remote-box.
 	d.stop()
+	if n := fake.Counts().Killed; n != 1 {
+		t.Fatalf("closing the bot deleted %d override sandboxes", n)
+	}
 	d = startDexWith(t, cfg)
 	d.setModel(t, "bash")
 	if out := taskTurn(t, d, remote, `printf %s "${REMOTE_SSH_MARKER:-local}"`); out != "bash: ssh-fake-ok" {
@@ -152,11 +177,9 @@ func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
 	w.until(t, "source answer", answered("bash: local"))
 	entry := findItem(t, &w.tr, "assistant", "bash: local").EntryID
 
-	// When the target is an E2B or a missing environment, then the fork fails and creates no chat.
+	// When the target is a missing environment, then the fork fails and creates no chat.
 	chats := len(d.chats(t))
-	for _, env := range []string{sandbox.ID, "missing"} {
-		d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "environmentId": env}, nil, http.StatusBadRequest)
-	}
+	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "environmentId": "missing"}, nil, http.StatusBadRequest)
 	if n := len(d.chats(t)); n != chats {
 		t.Fatalf("refused forks created chats: %d, want %d", n, chats)
 	}
@@ -165,6 +188,10 @@ func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
 	// another environment is refused.
 	var created, again struct {
 		ChatID int64 `json:"chatId"`
+	}
+	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "environmentId": sandbox.ID}, &created, http.StatusCreated)
+	if out := taskTurn(t, d, created.ChatID, `printf %s "$REMOTE_E2B_MARKER"`); out != "bash: e2b-fake-ok" {
+		t.Fatalf("sandbox fork bash=%q", out)
 	}
 	body := map[string]any{"id": uuid.NewV7().String(), "entryId": entry, "environmentId": remoteEnv.ID}
 	d.must(t, http.MethodPost, chatPath(src, "fork"), body, &created, http.StatusCreated)
