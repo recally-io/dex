@@ -102,7 +102,13 @@ WHERE id = @id;
 UPDATE outbox_messages SET retry_at = @retry_at, error = @reason WHERE id = @id;
 
 -- name: MarkOutboxDelivered :exec
-UPDATE outbox_messages SET status = 'delivered', delivered_at = @delivered_at WHERE id = @id;
+UPDATE outbox_messages SET status = CASE WHEN skipped_part <> 0 AND EXISTS (
+    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
+) THEN 'failed' ELSE 'delivered' END,
+delivered_at = CASE WHEN skipped_part <> 0 AND EXISTS (
+    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
+) THEN NULL ELSE @delivered_at END
+WHERE id = @id AND status = 'pending';
 
 -- name: RevokeOutboxBySubmission :exec
 UPDATE outbox_messages SET status = 'revoked' WHERE source_submission_id = ? AND status = 'pending';
@@ -172,3 +178,8 @@ SELECT s.status, s.reason, s.exit_action, s.required_reply_id,
        coalesce(o.status, '') AS reply_status, coalesce(o.skipped_part, 0) AS skipped_part
 FROM submissions s LEFT JOIN outbox_messages o ON o.id = s.required_reply_id
 WHERE s.id = ?;
+
+-- name: MarkSkippedFollowUpPart :exec
+UPDATE outbox_messages SET skipped_part = 1 WHERE id = @id AND EXISTS (
+    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
+);

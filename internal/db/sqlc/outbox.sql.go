@@ -565,7 +565,13 @@ func (q *Queries) ListRecentDeliveredOutbox(ctx context.Context, conversationID 
 }
 
 const markOutboxDelivered = `-- name: MarkOutboxDelivered :exec
-UPDATE outbox_messages SET status = 'delivered', delivered_at = ?1 WHERE id = ?2
+UPDATE outbox_messages SET status = CASE WHEN skipped_part <> 0 AND EXISTS (
+    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
+) THEN 'failed' ELSE 'delivered' END,
+delivered_at = CASE WHEN skipped_part <> 0 AND EXISTS (
+    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
+) THEN NULL ELSE ?1 END
+WHERE id = ?2 AND status = 'pending'
 `
 
 type MarkOutboxDeliveredParams struct {
@@ -584,6 +590,17 @@ UPDATE outbox_messages SET skipped_part = 1 WHERE id = ?
 
 func (q *Queries) MarkOutboxPartSkipped(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, markOutboxPartSkipped, id)
+	return err
+}
+
+const markSkippedFollowUpPart = `-- name: MarkSkippedFollowUpPart :exec
+UPDATE outbox_messages SET skipped_part = 1 WHERE id = ?1 AND EXISTS (
+    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
+)
+`
+
+func (q *Queries) MarkSkippedFollowUpPart(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, markSkippedFollowUpPart, id)
 	return err
 }
 

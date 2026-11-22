@@ -96,7 +96,13 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	if err = queueRoutineOutbox(ctx, q, id, conv.ID, s.now().UnixMilli()); err != nil {
 		return 0, 0, err
 	}
-	if _, err = writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {
+	if f, lookupErr := q.GetChannelFollowUpByInput(ctx, id); lookupErr == nil {
+		if err := settledFollowUp(ctx, q, f, sub, conv, event, s.now().UnixMilli()); err != nil {
+			return 0, 0, err
+		}
+	} else if !errors.Is(lookupErr, sql.ErrNoRows) {
+		return 0, 0, lookupErr
+	} else if _, err := writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {
 		return 0, 0, err
 	}
 	if conv.ChannelKey == MainKey {

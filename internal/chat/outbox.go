@@ -62,15 +62,42 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 	outboxID := uuid.NewV7().String()
 	final := boolPtrOrTrue(a.Final)
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-	peer, identity, err := taskNotificationRoute(ctx, q, conv, source)
+	source, err = q.GetSubmission(ctx, source.ID)
 	if err != nil {
 		return "", err
+	}
+	f, err := q.GetChannelFollowUpByInput(ctx, source.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	var peer, identity string
+	if f.DelegationID != "" {
+		if final && f.State == "queued" {
+			existing, err := q.GetOutboxByDedupKey(ctx, followUpFinalKey(f.DelegationID))
+			return existing.ID, err
+		}
+		if f.State != "open" {
+			return "", errChannelFollowUp
+		}
+		if err := requireChannelFollowUp(ctx, q, f, conv, source); err != nil {
+			return "", err
+		}
+		peer, identity = f.Peer, f.ChannelContext
+		if final {
+			dedupKey = followUpFinalKey(f.DelegationID)
+			// A final conclusion must not be superseded by another update.
+			a.TopicKey = ""
+		}
+	} else {
+		peer, identity, err = taskNotificationRoute(ctx, q, conv, source)
+		if err != nil {
+			return "", err
+		}
 	}
 	status, deliveredAt := outboxInitialStatus(peer, source.ChannelRevoked, now)
 
@@ -110,13 +137,22 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 		outboxID = existing.ID
 	}
 	if final {
+		if f.DelegationID != "" {
+			if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{DelegationID: f.DelegationID, State: "queued"}); err != nil {
+				return "", err
+			}
+		}
 		if _, err := q.BindOutboxFilesToOutbox(ctx, sqlc.BindOutboxFilesToOutboxParams{
 			OutboxID:     sql.NullString{String: outboxID, Valid: true},
 			SubmissionID: sql.NullString{String: source.ID, Valid: true},
 		}); err != nil {
 			return "", err
 		}
-		for _, id := range r.RunInputIDs {
+		ids := r.RunInputIDs
+		if f.DelegationID != "" {
+			ids = []string{source.ID}
+		}
+		for _, id := range ids {
 			if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "notify_user"}); err != nil {
 				return "", err
 			}
@@ -230,12 +266,25 @@ func (s *Service) ToolStaySilent(ctx context.Context, r engine.TaskContext, _ en
 			return errors.New("cannot stay silent when an unanswered user message is in this turn")
 		}
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
+	if f, err := q.GetChannelFollowUpByInput(ctx, r.SourceRequestID); err == nil {
+		sub, err := q.GetSubmission(ctx, r.SourceRequestID)
+		if err != nil {
+			return err
+		}
+		if err := requireChannelFollowUp(ctx, q, f, conv, sub); err != nil {
+			return err
+		}
+		if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{DelegationID: f.DelegationID, State: "intentional_silence"}); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	for _, id := range ids {
 		if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "stay_silent"}); err != nil {
 			return err

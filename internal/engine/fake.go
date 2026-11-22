@@ -12,7 +12,7 @@ import (
 
 func fakeProvider() *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
-	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "spawn", "think", "mixed", "files"} {
+	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "spawn", "spawn-notify", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
 	faux := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "faux", Models: defs, TokensPerSecond: 200})
@@ -123,8 +123,8 @@ func fakeProvider() *ai.ModelsProvider {
 				return ai.AssistantMessage{}, fmt.Errorf("faux/mixed requires ask_user JSON arguments")
 			}
 			return ai.FauxAssistantMessage(ai.FauxContentBlocks{ai.FauxToolCall("ask_user", args, nil), ai.FauxToolCall("bash", map[string]any{"command": "echo mixed"}, nil)}, ai.FauxAssistantMessageOptions{StopReason: "toolUse"}), nil
-		case "spawn":
-			if result, ok := last.(ai.ToolResultMessage); ok {
+		case "spawn", "spawn-notify":
+			if result, ok := last.(ai.ToolResultMessage); ok && (m.ID != "spawn-notify" || result.ToolName != "tool_search") {
 				prefix := "spawn: "
 				if result.IsError {
 					prefix = "spawn error: "
@@ -136,6 +136,12 @@ func fakeProvider() *ai.ModelsProvider {
 				return ai.AssistantMessage{}, fmt.Errorf("faux/spawn requires a JSON object")
 			}
 			if result, ok := args["task-result"]; ok {
+				if m.ID == "spawn-notify" && args["channel-follow-up"] != nil {
+					if !fakeExposed(t, "notify_user") {
+						return fakeCall("tool_search", map[string]any{"query": "notify_user"}), nil
+					}
+					return fakeCall("notify_user", map[string]any{"content": "Reviewed channel conclusion"}), nil
+				}
 				data, err := json.Marshal(result, json.Deterministic(true))
 				return fakeText("task-result: " + string(data)), err
 			}
