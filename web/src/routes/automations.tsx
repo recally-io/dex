@@ -335,6 +335,7 @@ function RunBlock({
           {run.summary || run.reason}
         </p>
       ) : null}
+      {run.notificationNote ? <p className="text-xs text-muted-foreground">{run.notificationNote}</p> : null}
       {run.status !== "running" ? (
         <div className="flex flex-wrap items-center gap-2">
           {run.chatId ? (

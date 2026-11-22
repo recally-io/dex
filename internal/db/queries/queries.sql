@@ -389,7 +389,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd, r.notification_note,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id,
@@ -457,6 +457,21 @@ ORDER BY max(updated_at) DESC, max(id) DESC;
 
 -- name: GetAutomationRun :one
 SELECT * FROM automation_runs WHERE id = ?;
+
+-- name: GetPreviousFinishedAutomationRun :one
+-- Choose the preceding run in run-list order, not the preceding failure. Skip active runs.
+SELECT sqlc.embed(prior), s.status AS execution_status, s.reason AS execution_reason
+FROM automation_runs current
+JOIN automation_runs prior ON prior.automation_id = current.automation_id
+LEFT JOIN submissions s ON s.id = prior.id
+WHERE current.id = sqlc.arg(run_id)
+  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND (prior.status IN ('skipped', 'failed') OR s.status IN ('done', 'unanswered'))
+ORDER BY prior.created_at DESC, prior.id DESC
+LIMIT 1;
+
+-- name: SetAutomationRunNotificationNote :exec
+UPDATE automation_runs SET notification_note = ? WHERE id = ?;
 
 -- name: ReportAutomationRun :execrows
 UPDATE automation_runs SET outcome = @outcome, summary = @summary, change_key = @change_key

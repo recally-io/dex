@@ -48,6 +48,23 @@ func (s *Service) ToolReportCheck(ctx context.Context, caller engine.TaskContext
 	return errors.New("this automation run already has a report or has ended")
 }
 
+// A user can stop or withdraw a run. Keep its existing receipt and history, but do not alert.
+func routineCanceled(status, reason string) bool {
+	return status == "unanswered" && (reason == "stopped" || reason == "withdrawn" || reason == "aborted" || reason == "reset")
+}
+
+// Native settlement uses stable codes. Admission errors can also reach this path as raw text;
+// do not put their provider or environment details in the Routine result or its alert.
+func routineExecutionReason(reason string) string {
+	switch reason {
+	case "model_error", "no_model", "interrupted", "restart_limit", "nothing_to_answer",
+		"faulted", "orphaned", "turn_limit", "stopped", "withdrawn", "aborted", "reset":
+		return reason
+	default:
+		return "automation execution failed"
+	}
+}
+
 // settleInput commits the receipt, the routine result, and the result for the parent session in one
 // control transaction. It returns the parent session that got a result, or zero.
 func (s *Service) settleInput(ctx context.Context, id string, event engine.Outcome) (changed, parent int64, err error) {
@@ -86,15 +103,14 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	if err != nil {
 		return 0, 0, err
 	}
-	reason := event.Reason
-	if event.Status != "done" && reason == "" {
-		reason = "automation execution failed"
-	}
+	reason := routineExecutionReason(event.Reason)
 	if err = q.FinalizeAutomationRun(ctx, sqlc.FinalizeAutomationRunParams{ID: id, ExecutionStatus: event.Status, Failure: reason}); err != nil {
 		return 0, 0, err
 	}
-	if err = queueRoutineOutbox(ctx, q, id, conv.ID, s.now().UnixMilli()); err != nil {
-		return 0, 0, err
+	if !routineCanceled(event.Status, event.Reason) {
+		if err = queueRoutineOutbox(ctx, q, id, conv.ID, s.now().UnixMilli()); err != nil {
+			return 0, 0, err
+		}
 	}
 	if _, err = writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {
 		return 0, 0, err

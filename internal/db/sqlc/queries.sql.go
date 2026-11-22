@@ -751,7 +751,7 @@ func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (A
 }
 
 const getAutomationRun = `-- name: GetAutomationRun :one
-SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate, read_at, dismissed_at, environment_id, cwd FROM automation_runs WHERE id = ?
+SELECT id, automation_id, due_at, status, reason, created_at, outcome, summary, change_key, duplicate, read_at, dismissed_at, environment_id, cwd, notification_note FROM automation_runs WHERE id = ?
 `
 
 func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRun, error) {
@@ -772,6 +772,7 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 		&i.DismissedAt,
 		&i.EnvironmentID,
 		&i.Cwd,
+		&i.NotificationNote,
 	)
 	return i, err
 }
@@ -949,6 +950,50 @@ func (q *Queries) GetOnePassword(ctx context.Context) (GetOnePasswordRow, error)
 		&i.ConnectHost,
 		&i.ConnectToken,
 		&i.ServiceAccountToken,
+	)
+	return i, err
+}
+
+const getPreviousFinishedAutomationRun = `-- name: GetPreviousFinishedAutomationRun :one
+SELECT prior.id, prior.automation_id, prior.due_at, prior.status, prior.reason, prior.created_at, prior.outcome, prior.summary, prior.change_key, prior.duplicate, prior.read_at, prior.dismissed_at, prior.environment_id, prior.cwd, prior.notification_note, s.status AS execution_status, s.reason AS execution_reason
+FROM automation_runs current
+JOIN automation_runs prior ON prior.automation_id = current.automation_id
+LEFT JOIN submissions s ON s.id = prior.id
+WHERE current.id = ?1
+  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND (prior.status IN ('skipped', 'failed') OR s.status IN ('done', 'unanswered'))
+ORDER BY prior.created_at DESC, prior.id DESC
+LIMIT 1
+`
+
+type GetPreviousFinishedAutomationRunRow struct {
+	AutomationRun   AutomationRun  `json:"automation_run"`
+	ExecutionStatus sql.NullString `json:"execution_status"`
+	ExecutionReason sql.NullString `json:"execution_reason"`
+}
+
+// Choose the preceding run in run-list order, not the preceding failure. Skip active runs.
+func (q *Queries) GetPreviousFinishedAutomationRun(ctx context.Context, runID string) (GetPreviousFinishedAutomationRunRow, error) {
+	row := q.db.QueryRowContext(ctx, getPreviousFinishedAutomationRun, runID)
+	var i GetPreviousFinishedAutomationRunRow
+	err := row.Scan(
+		&i.AutomationRun.ID,
+		&i.AutomationRun.AutomationID,
+		&i.AutomationRun.DueAt,
+		&i.AutomationRun.Status,
+		&i.AutomationRun.Reason,
+		&i.AutomationRun.CreatedAt,
+		&i.AutomationRun.Outcome,
+		&i.AutomationRun.Summary,
+		&i.AutomationRun.ChangeKey,
+		&i.AutomationRun.Duplicate,
+		&i.AutomationRun.ReadAt,
+		&i.AutomationRun.DismissedAt,
+		&i.AutomationRun.EnvironmentID,
+		&i.AutomationRun.Cwd,
+		&i.AutomationRun.NotificationNote,
+		&i.ExecutionStatus,
+		&i.ExecutionReason,
 	)
 	return i, err
 }
@@ -1195,7 +1240,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd, r.notification_note,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id,
@@ -1213,22 +1258,23 @@ type ListAutomationRunsParams struct {
 }
 
 type ListAutomationRunsRow struct {
-	ID            string         `json:"id"`
-	DueAt         sql.NullInt64  `json:"due_at"`
-	Status        string         `json:"status"`
-	Reason        sql.NullString `json:"reason"`
-	CreatedAt     int64          `json:"created_at"`
-	Outcome       string         `json:"outcome"`
-	Summary       string         `json:"summary"`
-	ChangeKey     string         `json:"change_key"`
-	Duplicate     int64          `json:"duplicate"`
-	EnvironmentID string         `json:"environment_id"`
-	Cwd           string         `json:"cwd"`
-	MessageStatus sql.NullString `json:"message_status"`
-	MessageReason sql.NullString `json:"message_reason"`
-	ChatID        sql.NullInt64  `json:"chat_id"`
-	AdmittedAt    sql.NullInt64  `json:"admitted_at"`
-	SettledAt     sql.NullInt64  `json:"settled_at"`
+	ID               string         `json:"id"`
+	DueAt            sql.NullInt64  `json:"due_at"`
+	Status           string         `json:"status"`
+	Reason           sql.NullString `json:"reason"`
+	CreatedAt        int64          `json:"created_at"`
+	Outcome          string         `json:"outcome"`
+	Summary          string         `json:"summary"`
+	ChangeKey        string         `json:"change_key"`
+	Duplicate        int64          `json:"duplicate"`
+	EnvironmentID    string         `json:"environment_id"`
+	Cwd              string         `json:"cwd"`
+	NotificationNote string         `json:"notification_note"`
+	MessageStatus    sql.NullString `json:"message_status"`
+	MessageReason    sql.NullString `json:"message_reason"`
+	ChatID           sql.NullInt64  `json:"chat_id"`
+	AdmittedAt       sql.NullInt64  `json:"admitted_at"`
+	SettledAt        sql.NullInt64  `json:"settled_at"`
 }
 
 // The newest runs of an automation, with the message of each started run.
@@ -1253,6 +1299,7 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 			&i.Duplicate,
 			&i.EnvironmentID,
 			&i.Cwd,
+			&i.NotificationNote,
 			&i.MessageStatus,
 			&i.MessageReason,
 			&i.ChatID,
@@ -1825,6 +1872,20 @@ func (q *Queries) SetAutomationNextDue(ctx context.Context, arg SetAutomationNex
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const setAutomationRunNotificationNote = `-- name: SetAutomationRunNotificationNote :exec
+UPDATE automation_runs SET notification_note = ? WHERE id = ?
+`
+
+type SetAutomationRunNotificationNoteParams struct {
+	NotificationNote string `json:"notification_note"`
+	ID               string `json:"id"`
+}
+
+func (q *Queries) SetAutomationRunNotificationNote(ctx context.Context, arg SetAutomationRunNotificationNoteParams) error {
+	_, err := q.db.ExecContext(ctx, setAutomationRunNotificationNote, arg.NotificationNote, arg.ID)
+	return err
 }
 
 const setConversationCwd = `-- name: SetConversationCwd :exec

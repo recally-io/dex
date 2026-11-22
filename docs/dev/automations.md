@@ -105,6 +105,16 @@ records repeated findings; it does not prevent or undo actions. The runs API
 exposes these fields in routine check history. The web calls automations
 Routines; API paths and code names remain `automation`.
 
+Failed runs and runs skipped due to no model, a missing or unavailable
+execution environment, or a missed schedule can queue an alert in the channel
+Outbox. A skip due to a busy Routine does not queue one. Dex compares the
+failure reason with the previous finished run of that Routine. Only an exact
+match with a previous failure suppresses the alert. This comparison does not
+change report deduplication. A skip has no input; its Outbox entry uses an
+existing conversation of the same bot only as its owner. It does not start a
+turn in that conversation. If no target resolves, the run list shows
+`not delivered: no notification target`.
+
 `automation_runs.read_at` and `dismissed_at` hold Inbox state. A separate table
 would add a one-to-one record with no independent lifecycle. `GET /api/inbox`
 uses one query across all agents. It joins runs, routines, agents, and inputs.
