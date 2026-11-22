@@ -50,6 +50,9 @@ func startNative(t *testing.T, model string) *nativeTest {
 			return service.ToolReadDreamMessage(ctx, c, request)
 		},
 		Outbox: engine.OutboxTools{
+			NotifyUser: func(ctx context.Context, c engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
+				return service.ToolNotifyUser(ctx, c, a)
+			},
 			ReportParent: func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
 				return service.ToolReportParent(ctx, c, a)
 			},
