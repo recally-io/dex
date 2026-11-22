@@ -9,7 +9,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/recally-io/dex/internal/wechat"
+	"github.com/recally-io/dex/internal/channel/wechat"
 )
 
 func TestUserWechatRefreshRemainsUsableAfterFiveMinutes(t *testing.T) {

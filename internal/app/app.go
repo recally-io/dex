@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
+	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -34,7 +35,6 @@ import (
 	"github.com/recally-io/dex/internal/server"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/upload"
-	"github.com/recally-io/dex/internal/wechat"
 	"github.com/recally-io/dex/internal/worktask"
 	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 )

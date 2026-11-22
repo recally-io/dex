@@ -9,7 +9,7 @@ import (
 func TestChannelImportBoundaries(t *testing.T) {
 	const root = "github.com/recally-io/dex/internal/channel"
 	const delivery = root + "/delivery"
-	adapters := []string{root + "/telegram", root + "/feishu", "github.com/recally-io/dex/internal/wechat"}
+	adapters := []string{root + "/telegram", root + "/feishu", "github.com/recally-io/dex/internal/channel/wechat"}
 	packages := append([]string{root, delivery}, adapters...)
 	for _, pkg := range packages {
 		t.Run(pkg, func(t *testing.T) {

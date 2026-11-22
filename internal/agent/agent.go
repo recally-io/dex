@@ -19,10 +19,10 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
+	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/wechat"
 )
 
 // ErrInvalid means that a requested agent or channel change is invalid.

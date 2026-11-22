@@ -9,9 +9,9 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/wechat"
 )
 
 // Wechat is the public account view. Credentials and runtime tokens stay private.

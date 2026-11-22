@@ -337,7 +337,7 @@ E2E tests for Feishu. These tests make no real platform requests.
 
 ## WeChat
 
-[`wechat.Bot`](../../internal/wechat/bot.go) connects one iLink bot to its
+[`wechat.Bot`](../../internal/channel/wechat/bot.go) connects one iLink bot to its
 owner's private messages. The WeChat channel page starts QR login and polls each
 state. It asks for a phone verification code when required. A region redirect
 changes the poll host. An expired or blocked QR code gets a replacement, with

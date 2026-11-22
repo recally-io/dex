@@ -6,7 +6,7 @@ import (
 
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
-	"github.com/recally-io/dex/internal/wechat"
+	"github.com/recally-io/dex/internal/channel/wechat"
 )
 
 // ListArchivedAgents returns the archived agents, newest archive first.
