@@ -7,49 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/MichaelKinsy/PiG/durable"
 )
-
-// fakeShell writes a shell that runs rc, then the -c command, like `zsh -l -i -c`.
-func fakeShell(t *testing.T, rc string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "shell")
-	script := "#!/bin/sh\n" + rc + "\nshift 3\nexec /bin/sh -c \"$1\"\n"
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-func TestUserToolsSeeTheLoginShellEnvironment(t *testing.T) {
-	// Given a login shell whose rc file prints a greeting and exports a value.
-	shell := fakeShell(t, "echo 'welcome back'\nexport FROM_RC='rc value'")
-	// When dex captures the environment from a small process environment.
-	env, err := captureShellEnv(t.Context(), shell, []string{"PATH=/usr/bin:/bin", "HOME=/home/test"}, 5*time.Second)
-	// Then the export and the inherited values are present, and the greeting is not.
-	if err != nil || env["FROM_RC"] != "rc value" || env["HOME"] != "/home/test" {
-		t.Fatalf("environment: %v %v", env, err)
-	}
-	for key, value := range env {
-		if strings.Contains(key+value, "welcome") {
-			t.Fatalf("rc output leaked into %s", key)
-		}
-	}
-}
-
-func TestUserHungLoginShellDoesNotBlockTools(t *testing.T) {
-	// Given an rc file that starts a background job and never returns.
-	shell := fakeShell(t, "sleep 60 &\nsleep 60")
-	started := time.Now()
-	// When dex captures the environment with a short limit.
-	_, err := captureShellEnv(t.Context(), shell, []string{"PATH=/usr/bin:/bin"}, 300*time.Millisecond)
-	// Then the capture fails soon, also with the background job alive.
-	if err == nil || time.Since(started) > 3*time.Second {
-		t.Fatalf("capture: %v after %s", err, time.Since(started))
-	}
-}
 
 func TestUserSeesAWarningWhenTheLoginShellFails(t *testing.T) {
 	// Given a capture that fails.
@@ -147,17 +107,6 @@ func TestUserBotUsesOnePasswordThroughTheCLI(t *testing.T) {
 	}
 }
 
-func TestUserRcBackgroundJobDoesNotLoseTheEnvironment(t *testing.T) {
-	// Given an rc file that starts a job which keeps stdout open after the shell exits.
-	shell := fakeShell(t, "export FROM_RC=kept\n(sleep 30) &")
-	// When dex captures the environment.
-	env, err := captureShellEnv(t.Context(), shell, []string{"PATH=/usr/bin:/bin"}, 5*time.Second)
-	// Then the complete output still counts.
-	if err != nil || env["FROM_RC"] != "kept" {
-		t.Fatalf("environment: %v %v", env["FROM_RC"], err)
-	}
-}
-
 func TestUserBrokenShellIsNotRetriedOnEveryOpen(t *testing.T) {
 	// Given a login shell that fails.
 	home := t.TempDir()
@@ -200,27 +149,4 @@ func TestUserFailedRecaptureKeepsTheLastEnvironment(t *testing.T) {
 	if got["PATH"] != "/opt/homebrew/bin:/usr/bin" || !strings.Contains(warning, "keep the last captured environment") {
 		t.Fatalf("environment after a failed capture: %v %q", got, warning)
 	}
-}
-
-func TestUserDexSettingsDoNotReachTheLoginShell(t *testing.T) {
-	// Given dex started with its API token in the process environment.
-	t.Setenv("DEX_TOKEN", "private-dex-token")
-	t.Setenv("SHELL", fakeShell(t, "export FROM_RC=1"))
-	// When dex captures the login shell from the tool base keys.
-	env, err := LoginShellEnv(t.Context(), map[string]string{"PATH": "/usr/bin:/bin", "HOME": t.TempDir()})
-	// Then tools get the shell exports and not the dex token.
-	if err != nil || env["FROM_RC"] != "1" || env["DEX_TOKEN"] != "" {
-		t.Fatalf("environment: FROM_RC=%q DEX_TOKEN set=%v err=%v", env["FROM_RC"], env["DEX_TOKEN"] != "", err)
-	}
-}
-
-func TestUserLoginShellWithoutShellVariable(t *testing.T) {
-	// Given a service manager that does not set SHELL.
-	t.Setenv("SHELL", "")
-	// When dex looks up the login shell, then it uses the shell of the user account.
-	shell := loginShell(t.Context())
-	if info, err := os.Stat(shell); err != nil || !filepath.IsAbs(shell) || info.IsDir() {
-		t.Fatalf("shell %q: %v", shell, err)
-	}
-	t.Logf("account shell: %s", shell)
 }

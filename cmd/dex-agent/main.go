@@ -23,6 +23,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/loginenv"
 )
 
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
@@ -215,6 +216,7 @@ func run(ctx context.Context, state string) error {
 		return err
 	}
 	header := http.Header{"Authorization": []string{"Bearer " + cfg.Token}}
+	execution := runnerExecutionOptions(ctx, workspace)
 	delay := time.Second
 	for ctx.Err() == nil {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -233,7 +235,7 @@ func run(ctx context.Context, state string) error {
 		}
 		if dialErr == nil {
 			log.Print("connected to Dex")
-			_ = runner.Serve(ctx, c, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: workspace}))
+			_ = runner.Serve(ctx, c, node.NewNodeExecutionEnv(execution))
 			delay = time.Second
 		}
 		timer := time.NewTimer(delay)
@@ -246,4 +248,16 @@ func run(ctx context.Context, state string) error {
 		delay = min(delay*2, 30*time.Second)
 	}
 	return ctx.Err()
+}
+
+// runnerExecutionOptions captures the Runner account's PATH once for all connections.
+func runnerExecutionOptions(ctx context.Context, workspace string) node.NodeExecutionEnvOptions {
+	opts := node.NodeExecutionEnvOptions{Cwd: workspace}
+	path, err := loginenv.Path(ctx)
+	if err == nil {
+		opts.ShellEnv = map[string]string{"PATH": path}
+	} else if ctx.Err() == nil {
+		log.Printf("login PATH unavailable (%s); tools keep the service PATH", err)
+	}
+	return opts
 }

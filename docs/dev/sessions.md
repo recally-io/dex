@@ -312,6 +312,17 @@ lifecycle (`CanResetAgent`, `ResetAgent`, `ReleaseAgent`). This keeps
 storage. `execenv.Runners` owns machine enrollment for the HTTP routes. SSH environments default `loginShell` to
 `true`: they start the daemon via `$SHELL -lc` and capture interactive login
 shell exports via `$SHELL -l -i -c '... env -0'` on open.
+At startup, a runner uses a bounded interactive login shell probe on its own
+host to get only the exported `PATH`. The probe passes through the service's
+`ZDOTDIR` and `XDG_CONFIG_HOME` when set, so the shell can find its startup
+files. It does not add those variables to the tool defaults. The probe uses
+the same `/usr/bin/env -0` command as Local, without a `PATH` lookup. The
+runner limits the probe output and keeps only the `PATH` entry. If the probe
+fails, the runner logs the reason without profile output or values, and
+tools keep the service `PATH`. Bash tool
+commands still run in a non-login, non-interactive shell. An explicit command
+`PATH` takes precedence; commands that disable environment inheritance do not
+receive the login or service `PATH`.
 `GET /api/settings/environments/ssh-config` parses `~/.ssh/config` (including
 `Include` directives) and lists private key filenames without reading key bytes.
 `POST /api/settings/environments/probe` validates and probes unsaved settings,
