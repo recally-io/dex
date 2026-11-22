@@ -1,4 +1,6 @@
 // Package channel defines the shared channel transport contract and frozen delivery values.
+// Peers have the form "platform:remote-id" and contain no slash.
+// Source keys identify inbound updates globally and include the bot identity.
 package channel
 
 import (

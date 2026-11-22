@@ -212,7 +212,7 @@ agent that owns the credential. QR login and registration sessions are also per 
 Migration maps old settings, peers, and commands to `default`. Rollback keeps only
 that agent's channel data. WeChat runtime remains keyed by bot ID and owner.
 
-[`delivery.Manager`](../../internal/channel/delivery/channel.go) owns bot lifetime,
+[`delivery.Manager`](../../internal/channel/delivery/manager.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
