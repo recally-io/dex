@@ -1,4 +1,4 @@
-package channel
+package delivery
 
 import (
 	"context"
@@ -10,74 +10,14 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/upload"
 )
-
-// RichMessage is frozen Telegram rich HTML. Version 1 has no embedded media.
-type RichMessage struct {
-	Version int    `json:"version"`
-	HTML    string `json:"html"`
-}
-
-// Part is one frozen platform payload. Text holds the payload for text-only
-// platforms such as Feishu and WeChat. Rich, Group, and Buttons come from
-// Telegram planning. Manager passes the stored variant back to the same Bot unchanged.
-type Part struct {
-	Rich    *RichMessage `json:"rich,omitempty"`
-	Buttons []Button     `json:"buttons,omitempty"`
-	Text    string       `json:"text,omitempty"`
-	File    *File        `json:"file,omitempty"`
-	Group   []File       `json:"group,omitempty"`
-}
-
-// File identifies a temporary outbox snapshot, not an artifact entry.
-// The JSON fields describe the snapshot. Body is transient and never stored
-// as JSON: Manager loads it from the outbox to plan GroupParts and for each
-// Send call.
-type File struct {
-	Key      string `json:"key"`
-	Name     string `json:"name"`
-	MimeType string `json:"mimeType"`
-	Size     int64  `json:"size"`
-	Body     []byte `json:"-"`
-}
-
-// Receipt contains the message IDs confirmed by a platform call.
-type Receipt struct {
-	MessageIDs []string
-	Kind       string
-}
-
-// RemoteMessage keeps the actual confirmed message kind, not its planned part index.
-// Albums and rejected parts make remote and part indexes different.
-type RemoteMessage struct {
-	ID   string `json:"id"`
-	Kind string `json:"kind,omitempty"`
-}
-
-// TextParts keeps text-only adapters on the shared part contract.
-func TextParts(texts []string) []Part {
-	parts := make([]Part, len(texts))
-	for i, text := range texts {
-		parts[i].Text = text
-	}
-	return parts
-}
-
-// RetryError keeps a failed part until the platform's flood-control window ends.
-type RetryError struct {
-	After time.Duration
-	Err   error
-}
-
-func (e *RetryError) Error() string { return e.Err.Error() }
-func (e *RetryError) Unwrap() error { return e.Err }
 
 // QueueFile binds bytes to the initiating Telegram input. Web and child calls keep URL-only delivery.
 func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name string, reader io.Reader) (bool, error) {
@@ -139,24 +79,24 @@ func outboxReplyStatus(r sqlc.ListPendingOutboxMessagesRow) string {
 	return "done"
 }
 
-func (m *Manager) replyParts(ctx context.Context, bot Bot, r sqlc.ListPendingOutboxMessagesRow) ([]Part, error) {
-	var parts []Part
+func (m *Manager) replyParts(ctx context.Context, bot channel.Bot, r sqlc.ListPendingOutboxMessagesRow) ([]channel.Part, error) {
+	var parts []channel.Part
 	if r.RenderedParts != "" {
 		err := json.Unmarshal([]byte(r.RenderedParts), &parts)
 		return parts, err
 	}
 	status := outboxReplyStatus(r)
-	parts = bot.Parts(chat.Reply{Status: status, Answer: r.Body, Reason: r.Reason})
+	parts = bot.Parts(channel.Reply{Status: status, Answer: r.Body, Reason: r.Reason})
 	if status == "done" {
 		files, err := m.q.ListOutboxFiles(ctx, sql.NullString{String: r.ID, Valid: true})
 		if err != nil {
 			return nil, err
 		}
 		for _, f := range files {
-			parts = append(parts, Part{File: &File{Key: f.OperationKey, Name: f.Name, MimeType: f.MimeType, Size: f.Size.Int64}})
+			parts = append(parts, channel.Part{File: &channel.File{Key: f.OperationKey, Name: f.Name, MimeType: f.MimeType, Size: f.Size.Int64}})
 		}
 	}
-	if group, ok := bot.(telegramBot); ok {
+	if group, ok := bot.(TelegramHooks); ok {
 		for i := range parts {
 			if file := parts[i].File; file != nil {
 				var err error
@@ -283,7 +223,7 @@ func (m *Manager) saveDeliveryError(ctx context.Context, id string, legacySource
 	return nil
 }
 
-func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxMessagesRow, receipt Receipt, remotes *[]RemoteMessage, member bool) error {
+func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxMessagesRow, receipt channel.Receipt, remotes *[]channel.RemoteMessage, member bool) error {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -300,9 +240,9 @@ func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxM
 			}
 		}
 	}
-	next := append([]RemoteMessage{}, (*remotes)...)
+	next := append([]channel.RemoteMessage{}, (*remotes)...)
 	for _, id := range receipt.MessageIDs {
-		next = append(next, RemoteMessage{ID: id, Kind: receipt.Kind})
+		next = append(next, channel.RemoteMessage{ID: id, Kind: receipt.Kind})
 	}
 	encoded, err := json.Marshal(next)
 	if err != nil {

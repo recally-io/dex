@@ -212,10 +212,16 @@ agent that owns the credential. QR login and registration sessions are also per 
 Migration maps old settings, peers, and commands to `default`. Rollback keeps only
 that agent's channel data. WeChat runtime remains keyed by bot ID and owner.
 
-[`channel.Manager`](../../internal/channel/channel.go) owns bot lifetime,
+[`delivery.Manager`](../../internal/channel/delivery/channel.go) owns bot lifetime,
 commands, and reply delivery. Settings changes stop the old bot
 before they start its replacement. Settings expose runtime status: `off`,
 `running`, `error` with a reason, or `needs_login`.
+
+The root `channel` package defines the transport contract and frozen delivery
+values without storage or runtime dependencies. The app passes the manager to
+each adapter through the inbound interface that adapter defines. The delivery
+package does not import concrete adapters. Telegram rich text, buttons, and
+media groups keep their shared frozen encoding; the adapter owns the wire format.
 
 `chat.Service.ReceivedSource` reports the global stored input fact. Channel
 and platform adapters use it for duplicate input and attachment replay, including

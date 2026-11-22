@@ -6,11 +6,10 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 )
 
 // Parts freezes all text as Rich Messages.
-func (b *Bot) Parts(reply chat.Reply) []channel.Part {
+func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer: " + reply.Reason

@@ -19,17 +19,26 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
+type inbound interface {
+	Pending(ctx context.Context, peer string) (bool, error)
+
+	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	ReceivedSource(ctx context.Context, source string) (bool, error)
+	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Report(name string, status channel.Status)
+}
+
 // Bot is one owner-only iLink account. The channel manager sends its durable replies.
 type Bot struct {
 	cfg      Config
 	client   *client
 	q        *sqlc.Queries
-	channels *channel.Manager
+	channels inbound
 	uploads  *upload.Store
 }
 
 // New connects a saved account to the shared channel manager.
-func New(cfg Config, options Options, q *sqlc.Queries, channels *channel.Manager, uploads *upload.Store) *Bot {
+func New(cfg Config, options Options, q *sqlc.Queries, channels inbound, uploads *upload.Store) *Bot {
 	return &Bot{cfg: cfg, client: newClient(options), q: q, channels: channels, uploads: uploads}
 }
 
@@ -194,7 +203,7 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 }
 
 // Parts filters Markdown and splits the final text into at most 2000 runes per part.
-func (b *Bot) Parts(reply chat.Reply) []channel.Part {
+func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
 		text = "No answer. Please try again."

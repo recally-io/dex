@@ -68,10 +68,29 @@ func (c Config) botID() string {
 	return id
 }
 
+type inbound interface {
+	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	ReceivedSource(ctx context.Context, source string) (bool, error)
+	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Report(name string, status channel.Status)
+	TelegramInputAllowed(ctx context.Context, peer string, source chat.ChannelContext) (bool, error)
+	GroupUploads(ctx context.Context, peer string, source chat.ChannelContext) (*upload.Store, error)
+	ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity chat.ChannelContext) (bool, error)
+	SetTelegramRetryAt(ctx context.Context, token string, until int64) error
+	SpeechInput(ctx context.Context, source string) (*chat.Message, bool, error)
+	Transcribe(ctx context.Context, peer, source string, msg chat.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (chat.Message, error)
+	FinishSpeechInput(ctx context.Context, source string, album bool) error
+	KnownTelegramAlbum(ctx context.Context, peer string, identity chat.ChannelContext) (bool, error)
+	StoreTelegramAlbum(ctx context.Context, peer, source string, msg chat.Message) error
+	ReadyTelegramAlbums(ctx context.Context) ([]chat.TelegramAlbum, time.Duration, error)
+	FinishTelegramAlbum(ctx context.Context, source string) error
+	CleanupTelegramAlbums(ctx context.Context, store *upload.Store) error
+}
+
 // Bot is one Telegram bot that talks to one agent.
 type Bot struct {
 	cfg       Config
-	chats     *channel.Manager
+	chats     inbound
 	client    *http.Client
 	previewMu sync.Mutex
 	previews  map[string]*preview
@@ -82,7 +101,7 @@ type Bot struct {
 }
 
 // New returns a Bot. Register it with the channel manager to start it.
-func New(cfg Config, chats *channel.Manager) *Bot {
+func New(cfg Config, chats inbound) *Bot {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://api.telegram.org"
 	}

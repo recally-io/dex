@@ -17,7 +17,8 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/dream`            | Hidden chats that consolidate the memory repo                                      |
 | `internal/scheduler`        | Job schedules; jobs check durable state                                            |
 | `internal/automation`       | Automation prompts, schedules, runs, and chats                                     |
-| `internal/channel`          | Shared channel commands, bot lifecycle, durable reply outbox                       |
+| `internal/channel`          | Channel transport contract and frozen delivery values                              |
+| `internal/channel/delivery` | Bot lifecycle, channel commands, and durable reply outbox                          |
 | `internal/channel/telegram` | Telegram polling, pairing, protocol, and media adaptation                          |
 | `internal/channel/feishu`   | Feishu/Lark setup, events, cards, and media adaptation                             |
 | `internal/wechat`           | WeChat login, polling, protocol, and media adaptation                              |
