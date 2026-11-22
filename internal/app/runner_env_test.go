@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -130,41 +131,53 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
-	bot.Provider = "faux"
-	bot.ModelID = "bash"
-	bot.ThinkingLevel = "off"
-	bot.EnvironmentID = created.ID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
-	// Open the bot, then replace its resources without disconnecting the machine.
-	for range 2 {
-		d.must(t, http.MethodPost, "/api/agents/default/extensions/reload", nil, nil)
-	}
-	chat := d.newSession(t).ID
-	if got := taskTurn(t, d, chat, `printf 'machine-ok'`); !strings.Contains(got, "machine-ok") {
-		t.Fatalf("remote command after reloading the bot returned %q", got)
-	}
-
-	// A second bot can use the same machine without sharing its default files.
+	// Both bots remain local by default and explicitly select the same runner for a chat.
+	d.setModel(t, "bash")
 	var second apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{
-		"name": "Second bot", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "environmentId": created.ID,
+		"name": "Second bot", "provider": "faux", "modelId": "bash", "thinkingLevel": "off",
 	}, &second, http.StatusCreated)
-	var secondSession sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/"+second.ID+"/chats", nil, &secondSession, http.StatusCreated)
-	if got := taskTurn(t, d, chat, `printf 'first' > note.txt; cat note.txt`); !strings.Contains(got, "first") {
-		t.Fatalf("first bot did not write its file: %q", got)
+	newChat := func(agentID, environmentID string) botChat {
+		var session sessionInfo
+		d.must(t, http.MethodPost, "/api/agents/"+agentID+"/chats", nil, &session, http.StatusCreated)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/%s/chats/%d/environment", agentID, session.ID),
+			map[string]string{"environmentId": environmentID}, nil)
+		return botChat{bots: &bots{t: t, d: d}, agent: agentID, id: session.ID}
 	}
-	other := botChat{bots: &bots{t: t, d: d}, agent: second.ID, id: secondSession.ID}
+	first, other := newChat("default", created.ID), newChat(second.ID, created.ID)
+	first.send(`printf 'first' > note.txt; cat note.txt`)
+	first.watch().until(t, "first bot writes its own file", answeredWith("bash: first"))
 	other.send(`test ! -e note.txt && printf 'second' > note.txt && cat note.txt`)
 	other.watch().until(t, "second bot writes its own file", answeredWith("bash: second"))
-	for botID, want := range map[string]string{bot.ID: "first", second.ID: "second"} {
+	for botID, want := range map[string]string{"default": "first", second.ID: "second"} {
 		file := filepath.Join(machineState, "workspaces", botID, "workspace", "note.txt")
 		got, err := os.ReadFile(file)
 		if err != nil || string(got) != want {
 			t.Fatalf("bot %s file = %q, want %q (err %v)", botID, got, want, err)
 		}
+	}
+
+	// Changing the bot default still connects to the machine and survives an extension reload.
+	var bot apiAgent
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	bot.EnvironmentID = created.ID
+	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
+	reload := func() {
+		t.Helper()
+		eventually(t, "reload idle bot", func() (bool, any) {
+			status, body := d.call(t, http.MethodPost, "/api/agents/default/extensions/reload", nil)
+			if status != http.StatusOK && status != http.StatusConflict {
+				t.Fatalf("reload: %d %s", status, body)
+			}
+			return status == http.StatusOK, body
+		})
+	}
+	for range 2 {
+		reload()
+	}
+	chat := d.newSession(t).ID
+	if got := taskTurn(t, d, chat, `cat note.txt`); got != "bash: first" {
+		t.Fatalf("default runner after reloading the bot: %q", got)
 	}
 
 	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)
@@ -177,6 +190,25 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		_ = ws.CloseNow()
 		t.Fatal("a revoked token reconnected")
 	}
+
+	// An offline runner remains listed, but an explicit session never runs on local.
+	var listed struct {
+		Environments []apiSessionEnvironment `json:"environments"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/environments", nil, &listed)
+	if len(listed.Environments) != 2 || listed.Environments[1].ID != created.ID || listed.Environments[1].Status != "offline" {
+		t.Fatalf("offline runner: %+v", listed.Environments)
+	}
+	other.send(`printf 'offline-fallback' > offline.txt`)
+	other.watch().until(t, "offline runner refuses the tool", func(tr *transcript) bool {
+		last := lastItem(tr)
+		return !tr.running && last.Kind == "assistant" && (strings.Contains(last.Text, "offline") || strings.Contains(last.Text, "selected environment changed"))
+	})
+	// The unavailable default does not prevent an explicit local chat in that bot.
+	reload()
+	local := newChat("default", "local")
+	local.send(`test ! -e note.txt && printf 'local-ok'`)
+	local.watch().until(t, "explicit local when its bot runner is offline", answeredWith("bash: local-ok"))
 
 	// The loaded bot uses the machine again after a new enrollment: the new session must not reuse
 	// the stamp of the revoked session, or the bot would keep its closed connection.

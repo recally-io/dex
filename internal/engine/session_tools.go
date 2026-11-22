@@ -82,7 +82,7 @@ type SessionNewArgs struct {
 	Provider      string `json:"provider,omitempty"`
 	ModelID       string `json:"modelId,omitempty"`
 	ThinkingLevel string `json:"thinkingLevel,omitempty"`
-	// Environment is "local" or an SSH environment ID from environment_list. Empty
+	// Environment is "local" or a registered environment ID from environment_list. Empty
 	// means the environment of the parent for this bot, else the environment of the other bot.
 	Environment string `json:"environment,omitempty"`
 }
@@ -106,7 +106,7 @@ type SessionForkArgs struct {
 	// Entry is a transcript entry that ends a finished answer. Zero forks at the latest one.
 	Entry   int64  `json:"entry,omitempty"`
 	Message string `json:"message"`
-	// Environment is local or an SSH environment ID. Empty keeps the environment of the source.
+	// Environment is local or a registered environment ID. Empty keeps the environment of the source.
 	Environment string `json:"environment,omitempty"`
 }
 
@@ -246,7 +246,7 @@ func sessionExtension(agentID string, handlers TaskTools) *durable.Extension {
 				"provider":      map[string]any{"type": "string", "description": "Omit with modelId to use the model of this conversation. Supply both fields to change the model."},
 				"modelId":       map[string]any{"type": "string", "description": "Use an exact configured model ID. Never guess an ID."},
 				"thinkingLevel": map[string]any{"type": "string", "enum": []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"}},
-				"environment":   map[string]any{"type": "string", "description": "local or an SSH environment ID from environment_list. The command and file tools of the child run there. Omit it to use the environment of this conversation, or with bot the environment of that bot. A cwd from another environment is not inherited."},
+				"environment":   map[string]any{"type": "string", "description": "local or a registered environment ID from environment_list. The command and file tools of the child run there. Omit it to use the environment of this conversation, or with bot the environment of that bot. A cwd from another environment is not inherited."},
 			}), sessions.New != nil, func(ctx context.Context, source TaskContext, args SessionNewArgs) (SessionRef, error) {
 				return sessions.New(ctx, source, args)
 			}),
@@ -269,11 +269,11 @@ func sessionExtension(agentID string, handlers TaskTools) *durable.Extension {
 				"id":          idProperty,
 				"entry":       map[string]any{"type": "integer", "minimum": 1, "description": "A transcript entry that ends a finished answer. Omit it to fork at the latest one."},
 				"message":     map[string]any{"type": "string", "minLength": 1},
-				"environment": map[string]any{"type": "string", "description": "local or an SSH environment ID from environment_list. The command and file tools of the new child run there. Omit it to keep the environment of the source. Files and background commands do not move to another environment, and the cwd is not inherited."},
+				"environment": map[string]any{"type": "string", "description": "local or a registered environment ID from environment_list. The command and file tools of the new child run there. Omit it to keep the environment of the source. Files and background commands do not move to another environment, and the cwd is not inherited."},
 			}), sessions.Fork != nil, func(ctx context.Context, source TaskContext, args SessionForkArgs) (SessionRef, error) {
 				return sessions.Fork(ctx, source, args)
 			}),
-		sessionTool(agentID, "environment_list", "List the execution environments that sessions of this bot can use, with their ID, name, kind, and status. The default one is the environment of this bot: omit environment in session_new to use it. Give the ID of another one to session_new or session_fork to run a child there.",
+		sessionTool(agentID, "environment_list", "List the execution environments that sessions of this bot can use, with their ID, name, kind, and status. The default belongs to this bot. In session_new, omitting environment inherits the parent selection for this bot or follows the target bot for another bot. Give an environment ID to pin the target. An offline environment does not run work.",
 			objectSchema([]string{}, map[string]any{}), handlers.Environments != nil, func(ctx context.Context, source TaskContext, _ struct{}) (struct {
 				Environments []EnvironmentInfo `json:"environments"`
 			}, error) {

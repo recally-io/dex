@@ -33,17 +33,22 @@ export function resultQuote(
 }
 
 // continuationEnvironment returns the environment that a chat about a run selects. The run's
-// paths and files exist only where it ran, so the chat pins local or the SSH environment of the
-// run, even when the bot uses it now. A chat cannot pin an E2B or runner environment, and a run
-// from before Dex stored the environment of runs has none, so the continuation stops instead of
-// guessing a machine.
+// paths and files exist only where it ran, so the chat pins local, SSH, or Runner.
+// An E2B selection does not identify the exact sandbox. Older runs may record
+// no environment. Stop rather than guess.
 export function continuationEnvironment(ranIn: string, environments: AgentEnvironments["environments"]) {
   const env = environments.find((e) => e.id === ranIn);
 
-  if (env && (env.kind === "local" || env.kind === "pi-env")) return env.id;
+  if (env && env.kind !== "e2b" && env.status === "available") return env.id;
+
+  if (env?.kind === "runner" && env.status === "offline") {
+    throw new Error(
+      `This result ran on ${env.name}, which is offline. Try again when the runner reconnects.`,
+    );
+  }
 
   const where = ranIn
-    ? `ran in ${env?.name ?? ranIn}, which a new chat cannot use`
+    ? `ran in ${env?.name ?? ranIn}, which cannot continue this run`
     : "has no recorded environment";
 
   throw new Error(`This result ${where}. Start a chat and select an environment.`);

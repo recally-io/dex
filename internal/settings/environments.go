@@ -296,7 +296,7 @@ func environmentView(row sqlc.ExecutionEnvironment) (Environment, error) {
 }
 
 // SessionEnvironments lists the execution environments for the sessions of agentID: the
-// environment of the bot first, then local and the SSH environments that a session can select.
+// environment of the bot first, then local and the other registered environments.
 // It has no configuration and no secrets.
 func (s *Service) SessionEnvironments(ctx context.Context, agentID string) ([]engine.EnvironmentInfo, error) {
 	agent, err := s.q.GetAgent(ctx, agentID)
@@ -317,7 +317,7 @@ func (s *Service) SessionEnvironments(ctx context.Context, agentID string) ([]en
 			out[0].ID, out[0].Name, out[0].Kind = r.ID, r.Name, r.Kind
 			continue
 		}
-		if execenv.Kind(r.Kind) == execenv.KindPiEnv {
+		if execenv.IsRegisteredKind(execenv.Kind(r.Kind)) {
 			out = append(out, engine.EnvironmentInfo{ID: r.ID, Name: r.Name, Kind: r.Kind, Status: s.envs.Status(ctx, agentID, r.ID)})
 		}
 	}

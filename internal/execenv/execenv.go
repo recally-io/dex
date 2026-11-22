@@ -22,6 +22,11 @@ const (
 	KindRunner Kind = "runner"
 )
 
+// IsRegisteredKind reports whether a stored environment kind can be selected.
+func IsRegisteredKind(kind Kind) bool {
+	return kind == KindPiEnv || kind == KindE2B || kind == KindRunner
+}
+
 // ErrInvalidPath is returned when a requested project or directory path fails validation.
 var ErrInvalidPath = errors.New("invalid project directory")
 
@@ -50,8 +55,7 @@ type Handle interface {
 }
 
 // Provider opens agent execution environment handles. An empty environmentID selects the
-// environment of the agent. LocalID or a pi-env environment ID selects that environment; any
-// other selection fails Open and Stamp with ErrUnavailable.
+// environment of the agent. LocalID or a registered environment ID selects that environment.
 type Provider interface {
 	Open(ctx context.Context, agentID, environmentID string) (Handle, error)
 	// Stamp returns the current fingerprint of the selected environment.
@@ -75,6 +79,16 @@ type stampedHandle struct {
 }
 
 func (h stampedHandle) Stamp() string { return h.stamp }
+
+// LeaseExpired reports that the provider confirmed that a disposable lease is
+// gone. A caller can reopen the same selection, but must not retry the failed operation.
+func LeaseExpired(h Handle) bool {
+	if wrapped, ok := h.(stampedHandle); ok {
+		l, ok := wrapped.lease.(interface{ expired() bool })
+		return ok && l.expired()
+	}
+	return false
+}
 
 // backend is one remote environment kind. Each method gets the stored spec of one environment.
 type backend interface {

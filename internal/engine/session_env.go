@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"sync"
+	"time"
 
 	"github.com/recally-io/dex/internal/execenv"
 )
@@ -16,6 +17,7 @@ type sessionEnv struct {
 	// ID is the explicit selection of the session, or empty when it follows the agent.
 	ID     string
 	Handle execenv.Handle
+	Files  *agentExtensions
 	// Vars are the tool environment values. A remote environment gets only the explicit .env
 	// values, and its processes inherit the environment of their host (Inherit).
 	Vars    map[string]string
@@ -29,11 +31,17 @@ type environments struct {
 	provider execenv.Provider
 	// selected returns the explicit environment of a session, or empty when it follows the agent.
 	selected func(ctx context.Context, ref Ref) (string, error)
-	own      execenv.Handle
+	files    *agentExtensions
 	loaded   *loadedExtensions
 
-	mu     sync.Mutex
-	leases map[string]execenv.Handle
+	mu         sync.Mutex
+	own        execenv.Handle
+	ownFiles   *agentExtensions
+	ownErr     error
+	retryAfter time.Time
+	retryStamp string
+	leases     map[string]sessionEnv
+	closed     bool
 }
 
 func (e *environments) vars(h execenv.Handle) (map[string]string, bool) {
@@ -57,35 +65,93 @@ func (e *environments) session(ctx context.Context, conversationID int64) (sessi
 			return sessionEnv{}, err
 		}
 	}
-	return e.byID(ctx, id)
+	s, err := e.byID(ctx, id)
+	s.ID = id
+	return s, err
 }
 
 // byID returns the lease of an explicit environment, or the agent's own environment for an empty id.
 func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) {
-	if id == "" {
-		vars, inherit := e.vars(e.own)
-		return sessionEnv{Handle: e.own, Vars: vars, Inherit: inherit}, nil
-	}
-	// The stamp check reads control storage at each call, so a removed environment
-	// stops the next tool call. A changed stamp makes the agent stale; reload replaces the lease.
-	if _, err := e.provider.Stamp(ctx, e.agentID, id); err != nil {
+	// Read control storage at every call. Never execute with a removed or stale lease.
+	stamp, err := e.provider.Stamp(ctx, e.agentID, id)
+	if err != nil {
 		return sessionEnv{}, err
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	h := e.leases[id]
-	if h == nil {
-		var err error
-		if h, err = e.provider.Open(ctx, e.agentID, id); err != nil {
+	if e.closed {
+		return sessionEnv{}, ErrClosed
+	}
+	if id == "" && e.own == nil {
+		// Admission and tool resolution can both ask for the default in one turn.
+		// Back off on repeated failures, but let a changed binding retry immediately.
+		if stamp == e.retryStamp && time.Now().Before(e.retryAfter) {
+			return sessionEnv{}, e.ownErr
+		}
+		h, err := e.provider.Open(ctx, e.agentID, "")
+		if err != nil {
+			if ctx.Err() == nil {
+				e.ownErr, e.retryStamp, e.retryAfter = err, stamp, time.Now().Add(time.Second)
+			}
 			return sessionEnv{}, err
 		}
-		if e.leases == nil {
-			e.leases = map[string]execenv.Handle{}
+		e.own, e.ownFiles, e.ownErr = h, e.files.forHandle(h), nil
+		stamp = h.Stamp()
+	}
+	useOwn := e.own != nil && stamp == e.own.Stamp()
+	if useOwn && id != "" && e.own.Kind() == execenv.KindE2B {
+		// A pinned E2B selection can remain after the bot changes its default. In that
+		// case, it must not use the bot's old persisted sandbox lease.
+		current, err := e.provider.Stamp(ctx, e.agentID, "")
+		useOwn = err == nil && current == stamp
+	}
+	if useOwn {
+		vars, inherit := e.vars(e.own)
+		return sessionEnv{ID: id, Handle: e.own, Files: e.ownFiles, Vars: vars, Inherit: inherit}, nil
+	}
+	if id == "" {
+		return sessionEnv{}, fmt.Errorf("%w: the bot environment changed; wait for reload", execenv.ErrUnavailable)
+	}
+	if s, ok := e.leases[id]; ok {
+		if stamp != s.Handle.Stamp() {
+			return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; wait for reload", execenv.ErrUnavailable)
 		}
-		e.leases[id] = h
+		if !execenv.LeaseExpired(s.Handle) {
+			return s, nil
+		}
+		// Expiry is specific to this lease, not the configuration or other bots.
+		delete(e.leases, id)
+		if err := s.Handle.Close(ctx); err != nil {
+			return sessionEnv{}, err
+		}
+	}
+	h, err := e.provider.Open(ctx, e.agentID, id)
+	if err != nil {
+		return sessionEnv{}, err
+	}
+	if e.leases == nil {
+		e.leases = map[string]sessionEnv{}
 	}
 	vars, inherit := e.vars(h)
-	return sessionEnv{ID: id, Handle: h, Vars: vars, Inherit: inherit}, nil
+	s := sessionEnv{ID: id, Handle: h, Files: e.files.forHandle(h), Vars: vars, Inherit: inherit}
+	e.leases[id] = s
+	return s, nil
+}
+
+// defaultFiles returns the current default inspection target and whether an idle
+// reload must restore MCP tools that could not load while the default was down.
+func (e *environments) defaultFiles() (*agentExtensions, bool) {
+	e.mu.Lock()
+	files, recovered := e.ownFiles, e.own != nil && e.files.defaultUnavailable
+	e.mu.Unlock()
+	if recovered {
+		for _, server := range e.loaded.serverInfo() {
+			if server.State == "failed" {
+				return files, true
+			}
+		}
+	}
+	return files, false
 }
 
 // stale reports whether the configuration of an open explicit lease changed or became unavailable.
@@ -94,7 +160,7 @@ func (e *environments) stale(ctx context.Context) bool {
 	leases := maps.Clone(e.leases)
 	e.mu.Unlock()
 	for id, h := range leases {
-		if current, err := e.provider.Stamp(ctx, e.agentID, id); err != nil || current != h.Stamp() {
+		if current, err := e.provider.Stamp(ctx, e.agentID, id); err != nil || current != h.Handle.Stamp() {
 			return true
 		}
 	}
@@ -103,18 +169,24 @@ func (e *environments) stale(ctx context.Context) bool {
 
 func (e *environments) close(ctx context.Context) error {
 	e.mu.Lock()
-	leases := e.leases
-	e.leases = nil
+	e.closed = true
+	own, leases := e.own, e.leases
+	e.own, e.leases = nil, nil
 	e.mu.Unlock()
 	var errs []error
+	if own != nil {
+		errs = append(errs, own.Close(ctx))
+	}
 	for _, h := range leases {
-		errs = append(errs, h.Close(ctx))
+		errs = append(errs, h.Handle.Close(ctx))
 	}
 	return errors.Join(errs...)
 }
 
 // withEnvironment runs fn with the lease of environmentID for agentID: the open agent's lease, or
-// a temporary lease when the agent is not open. An empty environmentID selects the agent's own.
+// a temporary lease for the default when the agent is not open. Explicit browsing opens the
+// agent (and loads its configured MCP servers) so subsequent operations use the
+// same lease, including disposable sandboxes.
 func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID string, fn func(execenv.Handle) error) error {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
@@ -123,6 +195,14 @@ func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID str
 		return err
 	}
 	defer a.end()
+	if a.environments(agentID) == nil && environmentID != "" {
+		if _, err := a.config.ExecEnv.Stamp(ctx, agentID, environmentID); err != nil {
+			return err
+		}
+		if _, err := a.harness(ctx, agentID, ""); err != nil {
+			return err
+		}
+	}
 	if envs := a.environments(agentID); envs != nil {
 		s, err := envs.byID(ctx, environmentID)
 		if err != nil {

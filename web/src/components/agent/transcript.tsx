@@ -456,8 +456,13 @@ function ForkAction({ actions, entryId }: { actions: MessageActions; entryId: nu
           Fork in this environment
         </DropdownMenuItem>
         {targets.map((env) => (
-          <DropdownMenuItem key={env.id} onClick={() => actions.fork(entryId, false, undefined, env.id)}>
+          <DropdownMenuItem
+            key={env.id}
+            disabled={env.status !== "available"}
+            onClick={() => actions.fork(entryId, false, undefined, env.id)}
+          >
             Fork to {env.name}
+            {env.status === "available" ? "" : ` (${env.status})`}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -577,7 +582,7 @@ function splitAnswer(text: string): { question: string; answer: string } | null 
 export type MessageActions = {
   pending: boolean;
   /** Environments other than the current one that a fork can move to. */
-  forkTargets?: { id: string; name: string }[];
+  forkTargets?: { id: string; name: string; status: string }[];
   fork: (entryId: number, before: boolean, text?: string, environmentId?: string) => void;
 };
 

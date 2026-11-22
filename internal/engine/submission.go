@@ -74,10 +74,35 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 	} else {
+		var target sessionEnv
+		if ref.Scope == "" {
+			envs := a.environments(ref.AgentID)
+			if envs == nil {
+				return nil, ErrClosed
+			}
+			var envErr error
+			target, envErr = envs.session(ctx, ref.ID)
+			// Preserve the default's admission order: wait for it before checking
+			// the model. This keeps pending Main alerts across restarts too.
+			// An explicit selection may report unavailability through its tools,
+			// but attachments must wait until they can be staged there.
+			if envErr != nil && (target.ID == "" || len(input.Attachments) > 0) {
+				return nil, envErr
+			}
+		}
 		if input.Model.ModelID == "" {
 			return nil, ErrNoModel
 		}
-		change := a.changeFor(ctx, ref, input.Options)
+		var change harness.AgentChange
+		if ref.Scope != "" {
+			change = a.changeFor(ctx, ref, input.Options)
+		} else {
+			options := input.Options
+			if target.Files != nil {
+				options.Instructions = target.Files.instructionsContext(ctx, options.Cwd, options.Instructions)
+			}
+			change = agentChange(options)
+		}
 		if ref.Scope == "" {
 			if input.Automation {
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
@@ -114,20 +139,8 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		kind := inputEntryKind(input)
 		whenBusy := durable.WhenBusy(cmp.Or(input.WhenBusy, string(durable.WhenBusyFollowUp)))
 		var id durable.SubmissionId
-		inputDirectory := a.inputDirectory(ref)
-		if ref.Scope != "" {
-			inputDirectory = ""
-		} else if envs := a.environments(ref.AgentID); envs != nil {
-			// An unavailable environment fails only an input with attachments: its tool calls report
-			// the reason, and the chat stays usable.
-			s, envErr := envs.session(ctx, ref.ID)
-			if envErr != nil && len(input.Attachments) > 0 {
-				return nil, envErr
-			}
-			h := s.Handle
-			if h == nil {
-				h = a.execHandle(ref.AgentID)
-			}
+		inputDirectory := ""
+		if h := target.Handle; h != nil {
 			inputDirectory = h.Workspace()
 			if h.Kind() != execenv.KindLocal && len(input.Attachments) > 0 {
 				remoteEnv, envErr := h.Env(ctx, inputDirectory, nil)

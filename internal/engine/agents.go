@@ -37,7 +37,6 @@ type agentResources struct {
 	harness        harness.Harness
 	store          durable.Storage
 	loaded         *loadedExtensions
-	execHandle     execenv.Handle
 	execStamp      string
 	envs           *environments
 	groupRoot      *os.Root
@@ -297,17 +296,30 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	execHandle, err := a.config.ExecEnv.Open(ctx, agentID, "")
-	if err != nil {
-		return nil, err
+	execHandle, ownErr := a.config.ExecEnv.Open(ctx, agentID, "")
+	var execStamp string
+	if ownErr == nil {
+		execStamp = execHandle.Stamp()
+	} else {
+		// Keep the Harness available to sessions that select a different environment.
+		// Remember the stamp so a reconnect can reload the default and its MCP tools.
+		execStamp, _ = a.config.ExecEnv.Stamp(ctx, agentID, "")
 	}
-	execStamp := execHandle.Stamp()
+	files := a.files(agentID, execHandle)
+	files.defaultUnavailable = ownErr != nil
+	envs := &environments{
+		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
+		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
+	}
 	defer func() {
 		if resultErr != nil {
-			resultErr = errors.Join(resultErr, execHandle.Close(context.WithoutCancel(ctx)))
+			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
 		}
 	}()
-	files := a.files(agentID, execHandle)
+	session := func(ctx context.Context, id durable.ConversationId) (sessionEnv, error) {
+		return envs.session(ctx, int64(id))
+	}
+	files.sessionPrompts = true
 	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -317,17 +329,9 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, loaded.Close(context.WithoutCancel(ctx)))
 		}
 	}()
+	envs.loaded = loaded
 	if err := ctx.Err(); err != nil {
 		return nil, err
-	}
-	envs := &environments{agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, own: execHandle, loaded: loaded}
-	defer func() {
-		if resultErr != nil {
-			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
-		}
-	}()
-	session := func(ctx context.Context, id durable.ConversationId) (sessionEnv, error) {
-		return envs.session(ctx, int64(id))
 	}
 	background := func(ctx context.Context, id durable.ConversationId) (backgroundEnv, error) {
 		s, err := envs.session(ctx, int64(id))
@@ -399,7 +403,11 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			if target.Cwd != nil {
 				cwd = *target.Cwd
 			}
-			return s.Handle.Env(envCtx, cwd, s.Vars)
+			exec, err := s.Handle.Env(envCtx, cwd, s.Vars)
+			if err != nil {
+				return nil, err
+			}
+			return &sessionPromptEnv{ExecutionEnv: exec, files: s.Files}, nil
 		},
 		OnReport: func(report durable.Report) {
 			slog.Error("agent execution", "agent", agentID, "type", report.Kind, "error", report.Error)
@@ -408,7 +416,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, store: store, loaded: loaded, execHandle: execHandle, execStamp: execStamp, envs: envs}, nil
+	return &agentResources{harness: h, store: store, loaded: loaded, execStamp: execStamp, envs: envs}, nil
 }
 
 // Withdrawal and abort marks commit before the paused Harness can run saved work.
@@ -469,16 +477,16 @@ func agentChange(options Options) harness.AgentChange {
 // so an edit applies from the next input of a conversation.
 // agentChange reads the project AGENTS.md in the environment of the session ref.
 func (a *Agents) agentChange(ctx context.Context, ref Ref, options Options) harness.AgentChange {
-	handle := a.execHandle(ref.AgentID)
+	files := a.files(ref.AgentID, nil)
 	if envs := a.environments(ref.AgentID); envs != nil {
 		// An unavailable environment has no project AGENTS.md to read; its tools fail at the call.
 		s, err := envs.session(ctx, ref.ID)
 		if err != nil {
 			return agentChange(options)
 		}
-		handle = s.Handle
+		files = s.Files
 	}
-	options.Instructions = a.files(ref.AgentID, handle).instructionsContext(ctx, options.Cwd, options.Instructions)
+	options.Instructions = files.instructionsContext(ctx, options.Cwd, options.Instructions)
 	return agentChange(options)
 }
 
@@ -1125,15 +1133,6 @@ func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
 	return newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
 }
 
-func (a *Agents) execHandle(agentID string) execenv.Handle {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if res := a.resources[agentID]; res != nil {
-		return res.execHandle
-	}
-	return nil
-}
-
 // ReadWorkspaceFile reads up to maxBytes of a workspace-relative regular non-symlink file in the
 // environment of the calling session.
 func (a *Agents) ReadWorkspaceFile(ctx context.Context, caller TaskContext, relPath string, maxBytes int64) ([]byte, error) {
@@ -1265,7 +1264,8 @@ func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
 	for id, state := range loaded {
 		currentExt := a.files(id, nil).stamp()
 		currentExec, err := a.config.ExecEnv.Stamp(ctx, id, "")
-		if currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
+		_, restoreMCP := state.envs.defaultFiles()
+		if restoreMCP || currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
 			stale[id] = currentExt + "|" + currentExec
 		}
 	}
@@ -1275,22 +1275,40 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	if !agentIDPattern.MatchString(agentID) {
 		return ExtensionInfo{}, ErrInvalidInput
 	}
-	var info ExtensionInfo
-	err := a.withEnvironment(ctx, agentID, "", func(h execenv.Handle) error {
-		var infoErr error
-		info, infoErr = a.files(agentID, h).Info(ctx)
-		return infoErr
-	})
-	if err != nil {
-		return info, err
+	if err := a.begin(); err != nil {
+		return ExtensionInfo{}, err
 	}
+	defer a.end()
 	a.mu.Lock()
 	resource := a.resources[agentID]
 	a.mu.Unlock()
+	var info ExtensionInfo
+	var err, stampErr error
+	var currentExec string
+	var restoreMCP bool
+	if resource != nil {
+		currentExec, stampErr = a.config.ExecEnv.Stamp(ctx, agentID, "")
+		files, needsReload := resource.envs.defaultFiles()
+		restoreMCP = needsReload
+		if stampErr != nil || currentExec != resource.execStamp {
+			// Show the stored configuration, not project skills from a stale handle.
+			files = a.files(agentID, nil)
+			files.defaultUnavailable = true
+		}
+		info, err = files.Info(ctx)
+	} else {
+		err = a.withEnvironment(ctx, agentID, "", func(h execenv.Handle) error {
+			var infoErr error
+			info, infoErr = a.files(agentID, h).Info(ctx)
+			return infoErr
+		})
+	}
+	if err != nil {
+		return info, err
+	}
 	if resource != nil {
 		info.Servers = resource.loaded.serverInfo()
-		currentExec, stampErr := a.config.ExecEnv.Stamp(ctx, agentID, "")
-		info.ReloadPending = a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
+		info.ReloadPending = restoreMCP || a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
 	}
 	return info, nil
 }

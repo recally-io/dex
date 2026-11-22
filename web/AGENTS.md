@@ -34,8 +34,9 @@ Main and ordinary Chat sessions default to the agent's model and thinking level.
 Saved session overrides apply from the next input, including channel input on Main.
 Ended task conversations can also use model and project overrides.
 New chat sends `POST /api/agents/{agentId}/chats` with no request body.
-When an SSH environment exists or the bot is not local, a chat that has no
-message yet shows an environment picker (`listAgentEnvironments`), and the project
+When a registered environment exists, a chat that has no message yet shows
+local and the registered environments (`listAgentEnvironments`). Offline
+runners are visible but disabled. The project
 picker lists folders in the chosen environment. After the first message the
 header shows the environment name. With other available environments, Fork from here
 opens a menu that forks in the current environment or to another one.
@@ -64,9 +65,10 @@ The routine dialog offers "Follow bot", `local`, and the SSH environments. It
 keeps a saved environment that the list no longer shows, and a change of the
 environment clears the project directory. A routine update sends
 `environmentId`, because a PUT replaces the routine. Routines and Inbox continue
-a result through `continueResult` (`lib/inbox.ts`): the new chat pins `local` or
-the SSH environment of the run and uses its cwd. A run in an E2B or runner
-environment, or with no recorded environment, stops before any chat is created.
+a result through `continueResult` (`lib/inbox.ts`): the new chat pins the available
+local, SSH, or runner environment of the run and uses its cwd. A run in an E2B
+sandbox, in an unavailable environment, or with no recorded environment stops
+before any chat is created.
 Each child session reads like a thread. The transcript shows one card at a
 `session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
 call, and one "replied · View thread" line at each result mark. A click opens the
