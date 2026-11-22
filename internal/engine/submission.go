@@ -86,7 +86,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			// the model. This keeps pending Main alerts across restarts too.
 			// An explicit selection may report unavailability through its tools,
 			// but attachments must wait until they can be staged there.
-			if envErr != nil && (target.ID == "" || len(input.Attachments) > 0) {
+			if envErr != nil && (target.ID == "" || len(input.Attachments) > 0 || (input.Kind == "task_result" && IsMonitorEvent(input.RequestID))) {
 				return nil, envErr
 			}
 		}
@@ -115,11 +115,11 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			case input.Main:
 				add := []*durable.Extension{frontDeskExtension()}
 				if asksUser {
-					add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), timerExtension(ref.AgentID, a.config.Tasks.Timers), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
+					add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), monitorExtension(ref.AgentID, a.config.Tasks.Monitors), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
 				}
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
 			case asksUser:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), timerExtension(ref.AgentID, a.config.Tasks.Timers), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), monitorExtension(ref.AgentID, a.config.Tasks.Monitors), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks)}}})
 			}
 			switch {
 			case input.Child:
@@ -173,6 +173,12 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					if m := metadata(data); m.Origin != input.Origin {
 						return nil, ErrOriginBusy
 					}
+				}
+			}
+			if input.Kind == "task_result" && IsMonitorEvent(input.RequestID) && a.config.Tasks.AuthorizeMonitor != nil {
+				c := TaskContext{AgentID: ref.AgentID, Scope: ref.Scope, ConversationID: ref.ID, SourceRequestID: input.RequestID}
+				if err := a.config.Tasks.AuthorizeMonitor(ctx, c); err != nil {
+					return nil, fmt.Errorf("%w: monitor target or authority is no longer valid", ErrInvalidInput)
 				}
 			}
 			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}

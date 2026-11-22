@@ -242,15 +242,16 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Environments: func(ctx context.Context, c engine.TaskContext) ([]engine.EnvironmentInfo, error) {
 			return prefs.SessionEnvironments(ctx, c.AgentID)
 		},
-		Timers: engine.TimerTools{
-			Set: func(ctx context.Context, c engine.TaskContext, a engine.TimerSetArgs) (engine.TimerInfo, error) {
-				return chats.ToolTimerSet(ctx, c, a)
+		AuthorizeMonitor: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeMonitor(ctx, c) },
+		Monitors: engine.MonitorTools{
+			Set: func(ctx context.Context, c engine.TaskContext, a engine.MonitorSetArgs) (engine.MonitorInfo, error) {
+				return chats.ToolMonitorSet(ctx, c, a)
 			},
-			List: func(ctx context.Context, c engine.TaskContext) ([]engine.TimerInfo, error) {
-				return chats.ToolTimerList(ctx, c)
+			List: func(ctx context.Context, c engine.TaskContext) ([]engine.MonitorInfo, error) {
+				return chats.ToolMonitorList(ctx, c)
 			},
-			Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.TimerInfo, error) {
-				return chats.ToolTimerCancel(ctx, c, id)
+			Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.MonitorInfo, error) {
+				return chats.ToolMonitorCancel(ctx, c, id)
 			},
 		},
 	}
@@ -449,9 +450,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := jobs.Every("automations", cmp.Or(cfg.AutomationCheck, time.Minute), automations.Check); err != nil {
 		return nil, err
 	}
-	if err := jobs.Every("followup-timers", min(cmp.Or(cfg.AutomationCheck, 5*time.Second), 5*time.Second), func(ctx context.Context) {
-		if err := chats.FireDueTimers(ctx); err != nil && ctx.Err() == nil {
-			slog.Error("fire due followup timers", "err", err)
+	if err := jobs.Every("followup-monitors", min(cmp.Or(cfg.AutomationCheck, 5*time.Second), 5*time.Second), func(ctx context.Context) {
+		if err := chats.FireDueMonitors(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("fire due followup monitors", "err", err)
 		}
 	}); err != nil {
 		return nil, err

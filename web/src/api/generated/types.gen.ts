@@ -1260,7 +1260,7 @@ export type FeishuPoll = {
     session: string;
 };
 
-export type FollowupTimer = {
+export type Monitor = {
     id: string;
     dueAt: number;
     timeZone: string;
@@ -1268,10 +1268,21 @@ export type FollowupTimer = {
     state: 'scheduled' | 'fired' | 'cancelled' | 'expired';
     chainDepth: number;
     createdAt: number;
+    mode: 'prompt' | 'script';
+    maxRuns: number;
+    runs: number;
+    /**
+     * Deadline in milliseconds since epoch (0 for legacy one-shot grace).
+     */
+    expiresAt: number;
+    /**
+     * Last check or stop outcome (empty before the first check).
+     */
+    outcome: string;
 };
 
-export type FollowupTimerList = {
-    timers: Array<FollowupTimer>;
+export type MonitorList = {
+    monitors: Array<Monitor>;
 };
 
 export type OutboxMessage = {
@@ -4227,17 +4238,17 @@ export type AbortChatResponses = {
 
 export type AbortChatResponse = AbortChatResponses[keyof AbortChatResponses];
 
-export type ListChatTimersData = {
+export type ListChatMonitorsData = {
     body?: never;
     path: {
         agentId: string;
         chatId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/timers';
+    url: '/api/agents/{agentId}/chats/{chatId}/monitors';
 };
 
-export type ListChatTimersErrors = {
+export type ListChatMonitorsErrors = {
     /**
      * The request failed.
      */
@@ -4248,29 +4259,29 @@ export type ListChatTimersErrors = {
     default: Error;
 };
 
-export type ListChatTimersError = ListChatTimersErrors[keyof ListChatTimersErrors];
+export type ListChatMonitorsError = ListChatMonitorsErrors[keyof ListChatMonitorsErrors];
 
-export type ListChatTimersResponses = {
+export type ListChatMonitorsResponses = {
     /**
-     * Follow-up timers ordered with scheduled timers first.
+     * Follow-up monitors ordered with scheduled monitors first.
      */
-    200: FollowupTimerList;
+    200: MonitorList;
 };
 
-export type ListChatTimersResponse = ListChatTimersResponses[keyof ListChatTimersResponses];
+export type ListChatMonitorsResponse = ListChatMonitorsResponses[keyof ListChatMonitorsResponses];
 
-export type CancelChatTimerData = {
+export type CancelChatMonitorData = {
     body?: never;
     path: {
         agentId: string;
         chatId: number;
-        timerId: string;
+        monitorId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/timers/{timerId}';
+    url: '/api/agents/{agentId}/chats/{chatId}/monitors/{monitorId}';
 };
 
-export type CancelChatTimerErrors = {
+export type CancelChatMonitorErrors = {
     /**
      * The request failed.
      */
@@ -4285,16 +4296,16 @@ export type CancelChatTimerErrors = {
     default: Error;
 };
 
-export type CancelChatTimerError = CancelChatTimerErrors[keyof CancelChatTimerErrors];
+export type CancelChatMonitorError = CancelChatMonitorErrors[keyof CancelChatMonitorErrors];
 
-export type CancelChatTimerResponses = {
+export type CancelChatMonitorResponses = {
     /**
-     * The updated timer record.
+     * The updated monitor record.
      */
-    200: FollowupTimer;
+    200: Monitor;
 };
 
-export type CancelChatTimerResponse = CancelChatTimerResponses[keyof CancelChatTimerResponses];
+export type CancelChatMonitorResponse = CancelChatMonitorResponses[keyof CancelChatMonitorResponses];
 
 export type ListChatOutboxData = {
     body?: never;

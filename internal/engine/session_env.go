@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/execenv"
 )
 
@@ -22,6 +23,13 @@ type sessionEnv struct {
 	// values, and its processes inherit the environment of their host (Inherit).
 	Vars    map[string]string
 	Inherit bool
+}
+
+func (s sessionEnv) executionEnv(ctx context.Context, cwd string) (durableenv.ExecutionEnv, error) {
+	if cwd == "" {
+		cwd = s.Handle.Workspace()
+	}
+	return s.Handle.Env(ctx, cwd, s.Vars)
 }
 
 // environments holds the leases of one open agent: its own environment and the explicit

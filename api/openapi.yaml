@@ -1893,7 +1893,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/timers:
+  /api/agents/{agentId}/chats/{chatId}/monitors:
     parameters:
       - in: path
         name: agentId
@@ -1901,18 +1901,18 @@ paths:
         schema: { type: string }
       - $ref: "#/components/parameters/ChatId"
     get:
-      operationId: listChatTimers
-      description: Returns scheduled and recent follow-up timers for this session.
+      operationId: listChatMonitors
+      description: Returns scheduled and recent follow-up monitors for this session.
       responses:
         "200":
-          description: Follow-up timers ordered with scheduled timers first.
+          description: Follow-up monitors ordered with scheduled monitors first.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/FollowupTimerList" }
+              schema: { $ref: "#/components/schemas/MonitorList" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/timers/{timerId}:
+  /api/agents/{agentId}/chats/{chatId}/monitors/{monitorId}:
     parameters:
       - in: path
         name: agentId
@@ -1920,18 +1920,18 @@ paths:
         schema: { type: string }
       - $ref: "#/components/parameters/ChatId"
       - in: path
-        name: timerId
+        name: monitorId
         required: true
         schema: { type: string }
     delete:
-      operationId: cancelChatTimer
-      description: Cancels a scheduled follow-up timer of this session.
+      operationId: cancelChatMonitor
+      description: Cancels a scheduled follow-up monitor of this session.
       responses:
         "200":
-          description: The updated timer record.
+          description: The updated monitor record.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/FollowupTimer" }
+              schema: { $ref: "#/components/schemas/Monitor" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
@@ -3976,9 +3976,22 @@ components:
       properties:
         session: { type: string }
 
-    FollowupTimer:
+    Monitor:
       type: object
-      required: [id, dueAt, timeZone, prompt, state, chainDepth, createdAt]
+      required: [
+        id,
+        dueAt,
+        timeZone,
+        prompt,
+        state,
+        chainDepth,
+        createdAt,
+        mode,
+        maxRuns,
+        runs,
+        expiresAt,
+        outcome,
+      ]
       properties:
         id: { type: string }
         dueAt: { type: integer, format: int64 }
@@ -3989,14 +4002,26 @@ components:
           enum: [scheduled, fired, cancelled, expired]
         chainDepth: { type: integer }
         createdAt: { type: integer, format: int64 }
+        mode: { type: string, enum: [prompt, script] }
+        maxRuns: { type: integer }
+        runs: { type: integer }
+        expiresAt: {
+          type: integer,
+          format: int64,
+          description: Deadline in milliseconds since epoch (0 for legacy one-shot grace).,
+        }
+        outcome: {
+          type: string,
+          description: Last check or stop outcome (empty before the first check).,
+        }
 
-    FollowupTimerList:
+    MonitorList:
       type: object
-      required: [timers]
+      required: [monitors]
       properties:
-        timers:
+        monitors:
           type: array
-          items: { $ref: "#/components/schemas/FollowupTimer" }
+          items: { $ref: "#/components/schemas/Monitor" }
 
     OutboxMessage:
       type: object

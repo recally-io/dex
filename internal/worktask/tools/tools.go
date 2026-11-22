@@ -84,7 +84,7 @@ func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Co
 }
 
 // fromUser reports whether a person wrote the input that started the run. A session result, a
-// timer, or a routine is not a user request.
+// monitor, or a routine is not a user request.
 func fromUser(source sqlc.Submission) bool {
 	return source.Kind == "message" && chat.UserOrigin(source.Origin)
 }

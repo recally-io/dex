@@ -362,7 +362,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := registry.Install(frontDeskExtension()); err != nil {
 		return nil, err
 	}
-	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(timerExtension(agentID, a.config.Tasks.Timers))); err != nil {
+	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(monitorExtension(agentID, a.config.Tasks.Monitors))); err != nil {
 		return nil, err
 	}
 	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {
@@ -389,7 +389,24 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, store.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
+	var h harness.Harness
+	if authorize := a.config.Tasks.AuthorizeMonitor; authorize != nil {
+		guard := monitorGuard(agentID, store, func(guardCtx context.Context, c TaskContext) error {
+			if err := authorize(guardCtx, c); err != nil {
+				return err
+			}
+			_, err := envs.session(guardCtx, c.ConversationID)
+			return err
+		}, func(abortCtx context.Context, task durable.TaskId) error {
+			_, err := h.AbortTask(abortCtx, task)
+			return err
+		})
+		if err := registry.Install(guard); err != nil {
+			return nil, err
+		}
+		extensions = append(extensions, guard)
+	}
+	h, err = harness.OpenHarness(ctx, store, harness.HarnessOptions{
 		Models: a.modelsFor(agentID), Registry: registry,
 		Settings: func() *harness.HarnessSettings {
 			return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll, FollowUpMode: durable.QueueAll}
@@ -399,11 +416,11 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			if err != nil {
 				return nil, err
 			}
-			cwd := s.Handle.Workspace()
+			cwd := ""
 			if target.Cwd != nil {
 				cwd = *target.Cwd
 			}
-			exec, err := s.Handle.Env(envCtx, cwd, s.Vars)
+			exec, err := s.executionEnv(envCtx, cwd)
 			if err != nil {
 				return nil, err
 			}

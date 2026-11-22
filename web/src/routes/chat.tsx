@@ -27,6 +27,7 @@ import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
+import { ChatActivity } from "../components/chat-activity";
 import { SessionSettings } from "../components/session-settings";
 import { useEnvironmentSendBlock } from "../components/chat-environment";
 import { chatDraftEvent, putChatDraft, takeChatDraft } from "../lib/chat-draft";
@@ -626,9 +627,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       ) : null}
       <Composer
         controls={
-          chat.data && !chat.data.main ? (
+          chat.data &&
+          (chat.data.main ? (
+            <ChatActivity chatId={chat.data.id} writable={!chat.data.readOnly} />
+          ) : (
             <SessionSettings chat={chat.data} settings={settings} started={!blank} />
-          ) : undefined
+          ))
         }
         commands={commands}
         fix={

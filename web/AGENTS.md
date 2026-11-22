@@ -77,6 +77,10 @@ screen. Task conversations are read-only while queued or running and writable
 after they end.
 The bot header opens the Sessions page and creates new sessions. Legacy Sessions and transcript URLs remain readable.
 
+The chat activity panel lists the session's Monitors and Outbox entries. It
+shows the Monitor mode, attempt limit, and latest outcome. The user can cancel
+an active Monitor here. Monitor creation uses the session tool, not this panel.
+
 The old `/settings/<section>` addresses redirect to the new pages.
 
 ## Components and theme

@@ -60,7 +60,7 @@ Main and writable Chats have the `task_list`, `task_get`, `task_new`,
 `task_update`, and `task_append` tools (`internal/worktask/tools`). They record
 work and never start, steer, or stop a Session. The tools see only the Tasks of
 the caller's bot. `task_new` and a lifecycle change need a run that a person
-started on the web or a channel. A session result, a timer, or an external
+started on the web or a channel. A session result, a monitor, or an external
 event cannot create, complete, cancel, or reopen a Task. Each change commits
 with a replay record under the tool key, so a replayed call does not add a
 second Task or entry. `task_get` returns the latest 20 entries, cuts each
@@ -82,13 +82,13 @@ not replace it. `task_update` with `session` sets any child of the caller.
 wait that starts at the call time. Set `alertMain` to `true` to send a Task
 alert when the review arrives.
 
-| Data                                 | Owner             | Location                                                                                               |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------------ |
-| Agents, chats, submissions, settings | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |
-| Transcripts, runs, tool calls, usage | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                                                  |
-| Agent files                          | the agent's tools | `<data dir>/agents/<id>/workspace/` (or remote `pi-env` / `e2b` workspace)                             |
-| Bot artifact files                   | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                                              |
-| Uploaded files                       | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>` (staged to remote workspace when remote) |
-| Memory (git repo)                    | control / tools   | `<data dir>/memory/` (`memory_*` tools)                                                                |
-| Skills and MCP servers               | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                                               |
-| Outbox messages and follow-up timers | control           | `outbox_messages`, `outbox_files`, `followup_timers` in `control.sqlite`                               |
+| Data                                   | Owner             | Location                                                                                               |
+| -------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------ |
+| Agents, chats, submissions, settings   | control           | `<data dir>/control.sqlite` ([migrations](../../internal/db/migrations/))                              |
+| Transcripts, runs, tool calls, usage   | engine (PiG)      | `<data dir>/agents/<id>/state.sqlite`                                                                  |
+| Agent files                            | the agent's tools | `<data dir>/agents/<id>/workspace/` (or remote `pi-env` / `e2b` workspace)                             |
+| Bot artifact files                     | disk              | `<data dir>/agents/<id>/artifacts/<name>`                                                              |
+| Uploaded files                         | control           | `<data dir>/agents/<id>/workspace/uploads/<upload id>/<name>` (staged to remote workspace when remote) |
+| Memory (git repo)                      | control / tools   | `<data dir>/memory/` (`memory_*` tools)                                                                |
+| Skills and MCP servers                 | the user's files  | `<data dir>/.agents/`, `<data dir>/agents/<id>/.agents/`                                               |
+| Outbox messages and follow-up monitors | control           | `outbox_messages`, `outbox_files`, `monitors` in `control.sqlite`                                      |
