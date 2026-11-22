@@ -146,8 +146,12 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	if err = tx.Commit(); err != nil {
 		return err
 	}
-	if run, ok := result.(engine.RoutineRun); ok && run.ChatID != 0 {
-		s.wake(run.ChatID)
+	if run, ok := result.(engine.RoutineRun); ok {
+		if run.ChatID != 0 {
+			s.wake(run.ChatID)
+		} else if s.service.wakeOutbox != nil {
+			s.service.wakeOutbox(ctx, run.ID)
+		}
 	}
 	return json.Unmarshal(data, out)
 }

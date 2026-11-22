@@ -3012,6 +3012,9 @@ components:
           type: boolean
           description: An earlier completed report has the same change key. Actions are not suppressed.
         reason: { type: string }
+        notificationNote:
+          type: string
+          description: Why Dex could not queue a notification for this run, if applicable.
         chatId: { type: integer, format: int64 }
         environmentId:
           type: string

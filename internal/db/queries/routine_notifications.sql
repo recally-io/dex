@@ -17,14 +17,20 @@ WHERE a.id = ? AND a.archived_at IS NULL;
 UPDATE agents SET primary_notification_target_id = ? WHERE id = ?;
 
 -- name: GetRoutineOutboxInfo :one
-SELECT r.id AS run_id, r.automation_id, a.agent_id, t.platform, t.account_id, t.peer,
-       CAST(a.name || ': ' || r.outcome || char(10) || CASE WHEN r.summary != '' THEN r.summary ELSE coalesce(r.reason, '') END AS TEXT) AS body
+SELECT a.name, a.agent_id, t.account_id, t.peer
 FROM automation_runs r
 JOIN automations a ON a.id = r.automation_id
 JOIN agents agent ON agent.id = a.agent_id
 JOIN routine_notification_targets t ON t.agent_id = a.agent_id AND t.id =
     CASE a.notification_route WHEN 'default' THEN agent.primary_notification_target_id WHEN 'target' THEN a.notification_target_id END
-WHERE r.id = ? AND r.outcome IN ('changed', 'failed') AND r.duplicate = 0 AND agent.archived_at IS NULL;
+WHERE r.id = ? AND agent.archived_at IS NULL;
+
+-- name: GetRoutineOutboxConversation :one
+-- An owner for the Outbox FK only. This is not a source input or delivery route.
+SELECT id FROM conversations
+WHERE agent_id = ? AND archived_at IS NULL AND parent_id IS NULL
+ORDER BY (channel_key = 'main') DESC, id
+LIMIT 1;
 
 -- name: QueueRoutineNotification :exec
 INSERT INTO routine_notification_deliveries (run_id, agent_id, target_id, platform, account_id, peer, body)

@@ -15,6 +15,29 @@ import (
 // ErrAutomationChanged means a scheduled snapshot is no longer current.
 var ErrAutomationChanged = errors.New("automation changed before scheduled input")
 
+// These pre-start reasons are safe to store and put on a channel. Busy overlap is not a failure.
+const (
+	RoutineSkipNoModel = "the bot has no model"
+	RoutineSkipMissed  = "dex did not run at the scheduled time"
+	RoutineSkipBusy    = "the chat of the automation is busy"
+)
+
+const (
+	routineEnvironmentPrefix = "the environment "
+	routineUnavailableSuffix = " is unavailable"
+	routineRemovedSuffix     = " was removed"
+)
+
+// RoutineUnavailableEnvironment describes a failed probe without including its diagnostics.
+func RoutineUnavailableEnvironment(name string) string {
+	return routineEnvironmentPrefix + name + routineUnavailableSuffix
+}
+
+// RoutineRemovedEnvironment describes a deleted environment by its saved ID.
+func RoutineRemovedEnvironment(id string) string {
+	return routineEnvironmentPrefix + id + routineRemovedSuffix
+}
+
 // AutomationInput binds one run record to its durable message intent.
 type AutomationInput struct {
 	Expected                                 *sqlc.Automation
@@ -46,6 +69,8 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (in
 	}
 	if convID != 0 {
 		s.WakeConversation(convID)
+	} else {
+		s.WakeRoutineOutbox(ctx, in.Run.ID)
 	}
 	return convID, true, nil
 }
@@ -91,8 +116,8 @@ func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.C
 }
 
 // StoreAutomationInput stores a run and input in the caller's control transaction.
-// The caller must wake delivery after commit. A run skipped for its environment has no input,
-// and its chat ID is 0.
+// The caller must wake native delivery after commit only when the run has an input.
+// A skipped run has no input and its chat ID is 0.
 func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (int64, bool, error) {
 	// Take the SQLite writer before reading, so an edit or an archive cannot pass a check before the insert.
 	if err := q.LockRoutineTools(ctx); err != nil {
@@ -121,10 +146,15 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		return 0, false, fmt.Errorf("%w: the environment of the routine changed during its check; run it again", engine.ErrBusy)
 	}
 	if in.Skip != "" {
-		// The run is skipped for an environment that is still the one that was checked.
 		in.Run.Status, in.Run.Reason = "skipped", sql.NullString{String: in.Skip, Valid: true}
 		created, err := q.CreateAutomationRun(ctx, in.Run)
-		return 0, created == 1, err
+		if err != nil || created == 0 {
+			return 0, false, err
+		}
+		if err := queueRoutineOutbox(ctx, q, in.Run.ID, 0, in.Run.CreatedAt); err != nil {
+			return 0, false, err
+		}
+		return 0, true, nil
 	}
 	in.Run.EnvironmentID, in.Run.Cwd = ranIn, in.Cwd
 	created, err := q.CreateAutomationRun(ctx, in.Run)
