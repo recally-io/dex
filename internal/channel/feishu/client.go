@@ -23,6 +23,7 @@ type Config struct {
 	OwnerID   string
 	Brand     string
 	APIURL    string
+	Reactions *bool `json:"reactions,omitempty"`
 }
 
 const resourceTimeout = 5 * time.Minute
@@ -34,6 +35,7 @@ type client struct {
 	mu      sync.Mutex
 	token   string
 	expires time.Time
+	once    bool
 }
 
 // newClient creates a client without making a request.
@@ -125,7 +127,11 @@ func (c *client) execute(ctx context.Context, method, path string, body any, tok
 			return response{}, err
 		}
 	}
-	for attempt := range 3 {
+	attempts := 3
+	if c.once {
+		attempts = 1
+	}
+	for attempt := range attempts {
 		req, err := http.NewRequestWithContext(ctx, method, c.cfg.APIURL+path, bytes.NewReader(payload))
 		if err != nil {
 			return response{}, err
@@ -168,7 +174,7 @@ func (c *client) execute(ctx context.Context, method, path string, body any, tok
 		if err == nil {
 			return response{data: data}, nil
 		}
-		if !retry || attempt == 2 {
+		if !retry || attempt == attempts-1 {
 			return response{}, err
 		}
 		if err := pause(ctx, min(delay, 2*time.Second)); err != nil {

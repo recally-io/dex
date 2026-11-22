@@ -158,3 +158,17 @@ FROM outbox_messages
 WHERE conversation_id = @conversation_id
 ORDER BY created_at DESC, rowid DESC
 LIMIT 30;
+
+-- name: SetRequiredChannelReply :exec
+UPDATE submissions SET required_reply_id = @outbox_id
+WHERE id = @submission_id AND kind = 'message'
+  AND (origin LIKE 'telegram:%' OR origin LIKE 'feishu:%');
+
+-- name: MarkOutboxPartSkipped :exec
+UPDATE outbox_messages SET skipped_part = 1 WHERE id = ?;
+
+-- name: GetChannelReactionReceipt :one
+SELECT s.status, s.reason, s.exit_action, s.required_reply_id,
+       coalesce(o.status, '') AS reply_status, coalesce(o.skipped_part, 0) AS skipped_part
+FROM submissions s LEFT JOIN outbox_messages o ON o.id = s.required_reply_id
+WHERE s.id = ?;

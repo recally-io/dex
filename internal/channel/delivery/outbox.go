@@ -80,6 +80,9 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 				if err := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, Reason: "destination no longer authorized"}); err != nil {
 					return err
 				}
+				if err := m.q.MarkOutboxPartSkipped(ctx, r.ID); err != nil {
+					return err
+				}
 				break
 			}
 			err = m.sendReplyPart(ctx, name, bot, r, i, parts[i], &remotes)
@@ -94,25 +97,6 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 				return err
 			}
 			r.GroupFallback, r.GroupCursor = 0, 0
-		}
-		if finished, ok := bot.(TelegramHooks); ok {
-			allowed, err := m.authorizedReply(ctx, name, r.Peer, r.ChannelContext, r.SourceSubmissionID.String, r.ID)
-			if err != nil {
-				return err
-			}
-			if allowed {
-				var source chat.ChannelContext
-				if err := json.Unmarshal([]byte(r.ChannelContext), &source); err != nil {
-					return err
-				}
-				if err := finished.Finish(ctx, r.Peer, source, outboxReplyStatus(r)); err != nil {
-					// A final reaction retries independently of the legacy reply cursor.
-					if saved := m.saveDeliveryError(ctx, r.ID, sql.NullString{}, time.Now().Add(5*time.Second).UnixMilli(), err); saved != nil {
-						return errors.Join(err, saved)
-					}
-					return err
-				}
-			}
 		}
 		now := time.Now().UnixMilli()
 		if err := m.q.MarkOutboxDelivered(ctx, sqlc.MarkOutboxDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
@@ -348,6 +332,11 @@ func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxM
 		return err
 	}
 	q := m.q.WithTx(tx)
+	if len(receipt.MessageIDs) == 0 && (strings.HasPrefix(r.Peer, "telegram:") || strings.HasPrefix(r.Peer, "feishu:")) && (r.Kind == "reply" || r.Kind == "question" || r.Kind == "proactive") {
+		if err := q.MarkOutboxPartSkipped(ctx, r.ID); err != nil {
+			return err
+		}
+	}
 	if r.SourceSubmissionID.Valid {
 		for _, id := range receipt.MessageIDs {
 			if err := m.rememberQuestionMessage(ctx, q, r.SourceSubmissionID.String, r.Peer, id); err != nil {

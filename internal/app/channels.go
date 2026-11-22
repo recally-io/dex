@@ -10,6 +10,7 @@ import (
 	"github.com/recally-io/dex/internal/channel/telegram"
 
 	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/engine"
 )
 
 var _ delivery.TelegramHooks = (*telegram.Bot)(nil)
@@ -39,6 +40,24 @@ func (r *channelRegistry) Status(agentID, platform string) channel.Status {
 		return channel.Status{State: "off"}
 	}
 	return m.Status(platform)
+}
+
+func (r *channelRegistry) reactionIntake(agentID, peer, id string, source chat.ChannelContext) {
+	r.mu.Lock()
+	m := r.managers[agentID]
+	r.mu.Unlock()
+	if m != nil {
+		m.TrackReaction(peer, id, source)
+	}
+}
+
+func (r *channelRegistry) reactionAdmission(agentID, peer, id string, sub *engine.Submission) {
+	r.mu.Lock()
+	m := r.managers[agentID]
+	r.mu.Unlock()
+	if m != nil {
+		m.ReactionAdmission(peer, id, sub)
+	}
 }
 
 func (r *channelRegistry) Notify(key string) {

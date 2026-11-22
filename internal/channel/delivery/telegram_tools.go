@@ -25,7 +25,6 @@ import (
 type TelegramHooks interface {
 	GroupParts([]channel.Part) []channel.Part
 	WakeMedia()
-	Finish(ctx context.Context, peer string, source chat.ChannelContext, status string) error
 	Control(ctx context.Context, peer string, remote channel.RemoteMessage, args engine.TelegramRequest) (channel.Receipt, error)
 }
 

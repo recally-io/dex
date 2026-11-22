@@ -1206,6 +1206,9 @@ type FeishuInput struct {
 	// AppSecret Write-only. Empty keeps the secret for the same App ID and brand.
 	AppSecret string `json:"appSecret"`
 	Brand     string `json:"brand"`
+
+	// Reactions Omission preserves the saved preference. False disables private chat status reactions.
+	Reactions *bool `json:"reactions,omitempty"`
 }
 
 // FeishuPoll defines model for FeishuPoll.

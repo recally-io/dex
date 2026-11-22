@@ -63,12 +63,24 @@ export function TelegramOptionsFields({
               </Select>
             )}
           </Field>
-          <Field label="Status reactions" hint="Show processing and final status on your incoming message.">
+          <Field label="Private chat status reactions" hint="Show the status on your incoming message.">
             {({ id }) => (
               <Select
                 id={id}
-                value={value.reactions ? "on" : "off"}
+                value={value.reactions === false ? "off" : "on"}
                 onChange={(e) => onChange({ ...value, reactions: e.target.value === "on" })}
+              >
+                <option value="off">Off</option>
+                <option value="on">On</option>
+              </Select>
+            )}
+          </Field>
+          <Field label="Group status reactions" hint="Show status only for authorized group messages.">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={value.groupReactions ? "on" : "off"}
+                onChange={(e) => onChange({ ...value, groupReactions: e.target.value === "on" })}
               >
                 <option value="off">Off</option>
                 <option value="on">On</option>

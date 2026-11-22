@@ -76,3 +76,26 @@ func IsCommand(text string) bool {
 	}
 	return IsFeedbackCommand(text) || strings.HasPrefix(text, "/run ") || strings.HasPrefix(text, "/answer ")
 }
+
+// Reaction is the observable state of an input on its original message.
+type Reaction uint8
+
+const (
+	ReactionQueued Reaction = iota + 1
+	ReactionProcessing
+	ReactionSucceeded
+	ReactionFailed
+	ReactionCancelled
+)
+
+// ErrReactionUnknown means the platform may still apply the request. Do not
+// issue a later reaction that an earlier, unconfirmed write could overwrite.
+var ErrReactionUnknown = errors.New("channel reaction outcome unknown")
+
+// Reactor is an optional bot capability. React replaces previous (a platform
+// reaction ID when applicable) and returns the ID to use for the next change.
+// It must not use the reply sender's retry or rate-control state.
+type Reactor interface {
+	ReactionsEnabled(peer string) bool
+	React(ctx context.Context, peer, messageID, previous string, status Reaction) (string, error)
+}

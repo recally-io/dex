@@ -120,6 +120,9 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 			if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "notify_user"}); err != nil {
 				return "", err
 			}
+			if err := q.SetRequiredChannelReply(ctx, sqlc.SetRequiredChannelReplyParams{SubmissionID: id, OutboxID: outboxID}); err != nil {
+				return "", err
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -382,6 +385,9 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 					return "", err
 				}
 				outboxID = existing.ID
+			}
+			if err := q.SetRequiredChannelReply(ctx, sqlc.SetRequiredChannelReplyParams{SubmissionID: sub.ID, OutboxID: outboxID}); err != nil {
+				return "", err
 			}
 			if _, err := q.BindOutboxFilesToOutbox(ctx, sqlc.BindOutboxFilesToOutboxParams{
 				OutboxID:     sql.NullString{String: outboxID, Valid: true},
