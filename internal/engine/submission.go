@@ -268,10 +268,13 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 				}
 			}
 		}
-		// A failed or aborted execution may have changed memory too.
+		// A failed or aborted execution may have changed host files too.
 		if ref.Scope == "" {
 			if _, err := a.memory.Commit(settlementCtx, "Update memory from "+input.Source); err != nil {
 				slog.Error("commit agent memory", "agent", ref.AgentID, "error", err)
+			}
+			if err := a.commitSkills(settlementCtx, ref.AgentID, input.Source); err != nil {
+				slog.Error("commit agent skills", "agent", ref.AgentID, "error", err)
 			}
 		}
 	})

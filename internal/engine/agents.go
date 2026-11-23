@@ -16,7 +16,9 @@ import (
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/chord"
+	"github.com/MichaelKinsy/PiG/codemode"
 	"github.com/MichaelKinsy/PiG/durable"
+	durablecode "github.com/MichaelKinsy/PiG/durable/codemode"
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	storage "github.com/MichaelKinsy/PiG/durable/storage/sqlite/node"
@@ -76,6 +78,8 @@ type Agents struct {
 	Catalog         *Catalog
 	config          Config
 	memory          *memoryRepo
+	skillStores     map[string]*skillStore
+	codeSandbox     *codemode.Sandbox
 	env             *toolEnv
 	mu              sync.Mutex
 	resources       map[string]*agentResources
@@ -113,7 +117,12 @@ func New(config Config) (*Agents, error) {
 	if config.ExecEnv == nil {
 		config.ExecEnv = execenv.NewLocalProvider(config.DataDir, "")
 	}
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	// Code mode uses PiG's embedded JavaScript sandbox. It loads on the first script.
+	codeSandbox, err := codemode.NewSandbox(codemode.SandboxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
 // begin tracks one operation on the resources of key, the resource key of an agent or of a
@@ -349,6 +358,12 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
 		}
 	}()
+	if err := files.openSkills(ctx); err != nil {
+		return nil, err
+	}
+	if err := files.syncRemoteSkills(ctx, nil); err != nil {
+		return nil, err
+	}
 	session := func(ctx context.Context, id durable.ConversationId) (sessionEnv, error) {
 		return envs.session(ctx, int64(id))
 	}
@@ -381,7 +396,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	// All unscoped extension edits inherit this tool. Its execution checks the source receipt.
 	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
-	}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
+	}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
 	if loaded.HasTools {
 		extensions = append(extensions, toolsearch.CreateExtension())
 	}
@@ -1173,7 +1188,7 @@ func (a *Agents) close(ctx context.Context) {
 	for _, resource := range resources {
 		errs = append(errs, resource.closeExtras(ctx))
 	}
-	errs = append(errs, a.config.ExecEnv.Close(ctx))
+	errs = append(errs, a.codeSandbox.Close(), a.config.ExecEnv.Close(ctx))
 	a.closeErr = errors.Join(errs...)
 	close(a.closeDone)
 }
@@ -1181,6 +1196,9 @@ func (a *Agents) close(ctx context.Context) {
 func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
 	files := newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
 	files.mcp = a.config.MCPServers
+	for _, level := range files.levels {
+		files.stores[level.Scope] = a.skillStore(level)
+	}
 	return files
 }
 

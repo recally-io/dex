@@ -20,6 +20,15 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 	hostHome := t.TempDir()
 	remoteHome := t.TempDir()
 	remoteRoot := t.TempDir()
+	t.Cleanup(func() {
+		mirror := filepath.Join(remoteRoot, "agents", "a", "workspace", ".dex", "skills")
+		_ = filepath.WalkDir(mirror, func(p string, d os.DirEntry, err error) error {
+			if err == nil && d.IsDir() {
+				return os.Chmod(p, 0o700)
+			}
+			return err
+		})
+	})
 
 	// Populate host-side skills (including .env and mcp.json that must never be synced remotely).
 	dexLevel := filepath.Join(dataDir, ".agents")
@@ -117,6 +126,11 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 	}
 	if !strings.Contains(skillsSec, wantProjectSkillPath) {
 		t.Fatalf("skills section missing remote project skill %s: %s", wantProjectSkillPath, skillsSec)
+	}
+	projectEdit, _ := json.Marshal(map[string]any{"path": wantProjectSkillPath, "edits": []map[string]string{{"oldText": "Remote instructions", "newText": "Updated project instructions"}}})
+	got := coreWait(t, coreSubmit(t, a, projRef, "req-project-skill-edit", "edit "+string(projectEdit), "tool")).Answer
+	if data, err := os.ReadFile(wantProjectSkillPath); err != nil || !strings.Contains(string(data), "Updated project instructions") {
+		t.Fatalf("normal edit tool cannot edit the remote project skill: %s (%q, %v)", got, data, err)
 	}
 
 	// Verify remote project AGENTS.md & confined import loaded while outside import was skipped.

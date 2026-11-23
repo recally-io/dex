@@ -72,11 +72,13 @@ type agentExtensions struct {
 	agentID             string
 	mcp                 *MCPStore
 	// home only expands ~/ in AGENTS.md imports; it is not an extension level.
-	home       string
-	env        *toolEnv
-	execHandle execenv.Handle
-	skillsMu   sync.Mutex
-	skillStamp string
+	home            string
+	env             *toolEnv
+	execHandle      execenv.Handle
+	stores          map[string]*skillStore
+	skillsMu        sync.Mutex
+	skillStamp      string
+	skillConnection any
 	// sessionPrompts requires the harness to supply the bound target, never a default fallback.
 	sessionPrompts     bool
 	defaultUnavailable bool
@@ -150,16 +152,17 @@ func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, en
 	if handle != nil {
 		workspace = handle.Workspace()
 	}
-	a := &agentExtensions{env: env, home: home, agentID: agentID, agentDir: agentDir, workspace: workspace, execHandle: handle}
+	a := &agentExtensions{env: env, home: home, agentID: agentID, agentDir: agentDir, workspace: workspace, execHandle: handle, stores: map[string]*skillStore{}}
 	for _, l := range []ExtensionLevel{{"dex", dataDir}, {"agent", agentDir}} {
 		l.Dir = canonicalExtensionPath(filepath.Join(l.Dir, ".agents"))
 		a.levels = append(a.levels, l)
+		a.stores[l.Scope] = &skillStore{}
 	}
 	return a
 }
 
 func (a *agentExtensions) forHandle(h execenv.Handle) *agentExtensions {
-	return &agentExtensions{levels: a.levels, agentID: a.agentID, agentDir: a.agentDir, mcp: a.mcp, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h}
+	return &agentExtensions{levels: a.levels, agentID: a.agentID, agentDir: a.agentDir, mcp: a.mcp, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h, stores: a.stores}
 }
 
 func (a *agentExtensions) isRemote() bool {
@@ -207,8 +210,13 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 			}
 		}
 	}
-	levels := append(slices.Clone(a.levels), ExtensionLevel{"project", projectDir})
+	levels := []ExtensionLevel{{"project", projectDir}}
 	byName := map[string]SkillInfo{}
+	managed, warnings := a.managedSkills()
+	*errs = append(*errs, warnings...)
+	for _, skill := range managed {
+		byName[skill.Name] = skill
+	}
 	for _, l := range distinctLevels(levels) {
 		var dir string
 		var found []SkillInfo
@@ -252,11 +260,6 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 			}
 			level[skill.Name] = true
 			skill.Scope = l.Scope
-			if l.Scope != "project" && a.isRemote() {
-				if rel, relErr := filepath.Rel(dir, skill.Path); relErr == nil {
-					skill.Path = execenv.JoinTargetPath(a.remoteSkillsRoot(), l.Scope, filepath.ToSlash(rel))
-				}
-			}
 			_, skill.Overrides = byName[skill.Name]
 			byName[skill.Name] = skill
 		}
@@ -266,56 +269,6 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 		out = append(out, byName[name])
 	}
 	return out
-}
-
-func (a *agentExtensions) syncRemoteSkills(ctx context.Context, env durableenv.ExecutionEnv) error {
-	if !a.isRemote() {
-		return nil
-	}
-	if env == nil {
-		var err error
-		env, err = a.execHandle.Env(ctx, a.workspace, nil)
-		if err != nil {
-			return err
-		}
-	}
-	stamp := a.hostSkillsStamp()
-	a.skillsMu.Lock()
-	defer a.skillsMu.Unlock()
-	if a.skillStamp == stamp {
-		return nil
-	}
-	root := a.remoteSkillsRoot()
-	for _, l := range a.distinct() {
-		if err := execenv.SyncSkills(ctx, env, l.Dir, execenv.JoinTargetPath(root, l.Scope)); err != nil {
-			return err
-		}
-	}
-	a.skillStamp = stamp
-	return nil
-}
-
-func (a *agentExtensions) hostSkillsStamp() string {
-	var b strings.Builder
-	for _, l := range a.distinct() {
-		dir := filepath.Join(l.Dir, "skills")
-		fmt.Fprintf(&b, "%s:%s\n", l.Scope, dir)
-		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-			if err != nil {
-				fmt.Fprintf(&b, "err:%s:%v\n", p, err)
-				return nil
-			}
-			name := d.Name()
-			if d.IsDir() && p != dir && (strings.HasPrefix(name, ".") || name == "node_modules") {
-				return filepath.SkipDir
-			}
-			if info, statErr := d.Info(); statErr == nil {
-				fmt.Fprintf(&b, "%s|%v|%d|%d\n", p, info.Mode(), info.Size(), info.ModTime().UnixNano())
-			}
-			return nil
-		})
-	}
-	return b.String()
 }
 
 func findSkillsRemote(ctx context.Context, env durableenv.ExecutionEnv, dir string, seen map[string]bool, errs *[]string) []SkillInfo {
@@ -864,7 +817,10 @@ func extensionGuide(levels []ExtensionLevel, secrets, scope string) string {
 	lines = append(lines,
 		"Narrower levels win. A skill or MCP server with the same name replaces the wider entry as a whole. Environment values merge per key.",
 		"",
-		"Skills: use <level>/skills/<name>/SKILL.md, or <cwd>/.agents/skills/ for the project level, which is narrower than agent. A skill can be in a nested directory; the walk does not go into a skill. Start with YAML front matter fields name and description; name defaults to the directory name. Skill edits apply on the next request. Use the skills list when it is present.",
+		"Skills: dex and agent skills live on the control host. Change them only with skill_write, skill_edit, skill_delete, or skill_import. Use skill_list and skill_read to inspect them. Skill file paths use <dex|agent>/<name>/<file>. To install a skill, run the installer in a temporary directory, then use skill_import on the skill directory.",
+		"Start SKILL.md with the YAML front matter fields name and description. The name defaults to the directory name. Project skills in <cwd>/.agents/skills override the other levels. Use the normal file tools for project skills.",
+		"Run a managed skill's scripts from its directory in the session environment. Use the returned path from a skill tool, or the path in the skills list. When you set bash cwd to the skill directory, dex sets DEX_SKILL_CACHE to <workspace>/.dex/cache/skills/<name>. Use it for runtime files. Remote skill copies are read-only.",
+		"A .env file inside a skill is an ordinary file that dex copies but does not load. Keep secrets in the vault. Pass them to a script with the env argument of bash or monitor_set_command. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
 		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or agent level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the agent finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,
 		"",

@@ -82,6 +82,20 @@ func (h *runnerHandle) Kind() Kind        { return KindRunner }
 func (h *runnerHandle) Workspace() string { return h.workspace }
 func (h *runnerHandle) Home() string      { return h.ready.Home }
 
+// SkillConnection identifies a runner connection without invalidating its lease.
+// Other environments replace the lease when their file namespace changes.
+func SkillConnection(ctx context.Context, h Handle) (*runner.Client, error) {
+	wrapped, ok := h.(stampedHandle)
+	if !ok {
+		return nil, nil
+	}
+	machine, ok := wrapped.lease.(*runnerHandle)
+	if !ok {
+		return nil, nil
+	}
+	return machine.runners.wait(ctx, machine.id, machine.digest)
+}
+
 // do runs fn on the live session. It waits for a reconnect before the call starts. A session
 // that closes before the call is dispatched reports runner.ErrOffline, so one more attempt on
 // the next session cannot repeat work. A lost dispatched call reports runner.ErrUnknown, and

@@ -15,6 +15,7 @@ with the `.migrated` suffix. Startup skips a source if its backup exists. If a
 rename fails, the next start can import the same source again. Without a backup,
 startup treats any file at a legacy path as a source to import. The engine
 never loads files from those levels directly.
+
 Skills have a third, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
 execution environment, so it follows the conversation. Chat sessions store
@@ -44,11 +45,54 @@ uses Main's saved project. The Chat header refetches on tool
 completion and run completion. For a project cwd, native input uses absolute
 upload paths. The transcript keeps workspace-relative upload paths.
 
-The Extensions API reads the agent workspace. Each level is walked like Pi's skill loader: a directory with
-`SKILL.md` is one skill and the walk stops there; hidden directories and
-`node_modules` are skipped; symlinked directories are read once. The front matter
-`name` wins over the directory name. A second skill with the same name in one
-level is a warning, not an error, so it does not block MCP Reload.
+## Skills
+
+A directory with `SKILL.md` is one skill. Discovery stops there and skips
+hidden directories and `node_modules`. The front matter `name` wins over the
+directory name. A second skill with the same name in one level is a warning
+and does not block MCP Reload.
+
+The dex and agent stores are on the control host. All owner sessions, including
+tasks, dreams, and child sessions, use `skill_list` and `skill_read` to inspect
+these stores. Use `skill_write`, `skill_edit`, and `skill_delete` to change them.
+Use a path such as `agent/deploy/run.sh`. Set `mode` to the octal string `0755`
+for an executable script. To delete a whole skill, pass only its level and
+directory name to `skill_delete`. Normal `write` and `edit` reject paths in the
+stores or their remote copies. Bash has no such path check. Project skills
+still use the normal file tools.
+
+Run installers such as `npx skills add` in a temporary directory in the session
+environment. Call `skill_import` with the installed skill directory, the `level`,
+and an optional new directory `name`. The import goes to the control host only.
+Import and sync copy all files in a skill, including dotfiles and `node_modules`.
+They skip nested `.git` entries. They copy a symlink as its target only if the
+target is inside the skill. `skill_list` reports skipped external links.
+
+A local session uses the stores directly. Each remote lease gets a read-only
+copy at `<workspace>/.dex/skills/<scope>/`. A `.manifest.json` records the paths,
+SHA-256 hashes, and host modes. A sync writes changed files with their host mode
+minus write bits. It removes missing managed files and leaves other files in
+place. It removes the whole directory when the host removes a skill. It reuses
+a host file's hash until the size or modification time changes.
+
+Sync runs when a lease opens or a runner reconnects, after a skill mutation in
+the current session, and on prompt render when the host stamp changed. A mutation
+returns the path in the current session environment after sync. Code mode can
+use this path in the same script.
+
+Run scripts from the skill directory in the session environment. Pass this
+directory as `bash`'s `cwd` to set `DEX_SKILL_CACHE` to
+`<workspace>/.dex/cache/skills/<name>`. Put runtime files there. A skill's
+`.env` is an ordinary file. dex copies it and does not load it. Keep secrets
+in the vault. Pass them with the `env` argument of `bash` or
+`monitor_set_command`.
+
+Each host store is a Git repository. dex commits changes at submission settlement
+as `Update skills from <source>`, with the same source as memory. On open, dex
+recovers changes left by a crash. Git honors a skill's `.gitignore`; sync does not.
+
+## Tool environment and MCP
+
 Each agent has its own environment snapshot for tools and stdio MCP servers.
 It starts from the login shell environment, then the `.env` levels, then the
 1Password credentials of the settings. When `op` exists, the prompt tells the
