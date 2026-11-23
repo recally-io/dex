@@ -53,11 +53,12 @@ GoReleaser builds `dex` for Linux and macOS, x64 and arm64, and uploads a
 draft release with one `dex_<tag>_<os>_<arch>.tar.gz` for each platform,
 `checksums.txt`, and notes from [CHANGELOG.md](../../CHANGELOG.md) (or from the
 pull requests when no matching changelog section exists). GoReleaser builds the
-web UI once and embeds it in each Go binary. Each binary starts on its own
-platform as a smoke test. When all smoke tests pass, the workflow publishes the
-draft. dex reads its version from the tag. The workflow also accepts a `v*` tag
-push and still has a legacy trigger for changes to `VERSION` on `main`. Use the
-release-branch procedure above for planned releases and patches.
+web UI once and embeds it in each Go binary. Smoke tests start the Linux
+(amd64 and arm64) and macOS arm64 binaries on their own platforms. When all
+smoke tests pass, the workflow publishes the draft. dex reads its version from
+the tag. The workflow also accepts a `v*` tag push and still has a legacy
+trigger for changes to `VERSION` on `main`. Use the release-branch procedure
+above for planned releases and patches.
 
 To try the build on your machine, run
 `goreleaser release --snapshot --clean --parallelism 1`. The output goes to

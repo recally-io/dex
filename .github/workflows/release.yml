@@ -120,7 +120,8 @@ jobs:
     name: Smoke ${{ matrix.target }}
     needs: [prepare, goreleaser]
     if: needs.prepare.outputs.should_release == 'true'
-    # Each binary runs on its own platform.
+    # Smoke-test Linux (amd64/arm64) and macOS arm64 on their own platforms.
+    # darwin_amd64 is still cross-built by GoReleaser on Ubuntu without waiting on an Intel macOS runner.
     strategy:
       fail-fast: false
       matrix:
@@ -128,7 +129,6 @@ jobs:
           - { runner: ubuntu-24.04, target: linux_amd64 }
           - { runner: ubuntu-24.04-arm, target: linux_arm64 }
           - { runner: macos-26, target: darwin_arm64 }
-          - { runner: macos-26-intel, target: darwin_amd64 }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     # Only a token with write access can read a draft release.
