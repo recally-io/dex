@@ -279,3 +279,40 @@ and empty-chat attachment, with no second transcript or execution model.
 The tests cover separate behavior and failure cases. Keep restart, duplicate
 message, multiple browser streams, model errors, tool results, and DST cases.
 Do not remove these cases to reduce the test file size. The schedule iterator tests cover time arithmetic in isolation.
+
+## Session Monitors
+
+The scheduler reads due rows in `control.sqlite` (`monitors`). The upgrade
+renames the original Timer table in place and treats its rows as one-run
+prompt Monitors. The existing due time, submission IDs, deduplication key,
+and one-hour grace rule stay. There are no old tool or API aliases.
+
+The tools `monitor_set`, `monitor_list`, and `monitor_cancel` use Main or Chat.
+`monitor_set` takes `at` or `delaySeconds`, and a prompt. Use `maxRuns` (1–100),
+`intervalSeconds` (at least 60 for multiple runs), and an optional `expiresAt`
+for repeated checks. The lifetime of a repeated or script Monitor is at most
+seven days. A script Monitor also takes `checkCommand`. Script or repeating
+setup requires a current user input, not a System Turn.
+
+Checks use the target session's Bash environment, variables, and saved
+project directory. Dex does not use a separate sandbox or give the check new
+credentials. Exit `0` saves a baseline on the first success and queues only
+when the SHA-256 of the combined output changes. Exit `10` queues a terminal
+event even when the output did not change. The shell has a 20-second timeout.
+Check output must fit in 16 KiB for comparison. Dex does not save or inject the
+raw output. Timeout, oversized comparison output, and other nonzero exits
+stop the Monitor with a visible failure. Each attempt counts toward the run
+limit. Dex does not replay missed intervals or overlap checks.
+
+A script claim is durable. On restart an unfinished claim stops with an
+interrupted outcome, rather than rerunning a command whose effect is not
+known. A committed baseline and the next due time survive restart. Dex
+commits the result and any follow-up intent together with a stable request
+ID. The normal session dispatcher admits that intent as a follow-up, not a
+steer. Stop, Clear, cancellation, archive, and changed target authority block
+stale results. Dex rechecks the target before native admission. Cancellation
+withdraws any Monitor inputs that are still queued. It does not interrupt a
+prompt that already started. An in-flight check can finish within its time
+limit, but it cannot queue a new prompt after cancellation. Dex does not move
+a scheduled check to a different session, environment, or project directory.
+Routines use their own existing path.

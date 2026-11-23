@@ -188,29 +188,41 @@ type FeishuSetting struct {
 	Reactions        sql.NullInt64 `json:"reactions"`
 }
 
-type FollowupTimer struct {
-	ID                 string         `json:"id"`
-	OperationKey       string         `json:"operation_key"`
-	AgentID            string         `json:"agent_id"`
-	ConversationID     int64          `json:"conversation_id"`
-	RootRequestID      string         `json:"root_request_id"`
-	SourceSubmissionID string         `json:"source_submission_id"`
-	ChainDepth         int64          `json:"chain_depth"`
-	DueAt              int64          `json:"due_at"`
-	TimeZone           string         `json:"time_zone"`
-	Prompt             string         `json:"prompt"`
-	State              string         `json:"state"`
-	FireSubmissionID   sql.NullString `json:"fire_submission_id"`
-	CreatedAt          int64          `json:"created_at"`
-	UpdatedAt          int64          `json:"updated_at"`
-}
-
 type ForkReceipt struct {
 	ID          string `json:"id"`
 	SourceID    int64  `json:"source_id"`
 	EntryID     int64  `json:"entry_id"`
 	BeforeEntry int64  `json:"before_entry"`
 	ForkID      int64  `json:"fork_id"`
+}
+
+type Monitor struct {
+	ID                        string         `json:"id"`
+	OperationKey              string         `json:"operation_key"`
+	AgentID                   string         `json:"agent_id"`
+	ConversationID            int64          `json:"conversation_id"`
+	RootRequestID             string         `json:"root_request_id"`
+	SourceSubmissionID        string         `json:"source_submission_id"`
+	ChainDepth                int64          `json:"chain_depth"`
+	DueAt                     int64          `json:"due_at"`
+	TimeZone                  string         `json:"time_zone"`
+	Prompt                    string         `json:"prompt"`
+	State                     string         `json:"state"`
+	FireSubmissionID          sql.NullString `json:"fire_submission_id"`
+	CreatedAt                 int64          `json:"created_at"`
+	UpdatedAt                 int64          `json:"updated_at"`
+	CheckCommand              string         `json:"check_command"`
+	IntervalSeconds           int64          `json:"interval_seconds"`
+	MaxRuns                   int64          `json:"max_runs"`
+	Runs                      int64          `json:"runs"`
+	ExpiresAt                 int64          `json:"expires_at"`
+	TargetExecutionID         int64          `json:"target_execution_id"`
+	TargetEnvironment         string         `json:"target_environment"`
+	TargetEnvironmentRevision int64          `json:"target_environment_revision"`
+	TargetCwd                 string         `json:"target_cwd"`
+	OutputHash                string         `json:"output_hash"`
+	Outcome                   string         `json:"outcome"`
+	Running                   int64          `json:"running"`
 }
 
 type OnePassword struct {

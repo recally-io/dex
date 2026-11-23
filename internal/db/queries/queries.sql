@@ -152,7 +152,7 @@ WHERE id = ? AND status = 'pending';
 -- the input. A withdrawn input has no reply to deliver to a channel.
 UPDATE submissions SET status = 'unanswered', answer = NULL, reason = 'withdrawn',
     settled_at = coalesce(settled_at, @now), delivered_at = coalesce(delivered_at, @now)
-WHERE id = @id AND kind = 'message'
+WHERE id = @id AND kind IN ('message', 'task_result')
 AND (status = 'pending' OR (status = 'unanswered' AND reason = 'aborted'));
 
 -- name: GetSubmissionReply :one

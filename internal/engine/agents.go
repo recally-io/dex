@@ -360,7 +360,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := registry.Install(frontDeskExtension()); err != nil {
 		return nil, err
 	}
-	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(timerExtension(agentID, a.config.Tasks.Timers))); err != nil {
+	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(monitorExtension(agentID, a.config.Tasks.Monitors))); err != nil {
 		return nil, err
 	}
 	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {
@@ -400,11 +400,11 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			if err != nil {
 				return nil, err
 			}
-			cwd := s.Handle.Workspace()
+			cwd := ""
 			if target.Cwd != nil {
 				cwd = *target.Cwd
 			}
-			exec, err := s.Handle.Env(envCtx, cwd, s.Vars)
+			exec, err := s.executionEnv(envCtx, cwd)
 			if err != nil {
 				return nil, err
 			}

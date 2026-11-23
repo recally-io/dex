@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Clock, Send, X } from "lucide-react";
-import type { FollowupTimer, OutboxMessage } from "../api/generated/types.gen";
+import type { Monitor, OutboxMessage } from "../api/generated/types.gen";
 import {
-  cancelChatTimerMutation,
+  cancelChatMonitorMutation,
   listChatOutboxOptions,
-  listChatTimersOptions,
+  listChatMonitorsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../lib/agent-scope";
 import { errorText } from "../lib/queries";
@@ -42,9 +42,7 @@ function formatDue(ms: number): string {
   });
 }
 
-function timerBadgeVariant(
-  state: FollowupTimer["state"],
-): "default" | "secondary" | "outline" | "destructive" {
+function monitorBadgeVariant(state: Monitor["state"]): "default" | "secondary" | "outline" | "destructive" {
   switch (state) {
     case "scheduled":
       return "default";
@@ -78,8 +76,8 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
-  const timersQuery = useQuery({
-    ...listChatTimersOptions({ path: { agentId, chatId } }),
+  const monitorsQuery = useQuery({
+    ...listChatMonitorsOptions({ path: { agentId, chatId } }),
     refetchInterval: open ? 5000 : 30000,
   });
 
@@ -89,17 +87,17 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
   });
 
   const cancel = useMutation({
-    ...cancelChatTimerMutation(),
+    ...cancelChatMonitorMutation(),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: listChatTimersOptions({ path: { agentId, chatId } }).queryKey,
+        queryKey: listChatMonitorsOptions({ path: { agentId, chatId } }).queryKey,
       });
     },
   });
 
-  const timers = timersQuery.data?.timers ?? [];
+  const monitors = monitorsQuery.data?.monitors ?? [];
   const messages = outboxQuery.data?.messages ?? [];
-  const scheduledCount = timers.filter((t) => t.state === "scheduled").length;
+  const scheduledCount = monitors.filter((t) => t.state === "scheduled").length;
   const issueCount = messages.filter((m) => m.status === "failed" || Boolean(m.error)).length;
   const pendingOutbox = messages.filter((m) => m.status === "pending").length;
 
@@ -110,7 +108,7 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
         setOpen(next);
 
         if (next) {
-          void timersQuery.refetch();
+          void monitorsQuery.refetch();
           void outboxQuery.refetch();
         }
       }}
@@ -121,8 +119,8 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
             variant="ghost"
             size="sm"
             className="gap-1.5 px-1.5 text-muted-foreground hover:text-foreground"
-            aria-label="Timers and outbox"
-            title="Follow-up timers and outbound deliveries"
+            aria-label="Monitors and outbox"
+            title="Follow-up monitors and outbound deliveries"
           >
             <Clock className="size-3.5 shrink-0" />
             {scheduledCount > 0 ? (
@@ -148,46 +146,50 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[12px] font-medium text-foreground">
                 <Clock className="size-3.5 text-muted-foreground" />
-                Follow-up timers
+                Follow-up monitors
               </span>
               <span className="text-[11px] text-muted-foreground tabular-nums">{scheduledCount} active</span>
             </div>
             {cancel.isError ? (
               <p className="mb-2 text-[12px] text-destructive">{errorText(cancel.error)}</p>
             ) : null}
-            {timers.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground">No follow-up timers in this session.</p>
+            {monitors.length === 0 ? (
+              <p className="text-[12px] text-muted-foreground">No follow-up monitors in this session.</p>
             ) : (
-              <ul className="space-y-2">
-                {timers.slice(0, 10).map((t) => (
+              <ul aria-label="Follow-up monitors" className="space-y-2">
+                {monitors.slice(0, 10).map((t) => (
                   <li
                     key={t.id}
                     className="flex items-start justify-between gap-2 rounded-md border border-border/70 bg-muted/30 px-2.5 py-2 text-[12px]"
                   >
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <Badge variant={timerBadgeVariant(t.state)} className="h-4 px-1.5 text-[10px]">
+                        <Badge variant={monitorBadgeVariant(t.state)} className="h-4 px-1.5 text-[10px]">
                           {t.state}
                         </Badge>
                         <span className="text-[11px] text-muted-foreground tabular-nums">
                           {t.state === "scheduled" ? formatDue(t.dueAt) : formatShortTime(t.dueAt)}
                         </span>
                         <span className="text-[11px] text-muted-foreground tabular-nums">
-                          d{t.chainDepth}/6
+                          {t.mode} · {t.runs}/{t.maxRuns} checks
                         </span>
                       </div>
                       <p className="line-clamp-2 text-[12px] text-foreground [overflow-wrap:anywhere]">
                         {t.prompt}
                       </p>
+                      {t.outcome && <p className="text-[11px] text-muted-foreground">{t.outcome}</p>}
+                      {t.state === "scheduled" && t.expiresAt > 0 && (
+                        <p className="text-[11px] text-muted-foreground">Expires {formatDue(t.expiresAt)}</p>
+                      )}
                     </div>
                     {writable && t.state === "scheduled" ? (
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        aria-label={`Cancel timer ${t.id}`}
-                        title="Cancel timer"
+                        aria-label={`Cancel monitor ${t.id}`}
+                        title="Cancel monitor"
                         disabled={cancel.isPending}
-                        onClick={() => cancel.mutate({ path: { agentId, chatId, timerId: t.id } })}
+                        onClick={() => cancel.mutate({ path: { agentId, chatId, monitorId: t.id } })}
                       >
                         <X className="size-3.5" />
                       </Button>
