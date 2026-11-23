@@ -112,7 +112,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 		if ref.Scope == "" {
 			if input.Automation {
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil)}, Add: []*durable.Extension{checkExtension(ref.AgentID, a.config.Tasks.ReportCheck), botReadExtension(ref.AgentID, a.config.Bots)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil)}, Add: []*durable.Extension{routineCheckInstructions(), botReadExtension(ref.AgentID, a.config.Bots)}}})
 			}
 			// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
 			// so a child, an automation or a dream never gets the tool and needs no removal.
@@ -177,7 +177,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 						continue
 					}
 					data, _ := item.Entry.Get("data")
-					if m := metadata(data); m.Origin != input.Origin {
+					// Each bound Routine needs its own source and report, even when
+					// different routines use the same busy session.
+					if m := metadata(data); m.Origin != input.Origin || (input.Origin == "automation" && !input.Automation) {
 						return nil, ErrOriginBusy
 					}
 				}
@@ -274,6 +276,10 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 
 func inputText(input Input, workspace string) string {
 	content := input.Content
+	// Keep the owner transcript and durable source identity separate from model guidance.
+	if input.Scope == "" && input.Origin == "automation" && input.Kind == "message" && !input.Automation {
+		content += boundRoutineCheckSuffix
+	}
 	if input.WorkTaskContext != "" {
 		content = "Dex Task: " + input.WorkTaskContext + "\n\n" + content
 	}

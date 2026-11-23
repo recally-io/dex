@@ -61,6 +61,9 @@ submitted. The Task shows its primary Session link, then its links and
 wait states, above the timeline. A link shows its type, key, and namespace as
 stored, for example `pull_request 7` in `github.com/repository/10`. Each timeline entry shows its author.
 Routine history links to run transcripts and saved results.
+The routine dialog can bind to a writable, unarchived session of the same bot.
+It reads the eligible sessions from `listAutomationTargets`. In this mode it
+shows the target picker instead of the routine environment and project fields.
 The routine dialog offers "Follow bot", `local`, and the SSH environments. It
 keeps a saved environment that the list no longer shows, and a change of the
 environment clears the project directory. A routine update sends

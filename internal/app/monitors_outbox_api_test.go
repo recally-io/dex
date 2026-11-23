@@ -84,7 +84,8 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Down(t.Context()); err != nil {
+	// Roll back to the schema before the Monitor migration, even after later migrations land.
+	if _, err := provider.DownTo(t.Context(), 20261122110000); err != nil {
 		t.Fatal(err)
 	}
 	var root string

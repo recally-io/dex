@@ -85,7 +85,7 @@ func TestUserScheduledRoutineDoesNotRunStaleInput(t *testing.T) {
 			}
 			// Submit the previously captured snapshot after the user change has committed.
 			id := uuid.NewV7().String()
-			_, created, enqueueErr := f.chats.EnqueueAutomation(ctx, chat.AutomationInput{
+			result, enqueueErr := f.chats.EnqueueAutomation(ctx, chat.AutomationInput{
 				Expected: &snapshot, AgentID: "a", ChannelKey: "automation:" + a.ID + ":" + id, Title: snapshot.Name, Content: snapshot.Prompt, Cwd: snapshot.Cwd,
 				Run: sqlc.CreateAutomationRunParams{ID: id, AutomationID: a.ID, DueAt: snapshot.NextDueAt, Status: "started", CreatedAt: f.now.UnixMilli()},
 			})
@@ -93,8 +93,8 @@ func TestUserScheduledRoutineDoesNotRunStaleInput(t *testing.T) {
 			if err = f.conn.QueryRowContext(ctx, `SELECT count(*) FROM submissions WHERE origin='automation' AND content='old prompt'`).Scan(&count); err != nil {
 				t.Fatal(err)
 			}
-			if count != 0 || created {
-				t.Fatalf("stale input committed after %s: count=%d created=%v", change, count, created)
+			if count != 0 || result.Created {
+				t.Fatalf("stale input committed after %s: count=%d created=%v", change, count, result.Created)
 			}
 			if !errors.Is(enqueueErr, chat.ErrAutomationChanged) {
 				t.Fatalf("enqueue after %s: %v", change, enqueueErr)
@@ -235,5 +235,60 @@ func TestUserRoutineEditDuringRunNowCheckStartsNoRun(t *testing.T) {
 	}
 	if len(runs) != 0 {
 		t.Fatalf("runs=%+v", runs)
+	}
+}
+
+func TestUserRoutineSkipsATargetInvalidatedDuringPreflight(t *testing.T) {
+	for _, change := range []struct{ name, query string }{
+		{"archive", "UPDATE conversations SET archived_at = 1 WHERE id = ?"},
+		{"delete", "DELETE FROM conversations WHERE id = ?"},
+	} {
+		t.Run(change.name, func(t *testing.T) {
+			// Given a valid target on an SSH fixture, with the Routine preflight in progress.
+			f := newRoutineFixture(t)
+			ctx := t.Context()
+			if _, err := f.chats.Main(ctx, "a"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.conn.ExecContext(ctx, `INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','fixture','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.conn.ExecContext(ctx, `INSERT INTO execution_environments (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
+				t.Fatal(err)
+			}
+			conv, err := f.q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: "a", ChannelKey: "chat:bound-target"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.q.SetChatEnvironment(ctx, sqlc.SetChatEnvironmentParams{ID: conv.ID, AgentID: "a", EnvironmentID: "box"}); err != nil {
+				t.Fatal(err)
+			}
+			in := routineInput()
+			in.Session, in.TargetConversationID = "session", conv.ID
+			in.Notification = &engine.RoutineNotification{Mode: "default"}
+			a, err := f.routines.Create(ctx, "a", in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// When the target is invalidated before the environment probe returns success.
+			f.routines.ConfigureProbe(func(ctx context.Context, _, _ string) error {
+				_, err := f.conn.ExecContext(ctx, change.query, conv.ID)
+				return err
+			})
+			run, err := f.routines.RunNow(ctx, "a", a.ID)
+			// Then the run records a skip, not an input or a retryable snapshot error.
+			if err != nil || run.Status != "skipped" || run.ChatID != 0 || run.Reason != chat.ErrAutomationTarget.Error() {
+				t.Fatalf("run = %+v, err = %v", run, err)
+			}
+			runs, err := f.routines.Runs(ctx, "a", a.ID, 10)
+			if err != nil || len(runs) != 1 || runs[0].Status != "skipped" || runs[0].ChatID != 0 {
+				t.Fatalf("saved runs = %+v, err = %v", runs, err)
+			}
+			// The existing failure routing enqueues one alert, without a model input.
+			var count, submissions int
+			if err := f.conn.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM outbox_messages WHERE kind = 'routine' AND body = ?), (SELECT count(*) FROM submissions)`, "routine: failed\n"+run.Reason).Scan(&count, &submissions); err != nil || count != 1 || submissions != 0 {
+				t.Fatalf("alerts=%d, submissions=%d, err=%v", count, submissions, err)
+			}
+		})
 	}
 }
