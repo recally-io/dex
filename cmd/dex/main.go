@@ -18,6 +18,8 @@ import (
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/service"
+	"github.com/recally-io/dex/internal/sysops"
+	"github.com/recally-io/dex/internal/update"
 	"github.com/recally-io/dex/plugins/email"
 	"github.com/recally-io/dex/plugins/github"
 	"github.com/recally-io/dex/plugins/webhook"
@@ -38,13 +40,26 @@ func main() {
 }
 
 func serve(ctx context.Context, cfg service.Config, token string, requireToken bool) error {
+	logBuf := sysops.NewLogBuffer(0)
+	// Wrap a fresh TextHandler writing directly to os.Stderr rather than slog.Default().Handler():
+	// Go's default handler bridges back through log.Logger, which deadlocks on outMu when SetDefault routes log back into slog.
+	slog.SetDefault(slog.New(sysops.TeeHandler(slog.NewTextHandler(os.Stderr, nil), logBuf)))
+
 	addr := cfg.Addr()
 	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
-	defer listener.Close()
+	closedListener := false
+	closeListener := func() {
+		if !closedListener {
+			closedListener = true
+			_ = listener.Close()
+		}
+	}
+	defer closeListener()
 
+	restartCh := make(chan string, 1)
 	a, err := app.Start(ctx, app.Config{
 		DataDir:      cfg.DataDir,
 		ToolEnv:      app.ToolEnv(os.Environ()),
@@ -53,6 +68,13 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		Version:      version(),
 		Token:        token,
 		RequireToken: requireToken,
+		Logs:         logBuf,
+		RequestRestart: func(execPath string) {
+			select {
+			case restartCh <- execPath:
+			default:
+			}
+		},
 		// The plugins of this build. The owner turns each one on or off in the settings.
 		Plugins: []plugin.Factory{github.New, webhook.New, email.New},
 	})
@@ -60,7 +82,14 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		return err
 	}
 
-	srv := &http.Server{Addr: addr, Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	serveCtx, cancelServe := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelServe()
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           a.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return serveCtx },
+	}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(listener) }()
 	slog.Info("dex is running", "url", fmt.Sprintf("http://%s", addr))
@@ -71,14 +100,47 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		slog.Warn("the API accepts network connections over plain HTTP and requires the stored token; print it with: dex token")
 	}
 
+	var restartExec string
+	restarting := false
 	select {
 	case err = <-errc:
 	case <-ctx.Done():
+		cancelServe()
+		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		err = srv.Shutdown(shutdown)
+	case restartExec = <-restartCh:
+		restarting = true
+		cancelServe()
 		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer cancel()
 		err = srv.Shutdown(shutdown)
 	}
-	return errors.Join(err, a.Close()) //nolint:contextcheck // Close cancels the app-owned context and waits for cleanup.
+	closeListener()
+	closeErr := errors.Join(err, a.Close()) //nolint:contextcheck // Close cancels the app-owned context and waits for cleanup.
+	if !restarting {
+		return closeErr
+	}
+	if closeErr != nil {
+		slog.Warn("shutdown before re-exec reported an error", "err", closeErr)
+	}
+	upgraded := restartExec != ""
+	if restartExec == "" {
+		exe, exeErr := os.Executable()
+		if exeErr != nil {
+			return fmt.Errorf("resolve executable for restart: %w", exeErr)
+		}
+		restartExec = exe
+	}
+	if execErr := update.Reexec(restartExec, os.Args, os.Environ()); execErr != nil {
+		if upgraded {
+			if restoreErr := update.RestorePrevious(restartExec); restoreErr != nil {
+				slog.Error("restore previous executable after re-exec failure", "err", restoreErr)
+			}
+		}
+		return fmt.Errorf("re-exec %s: %w", restartExec, execErr)
+	}
+	return nil
 }
 
 var buildVersion string

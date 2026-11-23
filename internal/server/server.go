@@ -31,6 +31,7 @@ import (
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/web"
@@ -52,6 +53,8 @@ type Config struct {
 	Envs   *execenv.Manager
 	// Runners enrolls remote machines and serves their sessions.
 	Runners *execenv.Runners
+	// System owns server upgrades, restarts, backups, and recent logs.
+	System *sysops.Manager
 
 	// Plugins add hook and API routes. AvailablePlugins names every plugin of this build.
 	Plugins          []plugin.Plugin
@@ -103,10 +106,10 @@ func New(cfg Config) http.Handler {
 			}
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
 				status = http.StatusBadRequest
-			case errors.Is(err, artifact.ErrConflict):
+			case errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported):
 				status = http.StatusConflict
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
@@ -257,7 +260,11 @@ func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	for _, p := range h.Plugins {
 		plugins = append(plugins, p.Name)
 	}
-	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready, Plugins: plugins}, nil
+	var startedAt int64
+	if h.System != nil {
+		startedAt = h.System.StartedAt()
+	}
+	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, StartedAt: startedAt, DataDir: h.DataDir, RuntimeReady: ready, Plugins: plugins}, nil
 }
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

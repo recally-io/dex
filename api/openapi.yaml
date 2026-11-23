@@ -551,6 +551,137 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/system/status:
+    get:
+      operationId: getSystemStatus
+      description: Return server version, update channel, upgrade capability, pending operation state, and database backups.
+      responses:
+        "200":
+          description: Current system status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatus" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/system/settings:
+    put:
+      operationId: updateSystemSettings
+      description: Save global system settings such as the release update channel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [updateChannel]
+              properties:
+                updateChannel: {
+                  $ref: "#/components/schemas/SystemUpdateChannel",
+                }
+      responses:
+        "200":
+          description: Updated system status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatus" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/system/check-update:
+    post:
+      operationId: checkSystemUpdate
+      description: Check GitHub Releases for a newer dex version on the configured channel.
+      responses:
+        "200":
+          description: Updated system status with latest release details.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatus" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/system/upgrade:
+    post:
+      operationId: upgradeSystem
+      description: Download, verify, back up control.sqlite, and restart into a newer release.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version: { type: string, maxLength: 128 }
+                force: { type: boolean }
+      responses:
+        "200":
+          description: Upgrade started or scheduled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatus" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/system/restart:
+    post:
+      operationId: restartSystem
+      description: Gracefully restart the dex server in place once idle, or immediately when forced.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force: { type: boolean }
+      responses:
+        "200":
+          description: Restart started or waiting for active runs to settle.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatus" }
+        "409": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/system/cancel:
+    post:
+      operationId: cancelSystemOperation
+      description: Cancel a pending restart or upgrade that is waiting for active runs to settle.
+      responses:
+        "200":
+          description: Updated system status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemStatus" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/system/backup:
+    post:
+      operationId: backupSystemDatabase
+      description: Create a consistent hot backup of control.sqlite in the data directory backups folder.
+      responses:
+        "200":
+          description: Created backup metadata.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemBackup" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/system/logs:
+    get:
+      operationId: getSystemLogs
+      description: Return recent structured server log entries from the in-memory ring buffer.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500 }
+      responses:
+        "200":
+          description: Recent server log entries.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemLogs" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/settings/plugins:
     get:
       operationId: listPlugins
@@ -2548,16 +2679,99 @@ components:
         }
     Health:
       type: object
-      required: [status, version, dataDir, runtimeReady, plugins]
+      required: [status, version, startedAt, dataDir, runtimeReady, plugins]
       properties:
         status: { type: string, enum: [ok] }
         version: { type: string }
+        startedAt: { type: integer, format: int64 }
         dataDir: { type: string }
         runtimeReady: { type: boolean }
         plugins:
           type: array
           description: The names of the enabled plugins, for example github.
           items: { type: string }
+
+    SystemUpdateChannel:
+      type: string
+      enum: [stable, prerelease]
+
+    SystemCapability:
+      type: object
+      required: [supported, canRestart]
+      properties:
+        supported: { type: boolean }
+        reason: { type: string }
+        canRestart: { type: boolean }
+
+    SystemRelease:
+      type: object
+      required: [tag, prerelease]
+      properties:
+        tag: { type: string }
+        prerelease: { type: boolean }
+        publishedAt: { type: string }
+        notes: { type: string }
+        url: { type: string }
+
+    SystemBackup:
+      type: object
+      required: [name, sizeBytes, createdAt]
+      properties:
+        name: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        createdAt: { type: integer, format: int64 }
+
+    SystemLogEntry:
+      type: object
+      required: [seq, time, level, message]
+      properties:
+        seq: { type: integer, format: int64 }
+        time: { type: integer, format: int64 }
+        level: { type: string }
+        message: { type: string }
+        attrs: { type: string }
+
+    SystemLogs:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/SystemLogEntry" }
+
+    SystemStatus:
+      type: object
+      required:
+        [
+          version,
+          startedAt,
+          state,
+          updateChannel,
+          capability,
+          updateAvailable,
+          backups,
+        ]
+      properties:
+        version: { type: string }
+        startedAt: { type: integer, format: int64 }
+        state:
+          type: string
+          enum: [idle, checking, downloading, waiting_idle, restarting, error]
+        pendingAction:
+          type: string
+          enum: [restart, upgrade]
+        targetVersion: { type: string }
+        downloadDone: { type: integer, format: int64 }
+        downloadTotal: { type: integer, format: int64 }
+        updateChannel: { $ref: "#/components/schemas/SystemUpdateChannel" }
+        capability: { $ref: "#/components/schemas/SystemCapability" }
+        latest: { $ref: "#/components/schemas/SystemRelease" }
+        updateAvailable: { type: boolean }
+        lastCheckedAt: { type: integer, format: int64 }
+        lastError: { type: string }
+        backups:
+          type: array
+          items: { $ref: "#/components/schemas/SystemBackup" }
 
     AgentEnvironments:
       type: object

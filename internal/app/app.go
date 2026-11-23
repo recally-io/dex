@@ -34,6 +34,7 @@ import (
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
 	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/worktask"
 	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
@@ -82,6 +83,14 @@ type Config struct {
 	// Plugins are the optional sources of this build. cmd/dex lists them. The owner turns each
 	// one on or off in plugin_settings, and dex starts only the enabled ones.
 	Plugins []plugin.Factory
+	// System operations hooks (optional overrides for tests and cmd/dex re-exec).
+	Executable         string
+	ReleaseBase        string
+	Logs               *sysops.LogBuffer
+	RequestRestart     func(execPath string)
+	SystemWaitInterval time.Duration
+	SystemWaitTimeout  time.Duration
+	SystemRestartDelay time.Duration
 }
 
 // App is a running control process.
@@ -89,6 +98,7 @@ type App struct {
 	db         *sql.DB
 	engine     *engine.Agents
 	envs       *execenv.Manager
+	sysops     *sysops.Manager
 	handler    http.Handler
 	bots       *channelRegistry
 	jobs       *scheduler.Scheduler
@@ -429,12 +439,34 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		token = stored
 	}
 
+	logs := cfg.Logs
+	if logs == nil {
+		logs = sysops.NewLogBuffer(0)
+	}
+	sys := sysops.New(sysops.Config{
+		DB:                 conn,
+		DataDir:            cfg.DataDir,
+		Version:            cfg.Version,
+		Executable:         cfg.Executable,
+		ReleaseBase:        cfg.ReleaseBase,
+		Logs:               logs,
+		AcquireMaintenance: chats.AcquireMaintenance,
+		ReleaseMaintenance: chats.ReleaseMaintenance,
+		RequestRestart:     cfg.RequestRestart,
+		IsBusyErr:          func(err error) bool { return errors.Is(err, chat.ErrMaintenanceBusy) },
+		WaitInterval:       cfg.SystemWaitInterval,
+		WaitTimeout:        cfg.SystemWaitTimeout,
+		RestartDelay:       cfg.SystemRestartDelay,
+	})
+	a.sysops = sys
+
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
 		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine:  native,
 		Envs:    envs,
 		Runners: envs.Runners(),
+		System:  sys,
 		Chats:   chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
@@ -497,6 +529,7 @@ func (a *App) Handler() http.Handler { return a.handler }
 
 // Close stops business services, closes native execution, and closes business storage.
 func (a *App) Close() error {
+	a.sysops.Close()
 	a.jobs.Close()
 	a.bots.Close()
 	a.cancel()
