@@ -56,7 +56,9 @@ export function RunnerInstall({
           {issue.isPending ? <Spinner /> : null}
           {issued ? "New install command" : "Get install command"}
         </Button>
-        <span className="text-[12px] text-muted-foreground">Run the command on the machine with sudo.</span>
+        <span className="text-[12px] text-muted-foreground">
+          Run the command on the machine as the account that will use it.
+        </span>
       </div>
       {command ? (
         <div className="flex flex-col gap-2 text-sm">
@@ -76,7 +78,11 @@ export function RunnerInstall({
               Copy install command
             </Button>
           </div>
-          <p className="text-muted-foreground">The command enrolls one machine and expires in 10 minutes.</p>
+          <p className="text-muted-foreground">
+            The command enrolls one machine and expires in 10 minutes. Its work runs as the account that ran
+            the command and can read that account's files, so only the bot bound to this machine uses it. Add
+            <Mono> --dedicated</Mono> to serve a shared host from a dedicated account.
+          </p>
         </div>
       ) : null}
       {!reachable ? (
