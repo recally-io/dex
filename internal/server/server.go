@@ -16,6 +16,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 	"uuid"
@@ -48,6 +49,7 @@ type Config struct {
 	Live        *live.Hub
 	DataDir     string
 	Version     string
+	ReleaseBase string
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
 	Envs   *execenv.Manager
@@ -87,7 +89,7 @@ var errReadOnly = errors.New("this session is read-only; send messages in main, 
 // cannot send messages or change settings, and cannot sign in.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
-	h := &handler{cfg}
+	h := &handler{Config: cfg}
 	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			if r.Context().Err() != nil {
@@ -138,6 +140,7 @@ func New(cfg Config) http.Handler {
 	// token afterwards, so they sit outside the admin API.
 	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
+	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	for _, p := range cfg.Plugins {
@@ -205,7 +208,10 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	}
 }
 
-type handler struct{ Config }
+type handler struct {
+	Config
+	runnerReleaseMu sync.Mutex
+}
 
 type agentKey struct{}
 

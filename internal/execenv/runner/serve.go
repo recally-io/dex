@@ -17,6 +17,11 @@ var errProtocol = errors.New("unexpected machine call")
 // Serve executes the calls that arrive on the socket until the socket closes. It owns the
 // socket and the execution environment of the session.
 func Serve(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv) error {
+	return ServeWithInfo(ctx, socket, local, Ready{})
+}
+
+// ServeWithInfo executes calls on socket and reports extra version and self-update metadata in Ready.
+func ServeWithInfo(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv, meta Ready) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	defer func() { _ = local.Cleanup(context.WithoutCancel(ctx)) }()
@@ -26,7 +31,15 @@ func Serve(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv) 
 	home, _ := os.UserHomeDir()
 	ready, readyCancel := context.WithTimeout(ctx, messageTimeout)
 	defer readyCancel()
-	info := Ready{OS: runtime.GOOS, Arch: runtime.GOARCH, Home: home, Workspace: local.Cwd()}
+	info := Ready{
+		OS:               runtime.GOOS,
+		Arch:             runtime.GOARCH,
+		Home:             home,
+		Workspace:        local.Cwd(),
+		Version:          meta.Version,
+		CanSelfUpdate:    meta.CanSelfUpdate,
+		SelfUpdateReason: meta.SelfUpdateReason,
+	}
 	if err := conn.Notify(ready, MethodReady, info); err != nil {
 		return err
 	}

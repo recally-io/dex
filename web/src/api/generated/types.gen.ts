@@ -867,12 +867,22 @@ export type EnvironmentConfig = {
     autoPause?: boolean;
 };
 
+export type RunnerStatus = {
+    online: boolean;
+    os?: string;
+    arch?: string;
+    version?: string;
+    canSelfUpdate?: boolean;
+    selfUpdateReason?: string;
+};
+
 export type Environment = {
     id: string;
     name: string;
     kind: EnvironmentKind;
     config: EnvironmentConfig;
     secretSet: boolean;
+    runner?: RunnerStatus;
     createdAt: number;
     updatedAt: number;
 };

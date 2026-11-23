@@ -82,7 +82,7 @@ install_linux() {
 		sudo -v </dev/tty || fail 'sudo authentication failed'
 	fi
 	state=/var/lib/dex-agent
-	binary=/usr/local/bin/dex-agent
+	binary=/var/lib/dex-agent/bin/dex-agent
 	unit=/etc/systemd/system/dex-agent.service
 	if as_root test -e "$state/device.json"; then
 		fail 'this machine is already connected; revoke it in Dex before connecting again'
@@ -92,7 +92,15 @@ install_linux() {
 		as_root useradd --system --user-group --home-dir "$state" --shell /usr/sbin/nologin dex-agent
 	fi
 	as_root install -d -m 0700 -o dex-agent -g dex-agent "$state"
-	as_root install -m 0755 "$tmp/dex-agent" "$binary"
+	# Do not write as root below the directory owned by dex-agent.
+	as_root runuser -u dex-agent -- install -d -m 0700 "$state/bin"
+	as_root runuser -u dex-agent -- sh -eu -c '
+		stage=$(mktemp "${1%/*}/.install-XXXXXX")
+		trap '\''rm -f "$stage"'\'' EXIT
+		cat >"$stage"
+		chmod 0755 "$stage"
+		mv -fT "$stage" "$1"
+	' sh "$binary" <"$tmp/dex-agent"
 	as_root install -m 0644 "$tmp/dex-agent.service" "$unit"
 	# The code goes through stdin, so it stays out of the process list.
 	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" || fail 'Dex refused the enrollment; get a fresh install command'

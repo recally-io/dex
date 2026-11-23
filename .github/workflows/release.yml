@@ -141,11 +141,15 @@ jobs:
       - name: Download
         run: |
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "dex_${RELEASE_TAG}_${{ matrix.target }}.tar.gz" --pattern checksums.txt
+            --pattern "dex_${RELEASE_TAG}_${{ matrix.target }}.tar.gz" \
+            --pattern "dex-agent_${RELEASE_TAG}_${{ matrix.target }}.tar.gz" --pattern checksums.txt
           grep " dex_${RELEASE_TAG}_${{ matrix.target }}.tar.gz$" checksums.txt | shasum -a 256 -c
-          tar -xzf dex_*.tar.gz
+          grep " dex-agent_${RELEASE_TAG}_${{ matrix.target }}.tar.gz$" checksums.txt | shasum -a 256 -c
+          tar -xzf dex_*.tar.gz dex
+          tar -xzf dex-agent_*.tar.gz dex-agent
       - name: Smoke test
         run: |
+          test "$(./dex-agent version)" = "dex-agent $RELEASE_TAG"
           data="$(mktemp -d)"
           DEX_ADDR=127.0.0.1:18787 DEX_DATA_DIR="$data" ./dex &
           pid=$!

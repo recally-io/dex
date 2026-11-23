@@ -2,12 +2,8 @@
 package update
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -92,24 +88,8 @@ func Probe(current, executable string) Capability {
 	if _, err := compare(current, current); err != nil {
 		return Capability{Supported: false, Reason: "dev"}
 	}
-	if executable == "" {
-		return Capability{Supported: false, Reason: "not-writable"}
-	}
-	resolved, err := filepath.EvalSymlinks(executable)
-	if err != nil {
-		return Capability{Supported: false, Reason: "not-writable"}
-	}
-	if isPackageManaged(resolved) {
-		return Capability{Supported: false, Reason: "package", Executable: resolved}
-	}
-	f, err := os.CreateTemp(filepath.Dir(resolved), ".dex-writable-*")
-	if err != nil {
-		return Capability{Supported: false, Reason: "not-writable", Executable: resolved}
-	}
-	name := f.Name()
-	_ = f.Close()
-	_ = os.Remove(name)
-	return Capability{Supported: true, Executable: resolved}
+	resolved, reason := WritableExecutable(executable)
+	return Capability{Supported: reason == "", Reason: reason, Executable: resolved}
 }
 
 func isPackageManaged(resolved string) bool {
@@ -213,17 +193,25 @@ func (u *Updater) get(ctx context.Context, target, accept string, limit int64) (
 }
 
 func (u *Updater) getProgress(ctx context.Context, target, accept string, limit int64, onProgress func(done, total int64)) ([]byte, error) {
+	var out bytes.Buffer
+	if err := u.download(ctx, target, accept, limit, &out, onProgress); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func (u *Updater) download(ctx context.Context, target, accept string, limit int64, out io.Writer, onProgress func(done, total int64)) error {
 	//nolint:gosec // G704: release and asset URLs come from GitHub, or an explicit test constructor.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Accept", accept)
 	req.Header.Set("User-Agent", "dex")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	base, err := url.Parse(u.base)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if req.URL.Host == base.Host && req.URL.Scheme == base.Scheme && u.token != "" {
 		req.Header.Set("Authorization", "Bearer "+u.token)
@@ -232,53 +220,49 @@ func (u *Updater) getProgress(ctx context.Context, target, accept string, limit 
 	resp, err := u.client.Do(req)
 	if err != nil {
 		if e, ok := errors.AsType[*url.Error](err); ok {
-			return nil, fmt.Errorf("release request failed: %w", e.Err)
+			return fmt.Errorf("release request failed: %w", e.Err)
 		}
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		if u.token == "" && (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) {
-			return nil, fmt.Errorf("release API returned %s (GitHub unauthenticated rate limit; set GH_TOKEN or run gh auth login for higher limits)", resp.Status)
+			return fmt.Errorf("release API returned %s (GitHub unauthenticated rate limit; set GH_TOKEN or run gh auth login for higher limits)", resp.Status)
 		}
-		return nil, fmt.Errorf("release API returned %s (check access to recally-io/dex)", resp.Status)
+		return fmt.Errorf("release API returned %s (check access to recally-io/dex)", resp.Status)
 	}
+	reader := io.LimitReader(resp.Body, limit+1)
 	if onProgress == nil {
-		b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+		n, err := io.Copy(out, reader)
 		if err != nil {
-			return nil, fmt.Errorf("download interrupted: %w", err)
+			return fmt.Errorf("download interrupted: %w", err)
 		}
-		if int64(len(b)) > limit {
-			return nil, errors.New("release asset exceeds size limit")
+		if n > limit {
+			return errors.New("release asset exceeds size limit")
 		}
-		return b, nil
-	}
-	total := resp.ContentLength
-	var out bytes.Buffer
-	if total > 0 && total <= limit {
-		out.Grow(int(total))
+		return nil
 	}
 	buf := make([]byte, 32<<10)
 	var done int64
-	reader := io.LimitReader(resp.Body, limit+1)
 	for {
-		n, rerr := reader.Read(buf)
+		n, readErr := reader.Read(buf)
 		if n > 0 {
-			out.Write(buf[:n])
 			done += int64(n)
 			if done > limit {
-				return nil, errors.New("release asset exceeds size limit")
+				return errors.New("release asset exceeds size limit")
 			}
-			onProgress(done, total)
+			if _, err := out.Write(buf[:n]); err != nil {
+				return err
+			}
+			onProgress(done, resp.ContentLength)
 		}
-		if errors.Is(rerr, io.EOF) {
-			break
+		if errors.Is(readErr, io.EOF) {
+			return nil
 		}
-		if rerr != nil {
-			return nil, fmt.Errorf("download interrupted: %w", rerr)
+		if readErr != nil {
+			return fmt.Errorf("download interrupted: %w", readErr)
 		}
 	}
-	return out.Bytes(), nil
 }
 
 func (u *Updater) ensureOptionalToken(ctx context.Context, stored bool) {
@@ -512,105 +496,17 @@ func (u *Updater) stage(ctx context.Context, r release, onProgress func(done, to
 	if err != nil {
 		return "", err
 	}
-	expected := ""
-	for line := range strings.SplitSeq(string(checksums), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
-			expected = fields[0]
-		}
-	}
-	digest, err := hex.DecodeString(expected)
-	if err != nil || len(digest) != sha256.Size {
-		return "", fmt.Errorf("missing or invalid checksum for %s", name)
-	}
 	archive, err := u.getProgress(ctx, assetURL, "application/octet-stream", maxAsset, onProgress)
 	if err != nil {
 		return "", err
 	}
-	actual := sha256.Sum256(archive)
-	if !strings.EqualFold(expected, hex.EncodeToString(actual[:])) {
-		return "", errors.New("release checksum mismatch")
-	}
-	file, err := os.CreateTemp(filepath.Dir(u.executable), ".dex-update-*")
-	if err != nil {
-		return "", fmt.Errorf("executable directory is not writable: %w", err)
-	}
-	stage := file.Name()
-	keep := false
-	defer func() {
-		_ = file.Close()
-		if !keep {
-			_ = os.Remove(stage)
-		}
-	}()
-	if err := extract(archive, file); err != nil {
+	if err := VerifyChecksum(checksums, bytes.NewReader(archive), name); err != nil {
 		return "", err
 	}
-	if err := file.Chmod(0755); err != nil {
-		return "", err
-	}
-	if err := file.Sync(); err != nil {
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	verify, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	version, err := service.BinaryVersion(verify, stage)
-	if err != nil {
-		return "", fmt.Errorf("staged executable did not run: %w", err)
-	}
-	if version != r.Tag {
-		return "", errors.New("staged executable reported an unexpected version")
-	}
-	keep = true
-	return stage, nil
-}
-func extract(archive []byte, out io.Writer) error {
-	gz, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return fmt.Errorf("release gzip: %w", err)
-	}
-	defer gz.Close()
-	tr := tar.NewReader(io.LimitReader(gz, maxAsset+1))
-	found := false
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("release tar: %w", err)
-		}
-		if h.Typeflag != tar.TypeReg || h.Size < 0 || h.Size > maxAsset {
-			return fmt.Errorf("archive entry is not a regular file within the size limit: %q", h.Name)
-		}
-		if h.Name == "dex" {
-			if found {
-				return errors.New("duplicate dex archive entry")
-			}
-			found = true
-			if _, err := io.CopyN(out, tr, h.Size); err != nil {
-				return err
-			}
-		}
-	}
-	if !found {
-		return errors.New("archive has no regular file named dex")
-	}
-	return nil
+	return StageExecutable(ctx, u.executable, "dex", r.Tag, archive)
 }
 func (u *Updater) replace(stage string) error {
-	backup := stage + ".previous"
-	if err := os.Link(u.executable, backup); err != nil {
-		return fmt.Errorf("retain previous executable: %w", err)
-	}
-	defer os.Remove(backup)
-	if err := os.Rename(backup, u.executable+".previous"); err != nil {
-		return err
-	}
-	return os.Rename(stage, u.executable)
+	return ReplaceExecutable(u.executable, stage)
 }
 func maintenance(ctx context.Context, c service.Config, method string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

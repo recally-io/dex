@@ -146,6 +146,35 @@ func (rt *Runners) Revoke(ctx context.Context, id string) error {
 	return err
 }
 
+// RunnerStatus describes the live connection state and version metadata of one remote machine.
+type RunnerStatus struct {
+	Online           bool
+	OS               string
+	Arch             string
+	Version          string
+	CanSelfUpdate    bool
+	SelfUpdateReason string
+}
+
+// Status reports whether id is currently online and the metadata reported by its live session.
+func (rt *Runners) Status(id string) RunnerStatus {
+	rt.mu.Lock()
+	session := rt.sessions[id].client
+	rt.mu.Unlock()
+	if session == nil {
+		return RunnerStatus{}
+	}
+	info := session.Info()
+	return RunnerStatus{
+		Online:           true,
+		OS:               info.OS,
+		Arch:             info.Arch,
+		Version:          info.Version,
+		CanSelfUpdate:    info.CanSelfUpdate,
+		SelfUpdateReason: info.SelfUpdateReason,
+	}
+}
+
 func (rt *Runners) online(id string) *runner.Client {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
