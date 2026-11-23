@@ -2264,9 +2264,8 @@ paths:
     get:
       operationId: getExtensions
       description: >
-        The agent's skills and MCP servers, from ~/.agents/ and the agent
-        directory. It does not start MCP servers: before the agent starts, the
-        servers are idle.
+        The agent's skills and MCP servers. It does not start MCP servers.
+        Before the agent starts, the servers are idle.
       responses:
         "200":
           description: The extensions.
@@ -2276,53 +2275,65 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/extensions/env:
+  /api/agents/{agentId}/vault:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
+    get:
+      operationId: listVault
+      description: List vault metadata at dex and agent levels. Values are write-only.
+      responses:
+        "200":
+          description: Vault entries without their values.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VaultEntry" }
+        default: { $ref: "#/components/responses/Error" }
     put:
-      operationId: putExtensionEnv
-      description: Write an agent or dex .env key. Values are write-only. Reload applies changes.
+      operationId: putVault
+      description: Set a vault value. The agent reloads when idle.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [scope, key, value]
+              required: [scope, name, value]
               properties:
-                scope: { type: string, enum: [agent, dex] }
-                key: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
+                scope: { $ref: "#/components/schemas/ExtensionScope" }
+                name: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
                 value: { type: string, writeOnly: true }
       responses:
         "200":
-          description: Current extension declarations, with key names only.
+          description: Vault value saved.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Extensions" }
+              schema: { $ref: "#/components/schemas/Ok" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
     delete:
-      operationId: deleteExtensionEnv
-      description: Remove an agent or dex .env key. Reload applies changes.
+      operationId: deleteVault
+      description: Remove a vault value. The agent reloads when idle.
       parameters:
         - in: query
           name: scope
           required: true
-          schema: { type: string, enum: [agent, dex] }
+          schema: { $ref: "#/components/schemas/ExtensionScope" }
         - in: query
-          name: key
+          name: name
           required: true
           schema: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       responses:
         "200":
-          description: Current extension declarations, with key names only.
+          description: Vault value removed.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Extensions" }
+              schema: { $ref: "#/components/schemas/Ok" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
@@ -3947,15 +3958,23 @@ components:
           description: pi-ai's getSupportedThinkingLevels(model).
           items: { $ref: "#/components/schemas/ThinkingLevel" }
 
+    VaultEntry:
+      type: object
+      required: [name, scope, updatedAt]
+      properties:
+        name: { type: string }
+        scope: { $ref: "#/components/schemas/ExtensionScope" }
+        updatedAt: { type: string, format: date-time }
+
     Extensions:
       type: object
-      required: [levels, skills, servers, env, warnings, errors, reloadPending]
+      required: [levels, skills, servers, warnings, errors, reloadPending]
       properties:
         levels:
           type: array
           description: >
-            The .agents directories, from wide to narrow. Each can hold skills/
-            and .env. Two levels can have the same directory.
+            The .agents directories, from wide to narrow. Each can hold skills/.
+            Two levels can have the same directory.
           items:
             type: object
             required: [scope, dir]
@@ -3970,29 +3989,6 @@ components:
           type: array
           description: Loaded servers, or idle declarations before the agent opens.
           items: { $ref: "#/components/schemas/McpServer" }
-        env:
-          type: array
-          description: Names only. Values never leave the loader through this API.
-          items:
-            type: object
-            required: [key, scope, shadowed, hints]
-            properties:
-              key: { type: string }
-              scope: { $ref: "#/components/schemas/ExtensionScope" }
-              shadowed: { type: boolean }
-              hints:
-                type: array
-                description: >
-                  Shape hints of the saved value. A hint never contains value text.
-                  assignment: the value looks like a pasted NAME=... line.
-                  empty: the value is empty or only whitespace.
-                  whitespace: the value has leading or trailing whitespace.
-                  op-reference: the value is an op:// reference. Only tools that
-                  can run op resolve it.
-                items: {
-                  type: string,
-                  enum: [assignment, empty, whitespace, op-reference],
-                }
         warnings:
           type: array
           items: { type: string }
@@ -4003,13 +3999,13 @@ components:
         reloadPending:
           type: boolean
           description: >
-            Extension files, shell rc files, or 1Password settings changed after the agent
+            Extension files, vault entries, shell rc files, or 1Password settings changed after the agent
             loaded. dex reloads the agent when all agents are idle and the configuration is
             valid.
 
     ExtensionScope:
       type: string
-      description: Resolved data directory or agent home, each under .agents/.
+      description: Shared across dex or scoped to one agent.
       enum: [dex, agent]
 
     Skill:
@@ -4035,8 +4031,8 @@ components:
     McpServer:
       type: object
       description: >
-        An MCP server from control storage, without its command, URL, headers
-        or environment, because they can hold credentials.
+        An MCP server from control storage. Plain environment and header values
+        are not returned. Vault references are returned as written.
       required: [name, scope, overrides, state, tools]
       properties:
         name: { type: string }
@@ -4056,6 +4052,11 @@ components:
           type: array
           description: The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
           items: { type: string }
+        vaultReferences:
+          type: object
+          properties:
+            env: { type: object, additionalProperties: { type: string } }
+            headers: { type: object, additionalProperties: { type: string } }
         error: { type: string }
 
     Wechat:

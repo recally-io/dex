@@ -83,9 +83,9 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 	ref := coreCreate(t, a, "a", coreOptions("echo"))
 	remoteWS := filepath.Join(remoteRoot, "agents", "a", "workspace")
 
-	// When a bash command runs remotely, it inherits remote daemon env + explicit .env keys ONLY.
+	// When a bash command runs remotely, it inherits remote daemon environment only.
 	bashOut := coreWait(t, coreSubmit(t, a, ref, "req-bash", `printf "%s|%s|%s|%s|%s|%s" "$REMOTE_DAEMON_VAR" "$EXPLICIT_DOTENV" "$AGENT_DOTENV" "${LOGIN_HOST_SECRET:-}" "${BASE_HOST_VAR:-}" "${HOST_PROCESS_SECRET:-}"`, "bash")).Answer
-	if bashOut != "bash: remote-pipe-ready|from-dex-dotenv|from-agent-dotenv|||" {
+	if bashOut != "bash: remote-pipe-ready|||||" {
 		t.Fatalf("unexpected remote env in bash: %q", bashOut)
 	}
 

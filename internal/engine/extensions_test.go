@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/MichaelKinsy/PiG/ai"
@@ -33,11 +32,10 @@ func extensionFile(t *testing.T, path, text string) {
 	}
 }
 func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
-	// Given values and skills at dex and agent levels.
+	// Given skills at dex and agent levels.
 	a, _, data := extensionFixture(t)
 	agent := filepath.Join(data, "agents", "a")
 	for _, dir := range []string{data, agent} {
-		extensionFile(t, filepath.Join(dir, ".agents", ".env"), "TOKEN="+filepath.Base(dir)+"\n")
 		extensionFile(t, filepath.Join(dir, ".agents", "skills", "notes", "SKILL.md"), "---\ndescription: "+filepath.Base(dir)+"\n---\n")
 	}
 	loaded, err := a.Load(t.Context())
@@ -45,11 +43,11 @@ func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loaded.Close(t.Context())
-	if loaded.Env["TOKEN"] != "a" || loaded.Env["BASE"] != "explicit" {
+	if loaded.Env["BASE"] != "explicit" {
 		t.Fatalf("environment: %#v", loaded.Env)
 	}
 	info, err := a.Info(t.Context())
-	if err != nil || len(info.Env) != 2 || !info.Env[0].Shadowed || info.Env[1].Shadowed || len(info.Skills) != 1 || !info.Skills[0].Overrides || info.Skills[0].Scope != "agent" {
+	if err != nil || len(info.Skills) != 1 || !info.Skills[0].Overrides || info.Skills[0].Scope != "agent" {
 		t.Fatalf("merge: %#v %v", info, err)
 	}
 	// When the skill changes, the next request sees the new description.
@@ -90,95 +88,16 @@ func TestUserProjectSkillsFollowTheConversationCwd(t *testing.T) {
 		t.Fatalf("repository prompt: %v %v", prompt, err)
 	}
 }
-func TestUserEnvEditsPreserveLinesAndRedactValues(t *testing.T) {
-	a, _, data := extensionFixture(t)
-	path := filepath.Join(data, ".agents", ".env")
-	extensionFile(t, path, "# keep\r\nTOKEN=old\r\nTOKEN=duplicate\r\nOTHER=stay\r\n")
-	secret := "token # ' quoted"
-	info, err := a.EditEnv(t.Context(), "dex", "TOKEN", &secret)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(raw) != "# keep\r\nTOKEN=\"token # ' quoted\"\r\nOTHER=stay\r\n" {
-		t.Fatalf("edited lines: %q", raw)
-	}
-	values, err := readExtensionEnv(path)
-	if err != nil || values["TOKEN"] != secret {
-		t.Fatalf("quote roundtrip: %v %v", values, err)
-	}
-	encoded, err := json.Marshal(info)
-	if err != nil || strings.Contains(string(encoded), secret) {
-		t.Fatalf("secret leaked: %s %v", encoded, err)
-	}
-	stat, err := os.Stat(path)
-	if err != nil || stat.Mode().Perm() != 0600 {
-		t.Fatalf("permissions: %v %v", stat, err)
-	}
-	if _, err := a.EditEnv(t.Context(), "dex", "TOKEN", nil); err != nil {
-		t.Fatal(err)
-	}
-	values, err = readExtensionEnv(path)
-	if err != nil || values["TOKEN"] != "" {
-		t.Fatalf("delete: %v %v", values, err)
-	}
-	before, _ := os.ReadFile(path)
-	bad := "private\nKEY=bad"
-	if _, err := a.EditEnv(t.Context(), "dex", "TOKEN", &bad); err == nil || strings.Contains(err.Error(), "private") {
-		t.Fatalf("unsafe value: %v", err)
-	}
-	after, _ := os.ReadFile(path)
-	if string(before) != string(after) {
-		t.Fatal("invalid edit changed file")
-	}
-}
-func TestUserSharedEnvEditsDoNotLoseUpdates(t *testing.T) {
-	a, home, data := extensionFixture(t)
-	other := newAgentExtensions(home, data, "b", nil, newToolEnv(home, nil, nil))
-	var wg sync.WaitGroup
-	for i, owner := range []*agentExtensions{a, other} {
-		wg.Go(func() {
-			_, err := owner.EditEnv(t.Context(), "dex", []string{"FIRST", "SECOND"}[i], new("value"))
-			if err != nil {
-				t.Error(err)
-			}
-		})
-	}
-	wg.Wait()
-	values, err := readExtensionEnv(filepath.Join(data, ".agents", ".env"))
-	if err != nil || len(values) != 2 {
-		t.Fatalf("shared edits: %v %v", values, err)
-	}
-}
-func TestUserInvalidEnvPreventsMCPAndPartialSecrets(t *testing.T) {
-	a, _, data := extensionFixture(t)
-	extensionFile(t, filepath.Join(data, ".agents", ".env"), "NARROW=secret\nbroken-secret-line\n")
-	a.mcp = testMCPStore(t, data)
-	testSetMCP(t, a.mcp, "", "wide", serverConfig{Command: "must-not-run"})
-	loaded, err := a.Load(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.HasTools || len(loaded.Servers) != 0 || len(loaded.Env) != 1 || loaded.Env["BASE"] != "explicit" {
-		t.Fatalf("invalid configuration applied: %#v", loaded)
-	}
-	info, _ := a.Info(t.Context())
-	encoded, _ := json.Marshal(info)
-	if strings.Contains(string(encoded), "secret") {
-		t.Fatalf("error leaked secret: %s", encoded)
-	}
-}
 func TestUserMCPConnectsCallsAndRedactsConfiguration(t *testing.T) {
 	a, _, data := extensionFixture(t)
 	dir := t.TempDir()
 	server := httptest.NewServer(&mcptest.Server{Dir: dir, Twice: true})
 	defer server.Close()
 	a.mcp = testMCPStore(t, data)
-	testSetMCP(t, a.mcp, "", "notes", serverConfig{Type: "http", URL: server.URL, Headers: map[string]string{"Authorization": "Bearer ${TOKEN}"}})
-	extensionFile(t, filepath.Join(data, ".agents", ".env"), "TOKEN=private-token\n")
+	testSetMCP(t, a.mcp, "", "notes", serverConfig{Type: "http", URL: server.URL, Headers: map[string]string{"Authorization": "Bearer ${vault:TOKEN}"}})
+	if err := a.vault.Edit("a", "dex", "TOKEN", new("private-token")); err != nil {
+		t.Fatal(err)
+	}
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +127,7 @@ func TestUserMCPConnectsCallsAndRedactsConfiguration(t *testing.T) {
 }
 func TestUserStdioMCPGetsOnlyExplicitEnvironment(t *testing.T) {
 	if os.Getenv("DEX_NATIVE_MCP_CHILD") == "1" {
-		if os.Getenv("PARENT_ONLY_SECRET") != "" {
+		if os.Getenv("PARENT_ONLY_SECRET") != "" || os.Getenv("MCP_TOKEN") != "api:stdio-vault-fixture" {
 			os.Exit(8)
 		}
 		server := mcptest.Server{Dir: os.Getenv("MCP_DIR")}
@@ -227,7 +146,10 @@ func TestUserStdioMCPGetsOnlyExplicitEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.mcp = testMCPStore(t, data)
-	testSetMCP(t, a.mcp, "", "local", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserStdioMCPGetsOnlyExplicitEnvironment$"}, Env: map[string]string{"DEX_NATIVE_MCP_CHILD": "1", "MCP_DIR": t.TempDir()}})
+	if err := a.vault.Edit("a", "agent", "STDIO_TEST", new("stdio-vault-fixture")); err != nil {
+		t.Fatal(err)
+	}
+	testSetMCP(t, a.mcp, "", "local", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserStdioMCPGetsOnlyExplicitEnvironment$"}, Env: map[string]string{"DEX_NATIVE_MCP_CHILD": "1", "MCP_DIR": t.TempDir(), "MCP_TOKEN": "api:${vault:STDIO_TEST}"}})
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -271,47 +193,5 @@ func TestUserSkillMetadataMustBeText(t *testing.T) {
 				t.Fatalf("invalid metadata accepted: %#v %v", info.Skills, err)
 			}
 		})
-	}
-}
-
-func TestUserReloadValidationKeepsTheLoadedEnvironment(t *testing.T) {
-	// Given a loaded environment and an environment file that changes after loading.
-	a, _, data := extensionFixture(t)
-	path := filepath.Join(data, ".agents", ".env")
-	extensionFile(t, path, "TOKEN=first-private-value\n")
-	loaded, err := a.Load(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer loaded.Close(t.Context())
-	for _, name := range []string{".env"} {
-		t.Run(name, func(t *testing.T) {
-			path := filepath.Join(data, ".agents", name)
-			before, err := os.ReadFile(path)
-			if err != nil && !os.IsNotExist(err) {
-				t.Fatal(err)
-			}
-			extensionFile(t, path, "invalid-private-value")
-			// When reload validation reads the invalid file, it reports only the file and error category.
-			err = a.Validate(t.Context())
-			validation, ok := errors.AsType[*EnvEditError](err)
-			if !ok || !errors.Is(err, ErrInvalidInput) || !strings.Contains(validation.Error(), path) || strings.Contains(validation.Error(), "private-value") {
-				t.Fatalf("validation error: %v", err)
-			}
-			// Then the loaded environment stays intact until a valid reload replaces it.
-			if loaded.Env["TOKEN"] != "first-private-value" {
-				t.Fatal("validation changed loaded environment")
-			}
-			if before == nil {
-				if err := os.Remove(path); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				extensionFile(t, path, string(before))
-			}
-		})
-	}
-	if err := a.Validate(t.Context()); err != nil {
-		t.Fatal(err)
 	}
 }

@@ -210,12 +210,15 @@ func TestUserGetsBatchedWakeUpsForTheLinesOfAWatch(t *testing.T) {
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 	chat := bgChat(t, d)
+	const value = "monitor-fixture-secret"
+	saveVault(t, d, "default", "agent", "CI_TOKEN", value)
+	d.applied(t)
 	gate := filepath.Join(dir, "second.gate")
-	command := fmt.Sprintf("echo 'lint: pass'; echo 'test: pass'; echo 'ignored' >&2; until test -f %s; do sleep 0.05; done; echo 'deploy: fail'", gate)
-	info := bgStart(t, d, chat, map[string]any{"command": command, "wake": "lines", "label": "ci"})
+	command := fmt.Sprintf("echo \"lint: $CI_TOKEN\"; echo 'test: pass'; echo 'ignored' >&2; until test -f %s; do sleep 0.05; done; echo \"deploy: $CI_TOKEN\"", gate)
+	info := bgStart(t, d, chat, map[string]any{"command": command, "wake": "lines", "label": "ci", "env": map[string]string{"CI_TOKEN": "vault:CI_TOKEN"}})
 	// Then the first two lines arrive as one wake-up, and the line of stderr is not an event.
 	first := waitWakes(t, conn, chat, 1)[0]
-	if first.result.Event != "lines" || strings.Join(first.result.Lines, "|") != "lint: pass|test: pass" {
+	if first.result.Event != "lines" || strings.Join(first.result.Lines, "|") != "lint: [vault:CI_TOKEN]|test: pass" {
 		t.Fatalf("first wake-up: %+v", first.result)
 	}
 	// When the run completes after the first batch.
@@ -224,15 +227,15 @@ func TestUserGetsBatchedWakeUpsForTheLinesOfAWatch(t *testing.T) {
 	}
 	// Then the last line arrives, and then the end of the watch.
 	wakes := waitWakes(t, conn, chat, 3)
-	if wakes[1].result.Event != "lines" || strings.Join(wakes[1].result.Lines, "|") != "deploy: fail" {
+	if wakes[1].result.Event != "lines" || strings.Join(wakes[1].result.Lines, "|") != "deploy: [vault:CI_TOKEN]" {
 		t.Fatalf("second wake-up: %+v", wakes[1].result)
 	}
-	if end := wakes[2].result; end.Event != "exited" || end.ExitStatus == nil || *end.ExitStatus != 0 || end.ID != strings.TrimPrefix(info.ID, "command-") {
+	if end := wakes[2].result; end.Event != "exited" || end.ExitStatus == nil || *end.ExitStatus != 0 || end.ID != strings.TrimPrefix(info.ID, "command-") || !strings.Contains(end.Output, "deploy: [vault:CI_TOKEN]") || strings.Contains(end.Output, value) {
 		t.Fatalf("end of the watch: %+v", end)
 	}
 	// And the output file has the lines of both streams.
 	data, err := os.ReadFile(info.OutputFile)
-	if err != nil || !strings.Contains(string(data), "ignored") || !strings.Contains(string(data), "deploy: fail") {
+	if err != nil || !strings.Contains(string(data), "ignored") || !strings.Contains(string(data), "deploy: "+value) {
 		t.Fatalf("output file %q: %v", data, err)
 	}
 }
@@ -655,11 +658,17 @@ func TestUserCommandWakeChainStopsUntilUserInput(t *testing.T) {
 func TestUserCollectsParallelBashResultsInCodemode(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
+	saveVault(t, d, "default", "agent", "GITHUB_TOKEN", "codemode-fixture-secret")
 	answer := callSessionTool(t, d, bgChat(t, d), "codemode", map[string]any{"code": `
-return await Promise.all([
-  tools.bash({command: "printf first"}),
+const results = await Promise.all([
+  tools.bash({command: 'printf %s "$GH_TOKEN"', env: {GH_TOKEN: "vault:GITHUB_TOKEN"}}),
   tools.bash({command: "printf second; exit 7"}),
-]);`})
+]);
+if (!results[0].output.startsWith("codemode-fixture-")) throw new Error("Expected the value inside the script");
+return results;`})
+	if strings.Contains(answer, "codemode-fixture-secret") {
+		t.Fatalf("codemode leaked a vault value: %s", answer)
+	}
 	_, body, ok := strings.Cut(html.UnescapeString(answer), "\nOutput:\n")
 	if !ok {
 		t.Fatalf("codemode result: %s", answer)
@@ -675,7 +684,7 @@ return await Promise.all([
 	for i, want := range []struct {
 		output string
 		exit   int
-	}{{"first", 0}, {"second", 7}} {
+	}{{"[vault:GITHUB_TOKEN]", 0}, {"second", 7}} {
 		got := results[i]
 		if got.Output != want.output || got.Truncated == nil || *got.Truncated || got.ExitCode == nil || *got.ExitCode != want.exit {
 			t.Fatalf("bash result %d: %s", i, body)

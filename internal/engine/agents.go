@@ -24,6 +24,7 @@ import (
 	storage "github.com/MichaelKinsy/PiG/durable/storage/sqlite/node"
 	"github.com/MichaelKinsy/PiG/durable/toolsearch"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/vault"
 )
 
 var configureReporter sync.Once
@@ -81,6 +82,7 @@ type Agents struct {
 	skillStores     map[string]*skillStore
 	codeSandbox     *codemode.Sandbox
 	env             *toolEnv
+	vault           *vault.Store
 	mu              sync.Mutex
 	resources       map[string]*agentResources
 	activity        map[Ref]*activityRecord
@@ -122,7 +124,8 @@ func New(config Config) (*Agents, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	warnIgnoredEnv(config.DataDir)
+	return &Agents{vault: vault.New(config.DataDir), Catalog: NewCatalog(config.FakeModel), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
 // begin tracks one operation on the resources of key, the resource key of an agent or of a
@@ -392,7 +395,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	}
 	registry := harness.CreateRegistry()
 	// All unscoped extension edits inherit this tool. Its execution checks the source receipt.
-	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), monitorExtension(agentID, a.config.Tasks.Monitors, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout, loaded.Vault), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), monitorExtension(agentID, a.config.Tasks.Monitors, background, loaded.Vault), vaultExtension(agentID, loaded.Vault), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
 	if loaded.HasTools {
@@ -1194,6 +1197,7 @@ func (a *Agents) close(ctx context.Context) {
 func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
 	files := newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
 	files.mcp = a.config.MCPServers
+	files.vault = a.vault
 	for _, level := range files.levels {
 		files.stores[level.Scope] = a.skillStore(level)
 	}
@@ -1379,13 +1383,6 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	}
 	return info, nil
 }
-func (a *Agents) EditEnv(ctx context.Context, agentID, scope, key string, value *string) (ExtensionInfo, error) {
-	if !agentIDPattern.MatchString(agentID) {
-		return ExtensionInfo{}, ErrInvalidInput
-	}
-	return a.files(agentID, nil).EditEnv(ctx, scope, key, value)
-}
-
 func (a *Agents) Reload(ctx context.Context, agentID string) error {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput

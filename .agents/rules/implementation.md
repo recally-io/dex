@@ -66,9 +66,9 @@ Read this before you change code, dependencies, native execution, or stored data
 - Settings live only in `control.sqlite`. `internal/settings` owns global
   settings. `internal/agent` owns agent and channel settings. `internal/chat`
   owns session overrides. Do not add an environment variable or a file for a
-  setting. The exceptions are skills, MCP servers, and tool environment values
-  in `.env`, which come from files. The settings
-  service passes provider credentials directly to the engine catalog.
+  setting. Skills and the encrypted secret vault use files. MCP declarations
+  stay in `control.sqlite`. The settings service passes provider credentials
+  directly to the engine catalog.
 - Keep slow resource work outside the engine's global state lock. Track opens
   and reloads before they start. Register recovery isolation before Harness
   resume. Use per-agent delivery locks for input, Stop, Clear, and reconciliation.

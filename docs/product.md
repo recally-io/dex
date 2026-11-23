@@ -179,7 +179,7 @@ to read in an afternoon.
 - Cross-bot sessions. One
   owner has all the bots, so a bot can give work to another bot. `session_new`
   with `bot` (an ID or a name) creates a child session in that bot. The child
-  runs with the instructions, model, memory section, skills, MCP servers, `.env`,
+  runs with the instructions, model, memory section, skills, MCP servers, vault,
   and workspace of that bot. This gives the caller the tools and credentials of
   that bot, and the owner accepts it. The result comes back to the conversation
   that created the child. Only that conversation can send to, stop, or fork the
@@ -192,7 +192,7 @@ to read in an afternoon.
   A file that a child delivers in a turn of its parent shows in the parent
   conversation, also when the child belongs to another bot. Bot
   isolation holds for everything else: the API returns 404 for another bot's
-  resources, and channels, routines, and `.env` stay with their bot.
+  resources, and channels, routines, and agent-level vault secrets stay with their bot.
 
 Inputs store their origin. Web input uses `web`. Channel input uses the exact
 peer, such as `telegram:7`. A background result keeps the origin of its source
@@ -372,8 +372,9 @@ artifacts and side effects. In the built-in **This computer** (`local`) environm
 the host without a sandbox. The Environment page configures remote **SSH Machine**
 (`pi-env`) and **Sandbox** (`e2b`) targets without showing internal driver names
 in the UI. Remote bots execute file, shell, and background tools remotely with
-explicit `.env` variables plus the remote shell environment, while `memory_*`
-tools stay on `<data dir>/memory` on the control host. SSH machines use the
+the remote environment plus the variables that a call needs. Vault references
+resolve on the control host. The `memory_*` tools stay on `<data dir>/memory`
+on that host. SSH machines use the
 remote user's login shell by default (`loginShell`, default `true`), keep a
 persistent workspace disk, discover hosts from `~/.ssh/config` (without reading
 private keys), test connections before saving, and clear changed SSH host keys
@@ -404,11 +405,11 @@ and task-specific automation result routing are later work. Other chat channels 
   bot's name, instructions, model, fallback model, or thinking level (`bot_update`), and archive a
   bot (`bot_delete`). A change uses the same checks as the web. `bot_create`
   copies the `default` bot for omitted model, fallback, thinking level, and
-  environment fields, and makes a bot with no channels, skills, MCP servers or
-  `.env` values. Reading also works
+  environment fields, and makes a bot with no bot-level channels, skills, MCP servers, or
+  vault secrets. Reading also works
   in an automation run. Creating, changing and archiving need a user-input turn
   in main or a Chat, so automation runs, child sessions, dreams and task results
-  cannot use them. The tools never show `.env` values.
+  cannot use them. The tools never show vault values.
 - Archive: `bot_delete` archives; it never deletes data. The tool only asks. The
   web shows an approval card: the first option is `Archive <name>`, the second
   is Cancel. Only an answer of the first option from the web or from a paired
@@ -433,7 +434,7 @@ and task-specific automation result routing are later work. Other chat channels 
 
 ## Extension files
 
-Each agent reads skills and `.env` from two `.agents/`
+Each agent reads skills from two `.agents/`
 directories: the resolved dex data directory, shared by all agents, and the
 agent home (`<data dir>/agents/<id>`). The narrower level wins. dex does not
 read the user home (`~/.agents`), so personal files and secrets there never
@@ -457,8 +458,8 @@ project. Project skills come from
 
 The system prompt always includes a guide to these files, even with no
 skills. It explains paths, file formats, environment use, and Reload. It
-contains no environment key names or values. The user sets values in the web
-UI or in the files.
+contains no vault secret names or values. `vault_list` returns secret names
+and metadata only.
 
 Tools start from the user's login shell environment, so a value that the
 shell exports reaches every bot. The Environment page can also store
@@ -466,15 +467,12 @@ shell exports reaches every bot. The Environment page can also store
 Connect host and token. When `op` is installed, bots read secrets with
 `op read` when a command needs them. dex does not read the secrets.
 
-The Tools tab of a bot writes that bot's `.env` file. It shows dex
-keys as read-only, with shadowed state for this bot. The Environment page
-writes the dex `.env` file, which applies to all bots. Both pages show key names with Replace and Delete actions. Values
-are write-only. A key whose value looks like a pasted `NAME=...` line, or is
-empty, padded, or an `op://` reference, shows a badge, and a save of an
-assignment-like value shows a warning; dex still saves it. Changes to files, shell rc files, and 1Password settings apply
-automatically when all bots are idle; the pages show a change that waits. The
-files remain the only store. The old `/secrets` address
-opens the Environment page.
+The Tools tab lets the user set and delete vault secrets for one bot. The
+Environment page lets the user set and delete shared secrets. A bot secret with
+the same name wins. Values are write-only and encrypted. A bot can pass
+`vault:NAME` in the `env` of Bash, a Monitor, or an MCP declaration. Changes
+apply when the affected agent reloads. dex ignores old `.env` files. The old
+`/secrets` address opens the Environment page.
 
 The Tools tab also shows the level directories, skills, MCP servers, and
 configuration warnings. The automatic reload
@@ -483,7 +481,8 @@ resources and MCP connections. After that idle check succeeds, other agents
 can start work while Reload continues. Invalid configuration for the selected
 agent prevents replacement and keeps its current
 resources in place.
-Keep `.env` files out of Git and set mode `0600`. The API hides values, but
-the model can read files and run `env`. Tool output becomes part of the transcript.
-See [extension architecture](dev/extensions.md) for file loading
-and resource lifetime.
+Use vault references in tool arguments, because arguments enter the
+transcript. dex masks exact vault values in final tool results and Monitor
+wake-ups. A command's full output file stays as written. See [extension
+architecture](dev/extensions.md) for file loading, the vault, and resource
+lifetime.

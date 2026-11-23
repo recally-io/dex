@@ -225,6 +225,11 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		t.Fatalf("default runner after reloading the bot: %q", got)
 	}
 
+	saveVault(t, d, "default", "agent", "GITHUB_TOKEN", "github-test-vault-value")
+	d.applied(t)
+	assertVaultCommand(t, d, chat)
+	d.setModel(t, "bash")
+
 	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)
 	select {
 	case <-m.done:

@@ -133,6 +133,18 @@ in `control.sqlite` and shows their status in the bot's Extensions tab.
 Changes apply after the agent finishes its current work. dex ignores old
 `mcp.json` files. See [Extensions](docs/dev/extensions.md#mcp-declarations).
 
+## Secrets
+
+Add shared secrets in **Settings → Environment**. Add secrets for one bot on
+its **Tools** page. dex encrypts the values with age and never shows them in
+Settings. Tell the bot to use a reference such as `vault:GITHUB_TOKEN` in the
+`env` argument of `bash`, a Monitor, or an MCP declaration. You do not need the
+1Password CLI.
+
+dex ignores old `.env` files. It does not import them. Move secrets to the
+[vault](docs/dev/extensions.md#secret-vault) and put other environment values
+in shell rc files or in the `env` of a call or MCP server.
+
 ## Updates
 
 ```sh

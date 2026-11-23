@@ -1,115 +1,65 @@
 package app_test
 
 import (
-	"crypto/sha256"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"uuid"
-
-	"github.com/recally-io/dex/internal/app"
 )
 
-func TestUserEditsPrivateEnvironmentWithoutReadingValues(t *testing.T) {
-	t.Parallel()
-	// Given an agent with a loaded environment.
-	data := t.TempDir()
-	d := startDexHome(t, app.Config{DataDir: data}, t.TempDir())
-	d.setModel(t, "bash")
-	initial := d.newChat(t, `test -z "${EDIT_SECRET+x}" && printf unloaded`)
-	w := d.watch(t, initial)
-	w.until(t, "initial environment", answered("bash: unloaded"))
-	path := filepath.Join(data, "agents", "default", ".agents", ".env")
-	const secret = "private-env-write-value"
-	endpoint := "/api/agents/default/extensions/env"
-	checkResponse := func(status int, body string, want int) {
-		t.Helper()
-		if status != want || strings.Contains(body, secret) {
-			t.Fatalf("response status=%d, want=%d; value disclosed=%t", status, want, strings.Contains(body, secret))
-		}
-	}
-	// When the user saves a value, the API returns only its key name.
-	status, body := d.call(t, http.MethodPut, endpoint, map[string]string{"scope": "agent", "key": "EDIT_SECRET", "value": secret})
-	checkResponse(status, body, http.StatusOK)
-	if !strings.Contains(body, `"key":"EDIT_SECRET"`) {
-		t.Fatal("saved key missing")
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Fatalf("file mode=%o", info.Mode().Perm())
-	}
-	info, err = os.Stat(filepath.Dir(path))
-	if err != nil || info.Mode().Perm() != 0700 {
-		t.Fatalf("directory mode: %v %v", info, err)
-	}
-	d.send(t, initial, `test -z "${EDIT_SECRET+x}" && printf still-unloaded`)
-	w.until(t, "no automatic reload", answered("bash: still-unloaded"))
-	status, body = d.reload(t)
-	checkResponse(status, body, http.StatusOK)
-	w = d.watch(t, d.newChat(t, fmt.Sprintf(`test "$(printf %%s "$EDIT_SECRET" | shasum -a 256 | cut -d " " -f 1)" = %x && printf loaded`, sha256.Sum256([]byte(secret)))))
-	w.until(t, "saved environment after reload", answered("bash: loaded"))
-	// Then replacements retain comments and the first position, and remove duplicates.
-	writeFile(t, path, "# credentials\n\nexport EDIT_SECRET=old\nOTHER=keep\nEDIT_SECRET=duplicate\n# end\n")
-	if err := os.Chmod(path, 0644); err != nil {
-		t.Fatal(err)
-	}
-	status, body = d.call(t, http.MethodPut, endpoint, map[string]string{"scope": "agent", "key": "EDIT_SECRET", "value": secret})
-	checkResponse(status, body, http.StatusOK)
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != "# credentials\n\nEDIT_SECRET="+secret+"\nOTHER=keep\n# end\n" {
-		t.Fatal("replacement changed layout")
-	}
-	info, err = os.Stat(path)
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatal("replacement mode is not 0600")
-	}
-	status, body = d.call(t, http.MethodDelete, endpoint+"?scope=agent&key=EDIT_SECRET", nil)
-	checkResponse(status, body, http.StatusOK)
-	content, err = os.ReadFile(path)
-	if err != nil || string(content) != "# credentials\n\nOTHER=keep\n# end\n" {
-		t.Fatal("delete changed unrelated lines")
-	}
-	status, body = d.call(t, http.MethodGet, "/api/agents/default/extensions", nil)
-	checkResponse(status, body, http.StatusOK)
-	d.stop()
-	t.Log("artifact: API responses contain no value; file mode 0600; Reload applies the value")
+type apiVaultEntry struct {
+	Name      string `json:"name"`
+	Scope     string `json:"scope"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
-func TestUserSharesDexEnvironmentBetweenAgents(t *testing.T) {
+func saveVault(t *testing.T, d *dex, agentID, scope, name, value string) {
+	t.Helper()
+	d.must(t, http.MethodPut, "/api/agents/"+agentID+"/vault", map[string]string{"scope": scope, "name": name, "value": value}, nil)
+}
+
+func TestUserManagesWriteOnlyVaultAtBothLevels(t *testing.T) {
 	t.Parallel()
-	// Given two agents that have already loaded their environments.
 	d := startDex(t, t.TempDir(), "")
-	d.setModel(t, "bash")
-	var second apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Second", "provider": "faux", "modelId": "bash", "thinkingLevel": "off"}, &second, http.StatusCreated)
-	for _, id := range []string{"default", second.ID} {
-		var main chatInfo
-		d.must(t, http.MethodGet, "/api/agents/"+id+"/chats/main", nil, &main)
-		d.must(t, http.MethodPost, "/api/agents/"+id+"/extensions/reload", nil, nil)
+	var other apiAgent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other bot", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &other, http.StatusCreated)
+	d.setModel(t, "tool")
+	const wide, narrow = "shared-test-secret", "agent-test-secret"
+	const endpoint = "/api/agents/default/vault"
+	for _, bad := range []any{map[string]any{"scope": "agent", "name": "TOKEN", "value": []string{narrow}}, map[string]any{"scope": "agent", "name": "TOKEN", "value": narrow + "\x00"}} {
+		status, body := d.call(t, http.MethodPut, endpoint, bad)
+		if status != http.StatusBadRequest || strings.Contains(body, narrow) {
+			t.Fatalf("invalid write: %d %s", status, body)
+		}
 	}
-	// When the user writes a shared key and reloads each agent.
-	d.must(t, http.MethodPut, "/api/agents/default/extensions/env", map[string]string{"scope": "dex", "key": "SHARED_SECRET", "value": "shared-private-value"}, nil)
-	for _, id := range []string{"default", second.ID} {
-		d.must(t, http.MethodPost, "/api/agents/"+id+"/extensions/reload", nil, nil)
+	saveVault(t, d, "default", "dex", "TOKEN", wide)
+	saveVault(t, d, "default", "agent", "TOKEN", narrow)
+	status, body := d.call(t, http.MethodGet, endpoint, nil)
+	var entries []apiVaultEntry
+	if status != http.StatusOK || json.Unmarshal([]byte(body), &entries) != nil || len(entries) != 2 || entries[0].Scope != "dex" || entries[1].Scope != "agent" || entries[1].Name != "TOKEN" || entries[1].UpdatedAt == "" || strings.Contains(body, wide) || strings.Contains(body, narrow) {
+		t.Fatalf("vault metadata: %d %s", status, body)
 	}
-	// Then both agents can use the value without placing it in a response.
-	for _, id := range []string{"default", second.ID} {
-		var main chatInfo
-		base := "/api/agents/" + id
-		d.must(t, http.MethodGet, base+"/chats/main", nil, &main)
-		path := fmt.Sprintf("%s/chats/%d", base, main.ID)
+	call := func(agentID string) string {
+		var chat chatInfo
+		base := "/api/agents/" + agentID + "/chats"
+		d.must(t, http.MethodGet, base+"/main", nil, &chat)
+		path := fmt.Sprintf("%s/%d", base, chat.ID)
 		w := d.watchPath(t, path+"/events")
-		d.must(t, http.MethodPost, path+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": fmt.Sprintf(`test "$(printf %%s "$SHARED_SECRET" | shasum -a 256 | cut -d " " -f 1)" = %x && printf shared`, sha256.Sum256([]byte("shared-private-value")))}, nil, http.StatusAccepted)
-		w.until(t, "shared environment", answered("bash: shared"))
+		d.must(t, http.MethodPost, path+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": `bash {"command":"case $TOKEN in agent-*) printf agent;; shared-*) printf shared;; esac","env":{"TOKEN":"vault:TOKEN"}}`}, nil, http.StatusAccepted)
+		w.until(t, "bot secret", answeredWith("tool: "))
+		return w.tr.items[len(w.tr.items)-1].Text
 	}
-	t.Log("artifact: both agents use dex environment after Reload")
+	if got := call("default"); got != "tool: agent" {
+		t.Fatalf("default: %q", got)
+	}
+	if got := call(other.ID); got != "tool: shared" {
+		t.Fatalf("other bot: %q", got)
+	}
+	d.must(t, http.MethodDelete, endpoint+"?scope=agent&name=TOKEN", nil, nil)
+	d.applied(t)
+	// The next call uses the shared value again.
+	w := d.watch(t, d.newChat(t, `bash {"command":"case $TOKEN in shared-*) printf shared;; esac","env":{"TOKEN":"vault:TOKEN"}}`))
+	w.until(t, "shared fallback", answered("tool: shared"))
 }
