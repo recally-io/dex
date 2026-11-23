@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -13,13 +12,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 )
-
-type connectionConfig struct {
-	ReconnectInterval int `json:"ReconnectInterval"`
-	ReconnectNonce    int `json:"ReconnectNonce"`
-	PingInterval      int `json:"PingInterval"`
-}
 
 type fragments struct {
 	parts [][]byte
@@ -30,7 +24,7 @@ type fragments struct {
 // Listen runs the long connection. handle must return only after durable admission.
 // report receives safe status errors; it must not block.
 func (c *client) Listen(ctx context.Context, handle func(context.Context, []byte) error, report func(error)) error {
-	conf := connectionConfig{ReconnectInterval: 120, ReconnectNonce: 30, PingInterval: 120}
+	conf := larkws.ClientConfig{ReconnectInterval: 120, ReconnectNonce: 30, PingInterval: 120}
 	attempts := 0
 	connected := false
 	for {
@@ -63,31 +57,27 @@ func (c *client) Listen(ctx context.Context, handle func(context.Context, []byte
 	}
 }
 
-func (c *client) connection(ctx context.Context, handle func(context.Context, []byte) error, conf *connectionConfig, report func(error)) error {
-	data, err := c.request(ctx, http.MethodPost, "/callback/ws/endpoint", map[string]string{"AppID": c.cfg.AppID, "AppSecret": c.cfg.AppSecret}, "")
+func (c *client) connection(ctx context.Context, handle func(context.Context, []byte) error, conf *larkws.ClientConfig, report func(error)) error {
+	data, err := c.request(ctx, larkws.GenEndpointUri, larkws.BootstrapRequest{AppID: c.cfg.AppID, AppSecret: c.cfg.AppSecret})
 	if err != nil {
 		return err
 	}
-	var endpoint struct {
-		Data struct {
-			URL    string            `json:"URL"`
-			Config *connectionConfig `json:"ClientConfig"`
-		} `json:"data"`
+	var endpoint larkws.EndpointResp
+	if err := json.Unmarshal(data, &endpoint); err != nil || endpoint.Data == nil {
+		return errors.New("feishu returned an invalid WebSocket endpoint")
 	}
-	if err := json.Unmarshal(data, &endpoint); err != nil {
-		return err
+	if endpoint.Data.ClientConfig != nil {
+		*conf = *endpoint.Data.ClientConfig
 	}
-	if endpoint.Data.Config != nil {
-		*conf = *endpoint.Data.Config
-	}
-	u, err := url.Parse(endpoint.Data.URL)
+	u, err := url.Parse(endpoint.Data.Url)
 	if err != nil || u.Host == "" || (u.Scheme != "wss" && (u.Scheme != "ws" || c.cfg.APIURL == "https://open.feishu.cn" || c.cfg.APIURL == "https://open.larksuite.com")) {
 		return errors.New("feishu returned an invalid WebSocket endpoint")
 	}
-	service, err := strconv.ParseUint(u.Query().Get("service_id"), 10, 32)
-	if err != nil {
+	service, err := strconv.ParseInt(u.Query().Get(larkws.ServiceID), 10, 32)
+	if err != nil || service < 0 {
 		return errors.New("feishu returned an invalid service ID")
 	}
+	serviceID := int32(service)
 	conn, response, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPClient: c.http})
 	if err != nil {
 		if response != nil {
@@ -112,8 +102,8 @@ func (c *client) connection(ctx context.Context, handle func(context.Context, []
 			case <-session.Done():
 				return
 			case <-timer.C:
-				ping := frame{service: service, headers: []header{{"type", "ping"}}}
-				if err := conn.Write(session, websocket.MessageBinary, ping.marshal()); err != nil {
+				data, err := larkws.NewPingFrame(serviceID).Marshal()
+				if err != nil || conn.Write(session, websocket.MessageBinary, data) != nil {
 					cancel()
 					return
 				}
@@ -141,14 +131,16 @@ func (c *client) connection(ctx context.Context, handle func(context.Context, []
 		if kind != websocket.MessageBinary {
 			continue
 		}
-		f, err := parseFrame(b)
-		if err != nil {
-			return fmt.Errorf("feishu frame: %w", err)
+		var f larkws.Frame
+		if err := f.Unmarshal(b); err != nil {
+			return errors.New("invalid feishu WebSocket frame")
 		}
-		if f.method == 0 {
-			if f.get("type") == "pong" && len(f.payload) > 0 {
-				var next connectionConfig
-				if err := json.Unmarshal(f.payload, &next); err != nil {
+		headers := larkws.Headers(f.Headers)
+		messageType := larkws.MessageType(headers.GetString(larkws.HeaderType))
+		if larkws.FrameType(f.Method) == larkws.FrameTypeControl {
+			if messageType == larkws.MessageTypePong && len(f.Payload) > 0 {
+				var next larkws.ClientConfig
+				if err := json.Unmarshal(f.Payload, &next); err != nil {
 					return err
 				}
 				mu.Lock()
@@ -164,11 +156,11 @@ func (c *client) connection(ctx context.Context, handle func(context.Context, []
 			}
 			continue
 		}
-		if f.method != 1 || f.get("type") != "event" {
+		if larkws.FrameType(f.Method) != larkws.FrameTypeData || messageType != larkws.MessageTypeEvent {
 			continue
 		}
-		payload := f.payload
-		sumRaw := f.get("sum")
+		payload := f.Payload
+		sumRaw := headers.GetString(larkws.HeaderSum)
 		sum := 1
 		if sumRaw != "" {
 			sum, err = strconv.Atoi(sumRaw)
@@ -180,8 +172,8 @@ func (c *client) connection(ctx context.Context, handle func(context.Context, []
 			return errors.New("invalid fragment count")
 		}
 		if sum > 1 {
-			seq, err := strconv.Atoi(f.get("seq"))
-			id := f.get("message_id")
+			seq, err := strconv.Atoi(headers.GetString(larkws.HeaderSeq))
+			id := headers.GetString(larkws.HeaderMessageID)
 			if err != nil || seq < 0 || seq >= sum || id == "" {
 				return errors.New("invalid fragment sequence")
 			}
@@ -223,12 +215,16 @@ func (c *client) connection(ctx context.Context, handle func(context.Context, []
 			}
 			delete(pending, id)
 		}
-		code := 200
+		code := http.StatusOK
 		if err := handle(session, payload); err != nil {
-			code = 500
+			code = http.StatusInternalServerError
 		}
-		f.payload = []byte(fmt.Sprintf(`{"code":%d}`, code))
-		if err := conn.Write(session, websocket.MessageBinary, f.marshal()); err != nil {
+		f.Payload = append(strconv.AppendInt([]byte(`{"code":`), int64(code), 10), '}')
+		ack, err := f.Marshal()
+		if err != nil {
+			return errors.New("feishu WebSocket acknowledgement encoding failed")
+		}
+		if err := conn.Write(session, websocket.MessageBinary, ack); err != nil {
 			return err
 		}
 	}

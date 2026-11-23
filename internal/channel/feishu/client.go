@@ -14,6 +14,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 )
 
 // Config holds credentials. APIURL is a test boundary; an empty URL selects Brand.
@@ -32,6 +35,8 @@ const resourceTimeout = 5 * time.Minute
 type client struct {
 	cfg     Config
 	http    *http.Client
+	sdk     *larkcore.Config
+	im      *larkim.V1
 	mu      sync.Mutex
 	token   string
 	expires time.Time
@@ -48,7 +53,18 @@ func newClient(cfg Config) *client {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert // dex does not replace the standard transport.
 	transport.ResponseHeaderTimeout = 30 * time.Second
-	return &client{cfg: cfg, http: &http.Client{Transport: transport}}
+	httpClient := &http.Client{Transport: transport, CheckRedirect: func(_ *http.Request, via []*http.Request) error {
+		// A redirect must not replay a mutation or forward app credentials.
+		if via[0].Method != http.MethodGet || len(via) >= 10 {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}}
+	sdk := &larkcore.Config{
+		BaseUrl: cfg.APIURL, AppId: cfg.AppID, AppSecret: cfg.AppSecret,
+		HttpClient: restHTTP{httpClient}, Logger: silentSDKLog{}, Serializable: sdkJSON{},
+	}
+	return &client{cfg: cfg, http: httpClient, sdk: sdk, im: larkim.New(sdk)}
 }
 
 // apiError contains only codes, so a platform response cannot disclose credentials.
@@ -62,36 +78,30 @@ func (c *client) tenantToken(ctx context.Context) (string, error) {
 	if time.Now().Before(c.expires) {
 		return c.token, nil
 	}
-	data, err := c.request(ctx, http.MethodPost, "/open-apis/auth/v3/tenant_access_token/internal", map[string]string{"app_id": c.cfg.AppID, "app_secret": c.cfg.AppSecret}, "")
+	data, err := c.request(ctx, larkcore.TenantAccessTokenInternalUrlPath, &larkcore.SelfBuiltTenantAccessTokenReq{
+		AppID: c.cfg.AppID, AppSecret: c.cfg.AppSecret,
+	})
 	if err != nil {
 		return "", err
 	}
-	var result struct {
-		Token  string `json:"tenant_access_token"`
-		Expire int    `json:"expire"`
+	var result larkcore.TenantAccessTokenResp
+	if err := json.Unmarshal(data, &result); err != nil || result.TenantAccessToken == "" || result.Expire <= 0 {
+		return "", errors.New("feishu returned an invalid tenant token")
 	}
-	if err := json.Unmarshal(data, &result); err != nil {
-		return "", err
-	}
-	if result.Token == "" || result.Expire <= 0 {
-		return "", errors.New("feishu returned no tenant token")
-	}
-	c.token = result.Token
+	c.token = result.TenantAccessToken
 	c.expires = time.Now().Add(time.Duration(max(0, result.Expire-60)) * time.Second)
 	return c.token, nil
 }
 
-type response struct {
-	data []byte
-	body io.ReadCloser
-}
-
-func (c *client) authorized(ctx context.Context, method, path string, body any, stream bool) (response, error) {
+// SDK caching is global and does not evict the rejected token before replaying.
+// Keep credentials scoped to the current client, including the reaction lane.
+func authorized[T any](ctx context.Context, c *client, call func(string) (T, error)) (T, error) {
 	token, err := c.tenantToken(ctx)
 	if err != nil {
-		return response{}, err
+		var zero T
+		return zero, err
 	}
-	data, err := c.execute(ctx, method, path, body, token, stream)
+	result, err := call(token)
 	if e, ok := errors.AsType[*apiError](err); ok && (e.Code == 99991663 || e.Code == 99991668 || e.Code == 99991661) {
 		c.mu.Lock()
 		if c.token == token {
@@ -100,88 +110,125 @@ func (c *client) authorized(ctx context.Context, method, path string, body any, 
 		c.mu.Unlock()
 		token, err = c.tenantToken(ctx)
 		if err != nil {
-			return response{}, err
+			var zero T
+			return zero, err
 		}
-		return c.execute(ctx, method, path, body, token, stream)
+		return call(token)
 	}
-	return data, err
+	return result, err
 }
 
-func (c *client) request(ctx context.Context, method, path string, body any, token string) ([]byte, error) {
-	result, err := c.execute(ctx, method, path, body, token, false)
-	return result.data, err
+func (c *client) request(ctx context.Context, path string, body any) ([]byte, error) {
+	resp, err := rest(ctx, c, func(ctx context.Context) (*larkcore.ApiResp, error) {
+		return larkcore.Request(ctx, &larkcore.ApiReq{HttpMethod: http.MethodPost, ApiPath: path, Body: body}, c.sdk)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resp.RawBody, nil
 }
 
-// execute owns failures and retries; only a successful resource transfers body ownership.
-func (c *client) execute(ctx context.Context, method, path string, body any, token string, stream bool) (response, error) {
-	if !stream {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-	}
-	var payload []byte
-	if body != nil {
-		var err error
-		payload, err = json.Marshal(body)
-		if err != nil {
-			return response{}, err
-		}
-	}
+func rest[T any](ctx context.Context, c *client, call func(context.Context) (T, error)) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	return retry(ctx, c, call)
+}
+
+func retry[T any](ctx context.Context, c *client, call func(context.Context) (T, error)) (T, error) {
 	attempts := 3
 	if c.once {
 		attempts = 1
 	}
 	for attempt := range attempts {
-		req, err := http.NewRequestWithContext(ctx, method, c.cfg.APIURL+path, bytes.NewReader(payload))
-		if err != nil {
-			return response{}, err
+		result, err := call(ctx)
+		failure, transient := errors.AsType[*retryError](err)
+		if !transient {
+			return result, err
 		}
-		req.Header.Set("Content-Type", "application/json")
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
+		if attempt == attempts-1 {
+			return result, failure.error
 		}
-		resp, err := c.http.Do(req)
-		retry := err != nil
-		delay := retryDelay(attempt, "")
-		var data []byte
-		if err == nil {
-			if stream && resp.StatusCode == http.StatusOK {
-				return response{body: resp.Body}, nil
-			}
-			limit := int64(4 << 20)
-			if stream {
-				limit = 1 << 20
-			}
-			data, err = io.ReadAll(io.LimitReader(resp.Body, limit+1))
-			_ = resp.Body.Close()
-			if err == nil && int64(len(data)) > limit {
-				return response{}, errors.New("feishu response exceeds size limit")
-			}
-			if err == nil {
-				var envelope struct {
-					Code int `json:"code"`
-				}
-				err = json.Unmarshal(data, &envelope)
-				if resp.StatusCode < 200 || resp.StatusCode >= 300 || stream || (err == nil && envelope.Code != 0) {
-					err = &apiError{resp.StatusCode, envelope.Code}
-				}
-				retry = retryable(resp.StatusCode, envelope.Code)
-			} else {
-				retry = true
-			}
-			delay = retryDelay(attempt, resp.Header.Get("Retry-After"))
-		}
-		if err == nil {
-			return response{data: data}, nil
-		}
-		if !retry || attempt == attempts-1 {
-			return response{}, err
-		}
-		if err := pause(ctx, min(delay, 2*time.Second)); err != nil {
-			return response{}, err
+		if err := pause(ctx, retryDelay(attempt, failure.after)); err != nil {
+			return result, err
 		}
 	}
 	panic("unreachable")
+}
+
+// restHTTP preserves Dex's status and size checks before SDK decoding. Errors
+// have no response text and are never *url.Error, which the SDK can retry.
+// Only successful envelopes reach the SDK, so its app ticket and token refresh
+// paths cannot replay a mutation. Higher layers decide whether to retry.
+type restHTTP struct{ http *http.Client }
+
+func (h restHTTP) Do(req *http.Request) (*http.Response, error) {
+	resp, err := h.http.Do(req) //nolint:gosec // SDK uses built-in domains (an override is test-only) and fixed paths with escaped parameters.
+	if err != nil {
+		return nil, transportFailure(req.Context())
+	}
+	data, err := readHTTP(resp, 4<<20, false)
+	if err != nil {
+		return nil, err
+	}
+	// The endpoint contract is JSON regardless of the platform's content type.
+	resp.Header.Set("Content-Type", "application/json")
+	resp.Body = io.NopCloser(bytes.NewReader(data))
+	return resp, nil
+}
+
+type sdkJSON struct{}
+
+func (sdkJSON) Serialize(v any) ([]byte, error) { return json.Marshal(v) }
+func (sdkJSON) Deserialize(data []byte, v any) error {
+	if err := json.Unmarshal(data, v); err != nil {
+		return errors.New("feishu returned an invalid API response")
+	}
+	return nil
+}
+
+// Do not log SDK request/response details; they can contain credentials.
+type silentSDKLog struct{}
+
+func (silentSDKLog) Debug(context.Context, ...any) {}
+func (silentSDKLog) Info(context.Context, ...any)  {}
+func (silentSDKLog) Warn(context.Context, ...any)  {}
+func (silentSDKLog) Error(context.Context, ...any) {}
+
+type retryError struct {
+	error
+	after string
+}
+
+func transportFailure(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return &retryError{error: errors.New("feishu HTTP request failed")}
+}
+
+func readHTTP(resp *http.Response, limit int64, resource bool) ([]byte, error) {
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	after := resp.Header.Get("Retry-After")
+	if err != nil {
+		return nil, &retryError{error: errors.New("feishu HTTP response failed"), after: after}
+	}
+	if int64(len(data)) > limit {
+		return nil, errors.New("feishu response exceeds size limit")
+	}
+	var envelope struct {
+		Code int `json:"code"`
+	}
+	err = json.Unmarshal(data, &envelope)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || resource || (err == nil && envelope.Code != 0) {
+		err = &apiError{resp.StatusCode, envelope.Code}
+	} else if err != nil {
+		err = errors.New("feishu returned an invalid API response")
+	}
+	if retryable(resp.StatusCode, envelope.Code) {
+		return nil, &retryError{error: err, after: after}
+	}
+	return data, err
 }
 
 func retryable(status, code int) bool {
@@ -211,41 +258,63 @@ func pause(ctx context.Context, delay time.Duration) error {
 
 // Send creates a message. deliveryID stays the same across retries.
 func (c *client) Send(ctx context.Context, receiver, kind, content, deliveryID string) (string, error) {
-	data, err := c.authorized(ctx, http.MethodPost, "/open-apis/im/v1/messages?receive_id_type=open_id", map[string]string{"receive_id": receiver, "msg_type": kind, "content": content, "uuid": deliveryID}, false)
+	resp, err := authorized(ctx, c, func(token string) (*larkim.CreateMessageResp, error) {
+		req := larkim.NewCreateMessageReqBuilder().ReceiveIdType("open_id").Body(&larkim.CreateMessageReqBody{
+			ReceiveId: new(receiver), MsgType: new(kind), Content: new(content), Uuid: new(deliveryID),
+		}).Build()
+		return rest(ctx, c, func(ctx context.Context) (*larkim.CreateMessageResp, error) {
+			return c.im.Message.Create(ctx, req, larkcore.WithTenantAccessToken(token))
+		})
+	})
 	if err != nil {
 		return "", err
 	}
-	var result struct {
-		Data struct {
-			ID string `json:"message_id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(data.data, &result); err != nil {
-		return "", err
-	}
-	if result.Data.ID == "" {
+	if resp.Data == nil || resp.Data.MessageId == nil || *resp.Data.MessageId == "" {
 		return "", errors.New("feishu returned no message ID")
 	}
-	return result.Data.ID, nil
+	return *resp.Data.MessageId, nil
 }
 
 // Patch replaces an interactive card.
 func (c *client) Patch(ctx context.Context, id, content string) error {
-	_, err := c.authorized(ctx, http.MethodPatch, "/open-apis/im/v1/messages/"+url.PathEscape(id), map[string]string{"content": content}, false)
+	_, err := authorized(ctx, c, func(token string) (*larkim.PatchMessageResp, error) {
+		req := larkim.NewPatchMessageReqBuilder().MessageId(id).Body(&larkim.PatchMessageReqBody{Content: new(content)}).Build()
+		return rest(ctx, c, func(ctx context.Context) (*larkim.PatchMessageResp, error) {
+			return c.im.Message.Patch(ctx, req, larkcore.WithTenantAccessToken(token))
+		})
+	})
 	return err
 }
 
 // Download streams one message resource to the caller. The caller closes the body.
 func (c *client) Download(ctx context.Context, messageID, key, kind string) (io.ReadCloser, error) {
-	// Bound the full resource read, including error bodies, without the REST 30-second limit.
+	// The SDK buffers file responses before returning them. Dex enforces the
+	// upload limit while streaming and bounds the full resource read separately.
 	ctx, cancel := context.WithTimeout(ctx, resourceTimeout)
 	path := "/open-apis/im/v1/messages/" + url.PathEscape(messageID) + "/resources/" + url.PathEscape(key) + "?type=" + url.QueryEscape(kind)
-	result, err := c.authorized(ctx, http.MethodGet, path, nil, true)
+	body, err := authorized(ctx, c, func(token string) (io.ReadCloser, error) {
+		return retry(ctx, c, func(ctx context.Context) (io.ReadCloser, error) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.APIURL+path, nil)
+			if err != nil {
+				return nil, errors.New("feishu resource URL is invalid")
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			resp, err := c.http.Do(req)
+			if err != nil {
+				return nil, transportFailure(ctx)
+			}
+			if resp.StatusCode == http.StatusOK {
+				return resp.Body, nil
+			}
+			_, err = readHTTP(resp, 1<<20, true)
+			return nil, err
+		})
+	})
 	if err != nil {
 		cancel()
 		return nil, err
 	}
-	return &resourceBody{ReadCloser: result.body, cancel: cancel}, nil
+	return &resourceBody{ReadCloser: body, cancel: cancel}, nil
 }
 
 type resourceBody struct {

@@ -29,6 +29,7 @@ type fakeFeishu struct {
 	server               *httptest.Server
 	events               chan []byte
 	ack                  chan struct{}
+	failedACK            chan struct{}
 	mu                   sync.Mutex
 	messages             []string
 	methods              []string
@@ -56,7 +57,7 @@ type fakeFeishu struct {
 
 func newFakeFeishu(t *testing.T) *fakeFeishu {
 	t.Helper()
-	f := &fakeFeishu{pingInterval: 120, events: make(chan []byte, 32), ack: make(chan struct{}, 32), destinations: map[string]string{}}
+	f := &fakeFeishu{pingInterval: 120, events: make(chan []byte, 32), ack: make(chan struct{}, 32), failedACK: make(chan struct{}, 32), destinations: map[string]string{}}
 	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)
 	return f
@@ -105,6 +106,14 @@ func (f *fakeFeishu) serve(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				// Data frames end with the acknowledgement JSON payload; pings do not.
+				if strings.Contains(string(data), `{"code":500}`) {
+					select {
+					case f.failedACK <- struct{}{}:
+					case <-ctx.Done():
+						return
+					}
+					continue
+				}
 				if strings.Contains(string(data), `{"code":200}`) {
 					f.ack <- struct{}{}
 					f.mu.Lock()

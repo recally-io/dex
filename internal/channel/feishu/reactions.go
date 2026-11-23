@@ -2,12 +2,11 @@ package feishu
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
-	"net/http"
-	"net/url"
 	"strings"
 
+	larkcore "github.com/larksuite/oapi-sdk-go/v3/core"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/recally-io/dex/internal/channel"
 )
 
@@ -29,25 +28,28 @@ func (b *Bot) React(ctx context.Context, _ string, messageID, previous string, s
 	if err != nil {
 		return previous, err
 	}
-	path := "/open-apis/im/v1/messages/" + url.PathEscape(messageID) + "/reactions"
+	opt := larkcore.WithTenantAccessToken(token)
 	if previous != "" {
-		if _, err := b.reactions.request(ctx, http.MethodDelete, path+"/"+url.PathEscape(previous), nil, token); err != nil {
+		req := larkim.NewDeleteMessageReactionReqBuilder().MessageId(messageID).ReactionId(previous).Build()
+		if _, err := rest(ctx, b.reactions, func(ctx context.Context) (*larkim.DeleteMessageReactionResp, error) {
+			return b.reactions.im.MessageReaction.Delete(ctx, req, opt)
+		}); err != nil {
 			return previous, reactionError(err)
 		}
 	}
-	data, err := b.reactions.request(ctx, http.MethodPost, path, map[string]any{"reaction_type": map[string]string{"emoji_type": emoji}}, token)
+	req := larkim.NewCreateMessageReactionReqBuilder().MessageId(messageID).Body(&larkim.CreateMessageReactionReqBody{
+		ReactionType: &larkim.Emoji{EmojiType: new(emoji)},
+	}).Build()
+	resp, err := rest(ctx, b.reactions, func(ctx context.Context) (*larkim.CreateMessageReactionResp, error) {
+		return b.reactions.im.MessageReaction.Create(ctx, req, opt)
+	})
 	if err != nil {
 		return "", reactionError(err)
 	}
-	var result struct {
-		Data struct {
-			ID string `json:"reaction_id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(data, &result); err != nil || result.Data.ID == "" {
+	if resp.Data == nil || resp.Data.ReactionId == nil || *resp.Data.ReactionId == "" {
 		return "", channel.ErrReactionUnknown
 	}
-	return result.Data.ID, nil
+	return *resp.Data.ReactionId, nil
 }
 
 func reactionError(err error) error {

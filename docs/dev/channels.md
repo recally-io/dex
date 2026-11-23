@@ -323,9 +323,15 @@ not authorize delivery from the old result.
 
 [`feishu.Bot`](../../internal/channel/feishu/bot.go) receives private messages through
 one WebSocket long connection. It needs no public callback URL. The REST
-client caches the tenant token and refreshes an expired token. The transport
-uses `coder/websocket` and a small protobuf Frame encoder and decoder. It
-handles ping, pong, fragmented events, acknowledgement, and reconnect hints.
+client uses the official Lark Go SDK for token requests, message creation,
+card edits, and reactions. Dex owns the token cache for each client, response
+limits, and retries. It passes an explicit token to the SDK so that the SDK
+does not refresh tokens and replay mutations. Dex streams message resources
+without buffering them in the SDK.
+
+The transport uses `coder/websocket` and the SDK's protobuf frame codec.
+Dex reads one event at a time and acknowledges it on the same socket after
+processing. Dex also handles ping, pong, fragmented events, and reconnect hints.
 Startup failures report an error and retry with the REST backoff, up to
 2 seconds between attempts. A configured bot retries until cancellation,
 even if the server sends a finite `ReconnectCount`. After a disconnect, the
