@@ -3954,8 +3954,8 @@ components:
         levels:
           type: array
           description: >
-            The .agents directories, from wide to narrow. Each can hold skills/,
-            mcp.json and .env. Two levels can have the same directory.
+            The .agents directories, from wide to narrow. Each can hold skills/
+            and .env. Two levels can have the same directory.
           items:
             type: object
             required: [scope, dir]
@@ -4035,7 +4035,7 @@ components:
     McpServer:
       type: object
       description: >
-        An MCP server from an mcp.json file, without its command, URL, headers
+        An MCP server from control storage, without its command, URL, headers
         or environment, because they can hold credentials.
       required: [name, scope, overrides, state, tools]
       properties:

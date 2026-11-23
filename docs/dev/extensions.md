@@ -3,7 +3,7 @@
 This document describes how dex loads skills, MCP servers, `.env`, and
 `AGENTS.md` for an agent, and how it reloads them.
 
-Skills, MCP servers, and `.env` come from two levels: dex
+Skills and `.env` come from two file levels: dex
 (`<resolved data dir>/.agents/`) and agent (`<data dir>/agents/<id>/.agents/`).
 dex does not read the user home. Narrower levels win. Paths are fixed before
 `.env` is read. Equal real paths are read once as the narrower level.
@@ -54,11 +54,10 @@ It starts from the login shell environment, then the `.env` levels, then the
 1Password credentials of the settings. When `op` exists, the prompt tells the
 agent to read secrets with `op read`. Optional speech can resolve an explicitly
 selected provider key reference in memory through the same CLI and credentials.
-Other
-references remain under agent control. A scheduler job
-reloads an open agent after its extension files, shell rc files, or
-1Password settings change, when all agents are idle.
-Invalid `.env` or MCP files prevent all MCP startup for that agent. Invalid
+Other references remain under agent control. A scheduler job reloads an open
+agent when that agent is idle after an extension, shell rc, or 1Password
+configuration change.
+Invalid `.env` files prevent MCP startup for that agent. Invalid
 `.env` also removes all file environment values from that snapshot.
 The [engine extension loader](../../internal/engine/extensions.go) connects
 servers before it resumes the agent Harness. It installs prompt sections for
@@ -77,8 +76,40 @@ applies the change. The file is the only store.
 Each `env` entry of the Extensions API carries `hints`, the shape hints of its
 value. A hint never holds value text.
 
-`GET /api/agents/{agentId}/extensions` reads file metadata. Before the agent
-opens, servers are `idle`. `POST /api/agents/{agentId}/extensions/reload`
+### MCP declarations
+
+`control.sqlite` stores declarations at the dex and agent levels. The agent
+level replaces the dex declaration with the same name. Use `disabled: true`
+at the agent level to turn off a dex server for that agent. The database backup
+includes these declarations. dex ignores `mcp.json` at both levels and logs one
+warning for each file at startup. It does not import the files.
+
+All owner sessions can use `mcp_server_list`, `mcp_server_get`,
+`mcp_server_set`, and `mcp_server_remove` from any execution environment.
+This includes tasks, dreams, and child sessions. Isolated Telegram group
+sessions keep their existing tool allowlist and cannot use these tools.
+`mcp_server_set` replaces one declaration. A stdio server runs on the control
+host. Relative `cwd` values use the agent's control-host workspace.
+`mcp_server_remove` deletes one level's declaration and can uncover a wider
+declaration. Writes apply after
+the current work ends and the affected agent reloads. A dex change marks all
+open agents for reload.
+
+`mcp_server_get` hides plain `env` and `headers` values and the URL query.
+Vault references are visible as written. The vault resolves them at server
+startup once vault support is available. To keep a hidden `env` or `headers`
+value, include `[hidden]` for that key in `mcp_server_set`. Ask the user to
+move secrets to the vault before supplying a JSON snippet. Snippets can enter
+the transcript. Plain values in declarations are stored as plain text.
+
+`GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
+The Web Extensions page uses the same server status as `mcp_server_list`.
+Before the agent opens, the API shows declarations that are not disabled as
+`idle`.
+
+### Reload
+
+`POST /api/agents/{agentId}/extensions/reload`
 validates the selected agent and requires idle execution of that agent only:
 no open, task, submission, settlement, or tool call of the agent can be in
 progress. Work of other agents does not block it. The idle check and

@@ -203,6 +203,14 @@ type ForkReceipt struct {
 	ForkID      int64  `json:"fork_id"`
 }
 
+type McpServer struct {
+	AgentID   string `json:"agent_id"`
+	Name      string `json:"name"`
+	Config    string `json:"config"`
+	Position  int64  `json:"position"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
 type Monitor struct {
 	ID                        string         `json:"id"`
 	OperationKey              string         `json:"operation_key"`

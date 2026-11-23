@@ -93,6 +93,7 @@ type Outcome struct {
 	AnswerID               int64
 }
 type Config struct {
+	MCPServers    *MCPStore
 	DataDir, Home string
 	// BaseEnv is the tool environment when LoginEnv is nil or fails.
 	BaseEnv map[string]string

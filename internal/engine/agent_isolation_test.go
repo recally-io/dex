@@ -18,7 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
-func heldAgentMCP(t *testing.T, config Config) (<-chan struct{}, func(), *atomic.Int32) {
+func heldAgentMCP(t *testing.T, config *Config) (<-chan struct{}, func(), *atomic.Int32) {
 	t.Helper()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once, released sync.Once
@@ -46,11 +46,10 @@ func heldAgentMCP(t *testing.T, config Config) (<-chan struct{}, func(), *atomic
 	}))
 	unblock := func() { released.Do(func() { close(release) }) }
 	t.Cleanup(func() { unblock(); server.Close() })
-	raw, err := json.Marshal(map[string]any{"mcpServers": map[string]any{"held": map[string]any{"type": "http", "url": server.URL}}})
-	if err != nil {
-		t.Fatal(err)
+	if config.MCPServers == nil {
+		config.MCPServers = testMCPStore(t, config.DataDir)
 	}
-	extensionFile(t, filepath.Join(config.DataDir, "agents", "alpha", ".agents", "mcp.json"), string(raw))
+	testSetMCP(t, config.MCPServers, "alpha", "held", serverConfig{Type: "http", URL: server.URL})
 	return entered, unblock, starts
 }
 
@@ -70,12 +69,13 @@ func TestUserHeldAgentMCPDoesNotBlockOtherAgent(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			// Given a warm beta and alpha held at a real MCP initialization request.
 			config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
+			config.MCPServers = testMCPStore(t, config.DataDir)
 			a := coreEngine(t, config)
 			beta := coreCreate(t, a, "beta", coreOptions("echo"))
 			if mode == "reload" {
 				coreCreate(t, a, "alpha", coreOptions("echo"))
 			}
-			entered, release, starts := heldAgentMCP(t, config)
+			entered, release, starts := heldAgentMCP(t, &config)
 			opened := make(chan error, 1)
 			go func() {
 				if mode == "reload" {
@@ -149,8 +149,8 @@ func TestUserLateStopDuringAgentOpenIsolatesBeforeResume(t *testing.T) {
 	if err := first.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	entered, release, _ := heldAgentMCP(t, &config)
 	a := coreEngine(t, config)
-	entered, release, _ := heldAgentMCP(t, config)
 	opened := make(chan error, 1)
 	go func() { _, err := a.History(t.Context(), ref, 1<<60, 100); opened <- err }()
 	select {
@@ -209,8 +209,8 @@ func TestUserCancelledSubmissionFollowerStopsWaitingForSameRef(t *testing.T) {
 	if err := first.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	entered, release, starts := heldAgentMCP(t, &config)
 	a := coreEngine(t, config)
-	entered, release, starts := heldAgentMCP(t, config)
 	owner := make(chan error, 1)
 	go func() {
 		s, err := a.Submit(t.Context(), ref, Input{RequestID: "owner", Content: "owner", Kind: "message", Options: coreOptions("echo")})
@@ -248,8 +248,8 @@ func TestUserCancelledSubmissionFollowerStopsWaitingForSameRef(t *testing.T) {
 func TestUserCancelledAgentOpenFollowerStopsWaiting(t *testing.T) {
 	// Given alpha is opening exactly one real MCP connection.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
+	entered, release, starts := heldAgentMCP(t, &config)
 	a := coreEngine(t, config)
-	entered, release, starts := heldAgentMCP(t, config)
 	owner := make(chan error, 1)
 	go func() { _, err := a.Create(t.Context(), "alpha", coreOptions("echo")); owner <- err }()
 	select {
@@ -281,11 +281,12 @@ func TestUserCloseCancelsHeldAgentOpenAndReload(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			// Given alpha is held during a real MCP connection.
 			config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
+			config.MCPServers = testMCPStore(t, config.DataDir)
 			a := coreEngine(t, config)
 			if mode == "reload" {
 				coreCreate(t, a, "alpha", coreOptions("echo"))
 			}
-			entered, _, _ := heldAgentMCP(t, config)
+			entered, _, _ := heldAgentMCP(t, &config)
 			opened := make(chan error, 1)
 			go func() {
 				if mode == "reload" {

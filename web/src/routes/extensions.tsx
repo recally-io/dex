@@ -73,7 +73,7 @@ export function ExtensionsPage() {
 function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: string }) {
   return (
     <>
-      <Section title="File levels" caption="Each holds skills/, mcp.json and .env.">
+      <Section title="File levels" caption="Each holds skills/ and .env.">
         <Panel>
           <ul className="divide-y divide-border">
             {e.levels.map((level) => (
@@ -122,7 +122,7 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
       </Section>
       <Section
         title="MCP servers"
-        caption="mcp.json changes apply automatically. Tools are available through tool_search."
+        caption="Manage declarations with mcp_server tools in an owner session. Changes apply when the agent is idle."
       >
         <List
           items={e.servers.map((server) => (
@@ -130,8 +130,8 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
           ))}
           empty={
             <>
-              Add mcpServers to an mcp.json file in a level above. A narrower {'{ "disabled": true }'} entry
-              turns off a wider server.
+              Ask the agent to add a server with mcp_server_set. An agent declaration with disabled: true
+              turns off a dex server with the same name.
             </>
           }
         />

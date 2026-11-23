@@ -619,8 +619,8 @@ func TestUserChildUsesTargetBotRuntimeContext(t *testing.T) {
 	writeFile(t, filepath.Join(s.dir, "memory", "agents", "default", "MEMORY.md"), "A_ONLY_MEMORY_MARKER\n")
 	writeFile(t, filepath.Join(s.dir, "memory", "agents", s.b.ID, "MEMORY.md"), "B_ONLY_MEMORY_MARKER\n")
 	aDir, bDir := t.TempDir(), t.TempDir()
-	writeMCP(t, filepath.Join(s.dir, "agents", "default", ".agents", "mcp.json"), map[string]any{"afiles": stdioServer(t, aDir)})
-	writeMCP(t, filepath.Join(s.dir, "agents", s.b.ID, ".agents", "mcp.json"), map[string]any{"bfiles": stdioServer(t, bDir)})
+	seedMCP(t, s.dir, "default", map[string]any{"afiles": stdioServer(t, aDir)})
+	seedMCP(t, s.dir, s.b.ID, map[string]any{"bfiles": stdioServer(t, bDir)})
 	if status, body := s.d.reload(t); status != http.StatusOK {
 		t.Fatalf("reload: %d %s", status, body)
 	}
