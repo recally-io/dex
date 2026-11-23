@@ -84,7 +84,9 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.Down(t.Context()); err != nil {
+	// Stop before the Monitor migration, even when later migrations are present.
+	const beforeMonitors = 20261122110000
+	if _, err := provider.DownTo(t.Context(), beforeMonitors); err != nil {
 		t.Fatal(err)
 	}
 	var root string
