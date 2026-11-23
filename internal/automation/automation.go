@@ -70,18 +70,19 @@ type Automation struct {
 
 // Run is one run of an automation.
 type Run struct {
-	AdmittedAt *int64 `json:"admittedAt,omitzero"`
-	SettledAt  *int64 `json:"settledAt,omitzero"`
-	Outcome    string `json:"outcome"`
-	Summary    string `json:"summary"`
-	ChangeKey  string `json:"changeKey,omitempty"`
-	Duplicate  bool   `json:"duplicate"`
-	ID         string `json:"id"`
-	DueAt      int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
-	CreatedAt  int64  `json:"createdAt"`
-	Status     string `json:"status"` // running, done, failed, or skipped
-	Reason     string `json:"reason,omitempty"`
-	ChatID     int64  `json:"chatId,omitzero"` // 0 when the run has no message
+	AdmittedAt       *int64 `json:"admittedAt,omitzero"`
+	SettledAt        *int64 `json:"settledAt,omitzero"`
+	Outcome          string `json:"outcome"`
+	Summary          string `json:"summary"`
+	ChangeKey        string `json:"changeKey,omitempty"`
+	Duplicate        bool   `json:"duplicate"`
+	ID               string `json:"id"`
+	DueAt            int64  `json:"dueAt,omitzero"` // 0 for a run that the user started
+	CreatedAt        int64  `json:"createdAt"`
+	Status           string `json:"status"` // running, done, failed, or skipped
+	Reason           string `json:"reason,omitempty"`
+	NotificationNote string `json:"notificationNote,omitempty"`
+	ChatID           int64  `json:"chatId,omitzero"` // 0 when the run has no message
 	// EnvironmentID and Cwd are where the run started: the effective environment, never empty
 	// for a run with a message.
 	EnvironmentID string `json:"environmentId,omitempty"`
@@ -90,9 +91,10 @@ type Run struct {
 
 // Service manages automations for all agents.
 type Service struct {
-	q       *sqlc.Queries
-	enqueue func(context.Context, chat.AutomationInput) (int64, bool, error)
-	now     func() time.Time
+	q          *sqlc.Queries
+	enqueue    func(context.Context, chat.AutomationInput) (int64, bool, error)
+	now        func() time.Time
+	wakeOutbox func(context.Context, string)
 	// probe opens an SSH environment of a run before its input; nil skips the check.
 	probe func(ctx context.Context, agentID, environmentID string) error
 }
@@ -105,11 +107,12 @@ func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, enviro
 
 // New returns a Service. Call Check every minute.
 func New(q *sqlc.Queries, chats *chat.Service, now func() time.Time) *Service {
-	var enqueue func(context.Context, chat.AutomationInput) (int64, bool, error)
+	s := &Service{q: q, now: now}
 	if chats != nil {
-		enqueue = chats.EnqueueAutomation
+		s.enqueue = chats.EnqueueAutomation
+		s.wakeOutbox = chats.WakeRoutineOutbox
 	}
-	return &Service{q: q, enqueue: enqueue, now: now}
+	return s
 }
 
 // ChatAutomation returns the ID of the automation that started the chat with channelKey.
@@ -390,7 +393,7 @@ func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int
 	}
 	out := make([]Run, len(rows))
 	for i, r := range rows {
-		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, ChatID: r.ChatID.Int64, EnvironmentID: r.EnvironmentID, Cwd: r.Cwd}
+		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, NotificationNote: r.NotificationNote, ChatID: r.ChatID.Int64, EnvironmentID: r.EnvironmentID, Cwd: r.Cwd}
 		if r.AdmittedAt.Valid {
 			out[i].AdmittedAt = new(r.AdmittedAt.Int64)
 		}
@@ -453,7 +456,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	latest := sched.latest(time.UnixMilli(row.NextDueAt.Int64), now, anchor, loc)
 	var skip string
 	if now.Sub(latest) > grace {
-		skip = "dex did not run at the scheduled time"
+		skip = chat.RoutineSkipMissed
 	}
 	// The run comes before the next time: a crash between them repeats the check, which finds the
 	// run and does not store it again.
@@ -494,22 +497,21 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 		}
 		switch {
 		case agent.ModelID == "":
-			skip = "the bot has no model"
+			skip = chat.RoutineSkipNoModel
 		case busy > 0:
-			skip = "the chat of the automation is busy"
+			skip = chat.RoutineSkipBusy
 		}
 	}
 	run := Run{ID: uuid.NewV7().String(), DueAt: due.Int64, CreatedAt: s.now().UnixMilli(), Status: "started", Reason: skip}
 	params := sqlc.CreateAutomationRunParams{
 		ID: run.ID, AutomationID: row.ID, DueAt: due, Status: run.Status,
-		Reason: sql.NullString{String: skip, Valid: skip != ""}, CreatedAt: run.CreatedAt,
+		CreatedAt: run.CreatedAt,
 	}
 	if skip != "" {
-		run.Status, params.Status = "skipped", "skipped"
-		_, err := s.q.CreateAutomationRun(ctx, params)
-		return run, err
-	}
-	if pre == nil {
+		// A predetermined skip needs no environment probe. Store it in the same transaction
+		// as any alert, including when the routine was invoked through a tool.
+		pre = &Target{Skip: skip}
+	} else if pre == nil {
 		t, err := s.Preflight(ctx, row)
 		if err != nil {
 			return Run{}, err
@@ -564,13 +566,17 @@ func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, 
 	}
 	env, err := s.q.GetEnvironment(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "the environment " + id + " was removed", nil
+		return chat.RoutineRemovedEnvironment(id), nil
 	}
 	if err != nil || execenv.Kind(env.Kind) != execenv.KindPiEnv || s.probe == nil {
 		return "", err
 	}
 	if err := s.probe(ctx, agentID, id); err != nil {
-		return fmt.Sprintf("the environment %s is unavailable: %v", env.Name, err), nil
+		// Probe errors can contain host details or credentials. Do not store or send them.
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		return chat.RoutineUnavailableEnvironment(env.Name), nil
 	}
 	return "", nil
 }

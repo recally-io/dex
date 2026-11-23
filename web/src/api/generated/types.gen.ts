@@ -495,6 +495,10 @@ export type AutomationRun = {
      */
     duplicate: boolean;
     reason?: string;
+    /**
+     * Why Dex could not queue a notification for this run, if applicable.
+     */
+    notificationNote?: string;
     chatId?: number;
     /**
      * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.

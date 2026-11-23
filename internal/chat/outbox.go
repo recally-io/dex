@@ -580,21 +580,86 @@ func taskNotificationRoute(ctx context.Context, q *sqlc.Queries, conv sqlc.Conve
 	return target.Peer, string(identity), err
 }
 
+// WakeRoutineOutbox nudges channel delivery after commit without waking any conversation.
+func (s *Service) WakeRoutineOutbox(ctx context.Context, runID string) {
+	if s.notify != nil {
+		if row, err := s.q.GetOutboxByDedupKey(ctx, "routine:"+runID); err == nil && row.Status == "pending" {
+			s.notify(row.Peer)
+		}
+	}
+}
+
+func routineFailure(run sqlc.AutomationRun) bool {
+	if run.Status == "skipped" {
+		switch run.Reason.String {
+		case RoutineSkipNoModel, RoutineSkipMissed:
+			return true
+		default:
+			reason := run.Reason.String
+			return strings.HasPrefix(reason, routineEnvironmentPrefix) &&
+				(strings.HasSuffix(reason, routineUnavailableSuffix) || strings.HasSuffix(reason, routineRemovedSuffix))
+		}
+	}
+	return run.Outcome == "failed"
+}
+
 func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, convID int64, now int64) error {
-	info, err := q.GetRoutineOutboxInfo(ctx, runID)
+	run, err := q.GetAutomationRun(ctx, runID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil
+		return nil // A non-Routine input also uses settlement.
 	}
 	if err != nil {
 		return err
 	}
-	topicKey := "routine:" + info.AutomationID
-	if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
-		ConversationID: convID,
-		Peer:           info.Peer,
-		TopicKey:       topicKey,
-	}); err != nil {
+	failure := routineFailure(run)
+	if failure {
+		// Only the immediately preceding finished run can suppress a failure alert. Do not
+		// use or update report_check's business duplicate flag for this decision.
+		prior, err := q.GetPreviousFinishedAutomationRun(ctx, runID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil && routineFailure(prior.AutomationRun) && prior.AutomationRun.Reason.String == run.Reason.String &&
+			!routineCanceled(prior.ExecutionStatus.String, prior.ExecutionReason.String) {
+			return nil
+		}
+	} else if run.Outcome != "changed" || run.Duplicate != 0 {
+		return nil
+	}
+	info, err := q.GetRoutineOutboxInfo(ctx, runID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return q.SetAutomationRunNotificationNote(ctx, sqlc.SetAutomationRunNotificationNoteParams{ID: runID, NotificationNote: "not delivered: no notification target"})
+	}
+	if err != nil {
 		return err
+	}
+	source := sql.NullString{String: runID, Valid: convID != 0}
+	if convID == 0 {
+		convID, err = q.GetRoutineOutboxConversation(ctx, info.AgentID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return q.SetAutomationRunNotificationNote(ctx, sqlc.SetAutomationRunNotificationNoteParams{ID: runID, NotificationNote: "not delivered: no existing bot conversation"})
+		}
+		if err != nil {
+			return err
+		}
+	}
+	outcome := run.Outcome
+	if failure {
+		outcome = "failed"
+	}
+	body := info.Name + ": " + outcome + "\n" + cmp.Or(run.Summary, run.Reason.String)
+	// A failure alert is not a replaceable result summary. A different reason (or the
+	// same reason after a success) must not supersede an alert still waiting to send.
+	var topicKey string
+	if !failure {
+		topicKey = "routine:" + run.AutomationID
+		if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
+			ConversationID: convID,
+			Peer:           info.Peer,
+			TopicKey:       topicKey,
+		}); err != nil {
+			return err
+		}
 	}
 	chCtx, err := json.Marshal(struct {
 		AccountID string `json:"accountId"`
@@ -603,16 +668,16 @@ func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, conv
 		return err
 	}
 	_, err = q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID:                 "routine:" + info.RunID,
-		DedupKey:           "routine:" + info.RunID,
+		ID:                 "routine:" + runID,
+		DedupKey:           "routine:" + runID,
 		AgentID:            info.AgentID,
 		ConversationID:     convID,
-		SourceSubmissionID: sql.NullString{String: runID, Valid: true},
+		SourceSubmissionID: source,
 		Kind:               "routine",
 		Peer:               info.Peer,
 		ChannelContext:     string(chCtx),
 		TopicKey:           topicKey,
-		Body:               info.Body,
+		Body:               body,
 		Reason:             "",
 		Status:             "pending",
 		CreatedAt:          now,
