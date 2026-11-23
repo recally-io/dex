@@ -757,6 +757,10 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 		if schema["properties"] == nil {
 			schema["properties"] = map[string]any{}
 		}
+		// Some servers send "required": null, and providers reject the whole request.
+		if schema["required"] == nil {
+			delete(schema, "required")
+		}
 		description := tool.Description
 		if description == "" {
 			description = tool.Name
