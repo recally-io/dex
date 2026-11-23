@@ -36,8 +36,7 @@ SELECT
     CAST(coalesce(e.kind, '') AS TEXT) AS kind,
     CAST(coalesce(e.config, '') AS TEXT) AS config,
     CAST(coalesce(e.secret, '') AS TEXT) AS secret,
-    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at,
-    CAST(coalesce(e.run_as_user, '') AS TEXT) AS run_as_user
+    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at
 FROM agents a
 LEFT JOIN execution_environments e ON e.id = a.environment_id
 WHERE a.id = ?;
@@ -92,11 +91,3 @@ JOIN submissions s ON s.id = r.id
 WHERE s.conversation_id = ?
 ORDER BY s.created_at DESC, s.id DESC
 LIMIT 1;
-
--- name: SetEnvironmentRunAsUser :exec
--- Records the account that a machine runs as when it enrolls. Only a runner has one.
-UPDATE execution_environments SET run_as_user = @run_as_user WHERE id = @id AND kind = 'runner';
-
--- name: ClearEnvironmentRunAsUser :exec
--- A revoked machine has no run-as account until the next enrollment reports one.
-UPDATE execution_environments SET run_as_user = '' WHERE id = ? AND kind = 'runner';

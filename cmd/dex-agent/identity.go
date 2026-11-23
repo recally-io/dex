@@ -14,7 +14,7 @@ const (
 	// installed tools, its login state, and its files.
 	modeUser = "user"
 	// modeDedicated runs the work of the machine as a dedicated account that holds no login
-	// state of a person. This is what every install before the install user existed used.
+	// state of a person.
 	modeDedicated = "dedicated"
 )
 
@@ -28,9 +28,12 @@ type account struct {
 // currentAccount reports the account that runs this process. It reads the account database and
 // falls back to the environment, because a service manager does not always set USER.
 func currentAccount() account {
-	a := account{UID: os.Getuid(), Home: os.Getenv("HOME")}
+	a := account{UID: os.Geteuid(), Home: os.Getenv("HOME")}
 	if u, err := user.Current(); err == nil {
-		a.Name, a.Home = u.Username, u.HomeDir
+		a.Name = u.Username
+		if a.Home == "" {
+			a.Home = u.HomeDir
+		}
 	} else {
 		a.Name = os.Getenv("USER")
 	}
@@ -48,31 +51,16 @@ func currentAccount() account {
 	return a
 }
 
-// modeOf reports the mode that a state file records. A state that an earlier agent wrote has no
-// mode, and those installs run a dedicated account.
-func modeOf(d device) string {
-	if d.Mode == "" {
-		return modeDedicated
+// describeMode reports the current account and the mode recorded at install time.
+func describeMode(mode string, a account) string {
+	label := "legacy install"
+	switch mode {
+	case modeUser:
+		label = "user account"
+	case modeDedicated:
+		label = "dedicated account"
 	}
-	return d.Mode
-}
-
-// runAsUser is the account that the machine reports to Dex as the one that its work runs as, or
-// empty for a dedicated account. The install command records the mode, so a dedicated account
-// with its state in its own home is never mistaken for the account of a person.
-func (d device) runAsUser() string {
-	if modeOf(d) != modeUser {
-		return ""
-	}
-	return d.Account
-}
-
-// describeMode explains how the work of the machine runs, for the log and for status.
-func describeMode(d device) string {
-	if d.runAsUser() == "" {
-		return fmt.Sprintf("dedicated account %s (uid %d)", d.Account, d.UID)
-	}
-	return fmt.Sprintf("the account that installed the machine, %s (uid %d, home %s)", d.Account, d.UID, d.Home)
+	return fmt.Sprintf("%s: %s (uid %d, home %s)", label, a.Name, a.UID, a.Home)
 }
 
 // stateError explains a state directory that cannot be read, and separates a machine that was

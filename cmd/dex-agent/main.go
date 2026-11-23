@@ -4,7 +4,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	json "encoding/json/v2"
 	"errors"
@@ -30,16 +29,12 @@ import (
 )
 
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
-// returned, and stores only its digest. Mode, Account, UID, and Home describe how the machine
-// runs; they carry no secret, and status reports them.
+// returned, and stores only its digest. Mode describes the local install.
 type device struct {
 	Origin      string `json:"origin"`
 	Environment string `json:"environmentId"`
 	Token       string `json:"token"`
 	Mode        string `json:"mode,omitempty"`
-	Account     string `json:"account,omitempty"`
-	UID         int    `json:"uid,omitempty"`
-	Home        string `json:"home,omitempty"`
 }
 
 func main() {
@@ -141,13 +136,6 @@ func enroll(ctx context.Context, state, origin, id, code, mode string) error {
 	default:
 		return fmt.Errorf("unknown mode %q: expected %s or %s", mode, modeUser, modeDedicated)
 	}
-	// A machine that runs as its install user reports that account, so Dex never leaves it open to
-	// an unrelated bot: the account holds the home, the login state, and the credentials of a person.
-	identity := device{Mode: mode}
-	if mode == modeUser {
-		a := currentAccount()
-		identity.Account, identity.UID, identity.Home = a.Name, a.UID, a.Home
-	}
 	if err := os.MkdirAll(state, 0700); err != nil { //nolint:gosec // The local operator chooses the state directory.
 		return err
 	}
@@ -163,16 +151,11 @@ func enroll(ctx context.Context, state, origin, id, code, mode string) error {
 	defer func() { _ = file.Close(); _ = root.Remove("device.json.tmp") }()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	body, err := json.Marshal(map[string]string{"runAsUser": identity.runAsUser()})
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewReader(body)) //nolint:gosec // The operator chooses the validated Dex address.
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil) //nolint:gosec // The operator chooses the validated Dex address.
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+code)
-	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req) //nolint:gosec // The operator chooses the validated Dex address.
 	if err != nil {
 		return err
@@ -193,9 +176,7 @@ func enroll(ctx context.Context, state, origin, id, code, mode string) error {
 	if err := json.UnmarshalRead(io.LimitReader(res.Body, 4096), &issued); err != nil || issued.Token == "" {
 		return errors.New("the enrollment returned no machine token")
 	}
-	enrolled := identity
-	enrolled.Origin, enrolled.Environment, enrolled.Token = origin, id, issued.Token
-	if err := json.MarshalWrite(file, enrolled); err != nil {
+	if err := json.MarshalWrite(file, device{Origin: origin, Environment: id, Token: issued.Token, Mode: mode}); err != nil {
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -238,9 +219,7 @@ func run(ctx context.Context, state string) error {
 	if cfg.Token == "" {
 		return errors.New("the machine state is incomplete; run the install command again")
 	}
-	// The mode is part of the state, so the log names the account that the work will run as.
-	cfg.Mode = modeOf(cfg)
-	log.Printf("machine %s runs as %s", cfg.Environment, describeMode(cfg))
+	log.Printf("machine %s: %s", cfg.Environment, describeMode(cfg.Mode, currentAccount()))
 	address, err := endpoint(cfg.Origin, cfg.Environment, "connect")
 	if err != nil {
 		return err

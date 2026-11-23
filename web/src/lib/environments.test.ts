@@ -49,7 +49,4 @@ test("machine setup uses one install command", () => {
   expect(machineInstallCommand("https://192.0.2.10/", "env-id", code)).toBe(
     `curl -fsSL 'https://192.0.2.10/install-machine.sh' | sh -s -- 'https://192.0.2.10' 'env-id' '${code}'`,
   );
-  expect(machineInstallCommand("https://192.0.2.10/", "env-id", code, "dedicated")).toBe(
-    `curl -fsSL 'https://192.0.2.10/install-machine.sh' | sudo sh -s -- 'https://192.0.2.10' 'env-id' '${code}' --dedicated`,
-  );
 });

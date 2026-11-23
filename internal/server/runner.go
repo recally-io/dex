@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"path/filepath"
 	"regexp"
@@ -55,12 +54,7 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "remote machines are unavailable in this build")
 		return
 	}
-	runAsUser, err := machineRunAsUser(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	token, err := h.Runners.Enroll(r.Context(), r.PathValue("id"), code, runAsUser)
+	token, err := h.Runners.Enroll(r.Context(), r.PathValue("id"), code)
 	switch {
 	case errors.Is(err, execenv.ErrRunnerCredential):
 		writeError(w, http.StatusUnauthorized, "the enrollment code is invalid or expired")
@@ -72,24 +66,6 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "protocol": runner.Version})
-}
-
-// machineRunAsUser reads the account that the machine executes as when it runs as the account
-// that installed it. An older machine sends no body, which means a dedicated account.
-func machineRunAsUser(r *http.Request) (string, error) {
-	var body struct {
-		RunAsUser string `json:"runAsUser"`
-	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
-		return "", errors.New("the machine identity is not valid JSON")
-	}
-	if body.RunAsUser == "" {
-		return "", nil
-	}
-	if !machineRunAsUserPattern.MatchString(body.RunAsUser) {
-		return "", errors.New("the machine identity is not a valid account name")
-	}
-	return body.RunAsUser, nil
 }
 
 // machineConnect serves the session of one machine. The machine sends its token in the
@@ -135,9 +111,6 @@ func (h *handler) machineFile(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write(bytes.ReplaceAll(machineInstaller, []byte("__DEX_MACHINE_TAG__"), []byte(tag)))
 }
-
-// machineRunAsUserPattern accepts the platform account names that a machine reports.
-var machineRunAsUserPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 // devArchive matches the names of the development archives, so no other file is readable.
 var devArchive = regexp.MustCompile(`^dex-agent_v0\.0\.0-dev_(linux|darwin)_(amd64|arm64)\.tar\.gz$`)

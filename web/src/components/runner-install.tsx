@@ -79,9 +79,8 @@ export function RunnerInstall({
             </Button>
           </div>
           <p className="text-muted-foreground">
-            The command enrolls one machine and expires in 10 minutes. Its work runs as the account that ran
-            the command and can read that account's files, so only the bot bound to this machine uses it. Add
-            <Mono> --dedicated</Mono> to serve a shared host from a dedicated account.
+            The command expires in 10 minutes. Any work sent to this runner can read the install account's
+            files and use its credentials. On Linux, add <Mono>--dedicated</Mono> to use a separate account.
           </p>
         </div>
       ) : null}

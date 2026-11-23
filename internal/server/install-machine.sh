@@ -12,7 +12,7 @@ note() {
 
 # The installer runs the machine as the account that installs it, by default. That account has the
 # PATH, the tools, the logins, and the projects that the work needs, and its work can read its
-# home: Dex keeps such a machine to the bot that it is bound to. A host that serves several people
+# home. A host that serves several people
 # installs a dedicated account instead, with --dedicated, as root.
 main() {
 	[ "$#" -ge 3 ] || fail 'copy the complete install command from Dex'
@@ -124,8 +124,10 @@ install_linux_user() {
 	if command -v loginctl >/dev/null; then
 		[ "$(linger_status "$user")" = yes ] || loginctl enable-linger "$user" >/dev/null 2>&1 || true
 		if [ "$(linger_status "$user")" != yes ]; then
-			note "the machine is connected but stops when $user logs out: run sudo loginctl enable-linger $user"
+				note "the machine is connected but stops when $user logs out: run sudo loginctl enable-linger $user"
 		fi
+	else
+		note 'loginctl is unavailable. The machine can stop when this account logs out.'
 	fi
 	note "the machine runs as $user, so its work can read the files of $user. Check it with: $binary status"
 }
@@ -164,58 +166,35 @@ install_linux_dedicated() {
 	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode dedicated || fail 'Dex refused the enrollment; get a fresh install command'
 	as_root systemctl daemon-reload
 	as_root systemctl enable --now dex-agent.service || fail 'the machine service did not start; read its log with: sudo journalctl -u dex-agent'
-	note 'the machine runs as the dedicated account dex-agent; only its own bots use it'
+	note 'the machine runs as the dedicated account dex-agent'
 }
 
-# A Mac installs a LaunchAgent in the login session of the account that runs the command, so the
-# work runs as that account. --dedicated declares the account one that holds no login state of a
-# person, which a host that serves several people sets up for itself.
+# On macOS the LaunchAgent runs in the login session of the current account.
 install_darwin() {
-	if [ "$(id -u)" -eq 0 ]; then
-		[ "$mode" = dedicated ] || fail 'run this command as your own account, not as root. A host that serves several people installs a dedicated account with --dedicated.'
-		[ -n "${SUDO_USER:-}" ] || fail 'run this command as the account that will use the machine'
-		target_user=$SUDO_USER
-	else
-		target_user=$(id -un)
-	fi
-	[ "$target_user" != root ] || fail 'the machine must not run as root'
-	for tool in curl tar install launchctl; do
-		command -v "$tool" >/dev/null || fail "$tool is required"
-	done
-	if [ "$target_user" = "$(id -un)" ] && [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
-		target_home=$HOME
-	else
-		target_home=$(eval echo "~$target_user")
-	fi
-	[ -d "$target_home" ] || fail "cannot find the home directory of $target_user"
-	state="$target_home/Library/Application Support/dex-agent"
-	binary="$target_home/.local/bin/dex-agent"
-	plist="$target_home/Library/LaunchAgents/com.recally.dex-agent.plist"
-	log="$target_home/Library/Logs/dex-agent.log"
-	label=com.recally.dex-agent
-	target_uid=$(id -u "$target_user")
-	run_as_user() {
-		if [ "$(id -u)" -eq 0 ]; then
-			sudo -u "$target_user" "$@"
-		else
-			"$@"
-		fi
-	}
+ [ "$(id -u)" -ne 0 ] || fail 'run this command without sudo as the account that will use the machine'
+ [ "$mode" = user ] || fail '--dedicated is only available on Linux. On macOS, run the install command as the account that will use the machine.'
+ for tool in curl tar install launchctl; do
+  command -v "$tool" >/dev/null || fail "$tool is required"
+ done
+ target_user=$(id -un)
+ [ -n "${HOME:-}" ] && [ -d "$HOME" ] || fail "cannot find the home directory of $target_user"
+ state="$HOME/Library/Application Support/dex-agent"
+ binary="$HOME/.local/bin/dex-agent"
+ plist="$HOME/Library/LaunchAgents/com.recally.dex-agent.plist"
+ log="$HOME/Library/Logs/dex-agent.log"
+ label=com.recally.dex-agent
+ target_uid=$(id -u)
 	[ ! -e "$state/device.json" ] || fail 'this machine is already connected; revoke it in Dex before connecting again'
 	tar -xzf "$tmp/$archive" -C "$tmp" dex-agent com.recally.dex-agent.plist
-	run_as_user install -d -m 0700 "$state" "$target_home/.local/bin" "$target_home/Library/Logs" "${plist%/*}"
-	run_as_user install -m 0755 "$tmp/dex-agent" "$binary"
+	install -d -m 0700 "$state" "$HOME/.local/bin" "$HOME/Library/Logs" "${plist%/*}"
+	install -m 0755 "$tmp/dex-agent" "$binary"
 	sed -e "s|__BINARY__|$binary|g" -e "s|__STATE__|$state|g" -e "s|__LOG__|$log|g" "$tmp/com.recally.dex-agent.plist" >"$tmp/com.recally.dex-agent.plist.final"
-	run_as_user install -m 0644 "$tmp/com.recally.dex-agent.plist.final" "$plist"
-	printf '%s\n' "$code" | run_as_user "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode "$mode" || fail 'Dex refused the enrollment; get a fresh install command'
+	install -m 0644 "$tmp/com.recally.dex-agent.plist.final" "$plist"
+	printf '%s\n' "$code" | "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode user || fail 'Dex refused the enrollment; get a fresh install command'
 	# bootstrap refuses a label that is already loaded, so unload it first.
 	launchctl bootout "gui/$target_uid/$label" 2>/dev/null || true
 	launchctl bootstrap "gui/$target_uid" "$plist" || fail "the agent did not start; read $log"
-	if [ "$mode" = user ]; then
-		note "the machine runs as $target_user, so its work can read the files of $target_user. Check it with: $binary status"
-	else
-		note "the machine runs as $target_user and is not kept to one bot, so use an account that holds no personal login state"
-	fi
+	note "the machine runs as $target_user, so its work can read the files of $target_user. Check it with: $binary status"
 }
 
 main "$@"

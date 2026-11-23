@@ -24,25 +24,13 @@ func (runnerBackend) normalize(spec EnvironmentSpec) (string, error) {
 	return "{}", nil
 }
 
-func (b runnerBackend) probe(_ context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
 	session := b.runners.online(spec.ID)
 	if session == nil {
 		return TestResult{Error: "Runner is offline"}, nil
 	}
-	// The run-as account is a fact of the saved environment: an edited input cannot claim one.
-	if saved != nil && saved.ID == spec.ID {
-		spec.RunAsUser = saved.RunAsUser
-	}
 	meta := session.Info()
-	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home, Warnings: runAsWarnings(spec)}, nil
-}
-
-// runAsWarnings states what a machine that runs as the account that installed it can reach.
-func runAsWarnings(spec EnvironmentSpec) []string {
-	if spec.RunAsUser == "" {
-		return nil
-	}
-	return []string{fmt.Sprintf("This machine runs as %s, the account that installed it, so its work can read the home, the files, and the credentials of %s. Only the bot that is bound to this machine can use it.", spec.RunAsUser, spec.RunAsUser)}
+	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil
 }
 
 func (b runnerBackend) open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error) {

@@ -40,7 +40,7 @@ func status(ctx context.Context, state string, out io.Writer) error {
 	if err := json.UnmarshalRead(io.LimitReader(file, 1<<16), &d); err != nil {
 		return errors.New("the machine state file is not valid")
 	}
-	fmt.Fprintf(out, "mode: %s\n", describeMode(d))
+	fmt.Fprintf(out, "mode: %s\n", describeMode(d.Mode, a))
 	fmt.Fprintf(out, "state: %s\n", state)
 	if d.Origin != "" {
 		fmt.Fprintf(out, "dex: %s (environment %s)\n", d.Origin, d.Environment)

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	json "encoding/json/v2"
@@ -68,14 +70,14 @@ func deviceState(t *testing.T, home, body string) string {
 // inherits, without the token.
 func TestUserSeesTheAccountAndTheToolsOfTheMachineThatRunsTheWork(t *testing.T) {
 	home := fixtureAccount(t)
-	state := deviceState(t, home, `{"origin":"https://dex.example.com","environmentId":"01JRUN","token":"machine-token-that-must-stay-private","mode":"user","account":"vaayne","uid":501,"home":"`+home+`"}`)
+	state := deviceState(t, home, `{"origin":"https://dex.example.com","environmentId":"01JRUN","token":"machine-token-that-must-stay-private","mode":"user"}`)
 	var out bytes.Buffer
 	if err := status(t.Context(), state, &out); err != nil {
 		t.Fatalf("status of an installed machine: %v", err)
 	}
 	text := out.String()
 	for _, want := range []string{
-		"mode: the account that installed the machine, vaayne (uid 501, home " + home + ")",
+		fmt.Sprintf("mode: user account: %s (uid %d, home %s)", currentAccount().Name, os.Geteuid(), home),
 		"state: " + state,
 		"dex: https://dex.example.com (environment 01JRUN)",
 		"workspace: " + filepath.Join(state, "workspace"),
@@ -136,33 +138,27 @@ func TestUserSeesWhyTheMachineCannotReadItsState(t *testing.T) {
 	})
 }
 
-// TestUserKeepsADedicatedAccountOutOfTheModeOfAPerson checks that a state that an earlier agent
-// wrote stays a dedicated account, so the mode of a person is never inferred.
-func TestUserKeepsADedicatedAccountOutOfTheModeOfAPerson(t *testing.T) {
+func TestUserSeesLegacyInstallWithoutGuessingItsMode(t *testing.T) {
 	home := fixtureAccount(t)
 	state := deviceState(t, home, `{"origin":"https://dex.example.com","environmentId":"01JRUN","token":"`+strings.Repeat("t", 32)+`"}`)
 	var out bytes.Buffer
 	if err := status(t.Context(), state, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "mode: dedicated account") {
-		t.Fatalf("an older state is not a dedicated account:\n%s", out.String())
+	if !strings.Contains(out.String(), "mode: legacy install") {
+		t.Fatalf("an older state did not report a legacy install:\n%s", out.String())
 	}
 }
 
-// TestUserEnrollsTheMachineWithTheModeThatTheInstallerChose checks the request that the install
-// command makes: only a machine that runs as its install user reports that account.
 func TestUserEnrollsTheMachineWithTheModeThatTheInstallerChose(t *testing.T) {
 	home := fixtureAccount(t)
-	var reported []string
+	var requests atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			RunAsUser string `json:"runAsUser"`
+		requests.Add(1)
+		body, err := io.ReadAll(r.Body)
+		if err != nil || len(body) != 0 {
+			t.Errorf("pair must not send local account data: len=%d err=%v", len(body), err)
 		}
-		if err := json.UnmarshalRead(io.LimitReader(r.Body, 4096), &body); err != nil {
-			t.Errorf("pair body: %v", err)
-		}
-		reported = append(reported, body.RunAsUser)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"token":"` + strings.Repeat("a", 40) + `"}`))
 	}))
@@ -173,13 +169,6 @@ func TestUserEnrollsTheMachineWithTheModeThatTheInstallerChose(t *testing.T) {
 			if err := enroll(t.Context(), state, srv.URL, "01JRUN", "one-time-code", mode); err != nil {
 				t.Fatalf("enroll with mode %s: %v", mode, err)
 			}
-			want := ""
-			if mode == modeUser {
-				want = currentAccount().Name
-			}
-			if got := reported[len(reported)-1]; got != want {
-				t.Fatalf("mode %s reported the account %q, want %q", mode, got, want)
-			}
 			var stored device
 			raw, err := os.ReadFile(filepath.Join(state, "device.json"))
 			if err != nil {
@@ -188,18 +177,18 @@ func TestUserEnrollsTheMachineWithTheModeThatTheInstallerChose(t *testing.T) {
 			if err := json.Unmarshal(raw, &stored); err != nil {
 				t.Fatal(err)
 			}
-			if stored.Mode != mode || stored.runAsUser() != want {
-				t.Fatalf("state records mode %q and account %q, want %q", stored.Mode, stored.runAsUser(), want)
+			if stored.Mode != mode {
+				t.Fatalf("state records mode %q, want %q", stored.Mode, mode)
 			}
 		})
 	}
 	t.Run("unknown mode", func(t *testing.T) {
-		before := len(reported)
+		before := requests.Load()
 		err := enroll(t.Context(), filepath.Join(home, "state-unknown"), srv.URL, "01JRUN", "one-time-code", "root")
 		if err == nil || !strings.Contains(err.Error(), "unknown mode") {
 			t.Fatalf("enroll with an unknown mode: %v", err)
 		}
-		if len(reported) != before {
+		if requests.Load() != before {
 			t.Fatal("an unknown mode reached Dex")
 		}
 	})

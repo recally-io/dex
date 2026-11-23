@@ -20,9 +20,6 @@ type EnvironmentSpec struct {
 	Config    string
 	Secret    string
 	UpdatedAt int64
-	// RunAsUser is the account that an enrolled machine executes as when it runs as the account
-	// that installed it. Empty means a dedicated account.
-	RunAsUser string
 }
 
 // TestResult reports connectivity and platform details for an environment probe.
@@ -159,30 +156,7 @@ func (m *Manager) binding(ctx context.Context, agentID, environmentID string) (b
 	if !IsRegisteredKind(Kind(row.Kind)) {
 		return binding{}, fmt.Errorf("%w: %s has unsupported environment kind %s", ErrUnavailable, row.Name, row.Kind)
 	}
-	bound := binding{spec: SpecFromRow(row)}
-	if err := m.authorizeSelection(ctx, agentID, bound.spec); err != nil {
-		return binding{}, err
-	}
-	return bound, nil
-}
-
-// authorizeSelection refuses an explicit selection of a machine that runs as the account that
-// installed it when the machine is not bound to agentID. Such a machine holds the home, the login
-// state, and the credentials of that person, so the bot that the machine is bound to is the only
-// grant. A session cannot select it, and a fork, a routine, or a child session that inherits the
-// selection reaches the same refusal.
-func (m *Manager) authorizeSelection(ctx context.Context, agentID string, spec EnvironmentSpec) error {
-	if spec.Kind != KindRunner || spec.RunAsUser == "" {
-		return nil
-	}
-	row, err := m.q.GetAgentBinding(ctx, agentID)
-	if err != nil {
-		return err
-	}
-	if row.EnvironmentID != spec.ID {
-		return fmt.Errorf("%w: %s runs as %s, the account that installed it, so only the bot that is bound to it can use it", ErrUnavailable, spec.ID, spec.RunAsUser)
-	}
-	return nil
+	return binding{spec: SpecFromRow(row)}, nil
 }
 
 func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, error) {
@@ -199,7 +173,7 @@ func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, er
 	if row.FoundID == "" {
 		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, row.EnvironmentID)
 	}
-	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt, RunAsUser: row.RunAsUser}
+	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt}
 	return binding{spec: spec, sandboxID: row.EnvironmentSandboxID}, nil
 }
 
@@ -354,6 +328,5 @@ func SpecFromRow(row sqlc.ExecutionEnvironment) EnvironmentSpec {
 		Config:    row.Config,
 		Secret:    row.Secret,
 		UpdatedAt: row.UpdatedAt,
-		RunAsUser: row.RunAsUser,
 	}
 }

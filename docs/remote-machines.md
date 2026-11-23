@@ -72,16 +72,13 @@ The machine runs as the account that ran the command, so its tools are the tools
 account: its `PATH`, the CLIs it installed, its logins for `gh`, `git`, and the cloud, and its
 project directories. Nothing needs a second install or a second login for that account.
 
-That access is also the cost. The work of a bot can read everything the account can read,
-including `~/.ssh`, cloud credentials, and browser profiles. Dex therefore keeps such a machine
-to the bot that it serves: another bot cannot select it, and a chat that names it is refused with
-the reason. A group chat, a shared target, or an untrusted workload does not gain a person's
-credentials because it happens to run where that person installed a machine.
+All work sent to a runner uses the permissions of that account. This includes access to its
+files and credentials, such as `~/.ssh` and cloud logins. The usual Dex environment selection
+rules still apply. Separate bot workspaces do not restrict access to the home directory.
 
-Use a dedicated account, or an SSH environment, when several bots or several people need the
-machine.
+Use a separate account for shared or less trusted work.
 
-## A dedicated account
+## A dedicated account on Linux
 
 A host that serves several people installs a dedicated account instead. Add `--dedicated` to the
 command and run it as root, with `sudo`. The installer then keeps the machine in a system
@@ -89,14 +86,13 @@ account without a login of a person, and any bot may use the machine.
 
 The two modes differ as follows:
 
-|                       | your account (default)            | dedicated account, `--dedicated` |
-| --------------------- | --------------------------------- | -------------------------------- |
-| Binary                | `~/.local/bin/dex-agent`          | `/usr/local/bin/dex-agent`       |
-| State and token       | `~/.local/state/dex-agent`        | `/var/lib/dex-agent`             |
-| Supervisor            | `dex-agent.service`, user manager | `dex-agent.service`, system      |
-| Log                   | `journalctl --user -u dex-agent`  | `journalctl -u dex-agent`        |
-| Which bots may use it | the bot bound to the machine      | any bot                          |
-| Needs root            | no                                | yes                              |
+|                 | your account (default)            | dedicated account, `--dedicated` |
+| --------------- | --------------------------------- | -------------------------------- |
+| Binary          | `~/.local/bin/dex-agent`          | `/usr/local/bin/dex-agent`       |
+| State and token | `~/.local/state/dex-agent`        | `/var/lib/dex-agent`             |
+| Supervisor      | `dex-agent.service`, user manager | `dex-agent.service`, system      |
+| Log             | `journalctl --user -u dex-agent`  | `journalctl -u dex-agent`        |
+| Needs root      | no                                | yes                              |
 
 Linux needs systemd with a user manager, plus curl, tar, and sha256sum or shasum. Debian 12 or
 later, Ubuntu 22.04 or later, and equivalent distributions work. The account keeps the service
@@ -119,9 +115,8 @@ the account that runs the command:
 | Supervisor      | `com.recally.dex-agent` under launchd     |
 | Log             | `~/Library/Logs/dex-agent.log`            |
 
-macOS keeps the same two modes. The command without `--dedicated` needs no `sudo`, and the
-machine runs as the account that ran it. With `--dedicated` and `sudo`, the installer uses the
-account that ran `sudo`, which the host sets up as one without a login of a person.
+Run the command without `sudo`. To use a separate account, log in as that account and run
+the same command. `--dedicated` is only available on Linux.
 
 ```sh
 launchctl print gui/$(id -u)/com.recally.dex-agent   # state of the agent

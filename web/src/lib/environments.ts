@@ -96,25 +96,15 @@ export function machineAddress(address: string): string | null {
 }
 
 // machineInstallCommand builds the one command that enrolls a machine. The machine trades the
-// code for a token, so the command carries no certificate and no pin. The installer runs the
-// machine as the account that runs the command, without root; a shared host asks for a dedicated
-// account instead, which needs root.
-export function machineInstallCommand(
-  address: string,
-  id: string,
-  code: string,
-  account: "user" | "dedicated" = "user",
-): string | null {
+// code for a token. By default, the runner uses the account that runs the command.
+export function machineInstallCommand(address: string, id: string, code: string): string | null {
   const origin = machineAddress(address);
 
   if (!origin || !/^[a-z\d-]+$/i.test(id) || !/^[A-Z\d]{20,64}$/i.test(code)) {
     return null;
   }
 
-  const sudo = account === "dedicated" ? "sudo " : "";
-  const dedicated = account === "dedicated" ? " --dedicated" : "";
-
-  return `curl -fsSL '${origin}/install-machine.sh' | ${sudo}sh -s -- '${origin}' '${id}' '${code}'${dedicated}`;
+  return `curl -fsSL '${origin}/install-machine.sh' | sh -s -- '${origin}' '${id}' '${code}'`;
 }
 
 export function formatSshTarget(cfg: EnvironmentConfig): string {
