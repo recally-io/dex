@@ -233,6 +233,10 @@ func sessionTool[A, R any](agentID, name, description string, schema map[string]
 }
 
 func objectSchema(required []string, properties map[string]any) map[string]any {
+	// A nil slice encodes as null, and providers such as OpenAI reject "required": null.
+	if required == nil {
+		required = []string{}
+	}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
 }
 
