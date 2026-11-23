@@ -295,8 +295,11 @@ sandbox endpoint, or a machine service connection. The
 behind the same HTTPS front as the web UI, and uses the public PiG execution API
 on the target. Enrollment trades a one-time code for a machine token; Dex stores
 the SHA-256 digest of that token in `control.sqlite` and keeps live connections
-in memory. A bot borrows the connection, so reloading the bot does not disconnect
-its machine. Each backend owns its connections, and a `Handle` is one lease on
+in memory. It also keeps the account that the machine runs as in
+`execution_environments.run_as_user`: empty is a dedicated account that any bot
+may use, and the account of a person is a machine that only the bot bound to it
+uses, because the work of that machine can read the home of that person. A bot
+borrows the connection, so reloading the bot does not disconnect its machine. Each backend owns its connections, and a `Handle` is one lease on
 them: all bots on
 one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
@@ -354,8 +357,9 @@ of truth. Empty means that the session follows the bot's environment
 (`agents.environment_id`). `local` or an environment ID is an explicit
 selection, which does not change when the bot's environment changes. An unscoped
 session can select local or any registered SSH, runner, or E2B environment in the
-same Dex instance. Bots that use the same runner share its connection, not their
-workspaces. They execute one operation at a time. SSH and runner
+same Dex instance, except a machine that runs as a person, which only the bot
+bound to it selects. Bots that use the same runner share its connection, not
+their workspaces. They execute one operation at a time. SSH and runner
 use the same `<base>/<bot-id>/workspace` layout under their respective base
 directories. These workspaces are not permission boundaries.
 

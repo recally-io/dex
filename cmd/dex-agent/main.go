@@ -1,4 +1,5 @@
-// dex-agent connects a dedicated execution host to Dex.
+// dex-agent connects an execution host to Dex, as the account that installs it or as a dedicated
+// account of a shared host.
 package main
 
 import (

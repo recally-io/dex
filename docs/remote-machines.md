@@ -7,8 +7,8 @@ Dex does not terminate TLS itself. Put it behind the same HTTPS front that serve
 nginx, Caddy, Tailscale Serve, or a cloud load balancer. The machine then trusts that front
 with the system CA bundle, and the proxy configuration is the ordinary one.
 
-Use a machine environment only with bots you trust. A bot can read the files and credentials
-that the service account can read.
+A machine runs work as an account of a person by default, so a bot on that machine can read the
+files and the credentials of that person. Use a machine environment only with bots you trust.
 
 ## Put Dex behind HTTPS
 
@@ -45,40 +45,83 @@ can read the traffic can read that token.
 1. In Dex, open **Settings → Execution environments** and add a **dex runner**.
 2. Select **Get install command**. Dex issues a one-time code and shows the command that uses
    the address of the page. The code expires after ten minutes and works once.
-3. Copy the command and run it in a terminal on the target machine. The account needs `sudo`.
+3. Copy the command and run it in a terminal on the target machine, as the account that will
+   use the machine. It needs no `sudo`.
 
 The command does four things:
 
 - It downloads `install-machine.sh` from Dex.
 - It downloads the archive for the machine's platform and the running Dex version. It checks
   the SHA-256 checksum. Development builds serve their own archives.
-- It creates the `dex-agent` system account, installs the binary and the systemd unit, and
-  trades the one-time code for the machine token. Dex stores only the SHA-256 digest of that
-  token, and the token goes to `/var/lib/dex-agent/device.json` with mode `0600`.
+- It installs the binary and the service of the account, then trades the one-time code for the
+  machine token. Dex stores only the SHA-256 digest of that token, and the token goes to
+  `device.json` in the state directory with mode `0600`.
 - It starts the service. The machine comes online in Dex within a few seconds.
 
 4. In Dex, select **Test**. Then select the environment in the settings of one bot, and send a
    request that runs `uname -sm`.
 
-The target needs curl and tar. Linux needs systemd and sha256sum or shasum; Debian 12 or later,
-Ubuntu 22.04 or later, and equivalent distributions work. macOS works without sudo.
+If the service does not start, run `dex-agent status` as that account, then
+`journalctl --user -u dex-agent -n 30` on Linux or read `~/Library/Logs/dex-agent.log` on macOS.
+`status` prints the mode of the machine, the account and home that it runs as, the state
+directory, the workspace root, and the `PATH` that its tools use.
 
-If the service does not start, run `sudo journalctl -u dex-agent -n 30` on the target.
+## The account that runs the work
+
+The machine runs as the account that ran the command, so its tools are the tools of that
+account: its `PATH`, the CLIs it installed, its logins for `gh`, `git`, and the cloud, and its
+project directories. Nothing needs a second install or a second login for that account.
+
+That access is also the cost. The work of a bot can read everything the account can read,
+including `~/.ssh`, cloud credentials, and browser profiles. Dex therefore keeps such a machine
+to the bot that it serves: another bot cannot select it, and a chat that names it is refused with
+the reason. A group chat, a shared target, or an untrusted workload does not gain a person's
+credentials because it happens to run where that person installed a machine.
+
+Use a dedicated account, or an SSH environment, when several bots or several people need the
+machine.
+
+## A dedicated account
+
+A host that serves several people installs a dedicated account instead. Add `--dedicated` to the
+command and run it as root, with `sudo`. The installer then keeps the machine in a system
+account without a login of a person, and any bot may use the machine.
+
+The two modes differ as follows:
+
+|                       | your account (default)            | dedicated account, `--dedicated` |
+| --------------------- | --------------------------------- | -------------------------------- |
+| Binary                | `~/.local/bin/dex-agent`          | `/usr/local/bin/dex-agent`       |
+| State and token       | `~/.local/state/dex-agent`        | `/var/lib/dex-agent`             |
+| Supervisor            | `dex-agent.service`, user manager | `dex-agent.service`, system      |
+| Log                   | `journalctl --user -u dex-agent`  | `journalctl -u dex-agent`        |
+| Which bots may use it | the bot bound to the machine      | any bot                          |
+| Needs root            | no                                | yes                              |
+
+Linux needs systemd with a user manager, plus curl, tar, and sha256sum or shasum. Debian 12 or
+later, Ubuntu 22.04 or later, and equivalent distributions work. The account keeps the service
+after it logs out, so the installer enables lingering; when it cannot, it says so and asks for
+`sudo loginctl enable-linger <account>`.
+
+The installer refuses to install as root without `--dedicated`, because root holds the tools of
+no person, and a service of root can change the whole host. The user service also keeps
+`NoNewPrivileges`, and the state directory stays at mode `0700`.
 
 ## macOS
 
-The same install command works on a Mac. A Mac is a single-user machine, so the agent runs in
-your login session instead of as a system service:
+The same install command works on a Mac, which installs a LaunchAgent in the login session of
+the account that runs the command:
 
-|                 | Linux                             | macOS                                     |
-| --------------- | --------------------------------- | ----------------------------------------- |
-| Binary          | `/usr/local/bin/dex-agent`        | `~/.local/bin/dex-agent`                  |
-| State and token | `/var/lib/dex-agent`              | `~/Library/Application Support/dex-agent` |
-| Supervisor      | `dex-agent.service` under systemd | `com.recally.dex-agent` under launchd     |
-| Log             | `journalctl -u dex-agent`         | `~/Library/Logs/dex-agent.log`            |
+|                 | value                                     |
+| --------------- | ----------------------------------------- |
+| Binary          | `~/.local/bin/dex-agent`                  |
+| State and token | `~/Library/Application Support/dex-agent` |
+| Supervisor      | `com.recally.dex-agent` under launchd     |
+| Log             | `~/Library/Logs/dex-agent.log`            |
 
-The command in the UI starts with `sudo`. On macOS you can drop it. With `sudo`, the installer
-uses the account that ran `sudo`, because the agent refuses to run as root.
+macOS keeps the same two modes. The command without `--dedicated` needs no `sudo`, and the
+machine runs as the account that ran it. With `--dedicated` and `sudo`, the installer uses the
+account that ran `sudo`, which the host sets up as one without a login of a person.
 
 ```sh
 launchctl print gui/$(id -u)/com.recally.dex-agent   # state of the agent
@@ -86,17 +129,46 @@ tail -f ~/Library/Logs/dex-agent.log                 # what it does
 ```
 
 The state directory holds `device.json`, which contains the Dex origin, the
-environment ID, and the machine token. Multiple bots can use the same machine.
-Each bot starts in `workspaces/<bot-id>/workspace` in the state directory. SSH
-and runner use the same `<base>/<bot-id>/workspace` layout. The base directory
-depends on the backend. All bots on a runner use the same account. Separate
-workspaces do not restrict which files a bot can read or change.
+environment ID, and the machine token. Each bot starts in
+`workspaces/<bot-id>/workspace` in the state directory. SSH and runner use the
+same `<base>/<bot-id>/workspace` layout. The base directory depends on the
+backend. All bots on a machine use the same account. Separate workspaces do not
+restrict which files a bot can read or change.
 
 To stop the agent without removing the machine:
 
 ```sh
 launchctl bootout gui/$(id -u)/com.recally.dex-agent
 ```
+
+## Move a machine between the two modes
+
+The installer does not replace an installed machine without saying so. On a host that already
+runs the dedicated account, the command without `--dedicated` stops, reports the existing
+machine, and prints the move.
+
+To move a dedicated install to your own account, revoke it in Dex first, then remove the system
+service and its state, and run the new command as your own account. Workspaces do not move
+between machines, so copy the work you need.
+
+```sh
+sudo systemctl disable --now dex-agent.service
+sudo rm -rf /var/lib/dex-agent /usr/local/bin/dex-agent /etc/systemd/system/dex-agent.service
+sudo systemctl daemon-reload
+```
+
+To move back, revoke the machine, remove the user service and its state, and run the command
+with `sudo … --dedicated`:
+
+```sh
+systemctl --user disable --now dex-agent.service
+rm ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent
+rm -rf ~/.local/state/dex-agent
+```
+
+A machine that the dedicated account serves behaves as it did before the move, and the default
+mode keeps its behavior after a rollback: the two installs share no file, so neither mode
+changes for the other.
 
 ## Replace, revoke, or remove a machine
 
@@ -107,9 +179,14 @@ directory. Workspaces do not move between machines.
 
 To uninstall, first revoke the machine and move the bot to another environment. Keep the state
 directory until you have copied the work you need: it holds the machine token and the workspace.
+The machine token is in `device.json`; remove the whole state directory after the revocation.
 
 ```sh
-# Linux
+# Linux, a machine of your own account
+systemctl --user disable --now dex-agent.service
+rm ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent
+
+# Linux, a dedicated account
 sudo systemctl disable --now dex-agent.service
 sudo rm /usr/local/bin/dex-agent /etc/systemd/system/dex-agent.service
 
@@ -118,10 +195,10 @@ launchctl bootout gui/$(id -u)/com.recally.dex-agent
 rm ~/Library/LaunchAgents/com.recally.dex-agent.plist ~/.local/bin/dex-agent
 ```
 
-For foreground use, run `dex-agent run -state /var/lib/dex-agent` as the `dex-agent` account on
-Linux, or `dex-agent run` as your own account on macOS. Without `-state`, the agent uses
-`$XDG_STATE_HOME/dex-agent`, `~/.local/state/dex-agent` on Linux, or
-`~/Library/Application Support/dex-agent` on macOS.
+For foreground use, run `dex-agent run` as your own account, or
+`sudo -u dex-agent /usr/local/bin/dex-agent run -state /var/lib/dex-agent` for a dedicated
+account. Without `-state`, the agent uses `$XDG_STATE_HOME/dex-agent`,
+`~/.local/state/dex-agent` on Linux, or `~/Library/Application Support/dex-agent` on macOS.
 
 ## Limits
 
