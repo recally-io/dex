@@ -49,15 +49,11 @@ func holdAgentMCP(t *testing.T, r *nativeTest) (<-chan struct{}, func()) {
 	}))
 	t.Cleanup(endpoint.Close)
 	t.Cleanup(releaseOnce)
-	config, err := json.Marshal(map[string]any{"mcpServers": map[string]any{"slow": map[string]any{"type": "http", "url": endpoint.URL}}})
+	config, err := json.Marshal(map[string]string{"type": "http", "url": endpoint.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(r.dir, "agents", "bot", ".agents", "mcp.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, config, 0600); err != nil {
+	if err := r.q.SetMCPServer(t.Context(), sqlc.SetMCPServerParams{AgentID: "bot", Name: "slow", Config: string(config)}); err != nil {
 		t.Fatal(err)
 	}
 	return entered, releaseOnce

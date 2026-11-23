@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json/v2"
 	"errors"
 	"os"
 	"path/filepath"
@@ -143,13 +142,8 @@ func TestUserReloadStartsOnlyOneReplacementMCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := map[string]any{"mcpServers": map[string]any{"notes": map[string]any{"command": binary, "args": []string{"-test.run=^TestUserReloadStartsOnlyOneReplacementMCP$"}, "env": map[string]string{"DEX_CORE_RELOAD_CHILD": "1", "MCP_STARTS": starts, "MCP_DIR": t.TempDir()}}}}
-	raw, err := json.Marshal(server)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(config.DataDir, ".agents", "mcp.json")
-	extensionFile(t, path, string(raw))
+	config.MCPServers = testMCPStore(t, config.DataDir)
+	testSetMCP(t, config.MCPServers, "", "notes", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserReloadStartsOnlyOneReplacementMCP$"}, Env: map[string]string{"DEX_CORE_RELOAD_CHILD": "1", "MCP_STARTS": starts, "MCP_DIR": t.TempDir()}})
 	agents := coreEngine(t, config)
 	alpha := coreCreate(t, agents, "alpha", coreOptions("echo"))
 	coreCreate(t, agents, "beta", coreOptions("echo"))
@@ -166,7 +160,7 @@ func TestUserReloadStartsOnlyOneReplacementMCP(t *testing.T) {
 		t.Fatalf("MCP starts after selected-agent reload: %q", data)
 	}
 	// Invalid target configuration must be rejected before any child starts or closes.
-	extensionFile(t, path, `{"mcpServers":false}`)
+	extensionFile(t, filepath.Join(config.DataDir, "agents", "alpha", ".agents", ".env"), `invalid line`)
 	if err := agents.Reload(t.Context(), "alpha"); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("invalid reload: %v", err)
 	}

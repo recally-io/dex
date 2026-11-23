@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -249,28 +248,30 @@ func TestUserGroupRejectsSymlinkedResourceAndExecutionRoots(t *testing.T) {
 
 func TestUserGroupDoesNotStartPrivateMCPOrCaptureOwnerEnvironment(t *testing.T) {
 	t.Parallel()
-	// Given real MCP configuration at each private level and a login environment boundary.
+	// Given a dex-level MCP declaration and an isolated group session.
 	data, home := t.TempDir(), t.TempDir()
 	var contacts, captures atomic.Int64
 	server := &mcptest.Server{Dir: t.TempDir(), Prefix: "private"}
 	boundary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { contacts.Add(1); server.ServeHTTP(w, r) }))
 	t.Cleanup(boundary.Close)
-	settings, _ := json.Marshal(map[string]any{"mcpServers": map[string]any{"private": map[string]any{"type": "http", "url": boundary.URL}}})
-	for _, level := range []string{filepath.Join(home, ".agents"), filepath.Join(data, ".agents"), filepath.Join(data, "agents", "alpha", ".agents")} {
-		extensionFile(t, filepath.Join(level, "mcp.json"), string(settings))
-	}
-	a := coreEngine(t, Config{DataDir: data, Home: home, LoginEnv: func(_ context.Context, base map[string]string) (map[string]string, error) {
+	store := testMCPStore(t, data)
+	testSetMCP(t, store, "", "private", serverConfig{Type: "http", URL: boundary.URL})
+	a := coreEngine(t, Config{DataDir: data, Home: home, MCPServers: store, LoginEnv: func(_ context.Context, base map[string]string) (map[string]string, error) {
 		captures.Add(1)
 		return base, nil
 	}})
-	options := coreOptions("echo")
+	options := coreOptions("direct")
 	options.Scope = "tg_123_-100_0"
 	ref := coreCreate(t, a, "alpha", options)
-	s, err := a.Submit(t.Context(), ref, Input{RequestID: "group", Content: "hello group", Options: options})
+	// When a group provider tries to bypass the tool list and change the declaration.
+	s, err := a.Submit(t.Context(), ref, Input{RequestID: "group", Content: `mcp_server_set {"name":"private","level":"dex","config":{"disabled":true}}`, Options: options})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = coreWait(t, s)
+	result := coreWait(t, s)
+	if !strings.Contains(result.Answer, "not available") && !strings.Contains(result.Answer, "not allowed") {
+		t.Fatalf("private MCP write was not rejected: %+v", result)
+	}
 	// Then initialization and status checks neither connect to private tools nor load their environment.
 	if stale := a.StaleExtensions(t.Context()); len(stale) != 0 {
 		t.Fatalf("group is tracked as private extension resources: %v", stale)

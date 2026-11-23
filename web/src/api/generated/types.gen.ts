@@ -1129,7 +1129,7 @@ export type Model = {
 
 export type Extensions = {
     /**
-     * The .agents directories, from wide to narrow. Each can hold skills/, mcp.json and .env. Two levels can have the same directory.
+     * The .agents directories, from wide to narrow. Each can hold skills/ and .env. Two levels can have the same directory.
      *
      */
     levels: Array<{
@@ -1197,7 +1197,7 @@ export type Skill = {
 };
 
 /**
- * An MCP server from an mcp.json file, without its command, URL, headers or environment, because they can hold credentials.
+ * An MCP server from control storage, without its command, URL, headers or environment, because they can hold credentials.
  *
  */
 export type McpServer = {

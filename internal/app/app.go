@@ -117,6 +117,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	q := sqlc.New(conn)
+	warnLegacyMCPFiles(cfg.DataDir)
 	err = q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{
 		ID: DefaultAgentID, Name: "Dex", CreatedAt: time.Now().UnixMilli(),
 	})
@@ -300,11 +301,12 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		execProvider = envs
 	}
 	native, err := engine.New(engine.Config{
-		DataDir:  cfg.DataDir,
-		Home:     cfg.Home,
-		BaseEnv:  cfg.ToolEnv,
-		LoginEnv: cfg.LoginEnv,
-		ExecEnv:  execProvider,
+		MCPServers: engine.NewMCPStore(conn),
+		DataDir:    cfg.DataDir,
+		Home:       cfg.Home,
+		BaseEnv:    cfg.ToolEnv,
+		LoginEnv:   cfg.LoginEnv,
+		ExecEnv:    execProvider,
 		SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) {
 			return chats.SessionEnvironment(ctx, ref)
 		},

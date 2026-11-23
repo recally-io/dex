@@ -234,10 +234,13 @@ GIF and WebP inline with their type, and every other file as
 responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG
 file does not run in the dex origin.
 
-An MCP server from an mcp.json file runs as the user, without a sandbox, and
-gets the explicit agent environment plus its own `env`. mcp.json holds headers and
-environment values as plain text; the API returns no command, URL, header or
-environment value. A server that fails shows only a category of the error,
+A stdio MCP server runs on the control host as the dex user, without a
+sandbox. It gets the explicit agent environment plus its own `env`.
+`control.sqlite` stores any plain MCP credentials in declarations as plain
+text, within the same trust boundary as provider keys. Use vault references
+in `env` and `headers`. The Extensions API returns only status and tool names.
+`mcp_server_get` hides plain environment and header values and URL queries.
+A server that fails shows only a category of the error,
 such as an HTTP status, in the API and in the dex log. To see the full
 error, run the server by hand.
 

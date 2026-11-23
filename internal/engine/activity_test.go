@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -94,11 +93,8 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 		mcp.ServeHTTP(w, r)
 	}))
 	defer func() { unblock(); server.Close() }()
-	raw, err := json.Marshal(map[string]any{"mcpServers": map[string]any{"secret-token": map[string]any{"type": "http", "url": server.URL}}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	extensionFile(t, filepath.Join(config.DataDir, "agents", "alpha", ".agents", "mcp.json"), string(raw))
+	config.MCPServers = testMCPStore(t, config.DataDir)
+	testSetMCP(t, config.MCPServers, "alpha", "secret-token", serverConfig{Type: "http", URL: server.URL})
 	extAgents := coreEngine(t, config)
 	extRef := coreCreate(t, extAgents, "alpha", coreOptions("tool"))
 	extSub, err := extAgents.Submit(t.Context(), extRef, Input{

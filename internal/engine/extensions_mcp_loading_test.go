@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json/v2"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,27 +52,22 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(data, "agents", "a", "workspace"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	servers := map[string]any{}
+	store := testMCPStore(t, data)
 	for _, role := range []string{"early", "later"} {
 		name := "a_early"
 		if role == "later" {
 			name = "b_later"
 		}
-		servers[name] = map[string]any{
-			"command": binary,
-			"args":    []string{"-test.run=^TestUserMCPDisconnectDuringLoadingKeepsFailedStatus$"},
+		testSetMCP(t, store, "", name, serverConfig{
+			Command: binary,
+			Args:    []string{"-test.run=^TestUserMCPDisconnectDuringLoadingKeepsFailedStatus$"},
 			// The transport waits for process exit; do not delay it under -race.
-			"env": map[string]string{"DEX_LOADING_MCP_CHILD": role, "MCP_DIR": dir, "GORACE": "atexit_sleep_ms=0"},
-		}
+			Env: map[string]string{"DEX_LOADING_MCP_CHILD": role, "MCP_DIR": dir, "GORACE": "atexit_sleep_ms=0"},
+		})
 	}
-	servers["c_disabled"] = map[string]any{"disabled": true}
-	servers["d_invalid"] = map[string]any{"command": filepath.Join(dir, "missing-command")}
-	encoded, err := json.Marshal(map[string]any{"mcpServers": servers})
-	if err != nil {
-		t.Fatal(err)
-	}
-	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), string(encoded))
-	agents := coreEngine(t, Config{DataDir: data, Home: home})
+	testSetMCP(t, store, "", "c_disabled", serverConfig{Disabled: true})
+	testSetMCP(t, store, "", "d_invalid", serverConfig{Command: filepath.Join(dir, "missing-command")})
+	agents := coreEngine(t, Config{DataDir: data, Home: home, MCPServers: store})
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 

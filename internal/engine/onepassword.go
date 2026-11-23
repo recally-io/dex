@@ -49,7 +49,7 @@ func findOp(env map[string]string) string {
 
 // secretsGuide tells the agent where secrets come from.
 func secretsGuide(op OnePassword, opPath string) string {
-	lines := []string{".env: values are in the tool environment. Use $KEY in bash and ${KEY} in mcp.json headers. Never print, echo, or write a value into chat, memory, or files. The user sets values on the Environment page and in the Tools tab."}
+	lines := []string{".env: values are in the tool environment. Use $KEY in bash and ${KEY} in MCP declaration headers. Never print, echo, or write a value into chat, memory, or files. The user sets values on the Environment page and in the Tools tab."}
 	if op.Mode != "" && opPath != "" {
 		lines = append(lines,
 			"1Password: the op CLI is signed in through the tool environment. Read a secret inside the command that needs it, for example curl -H \"Authorization: Bearer $(op read 'op://<vault>/<item>/<field>')\". An environment value that starts with op:// is a reference: use $(op read \"$KEY\"). For a stdio MCP server, run it through op run -- <command>, and put op:// references in its env. Never print a secret.")

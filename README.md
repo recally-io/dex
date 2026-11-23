@@ -99,13 +99,13 @@ For a dedicated Linux machine that cannot accept SSH, see
 
 ## Skills and MCP servers
 
-dex reads skills and MCP servers from files, for all agents and for one agent:
+dex reads skills from these directories:
 
-| Scope   | Skills                                              | MCP servers                           |
-| ------- | --------------------------------------------------- | ------------------------------------- |
-| Dex     | `~/.dex/.agents/skills/<name>/SKILL.md`             | `~/.dex/.agents/mcp.json`             |
-| Agent   | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` | `~/.dex/agents/<id>/.agents/mcp.json` |
-| Project | `<cwd>/.agents/skills/<name>/SKILL.md`              | none                                  |
+| Scope   | Skills                                              |
+| ------- | --------------------------------------------------- |
+| Dex     | `~/.dex/.agents/skills/<name>/SKILL.md`             |
+| Agent   | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` |
+| Project | `<cwd>/.agents/skills/<name>/SKILL.md`              |
 
 dex does not read `~/.agents`. A narrower entry replaces the wider entry with the same name; Project is the
 narrowest. Main and Chat sessions can select a project directory in the chat header.
@@ -124,33 +124,14 @@ name is the skill name. A skill can be in a nested directory, such as
 `skills/team/review/SKILL.md`. dex does not look inside a skill, hidden
 directories, or `node_modules`. When two skills in one level have the same
 name, the first in path order wins, and the bot's Tools tab shows a warning.
-The prompt lists each skill; the agent reads the file when a task needs it. `mcp.json` has an `mcpServers` object, as in Claude Code and
-Cursor:
+The prompt lists each skill. The agent reads the file when a task needs it.
+An edit to a skill applies to the next message.
 
-```json
-{
-  "mcpServers": {
-    "files": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
-    },
-    "github": {
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/",
-      "headers": { "Authorization": "Bearer <token>" }
-    },
-    "old": { "disabled": true }
-  }
-}
-```
-
-A stdio server gets `command`, `args`, `env`, and `cwd` (relative to the agent
-workspace). An HTTP server gets `url` and `headers`. OAuth is not supported.
-
-An edit to a skill applies to the next message. After you edit mcp.json,
-select Reload tools on the bot's Tools tab. Reload replaces only that
-agent's execution resources and MCP connections. An MCP server runs as your
-user without a sandbox, and mcp.json keeps its credentials as plain text.
+Ask the agent in an owner session to manage MCP declarations with the
+`mcp_server_*` tools. Use vault references for secrets. dex stores declarations
+in `control.sqlite` and shows their status in the bot's Extensions tab.
+Changes apply after the agent finishes its current work. dex ignores old
+`mcp.json` files. See [Extensions](docs/dev/extensions.md#mcp-declarations).
 
 ## Updates
 
