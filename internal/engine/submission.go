@@ -120,7 +120,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 		if ref.Scope == "" {
 			if input.Automation {
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil)}, Add: []*durable.Extension{routineCheckInstructions(), botReadExtension(ref.AgentID, a.config.Bots)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{routineCheckInstructions(), botReadExtension(ref.AgentID, a.config.Bots)}}})
 			}
 			// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
 			// so a child, an automation or a dream never gets the tool and needs no removal.
@@ -130,11 +130,11 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			case input.Main:
 				add := []*durable.Extension{frontDeskExtension()}
 				if asksUser {
-					add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), monitorExtension(ref.AgentID, a.config.Tasks.Monitors), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
+					add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
 				}
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
 			case asksUser:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), monitorExtension(ref.AgentID, a.config.Tasks.Monitors), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks)}}})
 			}
 			switch {
 			case input.Child:
@@ -142,7 +142,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				// before the upgrade loses the same extensions.
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines), outboxExtension(ref.AgentID, a.config.Tasks.Outbox)}, Add: []*durable.Extension{childExtension(), childOutboxExtension(ref.AgentID, a.config.Tasks.Outbox)}}})
 			case dream:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), monitorExtension(ref.AgentID, a.config.Tasks.Monitors, nil), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 			}
 		}
 		if err := a.groupAttachments(ref, input.Attachments); err != nil {

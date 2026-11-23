@@ -78,7 +78,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 		if err := r.service.FireDueMonitors(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		sourceReq = "monitor:" + info.ID + ":1"
+		sourceReq = "monitor:" + strings.TrimPrefix(info.ID, "schedule-") + ":1"
 		// Fire submission cannot call change=true bot tools.
 		if err := r.service.ToolBotCaller(t.Context(), engine.TaskContext{
 			AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
@@ -124,11 +124,11 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	if err := r.service.FireDueMonitors(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	row, err := r.q.GetMonitor(t.Context(), expInfo.ID)
+	row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(expInfo.ID, "schedule-"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.State != "expired" || row.FireSubmissionID.String != "monitor:"+expInfo.ID+":1" {
+	if row.State != "expired" || row.FireSubmissionID.String != "monitor:"+strings.TrimPrefix(expInfo.ID, "schedule-")+":1" {
 		t.Fatalf("expected expired monitor, got %+v", row)
 	}
 
@@ -141,7 +141,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	if err := r.service.Stop(t.Context(), "bot", conv); err != nil {
 		t.Fatal(err)
 	}
-	if row, err := r.q.GetMonitor(t.Context(), stopMonitor.ID); err != nil || row.State != "cancelled" {
+	if row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(stopMonitor.ID, "schedule-")); err != nil || row.State != "cancelled" {
 		t.Fatalf("expected cancelled after Stop, got %+v, err=%v", row, err)
 	}
 
@@ -153,7 +153,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	if err := r.service.Clear(t.Context(), "bot", conv, "reset-monitors", "web", ""); err != nil {
 		t.Fatal(err)
 	}
-	if row, err := r.q.GetMonitor(t.Context(), clearMonitor.ID); err != nil || row.State != "cancelled" {
+	if row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(clearMonitor.ID, "schedule-")); err != nil || row.State != "cancelled" {
 		t.Fatalf("expected cancelled after Clear, got %+v, err=%v", row, err)
 	}
 
@@ -168,7 +168,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	if err := db.ArchiveAgent(t.Context(), r.q, "bot", r.service.now()); err != nil {
 		t.Fatal(err)
 	}
-	if row, err := r.q.GetMonitor(t.Context(), archMonitor.ID); err != nil || row.State != "cancelled" {
+	if row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(archMonitor.ID, "schedule-")); err != nil || row.State != "cancelled" {
 		t.Fatalf("expected cancelled after ArchiveAgent, got %+v, err=%v", row, err)
 	}
 }

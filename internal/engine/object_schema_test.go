@@ -27,9 +27,9 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 	link := WorkTaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
 	extensions := []*durable.Extension{
 		checkExtension("bot", nil), telegramExtension("bot", nil), codingTools(nil, 0), routineExtension("bot", RoutineTools{}),
-		sessionExtension("bot", TaskTools{}), sessionReadExtension("bot", TaskTools{}), backgroundExtension("bot", BackgroundTools{}, nil),
+		sessionExtension("bot", TaskTools{}), sessionReadExtension("bot", TaskTools{}),
 		workLoopExtension(), artifactExtension("bot", nil, nil), (&memoryRepo{}).Extension("bot", nil), frontDeskExtension(),
-		outboxExtension("bot", OutboxTools{}), childOutboxExtension("bot", OutboxTools{}), monitorExtension("bot", MonitorTools{}),
+		outboxExtension("bot", OutboxTools{}), childOutboxExtension("bot", OutboxTools{}), monitorExtension("bot", MonitorTools{}, nil),
 		askUserExtension("bot", nil), botReadExtension("bot", BotTools{}), botManageExtension("bot", BotTools{}),
 		workTaskExtension("bot", WorkTaskTools{Links: []WorkTaskLinkTool{link}}), childExtension(), dreamMessageExtension("bot", nil),
 		routineCheckInstructions(), groupExtension(nil),

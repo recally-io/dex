@@ -25,7 +25,8 @@ const (
 
 func monitorInfo(row sqlc.Monitor) engine.MonitorInfo {
 	info := engine.MonitorInfo{
-		ID:         row.ID,
+		ID:         "schedule-" + row.ID,
+		Kind:       "schedule",
 		DueAt:      row.DueAt,
 		TimeZone:   row.TimeZone,
 		Prompt:     row.Prompt,
@@ -43,18 +44,18 @@ func monitorInfo(row sqlc.Monitor) engine.MonitorInfo {
 
 func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a engine.MonitorSetArgs) (engine.MonitorInfo, error) {
 	if strings.TrimSpace(a.Prompt) == "" {
-		return engine.MonitorInfo{}, errors.New("monitor_set requires non-empty prompt")
+		return engine.MonitorInfo{}, errors.New("monitor_set_schedule requires non-empty prompt")
 	}
 	if (a.At == "" && a.DelaySeconds <= 0) || (a.At != "" && a.DelaySeconds > 0) {
-		return engine.MonitorInfo{}, errors.New("monitor_set requires exactly one of at or delaySeconds")
+		return engine.MonitorInfo{}, errors.New("monitor_set_schedule requires exactly one of at or delaySeconds")
 	}
 	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	if !monitorConversation(conv) {
-		return engine.MonitorInfo{}, errors.New("monitors require an active Main or Chat session")
-	}
+
+	s.monitorMu.Lock()
+	defer s.monitorMu.Unlock()
 	if existing, err := s.q.GetMonitorByOperationKey(ctx, r.Key); err == nil {
 		return monitorInfo(existing), nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -92,6 +93,13 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 		return engine.MonitorInfo{}, errors.New("monitor allows 1–100 runs and an 8192-byte check command")
 	}
 	script := strings.TrimSpace(a.CheckCommand)
+	if a.Env != nil && script == "" {
+		return engine.MonitorInfo{}, errors.New("env requires checkCommand")
+	}
+	checkEnv, err := json.Marshal(a.Env)
+	if err != nil {
+		return engine.MonitorInfo{}, fmt.Errorf("encode monitor env: %w", err)
+	}
 	if (maxRuns == 1 && a.IntervalSeconds != 0) || (maxRuns > 1 && (a.IntervalSeconds < 60 || a.IntervalSeconds > 604800)) {
 		return engine.MonitorInfo{}, errors.New("set intervalSeconds (60–604800) only for multiple runs")
 	}
@@ -123,7 +131,7 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	if !monitorConversation(conv) || conv.ExecutionID.Int64 != r.ConversationID {
+	if !activeMonitorTarget(conv) || conv.ExecutionID.Int64 != r.ConversationID {
 		return engine.MonitorInfo{}, errMonitorTarget
 	}
 	source, err := q.GetSubmission(ctx, r.SourceRequestID)
@@ -133,30 +141,9 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 	if source.ConversationID != conv.ID || source.Reason.String == "stopped" || source.Reason.String == "withdrawn" {
 		return engine.MonitorInfo{}, errMonitorTarget
 	}
-	fromUser := source.Kind == "message" && userOrigin(source.Origin)
-	if (script != "" || maxRuns > 1) && (!fromUser || source.Status != "pending") {
-		return engine.MonitorInfo{}, errors.New("a script or repeating monitor needs a current user input")
-	}
-	rootRequestID := source.ID
-	var chainDepth int64
-	if !fromUser {
-		prior, perr := monitorForEvent(ctx, q, source.ID)
-		switch {
-		case perr == nil && prior.ConversationID == conv.ID:
-			rootRequestID, chainDepth = prior.RootRequestID, prior.ChainDepth+1
-		case perr != nil && !errors.Is(perr, sql.ErrNoRows):
-			return engine.MonitorInfo{}, perr
-		default:
-			chainDepth = 1
-			if latest, lerr := q.LatestUserSubmissionInConversation(ctx, conv.ID); lerr == nil {
-				rootRequestID = latest
-			} else if !errors.Is(lerr, sql.ErrNoRows) {
-				return engine.MonitorInfo{}, lerr
-			}
-		}
-	}
-	if chainDepth > maxMonitorChainDepth {
-		return engine.MonitorInfo{}, fmt.Errorf("follow-up monitor chain depth limit (%d) reached; wait for user input before scheduling another monitor", maxMonitorChainDepth)
+	rootRequestID, chainDepth, err := monitorChain(ctx, q, source)
+	if err != nil {
+		return engine.MonitorInfo{}, err
 	}
 	targetEnv, targetRev, err := monitorEnvironment(ctx, q, conv)
 	if err != nil {
@@ -166,12 +153,8 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 		return engine.MonitorInfo{}, err
 	}
 
-	activeCount, err := q.CountScheduledMonitors(ctx, conv.ID)
-	if err != nil {
+	if err := checkMonitorCapacity(ctx, q, conv.ID); err != nil {
 		return engine.MonitorInfo{}, err
-	}
-	if activeCount >= maxActiveMonitors {
-		return engine.MonitorInfo{}, fmt.Errorf("conversation already has %d scheduled monitors (limit %d)", activeCount, maxActiveMonitors)
 	}
 	id := uuid.NewV7().String()
 	nowMs := now.UnixMilli()
@@ -189,6 +172,7 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 		CreatedAt:                 nowMs,
 		UpdatedAt:                 nowMs,
 		CheckCommand:              script,
+		CheckEnv:                  string(checkEnv),
 		IntervalSeconds:           int64(a.IntervalSeconds),
 		MaxRuns:                   int64(maxRuns),
 		ExpiresAt:                 expiresAt,
@@ -228,6 +212,15 @@ func (s *Service) ToolMonitorList(ctx context.Context, r engine.TaskContext) ([]
 	for _, row := range rows {
 		out = append(out, monitorInfo(row))
 	}
+	if s.background != nil {
+		commands, err := s.background.List(ctx, conv.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range commands {
+			out = append(out, backgroundInfo(row))
+		}
+	}
 	return out, nil
 }
 
@@ -236,7 +229,15 @@ func (s *Service) ToolMonitorCancel(ctx context.Context, r engine.TaskContext, i
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	return s.cancelMonitor(ctx, conv.AgentID, conv.ID, id)
+	kind, rawID, _ := strings.Cut(id, "-")
+	switch kind {
+	case "command":
+		return s.cancelCommandMonitor(ctx, conv.ID, rawID)
+	case "schedule":
+		return s.cancelMonitor(ctx, conv.AgentID, conv.ID, rawID)
+	default:
+		return engine.MonitorInfo{}, ErrNotFound
+	}
 }
 
 // ListMonitors returns active and recent follow-up monitors of a chat.
@@ -345,8 +346,8 @@ func parseMonitorTimestamp(raw string, loc *time.Location) (time.Time, error) {
 
 var errMonitorTarget = errors.New("monitor target or authority is no longer valid")
 
-func monitorConversation(c sqlc.Conversation) bool {
-	return c.ExecutionScope == "" && c.ExecutionID.Valid && !c.ParentID.Valid && !c.ArchivedAt.Valid && c.AbortPending == 0 && Writable(c.ChannelKey)
+func activeMonitorTarget(c sqlc.Conversation) bool {
+	return c.ExecutionScope == "" && c.ExecutionID.Valid && !c.ArchivedAt.Valid && c.AbortPending == 0
 }
 
 func monitorEnvironment(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation) (string, int64, error) {
@@ -377,8 +378,11 @@ func monitorActor(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, 
 	if err != nil {
 		return err
 	}
-	if root.ConversationID != conv.ID || root.ChannelRevoked != 0 || root.Kind != "message" {
+	if root.ConversationID != conv.ID || root.ChannelRevoked != 0 {
 		return errMonitorTarget
+	}
+	if root.Kind != "message" || !userOrigin(root.Origin) {
+		return nil
 	}
 	switch peer, _, _ := strings.Cut(root.Origin, ":"); peer {
 	case "web":
@@ -423,7 +427,7 @@ func monitorTarget(ctx context.Context, q *sqlc.Queries, row sqlc.Monitor) (sqlc
 	if err != nil {
 		return c, err
 	}
-	if c.AgentID != row.AgentID || !monitorConversation(c) {
+	if c.AgentID != row.AgentID || !activeMonitorTarget(c) {
 		return c, errMonitorTarget
 	}
 	id, rev, err := monitorEnvironment(ctx, q, c)
@@ -435,6 +439,65 @@ func monitorTarget(ctx context.Context, q *sqlc.Queries, row sqlc.Monitor) (sqlc
 		return c, errMonitorTarget
 	}
 	return c, monitorActor(ctx, q, c, row.RootRequestID)
+}
+
+func checkMonitorCapacity(ctx context.Context, q *sqlc.Queries, conversationID int64) error {
+	scheduled, err := q.CountScheduledMonitors(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	commands, err := q.ListRunningBackgroundIDs(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	if scheduled+int64(len(commands)) >= maxActiveMonitors {
+		return fmt.Errorf("session already has %d active Monitors", maxActiveMonitors)
+	}
+	return nil
+}
+
+// Follow command receipts to the first non-command source. Schedule rows already record depth.
+func monitorChain(ctx context.Context, q *sqlc.Queries, source sqlc.Submission) (string, int64, error) {
+	var depth int64
+	for depth <= maxMonitorChainDepth {
+		if source.Kind == "message" && userOrigin(source.Origin) {
+			return source.ID, depth, nil
+		}
+		if source.Kind == "task_result" && source.SourceKey.String == source.ID {
+			if event, ok := strings.CutPrefix(source.ID, "background:"); ok {
+				id, _, _ := strings.Cut(event, ":")
+				command, err := q.GetBackgroundCommand(ctx, id)
+				if err != nil {
+					return "", 0, err
+				}
+				if command.ConversationID != source.ConversationID {
+					return "", 0, errMonitorTarget
+				}
+				source, err = q.GetSubmission(ctx, command.SourceRequestID)
+				if err != nil {
+					return "", 0, err
+				}
+				depth++
+				continue
+			}
+			prior, err := monitorForEvent(ctx, q, source.ID)
+			if err == nil && prior.ConversationID == source.ConversationID {
+				depth += prior.ChainDepth + 1
+				if depth <= maxMonitorChainDepth {
+					return prior.RootRequestID, depth, nil
+				}
+				break
+			}
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return "", 0, err
+			}
+		}
+		depth++
+		if depth <= maxMonitorChainDepth {
+			return source.ID, depth, nil
+		}
+	}
+	return "", 0, fmt.Errorf("follow-up monitor chain depth limit (%d) reached; wait for user input before setting another Monitor", maxMonitorChainDepth)
 }
 
 func monitorForEvent(ctx context.Context, q *sqlc.Queries, eventID string) (sqlc.Monitor, error) {

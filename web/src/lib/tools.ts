@@ -83,12 +83,12 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Stay silent", target: arg(tool, "reason") };
   }
 
-  if (tool.name === "background_wait") {
-    return { verb: "Wait background", target: JSON.stringify(tool.args) };
+  if (tool.name === "monitor_set_command") {
+    return { verb: "Start command monitor", target: arg(tool, "label") || arg(tool, "command") };
   }
 
-  if (tool.name === "monitor_set") {
-    return { verb: "Set monitor", target: arg(tool, "at") || arg(tool, "prompt") };
+  if (tool.name === "monitor_set_schedule") {
+    return { verb: "Schedule monitor", target: arg(tool, "at") || arg(tool, "prompt") };
   }
 
   if (tool.name === "monitor_list") {

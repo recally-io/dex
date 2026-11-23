@@ -32,8 +32,8 @@ func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
 		}
 	}
 	write("waiting")
-	// Given a synthetic local status file. The check cannot find it unless it uses the session cwd.
-	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 10, Prompt: "Read the fixture's status", CheckCommand: `cat ./reading || exit 2; if [ "$(cat ./reading)" = done ]; then exit 10; fi`})
+	// Given a synthetic status file, a relative project path, and a per-check environment value.
+	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 10, Prompt: "Read the fixture's status", CheckCommand: `test "$MONITOR_FIXTURE" = "review fixture" || exit 3; cat ./reading || exit 2; if [ "$(cat ./reading)" = done ]; then exit 10; fi`, Env: map[string]string{"MONITOR_FIXTURE": "review fixture"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
 		if got.Outcome != want.outcome {
 			t.Fatalf("check %d: got %+v, want outcome %q", got.Runs, got, want.outcome)
 		}
-		eventID := fmt.Sprintf("monitor:%s:%d", info.ID, got.Runs)
+		eventID := fmt.Sprintf("monitor:%s:%d", strings.TrimPrefix(info.ID, "schedule-"), got.Runs)
 		event, err := r.q.GetSubmission(t.Context(), eventID)
 		if !want.event && !errors.Is(err, sql.ErrNoRows) {
 			t.Fatalf("quiet check queued an event: %v", err)
@@ -148,7 +148,7 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 		}
 	})
 	waitFor(t, func() bool { _, err := os.Stat(filepath.Join(cwd, "started")); return err == nil })
-	got, err := r.service.CancelMonitor(t.Context(), "bot", id, info.ID)
+	got, err := r.service.CancelMonitor(t.Context(), "bot", id, strings.TrimPrefix(info.ID, "schedule-"))
 	if err != nil || got.State != "cancelled" {
 		t.Fatalf("cancel: %+v, %v", got, err)
 	}
@@ -164,7 +164,7 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("bounded check did not finish after fixture release")
 	}
-	if _, err := r.q.GetSubmission(t.Context(), fmt.Sprintf("monitor:%s:1", info.ID)); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := r.q.GetSubmission(t.Context(), fmt.Sprintf("monitor:%s:1", strings.TrimPrefix(info.ID, "schedule-"))); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("cancelled check enqueued a result: %v", err)
 	}
 }
@@ -235,7 +235,7 @@ func TestUserMonitorQueuesWithoutSteeringAndWithdrawsOnCancel(t *testing.T) {
 	if err := r.service.FireDueMonitors(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	event := "monitor:" + info.ID + ":1"
+	event := "monitor:" + strings.TrimPrefix(info.ID, "schedule-") + ":1"
 	if err := r.service.admit(t.Context(), taskInput(t, r, event)); err != nil {
 		t.Fatal(err)
 	}
@@ -249,8 +249,8 @@ func TestUserMonitorQueuesWithoutSteeringAndWithdrawsOnCancel(t *testing.T) {
 	if err := r.service.FireDueMonitors(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	second := "monitor:" + info.ID + ":2"
-	if _, err := r.service.CancelMonitor(t.Context(), "bot", id, info.ID); err != nil {
+	second := "monitor:" + strings.TrimPrefix(info.ID, "schedule-") + ":2"
+	if _, err := r.service.CancelMonitor(t.Context(), "bot", id, strings.TrimPrefix(info.ID, "schedule-")); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{event, second} {

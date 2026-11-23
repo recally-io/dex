@@ -33,19 +33,22 @@ not import the HTTP API package. Frontend `Item`, `Event`, `Retry`, and
 `History` types live in the engine and keep the HTTP JSON field names. JSON
 encoding occurs at the HTTP boundary.
 
-## Background commands
+## Command Monitors
 
-A session runs long work with `background_start`. dex tracks the command, so
-the session does not block on it or detach it. The tools live in the
-`background` extension, next to the `session_*` tools. The PiG `bash` tool does
-not change. [`internal/background`](../../internal/background/background.go)
-owns the processes. [`internal/chat/background.go`](../../internal/chat/background.go)
-binds a tool call to its session.
+A session uses `monitor_set_command` for long work. The call does not wait for
+completion. Use foreground `bash` for work that must finish in the current
+turn. Do not detach work with `&` or `nohup`. The `monitors` extension also
+provides [schedule Monitors](architecture.md#session-monitors).
+[`internal/background`](../../internal/background/background.go) owns the
+processes. [`internal/chat/background.go`](../../internal/chat/background.go)
+binds each command to its session.
 
-- `background_start(command, wake, timeout, cwd, label)` starts the command and
+- `monitor_set_command` starts the command and
   returns the ID and the output file path at once. It runs in a new session
   (`Setsid`), so the shell leads its own process group, with the environment of
-  the bash tool of the bot. A conversation that has a project uses it as the
+  the bash tool of the bot. `env` overrides variables for this command only.
+  Use non-secret values: dex stores tool arguments in the transcript. A
+  conversation that has a project uses it as the
   working directory. stdout and stderr go to
   `<data dir>/agents/<id>/background/<background id>.log`.
 - Wake `exit` (the default) sends one input when the command ends: the ID, the
@@ -62,8 +65,10 @@ binds a tool call to its session.
   timeout replaces the default; the 30-minute maximum applies only to `lines`.
   Previously, an `exit` command without a timeout could run indefinitely.
   New commands that need more than 30 minutes must set a longer timeout.
-- `background_list` shows the commands of the session. `background_stop` sends
-  SIGTERM to the process group and SIGKILL after 5 s.
+- Wake `none` sends no wake-up. Its default timeout is 1800 seconds.
+- `monitor_list` shows both kinds of Monitor in the calling session.
+  `monitor_cancel` sends SIGTERM to a running command's process group and
+  SIGKILL after 5 seconds. Cancellation sends no wake-up.
 - A command owns its whole process group. When the shell leader exits, dex ends
   the rest of the group (SIGTERM, then SIGKILL after 5 s) before it stores the
   final state. Once that sweep starts, dex sends no other signal to the group, so
@@ -81,7 +86,7 @@ reason. The state is `starting`, `running`, `exited`, `stopped`, `timed_out` or
 `unknown`. The reason is `stop`, `shutdown`, `timeout`, `output_limit`,
 `rate_limit` or `start_failed`.
 
-The tool call key is unique. `background_start` stores the row in state
+The tool call key is unique. `monitor_set_command` stores the row in state
 `starting` before it starts the process, then stores the PID and `running`. A
 replay that finds any row returns it and never starts a process, so a crash
 between the process start and the row write cannot run a command twice. After
@@ -97,12 +102,10 @@ used.
 
 A wake-up is a durable input of kind `task_result` in the owning session, as
 the result of a child session is. Its ID is `background:<id>:<n>` or
-`background:<id>:end`, so a replay stores it once. It keeps the origin and the
-parent link of the input that started the command. A reply reaches the same
-channel, and a child session still reports to its parent. A wake-up is not
-a person's input: tools that need a person (bot changes) reject it. An input
-that arrives while a turn runs queues like other input. An archived bot gets no
-wake-up.
+`background:<id>:end`, so a replay stores it once. It keeps the origin of the
+input that started the command. A child command wakes only that child. Tools
+that need a person's input reject command wake-ups. An input that arrives
+while a turn runs queues like other input. An archived bot gets no wake-up.
 
 Stop, restart and limits:
 

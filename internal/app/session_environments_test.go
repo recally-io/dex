@@ -355,7 +355,7 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 	pinned := d.newSession(t).ID
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", pinned), map[string]any{"environmentId": "local"}, nil)
 
-	callSessionTool(t, d, chatID, "background_stop", map[string]any{"id": bg.ID})
+	callSessionTool(t, d, chatID, "monitor_cancel", map[string]any{"id": bg.ID})
 
 	// When PiG has accepted input that has not started, then the change fails too.
 	d.setModel(t, "bash")
