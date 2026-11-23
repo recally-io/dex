@@ -3,6 +3,7 @@ package app_test
 import (
 	"encoding/json/v2"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"path/filepath"
@@ -136,8 +137,13 @@ func TestUserSeesOneWarningForAnIgnoredLegacyMCPFile(t *testing.T) {
 	writeFile(t, legacy, `{"mcpServers":{"legacy":{"command":"unused"}}}`)
 	logBuf := sysops.NewLogBuffer(100)
 	previous := slog.Default()
+	output, flags := log.Writer(), log.Flags()
 	slog.SetDefault(slog.New(sysops.TeeHandler(slog.DiscardHandler, logBuf)))
-	t.Cleanup(func() { slog.SetDefault(previous) })
+	t.Cleanup(func() {
+		slog.SetDefault(previous)
+		log.SetOutput(output)
+		log.SetFlags(flags)
+	})
 	d := startDexHome(t, app.Config{DataDir: data, Logs: logBuf}, t.TempDir())
 
 	// Then the declaration has no effect, and repeated inspections do not produce more warnings.
