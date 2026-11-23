@@ -84,11 +84,6 @@ The chat activity panel lists the session's Monitors and Outbox entries. It
 shows the Monitor mode, attempt limit, and latest outcome. The user can cancel
 an active Monitor here. Monitor creation uses the session tool, not this panel.
 
-The chat composer offers Feedback, even without a model, and a `/feedback`
-slash command when the composer is enabled. Both open an empty form. The
-preview stays in the dialog. It sends no request and closing it discards it. The link opens the public Dex repository without
-prefilling any text.
-
 The About page (`/settings/about`) manages server operations through `/api/system/*`: switching the persisted update channel (`stable` or `prerelease`), checking releases, running an in-place upgrade with automatic `control.sqlite` backup, restarting the server gracefully (with wait-until-idle, cancel, and force-now controls), taking manual hot backups, and reading recent entries from the in-memory log ring buffer. When a restart or upgrade begins, it polls `GET /api/system/status`. A change in `startedAt` confirms the restart and refreshes health data.
 
 Execution Environments (`/settings/environment`) shows each `dex runner`'s live online state, platform, reported version, and version alignment status against `GET /api/health`'s server version (`Matches server`, auto-update on reconnect, or why manual update is needed).
