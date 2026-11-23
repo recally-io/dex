@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -125,7 +124,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	if err := migrateAgentInstructions(ctx, conn, cfg); err != nil {
-		return nil, errors.Join(fmt.Errorf("import legacy bot instructions: %w", err), conn.Close())
+		slog.Warn("import legacy bot instructions", "err", err)
 	}
 	jobs := scheduler.New()
 

@@ -11,7 +11,10 @@ The engine reads `AGENTS.md` only from the conversation's cwd in its execution
 environment and adds it after the bot's saved instructions at each admission.
 On upgrade, dex imports old dex-level and agent-level files, including their
 imports, into the affected bots' saved instructions. It renames the old files
-with the `.migrated` suffix. New files at those levels have no effect.
+with the `.migrated` suffix. Startup skips a source if its backup exists. If a
+rename fails, the next start can import the same source again. Without a backup,
+startup treats any file at a legacy path as a source to import. The engine
+never loads files from those levels directly.
 Skills have a third, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
 execution environment, so it follows the conversation. Chat sessions store

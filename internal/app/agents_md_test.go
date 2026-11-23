@@ -12,6 +12,28 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
+func TestUserCanStartDexWithAnExistingLegacyInstructionsBackup(t *testing.T) {
+	t.Parallel()
+	data := t.TempDir()
+	dexFile := filepath.Join(data, ".agents", "AGENTS.md")
+	writeFile(t, dexFile, "SKIP-THIS-TEXT")
+	writeFile(t, dexFile+".migrated", "KEEP-THIS-BACKUP")
+	writeFile(t, filepath.Join(data, "agents", "default", ".agents", "AGENTS.md"), "IMPORT-THIS-TEXT")
+
+	d := startDex(t, data, "")
+	var bot struct {
+		Instructions string `json:"instructions"`
+	}
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	if !strings.Contains(bot.Instructions, "IMPORT-THIS-TEXT") || strings.Contains(bot.Instructions, "SKIP-THIS-TEXT") {
+		t.Fatalf("default bot instructions: %q", bot.Instructions)
+	}
+	backup, err := os.ReadFile(dexFile + ".migrated")
+	if err != nil || string(backup) != "KEEP-THIS-BACKUP" {
+		t.Fatalf("backup: %q, error: %v", backup, err)
+	}
+}
+
 func TestUserKeepsLegacyBotInstructionsAfterUpgrade(t *testing.T) {
 	t.Parallel()
 	// Given two bots, with shared rules and a symlink to private rules for one bot.

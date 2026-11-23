@@ -1,12 +1,3 @@
--- name: GetAgentInstructionImport :one
-SELECT pending_files FROM agent_instruction_import WHERE id = 1;
-
--- name: RecordAgentInstructionImport :exec
-INSERT INTO agent_instruction_import (id, pending_files) VALUES (1, ?);
-
--- name: FinishAgentInstructionImport :exec
-UPDATE agent_instruction_import SET pending_files = '[]' WHERE id = 1;
-
 -- name: ListAgentIDsForInstructionImport :many
 SELECT id FROM agents ORDER BY id;
 

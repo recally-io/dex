@@ -3,10 +3,9 @@ package app
 import (
 	"context"
 	"database/sql"
-	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -17,83 +16,59 @@ import (
 const migratedSuffix = ".migrated"
 
 func migrateAgentInstructions(ctx context.Context, conn *sql.DB, cfg Config) error {
-	q := sqlc.New(conn)
-	pending, err := q.GetAgentInstructionImport(ctx)
-	var paths []string
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		paths, err = importAgentInstructions(ctx, conn, cfg)
-	case err == nil:
-		err = json.Unmarshal([]byte(pending), &paths)
-	}
-	if err != nil {
-		return err
-	}
-	if len(paths) == 0 {
-		return nil
-	}
-	// The import committed before any rename. A restart only finishes the renames.
-	for _, path := range paths {
-		backup := path + migratedSuffix
-		if _, err := os.Lstat(backup); err == nil {
-			continue
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-		if err := os.Rename(path, backup); err != nil {
-			return err
-		}
-	}
-	return q.FinishAgentInstructionImport(ctx)
-}
-
-func importAgentInstructions(ctx context.Context, conn *sql.DB, cfg Config) ([]string, error) {
 	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := sqlc.New(tx)
 	ids, err := q.ListAgentIDsForInstructionImport(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	data, err := filepath.Abs(cfg.DataDir)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	paths := []string{}
 	contents := map[string]string{}
-	read := func(root string) (path, text string, err error) {
-		// Resolve the directory, but rename the file's link rather than its target.
-		dir, err := filepath.EvalSymlinks(filepath.Join(root, ".agents"))
-		if errors.Is(err, fs.ErrNotExist) {
-			return "", "", nil
+	read := func(root string) (path, text string) {
+		source := filepath.Join(root, ".agents", "AGENTS.md")
+		if _, err := os.Lstat(source); errors.Is(err, fs.ErrNotExist) {
+			return "", ""
+		} else if err != nil {
+			slog.Warn("skip legacy bot instructions", "path", source, "err", err)
+			return "", ""
 		}
+		// Resolve the directory, but rename the file's link rather than its target.
+		dir, err := filepath.EvalSymlinks(filepath.Dir(source))
 		if err != nil {
-			return "", "", err
+			slog.Warn("skip legacy bot instructions", "path", source, "err", err)
+			return "", ""
 		}
 		path = filepath.Join(dir, "AGENTS.md")
 		if text, ok := contents[path]; ok {
-			return path, text, nil
+			return path, text
+		}
+		backup := path + migratedSuffix
+		if _, err := os.Lstat(backup); err == nil {
+			slog.Warn("skip legacy bot instructions: backup already exists", "path", path, "backup", backup)
+			return "", ""
+		} else if !errors.Is(err, fs.ErrNotExist) {
+			slog.Warn("skip legacy bot instructions", "path", path, "err", err)
+			return "", ""
 		}
 		text, found, err := engine.ReadLegacyAgentsMD(ctx, path, cfg.Home)
-		if err != nil || !found {
-			return "", "", err
+		if err != nil {
+			slog.Warn("skip legacy bot instructions", "path", path, "err", err)
+			return "", ""
 		}
-		if _, err := os.Lstat(path + migratedSuffix); err == nil {
-			return "", "", fmt.Errorf("backup already exists: %s", path+migratedSuffix)
-		} else if !errors.Is(err, fs.ErrNotExist) {
-			return "", "", err
+		if !found {
+			return "", ""
 		}
-		paths = append(paths, path)
 		contents[path] = text
-		return path, text, nil
+		return path, text
 	}
-	dexPath, shared, err := read(data)
-	if err != nil {
-		return nil, err
-	}
+	dexPath, shared := read(data)
 	section := func(root, text string) string {
 		return "## Imported from " + filepath.Join(root, ".agents", "AGENTS.md") + "\n\n" + text
 	}
@@ -103,10 +78,7 @@ func importAgentInstructions(ctx context.Context, conn *sql.DB, cfg Config) ([]s
 	}
 	for _, id := range ids {
 		root := filepath.Join(data, "agents", id)
-		path, own, err := read(root)
-		if err != nil {
-			return nil, err
-		}
+		path, own := read(root)
 		text := common
 		if own != "" && path != dexPath {
 			if text != "" {
@@ -116,16 +88,18 @@ func importAgentInstructions(ctx context.Context, conn *sql.DB, cfg Config) ([]s
 		}
 		if text != "" {
 			if err := q.AppendAgentInstructions(ctx, sqlc.AppendAgentInstructionsParams{ID: id, Text: text}); err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
-	pending, err := json.Marshal(paths)
-	if err != nil {
-		return nil, err
+	if err := tx.Commit(); err != nil {
+		return err
 	}
-	if err := q.RecordAgentInstructionImport(ctx, string(pending)); err != nil {
-		return nil, err
+	// A failed rename can cause the text to be imported again on the next start.
+	for path := range contents {
+		if err := os.Rename(path, path+migratedSuffix); err != nil {
+			slog.Warn("rename imported bot instructions", "path", path, "err", err)
+		}
 	}
-	return paths, tx.Commit()
+	return nil
 }

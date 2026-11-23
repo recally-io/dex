@@ -26,26 +26,6 @@ func (q *Queries) AppendAgentInstructions(ctx context.Context, arg AppendAgentIn
 	return err
 }
 
-const finishAgentInstructionImport = `-- name: FinishAgentInstructionImport :exec
-UPDATE agent_instruction_import SET pending_files = '[]' WHERE id = 1
-`
-
-func (q *Queries) FinishAgentInstructionImport(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, finishAgentInstructionImport)
-	return err
-}
-
-const getAgentInstructionImport = `-- name: GetAgentInstructionImport :one
-SELECT pending_files FROM agent_instruction_import WHERE id = 1
-`
-
-func (q *Queries) GetAgentInstructionImport(ctx context.Context) (string, error) {
-	row := q.db.QueryRowContext(ctx, getAgentInstructionImport)
-	var pending_files string
-	err := row.Scan(&pending_files)
-	return pending_files, err
-}
-
 const listAgentIDsForInstructionImport = `-- name: ListAgentIDsForInstructionImport :many
 SELECT id FROM agents ORDER BY id
 `
@@ -71,13 +51,4 @@ func (q *Queries) ListAgentIDsForInstructionImport(ctx context.Context) ([]strin
 		return nil, err
 	}
 	return items, nil
-}
-
-const recordAgentInstructionImport = `-- name: RecordAgentInstructionImport :exec
-INSERT INTO agent_instruction_import (id, pending_files) VALUES (1, ?)
-`
-
-func (q *Queries) RecordAgentInstructionImport(ctx context.Context, pendingFiles string) error {
-	_, err := q.db.ExecContext(ctx, recordAgentInstructionImport, pendingFiles)
-	return err
 }
