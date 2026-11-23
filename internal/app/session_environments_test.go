@@ -379,6 +379,7 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 		return err == nil && n == 0, n
 	})
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+	d.applied(t)
 	assertProject(t, d, chatID, "")
 	// Then a routine that follows the bot drops its project, and a routine on local keeps it.
 	for _, want := range []routineEnvironment{{ID: following.ID}, {ID: pinnedRoutine.ID, EnvironmentID: "local", Cwd: project}} {

@@ -327,7 +327,7 @@ func (a *agentExtensions) wrapSkillFileTool(base *durable.ToolRegistration, name
 		if err != nil || read || isToolError(result) {
 			return result, err
 		}
-		return syncSkillResult(ctx, api, scope, dir, rel)
+		return a.syncSkillResult(ctx, api, scope, dir, rel)
 	}
 	return t
 }
@@ -344,7 +344,10 @@ func isToolError(result durable.ToolExecutionResult) bool {
 	return result.IsError != nil && *result.IsError
 }
 
-func syncSkillResult(ctx context.Context, api durable.ToolExecutionApi, scope, dir, rel string) (durable.ToolExecutionResult, error) {
+func (a *agentExtensions) syncSkillResult(ctx context.Context, api durable.ToolExecutionApi, scope, dir, rel string) (durable.ToolExecutionResult, error) {
+	if a.onSkillChange != nil {
+		a.onSkillChange(scope)
+	}
 	bound, ok := api.Env().(*sessionPromptEnv)
 	if !ok {
 		return durable.ToolExecutionResult{}, errors.New("skill changed on the control host, but the session environment is unavailable")

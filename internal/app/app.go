@@ -373,7 +373,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
 	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
-		_ = native.CloseAgent(changeCtx, agentID)
+		native.MarkStale(agentID, "bot environment settings")
 		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
 			slog.Warn("release the earlier execution environment of a bot", "agent", agentID, "err", err)
 		}
@@ -454,19 +454,41 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	a.sysops = sys
 
-	// Input that waited for an offline machine runs as soon as the machine connects again.
-	envs.Runners().OnOnline(func(string) { chats.RetryNow() })
+	forEnvironmentBots := func(ctx context.Context, id string, fn func(string)) {
+		bots, err := q.ListActiveAgentsByEnvironment(ctx, id)
+		if err != nil {
+			if ctx.Err() == nil {
+				slog.Warn("find bots that use the environment", "environment", id, "err", err)
+			}
+			return
+		}
+		for _, bot := range bots {
+			fn(bot.ID)
+		}
+	}
+	// Restore the default even when no input is waiting for the machine.
+	envs.Runners().OnOnline(func(id string) {
+		forEnvironmentBots(runCtx, id, func(agentID string) { native.MarkRestorable(runCtx, agentID) })
+		chats.RetryNow()
+	})
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
 		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
-		Engine:      native,
-		Envs:        envs,
+		Engine: native,
+		Envs:   envs,
+		EnvironmentChanged: func(ctx context.Context, id string) {
+			forEnvironmentBots(context.WithoutCancel(ctx), id, func(agentID string) {
+				native.MarkStale(agentID, "execution environment settings")
+			})
+			native.MarkEnvironmentChanged(id)
+		},
 		Runners:     envs.Runners(),
 		System:      sys,
 		ReleaseBase: cfg.ReleaseBase,
 		Chats:       chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
+	a.wg.Go(func() { runReloads(runCtx, native, chats) })
 	a.wg.Go(func() {
 		select {
 		case <-discovery.Done():
@@ -487,10 +509,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			slog.Error("fire due followup monitors", "err", err)
 		}
 	}); err != nil {
-		return nil, err
-	}
-	// Polling keeps one mechanism for page saves and hand edits; use file events if 3 s is slow.
-	if err := jobs.Every("extensions", 3*time.Second, reloadStale(native, chats)); err != nil {
 		return nil, err
 	}
 	for _, p := range plugins {
@@ -549,27 +567,30 @@ func ToolEnv(environ []string) map[string]string {
 	return env
 }
 
-// reloadStale reloads each open agent whose extension files, shell rc files, 1Password
-// settings, or execution environment changed. Reload needs only that agent idle, so a busy
-// agent waits for a later run. An invalid configuration is not tried again until its files change.
-func reloadStale(native *engine.Agents, chats *chat.Service) func(context.Context) {
-	refused := map[string]string{} // agent ID -> stamp that failed validation
-	return func(ctx context.Context) {
-		for id, stamp := range native.StaleExtensions(ctx) {
-			if refused[id] == stamp {
-				continue
-			}
-			err := chats.ReloadExtensions(ctx, id)
-			switch {
-			case err == nil:
-				delete(refused, id)
-				slog.Info("reloaded extensions after a change", "agent", id)
-			case errors.Is(err, engine.ErrInvalidInput):
-				refused[id] = stamp
-				slog.Warn("extension change not applied; fix the configuration", "agent", id)
-			case errors.Is(err, engine.ErrBusy):
-				slog.Debug("reload waits for the agent to become idle", "agent", id)
-			}
+// runReloads waits for a change or settlement. The one-shot delay groups writes
+// and lets the Harness finish its turn before the idle check.
+func runReloads(ctx context.Context, native *engine.Agents, chats *chat.Service) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-native.ReloadWake():
 		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second):
+		}
+		// One signal can represent multiple agents. A concurrent signal can be
+		// consumed here because the snapshot below includes its dirty agents.
+		select {
+		case <-native.ReloadWake():
+		default:
+		}
+		var batch sync.WaitGroup
+		for _, id := range native.ReadyReloads() {
+			batch.Go(func() { _ = chats.ReloadDirtyExtensions(ctx, id) })
+		}
+		batch.Wait()
 	}
 }

@@ -30,6 +30,9 @@ func (a *Agents) VaultEdit(agentID, scope, name string, value *string) error {
 	if errors.Is(err, vault.ErrInvalid) {
 		return errors.Join(ErrInvalidInput, err)
 	}
+	if err == nil {
+		a.markExtensionChange(agentID, scope, "vault write")
+	}
 	return err
 }
 

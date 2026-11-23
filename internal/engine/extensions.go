@@ -71,6 +71,7 @@ type agentExtensions struct {
 	env             *toolEnv
 	execHandle      execenv.Handle
 	stores          map[string]*skillStore
+	onSkillChange   func(scope string)
 	skillsMu        sync.Mutex
 	skillStamp      string
 	skillConnection any
@@ -682,6 +683,7 @@ func extensionGuide(levels []ExtensionLevel, secrets string) string {
 		"",
 		"The tool environment starts from the user's login shell environment.",
 		secrets,
-		"dex reloads vault, shell rc, and 1Password changes when the affected bot is idle.")
+		"Skill and MCP tool writes and vault, 1Password, and execution environment settings changes request a reload. Each affected bot reloads when it is idle.",
+		"Manual skill file and shell rc edits do not request a reload. They apply when dex restarts or another change triggers a reload. A user can also request a reload from the bot's Tools page.")
 	return strings.Join(lines, "\n")
 }

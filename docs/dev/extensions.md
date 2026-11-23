@@ -98,8 +98,16 @@ start from the control host's login shell environment and configured
 1Password credentials. Tools on a remote target use that target's environment
 and the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
-A scheduler job reloads the affected open agent when it is idle after an
-MCP, vault, shell rc, or 1Password change.
+Skill and MCP tool writes, vault writes, and 1Password settings changes
+request a reload. Environment settings changes request a reload for agents
+that use the environment. A machine reconnect requests a reload for agents
+that could not load that machine as their default. Each open agent reloads
+when it is idle. If validation fails, dex keeps the current resources and
+does not try the same configuration again automatically.
+
+Manual skill file and shell rc edits do not request a reload. They apply at
+the next reload from another change, after an explicit reload, or when dex
+restarts. dex does not poll for changes or watch these files.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
 servers before it resumes the agent Harness. It installs prompt sections for

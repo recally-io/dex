@@ -43,9 +43,10 @@ type environments struct {
 	agentID  string
 	provider execenv.Provider
 	// selected returns the explicit environment of a session, or empty when it follows the agent.
-	selected func(ctx context.Context, ref Ref) (string, error)
-	files    *agentExtensions
-	loaded   *loadedExtensions
+	selected   func(ctx context.Context, ref Ref) (string, error)
+	onRestored func()
+	files      *agentExtensions
+	loaded     *loadedExtensions
 
 	mu         sync.Mutex
 	own        execenv.Handle
@@ -112,6 +113,9 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 		files := e.files.forHandle(h)
 		files.trySyncSkills(ctx, nil, true)
 		e.own, e.ownFiles, e.ownErr = h, files, nil
+		if e.files.defaultUnavailable && e.onRestored != nil {
+			e.onRestored()
+		}
 		stamp = h.Stamp()
 	}
 	useOwn := e.own != nil && stamp == e.own.Stamp()
@@ -192,6 +196,13 @@ func (e *environments) status(ctx context.Context, id string) string {
 		return p.Status(ctx, e.agentID, id)
 	}
 	return "available"
+}
+
+func (e *environments) hasLease(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	_, ok := e.leases[id]
+	return ok
 }
 
 // stale reports whether the configuration of an open explicit lease changed or became unavailable.

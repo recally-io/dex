@@ -53,6 +53,8 @@ type Config struct {
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
 	Envs   *execenv.Manager
+	// EnvironmentChanged requests a reload after a saved environment change.
+	EnvironmentChanged func(context.Context, string)
 	// Runners enrolls remote machines and serves their sessions.
 	Runners *execenv.Runners
 	// System owns server upgrades, restarts, backups, and recent logs.

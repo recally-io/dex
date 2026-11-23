@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
@@ -36,12 +37,17 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 	// When the agent adds an HTTP server, wait for the automatic reload without a new turn.
 	chat.send(`mcp_server_set {"name":"files","level":"dex","config":{"type":"http","url":"` + url + `"}}`)
 	chat.watch().until(t, "write result", answeredWith("tool: "))
+	settled := time.Now()
 	var apiServers []serverInfo
 	eventually(t, "new MCP connection", func() (bool, any) {
 		info := d.extensions(t)
 		apiServers = info.Servers
 		return info.server("files").State == "connected" && slices.Contains(info.server("files").Tools, "append"), info.Servers
 	})
+
+	if elapsed := time.Since(settled); elapsed >= 2800*time.Millisecond {
+		t.Fatalf("new MCP tools became available too late after settlement: %s", elapsed)
+	}
 
 	// Then the list tool and the Extensions API (also used by the web) agree, and the runner session can call the new tool.
 	chat.send(`mcp_server_list {}`)
