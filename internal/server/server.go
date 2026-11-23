@@ -16,6 +16,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 	"uuid"
@@ -88,7 +89,7 @@ var errReadOnly = errors.New("this session is read-only; send messages in main, 
 // cannot send messages or change settings, and cannot sign in.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
-	h := &handler{cfg}
+	h := &handler{Config: cfg}
 	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			if r.Context().Err() != nil {
@@ -207,7 +208,10 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	}
 }
 
-type handler struct{ Config }
+type handler struct {
+	Config
+	runnerReleaseMu sync.Mutex
+}
 
 type agentKey struct{}
 

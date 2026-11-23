@@ -123,12 +123,15 @@ rm -f ~/Library/LaunchAgents/com.recally.dex-agent.plist ~/.local/bin/dex-agent 
 When Dex upgrades and restarts, connected `dex-agent` runners reconnect and read `X-Dex-Version`
 from the server handshake. When the server reports a different release tag and the runner binary
 directory is writable, `dex-agent` downloads the matching archive and `checksums.txt` from the Dex
-server (`/machine/{id}/release/*`), verifies the SHA-256 checksum and `--version` output, retains
-`dex-agent.previous`, replaces itself atomically, and re-execs in place.
+server (`/machine/{id}/release/*`) and verifies the SHA-256 checksum and `version` output.
+It retains `dex-agent.previous` before it replaces itself and re-execs in place. If re-exec
+fails, it restores the previous binary.
 
 Pass `-no-auto-update` to `dex-agent run` to opt out of automatic version alignment. Linux hosts
-installed under the legacy `/usr/local/bin/dex-agent` path show as not writable in Dex until
-reinstalled or moved to `/var/lib/dex-agent/bin/dex-agent`.
+installed under the legacy `/usr/local/bin/dex-agent` path show as not writable in Dex.
+To migrate, revoke the machine in Dex, stop `dex-agent.service`, and remove
+`/var/lib/dex-agent/device.json`. Run a fresh install command to enroll again.
+The installer keeps the workspace and puts the binary in `/var/lib/dex-agent/bin/dex-agent`.
 
 For foreground use, run `dex-agent run -state /var/lib/dex-agent` as the `dex-agent` account on
 Linux, or `dex-agent run` as your own account on macOS. Without `-state`, the agent uses

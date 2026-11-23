@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -45,6 +46,11 @@ func buildAgentArchive(t *testing.T, tag string) []byte {
 }
 
 func TestUserRunnerSelfUpdatesToMatchServerVersion(t *testing.T) {
+	const token = "machine-token-0123456789abcdefghijklmnopqrstuvwxyz"
+	if origin := os.Getenv("DEX_TEST_UPDATE_ORIGIN"); origin != "" {
+		cfg := device{Origin: origin, Environment: "env-1", Token: token}
+		t.Fatalf("self-update returned instead of re-execing: %v", selfUpdateTo(t.Context(), nil, cfg, os.Getenv("DEX_TEST_UPDATE_BINARY"), "v2.0.0"))
+	}
 	// Given a writable dex-agent binary on v1.0.0 and a Dex server serving v2.0.0 assets under machine auth.
 	dir := t.TempDir()
 	exe := filepath.Join(dir, "dex-agent")
@@ -55,7 +61,6 @@ func TestUserRunnerSelfUpdatesToMatchServerVersion(t *testing.T) {
 	archiveName := fmt.Sprintf("dex-agent_v2.0.0_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	sum := sha256.Sum256(archiveData)
 	checksums := hex.EncodeToString(sum[:]) + "  " + archiveName + "\n"
-	const token = "machine-token-0123456789abcdefghijklmnopqrstuvwxyz"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer "+token {
@@ -73,28 +78,19 @@ func TestUserRunnerSelfUpdatesToMatchServerVersion(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	var reexeced string
-	origReexec := reexecAgent
-	reexecAgent = func(executable string, _ []string, _ []string) error {
-		reexeced = executable
-		return nil
-	}
-	t.Cleanup(func() { reexecAgent = origReexec })
-
-	// When selfUpdateTo runs for v2.0.0.
-	cfg := device{Origin: srv.URL, Environment: "env-1", Token: token}
-	if err := selfUpdateTo(t.Context(), srv.Client(), cfg, exe, "v2.0.0"); err != nil {
+	// When the agent updates in a subprocess, the new executable takes its place.
+	self, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
+	cmd := exec.CommandContext(t.Context(), self, "-test.run=^TestUserRunnerSelfUpdatesToMatchServerVersion$") //nolint:gosec // Re-run the test binary.
+	cmd.Env = append(os.Environ(), "DEX_TEST_UPDATE_ORIGIN="+srv.URL, "DEX_TEST_UPDATE_BINARY="+exe)
+	out, err := cmd.Output()
+	if err != nil || string(out) != "dex-agent v2.0.0\n" {
+		t.Fatalf("re-exec stdout = %q, err=%v", out, err)
+	}
 
-	// Then the executable is replaced with v2.0.0, .previous preserves v1.0.0, and reexecAgent is invoked.
-	if reexeced != exe {
-		t.Fatalf("reexec target = %q, want %q", reexeced, exe)
-	}
-	ver, err := probeAgentBinaryVersion(t.Context(), exe)
-	if err != nil || ver != "v2.0.0" {
-		t.Fatalf("updated binary version = %q, err=%v", ver, err)
-	}
+	// Then the old executable remains available for recovery.
 	prev, err := os.ReadFile(exe + ".previous")
 	if err != nil || !strings.Contains(string(prev), "v1.0.0") {
 		t.Fatalf("previous binary missing or wrong: %q %v", prev, err)

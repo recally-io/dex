@@ -47,7 +47,7 @@ environment separately.
 
 `internal/update` verifies GitHub release assets (falling back to unauthenticated
 public release downloads when no `GH_TOKEN` or `gh` credentials are present),
-stages beside the executable, verifies the staged binary with `--version`, and
+stages beside the executable, verifies the staged binary with `version`, and
 retains `dex.previous`. `internal/sysops` coordinates in-process server
 operations for `/api/system/*`: persisting the release channel (`stable` or
 `prerelease`) in `system_settings`, checking and staging releases with byte
@@ -65,6 +65,14 @@ return `202` and remain pending until release. Channel input can also retain
 a pending business receipt. Reconciliation resumes admission after maintenance.
 The client keeps the same request ID when it retries.
 A process restart clears the in-memory lease.
+
+A remote runner reads the server release tag when it connects. The server serves
+runner assets for that tag through `/machine/{id}/release/{file}` after machine
+authentication. It streams assets to disk and verifies each archive before it
+adds the archive to the cache. The cache keeps past tags until an operator
+removes them. `dex-agent` uses the same executable verification and replacement
+code as `dex`. If re-exec fails, the agent restores the previous binary.
+
 New transcript acquisition uses the engine maintenance admission gate because
 opening an agent can resume stored work. Existing subscriptions remain
 independent of new admission.

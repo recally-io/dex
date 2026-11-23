@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,15 +19,14 @@ import (
 
 const maxAssetTimeout = 5 * time.Minute
 
-// FetchReleaseAsset downloads one named asset (for example checksums.txt or a dex-agent tarball)
-// for tag from base (empty uses the default GitHub release API).
-func FetchReleaseAsset(ctx context.Context, base, tag, assetName string) ([]byte, error) {
+// DownloadReleaseAsset streams a named asset from the release for tag to out.
+func DownloadReleaseAsset(ctx context.Context, base, tag, assetName string, out io.Writer) error {
 	u := NewForCheck(tag, base)
 	u.client = releaseClient(maxAssetTimeout)
 	u.ensureOptionalToken(ctx, false)
 	r, err := u.selectRelease(ctx, Options{Tag: tag})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var assetURL string
 	for _, a := range r.Assets {
@@ -36,13 +36,17 @@ func FetchReleaseAsset(ctx context.Context, base, tag, assetName string) ([]byte
 		}
 	}
 	if assetURL == "" {
-		return nil, fmt.Errorf("missing release asset %s for %s", assetName, tag)
+		return fmt.Errorf("missing release asset %s for %s", assetName, tag)
 	}
-	return u.get(ctx, assetURL, "application/octet-stream", maxAsset)
+	limit := int64(maxAsset)
+	if assetName == "checksums.txt" {
+		limit = 8 << 20
+	}
+	return u.download(ctx, assetURL, "application/octet-stream", limit, out, nil)
 }
 
 // VerifyChecksum checks that data matches the SHA-256 entry for fileName in checksums.
-func VerifyChecksum(checksums, data []byte, fileName string) error {
+func VerifyChecksum(checksums []byte, data io.Reader, fileName string) error {
 	expected := ""
 	for line := range strings.SplitSeq(string(checksums), "\n") {
 		fields := strings.Fields(line)
@@ -54,8 +58,11 @@ func VerifyChecksum(checksums, data []byte, fileName string) error {
 	if err != nil || len(digest) != sha256.Size {
 		return fmt.Errorf("missing or invalid checksum for %s", fileName)
 	}
-	actual := sha256.Sum256(data)
-	if !strings.EqualFold(expected, hex.EncodeToString(actual[:])) {
+	hash := sha256.New()
+	if _, err := io.Copy(hash, data); err != nil {
+		return err
+	}
+	if !bytes.Equal(digest, hash.Sum(nil)) {
 		return errors.New("release checksum mismatch")
 	}
 	return nil
@@ -95,6 +102,46 @@ func ExtractBinary(archive []byte, binaryName string, out io.Writer) error {
 		return fmt.Errorf("archive has no regular file named %s", binaryName)
 	}
 	return nil
+}
+
+// StageExecutable extracts and verifies the executable without changing the installed file.
+func StageExecutable(ctx context.Context, executable, binaryName, tag string, archive []byte) (string, error) {
+	file, err := os.CreateTemp(filepath.Dir(executable), ".dex-update-*")
+	if err != nil {
+		return "", fmt.Errorf("executable directory is not writable: %w", err)
+	}
+	stage := file.Name()
+	keep := false
+	defer func() {
+		_ = file.Close()
+		if !keep {
+			_ = os.Remove(stage)
+		}
+	}()
+	if err := ExtractBinary(archive, binaryName, file); err != nil {
+		return "", err
+	}
+	if err := file.Chmod(0755); err != nil {
+		return "", err
+	}
+	if err := file.Sync(); err != nil {
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	verify, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(verify, stage, "version").Output() //nolint:gosec // Run the verified release executable.
+	if err != nil {
+		return "", fmt.Errorf("staged executable did not run: %w", err)
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) < 2 || fields[0] != binaryName || fields[1] != tag {
+		return "", errors.New("staged executable reported an unexpected version")
+	}
+	keep = true
+	return stage, nil
 }
 
 // ReplaceExecutable keeps executable.previous via hardlink and atomically replaces executable with stage.

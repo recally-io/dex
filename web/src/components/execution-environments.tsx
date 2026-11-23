@@ -36,7 +36,12 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 
 export function ExecutionEnvironments() {
-  const query = useQuery(listEnvironmentsOptions());
+  const query = useQuery({
+    ...listEnvironmentsOptions(),
+    refetchInterval: ({ state }) =>
+      state.data?.environments.some((env) => env.kind === "runner") ? 5000 : false,
+  });
+
   const healthQuery = useQuery(getHealthOptions());
   const agentsQuery = useQuery(listAgentsOptions());
   const sshConfigQuery = useQuery(discoverSshConfigOptions());
@@ -161,8 +166,8 @@ function runnerSyncHint(
   if (serverVersion && serverVersion !== "dev" && runner.version !== serverVersion) {
     if (runner.canSelfUpdate) {
       return {
-        label: `Auto-updates to ${serverVersion} on reconnect`,
-        warn: false,
+        label: `Update to ${serverVersion} did not complete. Retries on reconnect.`,
+        warn: true,
       };
     }
 
@@ -203,8 +208,9 @@ function EnvironmentCard({
 
   const revoke = useMutation({
     ...revokeRunnerMutation(),
-    onSuccess: () => {
+    onSuccess: async () => {
       setProbe(null);
+      await refreshEnvironments();
       notify(`Revoked ${env.name}.`);
     },
   });
@@ -215,8 +221,11 @@ function EnvironmentCard({
 
   const test = useMutation({
     ...testEnvironmentMutation(),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setProbe(result);
+
+      if (isRunner) await refreshEnvironments();
+
       notify(result.ok ? `Connected to ${env.name}.` : `Test failed: ${result.error || "unreachable"}`);
     },
     onError: (err) => notify(errorText(err)),
@@ -248,7 +257,7 @@ function EnvironmentCard({
     rows.push(["Disk", <Mono key="disk">{formatSandboxDiskSummary(env.config)}</Mono>]);
   } else if (isRunner) {
     const runner = env.runner;
-    const online = runner?.online ?? probe?.ok ?? false;
+    const online = runner?.online ?? false;
     const sync = runnerSyncHint(runner, serverVersion);
 
     rows.push([

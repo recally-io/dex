@@ -108,7 +108,7 @@ func defaultState() (string, error) {
 	return filepath.Join(home, ".local", "state", "dex-agent"), nil
 }
 
-func endpoint(origin, id, action string) (string, error) {
+func endpoint(origin, id, action string, tail ...string) (string, error) {
 	u, err := url.Parse(origin)
 	// A loopback address may use plain HTTP, so a developer can test the flow without a proxy.
 	secure := u != nil && (u.Scheme == "https" || u.Scheme == "http" && u.Hostname() == "127.0.0.1")
@@ -121,7 +121,7 @@ func endpoint(origin, id, action string) (string, error) {
 	if action == "connect" {
 		u.Scheme = map[string]string{"https": "wss", "http": "ws"}[u.Scheme]
 	}
-	return u.JoinPath("machine", id, action).String(), nil
+	return u.JoinPath(append([]string{"machine", id, action}, tail...)...).String(), nil
 }
 
 func enroll(ctx context.Context, state, origin, id, code string) error {
@@ -249,12 +249,17 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 		if res != nil {
 			serverVer = strings.TrimSpace(res.Header.Get("X-Dex-Version"))
 		}
-		if shouldAlignVersion(selfVer, serverVer, capInfo) && !backoff.blocked(serverVer, time.Now()) {
-			if dialErr == nil && c != nil {
-				_ = c.Close(websocket.StatusNormalClosure, "updating to match Dex server version")
+		incompatible := res != nil && res.StatusCode == http.StatusUpgradeRequired
+		align := shouldAlignVersion(selfVer, serverVer, capInfo)
+		if (dialErr == nil || incompatible) && align && !backoff.blocked(serverVer, time.Now()) {
+			if c != nil {
+				_ = c.CloseNow()
 			}
 			log.Printf("aligning dex-agent %s -> %s", selfVer, serverVer)
 			if err := selfUpdateTo(ctx, nil, cfg, capInfo.Executable, serverVer); err != nil {
+				if errors.Is(err, errUpdateRollback) {
+					return err
+				}
 				log.Printf("auto-update to %s failed: %v", serverVer, err)
 				backoff.recordFailure(serverVer, time.Now())
 			} else {
@@ -265,16 +270,14 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 				continue
 			}
 		}
-		if res != nil && res.StatusCode == http.StatusUpgradeRequired {
-			if shouldAlignVersion(selfVer, serverVer, capInfo) {
-				// Auto-update is backed off; stay alive and retry rather than stopping permanently.
-				log.Printf("machine protocol incompatible with %s; will retry auto-update after backoff", serverVer)
-			} else {
-				log.Print("the machine protocol is incompatible; install the matching Dex version")
-				return nil
+		if incompatible && !align {
+			log.Print("the machine protocol is incompatible; install the matching Dex version")
+			return nil
+		}
+		if dialErr == nil {
+			if serverVer == selfVer {
+				backoff.clear()
 			}
-		} else if dialErr == nil {
-			backoff.clear()
 			log.Print("connected to Dex")
 			_ = runner.ServeWithInfo(ctx, c, node.NewNodeExecutionEnv(execution), readyMeta)
 			delay = time.Second

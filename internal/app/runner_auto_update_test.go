@@ -62,7 +62,10 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 	relSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/asset":
-			assetDownloads.Add(1)
+			if assetDownloads.Add(1) == 1 {
+				_, _ = io.WriteString(w, "incomplete asset")
+				return
+			}
 			_, _ = w.Write(archiveData)
 		case "/checksums":
 			_, _ = io.WriteString(w, checksums)
@@ -178,8 +181,8 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 		t.Fatalf("unauth release status = %d, want 401", unauthResp.StatusCode)
 	}
 
-	// Enrolled machine can fetch the archive twice, and Dex fetches upstream only once (cached on disk).
-	for range 2 {
+	fetchArchive := func(t *testing.T, wantStatus int) {
+		t.Helper()
 		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/machine/"+created.Id+"/release/"+archiveName, nil)
 		if err != nil {
 			t.Fatal(err)
@@ -191,11 +194,22 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 		}
 		got, err := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
-		if err != nil || resp.StatusCode != http.StatusOK || !bytes.Equal(got, archiveData) {
-			t.Fatalf("proxy archive fetch failed: status=%d len=%d err=%v", resp.StatusCode, len(got), err)
+		if err != nil || resp.StatusCode != wantStatus || (wantStatus == http.StatusOK && !bytes.Equal(got, archiveData)) {
+			t.Fatalf("proxy archive fetch: status=%d, want %d; len=%d err=%v", resp.StatusCode, wantStatus, len(got), err)
 		}
 	}
-	if assetDownloads.Load() != 1 {
+
+	// Reject a bad upstream asset. Concurrent retries should share the verified copy.
+	fetchArchive(t, http.StatusBadGateway)
+	t.Run("concurrent retries", func(t *testing.T) {
+		for i := range 4 {
+			t.Run(fmt.Sprint(i), func(t *testing.T) {
+				t.Parallel()
+				fetchArchive(t, http.StatusOK)
+			})
+		}
+	})
+	if assetDownloads.Load() != 2 {
 		t.Fatalf("expected 1 upstream download due to caching, got %d", assetDownloads.Load())
 	}
 }

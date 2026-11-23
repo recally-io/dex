@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
@@ -93,7 +94,7 @@ func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 	_ = h.Runners.Accept(r.Context(), id, token, conn)
 }
 
-// runnerArchive matches valid dex-agent release archive filenames for a specific server tag.
+// validRunnerReleaseFile matches valid dex-agent release archive filenames for a specific server tag.
 func validRunnerReleaseFile(tag, name string) bool {
 	if name == "checksums.txt" {
 		return true
@@ -121,14 +122,6 @@ func (h *handler) machineRunnerRelease(w http.ResponseWriter, r *http.Request) {
 	}
 	file := r.PathValue("file")
 	tag := h.Version
-	if tag == "" || tag == "dev" {
-		if !validRunnerReleaseFile("v0.0.0-dev", file) {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(h.DataDir, "machine-release", file)) //nolint:gosec // Validated fixed filename.
-		return
-	}
 	if !semver.IsValid(tag) {
 		writeError(w, http.StatusServiceUnavailable, "this Dex build has no matching machine archive")
 		return
@@ -137,55 +130,83 @@ func (h *handler) machineRunnerRelease(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	cached, err := h.ensureRunnerReleaseCached(r.Context(), tag, file)
+	cached, err := h.openRunnerRelease(r.Context(), tag, file)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch runner release asset: %v", err))
 		return
 	}
-	http.ServeFile(w, r, cached) //nolint:gosec // Validated tag and fixed filename inside cache dir.
+	defer cached.Close()
+	w.Header().Set("Cache-Control", "private, no-store")
+	http.ServeContent(w, r, file, time.Time{}, cached)
 }
 
-func (h *handler) ensureRunnerReleaseCached(ctx context.Context, tag, file string) (string, error) {
+func (h *handler) openRunnerRelease(ctx context.Context, tag, name string) (*os.File, error) {
+	// Fill one cache entry at a time. Open files can be served concurrently.
+	h.runnerReleaseMu.Lock()
+	defer h.runnerReleaseMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	cacheDir := filepath.Join(h.DataDir, "cache", "machine-release", tag)
-	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return "", err
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		return nil, err
 	}
 	root, err := os.OpenRoot(cacheDir)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer root.Close()
-	dest := filepath.Join(cacheDir, file)
-	if info, err := root.Stat(file); err == nil && info.Mode().IsRegular() {
-		return dest, nil
+	if f, err := root.Open(name); err == nil {
+		return f, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
 	}
-	data, err := update.FetchReleaseAsset(ctx, h.ReleaseBase, tag, file)
-	if err != nil {
-		return "", err
+	const manifest = "checksums.txt"
+	var checksums []byte
+	if name != manifest {
+		checksums, err = root.ReadFile(manifest)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := h.cacheRunnerAsset(ctx, root, tag, manifest, nil); err != nil {
+				return nil, err
+			}
+			checksums, err = root.ReadFile(manifest)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
-	tmp, err := os.CreateTemp(cacheDir, ".fetch-*")
+	if err := h.cacheRunnerAsset(ctx, root, tag, name, checksums); err != nil {
+		return nil, err
+	}
+	return root.Open(name)
+}
+
+func (h *handler) cacheRunnerAsset(ctx context.Context, root *os.Root, tag, name string, checksums []byte) error {
+	tmp, err := os.CreateTemp(root.Name(), ".fetch-*")
 	if err != nil {
-		return "", err
+		return err
 	}
 	tmpName := filepath.Base(tmp.Name())
-	keep := false
 	defer func() {
 		_ = tmp.Close()
-		if !keep {
-			_ = root.Remove(tmpName)
-		}
+		_ = root.Remove(tmpName)
 	}()
-	if _, err := tmp.Write(data); err != nil {
-		return "", err
+	if err := update.DownloadReleaseAsset(ctx, h.ReleaseBase, tag, name, tmp); err != nil {
+		return err
+	}
+	if name != "checksums.txt" {
+		if _, err := tmp.Seek(0, 0); err != nil {
+			return err
+		}
+		if err := update.VerifyChecksum(checksums, tmp, name); err != nil {
+			// A retry must fetch fresh checksums if GitHub replaced a release asset.
+			return errors.Join(err, root.Remove("checksums.txt"))
+		}
 	}
 	if err := tmp.Close(); err != nil {
-		return "", err
+		return err
 	}
-	if err := root.Rename(tmpName, file); err != nil {
-		return "", err
-	}
-	keep = true
-	return dest, nil
+	return root.Rename(tmpName, name)
 }
 
 // machineBearer reads the machine credential. It refuses a browser request, because a page in

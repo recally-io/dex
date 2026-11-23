@@ -91,8 +91,16 @@ install_linux() {
 	if ! getent passwd dex-agent >/dev/null; then
 		as_root useradd --system --user-group --home-dir "$state" --shell /usr/sbin/nologin dex-agent
 	fi
-	as_root install -d -m 0700 -o dex-agent -g dex-agent "$state" "$state/bin"
-	as_root install -m 0755 -o dex-agent -g dex-agent "$tmp/dex-agent" "$binary"
+	as_root install -d -m 0700 -o dex-agent -g dex-agent "$state"
+	# Do not write as root below the directory owned by dex-agent.
+	as_root runuser -u dex-agent -- install -d -m 0700 "$state/bin"
+	as_root runuser -u dex-agent -- sh -eu -c '
+		stage=$(mktemp "${1%/*}/.install-XXXXXX")
+		trap '\''rm -f "$stage"'\'' EXIT
+		cat >"$stage"
+		chmod 0755 "$stage"
+		mv -fT "$stage" "$1"
+	' sh "$binary" <"$tmp/dex-agent"
 	as_root install -m 0644 "$tmp/dex-agent.service" "$unit"
 	# The code goes through stdin, so it stays out of the process list.
 	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" || fail 'Dex refused the enrollment; get a fresh install command'
