@@ -651,3 +651,34 @@ func TestUserCommandWakeChainStopsUntilUserInput(t *testing.T) {
 		t.Fatalf("command after user input: %+v", info)
 	}
 }
+
+func TestUserCollectsParallelBashResultsInCodemode(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	answer := callSessionTool(t, d, bgChat(t, d), "codemode", map[string]any{"code": `
+return await Promise.all([
+  tools.bash({command: "printf first"}),
+  tools.bash({command: "printf second; exit 7"}),
+]);`})
+	_, body, ok := strings.Cut(html.UnescapeString(answer), "\nOutput:\n")
+	if !ok {
+		t.Fatalf("codemode result: %s", answer)
+	}
+	var results []struct {
+		Output    string `json:"output"`
+		Truncated *bool  `json:"truncated"`
+		ExitCode  *int   `json:"exitCode"`
+	}
+	if err := json.Unmarshal([]byte(body), &results); err != nil || len(results) != 2 {
+		t.Fatalf("expected two structured results: %s (%v)", body, err)
+	}
+	for i, want := range []struct {
+		output string
+		exit   int
+	}{{"first", 0}, {"second", 7}} {
+		got := results[i]
+		if got.Output != want.output || got.Truncated == nil || *got.Truncated || got.ExitCode == nil || *got.ExitCode != want.exit {
+			t.Fatalf("bash result %d: %s", i, body)
+		}
+	}
+}
