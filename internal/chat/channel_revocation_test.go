@@ -49,7 +49,7 @@ func TestUserChannelRevocationRetiresOldChildResultsWithoutOptIn(t *testing.T) {
 				resultID := "result:" + turn
 				settleChild := func() {
 					t.Helper()
-					if err := r.service.admit(ctx, taskInput(t, r, turn)); err != nil {
+					if err := r.service.admit(t.Context(), taskInput(t, r, turn)); err != nil {
 						t.Fatal(err)
 					}
 					awaitReceipt(t, r, turn)
