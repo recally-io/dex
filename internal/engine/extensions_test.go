@@ -156,7 +156,8 @@ func TestUserSharedEnvEditsDoNotLoseUpdates(t *testing.T) {
 func TestUserInvalidEnvPreventsMCPAndPartialSecrets(t *testing.T) {
 	a, _, data := extensionFixture(t)
 	extensionFile(t, filepath.Join(data, ".agents", ".env"), "NARROW=secret\nbroken-secret-line\n")
-	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), `{"mcpServers":{"wide":{"command":"must-not-run"}}}`)
+	a.mcp = testMCPStore(t, data)
+	testSetMCP(t, a.mcp, "", "wide", serverConfig{Command: "must-not-run"})
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -175,9 +176,8 @@ func TestUserMCPConnectsCallsAndRedactsConfiguration(t *testing.T) {
 	dir := t.TempDir()
 	server := httptest.NewServer(&mcptest.Server{Dir: dir, Twice: true})
 	defer server.Close()
-	config := map[string]any{"mcpServers": map[string]any{"notes": map[string]any{"type": "http", "url": server.URL, "headers": map[string]string{"Authorization": "Bearer ${TOKEN}"}}}}
-	encoded, _ := json.Marshal(config)
-	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), string(encoded))
+	a.mcp = testMCPStore(t, data)
+	testSetMCP(t, a.mcp, "", "notes", serverConfig{Type: "http", URL: server.URL, Headers: map[string]string{"Authorization": "Bearer ${TOKEN}"}})
 	extensionFile(t, filepath.Join(data, ".agents", ".env"), "TOKEN=private-token\n")
 	loaded, err := a.Load(t.Context())
 	if err != nil {
@@ -200,7 +200,7 @@ func TestUserMCPConnectsCallsAndRedactsConfiguration(t *testing.T) {
 		t.Fatalf("artifact: %q %v", artifact, err)
 	}
 	info, _ := a.Info(t.Context())
-	encoded, _ = json.Marshal(info)
+	encoded, _ := json.Marshal(info)
 	if strings.Contains(string(encoded), "private-token") || strings.Contains(string(encoded), server.URL) {
 		t.Fatalf("configuration leaked: %s", encoded)
 	}
@@ -226,9 +226,8 @@ func TestUserStdioMCPGetsOnlyExplicitEnvironment(t *testing.T) {
 	if err := os.MkdirAll(a.workspace, 0700); err != nil {
 		t.Fatal(err)
 	}
-	config := map[string]any{"mcpServers": map[string]any{"local": map[string]any{"command": binary, "args": []string{"-test.run=^TestUserStdioMCPGetsOnlyExplicitEnvironment$"}, "env": map[string]string{"DEX_NATIVE_MCP_CHILD": "1", "MCP_DIR": t.TempDir()}}}}
-	encoded, _ := json.Marshal(config)
-	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), string(encoded))
+	a.mcp = testMCPStore(t, data)
+	testSetMCP(t, a.mcp, "", "local", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserStdioMCPGetsOnlyExplicitEnvironment$"}, Env: map[string]string{"DEX_NATIVE_MCP_CHILD": "1", "MCP_DIR": t.TempDir()}})
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -239,24 +238,27 @@ func TestUserStdioMCPGetsOnlyExplicitEnvironment(t *testing.T) {
 	}
 }
 
-func TestUserMalformedMCPDoesNotRestoreWiderServers(t *testing.T) {
-	a, _, data := extensionFixture(t)
-	extensionFile(t, filepath.Join(data, ".agents", "mcp.json"), `{"mcpServers":{"notes":{"command":"not-started"}}}`)
-	extensionFile(t, filepath.Join(data, "agents", "a", ".agents", "mcp.json"), `{"mcpServers":{"notes":{"disabled":true}}}`)
+func TestUserDisabledMCPOverrideSurvivesInvalidWrite(t *testing.T) {
+	a, home, data := extensionFixture(t)
+	a.mcp = testMCPStore(t, data)
+	testSetMCP(t, a.mcp, "", "notes", serverConfig{Command: "not-started"})
+	testSetMCP(t, a.mcp, "a", "notes", serverConfig{Disabled: true})
 	info, err := a.Info(t.Context())
 	if err != nil || len(info.Servers) != 1 || info.Servers[0].State != "disabled" || !info.Servers[0].Overrides {
 		t.Fatalf("disabled override: %#v %v", info, err)
 	}
-	extensionFile(t, filepath.Join(data, "agents", "a", ".agents", "mcp.json"), `{"mcpServers":{"notes":{"headers":"private-secret"}}}`)
-	loaded, err := a.Load(t.Context())
-	if err != nil {
-		t.Fatal(err)
+	if err := a.mcp.set(t.Context(), "a", "notes", serverConfig{Type: "http"}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("invalid declaration: %v", err)
 	}
-	defer loaded.Close(t.Context())
-	info, _ = a.Info(t.Context())
-	encoded, _ := json.Marshal(info)
-	if loaded.HasTools || len(info.Servers) != 0 || len(info.Errors) == 0 || strings.Contains(string(encoded), "private-secret") {
-		t.Fatalf("invalid MCP state: %s", encoded)
+	info, err = a.Info(t.Context())
+	if err != nil || len(info.Servers) != 1 || info.Servers[0].State != "disabled" {
+		t.Fatalf("invalid write changed the override: %#v %v", info, err)
+	}
+	other := newAgentExtensions(home, data, "b", nil, a.env)
+	other.mcp = a.mcp
+	info, err = other.Info(t.Context())
+	if err != nil || len(info.Servers) != 1 || info.Servers[0].Scope != "dex" || info.Servers[0].State != "idle" {
+		t.Fatalf("override affected another agent: %#v %v", info, err)
 	}
 }
 func TestUserSkillMetadataMustBeText(t *testing.T) {
@@ -273,7 +275,7 @@ func TestUserSkillMetadataMustBeText(t *testing.T) {
 }
 
 func TestUserReloadValidationKeepsTheLoadedEnvironment(t *testing.T) {
-	// Given a loaded environment and an MCP file that changes after loading.
+	// Given a loaded environment and an environment file that changes after loading.
 	a, _, data := extensionFixture(t)
 	path := filepath.Join(data, ".agents", ".env")
 	extensionFile(t, path, "TOKEN=first-private-value\n")
@@ -282,7 +284,7 @@ func TestUserReloadValidationKeepsTheLoadedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loaded.Close(t.Context())
-	for _, name := range []string{"mcp.json", ".env"} {
+	for _, name := range []string{".env"} {
 		t.Run(name, func(t *testing.T) {
 			path := filepath.Join(data, ".agents", name)
 			before, err := os.ReadFile(path)

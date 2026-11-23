@@ -1261,7 +1261,7 @@ type Extensions struct {
 	// Errors Invalid configuration prevents MCP startup and reload.
 	Errors []string `json:"errors"`
 
-	// Levels The .agents directories, from wide to narrow. Each can hold skills/, mcp.json and .env. Two levels can have the same directory.
+	// Levels The .agents directories, from wide to narrow. Each can hold skills/ and .env. Two levels can have the same directory.
 	Levels []struct {
 		Dir string `json:"dir"`
 
@@ -1374,7 +1374,7 @@ type ItemEvent struct {
 // ItemEventType defines model for ItemEvent.Type.
 type ItemEventType string
 
-// McpServer An MCP server from an mcp.json file, without its command, URL, headers or environment, because they can hold credentials.
+// McpServer An MCP server from control storage, without its command, URL, headers or environment, because they can hold credentials.
 type McpServer struct {
 	Error *string `json:"error,omitempty"`
 	Name  string  `json:"name"`

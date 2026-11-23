@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -65,7 +64,7 @@ func TestUserUsesHeaderEnvironmentWithoutLeakingValues(t *testing.T) {
 		mcp.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	writeMCP(t, filepath.Join(data, "agents", "default", ".agents", "mcp.json"), map[string]any{
+	seedMCP(t, data, "default", map[string]any{
 		"good":     map[string]any{"type": "http", "url": srv.URL, "headers": map[string]string{"Authorization": "Bearer ${TOKEN}", "X-Literal": "${NESTED}"}},
 		"missing":  map[string]any{"type": "http", "url": srv.URL, "headers": map[string]string{"Authorization": "${ABSENT_HEADER_KEY}"}},
 		"disabled": map[string]any{"type": "http", "url": srv.URL, "disabled": true, "headers": map[string]string{"Authorization": "${ABSENT_HEADER_KEY}"}},
@@ -104,29 +103,16 @@ func TestUserReloadsOneAgentWithoutChangingOtherEnvironments(t *testing.T) {
 		d.must(t, http.MethodPost, path+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": `printf '%s' "$DEX_ISOLATED"`}, nil, http.StatusAccepted)
 		w.until(t, "agent env", answered("bash: "+id))
 	}
-	// When B has an invalid file, A can reload its own resources.
-	for _, kind := range []string{"mcp.json", ".env"} {
-		path := filepath.Join(data, "agents", b.ID, ".agents", kind)
-		before, err := os.ReadFile(path)
-		if err != nil && !os.IsNotExist(err) {
-			t.Fatal(err)
-		}
-		writeFile(t, path, "invalid-private-token")
-		status, body := d.reload(t)
-		if status != http.StatusOK || strings.Contains(body, "invalid-private-token") {
-			t.Fatalf("unrelated agent blocked reload: %d %s", status, body)
-		}
-		// Then B refuses its own invalid files and keeps the loaded environment.
-		status, body = d.call(t, http.MethodPost, "/api/agents/"+b.ID+"/extensions/reload", nil)
-		if status != http.StatusBadRequest || !strings.Contains(body, path) || strings.Contains(body, "invalid-private-token") {
-			t.Fatalf("selected agent reload: %d %s", status, body)
-		}
-		if before == nil {
-			if err := os.Remove(path); err != nil {
-				t.Fatal(err)
-			}
-		} else {
-			writeFile(t, path, string(before))
-		}
+	// When B has an invalid environment file, A can reload its own resources.
+	path := filepath.Join(data, "agents", b.ID, ".agents", ".env")
+	writeFile(t, path, "invalid-private-token")
+	status, body := d.reload(t)
+	if status != http.StatusOK || strings.Contains(body, "invalid-private-token") {
+		t.Fatalf("unrelated agent blocked reload: %d %s", status, body)
+	}
+	// Then B refuses its own invalid file and keeps the loaded environment.
+	status, body = d.call(t, http.MethodPost, "/api/agents/"+b.ID+"/extensions/reload", nil)
+	if status != http.StatusBadRequest || !strings.Contains(body, path) || strings.Contains(body, "invalid-private-token") {
+		t.Fatalf("selected agent reload: %d %s", status, body)
 	}
 }

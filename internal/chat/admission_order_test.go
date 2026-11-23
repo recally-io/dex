@@ -39,7 +39,7 @@ func startNative(t *testing.T, model string) *nativeTest {
 		t.Fatal(err)
 	}
 	var service *Service
-	agents, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, ExecEnv: execenv.NewManager(execenv.ManagerConfig{DataDir: dir, Queries: q}), SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Tasks: engine.TaskTools{
+	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, ExecEnv: execenv.NewManager(execenv.ManagerConfig{DataDir: dir, Queries: q}), SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Tasks: engine.TaskTools{
 		AuthorizeMonitor: func(ctx context.Context, c engine.TaskContext) error { return service.AuthorizeMonitor(ctx, c) },
 		AuthorizeGroup:   func(ctx context.Context, c engine.TaskContext) error { return service.AuthorizeGroup(ctx, c) },
 		GroupQuestion: func(ctx context.Context, c engine.TaskContext, args engine.AskUserArgs) (engine.QuestionInfo, error) {

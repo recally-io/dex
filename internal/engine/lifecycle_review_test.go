@@ -179,16 +179,9 @@ func TestUserReloadOpensUnopenedAgentAndReportsMCPResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	starts := filepath.Join(t.TempDir(), "starts")
-	servers := map[string]any{"mcpServers": map[string]any{
-		"good":   map[string]any{"command": binary, "args": []string{"-test.run=^TestUserReloadStartsOnlyOneReplacementMCP$"}, "env": map[string]string{"DEX_CORE_RELOAD_CHILD": "1", "MCP_STARTS": starts, "MCP_DIR": t.TempDir()}},
-		"broken": map[string]any{"command": filepath.Join(t.TempDir(), "missing-command")},
-	}}
-	raw, err := json.Marshal(servers)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(config.DataDir, "agents", "alpha", ".agents", "mcp.json")
-	extensionFile(t, path, string(raw))
+	config.MCPServers = testMCPStore(t, config.DataDir)
+	testSetMCP(t, config.MCPServers, "alpha", "good", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserReloadStartsOnlyOneReplacementMCP$"}, Env: map[string]string{"DEX_CORE_RELOAD_CHILD": "1", "MCP_STARTS": starts, "MCP_DIR": t.TempDir()}})
+	testSetMCP(t, config.MCPServers, "alpha", "broken", serverConfig{Command: filepath.Join(t.TempDir(), "missing-command")})
 	agents := coreEngine(t, config)
 	// When the caller explicitly reloads before creating a conversation.
 	if err := agents.Reload(t.Context(), "alpha"); err != nil {
@@ -266,14 +259,8 @@ func TestUserCloseDuringReloadReportsClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	starts := filepath.Join(t.TempDir(), "starts")
-	servers := map[string]any{"mcpServers": map[string]any{
-		"silent": map[string]any{"command": binary, "args": []string{"-test.run=^TestUserCloseDuringReloadReportsClosed$"}, "env": map[string]string{"DEX_CORE_SILENT_CHILD": "1", "MCP_STARTS": starts}},
-	}}
-	raw, err := json.Marshal(servers)
-	if err != nil {
-		t.Fatal(err)
-	}
-	extensionFile(t, filepath.Join(config.DataDir, "agents", "alpha", ".agents", "mcp.json"), string(raw))
+	config.MCPServers = testMCPStore(t, config.DataDir)
+	testSetMCP(t, config.MCPServers, "alpha", "silent", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserCloseDuringReloadReportsClosed$"}, Env: map[string]string{"DEX_CORE_SILENT_CHILD": "1", "MCP_STARTS": starts}})
 	agents := coreEngine(t, config)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()

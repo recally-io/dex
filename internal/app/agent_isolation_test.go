@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -115,11 +114,7 @@ func TestUserOtherAgentWorksDuringSlowMCP(t *testing.T) {
 				d.must(t, http.MethodPost, alphaPath+"/messages", map[string]string{"id": warmAlpha, "text": "warm alpha"}, nil, http.StatusAccepted)
 				isolationReceipt(warmCtx, t, conn, warmAlpha, "done")
 			}
-			config, err := json.Marshal(map[string]any{"mcpServers": map[string]any{"slow": map[string]any{"type": "http", "url": endpoint.URL}}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			writeFile(t, filepath.Join(data, "agents", "default", ".agents", "mcp.json"), string(config))
+			seedMCP(t, data, "default", map[string]any{"slow": map[string]any{"type": "http", "url": endpoint.URL}})
 			alphaCtx, cancelAlpha := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancelAlpha()
 			alphaDone := make(chan isolationResponse, 1)

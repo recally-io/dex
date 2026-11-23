@@ -433,11 +433,12 @@ and task-specific automation result routing are later work. Other chat channels 
 
 ## Extension files
 
-Each agent reads skills, `mcp.json`, and `.env` from two `.agents/`
+Each agent reads skills and `.env` from two `.agents/`
 directories: the resolved dex data directory, shared by all agents, and the
 agent home (`<data dir>/agents/<id>`). The narrower level wins. dex does not
 read the user home (`~/.agents`), so personal files and secrets there never
-reach a bot. Store bot instructions in the bot's settings. dex adds the
+reach a bot. MCP server declarations are shared or agent-specific and stored on
+the control host. Store bot instructions in the bot's settings. dex adds the
 session's `<cwd>/AGENTS.md` after the saved instructions. A project file can
 use `@path` to import files inside the project. Tools start
 in the agent workspace by default. Task sessions can select an existing project

@@ -381,7 +381,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	// All unscoped extension edits inherit this tool. Its execution checks the source receipt.
 	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
-	}), loaded.Extension}
+	}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
 	if loaded.HasTools {
 		extensions = append(extensions, toolsearch.CreateExtension())
 	}
@@ -1179,7 +1179,9 @@ func (a *Agents) close(ctx context.Context) {
 }
 
 func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
-	return newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
+	files := newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
+	files.mcp = a.config.MCPServers
+	return files
 }
 
 // ReadWorkspaceFile reads up to maxBytes of a workspace-relative regular non-symlink file in the

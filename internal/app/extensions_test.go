@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"encoding/json/v2"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
+	"github.com/recally-io/dex/internal/db"
+	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
@@ -111,7 +114,7 @@ func writeSkill(t *testing.T, dir, name, frontMatter string) string {
 	return resolved
 }
 
-// stdioServer is an mcp.json entry that starts this test binary as an MCP server on dir.
+// stdioServer is a declaration that starts this test binary as an MCP server on dir.
 func stdioServer(t *testing.T, dir string) map[string]any {
 	t.Helper()
 	exe, err := os.Executable()
@@ -121,7 +124,7 @@ func stdioServer(t *testing.T, dir string) map[string]any {
 	return map[string]any{"command": exe, "env": map[string]string{"DEX_TEST_MCP_DIR": dir}}
 }
 
-// httpServer is an mcp.json entry for an MCP server on dir over Streamable HTTP.
+// httpServer is a declaration for an MCP server on dir over Streamable HTTP.
 func httpServer(t *testing.T, dir string) map[string]any {
 	t.Helper()
 	srv := httptest.NewServer(&mcptest.Server{Dir: dir})
@@ -136,6 +139,25 @@ func writeMCP(t *testing.T, path string, servers map[string]any) {
 		t.Fatal(err)
 	}
 	writeFile(t, path, string(b))
+}
+
+func seedMCP(t *testing.T, dataDir, agentID string, servers map[string]any) {
+	t.Helper()
+	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	q := sqlc.New(conn)
+	for _, name := range slices.Sorted(maps.Keys(servers)) {
+		raw, err := json.Marshal(servers[name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := q.SetMCPServer(t.Context(), sqlc.SetMCPServerParams{AgentID: agentID, Name: name, Config: string(raw)}); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func readNotes(t *testing.T, dir string) string {
@@ -211,13 +233,13 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 	// replace shared, turn off old, and add one whose command does not exist
 	dataDir, home := t.TempDir(), t.TempDir()
 	filesDir, webDir, globalShared, agentShared := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	writeMCP(t, filepath.Join(dataDir, ".agents", "mcp.json"), map[string]any{
+	seedMCP(t, dataDir, "", map[string]any{
 		"files":  stdioServer(t, filesDir),
 		"web":    httpServer(t, webDir),
 		"shared": stdioServer(t, globalShared),
 		"old":    stdioServer(t, t.TempDir()),
 	})
-	writeMCP(t, filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "mcp.json"), map[string]any{
+	seedMCP(t, dataDir, app.DefaultAgentID, map[string]any{
 		"shared":  stdioServer(t, agentShared),
 		"old":     map[string]any{"disabled": true},
 		"missing": map[string]any{"command": filepath.Join(home, "no-such-server")},
@@ -271,8 +293,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	t.Parallel()
 	// Given an agent with one MCP server that has answered
 	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
-	agentMCP := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "mcp.json")
-	writeMCP(t, agentMCP, map[string]any{"files": stdioServer(t, filesDir)})
+	seedMCP(t, dataDir, app.DefaultAgentID, map[string]any{"files": stdioServer(t, filesDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
 	chatID := d.newChat(t, `mcp__files__append {"text":"one"}`)
@@ -308,7 +329,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 
 	// When the user adds a server, then reloads
 	moreDir := t.TempDir()
-	writeMCP(t, agentMCP, map[string]any{"files": stdioServer(t, filesDir), "more": stdioServer(t, moreDir)})
+	seedMCP(t, dataDir, app.DefaultAgentID, map[string]any{"more": stdioServer(t, moreDir)})
 	var got extensions
 	if status, body := d.reload(t); status != http.StatusOK || json.Unmarshal([]byte(body), &got) != nil {
 		t.Fatalf("reload: %d %s", status, body)
@@ -323,12 +344,11 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	d.send(t, chatID, `mcp__more__append {"text":"new"}`)
 	w.until(t, "new server answer", answered("tool: appended 1"))
 
-	// When mcp.json is not valid and the user reloads
-	writeFile(t, agentMCP, `{"mcpServers": {"files": {"args": []}}}`)
+	// When the tool environment is not valid, reload leaves the working connections intact.
+	envPath := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", ".env")
+	writeFile(t, envPath, `invalid line`)
 	status, body = d.reload(t)
-
-	// Then dex refuses with the file, and the agent keeps its servers
-	if status != http.StatusBadRequest || !strings.Contains(body, agentMCP) {
+	if status != http.StatusBadRequest || !strings.Contains(body, envPath) {
 		t.Fatalf("reload of a file that is not valid: %d %s", status, body)
 	}
 	d.send(t, chatID, `mcp__files__read {}`)
@@ -339,7 +359,7 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 	t.Parallel()
 	// Given an MCP call that is running when dex stops
 	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
-	writeMCP(t, filepath.Join(dataDir, ".agents", "mcp.json"), map[string]any{"files": stdioServer(t, filesDir)})
+	seedMCP(t, dataDir, "", map[string]any{"files": stdioServer(t, filesDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
 	chatID := d.newChat(t, `mcp__files__wait {"name":"crash"}`)
