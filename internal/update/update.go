@@ -238,6 +238,9 @@ func (u *Updater) getProgress(ctx context.Context, target, accept string, limit 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		if u.token == "" && (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) {
+			return nil, fmt.Errorf("release API returned %s (GitHub unauthenticated rate limit; set GH_TOKEN or run gh auth login for higher limits)", resp.Status)
+		}
 		return nil, fmt.Errorf("release API returned %s (check access to recally-io/dex)", resp.Status)
 	}
 	if onProgress == nil {
@@ -343,8 +346,8 @@ func (u *Updater) Replace(stage string) error {
 }
 
 // RestorePrevious restores <executable>.previous if an in-place restart fails after replacement.
-func (u *Updater) RestorePrevious() error {
-	return os.Rename(u.executable+".previous", u.executable)
+func RestorePrevious(executable string) error {
+	return os.Rename(executable+".previous", executable)
 }
 func (u *Updater) selectRelease(ctx context.Context, opt Options) (release, error) {
 	var r release

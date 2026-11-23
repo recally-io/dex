@@ -41,7 +41,9 @@ func main() {
 
 func serve(ctx context.Context, cfg service.Config, token string, requireToken bool) error {
 	logBuf := sysops.NewLogBuffer(0)
-	slog.SetDefault(slog.New(sysops.TeeHandler(slog.Default().Handler(), logBuf)))
+	// Wrap a fresh TextHandler writing directly to os.Stderr rather than slog.Default().Handler():
+	// Go's default handler bridges back through log.Logger, which deadlocks on outMu when SetDefault routes log back into slog.
+	slog.SetDefault(slog.New(sysops.TeeHandler(slog.NewTextHandler(os.Stderr, nil), logBuf)))
 
 	addr := cfg.Addr()
 	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", addr)
@@ -122,6 +124,7 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 	if closeErr != nil {
 		slog.Warn("shutdown before re-exec reported an error", "err", closeErr)
 	}
+	upgraded := restartExec != ""
 	if restartExec == "" {
 		exe, exeErr := os.Executable()
 		if exeErr != nil {
@@ -130,6 +133,11 @@ func serve(ctx context.Context, cfg service.Config, token string, requireToken b
 		restartExec = exe
 	}
 	if execErr := update.Reexec(restartExec, os.Args, os.Environ()); execErr != nil {
+		if upgraded {
+			if restoreErr := update.RestorePrevious(restartExec); restoreErr != nil {
+				slog.Error("restore previous executable after re-exec failure", "err", restoreErr)
+			}
+		}
 		return fmt.Errorf("re-exec %s: %w", restartExec, execErr)
 	}
 	return nil

@@ -7,9 +7,13 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
-const defaultLogCapacity = 500
+const (
+	defaultLogCapacity = 500
+	maxLogFieldBytes   = 2048
+)
 
 // LogEntry is one captured structured log line.
 type LogEntry struct {
@@ -37,8 +41,10 @@ func NewLogBuffer(capacity int) *LogBuffer {
 	return &LogBuffer{entries: make([]LogEntry, capacity)}
 }
 
-// Add appends one entry to the ring buffer.
+// Add appends one entry to the ring buffer, bounding message and attrs lengths.
 func (b *LogBuffer) Add(entry LogEntry) {
+	entry.Message = truncateUTF8(entry.Message, maxLogFieldBytes)
+	entry.Attrs = truncateUTF8(entry.Attrs, maxLogFieldBytes)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.seq++
@@ -84,7 +90,7 @@ func TeeHandler(inner slog.Handler, buf *LogBuffer) slog.Handler {
 type teeHandler struct {
 	inner  slog.Handler
 	buf    *LogBuffer
-	attrs  []slog.Attr
+	attrs  []string
 	groups []string
 }
 
@@ -96,16 +102,8 @@ func (h *teeHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *teeHandler) Handle(ctx context.Context, r slog.Record) error {
-	var parts []string
-	prefix := ""
-	if len(h.groups) > 0 {
-		prefix = strings.Join(h.groups, ".") + "."
-	}
-	for _, a := range h.attrs {
-		if text := formatAttr(prefix, a); text != "" {
-			parts = append(parts, text)
-		}
-	}
+	parts := append([]string(nil), h.attrs...)
+	prefix := groupPrefix(h.groups)
 	r.Attrs(func(a slog.Attr) bool {
 		if text := formatAttr(prefix, a); text != "" {
 			parts = append(parts, text)
@@ -125,9 +123,16 @@ func (h *teeHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 func (h *teeHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	prefix := groupPrefix(h.groups)
+	formatted := append([]string(nil), h.attrs...)
+	for _, a := range attrs {
+		if text := formatAttr(prefix, a); text != "" {
+			formatted = append(formatted, text)
+		}
+	}
 	next := &teeHandler{
 		buf:    h.buf,
-		attrs:  append(append([]slog.Attr(nil), h.attrs...), attrs...),
+		attrs:  formatted,
 		groups: append([]string(nil), h.groups...),
 	}
 	if h.inner != nil {
@@ -142,7 +147,7 @@ func (h *teeHandler) WithGroup(name string) slog.Handler {
 	}
 	next := &teeHandler{
 		buf:    h.buf,
-		attrs:  append([]slog.Attr(nil), h.attrs...),
+		attrs:  append([]string(nil), h.attrs...),
 		groups: append(append([]string(nil), h.groups...), name),
 	}
 	if h.inner != nil {
@@ -151,10 +156,28 @@ func (h *teeHandler) WithGroup(name string) slog.Handler {
 	return next
 }
 
+func groupPrefix(groups []string) string {
+	if len(groups) == 0 {
+		return ""
+	}
+	return strings.Join(groups, ".") + "."
+}
+
 func formatAttr(prefix string, a slog.Attr) string {
 	a.Value = a.Value.Resolve()
 	if a.Equal(slog.Attr{}) {
 		return ""
 	}
 	return fmt.Sprintf("%s%s=%s", prefix, a.Key, a.Value.String())
+}
+
+func truncateUTF8(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	cut := maxBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }

@@ -262,8 +262,9 @@ func TestUserUpgradesServerWithAutomaticBackupAndSafeWaitWhenBusy(t *testing.T) 
 
 	select {
 	case execPath := <-restarted:
-		if execPath != exe {
-			t.Fatalf("restart execPath = %q, want %q", execPath, exe)
+		want, err := filepath.EvalSymlinks(exe)
+		if err != nil || execPath != want {
+			t.Fatalf("restart execPath = %q, want %q (resolve error: %v)", execPath, want, err)
 		}
 	case <-time.After(10 * time.Second):
 		d.must(t, http.MethodGet, "/api/system/status", nil, &status)
@@ -336,4 +337,64 @@ func TestUserCannotUpgradeDevBuild(t *testing.T) {
 		t.Fatalf("unexpected dev capability: %+v", status.Capability)
 	}
 	d.must(t, http.MethodPost, "/api/system/upgrade", nil, nil, http.StatusConflict)
+}
+
+func TestUserForcesWaitingUpgradeWithoutRace(t *testing.T) {
+	t.Parallel()
+	// Given a release build with an active bash tool so a non-forced upgrade enters waiting_idle.
+	relSrv := startReleaseFixture(t, []fixtureReleaseSpec{
+		{tag: "v2.0.0", prerelease: false, notes: "Forced upgrade"},
+	})
+	exeDir := t.TempDir()
+	exe := filepath.Join(exeDir, "dex")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nprintf 'dex v1.0.0\\n'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	restarted := make(chan string, 1)
+	d := startDexWith(t, app.Config{
+		DataDir:            t.TempDir(),
+		Version:            "v1.0.0",
+		Executable:         exe,
+		ReleaseBase:        relSrv.URL,
+		SystemWaitInterval: 25 * time.Millisecond,
+		SystemRestartDelay: 10 * time.Millisecond,
+		RequestRestart: func(execPath string) {
+			select {
+			case restarted <- execPath:
+			default:
+			}
+		},
+	})
+	d.setModel(t, "bash")
+	gateDir := t.TempDir()
+	started := filepath.Join(gateDir, "started")
+	release := filepath.Join(gateDir, "release")
+	d.newChat(t, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release))
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
+	eventually(t, "tool running", func() (bool, any) { _, err := os.Stat(started); return err == nil, err })
+
+	var status api.SystemStatus
+	d.must(t, http.MethodPost, "/api/system/upgrade", map[string]any{"version": "v2.0.0"}, &status)
+	eventually(t, "upgrade waiting_idle", func() (bool, any) {
+		d.must(t, http.MethodGet, "/api/system/status", nil, &status)
+		return status.State == api.SystemStatusStateWaitingIdle, status
+	})
+
+	// When the user clicks Force now while the tool is still active.
+	d.must(t, http.MethodPost, "/api/system/upgrade", map[string]any{"version": "v2.0.0", "force": true}, &status)
+
+	// Then the single waiting goroutine applies the staged binary and triggers restart cleanly.
+	select {
+	case execPath := <-restarted:
+		want, err := filepath.EvalSymlinks(exe)
+		if err != nil || execPath != want {
+			t.Fatalf("restart execPath = %q, want %q (resolve error: %v)", execPath, want, err)
+		}
+	case <-time.After(10 * time.Second):
+		d.must(t, http.MethodGet, "/api/system/status", nil, &status)
+		t.Fatalf("timed out waiting for forced upgrade restart; status=%+v", status)
+	}
+	if v, err := service.BinaryVersion(t.Context(), exe); err != nil || v != "v2.0.0" {
+		t.Fatalf("upgraded binary version = %q, err=%v", v, err)
+	}
 }

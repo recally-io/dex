@@ -3,8 +3,10 @@ package sysops_test
 import (
 	"database/sql"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -72,5 +74,64 @@ func TestUserDatabaseBackupCreatesReadableSQLiteCopy(t *testing.T) {
 	var channel string
 	if err := copyConn.QueryRowContext(t.Context(), "SELECT update_channel FROM system_settings WHERE id = 1").Scan(&channel); err != nil || channel != "stable" {
 		t.Fatalf("backup DB read failed: %q %v", channel, err)
+	}
+}
+
+func TestUserConcurrentBackupsProduceDistinctPrivateFiles(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	ts := time.Date(2026, 11, 23, 4, 0, 0, 0, time.UTC)
+	var wg sync.WaitGroup
+	errs := make(chan error, 4)
+	for range 4 {
+		wg.Go(func() {
+			b, err := sysops.BackupDatabase(t.Context(), conn, dataDir, "v1.0.0", ts)
+			if err != nil {
+				errs <- err
+				return
+			}
+			info, statErr := os.Stat(filepath.Join(sysops.BackupsDir(dataDir), b.Name))
+			if statErr != nil {
+				errs <- statErr
+				return
+			}
+			if info.Mode().Perm() != 0o600 {
+				errs <- os.ErrPermission
+			}
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+	listed, err := sysops.ListBackups(dataDir)
+	if err != nil || len(listed) != 4 {
+		t.Fatalf("expected 4 distinct backups, got %d (%v)", len(listed), err)
+	}
+}
+
+func TestUserLogBufferBoundsFieldSizeAndPreservesGroupPrefixOrder(t *testing.T) {
+	t.Parallel()
+	buf := sysops.NewLogBuffer(10)
+	logger := slog.New(sysops.TeeHandler(slog.DiscardHandler, buf)).With("top", "yes").WithGroup("sub")
+	big := strings.Repeat("x", 4096)
+	logger.Info(big, "k", big)
+
+	entries := buf.Entries(10)
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	if len(entries[0].Message) > 2060 || len(entries[0].Attrs) > 2060 {
+		t.Fatalf("entry not bounded: msg=%d attrs=%d", len(entries[0].Message), len(entries[0].Attrs))
+	}
+	if !strings.Contains(entries[0].Attrs, "top=yes") || strings.Contains(entries[0].Attrs, "sub.top=") || !strings.Contains(entries[0].Attrs, "sub.k=") {
+		t.Fatalf("group prefix order wrong: %q", entries[0].Attrs)
 	}
 }
