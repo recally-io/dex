@@ -45,7 +45,11 @@ func main() {
 
 func command(ctx context.Context, args []string, input io.Reader) error {
 	if len(args) == 0 {
-		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE | dex-agent run")
+		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE | dex-agent run [-no-auto-update] | dex-agent version")
+	}
+	if args[0] == "version" || args[0] == "--version" {
+		fmt.Printf("dex-agent %s\n", agentVersion())
+		return nil
 	}
 	private, err := defaultState()
 	if err != nil {
@@ -54,10 +58,14 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	state := flags.String("state", private, "private machine state directory")
 	origin, id, code := new(string), new(string), new(string)
-	if args[0] == "enroll" {
+	noAutoUpdate := new(bool)
+	switch args[0] {
+	case "enroll":
 		origin = flags.String("url", "", "Dex address, for example https://dex.example.com")
 		id = flags.String("id", "", "environment ID")
 		code = flags.String("code", "", "one-time enrollment code from the install command")
+	case "run":
+		noAutoUpdate = flags.Bool("no-auto-update", false, "disable automatic version alignment with the Dex server")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
@@ -76,9 +84,9 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 		}
 		return enroll(ctx, *state, *origin, *id, *code)
 	case "run":
-		return run(ctx, *state)
+		return run(ctx, *state, *noAutoUpdate)
 	default:
-		return errors.New("expected enroll or run")
+		return errors.New("expected enroll, run, or version")
 	}
 }
 
@@ -176,7 +184,7 @@ func enroll(ctx context.Context, state, origin, id, code string) error {
 	return nil
 }
 
-func run(ctx context.Context, state string) error {
+func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	if os.Geteuid() == 0 {
 		return errors.New("run the machine service as a dedicated non-root account")
 	}
@@ -215,27 +223,60 @@ func run(ctx context.Context, state string) error {
 	if err := root.MkdirAll("workspace", 0700); err != nil {
 		return err
 	}
+	selfVer := agentVersion()
+	exePath, _ := os.Executable()
+	capInfo := probeSelfUpdate(selfVer, exePath, noAutoUpdate)
+	readyMeta := runner.Ready{
+		Version:          selfVer,
+		CanSelfUpdate:    capInfo.Supported,
+		SelfUpdateReason: capInfo.Reason,
+	}
 	header := http.Header{"Authorization": []string{"Bearer " + cfg.Token}}
 	execution := runnerExecutionOptions(ctx, workspace)
 	delay := time.Second
+	var backoff updateBackoff
 	for ctx.Err() == nil {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
 		// websocket.Dial takes ownership of the response on a successful upgrade.
 		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}}) //nolint:bodyclose
 		cancel()
-		// A refused token and an incompatible protocol are terminal, so the agent stops with
-		// success and the service manager leaves it stopped.
+		// A refused token is terminal, so the agent stops with success and the service manager leaves it stopped.
 		if res != nil && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden) {
 			log.Print("Dex rejected the machine token; install the machine again")
 			return nil
 		}
-		if res != nil && res.StatusCode == http.StatusUpgradeRequired {
-			log.Print("the machine protocol is incompatible; install the matching Dex version")
-			return nil
+		serverVer := ""
+		if res != nil {
+			serverVer = strings.TrimSpace(res.Header.Get("X-Dex-Version"))
 		}
-		if dialErr == nil {
+		if shouldAlignVersion(selfVer, serverVer, capInfo) && !backoff.blocked(serverVer, time.Now()) {
+			if dialErr == nil && c != nil {
+				_ = c.Close(websocket.StatusNormalClosure, "updating to match Dex server version")
+			}
+			log.Printf("aligning dex-agent %s -> %s", selfVer, serverVer)
+			if err := selfUpdateTo(ctx, nil, cfg, capInfo.Executable, serverVer); err != nil {
+				log.Printf("auto-update to %s failed: %v", serverVer, err)
+				backoff.recordFailure(serverVer, time.Now())
+			} else {
+				return nil
+			}
+			// Re-dial immediately (or after backoff) rather than serving on a closed socket.
+			if dialErr == nil {
+				continue
+			}
+		}
+		if res != nil && res.StatusCode == http.StatusUpgradeRequired {
+			if shouldAlignVersion(selfVer, serverVer, capInfo) {
+				// Auto-update is backed off; stay alive and retry rather than stopping permanently.
+				log.Printf("machine protocol incompatible with %s; will retry auto-update after backoff", serverVer)
+			} else {
+				log.Print("the machine protocol is incompatible; install the matching Dex version")
+				return nil
+			}
+		} else if dialErr == nil {
+			backoff.clear()
 			log.Print("connected to Dex")
-			_ = runner.Serve(ctx, c, node.NewNodeExecutionEnv(execution))
+			_ = runner.ServeWithInfo(ctx, c, node.NewNodeExecutionEnv(execution), readyMeta)
 			delay = time.Second
 		}
 		timer := time.NewTimer(delay)

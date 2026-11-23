@@ -3618,6 +3618,17 @@ components:
         timeoutSeconds: { type: integer }
         autoPause: { type: boolean }
 
+    RunnerStatus:
+      type: object
+      required: [online]
+      properties:
+        online: { type: boolean }
+        os: { type: string }
+        arch: { type: string }
+        version: { type: string }
+        canSelfUpdate: { type: boolean }
+        selfUpdateReason: { type: string }
+
     Environment:
       type: object
       required: [id, name, kind, config, secretSet, createdAt, updatedAt]
@@ -3627,6 +3638,7 @@ components:
         kind: { $ref: "#/components/schemas/EnvironmentKind" }
         config: { $ref: "#/components/schemas/EnvironmentConfig" }
         secretSet: { type: boolean }
+        runner: { $ref: "#/components/schemas/RunnerStatus" }
         createdAt: { type: integer, format: int64 }
         updatedAt: { type: integer, format: int64 }
 

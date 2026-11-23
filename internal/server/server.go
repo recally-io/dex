@@ -48,6 +48,7 @@ type Config struct {
 	Live        *live.Hub
 	DataDir     string
 	Version     string
+	ReleaseBase string
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
 	Envs   *execenv.Manager
@@ -138,6 +139,7 @@ func New(cfg Config) http.Handler {
 	// token afterwards, so they sit outside the admin API.
 	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
+	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	for _, p := range cfg.Plugins {

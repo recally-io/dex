@@ -5,6 +5,7 @@ import {
   deleteEnvironmentMutation,
   discoverSshConfigOptions,
   forgetEnvironmentHostKeyMutation,
+  getHealthOptions,
   revokeRunnerMutation,
   listAgentsOptions,
   listEnvironmentsOptions,
@@ -36,12 +37,14 @@ import { Button } from "./ui/button";
 
 export function ExecutionEnvironments() {
   const query = useQuery(listEnvironmentsOptions());
+  const healthQuery = useQuery(getHealthOptions());
   const agentsQuery = useQuery(listAgentsOptions());
   const sshConfigQuery = useQuery(discoverSshConfigOptions());
   const [dialog, setDialog] = useState<Environment | "new" | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Environment | null>(null);
 
+  const serverVersion = healthQuery.data?.version;
   const envs = query.data?.environments ?? [];
   const sshHosts = sshConfigQuery.data?.hosts ?? [];
   const identityFiles = sshConfigQuery.data?.identityFiles ?? [];
@@ -107,6 +110,7 @@ export function ExecutionEnvironments() {
             <EnvironmentCard
               key={env.id}
               env={env}
+              serverVersion={serverVersion}
               users={usersByEnv.get(env.id) ?? []}
               sshHosts={sshHosts}
               onEdit={() => setDialog(env)}
@@ -141,14 +145,52 @@ export function ExecutionEnvironments() {
   );
 }
 
+function runnerSyncHint(
+  runner: Environment["runner"],
+  serverVersion: string | undefined,
+): { label: string; warn: boolean } | null {
+  if (!runner?.online) return null;
+
+  if (!runner.version) {
+    return {
+      label: "Legacy runner (update manually once to enable auto-sync)",
+      warn: true,
+    };
+  }
+
+  if (serverVersion && serverVersion !== "dev" && runner.version !== serverVersion) {
+    if (runner.canSelfUpdate) {
+      return {
+        label: `Auto-updates to ${serverVersion} on reconnect`,
+        warn: false,
+      };
+    }
+
+    const reason = runner.selfUpdateReason || "not-writable";
+
+    return {
+      label: `Manual update needed (${reason})`,
+      warn: true,
+    };
+  }
+
+  if (serverVersion && runner.version === serverVersion) {
+    return { label: "Matches server", warn: false };
+  }
+
+  return null;
+}
+
 function EnvironmentCard({
   env,
+  serverVersion,
   users,
   sshHosts,
   onEdit,
   onRemove,
 }: {
   env: Environment;
+  serverVersion?: string;
   users: Agent[];
   sshHosts: SshHostEntry[];
   onEdit: () => void;
@@ -205,10 +247,35 @@ function EnvironmentCard({
 
     rows.push(["Disk", <Mono key="disk">{formatSandboxDiskSummary(env.config)}</Mono>]);
   } else if (isRunner) {
+    const runner = env.runner;
+    const online = runner?.online ?? probe?.ok ?? false;
+    const sync = runnerSyncHint(runner, serverVersion);
+
     rows.push([
       "Connection",
-      probe?.ok ? "Online" : probe ? "Offline" : "Select Test to check the connection",
+      online ? (runner?.os && runner.arch ? `Online (${runner.os}/${runner.arch})` : "Online") : "Offline",
     ]);
+
+    if (runner?.online) {
+      rows.push([
+        "Version",
+        <span key="ver" className="inline-flex flex-wrap items-center gap-2">
+          <Mono>{runner.version || "unknown"}</Mono>
+          {sync ? (
+            <Badge
+              variant="secondary"
+              className={
+                sync.warn
+                  ? "h-5 bg-orange-tint px-2 text-[11px] text-orange"
+                  : "h-5 bg-green-tint px-2 text-[11px] text-green"
+              }
+            >
+              {sync.label}
+            </Badge>
+          ) : null}
+        </span>,
+      ]);
+    }
   } else {
     rows.push(["Target", <Mono key="target">{formatSshTarget(env.config)}</Mono>]);
 

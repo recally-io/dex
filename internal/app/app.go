@@ -463,11 +463,12 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
 		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
-		Engine:  native,
-		Envs:    envs,
-		Runners: envs.Runners(),
-		System:  sys,
-		Chats:   chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		Engine:      native,
+		Envs:        envs,
+		Runners:     envs.Runners(),
+		System:      sys,
+		ReleaseBase: cfg.ReleaseBase,
+		Chats:       chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
 	a.wg.Go(func() {

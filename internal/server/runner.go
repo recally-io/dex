@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -15,6 +17,7 @@ import (
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/update"
 	"golang.org/x/mod/semver"
 )
 
@@ -76,6 +79,9 @@ func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "the machine token is not valid; install the machine again")
 		return
 	}
+	if h.Version != "" {
+		w.Header().Set("X-Dex-Version", h.Version)
+	}
 	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), runner.Version) {
 		writeError(w, http.StatusUpgradeRequired, "the machine protocol is incompatible")
 		return
@@ -85,6 +91,101 @@ func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.Runners.Accept(r.Context(), id, token, conn)
+}
+
+// runnerArchive matches valid dex-agent release archive filenames for a specific server tag.
+func validRunnerReleaseFile(tag, name string) bool {
+	if name == "checksums.txt" {
+		return true
+	}
+	prefix := "dex-agent_" + tag + "_"
+	rest, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return false
+	}
+	switch rest {
+	case "linux_amd64.tar.gz", "linux_arm64.tar.gz", "darwin_amd64.tar.gz", "darwin_arm64.tar.gz":
+		return true
+	default:
+		return false
+	}
+}
+
+// machineRunnerRelease serves checksums.txt and dex-agent archives matching this Dex server's
+// running version to enrolled machines, caching downloaded release assets on disk.
+func (h *handler) machineRunnerRelease(w http.ResponseWriter, r *http.Request) {
+	id, token := r.PathValue("id"), machineBearer(r)
+	if h.Runners == nil || token == "" || h.Runners.Verify(r.Context(), id, token) != nil {
+		writeError(w, http.StatusUnauthorized, "the machine token is not valid; install the machine again")
+		return
+	}
+	file := r.PathValue("file")
+	tag := h.Version
+	if tag == "" || tag == "dev" {
+		if !validRunnerReleaseFile("v0.0.0-dev", file) {
+			http.NotFound(w, r)
+			return
+		}
+		http.ServeFile(w, r, filepath.Join(h.DataDir, "machine-release", file)) //nolint:gosec // Validated fixed filename.
+		return
+	}
+	if !semver.IsValid(tag) {
+		writeError(w, http.StatusServiceUnavailable, "this Dex build has no matching machine archive")
+		return
+	}
+	if !validRunnerReleaseFile(tag, file) {
+		http.NotFound(w, r)
+		return
+	}
+	cached, err := h.ensureRunnerReleaseCached(r.Context(), tag, file)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch runner release asset: %v", err))
+		return
+	}
+	http.ServeFile(w, r, cached) //nolint:gosec // Validated tag and fixed filename inside cache dir.
+}
+
+func (h *handler) ensureRunnerReleaseCached(ctx context.Context, tag, file string) (string, error) {
+	cacheDir := filepath.Join(h.DataDir, "cache", "machine-release", tag)
+	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(cacheDir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	dest := filepath.Join(cacheDir, file)
+	if info, err := root.Stat(file); err == nil && info.Mode().IsRegular() {
+		return dest, nil
+	}
+	data, err := update.FetchReleaseAsset(ctx, h.ReleaseBase, tag, file)
+	if err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(cacheDir, ".fetch-*")
+	if err != nil {
+		return "", err
+	}
+	tmpName := filepath.Base(tmp.Name())
+	keep := false
+	defer func() {
+		_ = tmp.Close()
+		if !keep {
+			_ = root.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if err := root.Rename(tmpName, file); err != nil {
+		return "", err
+	}
+	keep = true
+	return dest, nil
 }
 
 // machineBearer reads the machine credential. It refuses a browser request, because a page in

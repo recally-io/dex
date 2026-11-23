@@ -1156,6 +1156,7 @@ type Environment struct {
 	Id        string            `json:"id"`
 	Kind      EnvironmentKind   `json:"kind"`
 	Name      string            `json:"name"`
+	Runner    *RunnerStatus     `json:"runner,omitempty"`
 	SecretSet bool              `json:"secretSet"`
 	UpdatedAt int64             `json:"updatedAt"`
 }
@@ -1635,6 +1636,16 @@ type RunEvent struct {
 
 // RunEventType defines model for RunEvent.Type.
 type RunEventType string
+
+// RunnerStatus defines model for RunnerStatus.
+type RunnerStatus struct {
+	Arch             *string `json:"arch,omitempty"`
+	CanSelfUpdate    *bool   `json:"canSelfUpdate,omitempty"`
+	Online           bool    `json:"online"`
+	Os               *string `json:"os,omitempty"`
+	SelfUpdateReason *string `json:"selfUpdateReason,omitempty"`
+	Version          *string `json:"version,omitempty"`
+}
 
 // Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
 type Schedule = automation.Schedule
