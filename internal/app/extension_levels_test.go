@@ -21,6 +21,7 @@ func TestUserLegacyDotEnvIsIgnoredAndWarnedOnce(t *testing.T) {
 	writeSkill(t, filepath.Join(data, ".agents", "skills"), "review", "description: shared")
 	writeSkill(t, filepath.Join(filepath.Dir(path), "skills"), "review", "description: bot")
 	writeSkill(t, filepath.Join(home, ".agents", "skills"), "home-only", "description: from home")
+	writeMCP(t, filepath.Join(home, ".agents", "mcp.json"), map[string]any{"home-server": stdioServer(t, t.TempDir())})
 	logs := sysops.NewLogBuffer(100)
 	old := slog.Default()
 	slog.SetDefault(slog.New(sysops.TeeHandler(slog.DiscardHandler, logs)))
@@ -33,7 +34,7 @@ func TestUserLegacyDotEnvIsIgnoredAndWarnedOnce(t *testing.T) {
 		t.Fatalf("reload: %d %s", status, body)
 	}
 	got := d.extensions(t)
-	if len(got.Skills) != 1 || got.Skills[0].Scope != "agent" || !got.Skills[0].Overrides || len(got.Levels) != 2 || got.dir("home") != "" {
+	if len(got.Skills) != 1 || got.Skills[0].Scope != "agent" || !got.Skills[0].Overrides || len(got.Levels) != 2 || got.dir("home") != "" || len(got.Servers) != 0 {
 		t.Fatalf("skill levels: %+v", got)
 	}
 	var recent api.SystemLogs
