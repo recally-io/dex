@@ -9,7 +9,6 @@ import (
 
 	"github.com/MichaelKinsy/PiG/durable"
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
-	"github.com/recally-io/dex/internal/execenv"
 )
 
 func withinSkillPath(base, target string) bool {
@@ -80,16 +79,4 @@ func protectSkillTool(tool *durable.ToolRegistration) {
 		}
 		return execute(ctx, args, api)
 	}
-}
-
-func (a *agentExtensions) skillCache(cwd string) string {
-	for _, level := range a.levels {
-		base := a.skillSessionPath(filepath.Join(level.Dir, "skills"), level.Scope, "")
-		if withinSkillPath(base, cwd) && cwd != base {
-			rel := strings.TrimLeft(cwd[len(base):], `/\`)
-			name, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
-			return execenv.JoinTargetPath(a.workspace, ".dex", "cache", "skills", name)
-		}
-	}
-	return ""
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path"
@@ -61,6 +62,18 @@ func (a *agentExtensions) snapshots() (map[string]execenv.SkillSnapshot, error) 
 
 func (a *agentExtensions) syncRemoteSkills(ctx context.Context, env durableenv.ExecutionEnv) error {
 	return a.syncSkills(ctx, env, true)
+}
+
+// trySyncSkills keeps unrelated tools available when the skill mirror cannot sync.
+// Mutating skill tools use syncRemoteSkills directly to report a failed transfer.
+func (a *agentExtensions) trySyncSkills(ctx context.Context, env durableenv.ExecutionEnv, refresh bool) bool {
+	if err := a.syncSkills(ctx, env, refresh); err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("sync remote skills", "workspace", a.workspace, "error", err)
+		}
+		return false
+	}
+	return true
 }
 
 func (a *agentExtensions) syncSkills(ctx context.Context, env durableenv.ExecutionEnv, refresh bool) error {

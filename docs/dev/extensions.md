@@ -77,12 +77,14 @@ a host file's hash until the size or modification time changes.
 
 Sync runs when a lease opens or a runner reconnects, after a skill mutation in
 the current session, and on prompt render when the host stamp changed. A mutation
-returns the path in the current session environment after sync. Code mode can
-use this path in the same script.
+returns the path in the current session environment after sync. A later tool
+call in the same Code Mode script can use this path without another prompt
+render. If sync fails, dex logs the failure and keeps unrelated tools available.
+A skill mutation reports a sync failure to its caller.
 
-Run scripts from the skill directory in the session environment. Pass this
-directory as `bash`'s `cwd` to set `DEX_SKILL_CACHE` to
-`<workspace>/.dex/cache/skills/<name>`. Put runtime files there. A skill's
+Run scripts from the skill directory in the session environment. Every `bash`
+call sets `DEX_SKILL_CACHE` to `<workspace>/.dex/cache/skills`. Create
+`$DEX_SKILL_CACHE/<name>` with `mkdir -p` and put runtime files there. A skill's
 `.env` is an ordinary file. dex copies it and does not load it. Keep secrets
 in the vault. Pass them with the `env` argument of `bash` or
 `monitor_set_command`.

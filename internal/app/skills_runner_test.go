@@ -46,8 +46,15 @@ func TestUserManagesHostSkillsFromTwoRunners(t *testing.T) {
 	writeAndRun := fmt.Sprintf(`
 const doc = await tools.skill_write({path:"agent/deploy/SKILL.md", content:%s});
 const script = await tools.skill_write({path:"agent/deploy/run.sh", content:%s, mode:"0755"});
-const result = await tools.bash({cwd:script.path.slice(0, script.path.lastIndexOf("/")), command:"./run.sh"});
-return {doc:doc.path, result};`, taskJSON(t, description), taskJSON(t, "#!/bin/sh\nset -eu\nprintf cached > \"$DEX_SKILL_CACHE/value\"\nif (printf unwanted > ./unwanted) 2>/dev/null; then exit 7; fi\nprintf script-ran\n"))
+const dir = script.path.slice(0, script.path.lastIndexOf("/"));
+const result = await tools.bash({command:"cd '" + dir.replaceAll("'", "'\"'\"'") + "' && ./run.sh"});
+return {doc:doc.path, result};`, taskJSON(t, description), taskJSON(t, `#!/bin/sh
+set -eu
+mkdir -p "$DEX_SKILL_CACHE/deploy"
+printf cached > "$DEX_SKILL_CACHE/deploy/value"
+if (printf unwanted > ./unwanted) 2>/dev/null; then exit 7; fi
+printf script-ran
+`))
 	// When one script writes files and runs the executable without another prompt render.
 	answer := call(chat, "codemode", map[string]any{"code": writeAndRun})
 	mirror := filepath.Join(first.botWorkspace("default"), ".dex", "skills", "agent", "deploy")
@@ -131,5 +138,15 @@ return {doc:doc.path, result};`, taskJSON(t, description), taskJSON(t, "#!/bin/s
 	}
 	if _, err := os.Stat(mirror); !os.IsNotExist(err) {
 		t.Fatalf("deleted skill still mirrored: %v", err)
+	}
+
+	// When a pending sync encounters a damaged manifest, an unrelated command still runs.
+	manifest := filepath.Join(second.botWorkspace("default"), ".dex", "skills", "dex", ".manifest.json")
+	if err := os.Chmod(manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, manifest, "not JSON")
+	if got := call(other, "bash", map[string]any{"command": "printf still-running"}); got != "tool: still-running" {
+		t.Fatalf("a failed sync blocked an unrelated command: %s", got)
 	}
 }

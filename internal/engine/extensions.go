@@ -195,9 +195,9 @@ func distinctLevels(levels []ExtensionLevel) []ExtensionLevel {
 	return out
 }
 
-// skillsContext reads the skills of the three file levels and of the project level, cwd/.agents/skills.
-// The project level holds only skills.
-func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableenv.ExecutionEnv, cwd string, errs *[]string) []SkillInfo {
+// skillsContext reads skills from the project's cwd/.agents/skills and, when
+// available, from the dex and agent stores.
+func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableenv.ExecutionEnv, cwd string, errs *[]string, includeManaged bool) []SkillInfo {
 	if cwd == "" {
 		cwd = a.workspace
 	}
@@ -212,10 +212,12 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 	}
 	levels := []ExtensionLevel{{"project", projectDir}}
 	byName := map[string]SkillInfo{}
-	managed, warnings := a.managedSkills()
-	*errs = append(*errs, warnings...)
-	for _, skill := range managed {
-		byName[skill.Name] = skill
+	if includeManaged {
+		managed, warnings := a.managedSkills()
+		*errs = append(*errs, warnings...)
+		for _, skill := range managed {
+			byName[skill.Name] = skill
+		}
 	}
 	for _, l := range distinctLevels(levels) {
 		var dir string
@@ -433,7 +435,7 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 		s.env = map[string]string{}
 	}
 	if !a.defaultUnavailable {
-		s.info.Skills = a.skillsContext(ctx, remoteEnv, a.workspace, &s.info.Warnings)
+		s.info.Skills = a.skillsContext(ctx, remoteEnv, a.workspace, &s.info.Warnings, true)
 	}
 	servers, mcpErr := a.mcp.list(ctx, a.agentID)
 	if mcpErr != nil {
@@ -542,11 +544,9 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 		if input.Env != nil {
 			cwd = input.Env.Cwd()
 		}
-		if err := target.syncRemoteSkills(renderCtx, input.Env); err != nil {
-			return nil, err
-		}
+		synced := target.trySyncSkills(renderCtx, input.Env, true)
 		errs := []string{}
-		return skillsText(target.skillsContext(renderCtx, input.Env, cwd, &errs)), nil
+		return skillsText(target.skillsContext(renderCtx, input.Env, cwd, &errs, synced)), nil
 	}}}
 	loaded.Extension.Sections = append(loaded.Extension.Sections, &durable.PromptSection{Key: "project", Render: func(_ context.Context, input durable.PromptInput) (*string, error) {
 		if a.sessionPrompts && input.Env == nil {
@@ -819,7 +819,7 @@ func extensionGuide(levels []ExtensionLevel, secrets, scope string) string {
 		"",
 		"Skills: dex and agent skills live on the control host. Change them only with skill_write, skill_edit, skill_delete, or skill_import. Use skill_list and skill_read to inspect them. Skill file paths use <dex|agent>/<name>/<file>. To install a skill, run the installer in a temporary directory, then use skill_import on the skill directory.",
 		"Start SKILL.md with the YAML front matter fields name and description. The name defaults to the directory name. Project skills in <cwd>/.agents/skills override the other levels. Use the normal file tools for project skills.",
-		"Run a managed skill's scripts from its directory in the session environment. Use the returned path from a skill tool, or the path in the skills list. When you set bash cwd to the skill directory, dex sets DEX_SKILL_CACHE to <workspace>/.dex/cache/skills/<name>. Use it for runtime files. Remote skill copies are read-only.",
+		"Run a managed skill's scripts from its directory in the session environment. Use the returned path from a skill tool, or the path in the skills list. Bash sets DEX_SKILL_CACHE to <workspace>/.dex/cache/skills. Put runtime files in $DEX_SKILL_CACHE/<name> and create that directory with mkdir -p. Remote skill copies are read-only.",
 		"A .env file inside a skill is an ordinary file that dex copies but does not load. Keep secrets in the vault. Pass them to a script with the env argument of bash or monitor_set_command. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
 		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or agent level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the agent finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,

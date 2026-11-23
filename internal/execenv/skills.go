@@ -263,7 +263,12 @@ func (s *SkillSnapshot) Sync(ctx context.Context, env durableenv.ExecutionEnv, t
 	defer func() {
 		_ = env.Remove(context.WithoutCancel(ctx), stage, &durableenv.RemoveOptions{Recursive: true, Force: true})
 	}()
-	q := skillShellQuote
+	// Start the shell in the workspace and use paths relative to that workspace.
+	// File API paths are absolute in the target's namespace, not the shell's host.
+	workspace := path.Dir(path.Dir(parent))
+	q := func(p string) string {
+		return skillShellQuote("./" + strings.TrimPrefix(p, strings.TrimSuffix(workspace, "/")+"/"))
+	}
 	remote := func(rel string) string { return q(JoinTargetPath(target, rel)) }
 	var sh strings.Builder
 	line := func(format string, args ...any) { fmt.Fprintf(&sh, format+"\n", args...) }
@@ -354,7 +359,7 @@ func (s *SkillSnapshot) Sync(ctx context.Context, env durableenv.ExecutionEnv, t
 	if err := env.WriteFile(ctx, script, sh.String()); err != nil {
 		return err
 	}
-	return runSkillShell(ctx, env, "sh "+q(script))
+	return runSkillShell(ctx, env, workspace, "sh "+q(script))
 }
 
 func checkMirrorEntry(ctx context.Context, env durableenv.ExecutionEnv, name string, kind durableenv.FileKind) (bool, error) {
@@ -371,9 +376,9 @@ func checkMirrorEntry(ctx context.Context, env durableenv.ExecutionEnv, name str
 	return true, nil
 }
 
-func runSkillShell(ctx context.Context, env durableenv.ExecutionEnv, command string) error {
+func runSkillShell(ctx context.Context, env durableenv.ExecutionEnv, workspace, command string) error {
 	var output strings.Builder
-	res, err := env.Exec(ctx, command, &durableenv.ShellExecOptions{OnOutput: func(_ context.Context, text string, _ durableenv.ShellOutputInfo) { output.WriteString(text) }})
+	res, err := env.Exec(ctx, command, &durableenv.ShellExecOptions{Cwd: workspace, OnOutput: func(_ context.Context, text string, _ durableenv.ShellOutputInfo) { output.WriteString(text) }})
 	if err != nil {
 		return err
 	}

@@ -32,7 +32,7 @@ func (s sessionEnv) executionEnv(ctx context.Context, cwd string) (durableenv.Ex
 	}
 	env, err := s.Handle.Env(ctx, cwd, s.Vars)
 	if err == nil && s.Files != nil {
-		err = s.Files.syncSkills(ctx, env, false)
+		s.Files.trySyncSkills(ctx, env, false)
 	}
 	return env, err
 }
@@ -110,9 +110,7 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 			return sessionEnv{}, err
 		}
 		files := e.files.forHandle(h)
-		if err := files.syncRemoteSkills(ctx, nil); err != nil {
-			return sessionEnv{}, errors.Join(err, h.Close(context.WithoutCancel(ctx)))
-		}
+		files.trySyncSkills(ctx, nil, true)
 		e.own, e.ownFiles, e.ownErr = h, files, nil
 		stamp = h.Stamp()
 	}
@@ -152,9 +150,7 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 	}
 	vars, inherit := e.vars(h)
 	s := sessionEnv{ID: id, Handle: h, Files: e.files.forHandle(h), Vars: vars, Inherit: inherit}
-	if err := s.Files.syncRemoteSkills(ctx, nil); err != nil {
-		return sessionEnv{}, errors.Join(err, h.Close(context.WithoutCancel(ctx)))
-	}
+	s.Files.trySyncSkills(ctx, nil, true)
 	e.leases[id] = s
 	return s, nil
 }

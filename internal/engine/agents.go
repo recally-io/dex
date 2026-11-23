@@ -361,9 +361,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := files.openSkills(ctx); err != nil {
 		return nil, err
 	}
-	if err := files.syncRemoteSkills(ctx, nil); err != nil {
-		return nil, err
-	}
+	files.trySyncSkills(ctx, nil, true)
 	session := func(ctx context.Context, id durable.ConversationId) (sessionEnv, error) {
 		return envs.session(ctx, int64(id))
 	}
