@@ -42,7 +42,7 @@ describe("chat", () => {
     await screen
       .getByRole("textbox", "Message Dex")
       .fill(
-        `monitor_set ${JSON.stringify({ delaySeconds: 300, prompt, checkCommand: "printf ready", maxRuns: 3, intervalSeconds: 60 })}`,
+        `monitor_set_schedule ${JSON.stringify({ delaySeconds: 300, prompt, checkCommand: "printf ready", maxRuns: 3, intervalSeconds: 60 })}`,
       );
     await screen.getByRole("button", "Send message").tap();
     await screen.getByText(new RegExp(`^tool:.*${prompt}`)).waitFor();

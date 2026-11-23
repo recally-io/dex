@@ -222,20 +222,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				return chats.ToolSessionSearch(ctx, c, a)
 			},
 		},
-		Background: engine.BackgroundTools{
-			Start: func(ctx context.Context, c engine.TaskContext, a engine.BackgroundStartArgs) (engine.BackgroundInfo, error) {
-				return chats.ToolBackgroundStart(ctx, c, a)
-			},
-			List: func(ctx context.Context, c engine.TaskContext) ([]engine.BackgroundInfo, error) {
-				return chats.ToolBackgroundList(ctx, c)
-			},
-			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.BackgroundInfo, error) {
-				return chats.ToolBackgroundStop(ctx, c, id)
-			},
-			Wait: func(ctx context.Context, c engine.TaskContext, a engine.BackgroundWaitArgs) (engine.BackgroundWaitResult, error) {
-				return chats.ToolBackgroundWait(ctx, c, a)
-			},
-		},
 		AskUser: func(ctx context.Context, c engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
 			return chats.ToolAskUser(ctx, c, a)
 		},
@@ -258,6 +244,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		},
 		AuthorizeMonitor: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeMonitor(ctx, c) },
 		Monitors: engine.MonitorTools{
+			Command: func(ctx context.Context, c engine.TaskContext, a engine.MonitorCommandArgs) (engine.MonitorInfo, error) {
+				return chats.ToolMonitorCommand(ctx, c, a)
+			},
 			Set: func(ctx context.Context, c engine.TaskContext, a engine.MonitorSetArgs) (engine.MonitorInfo, error) {
 				return chats.ToolMonitorSet(ctx, c, a)
 			},

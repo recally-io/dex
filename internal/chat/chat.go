@@ -139,6 +139,7 @@ type Service struct {
 	db            *sql.DB
 	monitorFireMu sync.Mutex // one active scheduler batch; SQLite claims survive restart
 	writeMu       sync.Mutex // writer-first control transactions; per agent if throughput matters
+	monitorMu     sync.Mutex // serialize creation to enforce the shared active limit
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
 

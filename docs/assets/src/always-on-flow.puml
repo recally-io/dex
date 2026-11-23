@@ -18,7 +18,7 @@ title dex: always-on agent inbox, run exit modes, outbox, and monitors
 top to bottom direction
 
 rectangle "User inputs\nWeb / Telegram / Feishu / WeChat" as user_in
-rectangle "Internal producers\nChild results + background wakes + Routines" as sys_in
+rectangle "Internal producers\nChild results + command Monitor wakes + Routines" as sys_in
 database "monitors\nPrompt or script; bounded runs and lifetime" as monitors
 rectangle "Scheduler\nCheck target and claim due work" as sched
 
@@ -26,7 +26,7 @@ database "Agent Inbox (submissions)\nDurable receipts + source dedup" as inbox
 
 package "Native PiG session run (QueueAll boundary batching)" as run {
   rectangle "User Turn\nlive.Run.Inputs has user message\nLive stream + auto reply on settle" as user_turn
-  rectangle "System Turn\nOnly task / background / monitor / routine\nFail-quiet trace by default" as sys_turn
+  rectangle "System Turn\nOnly task / Monitor / routine\nFail-quiet trace by default" as sys_turn
 }
 
 rectangle "Explicit exit tools\nnotify_user / ask_user / report_parent\nstay_silent (Terminate: true)" as tools
@@ -44,13 +44,12 @@ inbox --> sys_turn : System events only
 user_turn --> outbox : Auto reply or ask_user
 sys_turn --> tools : Optional call
 tools --> outbox : notify_user / ask_user
-tools --> monitors : monitor_set (bounded)
+tools --> monitors : monitor_set_schedule (bounded)
 sys_turn ..> outbox : System error fallback only
 
 outbox --> dispatch : Deliver to peer + Web view
 note right of sys_turn
-  In-turn background_wait and wake="none"
-  consume helper exits before queuing.
+  Command Monitors with wake="none" send no wake-up.
   Silent System Turns emit 0 channel messages.
 end note
 @enduml

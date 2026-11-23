@@ -26,6 +26,8 @@ import (
 
 type bgInfo struct {
 	ID         string `json:"id"`
+	Kind       string `json:"kind"`
+	Mode       string `json:"mode"`
 	Label      string `json:"label"`
 	State      string `json:"state"`
 	ExitStatus *int   `json:"exitStatus"`
@@ -53,9 +55,9 @@ type bgWake struct {
 func bgStart(t *testing.T, d *dex, chat int64, args map[string]any) bgInfo {
 	t.Helper()
 	var info bgInfo
-	toolJSON(t, callSessionTool(t, d, chat, "background_start", args), &info)
+	toolJSON(t, callSessionTool(t, d, chat, "monitor_set_command", args), &info)
 	if info.ID == "" || info.State != "running" || info.OutputFile == "" {
-		t.Fatalf("background_start returned %+v", info)
+		t.Fatalf("monitor_set_command returned %+v", info)
 	}
 	return info
 }
@@ -63,10 +65,10 @@ func bgStart(t *testing.T, d *dex, chat int64, args map[string]any) bgInfo {
 func bgList(t *testing.T, d *dex, chat int64) []bgInfo {
 	t.Helper()
 	var out struct {
-		Commands []bgInfo `json:"commands"`
+		Monitors []bgInfo `json:"monitors"`
 	}
-	toolJSON(t, callSessionTool(t, d, chat, "background_list", map[string]any{}), &out)
-	return out.Commands
+	toolJSON(t, callSessionTool(t, d, chat, "monitor_list", map[string]any{}), &out)
+	return out.Monitors
 }
 
 func bgWakes(t *testing.T, conn *sql.DB, chat int64) []bgWake {
@@ -167,7 +169,7 @@ func TestUserGetsAWakeUpWithTheExitStatusWhenABackgroundCommandEnds(t *testing.T
 	info := bgStart(t, d, chat, map[string]any{"command": script, "label": "build"})
 	// Then the start call returned while the build runs, and no wake-up exists yet.
 	if got := bgList(t, d, chat); len(got) != 1 || got[0].ID != info.ID || got[0].State != "running" || got[0].Label != "build" {
-		t.Fatalf("background_list while the build runs: %+v", got)
+		t.Fatalf("monitor_list while the build runs: %+v", got)
 	}
 	if wakes := bgWakes(t, conn, chat); len(wakes) != 0 {
 		t.Fatalf("wake-up before the exit: %+v", wakes)
@@ -197,7 +199,7 @@ func TestUserGetsAWakeUpWithTheExitStatusWhenABackgroundCommandEnds(t *testing.T
 		t.Fatalf("output file %q: %v", data, err)
 	}
 	if got := bgList(t, d, chat); got[0].State != "exited" || got[0].ExitStatus == nil || *got[0].ExitStatus != 3 {
-		t.Fatalf("background_list after the exit: %+v", got)
+		t.Fatalf("monitor_list after the exit: %+v", got)
 	}
 }
 
@@ -312,12 +314,12 @@ func TestUserSeesAnUnknownStateAfterDexCrashes(t *testing.T) {
 	// Then the list says unknown, and dex does not claim that the process stopped.
 	list := bgList(t, d, chat)
 	if len(list) != 1 || list[0].ID != info.ID || list[0].State != "unknown" || list[0].ExitStatus != nil {
-		t.Fatalf("background_list after the crash: %+v", list)
+		t.Fatalf("monitor_list after the crash: %+v", list)
 	}
 	// And dex does not signal a process that it cannot identify.
-	answer := callSessionTool(t, d, chat, "background_stop", map[string]any{"id": info.ID})
+	answer := callSessionTool(t, d, chat, "monitor_cancel", map[string]any{"id": info.ID})
 	if !strings.HasPrefix(answer, "spawn error:") || !strings.Contains(answer, "crashed") {
-		t.Fatalf("background_stop on an unknown command: %s", answer)
+		t.Fatalf("monitor_cancel on an unknown command: %s", answer)
 	}
 	if err := syscall.Kill(process.Process.Pid, 0); err != nil {
 		t.Fatalf("dex signalled an unknown process: %v", err)
@@ -349,7 +351,7 @@ func TestUserGetsAStoppedStateAndAWakeUpWhenDexShutsDown(t *testing.T) {
 		t.Fatalf("wake-up: %+v", wake.result)
 	}
 	if list := bgList(t, d, chat); len(list) != 1 || list[0].State != "stopped" || list[0].Reason != "shutdown" {
-		t.Fatalf("background_list after the restart: %+v", list)
+		t.Fatalf("monitor_list after the restart: %+v", list)
 	}
 }
 
@@ -448,7 +450,7 @@ func TestUserChildBackgroundWakeDoesNotAutoEscalateToParent(t *testing.T) {
 	parent := newParent(t, d)
 	done := filepath.Join(dir, "child.done")
 	command := fmt.Sprintf("until test -f %s; do sleep 0.02; done; echo bg-finished", done)
-	message := childJSON(t, map[string]any{"tool": "background_start", "command": command})
+	message := childJSON(t, map[string]any{"tool": "monitor_set_command", "command": command})
 	child := spawnChild(t, d, parent, "Worker", message, "spawn")
 	waitResults(t, conn, parent, 1)
 	if err := os.WriteFile(done, nil, 0o600); err != nil {
@@ -533,11 +535,119 @@ func TestUserCannotRunMoreBackgroundCommandsThanTheBotCap(t *testing.T) {
 	chat := bgChat(t, d)
 	first := bgStart(t, d, chat, map[string]any{"command": taskGate(t, dir, "cap")})
 	// When the bot starts a second one.
-	answer := callSessionTool(t, d, chat, "background_start", map[string]any{"command": "true"})
+	answer := callSessionTool(t, d, chat, "monitor_set_command", map[string]any{"command": "true"})
 	// Then the call fails, and a stop makes room again.
 	if !strings.HasPrefix(answer, "spawn error:") || !strings.Contains(answer, "too many background commands") {
 		t.Fatalf("answer: %s", answer)
 	}
-	toolJSON(t, callSessionTool(t, d, chat, "background_stop", map[string]any{"id": first.ID}), &bgInfo{})
+	toolJSON(t, callSessionTool(t, d, chat, "monitor_cancel", map[string]any{"id": first.ID}), &bgInfo{})
 	bgStart(t, d, chat, map[string]any{"command": "true"})
+}
+
+func TestUserListsAndCancelsBothMonitorKindsInTheirSession(t *testing.T) {
+	t.Parallel()
+	// Given a timer, a check, and a command in one session and a timer in another.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	chat, other := bgChat(t, d), bgChat(t, d)
+	setSchedule := func(chat int64, checkCommand string) bgInfo {
+		t.Helper()
+		var info bgInfo
+		toolJSON(t, callSessionTool(t, d, chat, "monitor_set_schedule", map[string]any{
+			"delaySeconds": 300, "prompt": "fixture", "checkCommand": checkCommand,
+		}), &info)
+		return info
+	}
+	timer, check, foreign := setSchedule(chat, ""), setSchedule(chat, "exit 10"), setSchedule(other, "")
+	leader, child := filepath.Join(dir, "leader.pid"), filepath.Join(dir, "child.pid")
+	command := bgStart(t, d, chat, map[string]any{"command": fmt.Sprintf("echo $$ > %s; sleep 300 & echo $! > %s; wait", leader, child), "wake": "exit"})
+	killAtEnd(t, pidFile(t, leader))
+	killAtEnd(t, pidFile(t, child))
+
+	// Then the list names each kind and hides the other session's Monitor.
+	list := bgList(t, d, chat)
+	byID := make(map[string]bgInfo)
+	for _, monitor := range list {
+		byID[monitor.ID] = monitor
+	}
+	if len(list) != 3 || byID[foreign.ID].ID != "" ||
+		byID[timer.ID].Kind != "schedule" || byID[timer.ID].Mode != "prompt" ||
+		byID[check.ID].Kind != "schedule" || byID[check.ID].Mode != "script" ||
+		byID[command.ID].Kind != "command" || byID[command.ID].State != "running" {
+		t.Fatalf("session Monitor list: %+v", list)
+	}
+	// The other session also cannot cancel the command by ID.
+	if got := callSessionTool(t, d, other, "monitor_cancel", map[string]any{"id": command.ID}); !strings.HasPrefix(got, "spawn error:") {
+		t.Fatalf("cancel from another session: %s", got)
+	}
+	for id, want := range map[string]string{timer.ID: "cancelled", command.ID: "stopped"} {
+		var info bgInfo
+		toolJSON(t, callSessionTool(t, d, chat, "monitor_cancel", map[string]any{"id": id}), &info)
+		if info.State != want {
+			t.Fatalf("cancel %s: %+v, want state %s", id, info, want)
+		}
+	}
+	waitTaskPIDGone(t, leader)
+	waitTaskPIDGone(t, child)
+	if wakes := bgWakes(t, conn, chat); len(wakes) != 0 {
+		t.Fatalf("cancelled command woke the session: %+v", wakes)
+	}
+}
+
+func TestUserCannotPassCommandArgumentsToASchedule(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	chat := bgChat(t, d)
+	for _, tc := range []struct {
+		key  string
+		arg  any
+		want string
+	}{
+		{"command", "exit 10", "command"},
+		{"env", map[string]string{"FIXTURE": "vault:FIXTURE"}, "env requires checkCommand"},
+	} {
+		got := callSessionTool(t, d, chat, "monitor_set_schedule", map[string]any{
+			"delaySeconds": 300, "prompt": "fixture", tc.key: tc.arg,
+		})
+		if !strings.HasPrefix(got, "spawn error:") || !strings.Contains(got, tc.want) {
+			t.Fatalf("schedule with %s: %s", tc.key, got)
+		}
+	}
+}
+
+func TestUserTaskCanSetARepeatingCheckAfterCommandExit(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "Check worker", childJSON(t, map[string]any{
+		"tool": "monitor_set_command", "command": "printf ready", "wake": "exit", "label": "check fixture",
+	}), "spawn-monitor").conversation(t)
+	wake := waitWakes(t, conn, child, 1)[0]
+	if wake.result.Event != "exited" || !strings.Contains(wake.answer, `"kind":"schedule"`) || !strings.Contains(wake.answer, `"maxRuns":2`) {
+		t.Fatalf("task did not set a repeating check on exit: %+v", wake)
+	}
+}
+
+func TestUserCommandWakeChainStopsUntilUserInput(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	parent := newParent(t, d)
+	child := spawnChild(t, d, parent, "Chain worker", childJSON(t, map[string]any{
+		"tool": "monitor_set_command", "command": "printf ready", "wake": "exit", "label": "chain fixture",
+	}), "spawn-monitor").conversation(t)
+	wakes := waitWakes(t, conn, child, 6)
+	if len(wakes) != 6 || !strings.Contains(wakes[5].answer, "wait for user input") {
+		t.Fatalf("six commands followed by a refusal: %+v", wakes)
+	}
+	// A new user turn can set another command in the same session.
+	var info bgInfo
+	toolJSON(t, callSessionTool(t, d, child, "monitor_set_command", map[string]any{"command": "printf reset", "wake": "none"}), &info)
+	if info.Kind != "command" || info.ID == "" {
+		t.Fatalf("command after user input: %+v", info)
+	}
 }

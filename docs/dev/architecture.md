@@ -29,7 +29,7 @@ durable reply delivery. The engine does not import dex business packages.
 Tools and stdio MCP servers can start child processes. Bash has a default
 120-second timeout. An omitted or null `timeout` uses the default. An explicit
 `timeout` in seconds replaces it. PiG stops the shell process group and waits for it on timeout or cancellation.
-Use `background_start` for supervised long work. It has its own timeout defaults.
+Use `monitor_set_command` for supervised long work. It has its own timeout defaults.
 Other tools do not receive the bash or background timeout defaults. MCP calls have
 a 600-second timeout, but remote work can continue after cancellation. A generic
 deadline cannot safely stop a tool that ignores cancellation.
@@ -307,12 +307,21 @@ renames the original Timer table in place and treats its rows as one-run
 prompt Monitors. The existing due time, submission IDs, deduplication key,
 and one-hour grace rule stay. There are no old tool or API aliases.
 
-The tools `monitor_set`, `monitor_list`, and `monitor_cancel` use Main or Chat.
-`monitor_set` takes `at` or `delaySeconds`, and a prompt. Use `maxRuns` (1–100),
-`intervalSeconds` (at least 60 for multiple runs), and an optional `expiresAt`
-for repeated checks. The lifetime of a repeated or script Monitor is at most
-seven days. A script Monitor also takes `checkCommand`. Script or repeating
-setup requires a current user input, not a System Turn.
+Main, Chat, child sessions, and tasks can use both kinds of Monitor from any
+turn. Dreams have no Monitor tools. `monitor_list` and `monitor_cancel` act
+only on Monitors in the calling session. New IDs start with `schedule-` or
+`command-`. The session can have at most 32 active
+Monitors across both kinds. Each Monitor in a chain of wake-ups advances the
+depth. After six steps, wait for user input before setting another Monitor.
+
+`monitor_set_schedule` takes `at` or `delaySeconds`, and a prompt. Use
+`maxRuns` (1–100), `intervalSeconds` (at least 60 for multiple runs), and an
+optional `expiresAt` for repeated checks. A check Monitor takes `checkCommand`.
+Repeated and check Monitors have a maximum lifetime of seven days.
+
+`monitor_set_command` starts a [command Monitor](execution.md#command-monitors).
+It can wake the session on exit or in batches of stdout lines. Use `wake: none`
+for a command that sends no wake-up. A bot can run at most eight commands.
 
 Checks use the target session's Bash environment, variables, and saved
 project directory. Dex does not use a separate sandbox or give the check new
