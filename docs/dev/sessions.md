@@ -397,9 +397,12 @@ A changed stamp makes the agent stale, so the next reload of that agent opens a
 new lease when that agent is idle. Work of other agents does not delay it.
 
 A local session gets the full bot tool environment. A remote session gets the
-bot's explicit tool values and inherits the remote process environment. Skills
-from Dex and the bot are synced to the selected environment. Project skills are
-read there only. MCP servers keep their bot-level configuration and transport;
+bot's explicit tool values and inherits the remote process environment. Dex and
+agent skills live on the control host. The `skill_*` tools manage them from any
+owner session. Remote leases get a read-only copy that dex updates by manifest
+diff; local sessions use the stores directly. Project skills stay in the
+selected environment and use the normal file tools. See [Skills](extensions.md#skills).
+MCP servers keep their bot-level configuration and transport;
 selecting an environment does not move them or grant access to new MCP tools.
 Scoped group sessions use their separate runtime and cannot select environments.
 

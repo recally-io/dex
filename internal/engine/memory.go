@@ -29,10 +29,11 @@ type memoryRepo struct {
 	mu          sync.Mutex
 	ready       bool
 	noGit       bool
+	kind        string
 }
 
 func newMemoryRepo(path string, environment map[string]string) *memoryRepo {
-	m := &memoryRepo{Dir: path, environment: []string{}}
+	m := &memoryRepo{Dir: path, kind: "memory", environment: []string{}}
 	for key, value := range environment {
 		if !strings.HasPrefix(key, "GIT_") {
 			m.environment = append(m.environment, key+"="+value)
@@ -50,13 +51,15 @@ func (m *memoryRepo) Open(ctx context.Context) error {
 	if err := os.MkdirAll(m.Dir, 0700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(m.Dir, "MEMORY.md"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err == nil {
-		_, err = f.WriteString("# Memory\n\n## Index\n")
-		err = errors.Join(err, f.Close())
-	}
-	if err != nil && !errors.Is(err, os.ErrExist) {
-		return err
+	if m.kind == "memory" {
+		f, err := os.OpenFile(filepath.Join(m.Dir, "MEMORY.md"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if err == nil {
+			_, err = f.WriteString("# Memory\n\n## Index\n")
+			err = errors.Join(err, f.Close())
+		}
+		if err != nil && !errors.Is(err, os.ErrExist) {
+			return err
+		}
 	}
 	if _, err := exec.LookPath("git"); errors.Is(err, exec.ErrNotFound) {
 		m.noGit = true
@@ -68,12 +71,14 @@ func (m *memoryRepo) Open(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	message := "Recover uncommitted memory changes"
+	message := "Recover uncommitted " + m.kind + " changes"
 	if err != nil || strings.TrimSpace(root) != canonical {
 		if _, err = m.git(ctx, "init", "--quiet"); err != nil {
 			return err
 		}
-		message = "Create memory repo"
+		if m.kind == "memory" {
+			message = "Create memory repo"
+		}
 	}
 	if _, err = m.commit(ctx, message); err != nil {
 		return err
@@ -91,7 +96,7 @@ func (m *memoryRepo) git(ctx context.Context, args ...string) (string, error) {
 	cmd.Env = m.environment
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("memory git %s: %w", operation, err)
+		return "", fmt.Errorf("%s git %s: %w", m.kind, operation, err)
 	}
 	return string(out), nil
 }
@@ -228,7 +233,11 @@ func (m *memoryRepo) confineFile(agentID, raw string, allowCreate bool) (string,
 	if err != nil {
 		return "", err
 	}
-	root, err := os.OpenRoot(m.Dir)
+	return confineRegularFile(m.Dir, rel, "memory", allowCreate)
+}
+
+func confineRegularFile(dir, rel, store string, allowCreate bool) (string, error) {
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return "", err
 	}
@@ -249,7 +258,7 @@ func (m *memoryRepo) confineFile(agentID, raw string, allowCreate bool) (string,
 			return "", statErr
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return "", errors.New("symlinks are not allowed in memory")
+			return "", fmt.Errorf("symlinks are not allowed in %s", store)
 		}
 	}
 
@@ -262,7 +271,7 @@ func (m *memoryRepo) confineFile(agentID, raw string, allowCreate bool) (string,
 		return "", err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-		return "", errors.New("memory file must be a regular non-symlink file")
+		return "", fmt.Errorf("%s file must be a regular non-symlink file", store)
 	}
 	return rel, nil
 }

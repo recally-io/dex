@@ -114,7 +114,7 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 		t.Fatal("expected path traversal rejection")
 	}
 
-	// SyncSkills copies regular skill files and skips .env, mcp.json, dotfiles, node_modules, and symlinks.
+	// Managed skill copies retain nested files and executable modes.
 	levelDir := filepath.Join(t.TempDir(), ".agents")
 	skillsDir := filepath.Join(levelDir, "skills")
 	for p, body := range map[string]string{
@@ -137,7 +137,18 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(skillsDir, "deploy", "leak.txt")); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(filepath.Join(skillsDir, "deploy", "scripts", "run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	remoteSkills := filepath.Join(h.Workspace(), ".dex", "skills", "agent")
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(remoteSkills, func(p string, d os.DirEntry, err error) error {
+			if err == nil && d.IsDir() {
+				return os.Chmod(p, 0o700)
+			}
+			return err
+		})
+	})
 	if err := env.WriteFile(t.Context(), filepath.Join(remoteSkills, "stale", "SKILL.md"), "stale"); err != nil {
 		t.Fatal(err)
 	}
@@ -148,19 +159,50 @@ func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
 	if err != nil || !strings.Contains(gotSkill, "Run deploy") {
 		t.Fatalf("SKILL.md=%q err=%v", gotSkill, err)
 	}
+	script := filepath.Join(remoteSkills, "deploy", "scripts", "run.sh")
+	if info, err := os.Stat(script); err != nil || info.Mode().Perm() != 0o555 {
+		t.Fatalf("mirrored script must be executable and read-only: %v, %v", info, err)
+	}
+	for _, retained := range []string{"deploy/.env", "deploy/mcp.json", ".hidden/SKILL.md", "node_modules/pkg/a.js", "stale/SKILL.md"} {
+		if exists, err := env.Exists(t.Context(), filepath.Join(remoteSkills, retained)); err != nil || !exists {
+			t.Fatalf("file missing: %s (err=%v)", retained, err)
+		}
+	}
 	for _, forbidden := range []string{
 		filepath.Join(remoteSkills, ".env"),
 		filepath.Join(remoteSkills, "mcp.json"),
-		filepath.Join(remoteSkills, "deploy", ".env"),
-		filepath.Join(remoteSkills, "deploy", "mcp.json"),
 		filepath.Join(remoteSkills, "deploy", "leak.txt"),
-		filepath.Join(remoteSkills, ".hidden", "SKILL.md"),
-		filepath.Join(remoteSkills, "node_modules", "pkg", "a.js"),
-		filepath.Join(remoteSkills, "stale", "SKILL.md"),
 	} {
 		if exists, err := env.Exists(t.Context(), forbidden); err != nil || exists {
 			t.Fatalf("forbidden file copied/kept: %s (err=%v)", forbidden, err)
 		}
+	}
+
+	// Changing one file leaves the other managed files and unmanaged files in place.
+	same, err := os.Stat(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, "deploy", "SKILL.md"), []byte("changed deploy description"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(skillsDir, "deploy", "mcp.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := execenv.SyncSkills(t.Context(), env, levelDir, remoteSkills); err != nil {
+		t.Fatal(err)
+	}
+	if after, err := os.Stat(script); err != nil || !os.SameFile(same, after) || !same.ModTime().Equal(after.ModTime()) {
+		t.Fatalf("unchanged script was rewritten: %v, %v", after, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(remoteSkills, "deploy", "SKILL.md")); err != nil || string(data) != "changed deploy description" {
+		t.Fatalf("updated skill document = %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(remoteSkills, "deploy", "mcp.json")); !os.IsNotExist(err) {
+		t.Fatalf("deleted file still mirrored: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(remoteSkills, "stale", "SKILL.md")); err != nil {
+		t.Fatalf("unmanaged file removed: %v", err)
 	}
 
 	// ListDirectories & ResolveProjectPath.
