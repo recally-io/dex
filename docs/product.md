@@ -437,12 +437,9 @@ Each agent reads skills, `mcp.json`, and `.env` from two `.agents/`
 directories: the resolved dex data directory, shared by all agents, and the
 agent home (`<data dir>/agents/<id>`). The narrower level wins. dex does not
 read the user home (`~/.agents`), so personal files and secrets there never
-reach a bot. Both directories can hold `AGENTS.md`, and a project can hold
-`AGENTS.md` in its root. dex adds them to the model instructions in this order:
-dex, agent, the bot's own instructions, project. A line `@path` in these files
-imports another file; a project file can import only files inside the project.
-A bot can opt in to personal rules with a symlink to `~/.agents/AGENTS.md` in
-its own `.agents/`. Tools start
+reach a bot. Store bot instructions in the bot's settings. dex adds the
+session's `<cwd>/AGENTS.md` after the saved instructions. A project file can
+use `@path` to import files inside the project. Tools start
 in the agent workspace by default. Task sessions can select an existing project
 in the header. Main and Chat sessions can also use `set_project` or the project
 API. A directory change keeps the existing model context. The header picker
