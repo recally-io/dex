@@ -57,11 +57,19 @@ function capabilityReasonText(reason?: string): string {
   }
 }
 
-function stateBadge(state: SystemStatus["state"], reconnecting: boolean) {
+function stateBadge(state: SystemStatus["state"], reconnecting: boolean, unreachable: boolean) {
   if (reconnecting || state === "restarting") {
     return (
       <Badge variant="secondary" className="h-5 bg-orange-tint px-2 text-[11.5px] text-orange">
         Restarting…
+      </Badge>
+    );
+  }
+
+  if (unreachable) {
+    return (
+      <Badge variant="secondary" className="h-5 bg-red-tint px-2 text-[11.5px] text-red">
+        Unavailable
       </Badge>
     );
   }
@@ -106,62 +114,70 @@ export function AboutPage() {
   const [confirmUpgrade, setConfirmUpgrade] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const [reconnectingSince, setReconnectingSince] = useState<number | null>(null);
+  // Tracks the startedAt of an in-flight restart or upgrade so even a fast 150ms re-exec
+  // (missed between 1s status polls) is still detected when startedAt changes.
+  const [opStartedAt, setOpStartedAt] = useState<number | null>(null);
   const notifiedRestart = useRef<number | null>(null);
 
   const status = useQuery({
     ...getSystemStatusOptions(),
     refetchInterval: (query) => {
-      const st = query.state.data?.state;
+      const data = query.state.data;
+      const st = data?.state;
+
+      if (opStartedAt !== null && (!data || query.state.status === "error")) return 1000;
 
       return st === "downloading" || st === "waiting_idle" || st === "restarting" ? 1000 : false;
     },
+    retry: opStartedAt !== null ? false : 1,
   });
 
-  const restartOrigin =
-    reconnectingSince ??
-    (status.data?.state === "restarting" && status.data.startedAt > 0 ? status.data.startedAt : null);
+  const health = useQuery(getHealthOptions());
 
-  const health = useQuery({
-    ...getHealthOptions(),
-    refetchInterval: (query) => {
-      if (restartOrigin === null) return false;
+  const sys = status.data;
 
-      const currentStart = query.state.data?.startedAt;
+  const activeOpStart =
+    opStartedAt ??
+    (sys &&
+    (sys.state === "downloading" || sys.state === "waiting_idle" || sys.state === "restarting") &&
+    sys.startedAt > 0
+      ? sys.startedAt
+      : null);
 
-      return currentStart && currentStart !== restartOrigin ? false : 1500;
-    },
-    retry: restartOrigin !== null ? false : 1,
-  });
+  const reconnected = activeOpStart !== null && Boolean(sys?.startedAt && sys.startedAt !== activeOpStart);
 
-  const reconnected =
-    restartOrigin !== null && Boolean(health.data?.startedAt && health.data.startedAt !== restartOrigin);
-
-  const reconnecting = restartOrigin !== null && !reconnected;
+  // During a restart, status fetches either report "restarting" or fail briefly while the socket rebinds.
+  const reconnecting =
+    !reconnected &&
+    activeOpStart !== null &&
+    (sys?.state === "restarting" || status.isError || (opStartedAt !== null && !sys));
 
   const logs = useQuery({
     ...getSystemLogsOptions({ query: { limit: 200 } }),
     enabled: showLogs && !reconnecting,
   });
 
-  // Refresh system status and notify once a restarted server comes back with a new startedAt.
+  // Notify and refresh /api/health once the restarted server responds with a new startedAt.
   useEffect(() => {
-    if (!reconnected || !health.data) return;
+    if (!reconnected || !sys) return;
 
-    if (notifiedRestart.current === health.data.startedAt) return;
+    if (notifiedRestart.current === sys.startedAt) return;
 
-    notifiedRestart.current = health.data.startedAt;
-    void queryClient.invalidateQueries({ queryKey: getSystemStatusQueryKey() });
-    notify(`Server is back online (${health.data.version}).`);
-  }, [reconnected, health.data, notify]);
+    notifiedRestart.current = sys.startedAt;
+    void queryClient.invalidateQueries({ queryKey: getHealthQueryKey() });
+    notify(`Server is back online (${sys.version}).`);
+  }, [reconnected, sys, notify]);
 
   function applyStatus(next: SystemStatus) {
     queryClient.setQueryData(getSystemStatusQueryKey(), next);
 
-    if (next.state === "restarting" && next.startedAt > 0) {
-      setReconnectingSince(next.startedAt);
-    } else if (reconnected) {
-      setReconnectingSince(null);
+    if (
+      next.startedAt > 0 &&
+      (next.state === "downloading" || next.state === "waiting_idle" || next.state === "restarting")
+    ) {
+      setOpStartedAt(next.startedAt);
+    } else {
+      setOpStartedAt(null);
     }
   }
 
@@ -230,10 +246,10 @@ export function AboutPage() {
     },
   });
 
-  const sys = status.data;
-
   const busyOp =
     reconnecting ||
+    checkUpdate.isPending ||
+    sys?.state === "checking" ||
     sys?.state === "downloading" ||
     sys?.state === "waiting_idle" ||
     sys?.state === "restarting";
@@ -255,10 +271,10 @@ export function AboutPage() {
       >
         {health.isPending && status.isPending ? (
           <Loading />
-        ) : health.isError && !reconnecting ? (
+        ) : (health.isError || status.isError) && !reconnecting ? (
           <Failure
             title="Could not reach the server"
-            error={health.error}
+            error={status.error ?? health.error}
             retry={() => {
               void queryClient.invalidateQueries({ queryKey: getHealthQueryKey() });
               void status.refetch();
@@ -275,21 +291,31 @@ export function AboutPage() {
               </Note>
             ) : null}
 
-            {sys?.state === "downloading" ? (
+            {!reconnecting && sys?.state === "downloading" ? (
               <Note>
-                <span className="inline-flex items-center gap-2">
-                  <Spinner />
-                  Downloading {sys.targetVersion ?? sys.latest?.tag ?? "update"}
-                  {sys.downloadDone
-                    ? sys.downloadTotal
-                      ? ` (${formatBytes(sys.downloadDone)} / ${formatBytes(sys.downloadTotal)})`
-                      : ` (${formatBytes(sys.downloadDone)})`
-                    : "…"}
-                </span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2">
+                    <Spinner />
+                    Downloading {sys.targetVersion ?? sys.latest?.tag ?? "update"}
+                    {sys.downloadDone
+                      ? sys.downloadTotal
+                        ? ` (${formatBytes(sys.downloadDone)} / ${formatBytes(sys.downloadTotal)})`
+                        : ` (${formatBytes(sys.downloadDone)})`
+                      : "…"}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={cancelOp.isPending}
+                    onClick={() => cancelOp.mutate({})}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               </Note>
             ) : null}
 
-            {sys?.state === "waiting_idle" ? (
+            {!reconnecting && sys?.state === "waiting_idle" ? (
               <Note tone="warn">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span>
@@ -334,11 +360,12 @@ export function AboutPage() {
             ) : null}
             {upgrade.isError ? <Failure title="Could not start upgrade" error={upgrade.error} /> : null}
             {restart.isError ? <Failure title="Could not restart server" error={restart.error} /> : null}
+            {cancelOp.isError ? <Failure title="Could not cancel operation" error={cancelOp.error} /> : null}
 
             <Panel>
               <Facts
                 rows={[
-                  ["Server", stateBadge(sys?.state ?? "idle", reconnecting)],
+                  ["Server", stateBadge(sys?.state ?? "idle", reconnecting, status.isError)],
                   ["Version", <Mono key="version">{sys?.version ?? health.data?.version ?? "—"}</Mono>],
                   [
                     "Started",
@@ -367,7 +394,7 @@ export function AboutPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={busyOp || checkUpdate.isPending}
+                  disabled={busyOp}
                   onClick={() => checkUpdate.mutate({})}
                 >
                   {checkUpdate.isPending ? "Checking…" : "Check for updates"}

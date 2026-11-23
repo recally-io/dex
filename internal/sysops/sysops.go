@@ -88,14 +88,14 @@ type Manager struct {
 	cfg     Config
 	q       *sqlc.Queries
 	closeCh chan struct{}
+	probe   update.Capability
 
 	mu              sync.Mutex
 	closed          bool
+	opID            uint64
 	state           string
 	pendingAction   string
 	targetVersion   string
-	stagedPath      string
-	stagedUnlock    func()
 	downloadDone    int64
 	downloadTotal   int64
 	latest          *update.ReleaseInfo
@@ -103,6 +103,8 @@ type Manager struct {
 	lastCheckedAt   int64
 	lastError       string
 	opCancel        context.CancelFunc
+	opDone          chan struct{}
+	forceCh         chan struct{}
 	wg              sync.WaitGroup
 }
 
@@ -133,6 +135,7 @@ func New(cfg Config) *Manager {
 		cfg:     cfg,
 		q:       q,
 		closeCh: make(chan struct{}),
+		probe:   update.Probe(cfg.Version, cfg.Executable),
 		state:   StateIdle,
 	}
 }
@@ -145,7 +148,7 @@ func (m *Manager) StartedAt() int64 {
 	return m.cfg.StartedAt.UnixMilli()
 }
 
-// Close cancels any background operation and cleans up staged files.
+// Close cancels any background operation and waits for goroutines to finish cleanly.
 func (m *Manager) Close() {
 	if m == nil {
 		return
@@ -156,10 +159,11 @@ func (m *Manager) Close() {
 		return
 	}
 	m.closed = true
+	m.opID++
 	close(m.closeCh)
 	cancel := m.opCancel
 	m.opCancel = nil
-	m.cleanupStagedLocked()
+	m.forceCh = nil
 	m.mu.Unlock()
 	if cancel != nil {
 		cancel()
@@ -232,10 +236,12 @@ func (m *Manager) CheckUpdate(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 	m.mu.Lock()
-	if m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
+	if m.closed || m.opDone != nil || m.state == StateChecking || m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
+	m.opID++
+	opID := m.opID
 	m.state = StateChecking
 	m.lastError = ""
 	m.mu.Unlock()
@@ -244,6 +250,10 @@ func (m *Manager) CheckUpdate(ctx context.Context) (Status, error) {
 	info, available, err := u.CheckRelease(ctx, update.Options{Channel: channel})
 	now := time.Now().UnixMilli()
 	m.mu.Lock()
+	if m.opID != opID || m.state != StateChecking {
+		m.mu.Unlock()
+		return Status{}, ErrBusy
+	}
 	if err != nil {
 		m.state = StateError
 		m.lastError = err.Error()
@@ -286,50 +296,51 @@ func (m *Manager) Restart(ctx context.Context, force bool) (Status, error) {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	if m.state == StateRestarting {
+	switch m.state {
+	case StateRestarting:
+		m.mu.Unlock()
+		return m.Status(ctx)
+	case StateChecking, StateDownloading:
+		m.mu.Unlock()
+		return Status{}, ErrBusy
+	case StateWaitingIdle:
+		if force && m.forceCh != nil {
+			select {
+			case m.forceCh <- struct{}{}:
+			default:
+			}
+		}
 		m.mu.Unlock()
 		return m.Status(ctx)
 	}
-	if m.state == StateDownloading {
+	if m.opDone != nil {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	if m.state == StateWaitingIdle {
-		if !force {
-			m.mu.Unlock()
-			return m.Status(ctx)
-		}
-		if m.pendingAction == ActionUpgrade {
-			// Escalate a waiting upgrade to immediate replacement and restart.
-			cancel := m.opCancel
-			m.opCancel = nil
-			m.mu.Unlock()
-			if cancel != nil {
-				cancel()
-			}
-			return m.finishStagedUpgradeNow(ctx)
-		}
-		cancel := m.opCancel
-		m.opCancel = nil
-		m.mu.Unlock()
-		if cancel != nil {
-			cancel()
-		}
-		return m.triggerRestartNow(ctx, "")
-	}
-	m.mu.Unlock()
-
+	m.pendingAction = ActionRestart
+	m.lastError = ""
 	if force || m.cfg.AcquireMaintenance == nil {
-		return m.triggerRestartNow(ctx, "")
+		m.state = StateRestarting
+		m.mu.Unlock()
+		m.scheduleRestart("")
+		return m.Status(ctx)
 	}
-	if err := m.cfg.AcquireMaintenance(ctx); err != nil {
-		if m.isBusy(err) {
-			m.startWaitingRestart(ctx)
-			return m.Status(ctx)
+	m.state = StateWaitingIdle
+	m.startOperation(ctx, func(ctx context.Context, id uint64, forceCh <-chan struct{}) {
+		held, err := m.waitForMaintenance(ctx, id, forceCh, ActionRestart, force)
+		if err != nil {
+			m.failOperation(id, err)
+			return
 		}
-		return Status{}, err
-	}
-	return m.triggerRestartNow(ctx, "")
+		if !m.beginRestart(ctx, id) {
+			m.releaseMaintenance(ctx, held)
+			return
+		}
+		slog.Info("restarting dex server")
+		m.scheduleRestart("")
+	})
+	m.mu.Unlock()
+	return m.Status(ctx)
 }
 
 // Upgrade downloads, verifies, backs up control.sqlite, and restarts into targetTag (or channel latest).
@@ -338,9 +349,8 @@ func (m *Manager) Upgrade(ctx context.Context, targetTag string, force bool) (St
 	if m.cfg.RequestRestart == nil {
 		return Status{}, fmt.Errorf("%w: restart is unavailable in this process", ErrUnsupported)
 	}
-	probe := update.Probe(m.cfg.Version, m.cfg.Executable)
-	if !probe.Supported {
-		return Status{}, fmt.Errorf("%w: self-upgrade unavailable (%s)", ErrUnsupported, probe.Reason)
+	if !m.probe.Supported {
+		return Status{}, fmt.Errorf("%w: self-upgrade unavailable (%s)", ErrUnsupported, m.probe.Reason)
 	}
 	channel, err := m.channel(ctx)
 	if err != nil {
@@ -352,65 +362,82 @@ func (m *Manager) Upgrade(ctx context.Context, targetTag string, force bool) (St
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	if m.state == StateWaitingIdle && m.pendingAction == ActionUpgrade && force {
-		cancel := m.opCancel
-		m.opCancel = nil
-		m.mu.Unlock()
-		if cancel != nil {
-			cancel()
+	if m.state == StateWaitingIdle && m.pendingAction == ActionUpgrade && force && m.forceCh != nil {
+		select {
+		case m.forceCh <- struct{}{}:
+		default:
 		}
-		return m.finishStagedUpgradeNow(ctx)
+		m.mu.Unlock()
+		return m.Status(ctx)
 	}
-	if m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
+	if m.opDone != nil || m.state == StateChecking || m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	opCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	m.opCancel = cancel
 	m.state = StateDownloading
 	m.pendingAction = ActionUpgrade
 	m.targetVersion = targetTag
 	m.downloadDone = 0
 	m.downloadTotal = 0
 	m.lastError = ""
-	m.mu.Unlock()
-
-	m.wg.Go(func() {
-		m.runUpgrade(opCtx, probe.Executable, channel, targetTag, force)
+	m.startOperation(ctx, func(ctx context.Context, id uint64, forceCh <-chan struct{}) {
+		m.runUpgrade(ctx, id, forceCh, m.probe.Executable, channel, targetTag, force)
 	})
+	m.mu.Unlock()
 	return m.Status(ctx)
 }
 
-// CancelPending cancels a pending waiting_idle restart or upgrade and removes any staged binary.
+// startOperation starts the sole owner of the pending operation. The caller holds m.mu.
+func (m *Manager) startOperation(ctx context.Context, run func(context.Context, uint64, <-chan struct{})) {
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	forceCh := make(chan struct{}, 1)
+	done := make(chan struct{})
+	m.opID++
+	id := m.opID
+	m.opCancel, m.forceCh, m.opDone = cancel, forceCh, done
+	m.wg.Go(func() {
+		defer cancel()
+		run(ctx, id, forceCh)
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		defer close(done)
+		if m.opID != id {
+			return
+		}
+		m.opCancel, m.forceCh, m.opDone = nil, nil, nil
+		if m.state == StateDownloading || m.state == StateWaitingIdle {
+			m.state, m.pendingAction, m.targetVersion = StateIdle, "", ""
+			m.downloadDone, m.downloadTotal = 0, 0
+		}
+	})
+}
+
+// CancelPending cancels a pending waiting_idle or downloading operation.
 func (m *Manager) CancelPending(ctx context.Context) (Status, error) {
 	m.mu.Lock()
 	if m.state == StateRestarting {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	cancel := m.opCancel
-	m.opCancel = nil
-	wasWaitingOrDownloading := m.state == StateWaitingIdle || m.state == StateDownloading
-	if wasWaitingOrDownloading {
-		m.cleanupStagedLocked()
-		m.state = StateIdle
-		m.pendingAction = ""
-		m.targetVersion = ""
-		m.downloadDone = 0
-		m.downloadTotal = 0
-		m.lastError = ""
+	done := m.opDone
+	if m.opCancel != nil {
+		m.opCancel()
 	}
 	m.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return Status{}, ctx.Err()
+		}
 	}
 	return m.Status(ctx)
 }
 
-func (m *Manager) runUpgrade(ctx context.Context, executable, channel, targetTag string, force bool) {
+func (m *Manager) runUpgrade(ctx context.Context, opID uint64, forceCh <-chan struct{}, executable, channel, targetTag string, force bool) {
 	u, err := update.NewWithBase(m.cfg.Version, executable, m.cfg.ReleaseBase)
 	if err != nil {
-		m.failOperation(err)
+		m.failOperation(opID, err)
 		return
 	}
 	opt := update.Options{Channel: channel}
@@ -419,7 +446,7 @@ func (m *Manager) runUpgrade(ctx context.Context, executable, channel, targetTag
 	}
 	stage, info, unlock, err := u.StageRelease(ctx, opt, func(done, total int64) {
 		m.mu.Lock()
-		if m.state == StateDownloading {
+		if m.opID == opID && m.state == StateDownloading {
 			m.downloadDone = done
 			m.downloadTotal = total
 		}
@@ -429,226 +456,117 @@ func (m *Manager) runUpgrade(ctx context.Context, executable, channel, targetTag
 		if ctx.Err() != nil {
 			return
 		}
-		m.failOperation(err)
+		m.failOperation(opID, err)
 		return
 	}
-	// Back up control.sqlite before touching the running binary or requesting maintenance.
+	// Ownership of stage and unlock belongs strictly to this goroutine; release them on every exit.
+	defer unlock()
+	defer func() { _ = os.Remove(stage) }()
+
+	// Back up control.sqlite before touching the running binary or acquiring maintenance.
 	if _, err := m.Backup(ctx); err != nil {
-		unlock()
-		_ = os.Remove(stage)
 		if ctx.Err() != nil {
 			return
 		}
-		m.failOperation(err)
+		m.failOperation(opID, err)
 		return
 	}
 
 	m.mu.Lock()
-	if m.closed || ctx.Err() != nil {
+	if m.closed || ctx.Err() != nil || m.opID != opID {
 		m.mu.Unlock()
-		unlock()
-		_ = os.Remove(stage)
 		return
 	}
-	m.stagedPath = stage
-	m.stagedUnlock = unlock
 	m.targetVersion = info.Tag
 	m.latest = &info
 	m.updateAvailable = true
 	m.mu.Unlock()
 
-	if !force && m.cfg.AcquireMaintenance != nil {
-		if err := m.cfg.AcquireMaintenance(ctx); err != nil {
-			if m.isBusy(err) {
-				m.waitAndFinishUpgrade(ctx)
-				return
-			}
-			m.failOperation(err)
-			return
-		}
-	}
-	if err := m.applyStagedAndRestart(u); err != nil {
-		if m.cfg.ReleaseMaintenance != nil {
-			_ = m.cfg.ReleaseMaintenance(context.WithoutCancel(ctx))
-		}
-		m.failOperation(err)
-	}
-}
-
-func (m *Manager) waitAndFinishUpgrade(ctx context.Context) {
-	m.mu.Lock()
-	if m.closed || ctx.Err() != nil {
-		m.mu.Unlock()
+	held, err := m.waitForMaintenance(ctx, opID, forceCh, ActionUpgrade, force)
+	if err != nil {
+		m.failOperation(opID, err)
 		return
 	}
+	if !m.beginRestart(ctx, opID) {
+		m.releaseMaintenance(ctx, held)
+		return
+	}
+	if err := u.Replace(stage); err != nil {
+		m.releaseMaintenance(ctx, held)
+		m.failOperation(opID, err)
+		return
+	}
+	slog.Info("staged dex upgrade applied; restarting server", "target", info.Tag)
+	m.scheduleRestart(executable)
+}
+
+// waitForMaintenance reports whether this operation acquired the lease.
+func (m *Manager) waitForMaintenance(ctx context.Context, id uint64, forceCh <-chan struct{}, action string, force bool) (bool, error) {
+	if force || m.cfg.AcquireMaintenance == nil {
+		return false, nil
+	}
+	if err := m.cfg.AcquireMaintenance(ctx); err == nil {
+		return true, nil
+	} else if !m.isBusy(err) {
+		return false, err
+	}
+	m.mu.Lock()
+	if m.closed || ctx.Err() != nil || m.opID != id {
+		m.mu.Unlock()
+		return false, context.Canceled
+	}
 	m.state = StateWaitingIdle
-	m.pendingAction = ActionUpgrade
 	m.mu.Unlock()
 
 	deadline := time.NewTimer(m.cfg.WaitTimeout)
 	defer deadline.Stop()
 	ticker := time.NewTicker(m.cfg.WaitInterval)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return false, ctx.Err()
+		case <-forceCh:
+			return false, nil
 		case <-deadline.C:
-			m.failOperation(errors.New("timed out waiting for active runs to finish before upgrading"))
-			return
+			return false, fmt.Errorf("timed out waiting for active runs to finish before %s", action)
 		case <-ticker.C:
-			if err := m.cfg.AcquireMaintenance(ctx); err != nil {
-				if m.isBusy(err) {
-					continue
-				}
-				if ctx.Err() != nil {
-					return
-				}
-				m.failOperation(err)
-				return
+			if err := m.cfg.AcquireMaintenance(ctx); err == nil {
+				return true, nil
+			} else if !m.isBusy(err) {
+				return false, err
 			}
-			probe := update.Probe(m.cfg.Version, m.cfg.Executable)
-			u, err := update.NewWithBase(m.cfg.Version, probe.Executable, m.cfg.ReleaseBase)
-			if err != nil {
-				if m.cfg.ReleaseMaintenance != nil {
-					_ = m.cfg.ReleaseMaintenance(context.WithoutCancel(ctx))
-				}
-				m.failOperation(err)
-				return
-			}
-			if err := m.applyStagedAndRestart(u); err != nil {
-				if m.cfg.ReleaseMaintenance != nil {
-					_ = m.cfg.ReleaseMaintenance(context.WithoutCancel(ctx))
-				}
-				m.failOperation(err)
-			}
-			return
 		}
 	}
 }
 
-func (m *Manager) finishStagedUpgradeNow(ctx context.Context) (Status, error) {
-	probe := update.Probe(m.cfg.Version, m.cfg.Executable)
-	u, err := update.NewWithBase(m.cfg.Version, probe.Executable, m.cfg.ReleaseBase)
-	if err != nil {
-		m.failOperation(err)
-		return Status{}, err
+func (m *Manager) releaseMaintenance(ctx context.Context, held bool) {
+	if held && m.cfg.ReleaseMaintenance != nil {
+		_ = m.cfg.ReleaseMaintenance(context.WithoutCancel(ctx))
 	}
-	if err := m.applyStagedAndRestart(u); err != nil {
-		m.failOperation(err)
-		return Status{}, err
-	}
-	return m.Status(ctx)
 }
 
-func (m *Manager) applyStagedAndRestart(u *update.Updater) error {
+// beginRestart closes the cancellation window before an executable can be replaced.
+func (m *Manager) beginRestart(ctx context.Context, id uint64) bool {
 	m.mu.Lock()
-	stage := m.stagedPath
-	unlock := m.stagedUnlock
-	m.stagedPath = ""
-	m.stagedUnlock = nil
-	if stage == "" {
-		m.mu.Unlock()
-		if unlock != nil {
-			unlock()
-		}
-		return errors.New("no staged upgrade binary is available")
-	}
-	if err := u.Replace(stage); err != nil {
-		m.mu.Unlock()
-		_ = os.Remove(stage)
-		if unlock != nil {
-			unlock()
-		}
-		return err
-	}
-	if unlock != nil {
-		unlock()
+	defer m.mu.Unlock()
+	if m.closed || ctx.Err() != nil || m.opID != id {
+		return false
 	}
 	m.state = StateRestarting
-	m.pendingAction = ActionUpgrade
 	m.opCancel = nil
-	m.lastError = ""
-	execPath := m.cfg.Executable
-	m.mu.Unlock()
-
-	slog.Info("staged dex upgrade applied; restarting server", "target", m.targetVersion)
-	m.scheduleRestart(execPath)
-	return nil
-}
-
-func (m *Manager) startWaitingRestart(ctx context.Context) {
-	m.mu.Lock()
-	if m.closed {
-		m.mu.Unlock()
-		return
-	}
-	opCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	m.opCancel = cancel
-	m.state = StateWaitingIdle
-	m.pendingAction = ActionRestart
-	m.lastError = ""
-	m.mu.Unlock()
-
-	m.wg.Go(func() {
-		deadline := time.NewTimer(m.cfg.WaitTimeout)
-		defer deadline.Stop()
-		ticker := time.NewTicker(m.cfg.WaitInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-opCtx.Done():
-				return
-			case <-deadline.C:
-				m.failOperation(errors.New("timed out waiting for active runs to finish before restarting"))
-				return
-			case <-ticker.C:
-				if err := m.cfg.AcquireMaintenance(opCtx); err != nil {
-					if m.isBusy(err) {
-						continue
-					}
-					if opCtx.Err() != nil {
-						return
-					}
-					m.failOperation(err)
-					return
-				}
-				m.mu.Lock()
-				if m.closed || opCtx.Err() != nil {
-					m.mu.Unlock()
-					if m.cfg.ReleaseMaintenance != nil {
-						_ = m.cfg.ReleaseMaintenance(context.WithoutCancel(opCtx))
-					}
-					return
-				}
-				m.state = StateRestarting
-				m.pendingAction = ActionRestart
-				m.opCancel = nil
-				m.mu.Unlock()
-				slog.Info("server is idle; restarting")
-				m.scheduleRestart("")
-				return
-			}
-		}
-	})
-}
-
-func (m *Manager) triggerRestartNow(ctx context.Context, execPath string) (Status, error) {
-	m.mu.Lock()
-	m.state = StateRestarting
-	m.pendingAction = ActionRestart
-	m.lastError = ""
-	m.mu.Unlock()
-	slog.Info("restarting dex server")
-	m.scheduleRestart(execPath)
-	return m.Status(ctx)
+	m.forceCh = nil
+	return true
 }
 
 func (m *Manager) scheduleRestart(execPath string) {
 	delay := m.cfg.RestartDelay
 	cb := m.cfg.RequestRestart
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
 	m.wg.Go(func() {
 		timer := time.NewTimer(delay)
 		defer timer.Stop()
@@ -659,31 +577,21 @@ func (m *Manager) scheduleRestart(execPath string) {
 			cb(execPath)
 		}
 	})
+	m.mu.Unlock()
 }
 
-func (m *Manager) failOperation(err error) {
+func (m *Manager) failOperation(opID uint64, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.cleanupStagedLocked()
-	if m.closed {
+	if m.closed || m.opID != opID || errors.Is(err, context.Canceled) {
 		return
 	}
 	m.state = StateError
 	m.pendingAction = ""
 	m.opCancel = nil
+	m.forceCh = nil
 	m.lastError = err.Error()
 	slog.Error("system operation failed", "err", err)
-}
-
-func (m *Manager) cleanupStagedLocked() {
-	if m.stagedPath != "" {
-		_ = os.Remove(m.stagedPath)
-		m.stagedPath = ""
-	}
-	if m.stagedUnlock != nil {
-		m.stagedUnlock()
-		m.stagedUnlock = nil
-	}
 }
 
 func (m *Manager) channel(ctx context.Context) (string, error) {
@@ -701,10 +609,9 @@ func (m *Manager) channel(ctx context.Context) (string, error) {
 }
 
 func (m *Manager) capability() CapabilityView {
-	probe := update.Probe(m.cfg.Version, m.cfg.Executable)
 	return CapabilityView{
-		Supported:  probe.Supported,
-		Reason:     probe.Reason,
+		Supported:  m.probe.Supported,
+		Reason:     m.probe.Reason,
 		CanRestart: m.cfg.RequestRestart != nil,
 	}
 }

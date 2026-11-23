@@ -21,7 +21,9 @@ func (q *Queries) GetSystemSettings(ctx context.Context) (SystemSetting, error) 
 }
 
 const setUpdateChannel = `-- name: SetUpdateChannel :exec
-UPDATE system_settings SET update_channel = ? WHERE id = 1
+INSERT INTO system_settings (id, update_channel)
+VALUES (1, ?)
+ON CONFLICT(id) DO UPDATE SET update_channel = excluded.update_channel
 `
 
 func (q *Queries) SetUpdateChannel(ctx context.Context, updateChannel string) error {
