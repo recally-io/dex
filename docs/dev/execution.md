@@ -46,7 +46,9 @@ binds each command to its session.
 - `monitor_set_command` starts the command and
   returns the ID and the output file path at once. It runs in a new session
   (`Setsid`), so the shell leads its own process group, with the environment of
-  the bash tool of the bot. A conversation that has a project uses it as the
+  the bash tool of the bot. `env` overrides variables for this command only.
+  Use non-secret values: dex stores tool arguments in the transcript. A
+  conversation that has a project uses it as the
   working directory. stdout and stderr go to
   `<data dir>/agents/<id>/background/<background id>.log`.
 - Wake `exit` (the default) sends one input when the command ends: the ID, the

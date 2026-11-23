@@ -25,7 +25,7 @@ const (
 
 func monitorInfo(row sqlc.Monitor) engine.MonitorInfo {
 	info := engine.MonitorInfo{
-		ID:         row.ID,
+		ID:         "schedule-" + row.ID,
 		Kind:       "schedule",
 		DueAt:      row.DueAt,
 		TimeZone:   row.TimeZone,
@@ -93,11 +93,12 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 		return engine.MonitorInfo{}, errors.New("monitor allows 1–100 runs and an 8192-byte check command")
 	}
 	script := strings.TrimSpace(a.CheckCommand)
-	if a.Env != nil {
-		if script == "" {
-			return engine.MonitorInfo{}, errors.New("env requires checkCommand")
-		}
-		return engine.MonitorInfo{}, errors.New("env requires vault support")
+	if a.Env != nil && script == "" {
+		return engine.MonitorInfo{}, errors.New("env requires checkCommand")
+	}
+	checkEnv, err := json.Marshal(a.Env)
+	if err != nil {
+		return engine.MonitorInfo{}, fmt.Errorf("encode monitor env: %w", err)
 	}
 	if (maxRuns == 1 && a.IntervalSeconds != 0) || (maxRuns > 1 && (a.IntervalSeconds < 60 || a.IntervalSeconds > 604800)) {
 		return engine.MonitorInfo{}, errors.New("set intervalSeconds (60–604800) only for multiple runs")
@@ -155,7 +156,7 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 	if err := checkMonitorCapacity(ctx, q, conv.ID); err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	id := "schedule-" + uuid.NewV7().String()
+	id := uuid.NewV7().String()
 	nowMs := now.UnixMilli()
 	created, err := q.CreateMonitor(ctx, sqlc.CreateMonitorParams{
 		ID:                        id,
@@ -171,6 +172,7 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 		CreatedAt:                 nowMs,
 		UpdatedAt:                 nowMs,
 		CheckCommand:              script,
+		CheckEnv:                  string(checkEnv),
 		IntervalSeconds:           int64(a.IntervalSeconds),
 		MaxRuns:                   int64(maxRuns),
 		ExpiresAt:                 expiresAt,
@@ -227,10 +229,15 @@ func (s *Service) ToolMonitorCancel(ctx context.Context, r engine.TaskContext, i
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	if strings.HasPrefix(id, "command-") {
-		return s.cancelCommandMonitor(ctx, conv.ID, id)
+	kind, rawID, _ := strings.Cut(id, "-")
+	switch kind {
+	case "command":
+		return s.cancelCommandMonitor(ctx, conv.ID, rawID)
+	case "schedule":
+		return s.cancelMonitor(ctx, conv.AgentID, conv.ID, rawID)
+	default:
+		return engine.MonitorInfo{}, ErrNotFound
 	}
-	return s.cancelMonitor(ctx, conv.AgentID, conv.ID, id)
 }
 
 // ListMonitors returns active and recent follow-up monitors of a chat.

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"time"
@@ -56,6 +57,10 @@ func (s *Service) fireMonitor(ctx context.Context, id string) error {
 		return nil
 	} // already settled in the writer
 
+	var env map[string]string
+	if err := json.Unmarshal([]byte(row.CheckEnv), &env); err != nil {
+		return s.finishMonitor(ctx, row, monitorResult{err: errors.New("stored monitor env is invalid")})
+	}
 	runFor := engine.MonitorTimeout
 	if row.ExpiresAt > 0 {
 		runFor = min(runFor, time.UnixMilli(row.ExpiresAt).Sub(s.now()))
@@ -76,7 +81,7 @@ func (s *Service) fireMonitor(ctx context.Context, id string) error {
 		_, err = monitorTarget(ctx, s.q, current)
 		return err
 	}
-	hash, terminal, checkErr := s.engine.MonitorCheck(checkCtx, engine.Ref{AgentID: row.AgentID, ID: target.ExecutionID.Int64}, target.Cwd, row.CheckCommand, verify)
+	hash, terminal, checkErr := s.engine.MonitorCheck(checkCtx, engine.Ref{AgentID: row.AgentID, ID: target.ExecutionID.Int64}, target.Cwd, row.CheckCommand, env, verify)
 
 	if ctx.Err() != nil {
 		// Leave the durable claim for startup to settle as interrupted. Never replay an

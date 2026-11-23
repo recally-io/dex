@@ -22,7 +22,7 @@ const (
 
 // MonitorCheck uses the same environment, directory rules, shell, and variables as Bash.
 // It does not admit a model turn and it returns no raw output or diagnostics to control.
-func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string, verify func(context.Context) error) (digest string, terminal bool, err error) {
+func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string, env map[string]string, verify func(context.Context) error) (digest string, terminal bool, err error) {
 	if ref.Scope != "" || ref.ID <= 0 {
 		return "", false, ErrInvalidInput
 	}
@@ -58,12 +58,15 @@ func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string,
 		return "", false, nil
 	}
 
+	vars := make(map[string]string, len(target.Vars)+len(env))
+	maps.Copy(vars, target.Vars)
+	maps.Copy(vars, env)
 	hash := sha256.New()
 	remaining := monitorOutputLimit
 	overflow := false
 	timeout := MonitorTimeout.Seconds()
 	result, err := exec.Exec(ctx, command, &durableenv.ShellExecOptions{
-		Cwd: exec.Cwd(), Env: maps.Clone(target.Vars), InheritEnv: &target.Inherit, Timeout: &timeout,
+		Cwd: exec.Cwd(), Env: vars, InheritEnv: &target.Inherit, Timeout: &timeout,
 		Window: &durableenv.ShellOutputWindow{MaxBytes: monitorOutputLimit + 1},
 		OnOutput: func(_ context.Context, text string, info durableenv.ShellOutputInfo) {
 			if overflow {

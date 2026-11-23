@@ -56,7 +56,7 @@ func bgStart(t *testing.T, d *dex, chat int64, args map[string]any) bgInfo {
 	t.Helper()
 	var info bgInfo
 	toolJSON(t, callSessionTool(t, d, chat, "monitor_set_command", args), &info)
-	if info.ID == "" || info.State != "running" || info.OutputFile == "" {
+	if !strings.HasPrefix(info.ID, "command-") || info.State != "running" || info.OutputFile == "" {
 		t.Fatalf("monitor_set_command returned %+v", info)
 	}
 	return info
@@ -120,7 +120,7 @@ func waitWakes(t *testing.T, conn *sql.DB, chat int64, n int) []bgWake {
 
 func bgRow(t *testing.T, conn *sql.DB, id string) (state, reason string) {
 	t.Helper()
-	if err := conn.QueryRowContext(t.Context(), `SELECT state, reason FROM background_commands WHERE id = ?`, id).Scan(&state, &reason); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT state, reason FROM background_commands WHERE id = ?`, strings.TrimPrefix(id, "command-")).Scan(&state, &reason); err != nil {
 		t.Fatal(err)
 	}
 	return state, reason
@@ -162,11 +162,11 @@ func TestUserGetsAWakeUpWithTheExitStatusWhenABackgroundCommandEnds(t *testing.T
 	conn := taskResultDB(t, dir)
 	chat := bgChat(t, d)
 	script := filepath.Join(dir, "build.sh")
-	if err := os.WriteFile(script, []byte("echo compiling\nwhile ! test -f "+filepath.Join(dir, "build.done")+"; do sleep 0.05; done\necho 'build failed: 2 errors' >&2\nexit 3\n"), 0o700); err != nil {
+	if err := os.WriteFile(script, []byte("printf 'compiling %s\\n' \"$DEX_DATA_DIR\"\nwhile ! test -f "+filepath.Join(dir, "build.done")+"; do sleep 0.05; done\necho 'build failed: 2 errors' >&2\nexit 3\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	// When the bot starts it.
-	info := bgStart(t, d, chat, map[string]any{"command": script, "label": "build"})
+	info := bgStart(t, d, chat, map[string]any{"command": script, "label": "build", "env": map[string]string{"DEX_DATA_DIR": "review fixture"}})
 	// Then the start call returned while the build runs, and no wake-up exists yet.
 	if got := bgList(t, d, chat); len(got) != 1 || got[0].ID != info.ID || got[0].State != "running" || got[0].Label != "build" {
 		t.Fatalf("monitor_list while the build runs: %+v", got)
@@ -180,10 +180,10 @@ func TestUserGetsAWakeUpWithTheExitStatusWhenABackgroundCommandEnds(t *testing.T
 	}
 	// Then the session gets one wake-up with the status and the last output, and answers it without a user message.
 	wake := waitWakes(t, conn, chat, 1)[0]
-	if wake.result.ID != info.ID || wake.result.Event != "exited" || wake.result.ExitStatus == nil || *wake.result.ExitStatus != 3 {
+	if wake.result.ID != strings.TrimPrefix(info.ID, "command-") || wake.result.Event != "exited" || wake.result.ExitStatus == nil || *wake.result.ExitStatus != 3 {
 		t.Fatalf("wake-up: %+v", wake.result)
 	}
-	if !strings.Contains(wake.result.Output, "compiling") || !strings.Contains(wake.result.Output, "build failed: 2 errors") {
+	if !strings.Contains(wake.result.Output, "compiling review fixture") || !strings.Contains(wake.result.Output, "build failed: 2 errors") {
 		t.Fatalf("the wake-up lacks the output: %q", wake.result.Output)
 	}
 	if !strings.HasPrefix(html.UnescapeString(wake.answer), "background-result:") {
@@ -195,7 +195,7 @@ func TestUserGetsAWakeUpWithTheExitStatusWhenABackgroundCommandEnds(t *testing.T
 	})
 	// And the output file has the whole output, and the list shows the end.
 	data, err := os.ReadFile(info.OutputFile)
-	if err != nil || string(data) != "compiling\nbuild failed: 2 errors\n" {
+	if err != nil || string(data) != "compiling review fixture\nbuild failed: 2 errors\n" {
 		t.Fatalf("output file %q: %v", data, err)
 	}
 	if got := bgList(t, d, chat); got[0].State != "exited" || got[0].ExitStatus == nil || *got[0].ExitStatus != 3 {
@@ -227,7 +227,7 @@ func TestUserGetsBatchedWakeUpsForTheLinesOfAWatch(t *testing.T) {
 	if wakes[1].result.Event != "lines" || strings.Join(wakes[1].result.Lines, "|") != "deploy: fail" {
 		t.Fatalf("second wake-up: %+v", wakes[1].result)
 	}
-	if end := wakes[2].result; end.Event != "exited" || end.ExitStatus == nil || *end.ExitStatus != 0 || end.ID != info.ID {
+	if end := wakes[2].result; end.Event != "exited" || end.ExitStatus == nil || *end.ExitStatus != 0 || end.ID != strings.TrimPrefix(info.ID, "command-") {
 		t.Fatalf("end of the watch: %+v", end)
 	}
 	// And the output file has the lines of both streams.
@@ -306,7 +306,7 @@ func TestUserSeesAnUnknownStateAfterDexCrashes(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if _, err := conn.ExecContext(t.Context(), `UPDATE background_commands SET state = 'running', reason = '', exit_status = NULL, ended_at = NULL, pid = ?, pgid = ? WHERE id = ?`, process.Process.Pid, process.Process.Pid, info.ID); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `UPDATE background_commands SET state = 'running', reason = '', exit_status = NULL, ended_at = NULL, pid = ?, pgid = ? WHERE id = ?`, process.Process.Pid, process.Process.Pid, strings.TrimPrefix(info.ID, "command-")); err != nil {
 		t.Fatal(err)
 	}
 	// When dex starts again with the same data.

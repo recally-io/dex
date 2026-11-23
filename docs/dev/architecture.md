@@ -309,15 +309,17 @@ and one-hour grace rule stay. There are no old tool or API aliases.
 
 Main, Chat, child sessions, and tasks can use both kinds of Monitor from any
 turn. Dreams have no Monitor tools. `monitor_list` and `monitor_cancel` act
-only on Monitors in the calling session. New IDs start with `schedule-` or
-`command-`. The session can have at most 32 active
-Monitors across both kinds. Each Monitor in a chain of wake-ups advances the
+only on Monitors in the calling session. Tool results add `schedule-` or
+`command-` to the stored ID. Use the prefixed ID to cancel a Monitor. The
+session can have at most 32 active Monitors across both kinds. Each Monitor in a chain of wake-ups advances the
 depth. After six steps, wait for user input before setting another Monitor.
 
 `monitor_set_schedule` takes `at` or `delaySeconds`, and a prompt. Use
 `maxRuns` (1–100), `intervalSeconds` (at least 60 for multiple runs), and an
 optional `expiresAt` for repeated checks. A check Monitor takes `checkCommand`.
-Repeated and check Monitors have a maximum lifetime of seven days.
+Repeated and check Monitors have a maximum lifetime of seven days. `env` is
+valid only with `checkCommand`. It overrides environment variables for that
+check. Use non-secret values: dex stores these arguments.
 
 `monitor_set_command` starts a [command Monitor](execution.md#command-monitors).
 It can wake the session on exit or in batches of stdout lines. Use `wake: none`

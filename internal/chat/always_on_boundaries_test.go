@@ -3,6 +3,7 @@ package chat
 import (
 	"database/sql"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -95,7 +96,7 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 	if err := r.service.FireDueMonitors(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	row, err := r.service.q.GetMonitor(t.Context(), info.ID)
+	row, err := r.service.q.GetMonitor(t.Context(), strings.TrimPrefix(info.ID, "schedule-"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -319,7 +319,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: this bot runs %d; stop one or wait for one to end", errLimit, running)
 	}
 
-	id := "command-" + uuid.NewV7().String()
+	id := uuid.NewV7().String()
 	output, err := runner.PrepareOutput(ctx, p, id)
 	if err != nil {
 		return sqlc.BackgroundCommand{}, err

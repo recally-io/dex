@@ -6,7 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
-	"strings"
+	"maps"
 	"time"
 
 	"github.com/recally-io/dex/internal/background"
@@ -32,9 +32,6 @@ func (s *Service) ToolMonitorCommand(ctx context.Context, r engine.TaskContext, 
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	if a.Env != nil {
-		return engine.MonitorInfo{}, errors.New("env requires vault support")
-	}
 	s.monitorMu.Lock()
 	defer s.monitorMu.Unlock()
 	source, err := liveSource(ctx, s.q, r)
@@ -52,10 +49,13 @@ func (s *Service) ToolMonitorCommand(ctx context.Context, r engine.TaskContext, 
 	if err := checkMonitorCapacity(ctx, s.q, conv.ID); err != nil {
 		return engine.MonitorInfo{}, err
 	}
+	env := make(map[string]string, len(a.BaseEnv)+len(a.Env))
+	maps.Copy(env, a.BaseEnv)
+	maps.Copy(env, a.Env)
 	row, err := s.background.Start(ctx, background.StartParams{
 		CallKey: r.Key, AgentID: conv.AgentID, ConversationID: conv.ID, SourceRequestID: r.SourceRequestID,
 		Command: a.Command, Wake: a.Wake, Timeout: time.Duration(a.Timeout) * time.Second, Cwd: a.Cwd,
-		DefaultCwd: cmp.Or(conv.Cwd, a.Workspace), Label: a.Label, EnvironmentID: a.EnvironmentID, Env: a.BaseEnv,
+		DefaultCwd: cmp.Or(conv.Cwd, a.Workspace), Label: a.Label, EnvironmentID: a.EnvironmentID, Env: env,
 		InheritEnv: a.InheritEnv, EnvKind: a.EnvKind, OutputDir: a.OutputDir,
 	})
 	if err != nil {
@@ -77,12 +77,6 @@ func (s *Service) cancelCommandMonitor(ctx context.Context, conversationID int64
 	if s.background == nil {
 		return engine.MonitorInfo{}, ErrNotFound
 	}
-	// Older commands have a bare UUID in storage.
-	if _, err := s.q.GetBackgroundCommand(ctx, id); errors.Is(err, sql.ErrNoRows) {
-		id = strings.TrimPrefix(id, "command-")
-	} else if err != nil {
-		return engine.MonitorInfo{}, err
-	}
 	row, err := s.background.Stop(ctx, conversationID, id)
 	if err != nil {
 		return engine.MonitorInfo{}, err
@@ -92,7 +86,7 @@ func (s *Service) cancelCommandMonitor(ctx context.Context, conversationID int64
 
 func backgroundInfo(row sqlc.BackgroundCommand) engine.MonitorInfo {
 	info := engine.MonitorInfo{
-		ID: commandMonitorID(row.ID), Kind: "command", Label: row.Label, Command: row.Command, Wake: row.Wake, State: row.State, Reason: row.Reason,
+		ID: "command-" + row.ID, Kind: "command", Label: row.Label, Command: row.Command, Wake: row.Wake, State: row.State, Reason: row.Reason,
 		Cwd: row.Cwd, OutputFile: row.OutputPath, StartedAt: row.ProcessStartedAt,
 	}
 	if row.ExitStatus.Valid {
@@ -102,13 +96,6 @@ func backgroundInfo(row sqlc.BackgroundCommand) engine.MonitorInfo {
 		info.EndedAt = &row.EndedAt.Int64
 	}
 	return info
-}
-
-func commandMonitorID(id string) string {
-	if strings.HasPrefix(id, "command-") {
-		return id
-	}
-	return "command-" + id
 }
 
 // stopBackground ends the background commands of the sessions that a stop ended. A command that
