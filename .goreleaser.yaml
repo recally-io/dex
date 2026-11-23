@@ -41,6 +41,8 @@ archives:
         dst: remote-machines.md
       - src: cmd/dex-agent/packaging/dex-agent.service
         dst: dex-agent.service
+      - src: cmd/dex-agent/packaging/dex-agent-user.service
+        dst: dex-agent-user.service
       - src: cmd/dex-agent/packaging/com.recally.dex-agent.plist
         dst: com.recally.dex-agent.plist
 

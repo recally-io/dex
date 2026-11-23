@@ -6,11 +6,28 @@ fail() {
 	exit 1
 }
 
+note() {
+	printf 'dex-install: %s\n' "$*" >&2
+}
+
+# The installer runs the machine as the account that installs it, by default. That account has the
+# PATH, the tools, the logins, and the projects that the work needs, and its work can read its
+# home: Dex keeps such a machine to the bot that it is bound to. A host that serves several people
+# installs a dedicated account instead, with --dedicated, as root.
 main() {
-	[ "$#" -eq 3 ] || fail 'copy the complete install command from Dex'
+	[ "$#" -ge 3 ] || fail 'copy the complete install command from Dex'
 	origin=$1
 	environment=$2
 	code=$3
+	shift 3
+	mode=user
+	for arg in "$@"; do
+		case $arg in
+			--dedicated) mode=dedicated ;;
+			--user) mode=user ;;
+			*) fail "unknown option: $arg (expected --user or --dedicated)" ;;
+		esac
+	done
 	repo=https://github.com/recally-io/dex
 
 	case $origin in https://?*) ;; *) fail 'the Dex address must start with https://' ;; esac
@@ -43,7 +60,11 @@ main() {
 	verify_checksum "$tmp" "$archive" || fail 'the archive checksum does not match'
 
 	if [ "$os" = linux ]; then
-		install_linux
+		if [ "$mode" = user ]; then
+			install_linux_user
+		else
+			install_linux_dedicated
+		fi
 	else
 		install_darwin
 	fi
@@ -63,9 +84,55 @@ verify_checksum() {
 	[ "$got" = "$want" ]
 }
 
-# The binary runs as an unprivileged account on both systems. The target account owns the
-# token and the workspace, and the service manager restarts the agent after a failure.
-install_linux() {
+# linger_status reports whether the account keeps its user services after it logs out. It prints
+# nothing when the host does not run logind.
+linger_status() {
+	loginctl show-user "$1" --property=Linger --value 2>/dev/null || true
+}
+
+# install_linux_user installs the machine for the account that runs the command: a systemd user
+# service that lingers after the last session ends. It needs no root, and root would run the work
+# of the account of the service manager, which is no account of a person.
+install_linux_user() {
+	[ "$(id -u)" -ne 0 ] || fail 'run this command as the account that will use the machine, without sudo. A host that serves several people installs a dedicated account as root, with --dedicated.'
+	for tool in curl tar install systemctl sed; do
+		command -v "$tool" >/dev/null || fail "$tool is required"
+	done
+	systemctl --user show-environment >/dev/null 2>&1 || fail 'this machine has no systemd user session for this account: log in to the machine and run the command again, or install a dedicated account with --dedicated as root'
+	user=$(id -un)
+	[ -n "${HOME:-}" ] && [ -d "$HOME" ] || fail "cannot find the home directory of $user"
+	state=${XDG_STATE_HOME:-$HOME/.local/state}/dex-agent
+	binary=${XDG_BIN_HOME:-$HOME/.local/bin}/dex-agent
+	unit=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/dex-agent.service
+	[ ! -e "$state/device.json" ] || fail 'this machine is already connected for this account; revoke it in Dex before connecting again'
+	# A machine that a dedicated account already serves stays as it is: a second install of the
+	# same host would connect twice, and the existing machine is not migrated without saying so.
+	if systemctl list-unit-files dex-agent.service 2>/dev/null | grep -q '^dex-agent\.service'; then
+		fail 'this host already runs the machine as the dedicated account dex-agent. Keep it, or move it: sudo systemctl disable --now dex-agent.service, remove /var/lib/dex-agent, /usr/local/bin/dex-agent, and /etc/systemd/system/dex-agent.service, then run this command again. See the machine section of the Dex docs for the whole procedure.'
+	fi
+	tar -xzf "$tmp/$archive" -C "$tmp" dex-agent dex-agent-user.service
+	install -d -m 0700 "$state"
+	install -d -m 0755 "${binary%/*}" "${unit%/*}"
+	install -m 0755 "$tmp/dex-agent" "$binary"
+	sed -e "s|__BINARY__|$binary|g" -e "s|__STATE__|$state|g" "$tmp/dex-agent-user.service" >"$tmp/dex-agent-user.service.final"
+	install -m 0644 "$tmp/dex-agent-user.service.final" "$unit"
+	# The code goes through stdin, so it stays out of the process list.
+	printf '%s\n' "$code" | "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode user || fail 'Dex refused the enrollment; get a fresh install command'
+	systemctl --user daemon-reload
+	systemctl --user enable --now dex-agent.service || fail "the machine service did not start; read its log with: journalctl --user -u dex-agent"
+	# A user service stops with the last session of the account unless the account lingers.
+	if command -v loginctl >/dev/null; then
+		[ "$(linger_status "$user")" = yes ] || loginctl enable-linger "$user" >/dev/null 2>&1 || true
+		if [ "$(linger_status "$user")" != yes ]; then
+			note "the machine is connected but stops when $user logs out: run sudo loginctl enable-linger $user"
+		fi
+	fi
+	note "the machine runs as $user, so its work can read the files of $user. Check it with: $binary status"
+}
+
+# install_linux_dedicated keeps the machine in a system account that holds no login state of a
+# person, for a host that several people use.
+install_linux_dedicated() {
 	as_root() {
 		if [ "$(id -u)" -eq 0 ]; then
 			"$@"
@@ -76,11 +143,11 @@ install_linux() {
 	for tool in curl tar sha256sum systemctl getent install runuser useradd; do
 		command -v "$tool" >/dev/null || fail "$tool is required"
 	done
-	[ -d /run/systemd/system ] || fail 'this installer requires a running systemd system manager'
 	if [ "$(id -u)" -ne 0 ]; then
 		command -v sudo >/dev/null || fail 'use an account with sudo, or run the command as root'
 		sudo -v </dev/tty || fail 'sudo authentication failed'
 	fi
+	as_root systemctl show --property=Version >/dev/null 2>&1 || fail 'this installer requires a running systemd system manager'
 	state=/var/lib/dex-agent
 	binary=/usr/local/bin/dex-agent
 	unit=/etc/systemd/system/dex-agent.service
@@ -94,21 +161,32 @@ install_linux() {
 	as_root install -d -m 0700 -o dex-agent -g dex-agent "$state"
 	as_root install -m 0755 "$tmp/dex-agent" "$binary"
 	as_root install -m 0644 "$tmp/dex-agent.service" "$unit"
-	# The code goes through stdin, so it stays out of the process list.
-	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" || fail 'Dex refused the enrollment; get a fresh install command'
+	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode dedicated || fail 'Dex refused the enrollment; get a fresh install command'
 	as_root systemctl daemon-reload
 	as_root systemctl enable --now dex-agent.service || fail 'the machine service did not start; read its log with: sudo journalctl -u dex-agent'
+	note 'the machine runs as the dedicated account dex-agent; only its own bots use it'
 }
 
-# A Mac is a single-user machine, so the agent runs in the login session of the account that
-# installed it. No system directory and no separate account is needed.
+# A Mac installs a LaunchAgent in the login session of the account that runs the command, so the
+# work runs as that account. --dedicated declares the account one that holds no login state of a
+# person, which a host that serves several people sets up for itself.
 install_darwin() {
-	target_user=${SUDO_USER:-$(id -un)}
-	[ "$target_user" != root ] || fail 'run this command as your own account, not as root'
+	if [ "$(id -u)" -eq 0 ]; then
+		[ "$mode" = dedicated ] || fail 'run this command as your own account, not as root. A host that serves several people installs a dedicated account with --dedicated.'
+		[ -n "${SUDO_USER:-}" ] || fail 'run this command as the account that will use the machine'
+		target_user=$SUDO_USER
+	else
+		target_user=$(id -un)
+	fi
+	[ "$target_user" != root ] || fail 'the machine must not run as root'
 	for tool in curl tar install launchctl; do
 		command -v "$tool" >/dev/null || fail "$tool is required"
 	done
-	target_home=$(eval echo "~$target_user")
+	if [ "$target_user" = "$(id -un)" ] && [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
+		target_home=$HOME
+	else
+		target_home=$(eval echo "~$target_user")
+	fi
 	[ -d "$target_home" ] || fail "cannot find the home directory of $target_user"
 	state="$target_home/Library/Application Support/dex-agent"
 	binary="$target_home/.local/bin/dex-agent"
@@ -127,12 +205,17 @@ install_darwin() {
 	tar -xzf "$tmp/$archive" -C "$tmp" dex-agent com.recally.dex-agent.plist
 	run_as_user install -d -m 0700 "$state" "$target_home/.local/bin" "$target_home/Library/Logs" "${plist%/*}"
 	run_as_user install -m 0755 "$tmp/dex-agent" "$binary"
-	run_as_user install -m 0644 "$tmp/com.recally.dex-agent.plist" "$plist"
-	run_as_user sed -i '' -e "s|__BINARY__|$binary|g" -e "s|__STATE__|$state|g" -e "s|__LOG__|$log|g" "$plist"
-	printf '%s\n' "$code" | run_as_user "$binary" enroll -state "$state" -url "$origin" -id "$environment" || fail 'Dex refused the enrollment; get a fresh install command'
+	sed -e "s|__BINARY__|$binary|g" -e "s|__STATE__|$state|g" -e "s|__LOG__|$log|g" "$tmp/com.recally.dex-agent.plist" >"$tmp/com.recally.dex-agent.plist.final"
+	run_as_user install -m 0644 "$tmp/com.recally.dex-agent.plist.final" "$plist"
+	printf '%s\n' "$code" | run_as_user "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode "$mode" || fail 'Dex refused the enrollment; get a fresh install command'
 	# bootstrap refuses a label that is already loaded, so unload it first.
 	launchctl bootout "gui/$target_uid/$label" 2>/dev/null || true
 	launchctl bootstrap "gui/$target_uid" "$plist" || fail "the agent did not start; read $log"
+	if [ "$mode" = user ]; then
+		note "the machine runs as $target_user, so its work can read the files of $target_user. Check it with: $binary status"
+	else
+		note "the machine runs as $target_user and is not kept to one bot, so use an account that holds no personal login state"
+	fi
 }
 
 main "$@"
