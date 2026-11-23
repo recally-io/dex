@@ -52,6 +52,31 @@ func checkEnvironment(ctx context.Context, q *sqlc.Queries, environmentID string
 	return nil
 }
 
+// checkPersonalEnvironment refuses a machine that runs as the account that installed it for a bot
+// that the machine is not bound to. The machine holds the home, the login state, and the
+// credentials of a person, so a session cannot select it: only the bot that the machine is bound
+// to uses it. Work that runs anyway reaches the same refusal when it opens the environment.
+func checkPersonalEnvironment(ctx context.Context, q *sqlc.Queries, agentID, environmentID string) error {
+	row, err := q.GetEnvironment(ctx, environmentID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // checkEnvironment reported it.
+	}
+	if err != nil {
+		return err
+	}
+	if row.RunAsUser == "" {
+		return nil
+	}
+	agent, err := q.GetAgent(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	if agent.EnvironmentID != row.ID {
+		return fmt.Errorf("%w: %s runs as %s, the account that installed it, so only the bot that is bound to it uses that machine", ErrEnvironmentInvalid, row.Name, row.RunAsUser)
+	}
+	return nil
+}
+
 // effectiveEnvironment is the environment that a session with selection id runs in: id, or the
 // environment of the bot for an empty id.
 func effectiveEnvironment(agent sqlc.Agent, id string) string {
@@ -80,6 +105,9 @@ func (s *Service) SetEnvironment(ctx context.Context, agentID string, id int64, 
 	}
 	if environmentID != "" {
 		if err := checkEnvironment(ctx, s.q, environmentID); err != nil {
+			return Chat{}, err
+		}
+		if err := checkPersonalEnvironment(ctx, s.q, agentID, environmentID); err != nil {
 			return Chat{}, err
 		}
 	}
