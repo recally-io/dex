@@ -216,6 +216,9 @@ func (s *Service) clear(ctx context.Context, agentID string, chatID int64, reque
 		if created == 0 {
 			return ErrResetID
 		}
+		if err := cancelChannelFollowUps(ctx, q, chatID); err != nil {
+			return err
+		}
 		if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{ConversationID: chatID, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
 			return err
 		}

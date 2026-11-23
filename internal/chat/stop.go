@@ -115,6 +115,9 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			return withdrawal{}, err
 		}
 	}
+	if err := cancelChannelFollowUps(ctx, q, id); err != nil {
+		return withdrawal{}, err
+	}
 	conversations, err := q.ListStopConversations(ctx, sqlc.ListStopConversationsParams{AgentID: agentID, ChatID: id})
 	if err != nil {
 		return withdrawal{}, err

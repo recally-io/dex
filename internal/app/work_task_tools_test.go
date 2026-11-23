@@ -54,7 +54,15 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 		d.must(t, http.MethodGet, path, nil, &detail)
 		return detail.Session != nil && detail.Session.Title == "Login work", detail.Session
 	})
-	d.awaitIdle(t, main.ID)
+	// Main can be idle before the child result arrives. Wait for that result to settle
+	// before the next tool interaction, so it cannot consume the owner's answer wait.
+	conn := sessionDB(t, d)
+	work := waitExecution(t, conn, main.ID, "Login work", "done")
+	eventually(t, "the child result settles in Main", func() (bool, any) {
+		var status string
+		err := conn.QueryRowContext(t.Context(), `SELECT status FROM submissions WHERE id = ?`, work.ResultID).Scan(&status)
+		return err == nil && status != "pending", fmt.Sprintf("status=%s err=%v", status, err)
+	})
 	child := fmt.Sprint(detail.Session.Id)
 
 	// When Main links the PR of the work and records progress.

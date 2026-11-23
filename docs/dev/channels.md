@@ -294,6 +294,31 @@ changes for its message; slow, rejected, and unknown reaction requests never
 control intake or the reply sender's retries. Commands and Telegram edits do not reset a message's status. Dex can drop reactions under
 load, after a timeout, or when the bot stops. It does not retry or replay them.
 
+### Promised follow-ups
+
+On a direct channel request, the parent can set `follow_up: true` on
+`session_new` or `session_send`. The commitment belongs to that delegation,
+request, session, and channel authorization. It does not change group tool
+permissions or turn an acknowledgment or progress update into a conclusion.
+
+The original child-result turn tells the parent to use `notify_user`,
+`ask_user`, or `stay_silent`. Only explicit user-facing actions can enter the
+channel Outbox. A question does not complete the commitment. Plain final text
+stays internal. Dex records `missed_follow_up` without creating another turn,
+retrying the omission, or forwarding any draft or child output.
+
+The control store records the commitment separately from delivery. A `notified`
+commitment means an explicit conclusion entered the Outbox, not that the channel
+accepted it. Use the linked Outbox receipt, including its skipped-part and error
+information, for delivery confirmation. Stop and Clear cancel outstanding
+commitments and revoke their pending Outbox entries in the same transaction.
+If an already-started send succeeds, Dex still records its platform receipt.
+
+Channel revocation stays on the original input even if its reply was already
+delivered. It also applies to existing and future child results, with or without
+a follow-up commitment. Restoring the channel grant allows new inputs but does
+not authorize delivery from the old result.
+
 ## Feishu and Lark
 
 [`feishu.Bot`](../../internal/channel/feishu/bot.go) receives private messages through

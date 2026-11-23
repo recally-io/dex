@@ -55,6 +55,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 		return err
 	}
 	blocked := make(map[string]bool)
+deliveries:
 	for _, r := range replies {
 		if blocked[r.Peer] {
 			continue
@@ -72,7 +73,10 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 			return err
 		}
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			allowed, err := m.authorizedReply(ctx, name, r.Peer, r.ChannelContext, r.SourceSubmissionID.String, r.ID)
+			allowed, err := m.authorizeOutboxPart(ctx, name, r)
+			if errors.Is(err, errOutboxRevoked) {
+				continue deliveries
+			}
 			if err != nil {
 				return err
 			}
@@ -86,6 +90,9 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 				break
 			}
 			err = m.sendReplyPart(ctx, name, bot, r, i, parts[i], &remotes)
+			if errors.Is(err, errOutboxRevoked) {
+				continue deliveries
+			}
 			if err != nil {
 				retryAt := time.Now().Add(5 * time.Second).UnixMilli()
 				if flood, ok := errors.AsType[*channel.RetryError](err); ok {
@@ -244,16 +251,26 @@ func (m *Manager) replyParts(ctx context.Context, bot channel.Bot, r sqlc.ListPe
 	return parts, nil
 }
 
-func (m *Manager) authorizedReply(ctx context.Context, platform, peer, channelContext, sourceSubmissionID, outboxID string) (bool, error) {
-	if outboxID != "" {
-		msg, err := m.q.GetOutboxMessage(ctx, outboxID)
-		if err != nil {
-			return false, err
-		}
-		if msg.Status != "pending" {
-			return false, nil
-		}
+var errOutboxRevoked = errors.New("outbox delivery revoked before send")
+
+func (m *Manager) authorizeOutboxPart(ctx context.Context, platform string, row sqlc.ListPendingOutboxMessagesRow) (bool, error) {
+	allowed, err := m.authorizedReply(ctx, platform, row.Peer, row.ChannelContext, row.SourceSubmissionID.String)
+	if err != nil {
+		return false, err
 	}
+	// Read the durable row once, after checking the source. That check can race with Stop,
+	// Clear or a settings write. An explicit revocation is not a skipped delivery.
+	current, err := m.q.GetOutboxMessage(ctx, row.ID)
+	if err != nil {
+		return false, err
+	}
+	if current.Status == "revoked" {
+		return false, errOutboxRevoked
+	}
+	return allowed && current.Status == "pending", nil
+}
+
+func (m *Manager) authorizedReply(ctx context.Context, platform, peer, channelContext, sourceSubmissionID string) (bool, error) {
 	if sourceSubmissionID != "" {
 		current, err := m.q.GetSubmission(ctx, sourceSubmissionID)
 		if err != nil {

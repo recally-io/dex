@@ -116,6 +116,13 @@ type ChannelCommand struct {
 	RenderedReply  string        `json:"rendered_reply"`
 }
 
+type ChannelFollowUp struct {
+	DelegationID   string `json:"delegation_id"`
+	ResultID       string `json:"result_id"`
+	ConversationID int64  `json:"conversation_id"`
+	State          string `json:"state"`
+}
+
 type ChannelPeer struct {
 	Peer       string `json:"peer"`
 	ChannelKey string `json:"channel_key"`

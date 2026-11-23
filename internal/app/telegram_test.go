@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json/v2"
 	"fmt"
@@ -28,6 +29,7 @@ import (
 // as Telegram does.
 type fakeTelegram struct {
 	reactGate      *reactionGate
+	holdRich       func(context.Context, string)
 	fileGate       <-chan struct{}
 	draftGate      <-chan struct{}
 	pollStarted    chan struct{}
@@ -316,6 +318,9 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 			m.RichHTML = m.RichMessage.HTML
 			m.Text = strings.NewReplacer("<p>", "", "</p>", "").Replace(m.RichHTML)
 			m.RichMessage = nil
+		}
+		if method == "sendRichMessage" && f.holdRich != nil {
+			f.holdRich(r.Context(), m.Text)
 		}
 		if method == "answerCallbackQuery" {
 			m.MessageID, _ = strconv.ParseInt(m.CallbackQueryID, 10, 64)

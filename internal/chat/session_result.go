@@ -70,9 +70,18 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 			body.Answer += fmt.Sprintf("\n[The answer is cut. Read the rest with session_read: id %d, turn %s, offset %d.]", link.ChildID, turn, textLimit)
 		}
 	}
+	f, err := q.GetChannelFollowUpByDelegation(ctx, turn)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	var guidance string
+	if f.State == "open" {
+		guidance = followUpPrompt
+	}
 	content, err := json.Marshal(struct {
-		Result sessionResult `json:"task-result"`
-	}{body})
+		Result   sessionResult `json:"task-result"`
+		FollowUp string        `json:"channel-follow-up,omitempty"`
+	}{body, guidance})
 	if err != nil {
 		return 0, err
 	}

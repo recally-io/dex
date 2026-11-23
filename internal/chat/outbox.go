@@ -62,12 +62,28 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 	outboxID := uuid.NewV7().String()
 	final := boolPtrOrTrue(a.Final)
 
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return "", err
 	}
 	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
+	source, err = q.GetSubmission(ctx, source.ID)
+	if err != nil {
+		return "", err
+	}
+	f, err := q.GetChannelFollowUpByInput(ctx, source.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	if f.ResultID != "" {
+		if source.ChannelRevoked != 0 || f.State != "open" && (!final || f.State != "notified") {
+			return "", errChannelFollowUp
+		}
+		if final {
+			dedupKey = followUpFinalKey(f.DelegationID)
+			a.TopicKey = "" // Progress cannot supersede the committed conclusion.
+		}
+	}
 	peer, identity, err := taskNotificationRoute(ctx, q, conv, source)
 	if err != nil {
 		return "", err
@@ -108,15 +124,27 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 			return "", err
 		}
 		outboxID = existing.ID
+		if f.ResultID != "" && final {
+			return outboxID, nil
+		}
 	}
 	if final {
+		if f.ResultID != "" {
+			if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: source.ID, State: "notified"}); err != nil {
+				return "", err
+			}
+		}
 		if _, err := q.BindOutboxFilesToOutbox(ctx, sqlc.BindOutboxFilesToOutboxParams{
 			OutboxID:     sql.NullString{String: outboxID, Valid: true},
 			SubmissionID: sql.NullString{String: source.ID, Valid: true},
 		}); err != nil {
 			return "", err
 		}
-		for _, id := range r.RunInputIDs {
+		ids := r.RunInputIDs
+		if f.ResultID != "" {
+			ids = []string{source.ID}
+		}
+		for _, id := range ids {
 			if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "notify_user"}); err != nil {
 				return "", err
 			}
@@ -230,12 +258,14 @@ func (s *Service) ToolStaySilent(ctx context.Context, r engine.TaskContext, _ en
 			return errors.New("cannot stay silent when an unanswered user message is in this turn")
 		}
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
+	if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: r.SourceRequestID, State: "silent"}); err != nil {
+		return err
+	}
 	for _, id := range ids {
 		if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "stay_silent"}); err != nil {
 			return err
@@ -320,6 +350,36 @@ func (s *Service) ListOutbox(ctx context.Context, agentID string, chatID int64) 
 func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submission, conv sqlc.Conversation, event engine.Outcome, now int64) (string, error) {
 	if conv.ParentID.Valid {
 		return "", nil
+	}
+	if sub.Kind == "task_result" {
+		f, err := q.GetChannelFollowUpByInput(ctx, sub.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		if f.ResultID != "" {
+			if f.State != "open" {
+				return "", nil
+			}
+			if sub.ChannelRevoked != 0 || event.Reason == "stopped" || event.Reason == "aborted" || event.Reason == "withdrawn" {
+				return "", q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: sub.ID, State: "cancelled"})
+			}
+			if sub.ExitAction != "ask_user" || event.Status != "done" {
+				return "", q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: sub.ID, State: "missed_follow_up"})
+			}
+			// The explicit question is the entire outbound body, even on recovery or promotion.
+			row, err := q.GetQuestionBySource(ctx, sub.ID)
+			if errors.Is(err, sql.ErrNoRows) || (err == nil && row.Status == "dismissed") {
+				return "", nil
+			}
+			if err != nil {
+				return "", err
+			}
+			question, err := questionOf(row)
+			if err != nil {
+				return "", err
+			}
+			event.Answer = renderQuestion(row, question.Options, row.AgentID, conv.ChannelKey == MainKey, quotes(sub.Origin))
+		}
 	}
 	if sub.ExitAction == "ask_user" {
 		question, err := q.GetQuestionBySource(ctx, sub.ID)
