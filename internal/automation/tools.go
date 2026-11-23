@@ -285,6 +285,8 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 		if err != nil {
 			return nil, err
 		}
+		// The writer can confirm the environment, but two sessions can share it. Do not
+		// redirect a tool run to a replacement target selected during preflight.
 		if row.Session == "session" && pre != nil && row.TargetConversationID.Valid && (preRow.Session != row.Session || preRow.TargetConversationID != row.TargetConversationID) {
 			return nil, fmt.Errorf("%w: the routine target changed during its check; run it again", engine.ErrBusy)
 		}

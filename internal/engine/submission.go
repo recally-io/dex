@@ -113,7 +113,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if ref.Scope == "" {
 			var extensions *harness.ExtensionEdit
 			if input.Automation {
-				extensions = &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil)}, Add: []*durable.Extension{{Name: checkExtensionName}, botReadExtension(ref.AgentID, a.config.Bots)}}
+				extensions = &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil)}, Add: []*durable.Extension{routineCheckInstructions(), botReadExtension(ref.AgentID, a.config.Bots)}}
 			}
 			// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
 			// so a child, an automation or a dream never gets the tool and needs no removal.
@@ -136,14 +136,6 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				extensions = &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines), outboxExtension(ref.AgentID, a.config.Tasks.Outbox)}, Add: []*durable.Extension{childExtension(), childOutboxExtension(ref.AgentID, a.config.Tasks.Outbox)}}
 			case dream:
 				extensions = &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), backgroundExtension(ref.AgentID, a.config.Tasks.Background, nil), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}
-			}
-			if input.RoutineReporting && !input.Automation && !dream {
-				// Configure replaces extension edits. Keep reporting during follow-up admissions
-				// while the Routine is pending. The active input determines model visibility.
-				if extensions == nil {
-					extensions = &harness.ExtensionEdit{}
-				}
-				extensions.Add = append(extensions.Add, &durable.Extension{Name: boundCheckExtensionName})
 			}
 			if extensions != nil {
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: extensions})
@@ -282,6 +274,10 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 
 func inputText(input Input, workspace string) string {
 	content := input.Content
+	// Keep the owner transcript and durable source identity separate from model guidance.
+	if input.Scope == "" && input.Origin == "automation" && input.Kind == "message" && !input.Automation {
+		content += boundRoutineCheckSuffix
+	}
 	if input.WorkTaskContext != "" {
 		content = "Dex Task: " + input.WorkTaskContext + "\n\n" + content
 	}

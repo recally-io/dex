@@ -48,7 +48,7 @@ func newRoutineFixture(t *testing.T) *routineFixture {
 	f := &routineFixture{conn: conn, q: sqlc.New(conn), now: time.Date(2016, 1, 1, 0, 0, 0, 123000000, time.UTC)}
 	clock := func() time.Time { return f.now }
 	f.chats = chat.New(conn, native, clock, nil, nil)
-	f.routines = automation.New(f.conn, f.chats, clock)
+	f.routines = automation.New(f.q, f.chats, clock)
 	return f
 }
 

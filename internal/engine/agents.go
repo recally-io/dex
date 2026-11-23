@@ -345,7 +345,8 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return backgroundEnv{EnvironmentID: s.ID, Env: s.Vars, InheritEnv: s.Inherit, Kind: s.Handle.Kind(), OutputDir: outputDir, Workspace: s.Handle.Workspace()}, nil
 	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	// All unscoped extension edits inherit this tool. Its execution checks the source receipt.
+	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), loaded.Extension}
 	if loaded.HasTools {
@@ -386,7 +387,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, store.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	if err := errors.Join(registry.Install(checkExtension(agentID, a.config.Tasks.ReportCheck, nil)), registry.Install(checkExtension(agentID, a.config.Tasks.ReportCheck, store))); err != nil {
+	if err := registry.Install(routineCheckInstructions()); err != nil {
 		return nil, err
 	}
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{

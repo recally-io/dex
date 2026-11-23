@@ -94,7 +94,6 @@ type Run struct {
 type Service struct {
 	q          *sqlc.Queries
 	enqueue    func(context.Context, chat.AutomationInput) (chat.AutomationInputResult, error)
-	db         *sql.DB
 	now        func() time.Time
 	wakeOutbox func(context.Context, string)
 	// probe opens an SSH environment of a run before its input; nil skips the check.
@@ -114,8 +113,8 @@ func (s *Service) ConfigureEnvironmentStatus(status func(context.Context, string
 }
 
 // New returns a Service. Call Check every minute.
-func New(conn *sql.DB, chats *chat.Service, now func() time.Time) *Service {
-	s := &Service{db: conn, q: sqlc.New(conn), now: now}
+func New(q *sqlc.Queries, chats *chat.Service, now func() time.Time) *Service {
+	s := &Service{q: q, now: now}
 	if chats != nil {
 		s.enqueue = chats.EnqueueAutomation
 		s.wakeOutbox = chats.WakeRoutineOutbox
@@ -213,26 +212,6 @@ func millis(times []time.Time) []int64 {
 	return out
 }
 
-// saveBound orders target validation and the binding write against archive and delete.
-// Tool mutations already hold the writer and use a transaction-local service.
-func (s *Service) saveBound(ctx context.Context, save func(*Service) (Automation, error)) (Automation, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return Automation{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	local := *s
-	local.db, local.q = nil, s.q.WithTx(tx)
-	if err := local.q.LockRoutineTools(ctx); err != nil {
-		return Automation{}, err
-	}
-	a, err := save(&local)
-	if err != nil {
-		return Automation{}, err
-	}
-	return a, tx.Commit()
-}
-
 func (s *Service) checkTarget(ctx context.Context, agentID string, in Input) error {
 	if in.Session != "session" {
 		return nil
@@ -250,9 +229,6 @@ func targetID(in Input) sql.NullInt64 {
 
 // Create stores a new automation.
 func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automation, error) {
-	if in.Session == "session" && s.db != nil {
-		return s.saveBound(ctx, func(local *Service) (Automation, error) { return local.Create(ctx, agentID, in) })
-	}
 	in, loc, err := clean(in)
 	if err != nil {
 		return Automation{}, err
@@ -282,9 +258,6 @@ func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automat
 
 // Update changes an automation. Its next time counts from now, so a change never runs a past time.
 func (s *Service) Update(ctx context.Context, agentID string, id string, in Input) (Automation, error) {
-	if in.Session == "session" && s.db != nil {
-		return s.saveBound(ctx, func(local *Service) (Automation, error) { return local.Update(ctx, agentID, id, in) })
-	}
 	in, loc, err := clean(in)
 	if err != nil {
 		return Automation{}, err

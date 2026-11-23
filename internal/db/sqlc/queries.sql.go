@@ -1655,12 +1655,7 @@ SELECT
     s.when_busy,
     s.conversation_id,
     c.agent_id,
-    c.channel_key,
-    CAST(EXISTS (
-        SELECT 1 FROM submissions routine
-        WHERE routine.conversation_id = s.conversation_id
-          AND routine.status = 'pending' AND routine.origin = 'automation'
-    ) AS INTEGER) AS routine_pending
+    c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'
@@ -1678,7 +1673,6 @@ type ListPendingSubmissionsRow struct {
 	ConversationID int64         `json:"conversation_id"`
 	AgentID        string        `json:"agent_id"`
 	ChannelKey     string        `json:"channel_key"`
-	RoutinePending int64         `json:"routine_pending"`
 }
 
 // SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
@@ -1702,7 +1696,6 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 			&i.ConversationID,
 			&i.AgentID,
 			&i.ChannelKey,
-			&i.RoutinePending,
 		); err != nil {
 			return nil, err
 		}

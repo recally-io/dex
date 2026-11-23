@@ -57,7 +57,7 @@ func TestUserRunsRoutineInExistingSessionAfterRestart(t *testing.T) {
 
 	// Then the committed run resumes in its original session after restart.
 	d = startDex(t, data, "")
-	d.watch(t, id).until(t, "bound routine answer", answered("echo: bound run"))
+	d.watch(t, id).until(t, "bound routine answer", answeredWith("echo: bound run"))
 	if got := settledRoutine(t, d, routine.ID, run.ID); got.ChatID != id {
 		t.Fatalf("recovered run = %+v, want chat %d", got, id)
 	}
@@ -81,7 +81,7 @@ func TestUserScheduledBoundRoutineKeepsItsTargetAfterRestart(t *testing.T) {
 	d = startDexWith(t, app.Config{DataDir: data, AutomationCheck: 50 * time.Millisecond})
 
 	// Then the scheduled input goes to the saved session.
-	d.watch(t, id).until(t, "scheduled bound routine answer", answered("echo: scheduled bound run"))
+	d.watch(t, id).until(t, "scheduled bound routine answer", answeredWith("echo: scheduled bound run"))
 	runs := d.runs(t, routine.ID)
 	if len(runs) != 1 || runs[0].ChatID != id || runs[0].DueAt != at {
 		t.Fatalf("runs = %+v, want one run in chat %d at %d", runs, id, at)
@@ -122,13 +122,11 @@ func TestUserBoundRoutineCanReportItsOwnResult(t *testing.T) {
 	if got.Outcome != "unchanged" || got.Summary != "bound check completed" || got.ChatID != id {
 		t.Fatalf("run did not store its report: %+v", got)
 	}
-	request := d.send(t, id, `report_check {"outcome":"changed","summary":"not a routine"}`)
-	conn := sessionDB(t, d)
-	eventually(t, "ordinary input settled without writing a Routine result", func() (bool, any) {
-		var status string
-		err := conn.QueryRowContext(t.Context(), `SELECT status FROM submissions WHERE id = ?`, request).Scan(&status)
-		return err == nil && status != "pending", status
-	})
+	d.send(t, id, `report_check {"outcome":"changed","summary":"not a routine"}`)
+	d.watch(t, id).until(t, "ordinary input is denied at the reporting boundary", answeredWith("report_check is only available during a Routine run"))
+	if runs := d.runs(t, routine.ID); len(runs) != 1 {
+		t.Fatalf("ordinary input created a Routine run: %+v", runs)
+	}
 	after := settledRoutine(t, d, routine.ID, run.ID)
 	if after.Outcome != got.Outcome || after.Summary != got.Summary {
 		t.Fatalf("ordinary input changed the run: %+v", after)
@@ -366,21 +364,26 @@ func TestUserCanStopAndClearABoundRoutineSession(t *testing.T) {
 	if _, err := sessionDB(t, d).ExecContext(t.Context(), "UPDATE automations SET next_due_at = ? WHERE id = ?", dueAt, routine.ID); err != nil {
 		t.Fatal(err)
 	}
-	w.until(t, "scheduled check after clear", answered(`context: ["next scheduled check"]`))
+	w.until(t, "scheduled check after clear", answeredWith(`context: ["next scheduled check\n\nRoutine reporting instructions`))
 	runs := d.runs(t, routine.ID)
 	if len(runs) != 2 || runs[0].ChatID != id || runs[0].DueAt != dueAt {
 		t.Fatalf("runs after Stop and Clear = %+v", runs)
 	}
 }
 
-func TestUserBoundSessionOnlyOffersReportingForRoutineInput(t *testing.T) {
+func TestUserBoundRoutineKeepsReportingWhenAnOrdinaryTurnQueues(t *testing.T) {
 	t.Parallel()
 	// Given an existing session and a local model boundary that records each offered tool set.
-	offers := make(chan bool, 8)
+	type reportRequest struct{ offered, instructed bool }
+	offers := make(chan reportRequest, 8)
 	release := make(chan struct{}, 1)
 	var requests atomic.Int32
 	boundary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content any    `json:"content"`
+			} `json:"messages"`
 			Tools []struct {
 				Function struct {
 					Name string `json:"name"`
@@ -395,7 +398,14 @@ func TestUserBoundSessionOnlyOffersReportingForRoutineInput(t *testing.T) {
 		for _, tool := range request.Tools {
 			offered = offered || tool.Function.Name == "report_check"
 		}
-		offers <- offered
+		instructed := false
+		for _, message := range slices.Backward(request.Messages) {
+			if message.Role == "user" {
+				instructed = strings.Contains(fmt.Sprint(message.Content), "Before this automation run ends, call report_check once")
+				break
+			}
+		}
+		offers <- reportRequest{offered, instructed}
 		w.Header().Set("Content-Type", "text/event-stream")
 		if requests.Add(1) == 1 {
 			select {
@@ -436,15 +446,16 @@ func TestUserBoundSessionOnlyOffersReportingForRoutineInput(t *testing.T) {
 	result := settledRoutine(t, d, routine.ID, run.ID)
 	waitResultSubmission(t, sessionDB(t, d), ordinary, "done")
 
-	// Then the model only sees the reporting tool for the Routine input.
+	// Then the Routine can report even with a later admission. Both turns see the tool.
+	// Only the Routine input includes its reporting instructions.
 	if result.Outcome != "unchanged" || result.Summary != "fixture checked" {
 		t.Fatalf("queued owner message changed Routine reporting: %+v", result)
 	}
-	for _, want := range []bool{true, true, false} {
+	for _, want := range []reportRequest{{true, true}, {true, true}, {true, false}} {
 		select {
 		case got := <-offers:
 			if got != want {
-				t.Fatalf("report_check offered = %v, want %v", got, want)
+				t.Fatalf("report_check request = %+v, want %+v", got, want)
 			}
 		default:
 			t.Fatal("missing fixture model request")

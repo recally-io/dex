@@ -175,12 +175,7 @@ SELECT
     s.when_busy,
     s.conversation_id,
     c.agent_id,
-    c.channel_key,
-    CAST(EXISTS (
-        SELECT 1 FROM submissions routine
-        WHERE routine.conversation_id = s.conversation_id
-          AND routine.status = 'pending' AND routine.origin = 'automation'
-    ) AS INTEGER) AS routine_pending
+    c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending'

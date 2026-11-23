@@ -1,18 +1,24 @@
 package app_test
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/execenv/execenvtest"
 )
 
 func routineToolJSON(t *testing.T, d *dex, chatID int64, name string, args any, out any) {
@@ -139,7 +145,7 @@ func TestUserRoutineToolReplayReturnsCommittedMutationsAfterRestart(t *testing.T
 	startDex(t, data, "")
 	// When durable execution retries the same identity after the result boundary,
 	// a fresh business service uses the committed operation, even after settlement.
-	service := automation.New(conn, nil, time.Now) // Read service; mutations bind the real transactional input writer.
+	service := automation.New(sqlc.New(conn), nil, time.Now) // Read service; mutations bind the real transactional input writer.
 	tools := automation.NewToolService(conn, service, func(int64) {})
 	for range 2 {
 		replay, err := tools.Create(t.Context(), createSource, engine.RoutinePatch{})
@@ -175,7 +181,7 @@ func TestUserRoutineBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Scoped", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
 	conn := sessionDB(t, d)
 	source := savedRoutineCaller(t, conn, "create")
-	tools := automation.NewToolService(conn, automation.New(conn, nil, time.Now), func(int64) {})
+	tools := automation.NewToolService(conn, automation.New(sqlc.New(conn), nil, time.Now), func(int64) {})
 	// When another bot, execution, input kind, or hidden conversation claims that source,
 	// every business operation rejects it, including reads and replay.
 	reject := func(c engine.TaskContext) {
@@ -326,5 +332,56 @@ func TestUserRoutineOtherBotCannotReadOrChangeRoutine(t *testing.T) {
 	routineToolJSON(t, d, id, "get_routine", map[string]string{"id": a.ID}, &detail)
 	if !detail.Enabled {
 		t.Fatal("other bot paused routine")
+	}
+}
+
+func TestUserRoutineToolDoesNotRunInASessionSelectedDuringPreflight(t *testing.T) {
+	t.Parallel()
+	// Given a Routine and two eligible sessions on the same synthetic SSH environment.
+	ssh := execenvtest.NewFakeSSH(t)
+	d := startDexWith(t, app.Config{DataDir: t.TempDir(), SSHProgram: ssh.SSHProgram})
+	d.setModel(t, "bash")
+	main := d.mainChat(t)
+	first := sessionFixture(t, d, "chat:first-fixture", 1)
+	second := sessionFixture(t, d, "chat:second-fixture", 2)
+	conn := sessionDB(t, d)
+	var remote apiEnvironment
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
+		"name": "fixture box", "kind": "pi-env", "config": map[string]string{"host": "fixture.internal", "user": "dev"},
+	}, &remote, http.StatusCreated)
+	for _, target := range []int64{first, second} {
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", target), map[string]string{"environmentId": remote.ID}, nil)
+	}
+	body := boundRoutine(first, "report the fixture")
+	var routine automationInfo
+	d.must(t, http.MethodPost, routinesPath, body, &routine, http.StatusCreated)
+	gate := t.TempDir()
+	id := d.send(t, main, taskGate(t, gate, "caller"))
+	waitTaskFile(t, filepath.Join(gate, "caller.pid"))
+	var executionID int64
+	if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM conversations WHERE id = ?", main).Scan(&executionID); err != nil {
+		t.Fatal(err)
+	}
+
+	// When the owner selects the other session while the tool's preflight is in progress.
+	service := automation.New(sqlc.New(conn), nil, time.Now)
+	service.ConfigureProbe(func(ctx context.Context, agentID, environmentID string) error {
+		if environmentID != remote.ID {
+			t.Errorf("probe checked %q, want %q", environmentID, remote.ID)
+		}
+		saved, err := service.Get(ctx, agentID, routine.ID)
+		if err != nil {
+			return err
+		}
+		saved.TargetConversationID = second
+		_, err = service.Update(ctx, agentID, routine.ID, saved.Input)
+		return err
+	})
+	tools := automation.NewToolService(conn, service, func(int64) {})
+	_, err := tools.Run(t.Context(), engine.TaskContext{AgentID: "default", ConversationID: executionID, SourceRequestID: id, Key: "default/fixture-run"}, routine.ID)
+
+	// Then the tool asks the caller to try again without sending a run to either session.
+	if !errors.Is(err, engine.ErrBusy) || len(d.runs(t, routine.ID)) != 0 {
+		t.Fatalf("run during target edit: %v", err)
 	}
 }

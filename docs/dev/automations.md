@@ -106,11 +106,11 @@ In `new` and `reuse` mode, each run sets or clears its chat's cwd before it stor
 skills therefore follow the run directory, including when a chat is reused.
 
 Only a Routine input can write a report with `report_check`, including a run
-bound to an existing session. The tool stays registered while the Routine input is pending,
-but the model only sees the reporting tool and instruction during a Routine
-input. Reporting also checks the source receipt. A failed Routine run in a child session does not send an automatic
-child error to the parent. The tool stores an explicit
-`changed`, `unchanged`, or `failed` outcome, a summary, and an optional change
+bound to an existing session. The tool is visible in unscoped sessions, but
+checks the current input's source receipt before it writes a result. Bound
+Routine inputs include reporting instructions. A failed Routine run in a child
+session does not send an automatic child error to the parent. The tool stores
+an explicit `changed`, `unchanged`, or `failed` outcome, a summary, and an optional change
 key. The report is provisional while the run is active. Submission settlement
 and the final run outcome commit together. Missing reports and execution errors
 produce `failed`; answer text cannot imply `unchanged`. Old terminal runs
