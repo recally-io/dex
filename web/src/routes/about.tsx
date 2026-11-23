@@ -108,77 +108,51 @@ function stateBadge(state: SystemStatus["state"], reconnecting: boolean, unreach
   }
 }
 
+function isActiveOperation(state: SystemStatus["state"] | undefined) {
+  return state === "downloading" || state === "waiting_idle" || state === "restarting";
+}
+
 export function AboutPage() {
   const { notify } = useApp();
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [confirmUpgrade, setConfirmUpgrade] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  // Tracks the startedAt of an in-flight restart or upgrade so even a fast 150ms re-exec
-  // (missed between 1s status polls) is still detected when startedAt changes.
-  const [opStartedAt, setOpStartedAt] = useState<number | null>(null);
-  const notifiedRestart = useRef<number | null>(null);
+  const restartBaseline = useRef<number | null>(null);
+  const statusKey = getSystemStatusQueryKey();
 
   const status = useQuery({
     ...getSystemStatusOptions(),
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      const st = data?.state;
-
-      if (opStartedAt !== null && (!data || query.state.status === "error")) return 1000;
-
-      return st === "downloading" || st === "waiting_idle" || st === "restarting" ? 1000 : false;
-    },
-    retry: opStartedAt !== null ? false : 1,
+    refetchOnMount: "always",
+    refetchInterval: (query) => (isActiveOperation(query.state.data?.state) ? 1000 : false),
+    retry: (failures) =>
+      failures < 1 && !isActiveOperation(queryClient.getQueryData<SystemStatus>(statusKey)?.state),
   });
 
   const health = useQuery(getHealthOptions());
-
   const sys = status.data;
-
-  const activeOpStart =
-    opStartedAt ??
-    (sys &&
-    (sys.state === "downloading" || sys.state === "waiting_idle" || sys.state === "restarting") &&
-    sys.startedAt > 0
-      ? sys.startedAt
-      : null);
-
-  const reconnected = activeOpStart !== null && Boolean(sys?.startedAt && sys.startedAt !== activeOpStart);
-
-  // During a restart, status fetches either report "restarting" or fail briefly while the socket rebinds.
-  const reconnecting =
-    !reconnected &&
-    activeOpStart !== null &&
-    (sys?.state === "restarting" || status.isError || (opStartedAt !== null && !sys));
+  const reconnecting = sys?.state === "restarting" || (status.isError && isActiveOperation(sys?.state));
 
   const logs = useQuery({
     ...getSystemLogsOptions({ query: { limit: 200 } }),
     enabled: showLogs && !reconnecting,
   });
 
-  // Notify and refresh /api/health once the restarted server responds with a new startedAt.
   useEffect(() => {
-    if (!reconnected || !sys) return;
+    if (!sys || status.isError) return;
 
-    if (notifiedRestart.current === sys.startedAt) return;
+    if (restartBaseline.current !== null && sys.startedAt !== restartBaseline.current) {
+      void queryClient.invalidateQueries({ queryKey: getHealthQueryKey() });
+      notify(`Server is back online (${sys.version}).`);
+    }
 
-    notifiedRestart.current = sys.startedAt;
-    void queryClient.invalidateQueries({ queryKey: getHealthQueryKey() });
-    notify(`Server is back online (${sys.version}).`);
-  }, [reconnected, sys, notify]);
+    restartBaseline.current = isActiveOperation(sys.state) ? sys.startedAt : null;
+  }, [sys, status.isError, notify]);
 
   function applyStatus(next: SystemStatus) {
-    queryClient.setQueryData(getSystemStatusQueryKey(), next);
+    if (isActiveOperation(next.state)) restartBaseline.current ??= next.startedAt;
 
-    if (
-      next.startedAt > 0 &&
-      (next.state === "downloading" || next.state === "waiting_idle" || next.state === "restarting")
-    ) {
-      setOpStartedAt(next.startedAt);
-    } else {
-      setOpStartedAt(null);
-    }
+    queryClient.setQueryData(statusKey, next);
   }
 
   const setChannel = useMutation({
@@ -247,12 +221,7 @@ export function AboutPage() {
   });
 
   const busyOp =
-    reconnecting ||
-    checkUpdate.isPending ||
-    sys?.state === "checking" ||
-    sys?.state === "downloading" ||
-    sys?.state === "waiting_idle" ||
-    sys?.state === "restarting";
+    reconnecting || checkUpdate.isPending || sys?.state === "checking" || isActiveOperation(sys?.state);
 
   return (
     <FramedPage
