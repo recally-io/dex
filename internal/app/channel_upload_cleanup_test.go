@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func cleanupDB(t *testing.T, dir, source string) *sql.DB {
@@ -118,9 +119,15 @@ func TestUserFeishuUploadRetryCleansUncommittedFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// When a later event confirms the failed attempt has finished.
+	// When the platform receives a 500 ACK, the failed receipt did not take ownership.
 	f.events <- body
-	f.text(t, "after-failure", "owner", "p2p", "after failure")
+	select {
+	case <-f.failedACK:
+	case <-f.ack:
+		t.Fatal("Feishu acknowledged a failed receipt write as successful")
+	case <-time.After(15 * time.Second):
+		t.Fatal("Feishu did not acknowledge the temporary failure")
+	}
 	if n := uploadCount(t, dir); n != 0 {
 		t.Errorf("failed Feishu attempt left %d uploads", n)
 	}
@@ -128,8 +135,14 @@ func TestUserFeishuUploadRetryCleansUncommittedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.events <- body
-	f.text(t, "after-retry", "owner", "p2p", "after retry")
-	// Then one receipt owns one surviving upload.
+	select {
+	case <-f.ack:
+	case <-f.failedACK:
+		t.Fatal("Feishu did not accept the replay after the receipt write recovered")
+	case <-time.After(15 * time.Second):
+		t.Fatal("Feishu did not acknowledge the replay")
+	}
+	// Then the 200 ACK already has one durable receipt and its surviving upload.
 	var n int
 	if err := db.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE source_key='feishu:app:retry-upload'").Scan(&n); err != nil {
 		t.Fatal(err)
