@@ -78,6 +78,7 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 		id := fmt.Sprintf("sbx-%d", s.nextID)
 		tok := "tok-" + id
 		root := t.TempDir()
+		allowSkillMirrorCleanup(t, root)
 		_ = os.MkdirAll(filepath.Join(root, "home", "user"), 0o700)
 		s.sandboxes[id] = &fakeSandbox{id: id, token: tok, root: root}
 		s.counts.Created++

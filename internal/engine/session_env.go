@@ -30,7 +30,11 @@ func (s sessionEnv) executionEnv(ctx context.Context, cwd string) (durableenv.Ex
 	if cwd == "" {
 		cwd = s.Handle.Workspace()
 	}
-	return s.Handle.Env(ctx, cwd, s.Vars)
+	env, err := s.Handle.Env(ctx, cwd, s.Vars)
+	if err == nil && s.Files != nil {
+		s.Files.trySyncSkills(ctx, env, false)
+	}
+	return env, err
 }
 
 // environments holds the leases of one open agent: its own environment and the explicit
@@ -105,7 +109,9 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 			}
 			return sessionEnv{}, err
 		}
-		e.own, e.ownFiles, e.ownErr = h, e.files.forHandle(h), nil
+		files := e.files.forHandle(h)
+		files.trySyncSkills(ctx, nil, true)
+		e.own, e.ownFiles, e.ownErr = h, files, nil
 		stamp = h.Stamp()
 	}
 	useOwn := e.own != nil && stamp == e.own.Stamp()
@@ -144,6 +150,7 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 	}
 	vars, inherit := e.vars(h)
 	s := sessionEnv{ID: id, Handle: h, Files: e.files.forHandle(h), Vars: vars, Inherit: inherit}
+	s.Files.trySyncSkills(ctx, nil, true)
 	e.leases[id] = s
 	return s, nil
 }

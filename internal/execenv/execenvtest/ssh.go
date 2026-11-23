@@ -38,6 +38,7 @@ func NewFakeSSH(t *testing.T) *FakeSSHFixture {
 	}
 	stateDir := t.TempDir()
 	remoteHome := filepath.Join(stateDir, "home")
+	allowSkillMirrorCleanup(t, remoteHome)
 	if err := os.MkdirAll(remoteHome, 0o700); err != nil {
 		t.Fatal(err)
 	}

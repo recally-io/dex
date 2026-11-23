@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -168,83 +167,6 @@ func readWorkspaceFile(ctx context.Context, env durableenv.ExecutionEnv, workspa
 		}
 	}
 	return out, nil
-}
-
-// SyncSkills mirrors regular non-hidden skill files from localDir's skills directory into remoteSkillsDir.
-// Sibling or nested .env, mcp.json, dotfiles, node_modules, and non-regular files (including symlinks) are skipped.
-func SyncSkills(ctx context.Context, env durableenv.ExecutionEnv, localDir, remoteSkillsDir string) error {
-	if remoteSkillsDir == "" {
-		return errors.New("remote skills directory is required")
-	}
-	if err := env.Remove(ctx, remoteSkillsDir, &durableenv.RemoveOptions{Recursive: true, Force: true}); err != nil {
-		return err
-	}
-	cleanLocal := filepath.Clean(localDir)
-	skillsDir := cleanLocal
-	if filepath.Base(cleanLocal) != "skills" {
-		skillsDir = filepath.Join(cleanLocal, "skills")
-	}
-	stat, err := os.Lstat(skillsDir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !stat.IsDir() || stat.Mode()&os.ModeSymlink != 0 {
-		return nil
-	}
-	root, err := os.OpenRoot(skillsDir)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = root.Close() }()
-
-	if err := env.CreateDir(ctx, remoteSkillsDir, &durableenv.CreateDirOptions{Recursive: new(true)}); err != nil {
-		return err
-	}
-	createdDirs := map[string]bool{".": true}
-
-	return fs.WalkDir(root.FS(), ".", func(rel string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil || rel == "." {
-			return walkErr
-		}
-		name := d.Name()
-		if strings.HasPrefix(name, ".") || name == "node_modules" || name == ".env" || name == "mcp.json" || d.Type()&fs.ModeSymlink != 0 {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		localRel := filepath.FromSlash(rel)
-		info, err := root.Lstat(localRel)
-		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-			return err
-		}
-		data, err := root.ReadFile(localRel)
-		if err != nil {
-			return err
-		}
-		parent := path.Dir(rel)
-		if !createdDirs[parent] {
-			remoteParent, err := env.JoinPath(ctx, append([]string{remoteSkillsDir}, strings.Split(parent, "/")...))
-			if err != nil {
-				return err
-			}
-			if err := env.CreateDir(ctx, remoteParent, &durableenv.CreateDirOptions{Recursive: new(true)}); err != nil {
-				return err
-			}
-			createdDirs[parent] = true
-		}
-		remoteTarget, err := env.JoinPath(ctx, append([]string{remoteSkillsDir}, strings.Split(rel, "/")...))
-		if err != nil {
-			return err
-		}
-		return env.WriteFile(ctx, remoteTarget, data)
-	})
 }
 
 // ResolveProjectPath validates and normalizes a project directory inside the environment of h.
