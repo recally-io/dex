@@ -39,7 +39,8 @@ exec /bin/sh -c "$1"
 	t.Setenv("HOME", home)
 	t.Setenv("SHELL", filepath.Join(home, "login-shell"))
 	t.Setenv("PATH", "/usr/bin:/bin")
-	t.Setenv("USER", "vaayne")
+	// A login session names its account in the environment, and the account database names it too.
+	t.Setenv("USER", currentAccount().Name)
 	return home
 }
 
@@ -114,7 +115,7 @@ func TestUserSeesWhyTheMachineCannotReadItsState(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "install the machine with the command from Dex") {
 			t.Fatalf("status of a state directory without a device: %v", err)
 		}
-		if !strings.Contains(out.String(), "account: vaayne") {
+		if !strings.Contains(out.String(), "account: "+currentAccount().Name) {
 			t.Fatalf("status does not name the account that reads it:\n%s", out.String())
 		}
 	})
@@ -126,10 +127,10 @@ func TestUserSeesWhyTheMachineCannotReadItsState(t *testing.T) {
 		t.Cleanup(func() { _ = os.Chmod(state, 0o700) })
 		var out bytes.Buffer
 		err := status(t.Context(), state, &out)
-		if err == nil || !strings.Contains(err.Error(), "is not readable by vaayne") {
+		if err == nil || !strings.Contains(err.Error(), "is not readable by "+currentAccount().Name) {
 			t.Fatalf("status of a state that this account may not read: %v", err)
 		}
-		if !strings.Contains(err.Error(), "install it again for vaayne") {
+		if !strings.Contains(err.Error(), "install it again for "+currentAccount().Name) {
 			t.Fatalf("the refusal does not say what to do: %v", err)
 		}
 	})
