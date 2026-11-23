@@ -43,6 +43,7 @@ func (h *handler) RevokeRunner(ctx context.Context, req api.RevokeRunnerRequestO
 	if err := h.Runners.Revoke(ctx, req.EnvironmentId); err != nil {
 		return nil, err
 	}
+	h.environmentChanged(ctx, req.EnvironmentId)
 	return api.RevokeRunner200JSONResponse(ok), nil
 }
 
@@ -67,6 +68,7 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "enrollment is temporarily unavailable")
 		return
 	}
+	h.environmentChanged(r.Context(), r.PathValue("id"))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "protocol": runner.Version})

@@ -273,9 +273,6 @@ func TestUserGroupDoesNotStartPrivateMCPOrCaptureOwnerEnvironment(t *testing.T) 
 		t.Fatalf("private MCP write was not rejected: %+v", result)
 	}
 	// Then initialization and status checks neither connect to private tools nor load their environment.
-	if stale := a.StaleExtensions(t.Context()); len(stale) != 0 {
-		t.Fatalf("group is tracked as private extension resources: %v", stale)
-	}
 	if contacts.Load() != 0 || captures.Load() != 0 {
 		t.Fatalf("private resources touched: mcp=%d environment=%d", contacts.Load(), captures.Load())
 	}

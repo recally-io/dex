@@ -58,6 +58,7 @@ func (h *handler) UpdateEnvironment(ctx context.Context, req api.UpdateEnvironme
 	if err != nil {
 		return nil, err
 	}
+	h.environmentChanged(ctx, req.EnvironmentId)
 	view, err := h.environmentView(updated)
 	if err != nil {
 		return nil, err
@@ -69,7 +70,14 @@ func (h *handler) DeleteEnvironment(ctx context.Context, req api.DeleteEnvironme
 	if err := h.Settings.DeleteEnvironment(ctx, req.EnvironmentId); err != nil {
 		return nil, err
 	}
+	h.environmentChanged(ctx, req.EnvironmentId)
 	return api.DeleteEnvironment200JSONResponse(ok), nil
+}
+
+func (h *handler) environmentChanged(ctx context.Context, id string) {
+	if h.EnvironmentChanged != nil {
+		h.EnvironmentChanged(ctx, id)
+	}
 }
 
 func (h *handler) TestEnvironment(ctx context.Context, req api.TestEnvironmentRequestObject) (api.TestEnvironmentResponseObject, error) {

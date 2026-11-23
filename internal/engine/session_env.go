@@ -194,6 +194,13 @@ func (e *environments) status(ctx context.Context, id string) string {
 	return "available"
 }
 
+func (e *environments) hasLease(id string) bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	_, ok := e.leases[id]
+	return ok
+}
+
 // stale reports whether the configuration of an open explicit lease changed or became unavailable.
 func (e *environments) stale(ctx context.Context) bool {
 	e.mu.Lock()

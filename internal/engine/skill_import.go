@@ -87,7 +87,7 @@ func (a *agentExtensions) skillImportTool() *durable.ToolRegistration {
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			return syncSkillResult(ctx, api, scope, dir, rel)
+			return a.syncSkillResult(ctx, api, scope, dir, rel)
 		},
 	}
 }

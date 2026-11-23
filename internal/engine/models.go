@@ -38,12 +38,13 @@ type ModelInfo struct {
 	ThinkingLevels []ai.ModelThinkingLevel `json:"thinkingLevels"`
 }
 type Catalog struct {
-	Models      *ai.Models
-	credentials *ai.InMemoryCredentialStore
-	custom      map[string]*providerRegistration
-	closed      bool
-	work        sync.WaitGroup
-	mu          sync.Mutex
+	Models          *ai.Models
+	credentials     *ai.InMemoryCredentialStore
+	onDiscoveryDone func()
+	custom          map[string]*providerRegistration
+	closed          bool
+	work            sync.WaitGroup
+	mu              sync.Mutex
 }
 
 func NewCatalog(fake bool) *Catalog {
@@ -165,7 +166,12 @@ func (c *Catalog) ConfigureAsync(ctx context.Context, providers []ProviderSettin
 		changes[p.ID] = discovery
 		c.work.Go(func() {
 			defer cancel()
-			defer close(discovery.done)
+			defer func() {
+				close(discovery.done)
+				if c.onDiscoveryDone != nil {
+					c.onDiscoveryDone()
+				}
+			}()
 			result := c.Models.Refresh(refreshCtx, ai.ModelsRefreshOptions{Providers: []string{p.ID}, AllowNetwork: new(true)})
 			for id, err := range result.Errors {
 				discovery.failures[id] = err.Error()

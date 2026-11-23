@@ -1,12 +1,18 @@
 package app_test
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/recally-io/dex/internal/app"
 )
 
 type apiExtensionsPending struct {
@@ -76,6 +82,45 @@ func assertVaultCommand(t *testing.T, d *dex, chat int64) {
 	if got != "tool: [vault:GITHUB_TOKEN]" {
 		t.Fatalf("vault command %d: %q", chat, got)
 	}
+}
+
+func TestUserShellEditWaitsForRestart(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	rc := filepath.Join(home, ".bashrc")
+	writeFile(t, rc, "export DEX_TEST_RC=first\n")
+	cfg := app.Config{DataDir: t.TempDir(), LoginEnv: func(ctx context.Context, base map[string]string) (map[string]string, error) {
+		out, err := exec.CommandContext(ctx, "sh", "-c", `. "$1"; printf %s "$DEX_TEST_RC"`, "sh", rc).Output()
+		base["DEX_TEST_RC"] = string(out)
+		return base, err
+	}}
+	d := startDexHome(t, cfg, home)
+	d.setModel(t, "bash")
+	const command = `printf %s "$DEX_TEST_RC"`
+	d.watch(t, d.newChat(t, command)).until(t, "initial shell value", answered("bash: first"))
+
+	writeFile(t, rc, "export DEX_TEST_RC=after-restart\n")
+	// The old scheduler could reload on its next 3-second tick.
+	deadline := time.NewTimer(4 * time.Second)
+	defer deadline.Stop()
+	ticks := time.NewTicker(50 * time.Millisecond)
+	defer ticks.Stop()
+wait:
+	for {
+		var info apiExtensionsPending
+		d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &info)
+		if !info.ReloadPending {
+			t.Fatal("dex reloaded after only a shell rc edit")
+		}
+		select {
+		case <-deadline.C:
+			break wait
+		case <-ticks.C:
+		}
+	}
+	d.stop()
+	d = startDexHome(t, cfg, home)
+	d.watch(t, d.newChat(t, command)).until(t, "new shell value after restart", answered("bash: after-restart"))
 }
 
 func TestUserSetsUpOnePasswordForTools(t *testing.T) {

@@ -31,8 +31,8 @@ func newToolEnv(home string, fallback map[string]string, capture func(ctx contex
 	return &toolEnv{home: home, fallback: maps.Clone(fallback), capture: capture}
 }
 
-// rcFiles are the startup files of common shells. A change to one of them makes open agents
-// reload. A file that an rc file sources is not watched; touch an rc file to apply it.
+// rcFiles are startup files of common shells. An open or reload checks them before
+// it reuses the last shell capture. An edit does not trigger a reload.
 var rcFiles = []string{".zshenv", ".zprofile", ".zshrc", ".zlogin", ".bash_profile", ".bash_login", ".bashrc", ".profile", ".config/fish/config.fish"}
 
 func (t *toolEnv) rcStamp() string {
@@ -95,13 +95,15 @@ func (t *toolEnv) stamp() string {
 	return fmt.Sprintf("%s|op%d", t.rcStamp(), t.opSet)
 }
 
-func (t *toolEnv) setOnePassword(op OnePassword) {
+func (t *toolEnv) setOnePassword(op OnePassword) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if op != t.op {
-		t.op = op
-		t.opSet++
+	if op == t.op {
+		return false
 	}
+	t.op = op
+	t.opSet++
+	return true
 }
 
 // fileStamp joins the size and modification time of each path. A missing file has its own value.

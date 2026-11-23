@@ -69,6 +69,9 @@ func (a *Agents) mcpServerTools(agentID string, loaded *loadedExtensions) []*dur
 				if err != nil {
 					return durable.ToolExecutionResult{}, err
 				}
+				if action == "set" || action == "remove" {
+					a.markExtensionChange(agentID, args.Level, "MCP server "+action)
+				}
 				data, err := json.Marshal(result)
 				if err != nil {
 					return durable.ToolExecutionResult{}, err
