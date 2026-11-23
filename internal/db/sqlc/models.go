@@ -182,6 +182,7 @@ type ExecutionEnvironment struct {
 	Secret    string `json:"secret"`
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
+	RunAsUser string `json:"run_as_user"`
 }
 
 type FeishuSetting struct {

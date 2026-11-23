@@ -45,6 +45,16 @@ func (q *Queries) ClearDefaultSessionCwd(ctx context.Context, agentID string) er
 	return err
 }
 
+const clearEnvironmentRunAsUser = `-- name: ClearEnvironmentRunAsUser :exec
+UPDATE execution_environments SET run_as_user = '' WHERE id = ? AND kind = 'runner'
+`
+
+// A revoked machine has no run-as account until the next enrollment reports one.
+func (q *Queries) ClearEnvironmentRunAsUser(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, clearEnvironmentRunAsUser, id)
+	return err
+}
+
 const countDefaultSessionWork = `-- name: CountDefaultSessionWork :one
 SELECT
     (SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
@@ -79,7 +89,7 @@ func (q *Queries) CountPendingAgent(ctx context.Context, agentID string) (int64,
 const createEnvironment = `-- name: CreateEnvironment :one
 INSERT INTO execution_environments (id, name, kind, config, secret, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, kind, config, secret, created_at, updated_at
+RETURNING id, name, kind, config, secret, created_at, updated_at, run_as_user
 `
 
 type CreateEnvironmentParams struct {
@@ -111,6 +121,7 @@ func (q *Queries) CreateEnvironment(ctx context.Context, arg CreateEnvironmentPa
 		&i.Secret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RunAsUser,
 	)
 	return i, err
 }
@@ -139,7 +150,8 @@ SELECT
     CAST(coalesce(e.kind, '') AS TEXT) AS kind,
     CAST(coalesce(e.config, '') AS TEXT) AS config,
     CAST(coalesce(e.secret, '') AS TEXT) AS secret,
-    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at
+    CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at,
+    CAST(coalesce(e.run_as_user, '') AS TEXT) AS run_as_user
 FROM agents a
 LEFT JOIN execution_environments e ON e.id = a.environment_id
 WHERE a.id = ?
@@ -153,6 +165,7 @@ type GetAgentBindingRow struct {
 	Config               string `json:"config"`
 	Secret               string `json:"secret"`
 	UpdatedAt            int64  `json:"updated_at"`
+	RunAsUser            string `json:"run_as_user"`
 }
 
 // found_id is empty when environment_id names a deleted environment.
@@ -167,12 +180,13 @@ func (q *Queries) GetAgentBinding(ctx context.Context, id string) (GetAgentBindi
 		&i.Config,
 		&i.Secret,
 		&i.UpdatedAt,
+		&i.RunAsUser,
 	)
 	return i, err
 }
 
 const getEnvironment = `-- name: GetEnvironment :one
-SELECT id, name, kind, config, secret, created_at, updated_at FROM execution_environments WHERE id = ?
+SELECT id, name, kind, config, secret, created_at, updated_at, run_as_user FROM execution_environments WHERE id = ?
 `
 
 func (q *Queries) GetEnvironment(ctx context.Context, id string) (ExecutionEnvironment, error) {
@@ -186,6 +200,7 @@ func (q *Queries) GetEnvironment(ctx context.Context, id string) (ExecutionEnvir
 		&i.Secret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RunAsUser,
 	)
 	return i, err
 }
@@ -241,7 +256,7 @@ func (q *Queries) ListActiveAgentsByEnvironment(ctx context.Context, environment
 }
 
 const listEnvironments = `-- name: ListEnvironments :many
-SELECT id, name, kind, config, secret, created_at, updated_at FROM execution_environments ORDER BY created_at, id
+SELECT id, name, kind, config, secret, created_at, updated_at, run_as_user FROM execution_environments ORDER BY created_at, id
 `
 
 func (q *Queries) ListEnvironments(ctx context.Context) ([]ExecutionEnvironment, error) {
@@ -261,6 +276,7 @@ func (q *Queries) ListEnvironments(ctx context.Context) ([]ExecutionEnvironment,
 			&i.Secret,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.RunAsUser,
 		); err != nil {
 			return nil, err
 		}
@@ -328,11 +344,26 @@ func (q *Queries) SetChatEnvironment(ctx context.Context, arg SetChatEnvironment
 	return result.RowsAffected()
 }
 
+const setEnvironmentRunAsUser = `-- name: SetEnvironmentRunAsUser :exec
+UPDATE execution_environments SET run_as_user = ?1 WHERE id = ?2 AND kind = 'runner'
+`
+
+type SetEnvironmentRunAsUserParams struct {
+	RunAsUser string `json:"run_as_user"`
+	ID        string `json:"id"`
+}
+
+// Records the account that a machine runs as when it enrolls. Only a runner has one.
+func (q *Queries) SetEnvironmentRunAsUser(ctx context.Context, arg SetEnvironmentRunAsUserParams) error {
+	_, err := q.db.ExecContext(ctx, setEnvironmentRunAsUser, arg.RunAsUser, arg.ID)
+	return err
+}
+
 const updateEnvironment = `-- name: UpdateEnvironment :one
 UPDATE execution_environments
 SET name = ?, kind = ?, config = ?, secret = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, name, kind, config, secret, created_at, updated_at
+RETURNING id, name, kind, config, secret, created_at, updated_at, run_as_user
 `
 
 type UpdateEnvironmentParams struct {
@@ -362,6 +393,7 @@ func (q *Queries) UpdateEnvironment(ctx context.Context, arg UpdateEnvironmentPa
 		&i.Secret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RunAsUser,
 	)
 	return i, err
 }
