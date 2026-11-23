@@ -73,10 +73,11 @@ func (c *client) connection(ctx context.Context, handle func(context.Context, []
 	if err != nil || u.Host == "" || (u.Scheme != "wss" && (u.Scheme != "ws" || c.cfg.APIURL == "https://open.feishu.cn" || c.cfg.APIURL == "https://open.larksuite.com")) {
 		return errors.New("feishu returned an invalid WebSocket endpoint")
 	}
-	service, err := strconv.ParseUint(u.Query().Get(larkws.ServiceID), 10, 32)
-	if err != nil {
+	service, err := strconv.ParseInt(u.Query().Get(larkws.ServiceID), 10, 32)
+	if err != nil || service < 0 {
 		return errors.New("feishu returned an invalid service ID")
 	}
+	serviceID := int32(service)
 	conn, response, err := websocket.Dial(ctx, u.String(), &websocket.DialOptions{HTTPClient: c.http})
 	if err != nil {
 		if response != nil {
@@ -101,7 +102,7 @@ func (c *client) connection(ctx context.Context, handle func(context.Context, []
 			case <-session.Done():
 				return
 			case <-timer.C:
-				data, err := larkws.NewPingFrame(int32(service)).Marshal() //nolint:gosec // protobuf service ID is a 32-bit wire value.
+				data, err := larkws.NewPingFrame(serviceID).Marshal()
 				if err != nil || conn.Write(session, websocket.MessageBinary, data) != nil {
 					cancel()
 					return

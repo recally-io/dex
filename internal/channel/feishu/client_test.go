@@ -1,6 +1,7 @@
 package feishu
 
 import (
+	"context"
 	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,40 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 )
+
+func TestUserFeishuRejectsInvalidWebSocketServiceID(t *testing.T) {
+	for _, serviceID := range []string{"-1", "2147483648"} {
+		t.Run(serviceID, func(t *testing.T) {
+			// Given a platform that returns a service ID outside the allowed range.
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/callback/ws/endpoint" {
+					t.Errorf("unexpected request to %s", r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				_ = json.MarshalWrite(w, map[string]any{"code": 0, "data": map[string]string{
+					"URL": "ws://" + r.Host + "/ws?service_id=" + serviceID,
+				}})
+			}))
+			t.Cleanup(server.Close)
+
+			// When Dex starts the listener and receives its first status.
+			c := newClient(Config{AppID: "cli_fake", AppSecret: "fake", APIURL: server.URL})
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var status error
+			err := c.Listen(ctx, nil, func(err error) {
+				status = err
+				cancel()
+			})
+
+			// Then Dex reports an invalid service ID without starting a WebSocket handshake.
+			if err != nil || status == nil || status.Error() != "feishu returned an invalid service ID" {
+				t.Fatalf("listen error=%v, status=%v; want invalid service ID status", err, status)
+			}
+		})
+	}
+}
 
 func TestUserFeishuReactionDoesNotReplayOnRedirect(t *testing.T) {
 	// Given a platform that redirects a reaction mutation.
