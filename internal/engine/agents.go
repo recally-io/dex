@@ -85,14 +85,14 @@ type Agents struct {
 	recovering      map[string]map[durable.ConversationId]bool
 	serial          map[Ref]chan struct{}
 	paused, closed  bool
-	// active and settling count all engine work for maintenance. busy counts the same work for
-	// each resource key, so a Reload waits only for its own agent.
-	active, settling int
-	busy             map[string]int
-	operations       sync.WaitGroup
-	settlements      sync.WaitGroup
-	closeDone        chan struct{}
-	closeErr         error
+	// busy counts the operations and settlements of each resource key. Maintenance waits for
+	// all keys, and a Reload waits only for the key of its agent. Work that uses no agent
+	// resources counts under "".
+	busy        map[string]int
+	operations  sync.WaitGroup
+	settlements sync.WaitGroup
+	closeDone   chan struct{}
+	closeErr    error
 }
 
 func New(config Config) (*Agents, error) {
@@ -117,7 +117,7 @@ func New(config Config) (*Agents, error) {
 }
 
 // begin tracks one operation on the resources of key, the resource key of an agent or of a
-// group scope. An empty key tracks work that uses no agent resources.
+// group scope.
 func (a *Agents) begin(key string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -134,24 +134,17 @@ func (a *Agents) begin(key string) error {
 // trackLocked counts one operation on key. The caller holds mu.
 func (a *Agents) trackLocked(key string) {
 	a.operations.Add(1)
-	a.active++
-	if key != "" {
-		a.busy[key]++
-	}
+	a.busy[key]++
 }
 
 func (a *Agents) end(key string) {
 	a.mu.Lock()
-	a.active--
 	a.untrackLocked(key)
 	a.mu.Unlock()
 	a.operations.Done()
 }
 
 func (a *Agents) untrackLocked(key string) {
-	if key == "" {
-		return
-	}
 	if a.busy[key]--; a.busy[key] == 0 {
 		delete(a.busy, key)
 	}
@@ -161,11 +154,10 @@ func (a *Agents) untrackLocked(key string) {
 // wait for it, because fn uses the Harness of key.
 func (a *Agents) settle(key string, fn func()) {
 	a.mu.Lock()
-	a.settling++
 	a.busy[key]++
 	a.mu.Unlock()
 	a.settlements.Go(func() {
-		defer func() { a.mu.Lock(); a.settling--; a.untrackLocked(key); a.mu.Unlock() }()
+		defer func() { a.mu.Lock(); a.untrackLocked(key); a.mu.Unlock() }()
 		fn()
 	})
 }
@@ -1105,7 +1097,7 @@ func (a *Agents) Quiesce(ctx context.Context) error {
 // The caller holds mu so the idle check and resource registration stay atomic.
 // Inspect reads local storage; use a tracked preflight if those reads delay other agents.
 func (a *Agents) idleLocked(ctx context.Context) error {
-	if a.active > 0 || a.settling > 0 {
+	if len(a.busy) > 0 {
 		return ErrBusy
 	}
 	for _, resource := range a.resources {
@@ -1322,9 +1314,8 @@ func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
 	for id, state := range loaded {
 		currentExt := a.files(id, nil).stamp()
 		currentExec, err := a.config.ExecEnv.Stamp(ctx, id, "")
-		// Probe a default that was down at load, so the agent recovers without new input.
-		restoreMCP := state.envs.recover(ctx)
-		if restoreMCP || currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
+		// A default that was down at load recovers without new input once a reload can open it.
+		if state.envs.restorable(ctx) || currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
 			stale[id] = currentExt + "|" + currentExec
 		}
 	}

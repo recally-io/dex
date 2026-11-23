@@ -80,17 +80,6 @@ type stampedHandle struct {
 
 func (h stampedHandle) Stamp() string { return h.stamp }
 
-// CheckOnline reports ErrUnavailable when the machine of h is disconnected now. It does not
-// wait, and it accepts every environment that has no live session.
-func CheckOnline(h Handle) error {
-	if wrapped, ok := h.(stampedHandle); ok {
-		if l, ok := wrapped.lease.(interface{ online() bool }); ok && !l.online() {
-			return errRunnerOffline()
-		}
-	}
-	return nil
-}
-
 // LeaseExpired reports that the provider confirmed that a disposable lease is
 // gone. A caller can reopen the same selection, but must not retry the failed operation.
 func LeaseExpired(h Handle) bool {

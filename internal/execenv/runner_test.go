@@ -135,12 +135,9 @@ func TestUserMachineReconnectKeepsTheBotLease(t *testing.T) {
 	}
 	before := h.Stamp()
 
-	// When the machine loses its session, the lease reports offline without a stale stamp.
+	// When the machine loses its session, Dex reports it offline without a stale stamp.
 	drop()
 	f.waitStatus("offline")
-	if err := execenv.CheckOnline(h); !errors.Is(err, execenv.ErrUnavailable) || !errors.Is(err, runner.ErrOffline) {
-		t.Fatalf("offline check: %v", err)
-	}
 	if f.stamp() != before {
 		t.Fatal("a lost session changed the stamp")
 	}
@@ -162,9 +159,6 @@ func TestUserMachineReconnectKeepsTheBotLease(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("the call did not use the new session")
-	}
-	if err := execenv.CheckOnline(h); err != nil {
-		t.Fatalf("online check after the reconnect: %v", err)
 	}
 	if f.stamp() != before || h.Stamp() != before {
 		t.Fatal("a reconnect changed the stamp")
@@ -252,4 +246,36 @@ func TestUserMachineRevokeAndNewEnrollmentEndTheLease(t *testing.T) {
 	if out, err := run(t.Context(), fresh, "printf fresh"); err != nil || out != "fresh" {
 		t.Fatalf("new lease: %q, %v", out, err)
 	}
+}
+
+func TestUserMachineRevokeEndsAWaitingCall(t *testing.T) {
+	// Given a lease on an offline machine and a call that waits for the machine.
+	f := newMachineFixture(t)
+	drop := f.connect()
+	h, err := f.mgr.Open(t.Context(), "coder", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	drop()
+	f.waitStatus("offline")
+	result := make(chan error, 1)
+	go func() { _, err := run(t.Context(), h, "true"); result <- err }()
+	time.Sleep(100 * time.Millisecond)
+
+	// When the user revokes the machine during the wait.
+	start := time.Now()
+	if err := f.mgr.Runners().Revoke(t.Context(), "laptop"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Then the call fails at once instead of at the end of the reconnect wait.
+	select {
+	case err := <-result:
+		if !errors.Is(err, execenv.ErrUnavailable) || errors.Is(err, runner.ErrOffline) {
+			t.Fatalf("waiting call after the revoke: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the waiting call did not end within 2 s of the revoke")
+	}
+	t.Logf("artifact: the waiting call ended %s after the revoke", time.Since(start))
 }

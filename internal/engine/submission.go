@@ -13,6 +13,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
 // Submission joins one durable input and the memory commit that follows its settlement.
@@ -93,16 +94,11 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			// the model. This keeps pending Main alerts across restarts too.
 			// An explicit selection may report unavailability through its tools,
 			// but attachments must wait until they can be staged there.
-			// A lease stays valid while its machine is offline, so check the session here
+			// A lease stays valid while its machine is offline, so check the machine here
 			// without waiting: the input stays in business storage until the machine is back.
-			// A default that came back after a degraded open waits for the reload that restores
-			// its skills and MCP tools.
 			if waits := target.ID == "" || len(input.Attachments) > 0 || (input.Kind == "task_result" && IsMonitorEvent(input.RequestID)); waits {
-				if envErr == nil {
-					envErr = execenv.CheckOnline(target.Handle)
-				}
-				if envErr == nil && target.ID == "" && envs.degraded() {
-					envErr = fmt.Errorf("%w: the bot environment is back; wait for reload", execenv.ErrUnavailable)
+				if envErr == nil && envs.status(ctx, target.ID) == "offline" {
+					envErr = fmt.Errorf("%w: %w", execenv.ErrUnavailable, runner.ErrOffline)
 				}
 				if envErr != nil {
 					return nil, envErr

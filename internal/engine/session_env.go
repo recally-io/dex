@@ -10,6 +10,7 @@ import (
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
 // sessionEnv is the execution environment of one session: a lease and the tool environment
@@ -48,7 +49,6 @@ type environments struct {
 	ownErr     error
 	retryAfter time.Time
 	retryStamp string
-	probeAfter time.Time
 	leases     map[string]sessionEnv
 	closed     bool
 }
@@ -94,7 +94,8 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 	if id == "" && e.own == nil {
 		// Admission and tool resolution can both ask for the default in one turn.
 		// Back off on repeated failures, but let a changed binding retry immediately.
-		if stamp == e.retryStamp && time.Now().Before(e.retryAfter) {
+		// A machine that connected again ends the backoff of its offline error.
+		if stamp == e.retryStamp && time.Now().Before(e.retryAfter) && !e.backOnline(ctx, e.ownErr) {
 			return sessionEnv{}, e.ownErr
 		}
 		h, err := e.provider.Open(ctx, e.agentID, "")
@@ -156,44 +157,35 @@ func (e *environments) defaultFiles() (*agentExtensions, bool) {
 	return e.ownFiles, e.own != nil && e.files.defaultUnavailable
 }
 
-// degraded reports that the default opened after the agent loaded without it, so the loaded
-// skills and MCP tools are incomplete until a reload.
-func (e *environments) degraded() bool {
-	_, recovered := e.defaultFiles()
-	return recovered
-}
-
-// recover tries to open a default that was down when the agent loaded, and reports whether a
-// reload must restore it. It skips a machine that is offline. After a failed open it waits
-// recoverProbeDelay, so a failing sandbox endpoint does not get a request at each stale check.
-func (e *environments) recover(ctx context.Context) bool {
+// restorable reports whether a reload can restore a default that was down at load: a later
+// call opened it, or its machine was offline and is connected now. A reload opens the default
+// itself, so the check does not open a lease. Other kinds wait for a call that opens them,
+// because a failing SSH or sandbox endpoint must not rebuild the agent at each check.
+func (e *environments) restorable(ctx context.Context) bool {
 	if !e.files.defaultUnavailable {
 		return false
 	}
-	if e.degraded() {
-		return true
-	}
-	if status, ok := e.provider.(interface {
-		Status(ctx context.Context, agentID, environmentID string) string
-	}); ok && status.Status(ctx, e.agentID, "") != "available" {
-		return false
-	}
 	e.mu.Lock()
-	wait := time.Now().Before(e.probeAfter)
+	own, ownErr := e.own, e.ownErr
 	e.mu.Unlock()
-	if wait {
-		return false
-	}
-	if _, err := e.byID(ctx, ""); err != nil {
-		e.mu.Lock()
-		e.probeAfter = time.Now().Add(recoverProbeDelay)
-		e.mu.Unlock()
-		return false
-	}
-	return e.degraded()
+	return own != nil || e.backOnline(ctx, ownErr)
 }
 
-const recoverProbeDelay = 30 * time.Second
+// backOnline reports that err is the offline error of a machine that is connected now.
+func (e *environments) backOnline(ctx context.Context, err error) bool {
+	return errors.Is(err, runner.ErrOffline) && e.status(ctx, "") == "available"
+}
+
+// status is the provider report for an environment of the agent: "available", "offline", or
+// the reason why it is unavailable. A provider without reports is always available.
+func (e *environments) status(ctx context.Context, id string) string {
+	if p, ok := e.provider.(interface {
+		Status(ctx context.Context, agentID, environmentID string) string
+	}); ok {
+		return p.Status(ctx, e.agentID, id)
+	}
+	return "available"
+}
 
 // stale reports whether the configuration of an open explicit lease changed or became unavailable.
 func (e *environments) stale(ctx context.Context) bool {

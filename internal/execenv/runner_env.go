@@ -34,13 +34,19 @@ func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec Environ
 }
 
 func (b runnerBackend) open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error) {
-	session, digest, err := b.runners.enrolled(ctx, spec.ID)
+	digest, err := b.runners.identity(ctx, spec.ID)
+	if err != nil {
+		return nil, err
+	}
+	b.runners.mu.Lock()
+	session, err := b.runners.sessionLocked(spec.ID, digest)
+	b.runners.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	info := session.Info()
 	base := path.Join(path.Dir(info.Workspace), "workspaces")
-	h := &runnerHandle{runners: b.runners, id: spec.ID, digest: digest, place: placeOf(info), workspace: remoteBotWorkspace(base, "/", agentID)}
+	h := &runnerHandle{runners: b.runners, id: spec.ID, digest: digest, ready: info, workspace: remoteBotWorkspace(base, "/", agentID)}
 	if err := createRemoteBotWorkspace(ctx, h); err != nil {
 		return nil, fmt.Errorf("create runner workspace: %w", err)
 	}
@@ -61,23 +67,20 @@ func (b runnerBackend) identity(ctx context.Context, envID string) (string, erro
 	return b.runners.identity(ctx, envID)
 }
 
-// runnerHandle is a lease on the identity of a machine: its enrollment and its place. It finds
-// the live session at each call, so a reconnect does not make the lease stale.
+// runnerHandle is a lease on the enrollment of a machine. It finds the live session at each
+// call, so a reconnect does not make the lease stale.
 type runnerHandle struct {
-	runners   *Runners
-	id        string
-	digest    string
-	place     runnerPlace
+	runners *Runners
+	id      string
+	digest  string
+	// ready is the report of the session that opened the lease. Paths of the lease depend on it.
+	ready     runner.Ready
 	workspace string
 }
 
 func (h *runnerHandle) Kind() Kind        { return KindRunner }
 func (h *runnerHandle) Workspace() string { return h.workspace }
-func (h *runnerHandle) Home() string      { return h.place.home }
-func (h *runnerHandle) online() bool {
-	_, err := h.runners.session(h.id, h.digest, h.place)
-	return err == nil
-}
+func (h *runnerHandle) Home() string      { return h.ready.Home }
 
 // do runs fn on the live session. It waits for a reconnect before the call starts. A session
 // that closes before the call is dispatched reports runner.ErrOffline, so one more attempt on
@@ -85,9 +88,13 @@ func (h *runnerHandle) online() bool {
 // do never repeats it.
 func (h *runnerHandle) do(ctx context.Context, fn func(*runner.Client) error) error {
 	for attempt := 0; ; attempt++ {
-		client, err := h.runners.wait(ctx, h.id, h.digest, h.place)
+		client, err := h.runners.wait(ctx, h.id, h.digest)
 		if err != nil {
 			return err
+		}
+		if info := client.Info(); info.Workspace != h.ready.Workspace || info.Home != h.ready.Home {
+			// The machine runs from another state directory now, so the paths of the lease are wrong.
+			return fmt.Errorf("%w: the machine workspace changed; reload the bot", ErrUnavailable)
 		}
 		err = fn(client)
 		if !errors.Is(err, runner.ErrOffline) {
