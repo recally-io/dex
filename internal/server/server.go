@@ -16,6 +16,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 	"uuid"
@@ -31,6 +32,7 @@ import (
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/settings"
+	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/web"
@@ -47,11 +49,14 @@ type Config struct {
 	Live        *live.Hub
 	DataDir     string
 	Version     string
+	ReleaseBase string
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
 	Envs   *execenv.Manager
 	// Runners enrolls remote machines and serves their sessions.
 	Runners *execenv.Runners
+	// System owns server upgrades, restarts, backups, and recent logs.
+	System *sysops.Manager
 
 	// Plugins add hook and API routes. AvailablePlugins names every plugin of this build.
 	Plugins          []plugin.Plugin
@@ -84,7 +89,7 @@ var errReadOnly = errors.New("this session is read-only; send messages in main, 
 // cannot send messages or change settings, and cannot sign in.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
-	h := &handler{cfg}
+	h := &handler{Config: cfg}
 	strict := api.NewStrictHandlerWithOptions(h, nil, api.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			if r.Context().Err() != nil {
@@ -103,10 +108,10 @@ func New(cfg Config) http.Handler {
 			}
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
 				status = http.StatusBadRequest
-			case errors.Is(err, artifact.ErrConflict):
+			case errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported):
 				status = http.StatusConflict
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
@@ -135,6 +140,7 @@ func New(cfg Config) http.Handler {
 	// token afterwards, so they sit outside the admin API.
 	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
+	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	for _, p := range cfg.Plugins {
@@ -202,7 +208,10 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	}
 }
 
-type handler struct{ Config }
+type handler struct {
+	Config
+	runnerReleaseMu sync.Mutex
+}
 
 type agentKey struct{}
 
@@ -257,7 +266,11 @@ func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 	for _, p := range h.Plugins {
 		plugins = append(plugins, p.Name)
 	}
-	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, DataDir: h.DataDir, RuntimeReady: ready, Plugins: plugins}, nil
+	var startedAt int64
+	if h.System != nil {
+		startedAt = h.System.StartedAt()
+	}
+	return api.GetHealth200JSONResponse{Status: api.HealthStatusOk, Version: h.Version, StartedAt: startedAt, DataDir: h.DataDir, RuntimeReady: ready, Plugins: plugins}, nil
 }
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

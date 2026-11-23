@@ -18,7 +18,7 @@ func (h *handler) ListEnvironments(ctx context.Context, _ api.ListEnvironmentsRe
 	}
 	out := make([]api.Environment, len(envs))
 	for i, env := range envs {
-		view, viewErr := environmentView(env)
+		view, viewErr := h.environmentView(env)
 		if viewErr != nil {
 			return nil, viewErr
 		}
@@ -39,7 +39,7 @@ func (h *handler) CreateEnvironment(ctx context.Context, req api.CreateEnvironme
 	if err != nil {
 		return nil, err
 	}
-	view, err := environmentView(created)
+	view, err := h.environmentView(created)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (h *handler) UpdateEnvironment(ctx context.Context, req api.UpdateEnvironme
 	if err != nil {
 		return nil, err
 	}
-	view, err := environmentView(updated)
+	view, err := h.environmentView(updated)
 	if err != nil {
 		return nil, err
 	}
@@ -195,14 +195,14 @@ func environmentInput(body api.EnvironmentInput) (settings.EnvironmentInput, err
 	}, nil
 }
 
-func environmentView(env settings.Environment) (api.Environment, error) {
+func (h *handler) environmentView(env settings.Environment) (api.Environment, error) {
 	var cfg api.EnvironmentConfig
 	if len(env.Config) > 0 {
 		if err := json.Unmarshal(env.Config, &cfg); err != nil {
 			return api.Environment{}, err
 		}
 	}
-	return api.Environment{
+	out := api.Environment{
 		Id:        env.ID,
 		Name:      env.Name,
 		Kind:      api.EnvironmentKind(env.Kind),
@@ -210,5 +210,20 @@ func environmentView(env settings.Environment) (api.Environment, error) {
 		SecretSet: env.SecretSet,
 		CreatedAt: env.CreatedAt,
 		UpdatedAt: env.UpdatedAt,
-	}, nil
+	}
+	if env.Kind == execenv.KindRunner && h.Runners != nil {
+		st := h.Runners.Status(env.ID)
+		runnerStatus := api.RunnerStatus{
+			Online:           st.Online,
+			Os:               optional(st.OS),
+			Arch:             optional(st.Arch),
+			Version:          optional(st.Version),
+			SelfUpdateReason: optional(st.SelfUpdateReason),
+		}
+		if st.Online {
+			runnerStatus.CanSelfUpdate = new(st.CanSelfUpdate)
+		}
+		out.Runner = &runnerStatus
+	}
+	return out, nil
 }

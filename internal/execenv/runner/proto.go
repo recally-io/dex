@@ -39,12 +39,15 @@ const (
 	MethodTempFile  = "temp-file"
 )
 
-// Ready is the platform and the workspace of the machine.
+// Ready is the platform, workspace, and version capabilities of the machine.
 type Ready struct {
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
-	Home      string `json:"home,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
+	OS               string `json:"os"`
+	Arch             string `json:"arch"`
+	Home             string `json:"home,omitempty"`
+	Workspace        string `json:"workspace,omitempty"`
+	Version          string `json:"version,omitempty"`
+	CanSelfUpdate    bool   `json:"canSelfUpdate,omitzero"`
+	SelfUpdateReason string `json:"selfUpdateReason,omitempty"`
 }
 
 // Identity names one call, so a cancel notification can stop it and so output can follow

@@ -24,6 +24,7 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/channel/wechat`   | WeChat login, polling, protocol, and media adaptation                              |
 | `internal/upload`           | Upload validation, file storage, and agent-scoped paths                            |
 | `internal/service`          | Per-user launchd/systemd definitions, commands, and readiness checks               |
+| `internal/sysops`           | In-process server operations: update coordination, restart, SQLite backups, logs   |
 | `internal/update`           | Release verification, maintenance coordination, and executable replacement         |
 | `internal/mcptest`          | Local MCP test servers; no production execution                                    |
 | `internal/settings`         | Global providers, model checks, 1Password credentials, access token                |

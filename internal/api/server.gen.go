@@ -605,6 +605,72 @@ func (e SnapshotEventType) Valid() bool {
 	}
 }
 
+// Defines values for SystemStatusPendingAction.
+const (
+	Restart SystemStatusPendingAction = "restart"
+	Upgrade SystemStatusPendingAction = "upgrade"
+)
+
+// Valid indicates whether the value is a known member of the SystemStatusPendingAction enum.
+func (e SystemStatusPendingAction) Valid() bool {
+	switch e {
+	case Restart:
+		return true
+	case Upgrade:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SystemStatusState.
+const (
+	SystemStatusStateChecking    SystemStatusState = "checking"
+	SystemStatusStateDownloading SystemStatusState = "downloading"
+	SystemStatusStateError       SystemStatusState = "error"
+	SystemStatusStateIdle        SystemStatusState = "idle"
+	SystemStatusStateRestarting  SystemStatusState = "restarting"
+	SystemStatusStateWaitingIdle SystemStatusState = "waiting_idle"
+)
+
+// Valid indicates whether the value is a known member of the SystemStatusState enum.
+func (e SystemStatusState) Valid() bool {
+	switch e {
+	case SystemStatusStateChecking:
+		return true
+	case SystemStatusStateDownloading:
+		return true
+	case SystemStatusStateError:
+		return true
+	case SystemStatusStateIdle:
+		return true
+	case SystemStatusStateRestarting:
+		return true
+	case SystemStatusStateWaitingIdle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SystemUpdateChannel.
+const (
+	Prerelease SystemUpdateChannel = "prerelease"
+	Stable     SystemUpdateChannel = "stable"
+)
+
+// Valid indicates whether the value is a known member of the SystemUpdateChannel enum.
+func (e SystemUpdateChannel) Valid() bool {
+	switch e {
+	case Prerelease:
+		return true
+	case Stable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskItemKind.
 const (
 	Task TaskItemKind = "task"
@@ -1090,6 +1156,7 @@ type Environment struct {
 	Id        string            `json:"id"`
 	Kind      EnvironmentKind   `json:"kind"`
 	Name      string            `json:"name"`
+	Runner    *RunnerStatus     `json:"runner,omitempty"`
 	SecretSet bool              `json:"secretSet"`
 	UpdatedAt int64             `json:"updatedAt"`
 }
@@ -1251,6 +1318,7 @@ type Health struct {
 	// Plugins The names of the enabled plugins, for example github.
 	Plugins      []string     `json:"plugins"`
 	RuntimeReady bool         `json:"runtimeReady"`
+	StartedAt    int64        `json:"startedAt"`
 	Status       HealthStatus `json:"status"`
 	Version      string       `json:"version"`
 }
@@ -1569,6 +1637,16 @@ type RunEvent struct {
 // RunEventType defines model for RunEvent.Type.
 type RunEventType string
 
+// RunnerStatus defines model for RunnerStatus.
+type RunnerStatus struct {
+	Arch             *string `json:"arch,omitempty"`
+	CanSelfUpdate    *bool   `json:"canSelfUpdate,omitempty"`
+	Online           bool    `json:"online"`
+	Os               *string `json:"os,omitempty"`
+	SelfUpdateReason *string `json:"selfUpdateReason,omitempty"`
+	Version          *string `json:"version,omitempty"`
+}
+
 // Schedule every: each `minutes` minutes. daily: each day at `time`. weekly: at `time` on `days`. once: at `at`. Times are in the automation's time zone.
 type Schedule = automation.Schedule
 
@@ -1654,6 +1732,70 @@ type SshHostEntry struct {
 	Source       *string `json:"source,omitempty"`
 	User         *string `json:"user,omitempty"`
 }
+
+// SystemBackup defines model for SystemBackup.
+type SystemBackup struct {
+	CreatedAt int64  `json:"createdAt"`
+	Name      string `json:"name"`
+	SizeBytes int64  `json:"sizeBytes"`
+}
+
+// SystemCapability defines model for SystemCapability.
+type SystemCapability struct {
+	CanRestart bool    `json:"canRestart"`
+	Reason     *string `json:"reason,omitempty"`
+	Supported  bool    `json:"supported"`
+}
+
+// SystemLogEntry defines model for SystemLogEntry.
+type SystemLogEntry struct {
+	Attrs   *string `json:"attrs,omitempty"`
+	Level   string  `json:"level"`
+	Message string  `json:"message"`
+	Seq     int64   `json:"seq"`
+	Time    int64   `json:"time"`
+}
+
+// SystemLogs defines model for SystemLogs.
+type SystemLogs struct {
+	Entries []SystemLogEntry `json:"entries"`
+}
+
+// SystemRelease defines model for SystemRelease.
+type SystemRelease struct {
+	Notes       *string `json:"notes,omitempty"`
+	Prerelease  bool    `json:"prerelease"`
+	PublishedAt *string `json:"publishedAt,omitempty"`
+	Tag         string  `json:"tag"`
+	Url         *string `json:"url,omitempty"`
+}
+
+// SystemStatus defines model for SystemStatus.
+type SystemStatus struct {
+	Backups         []SystemBackup             `json:"backups"`
+	Capability      SystemCapability           `json:"capability"`
+	DownloadDone    *int64                     `json:"downloadDone,omitempty"`
+	DownloadTotal   *int64                     `json:"downloadTotal,omitempty"`
+	LastCheckedAt   *int64                     `json:"lastCheckedAt,omitempty"`
+	LastError       *string                    `json:"lastError,omitempty"`
+	Latest          *SystemRelease             `json:"latest,omitempty"`
+	PendingAction   *SystemStatusPendingAction `json:"pendingAction,omitempty"`
+	StartedAt       int64                      `json:"startedAt"`
+	State           SystemStatusState          `json:"state"`
+	TargetVersion   *string                    `json:"targetVersion,omitempty"`
+	UpdateAvailable bool                       `json:"updateAvailable"`
+	UpdateChannel   SystemUpdateChannel        `json:"updateChannel"`
+	Version         string                     `json:"version"`
+}
+
+// SystemStatusPendingAction defines model for SystemStatus.PendingAction.
+type SystemStatusPendingAction string
+
+// SystemStatusState defines model for SystemStatus.State.
+type SystemStatusState string
+
+// SystemUpdateChannel defines model for SystemUpdateChannel.
+type SystemUpdateChannel string
 
 // TaskItem Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
 type TaskItem struct {
@@ -2058,6 +2200,27 @@ type SetPluginJSONBody struct {
 	Enabled bool `json:"enabled"`
 }
 
+// GetSystemLogsParams defines parameters for GetSystemLogs.
+type GetSystemLogsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// RestartSystemJSONBody defines parameters for RestartSystem.
+type RestartSystemJSONBody struct {
+	Force *bool `json:"force,omitempty"`
+}
+
+// UpdateSystemSettingsJSONBody defines parameters for UpdateSystemSettings.
+type UpdateSystemSettingsJSONBody struct {
+	UpdateChannel SystemUpdateChannel `json:"updateChannel"`
+}
+
+// UpgradeSystemJSONBody defines parameters for UpgradeSystem.
+type UpgradeSystemJSONBody struct {
+	Force   *bool   `json:"force,omitempty"`
+	Version *string `json:"version,omitempty"`
+}
+
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgentInput
 
@@ -2159,6 +2322,15 @@ type ListProviderModelsJSONRequestBody = ProviderModelsInput
 
 // SetProviderJSONRequestBody defines body for SetProvider for application/json ContentType.
 type SetProviderJSONRequestBody = ProviderInput
+
+// RestartSystemJSONRequestBody defines body for RestartSystem for application/json ContentType.
+type RestartSystemJSONRequestBody RestartSystemJSONBody
+
+// UpdateSystemSettingsJSONRequestBody defines body for UpdateSystemSettings for application/json ContentType.
+type UpdateSystemSettingsJSONRequestBody UpdateSystemSettingsJSONBody
+
+// UpgradeSystemJSONRequestBody defines body for UpgradeSystem for application/json ContentType.
+type UpgradeSystemJSONRequestBody UpgradeSystemJSONBody
 
 // AsSnapshotEvent returns the union data inside the ChatEvent as a SnapshotEvent
 func (t ChatEvent) AsSnapshotEvent() (SnapshotEvent, error) {
@@ -2952,6 +3124,30 @@ type ServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(w http.ResponseWriter, r *http.Request, providerId string)
+
+	// (POST /api/system/backup)
+	BackupSystemDatabase(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/system/cancel)
+	CancelSystemOperation(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/system/check-update)
+	CheckSystemUpdate(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/system/logs)
+	GetSystemLogs(w http.ResponseWriter, r *http.Request, params GetSystemLogsParams)
+
+	// (POST /api/system/restart)
+	RestartSystem(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/system/settings)
+	UpdateSystemSettings(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/system/status)
+	GetSystemStatus(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/system/upgrade)
+	UpgradeSystem(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/work)
 	GetWork(w http.ResponseWriter, r *http.Request)
@@ -5799,6 +5995,137 @@ func (siw *ServerInterfaceWrapper) SetProvider(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// BackupSystemDatabase operation middleware
+func (siw *ServerInterfaceWrapper) BackupSystemDatabase(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BackupSystemDatabase(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelSystemOperation operation middleware
+func (siw *ServerInterfaceWrapper) CancelSystemOperation(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelSystemOperation(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckSystemUpdate operation middleware
+func (siw *ServerInterfaceWrapper) CheckSystemUpdate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckSystemUpdate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSystemLogs operation middleware
+func (siw *ServerInterfaceWrapper) GetSystemLogs(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSystemLogsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSystemLogs(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestartSystem operation middleware
+func (siw *ServerInterfaceWrapper) RestartSystem(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestartSystem(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSystemSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSystemSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSystemSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSystemStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetSystemStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSystemStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpgradeSystem operation middleware
+func (siw *ServerInterfaceWrapper) UpgradeSystem(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpgradeSystem(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWork operation middleware
 func (siw *ServerInterfaceWrapper) GetWork(w http.ResponseWriter, r *http.Request) {
 
@@ -5949,6 +6276,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/maintenance", wrapper.ReleaseMaintenance)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/maintenance", wrapper.AcquireMaintenance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/system/status", wrapper.GetSystemStatus)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/system/settings", wrapper.UpdateSystemSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/system/check-update", wrapper.CheckSystemUpdate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/system/upgrade", wrapper.UpgradeSystem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/system/restart", wrapper.RestartSystem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/system/cancel", wrapper.CancelSystemOperation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/system/backup", wrapper.BackupSystemDatabase)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/system/logs", wrapper.GetSystemLogs)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/plugins", wrapper.ListPlugins)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/plugins/{name}", wrapper.SetPlugin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings", wrapper.GetSettings)
@@ -11606,6 +11941,342 @@ func (response SetProviderdefaultJSONResponse) VisitSetProviderResponse(w http.R
 	return err
 }
 
+type BackupSystemDatabaseRequestObject struct {
+}
+
+type BackupSystemDatabaseResponseObject interface {
+	VisitBackupSystemDatabaseResponse(w http.ResponseWriter) error
+}
+
+type BackupSystemDatabase200JSONResponse SystemBackup
+
+func (response BackupSystemDatabase200JSONResponse) VisitBackupSystemDatabaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BackupSystemDatabasedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BackupSystemDatabasedefaultJSONResponse) VisitBackupSystemDatabaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSystemOperationRequestObject struct {
+}
+
+type CancelSystemOperationResponseObject interface {
+	VisitCancelSystemOperationResponse(w http.ResponseWriter) error
+}
+
+type CancelSystemOperation200JSONResponse SystemStatus
+
+func (response CancelSystemOperation200JSONResponse) VisitCancelSystemOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelSystemOperationdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelSystemOperationdefaultJSONResponse) VisitCancelSystemOperationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckSystemUpdateRequestObject struct {
+}
+
+type CheckSystemUpdateResponseObject interface {
+	VisitCheckSystemUpdateResponse(w http.ResponseWriter) error
+}
+
+type CheckSystemUpdate200JSONResponse SystemStatus
+
+func (response CheckSystemUpdate200JSONResponse) VisitCheckSystemUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckSystemUpdatedefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CheckSystemUpdatedefaultJSONResponse) VisitCheckSystemUpdateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSystemLogsRequestObject struct {
+	Params GetSystemLogsParams
+}
+
+type GetSystemLogsResponseObject interface {
+	VisitGetSystemLogsResponse(w http.ResponseWriter) error
+}
+
+type GetSystemLogs200JSONResponse SystemLogs
+
+func (response GetSystemLogs200JSONResponse) VisitGetSystemLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSystemLogsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSystemLogsdefaultJSONResponse) VisitGetSystemLogsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestartSystemRequestObject struct {
+	Body *RestartSystemJSONRequestBody
+}
+
+type RestartSystemResponseObject interface {
+	VisitRestartSystemResponse(w http.ResponseWriter) error
+}
+
+type RestartSystem200JSONResponse SystemStatus
+
+func (response RestartSystem200JSONResponse) VisitRestartSystemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestartSystem409JSONResponse struct{ ErrorJSONResponse }
+
+func (response RestartSystem409JSONResponse) VisitRestartSystemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestartSystemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response RestartSystemdefaultJSONResponse) VisitRestartSystemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSystemSettingsRequestObject struct {
+	Body *UpdateSystemSettingsJSONRequestBody
+}
+
+type UpdateSystemSettingsResponseObject interface {
+	VisitUpdateSystemSettingsResponse(w http.ResponseWriter) error
+}
+
+type UpdateSystemSettings200JSONResponse SystemStatus
+
+func (response UpdateSystemSettings200JSONResponse) VisitUpdateSystemSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSystemSettingsdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpdateSystemSettingsdefaultJSONResponse) VisitUpdateSystemSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSystemStatusRequestObject struct {
+}
+
+type GetSystemStatusResponseObject interface {
+	VisitGetSystemStatusResponse(w http.ResponseWriter) error
+}
+
+type GetSystemStatus200JSONResponse SystemStatus
+
+func (response GetSystemStatus200JSONResponse) VisitGetSystemStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSystemStatusdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetSystemStatusdefaultJSONResponse) VisitGetSystemStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpgradeSystemRequestObject struct {
+	Body *UpgradeSystemJSONRequestBody
+}
+
+type UpgradeSystemResponseObject interface {
+	VisitUpgradeSystemResponse(w http.ResponseWriter) error
+}
+
+type UpgradeSystem200JSONResponse SystemStatus
+
+func (response UpgradeSystem200JSONResponse) VisitUpgradeSystemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpgradeSystem409JSONResponse struct{ ErrorJSONResponse }
+
+func (response UpgradeSystem409JSONResponse) VisitUpgradeSystemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpgradeSystemdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response UpgradeSystemdefaultJSONResponse) VisitUpgradeSystemResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetWorkRequestObject struct {
 }
 
@@ -11946,6 +12617,30 @@ type StrictServerInterface interface {
 
 	// (PUT /api/settings/providers/{providerId})
 	SetProvider(ctx context.Context, request SetProviderRequestObject) (SetProviderResponseObject, error)
+
+	// (POST /api/system/backup)
+	BackupSystemDatabase(ctx context.Context, request BackupSystemDatabaseRequestObject) (BackupSystemDatabaseResponseObject, error)
+
+	// (POST /api/system/cancel)
+	CancelSystemOperation(ctx context.Context, request CancelSystemOperationRequestObject) (CancelSystemOperationResponseObject, error)
+
+	// (POST /api/system/check-update)
+	CheckSystemUpdate(ctx context.Context, request CheckSystemUpdateRequestObject) (CheckSystemUpdateResponseObject, error)
+
+	// (GET /api/system/logs)
+	GetSystemLogs(ctx context.Context, request GetSystemLogsRequestObject) (GetSystemLogsResponseObject, error)
+
+	// (POST /api/system/restart)
+	RestartSystem(ctx context.Context, request RestartSystemRequestObject) (RestartSystemResponseObject, error)
+
+	// (PUT /api/system/settings)
+	UpdateSystemSettings(ctx context.Context, request UpdateSystemSettingsRequestObject) (UpdateSystemSettingsResponseObject, error)
+
+	// (GET /api/system/status)
+	GetSystemStatus(ctx context.Context, request GetSystemStatusRequestObject) (GetSystemStatusResponseObject, error)
+
+	// (POST /api/system/upgrade)
+	UpgradeSystem(ctx context.Context, request UpgradeSystemRequestObject) (UpgradeSystemResponseObject, error)
 
 	// (GET /api/work)
 	GetWork(ctx context.Context, request GetWorkRequestObject) (GetWorkResponseObject, error)
@@ -14829,6 +15524,227 @@ func (sh *strictHandler) SetProvider(w http.ResponseWriter, r *http.Request, pro
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetProviderResponseObject); ok {
 		if err := validResponse.VisitSetProviderResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BackupSystemDatabase operation middleware
+func (sh *strictHandler) BackupSystemDatabase(w http.ResponseWriter, r *http.Request) {
+	var request BackupSystemDatabaseRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BackupSystemDatabase(ctx, request.(BackupSystemDatabaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BackupSystemDatabase")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BackupSystemDatabaseResponseObject); ok {
+		if err := validResponse.VisitBackupSystemDatabaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelSystemOperation operation middleware
+func (sh *strictHandler) CancelSystemOperation(w http.ResponseWriter, r *http.Request) {
+	var request CancelSystemOperationRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelSystemOperation(ctx, request.(CancelSystemOperationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelSystemOperation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelSystemOperationResponseObject); ok {
+		if err := validResponse.VisitCancelSystemOperationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CheckSystemUpdate operation middleware
+func (sh *strictHandler) CheckSystemUpdate(w http.ResponseWriter, r *http.Request) {
+	var request CheckSystemUpdateRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CheckSystemUpdate(ctx, request.(CheckSystemUpdateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CheckSystemUpdate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CheckSystemUpdateResponseObject); ok {
+		if err := validResponse.VisitCheckSystemUpdateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSystemLogs operation middleware
+func (sh *strictHandler) GetSystemLogs(w http.ResponseWriter, r *http.Request, params GetSystemLogsParams) {
+	var request GetSystemLogsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSystemLogs(ctx, request.(GetSystemLogsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSystemLogs")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSystemLogsResponseObject); ok {
+		if err := validResponse.VisitGetSystemLogsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestartSystem operation middleware
+func (sh *strictHandler) RestartSystem(w http.ResponseWriter, r *http.Request) {
+	var request RestartSystemRequestObject
+
+	var body RestartSystemJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestartSystem(ctx, request.(RestartSystemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestartSystem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestartSystemResponseObject); ok {
+		if err := validResponse.VisitRestartSystemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSystemSettings operation middleware
+func (sh *strictHandler) UpdateSystemSettings(w http.ResponseWriter, r *http.Request) {
+	var request UpdateSystemSettingsRequestObject
+
+	var body UpdateSystemSettingsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSystemSettings(ctx, request.(UpdateSystemSettingsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSystemSettings")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSystemSettingsResponseObject); ok {
+		if err := validResponse.VisitUpdateSystemSettingsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSystemStatus operation middleware
+func (sh *strictHandler) GetSystemStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetSystemStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSystemStatus(ctx, request.(GetSystemStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSystemStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSystemStatusResponseObject); ok {
+		if err := validResponse.VisitGetSystemStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpgradeSystem operation middleware
+func (sh *strictHandler) UpgradeSystem(w http.ResponseWriter, r *http.Request) {
+	var request UpgradeSystemRequestObject
+
+	var body UpgradeSystemJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpgradeSystem(ctx, request.(UpgradeSystemRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpgradeSystem")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpgradeSystemResponseObject); ok {
+		if err := validResponse.VisitUpgradeSystemResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

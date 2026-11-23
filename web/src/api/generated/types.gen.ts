@@ -131,12 +131,64 @@ export type PluginSetting = {
 export type Health = {
     status: 'ok';
     version: string;
+    startedAt: number;
     dataDir: string;
     runtimeReady: boolean;
     /**
      * The names of the enabled plugins, for example github.
      */
     plugins: Array<string>;
+};
+
+export type SystemUpdateChannel = 'stable' | 'prerelease';
+
+export type SystemCapability = {
+    supported: boolean;
+    reason?: string;
+    canRestart: boolean;
+};
+
+export type SystemRelease = {
+    tag: string;
+    prerelease: boolean;
+    publishedAt?: string;
+    notes?: string;
+    url?: string;
+};
+
+export type SystemBackup = {
+    name: string;
+    sizeBytes: number;
+    createdAt: number;
+};
+
+export type SystemLogEntry = {
+    seq: number;
+    time: number;
+    level: string;
+    message: string;
+    attrs?: string;
+};
+
+export type SystemLogs = {
+    entries: Array<SystemLogEntry>;
+};
+
+export type SystemStatus = {
+    version: string;
+    startedAt: number;
+    state: 'idle' | 'checking' | 'downloading' | 'waiting_idle' | 'restarting' | 'error';
+    pendingAction?: 'restart' | 'upgrade';
+    targetVersion?: string;
+    downloadDone?: number;
+    downloadTotal?: number;
+    updateChannel: SystemUpdateChannel;
+    capability: SystemCapability;
+    latest?: SystemRelease;
+    updateAvailable: boolean;
+    lastCheckedAt?: number;
+    lastError?: string;
+    backups: Array<SystemBackup>;
 };
 
 export type AgentEnvironments = {
@@ -815,12 +867,22 @@ export type EnvironmentConfig = {
     autoPause?: boolean;
 };
 
+export type RunnerStatus = {
+    online: boolean;
+    os?: string;
+    arch?: string;
+    version?: string;
+    canSelfUpdate?: boolean;
+    selfUpdateReason?: string;
+};
+
 export type Environment = {
     id: string;
     name: string;
     kind: EnvironmentKind;
     config: EnvironmentConfig;
     secretSet: boolean;
+    runner?: RunnerStatus;
     createdAt: number;
     updatedAt: number;
 };
@@ -2181,6 +2243,223 @@ export type AcquireMaintenanceResponses = {
 };
 
 export type AcquireMaintenanceResponse = AcquireMaintenanceResponses[keyof AcquireMaintenanceResponses];
+
+export type GetSystemStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/status';
+};
+
+export type GetSystemStatusErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetSystemStatusError = GetSystemStatusErrors[keyof GetSystemStatusErrors];
+
+export type GetSystemStatusResponses = {
+    /**
+     * Current system status.
+     */
+    200: SystemStatus;
+};
+
+export type GetSystemStatusResponse = GetSystemStatusResponses[keyof GetSystemStatusResponses];
+
+export type UpdateSystemSettingsData = {
+    body: {
+        updateChannel: SystemUpdateChannel;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/system/settings';
+};
+
+export type UpdateSystemSettingsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type UpdateSystemSettingsError = UpdateSystemSettingsErrors[keyof UpdateSystemSettingsErrors];
+
+export type UpdateSystemSettingsResponses = {
+    /**
+     * Updated system status.
+     */
+    200: SystemStatus;
+};
+
+export type UpdateSystemSettingsResponse = UpdateSystemSettingsResponses[keyof UpdateSystemSettingsResponses];
+
+export type CheckSystemUpdateData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/check-update';
+};
+
+export type CheckSystemUpdateErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CheckSystemUpdateError = CheckSystemUpdateErrors[keyof CheckSystemUpdateErrors];
+
+export type CheckSystemUpdateResponses = {
+    /**
+     * Updated system status with latest release details.
+     */
+    200: SystemStatus;
+};
+
+export type CheckSystemUpdateResponse = CheckSystemUpdateResponses[keyof CheckSystemUpdateResponses];
+
+export type UpgradeSystemData = {
+    body?: {
+        version?: string;
+        force?: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/system/upgrade';
+};
+
+export type UpgradeSystemErrors = {
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type UpgradeSystemError = UpgradeSystemErrors[keyof UpgradeSystemErrors];
+
+export type UpgradeSystemResponses = {
+    /**
+     * Upgrade started or scheduled.
+     */
+    200: SystemStatus;
+};
+
+export type UpgradeSystemResponse = UpgradeSystemResponses[keyof UpgradeSystemResponses];
+
+export type RestartSystemData = {
+    body?: {
+        force?: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/system/restart';
+};
+
+export type RestartSystemErrors = {
+    /**
+     * The request failed.
+     */
+    409: Error;
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type RestartSystemError = RestartSystemErrors[keyof RestartSystemErrors];
+
+export type RestartSystemResponses = {
+    /**
+     * Restart started or waiting for active runs to settle.
+     */
+    200: SystemStatus;
+};
+
+export type RestartSystemResponse = RestartSystemResponses[keyof RestartSystemResponses];
+
+export type CancelSystemOperationData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/cancel';
+};
+
+export type CancelSystemOperationErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CancelSystemOperationError = CancelSystemOperationErrors[keyof CancelSystemOperationErrors];
+
+export type CancelSystemOperationResponses = {
+    /**
+     * Updated system status.
+     */
+    200: SystemStatus;
+};
+
+export type CancelSystemOperationResponse = CancelSystemOperationResponses[keyof CancelSystemOperationResponses];
+
+export type BackupSystemDatabaseData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/system/backup';
+};
+
+export type BackupSystemDatabaseErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type BackupSystemDatabaseError = BackupSystemDatabaseErrors[keyof BackupSystemDatabaseErrors];
+
+export type BackupSystemDatabaseResponses = {
+    /**
+     * Created backup metadata.
+     */
+    200: SystemBackup;
+};
+
+export type BackupSystemDatabaseResponse = BackupSystemDatabaseResponses[keyof BackupSystemDatabaseResponses];
+
+export type GetSystemLogsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        limit?: number;
+    };
+    url: '/api/system/logs';
+};
+
+export type GetSystemLogsErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetSystemLogsError = GetSystemLogsErrors[keyof GetSystemLogsErrors];
+
+export type GetSystemLogsResponses = {
+    /**
+     * Recent server log entries.
+     */
+    200: SystemLogs;
+};
+
+export type GetSystemLogsResponse = GetSystemLogsResponses[keyof GetSystemLogsResponses];
 
 export type ListPluginsData = {
     body?: never;

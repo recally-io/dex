@@ -2,12 +2,8 @@
 package update
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -28,12 +24,33 @@ import (
 // 256 MiB bounds download and extraction memory; raise when a release needs more.
 const maxAsset = 256 << 20
 
-var errBusy = errors.New("update is busy")
+var (
+	errBusy = errors.New("update is busy")
+	// ErrUpToDate reports that no newer release exists for the requested channel or tag.
+	ErrUpToDate = errors.New("already up to date")
+)
 
 type Options struct {
 	Check, Scheduled bool
 	Channel, Tag     string
 }
+
+// ReleaseInfo describes a published GitHub release for UI display and update selection.
+type ReleaseInfo struct {
+	Tag         string
+	Prerelease  bool
+	PublishedAt string
+	Notes       string
+	URL         string
+}
+
+// Capability reports whether this executable can replace itself in place.
+type Capability struct {
+	Supported  bool
+	Reason     string
+	Executable string
+}
+
 type Updater struct {
 	current, executable, base string
 	client                    *http.Client
@@ -44,10 +61,62 @@ type asset struct {
 	URL  string `json:"url"`
 }
 type release struct {
-	Tag        string  `json:"tag_name"`
-	Prerelease bool    `json:"prerelease"`
-	Draft      bool    `json:"draft"`
-	Assets     []asset `json:"assets"`
+	Tag         string  `json:"tag_name"`
+	Prerelease  bool    `json:"prerelease"`
+	Draft       bool    `json:"draft"`
+	PublishedAt string  `json:"published_at"`
+	Body        string  `json:"body"`
+	HTMLURL     string  `json:"html_url"`
+	Assets      []asset `json:"assets"`
+}
+
+func (r release) info() ReleaseInfo {
+	return ReleaseInfo{
+		Tag:         r.Tag,
+		Prerelease:  r.Prerelease,
+		PublishedAt: r.PublishedAt,
+		Notes:       r.Body,
+		URL:         r.HTMLURL,
+	}
+}
+
+// Probe checks whether current/executable supports in-place self-upgrade.
+func Probe(current, executable string) Capability {
+	if current == "dev" || current == "" {
+		return Capability{Supported: false, Reason: "dev"}
+	}
+	if _, err := compare(current, current); err != nil {
+		return Capability{Supported: false, Reason: "dev"}
+	}
+	resolved, reason := WritableExecutable(executable)
+	return Capability{Supported: reason == "", Reason: reason, Executable: resolved}
+}
+
+func isPackageManaged(resolved string) bool {
+	return strings.Contains(resolved, "/Cellar/") ||
+		strings.HasPrefix(resolved, "/nix/store/") ||
+		strings.HasPrefix(resolved, "/usr/bin/") ||
+		strings.HasPrefix(resolved, "/bin/")
+}
+
+// NewForCheck returns an Updater that can query releases even on dev or read-only builds.
+func NewForCheck(current, base string) *Updater {
+	if base == "" {
+		base = releaseBase()
+	}
+	return &Updater{current: current, base: base, client: releaseClient(30 * time.Second)}
+}
+
+// NewWithBase returns an Updater targeting an explicit release API base (empty uses the default).
+func NewWithBase(current, executable, base string) (*Updater, error) {
+	u, err := New(current, executable)
+	if err != nil {
+		return nil, err
+	}
+	if base != "" {
+		u.base = base
+	}
+	return u, nil
 }
 
 func New(current, executable string) (*Updater, error) {
@@ -61,7 +130,7 @@ func New(current, executable string) (*Updater, error) {
 	if err != nil {
 		return nil, err
 	}
-	if strings.Contains(resolved, "/Cellar/") || strings.HasPrefix(resolved, "/nix/store/") || strings.HasPrefix(resolved, "/usr/bin/") || strings.HasPrefix(resolved, "/bin/") {
+	if isPackageManaged(resolved) {
 		return nil, errors.New("package-managed executable; use its package manager to update dex")
 	}
 
@@ -120,40 +189,149 @@ func Access(ctx context.Context, stored bool) (string, error) {
 	return source, err
 }
 func (u *Updater) get(ctx context.Context, target, accept string, limit int64) ([]byte, error) {
+	return u.getProgress(ctx, target, accept, limit, nil)
+}
+
+func (u *Updater) getProgress(ctx context.Context, target, accept string, limit int64, onProgress func(done, total int64)) ([]byte, error) {
+	var out bytes.Buffer
+	if err := u.download(ctx, target, accept, limit, &out, onProgress); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func (u *Updater) download(ctx context.Context, target, accept string, limit int64, out io.Writer, onProgress func(done, total int64)) error {
 	//nolint:gosec // G704: release and asset URLs come from GitHub, or an explicit test constructor.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Accept", accept)
+	req.Header.Set("User-Agent", "dex")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	base, err := url.Parse(u.base)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if req.URL.Host == base.Host && req.URL.Scheme == base.Scheme && u.token != "" {
 		req.Header.Set("Authorization", "Bearer "+u.token)
 	}
-	//nolint:gosec // G704: authenticated GitHub release download, with redirects stripped of credentials.
+	//nolint:gosec // G704: GitHub release download, with redirects stripped of credentials.
 	resp, err := u.client.Do(req)
 	if err != nil {
 		if e, ok := errors.AsType[*url.Error](err); ok {
-			return nil, fmt.Errorf("release request failed: %w", e.Err)
+			return fmt.Errorf("release request failed: %w", e.Err)
 		}
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("release API returned %s (check access to recally-io/dex)", resp.Status)
+		if u.token == "" && (resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests) {
+			return fmt.Errorf("release API returned %s (GitHub unauthenticated rate limit; set GH_TOKEN or run gh auth login for higher limits)", resp.Status)
+		}
+		return fmt.Errorf("release API returned %s (check access to recally-io/dex)", resp.Status)
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	reader := io.LimitReader(resp.Body, limit+1)
+	if onProgress == nil {
+		n, err := io.Copy(out, reader)
+		if err != nil {
+			return fmt.Errorf("download interrupted: %w", err)
+		}
+		if n > limit {
+			return errors.New("release asset exceeds size limit")
+		}
+		return nil
+	}
+	buf := make([]byte, 32<<10)
+	var done int64
+	for {
+		n, readErr := reader.Read(buf)
+		if n > 0 {
+			done += int64(n)
+			if done > limit {
+				return errors.New("release asset exceeds size limit")
+			}
+			if _, err := out.Write(buf[:n]); err != nil {
+				return err
+			}
+			onProgress(done, resp.ContentLength)
+		}
+		if errors.Is(readErr, io.EOF) {
+			return nil
+		}
+		if readErr != nil {
+			return fmt.Errorf("download interrupted: %w", readErr)
+		}
+	}
+}
+
+func (u *Updater) ensureOptionalToken(ctx context.Context, stored bool) {
+	if u.token != "" {
+		return
+	}
+	if token, _, err := auth(ctx, stored); err == nil && token != "" {
+		u.token = token
+	}
+}
+
+// CheckRelease queries GitHub Releases for opt and reports whether a newer version is available.
+func (u *Updater) CheckRelease(ctx context.Context, opt Options) (ReleaseInfo, bool, error) {
+	u.ensureOptionalToken(ctx, opt.Scheduled)
+	r, err := u.selectRelease(ctx, opt)
 	if err != nil {
-		return nil, fmt.Errorf("download interrupted: %w", err)
+		return ReleaseInfo{}, false, err
 	}
-	if int64(len(b)) > limit {
-		return nil, errors.New("release asset exceeds size limit")
+	info := r.info()
+	if u.current == "" || u.current == "dev" {
+		return info, false, nil
 	}
-	return b, nil
+	if order, err := compare(r.Tag, u.current); err == nil {
+		return info, order > 0, nil
+	}
+	return info, false, nil
+}
+
+// StageRelease acquires the update lock, downloads and verifies a newer release, and returns
+// the staged executable path along with its release metadata and lock-release callback.
+func (u *Updater) StageRelease(ctx context.Context, opt Options, onProgress func(done, total int64)) (string, ReleaseInfo, func(), error) {
+	lock, err := lockUpdate(u.executable + ".update.lock")
+	if err != nil {
+		return "", ReleaseInfo{}, nil, err
+	}
+	releaseLock := true
+	defer func() {
+		if releaseLock {
+			lock()
+		}
+	}()
+	u.ensureOptionalToken(ctx, opt.Scheduled)
+	r, err := u.selectRelease(ctx, opt)
+	if err != nil {
+		return "", ReleaseInfo{}, nil, err
+	}
+	order, err := compare(r.Tag, u.current)
+	if err != nil {
+		return "", ReleaseInfo{}, nil, err
+	}
+	if order <= 0 {
+		return "", r.info(), nil, fmt.Errorf("%w: %s (selected %s; downgrades are refused)", ErrUpToDate, u.current, r.Tag)
+	}
+	stage, err := u.stage(ctx, r, onProgress)
+	if err != nil {
+		return "", r.info(), nil, err
+	}
+	releaseLock = false
+	return stage, r.info(), lock, nil
+}
+
+// Replace atomically swaps stage over the current executable, keeping <executable>.previous.
+func (u *Updater) Replace(stage string) error {
+	return u.replace(stage)
+}
+
+// RestorePrevious restores <executable>.previous if an in-place restart fails after replacement.
+func RestorePrevious(executable string) error {
+	return os.Rename(executable+".previous", executable)
 }
 func (u *Updater) selectRelease(ctx context.Context, opt Options) (release, error) {
 	var r release
@@ -209,12 +387,7 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 		return err
 	}
 	defer lock()
-	if u.token == "" {
-		u.token, _, err = auth(ctx, opt.Scheduled)
-		if err != nil {
-			return err
-		}
-	}
+	u.ensureOptionalToken(ctx, opt.Scheduled)
 	r, err := u.selectRelease(ctx, opt)
 	if err != nil {
 		return err
@@ -232,7 +405,7 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 		return nil
 	}
 	// Stage and validate everything before acquiring maintenance or stopping a service.
-	stage, err := u.stage(ctx, r)
+	stage, err := u.stage(ctx, r, nil)
 	if err != nil {
 		return err
 	}
@@ -297,7 +470,7 @@ func (u *Updater) Run(ctx context.Context, opt Options, m service.Manager, out i
 	fmt.Fprintf(out, "Updated dex: %s -> %s\nPrevious binary: %s.previous\n", u.current, r.Tag, u.executable)
 	return nil
 }
-func (u *Updater) stage(ctx context.Context, r release) (string, error) {
+func (u *Updater) stage(ctx context.Context, r release, onProgress func(done, total int64)) (string, error) {
 	name := fmt.Sprintf("dex_%s_%s_%s.tar.gz", r.Tag, runtime.GOOS, runtime.GOARCH)
 	find := func(name string) (string, error) {
 		found := ""
@@ -323,105 +496,17 @@ func (u *Updater) stage(ctx context.Context, r release) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	expected := ""
-	for line := range strings.SplitSeq(string(checksums), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 2 && strings.TrimPrefix(fields[1], "*") == name {
-			expected = fields[0]
-		}
-	}
-	digest, err := hex.DecodeString(expected)
-	if err != nil || len(digest) != sha256.Size {
-		return "", fmt.Errorf("missing or invalid checksum for %s", name)
-	}
-	archive, err := u.get(ctx, assetURL, "application/octet-stream", maxAsset)
+	archive, err := u.getProgress(ctx, assetURL, "application/octet-stream", maxAsset, onProgress)
 	if err != nil {
 		return "", err
 	}
-	actual := sha256.Sum256(archive)
-	if !strings.EqualFold(expected, hex.EncodeToString(actual[:])) {
-		return "", errors.New("release checksum mismatch")
-	}
-	file, err := os.CreateTemp(filepath.Dir(u.executable), ".dex-update-*")
-	if err != nil {
-		return "", fmt.Errorf("executable directory is not writable: %w", err)
-	}
-	stage := file.Name()
-	keep := false
-	defer func() {
-		_ = file.Close()
-		if !keep {
-			_ = os.Remove(stage)
-		}
-	}()
-	if err := extract(archive, file); err != nil {
+	if err := VerifyChecksum(checksums, bytes.NewReader(archive), name); err != nil {
 		return "", err
 	}
-	if err := file.Chmod(0755); err != nil {
-		return "", err
-	}
-	if err := file.Sync(); err != nil {
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	verify, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	version, err := service.BinaryVersion(verify, stage)
-	if err != nil {
-		return "", fmt.Errorf("staged executable did not run: %w", err)
-	}
-	if version != r.Tag {
-		return "", errors.New("staged executable reported an unexpected version")
-	}
-	keep = true
-	return stage, nil
-}
-func extract(archive []byte, out io.Writer) error {
-	gz, err := gzip.NewReader(bytes.NewReader(archive))
-	if err != nil {
-		return fmt.Errorf("release gzip: %w", err)
-	}
-	defer gz.Close()
-	tr := tar.NewReader(io.LimitReader(gz, maxAsset+1))
-	found := false
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("release tar: %w", err)
-		}
-		if h.Typeflag != tar.TypeReg || h.Size < 0 || h.Size > maxAsset {
-			return fmt.Errorf("archive entry is not a regular file within the size limit: %q", h.Name)
-		}
-		if h.Name == "dex" {
-			if found {
-				return errors.New("duplicate dex archive entry")
-			}
-			found = true
-			if _, err := io.CopyN(out, tr, h.Size); err != nil {
-				return err
-			}
-		}
-	}
-	if !found {
-		return errors.New("archive has no regular file named dex")
-	}
-	return nil
+	return StageExecutable(ctx, u.executable, "dex", r.Tag, archive)
 }
 func (u *Updater) replace(stage string) error {
-	backup := stage + ".previous"
-	if err := os.Link(u.executable, backup); err != nil {
-		return fmt.Errorf("retain previous executable: %w", err)
-	}
-	defer os.Remove(backup)
-	if err := os.Rename(backup, u.executable+".previous"); err != nil {
-		return err
-	}
-	return os.Rename(stage, u.executable)
+	return ReplaceExecutable(u.executable, stage)
 }
 func maintenance(ctx context.Context, c service.Config, method string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

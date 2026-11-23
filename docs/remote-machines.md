@@ -86,13 +86,13 @@ account without a login of a person, and any bot may use the machine.
 
 The two modes differ as follows:
 
-|                 | your account (default)            | dedicated account, `--dedicated` |
-| --------------- | --------------------------------- | -------------------------------- |
-| Binary          | `~/.local/bin/dex-agent`          | `/usr/local/bin/dex-agent`       |
-| State and token | `~/.local/state/dex-agent`        | `/var/lib/dex-agent`             |
-| Supervisor      | `dex-agent.service`, user manager | `dex-agent.service`, system      |
-| Log             | `journalctl --user -u dex-agent`  | `journalctl -u dex-agent`        |
-| Needs root      | no                                | yes                              |
+|                 | your account (default)            | dedicated account, `--dedicated`   |
+| --------------- | --------------------------------- | ---------------------------------- |
+| Binary          | `~/.local/bin/dex-agent`          | `/var/lib/dex-agent/bin/dex-agent` |
+| State and token | `~/.local/state/dex-agent`        | `/var/lib/dex-agent`               |
+| Supervisor      | `dex-agent.service`, user manager | `dex-agent.service`, system        |
+| Log             | `journalctl --user -u dex-agent`  | `journalctl -u dex-agent`          |
+| Needs root      | no                                | yes                                |
 
 Linux needs systemd with a user manager, plus curl, tar, and sha256sum or shasum. Debian 12 or
 later, Ubuntu 22.04 or later, and equivalent distributions work. The account keeps the service
@@ -157,7 +157,7 @@ with `sudo … --dedicated`:
 
 ```sh
 systemctl --user disable --now dex-agent.service
-rm ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent
+rm -f ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent ~/.local/bin/dex-agent.previous
 rm -rf ~/.local/state/dex-agent
 ```
 
@@ -179,21 +179,36 @@ The machine token is in `device.json`; remove the whole state directory after th
 ```sh
 # Linux, a machine of your own account
 systemctl --user disable --now dex-agent.service
-rm ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent
+rm -f ~/.config/systemd/user/dex-agent.service ~/.local/bin/dex-agent ~/.local/bin/dex-agent.previous
 
 # Linux, a dedicated account
 sudo systemctl disable --now dex-agent.service
-sudo rm /usr/local/bin/dex-agent /etc/systemd/system/dex-agent.service
+sudo rm -f /var/lib/dex-agent/bin/dex-agent /var/lib/dex-agent/bin/dex-agent.previous /etc/systemd/system/dex-agent.service
 
 # macOS
 launchctl bootout gui/$(id -u)/com.recally.dex-agent
-rm ~/Library/LaunchAgents/com.recally.dex-agent.plist ~/.local/bin/dex-agent
+rm -f ~/Library/LaunchAgents/com.recally.dex-agent.plist ~/.local/bin/dex-agent ~/.local/bin/dex-agent.previous
 ```
 
-For foreground use, run `dex-agent run` as your own account, or
-`sudo -u dex-agent /usr/local/bin/dex-agent run -state /var/lib/dex-agent` for a dedicated
-account. Without `-state`, the agent uses `$XDG_STATE_HOME/dex-agent`,
-`~/.local/state/dex-agent` on Linux, or `~/Library/Application Support/dex-agent` on macOS.
+## Automatic version alignment
+
+When Dex upgrades and restarts, connected `dex-agent` runners reconnect and read `X-Dex-Version`
+from the server handshake. When the server reports a different release tag and the runner binary
+directory is writable, `dex-agent` downloads the matching archive and `checksums.txt` from the Dex
+server (`/machine/{id}/release/*`) and verifies the SHA-256 checksum and `version` output.
+It retains `dex-agent.previous` before it replaces itself and re-execs in place. If re-exec
+fails, it restores the previous binary.
+
+Pass `-no-auto-update` to `dex-agent run` to opt out of automatic version alignment. Linux hosts
+installed under the legacy `/usr/local/bin/dex-agent` path show as not writable in Dex.
+To migrate, revoke the machine in Dex, stop `dex-agent.service`, and remove
+`/var/lib/dex-agent/device.json`. Run a fresh install command with `--dedicated` to enroll again.
+The installer keeps the workspace and puts the binary in `/var/lib/dex-agent/bin/dex-agent`.
+
+For foreground use, run `dex-agent run` as the install account, or run
+`/var/lib/dex-agent/bin/dex-agent run -state /var/lib/dex-agent` as the dedicated account on Linux. Without `-state`, the agent uses
+`$XDG_STATE_HOME/dex-agent`, `~/.local/state/dex-agent` on Linux, or
+`~/Library/Application Support/dex-agent` on macOS.
 
 ## Limits
 

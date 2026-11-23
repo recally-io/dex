@@ -1,11 +1,9 @@
 [Unit]
 Description=Dex machine agent
-After=network-online.target
-Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=__BINARY__ run -state __STATE__
+ExecStart="__BINARY__" run -state "__STATE__"
 Restart=on-failure
 RestartSec=10
 KillMode=control-group

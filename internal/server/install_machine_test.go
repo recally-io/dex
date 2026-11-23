@@ -258,7 +258,7 @@ func TestUserInstallsTheMachineAsTheAccountThatUsesIt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if want := "ExecStart=" + filepath.Join(f.home, ".local", "bin", "dex-agent") + " run -state " + state; !strings.Contains(string(raw), want) {
+		if want := fmt.Sprintf(`ExecStart="%s" run -state "%s"`, filepath.Join(f.home, ".local", "bin", "dex-agent"), state); !strings.Contains(string(raw), want) {
 			t.Fatalf("the user unit does not run the machine of this account, want %q:\n%s", want, raw)
 		}
 		if !strings.Contains(string(raw), "WantedBy=default.target") || strings.Contains(string(raw), "User=") {
@@ -328,9 +328,9 @@ func TestUserInstallsTheMachineAsTheAccountThatUsesIt(t *testing.T) {
 		}
 		calls := f.calls(t)
 		for _, want := range []string{
-			"install|-m 0755",
+			"runuser|-u dex-agent -- install -d -m 0700 /var/lib/dex-agent/bin",
 			"/etc/systemd/system/dex-agent.service",
-			"runuser|-u dex-agent -- /usr/local/bin/dex-agent enroll -state /var/lib/dex-agent -url https://dex.example.com -id 01JRUN -mode dedicated",
+			"runuser|-u dex-agent -- /var/lib/dex-agent/bin/dex-agent enroll -state /var/lib/dex-agent -url https://dex.example.com -id 01JRUN -mode dedicated",
 			"runuser-stdin|one-time-code",
 			"systemctl|enable --now dex-agent.service",
 		} {
@@ -364,6 +364,14 @@ func TestUserInstallsTheMachineAsTheAccountThatUsesIt(t *testing.T) {
 			if !strings.Contains(calls, want) {
 				t.Fatalf("the installer did not run %q:\n%s", want, calls)
 			}
+		}
+	})
+
+	t.Run("a Mac does not infer an account from sudo", func(t *testing.T) {
+		f := newInstallFixture(t)
+		out, err := f.run(t, []string{"FAKE_OS=Darwin", "FAKE_UID=0", "SUDO_USER=vaayne"}, "https://dex.example.com", "01JRUN", "one-time-code", "--dedicated")
+		if err == nil || !strings.Contains(out, "without sudo") || f.calls(t) != "" {
+			t.Fatalf("root install on macOS: %v\n%s\n%s", err, out, f.calls(t))
 		}
 	})
 

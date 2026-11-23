@@ -124,7 +124,7 @@ install_linux_user() {
 	if command -v loginctl >/dev/null; then
 		[ "$(linger_status "$user")" = yes ] || loginctl enable-linger "$user" >/dev/null 2>&1 || true
 		if [ "$(linger_status "$user")" != yes ]; then
-				note "the machine is connected but stops when $user logs out: run sudo loginctl enable-linger $user"
+			note "the machine is connected but stops when $user logs out: run sudo loginctl enable-linger $user"
 		fi
 	else
 		note 'loginctl is unavailable. The machine can stop when this account logs out.'
@@ -151,7 +151,7 @@ install_linux_dedicated() {
 	fi
 	as_root systemctl show --property=Version >/dev/null 2>&1 || fail 'this installer requires a running systemd system manager'
 	state=/var/lib/dex-agent
-	binary=/usr/local/bin/dex-agent
+	binary=/var/lib/dex-agent/bin/dex-agent
 	unit=/etc/systemd/system/dex-agent.service
 	if as_root test -e "$state/device.json"; then
 		fail 'this machine is already connected; revoke it in Dex before connecting again'
@@ -161,7 +161,15 @@ install_linux_dedicated() {
 		as_root useradd --system --user-group --home-dir "$state" --shell /usr/sbin/nologin dex-agent
 	fi
 	as_root install -d -m 0700 -o dex-agent -g dex-agent "$state"
-	as_root install -m 0755 "$tmp/dex-agent" "$binary"
+	# Do not write as root below the directory owned by dex-agent.
+	as_root runuser -u dex-agent -- install -d -m 0700 "$state/bin"
+	as_root runuser -u dex-agent -- sh -eu -c '
+		stage=$(mktemp "${1%/*}/.install-XXXXXX")
+		trap '\''rm -f "$stage"'\'' EXIT
+		cat >"$stage"
+		chmod 0755 "$stage"
+		mv -fT "$stage" "$1"
+	' sh "$binary" <"$tmp/dex-agent"
 	as_root install -m 0644 "$tmp/dex-agent.service" "$unit"
 	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode dedicated || fail 'Dex refused the enrollment; get a fresh install command'
 	as_root systemctl daemon-reload
@@ -171,19 +179,19 @@ install_linux_dedicated() {
 
 # On macOS the LaunchAgent runs in the login session of the current account.
 install_darwin() {
- [ "$(id -u)" -ne 0 ] || fail 'run this command without sudo as the account that will use the machine'
- [ "$mode" = user ] || fail '--dedicated is only available on Linux. On macOS, run the install command as the account that will use the machine.'
- for tool in curl tar install launchctl; do
-  command -v "$tool" >/dev/null || fail "$tool is required"
- done
- target_user=$(id -un)
- [ -n "${HOME:-}" ] && [ -d "$HOME" ] || fail "cannot find the home directory of $target_user"
- state="$HOME/Library/Application Support/dex-agent"
- binary="$HOME/.local/bin/dex-agent"
- plist="$HOME/Library/LaunchAgents/com.recally.dex-agent.plist"
- log="$HOME/Library/Logs/dex-agent.log"
- label=com.recally.dex-agent
- target_uid=$(id -u)
+	[ "$(id -u)" -ne 0 ] || fail 'run this command without sudo as the account that will use the machine'
+	[ "$mode" = user ] || fail '--dedicated is only available on Linux. On macOS, run the install command as the account that will use the machine.'
+	for tool in curl tar install launchctl; do
+		command -v "$tool" >/dev/null || fail "$tool is required"
+	done
+	target_user=$(id -un)
+	[ -n "${HOME:-}" ] && [ -d "$HOME" ] || fail "cannot find the home directory of $target_user"
+	state="$HOME/Library/Application Support/dex-agent"
+	binary="$HOME/.local/bin/dex-agent"
+	plist="$HOME/Library/LaunchAgents/com.recally.dex-agent.plist"
+	log="$HOME/Library/Logs/dex-agent.log"
+	label=com.recally.dex-agent
+	target_uid=$(id -u)
 	[ ! -e "$state/device.json" ] || fail 'this machine is already connected; revoke it in Dex before connecting again'
 	tar -xzf "$tmp/$archive" -C "$tmp" dex-agent com.recally.dex-agent.plist
 	install -d -m 0700 "$state" "$HOME/.local/bin" "$HOME/Library/Logs" "${plist%/*}"

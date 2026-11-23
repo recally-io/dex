@@ -162,10 +162,12 @@ dex update --version v0.1.0-rc.1
 dex service install --auto-update --channel prerelease
 ```
 
-Updates come from the `recally-io/dex` GitHub repository. Manual updates
-use GH_TOKEN, then GITHUB_TOKEN, then stored `gh auth` credentials. Automatic
-updates require `gh` and credentials in its default store. When you enable
-automatic updates, install adds the selected `gh` directory to the service PATH.
+Updates come from the `recally-io/dex` public GitHub repository. Manual and
+Web UI updates (Settings → About) use `GH_TOKEN`, then `GITHUB_TOKEN`, then
+stored `gh auth` credentials when available, and fall back to unauthenticated
+public release downloads otherwise. Automatic scheduled updates require `gh`
+and credentials in its default store. When you enable automatic updates,
+install adds the selected `gh` directory to the service PATH.
 It does not add other directories from the install shell. If you move or remove
 that `gh` installation, run `dex service install` again.
 Run `gh auth login --hostname github.com` first. Shell-only tokens cannot enable

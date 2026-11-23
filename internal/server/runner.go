@@ -5,16 +5,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/update"
 	"golang.org/x/mod/semver"
 )
 
@@ -76,6 +80,9 @@ func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "the machine token is not valid; install the machine again")
 		return
 	}
+	if h.Version != "" {
+		w.Header().Set("X-Dex-Version", h.Version)
+	}
 	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), runner.Version) {
 		writeError(w, http.StatusUpgradeRequired, "the machine protocol is incompatible")
 		return
@@ -85,6 +92,121 @@ func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.Runners.Accept(r.Context(), id, token, conn)
+}
+
+// validRunnerReleaseFile matches valid dex-agent release archive filenames for a specific server tag.
+func validRunnerReleaseFile(tag, name string) bool {
+	if name == "checksums.txt" {
+		return true
+	}
+	prefix := "dex-agent_" + tag + "_"
+	rest, ok := strings.CutPrefix(name, prefix)
+	if !ok {
+		return false
+	}
+	switch rest {
+	case "linux_amd64.tar.gz", "linux_arm64.tar.gz", "darwin_amd64.tar.gz", "darwin_arm64.tar.gz":
+		return true
+	default:
+		return false
+	}
+}
+
+// machineRunnerRelease serves checksums.txt and dex-agent archives matching this Dex server's
+// running version to enrolled machines, caching downloaded release assets on disk.
+func (h *handler) machineRunnerRelease(w http.ResponseWriter, r *http.Request) {
+	id, token := r.PathValue("id"), machineBearer(r)
+	if h.Runners == nil || token == "" || h.Runners.Verify(r.Context(), id, token) != nil {
+		writeError(w, http.StatusUnauthorized, "the machine token is not valid; install the machine again")
+		return
+	}
+	file := r.PathValue("file")
+	tag := h.Version
+	if !semver.IsValid(tag) {
+		writeError(w, http.StatusServiceUnavailable, "this Dex build has no matching machine archive")
+		return
+	}
+	if !validRunnerReleaseFile(tag, file) {
+		http.NotFound(w, r)
+		return
+	}
+	cached, err := h.openRunnerRelease(r.Context(), tag, file)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, fmt.Sprintf("fetch runner release asset: %v", err))
+		return
+	}
+	defer cached.Close()
+	w.Header().Set("Cache-Control", "private, no-store")
+	http.ServeContent(w, r, file, time.Time{}, cached)
+}
+
+func (h *handler) openRunnerRelease(ctx context.Context, tag, name string) (*os.File, error) {
+	// Fill one cache entry at a time. Open files can be served concurrently.
+	h.runnerReleaseMu.Lock()
+	defer h.runnerReleaseMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	cacheDir := filepath.Join(h.DataDir, "cache", "machine-release", tag)
+	if err := os.MkdirAll(cacheDir, 0700); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(cacheDir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	if f, err := root.Open(name); err == nil {
+		return f, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	const manifest = "checksums.txt"
+	var checksums []byte
+	if name != manifest {
+		checksums, err = root.ReadFile(manifest)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := h.cacheRunnerAsset(ctx, root, tag, manifest, nil); err != nil {
+				return nil, err
+			}
+			checksums, err = root.ReadFile(manifest)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := h.cacheRunnerAsset(ctx, root, tag, name, checksums); err != nil {
+		return nil, err
+	}
+	return root.Open(name)
+}
+
+func (h *handler) cacheRunnerAsset(ctx context.Context, root *os.Root, tag, name string, checksums []byte) error {
+	tmp, err := os.CreateTemp(root.Name(), ".fetch-*")
+	if err != nil {
+		return err
+	}
+	tmpName := filepath.Base(tmp.Name())
+	defer func() {
+		_ = tmp.Close()
+		_ = root.Remove(tmpName)
+	}()
+	if err := update.DownloadReleaseAsset(ctx, h.ReleaseBase, tag, name, tmp); err != nil {
+		return err
+	}
+	if name != "checksums.txt" {
+		if _, err := tmp.Seek(0, 0); err != nil {
+			return err
+		}
+		if err := update.VerifyChecksum(checksums, tmp, name); err != nil {
+			// A retry must fetch fresh checksums if GitHub replaced a release asset.
+			return errors.Join(err, root.Remove("checksums.txt"))
+		}
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return root.Rename(tmpName, name)
 }
 
 // machineBearer reads the machine credential. It refuses a browser request, because a page in
