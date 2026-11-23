@@ -96,7 +96,7 @@ export function machineAddress(address: string): string | null {
 }
 
 // machineInstallCommand builds the one command that enrolls a machine. The machine trades the
-// code for a token, so the command carries no certificate and no pin.
+// code for a token. By default, the runner uses the account that runs the command.
 export function machineInstallCommand(address: string, id: string, code: string): string | null {
   const origin = machineAddress(address);
 
@@ -104,7 +104,7 @@ export function machineInstallCommand(address: string, id: string, code: string)
     return null;
   }
 
-  return `curl -fsSL '${origin}/install-machine.sh' | sudo sh -s -- '${origin}' '${id}' '${code}'`;
+  return `curl -fsSL '${origin}/install-machine.sh' | sh -s -- '${origin}' '${id}' '${code}'`;
 }
 
 export function formatSshTarget(cfg: EnvironmentConfig): string {

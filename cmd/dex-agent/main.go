@@ -1,4 +1,5 @@
-// dex-agent connects a dedicated execution host to Dex.
+// dex-agent connects an execution host to Dex, as the account that installs it or as a dedicated
+// account of a shared host.
 package main
 
 import (
@@ -9,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -27,11 +29,12 @@ import (
 )
 
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
-// returned, and stores only its digest.
+// returned, and stores only its digest. Mode describes the local install.
 type device struct {
 	Origin      string `json:"origin"`
 	Environment string `json:"environmentId"`
 	Token       string `json:"token"`
+	Mode        string `json:"mode,omitempty"`
 }
 
 func main() {
@@ -45,7 +48,7 @@ func main() {
 
 func command(ctx context.Context, args []string, input io.Reader) error {
 	if len(args) == 0 {
-		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE | dex-agent run [-no-auto-update] | dex-agent version")
+		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE [-mode user] | dex-agent run [-no-auto-update] | dex-agent status | dex-agent version")
 	}
 	if args[0] == "version" || args[0] == "--version" {
 		fmt.Printf("dex-agent %s\n", agentVersion())
@@ -57,13 +60,14 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	state := flags.String("state", private, "private machine state directory")
-	origin, id, code := new(string), new(string), new(string)
+	origin, id, code, mode := new(string), new(string), new(string), new(string)
 	noAutoUpdate := new(bool)
 	switch args[0] {
 	case "enroll":
 		origin = flags.String("url", "", "Dex address, for example https://dex.example.com")
 		id = flags.String("id", "", "environment ID")
 		code = flags.String("code", "", "one-time enrollment code from the install command")
+		flags.StringVar(mode, "mode", modeDedicated, "run account mode: user or dedicated")
 	case "run":
 		noAutoUpdate = flags.Bool("no-auto-update", false, "disable automatic version alignment with the Dex server")
 	}
@@ -82,11 +86,13 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 			}
 			*code = strings.TrimSpace(line)
 		}
-		return enroll(ctx, *state, *origin, *id, *code)
+		return enroll(ctx, *state, *origin, *id, *code, *mode)
 	case "run":
 		return run(ctx, *state, *noAutoUpdate)
+	case "status":
+		return status(ctx, *state, os.Stdout)
 	default:
-		return errors.New("expected enroll, run, or version")
+		return errors.New("expected enroll, run, status, or version")
 	}
 }
 
@@ -124,13 +130,18 @@ func endpoint(origin, id, action string, tail ...string) (string, error) {
 	return u.JoinPath(append([]string{"machine", id, action}, tail...)...).String(), nil
 }
 
-func enroll(ctx context.Context, state, origin, id, code string) error {
+func enroll(ctx context.Context, state, origin, id, code, mode string) error {
 	address, err := endpoint(origin, id, "pair")
 	if err != nil {
 		return err
 	}
 	if code == "" {
 		return errors.New("the enrollment code is required")
+	}
+	switch mode {
+	case modeUser, modeDedicated:
+	default:
+		return fmt.Errorf("unknown mode %q: expected %s or %s", mode, modeUser, modeDedicated)
 	}
 	if err := os.MkdirAll(state, 0700); err != nil { //nolint:gosec // The local operator chooses the state directory.
 		return err
@@ -172,7 +183,7 @@ func enroll(ctx context.Context, state, origin, id, code string) error {
 	if err := json.UnmarshalRead(io.LimitReader(res.Body, 4096), &issued); err != nil || issued.Token == "" {
 		return errors.New("the enrollment returned no machine token")
 	}
-	if err := json.MarshalWrite(file, device{Origin: origin, Environment: id, Token: issued.Token}); err != nil {
+	if err := json.MarshalWrite(file, device{Origin: origin, Environment: id, Token: issued.Token, Mode: mode}); err != nil {
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -186,7 +197,7 @@ func enroll(ctx context.Context, state, origin, id, code string) error {
 
 func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	if os.Geteuid() == 0 {
-		return errors.New("run the machine service as a dedicated non-root account")
+		return errors.New("the machine service must not run as root; install it as the account that uses it")
 	}
 	root, err := os.OpenRoot(state)
 	if err != nil {
@@ -194,6 +205,9 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	}
 	defer root.Close()
 	file, err := root.Open("device.json")
+	if errors.Is(err, fs.ErrPermission) || errors.Is(err, fs.ErrNotExist) {
+		return stateError(state, err)
+	}
 	if err != nil {
 		return err
 	}
@@ -212,6 +226,7 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	if cfg.Token == "" {
 		return errors.New("the machine state is incomplete; run the install command again")
 	}
+	log.Printf("machine %s: %s", cfg.Environment, describeMode(cfg.Mode, currentAccount()))
 	address, err := endpoint(cfg.Origin, cfg.Environment, "connect")
 	if err != nil {
 		return err
