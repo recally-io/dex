@@ -177,16 +177,19 @@ func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, er
 	return binding{spec: spec, sandboxID: row.EnvironmentSandboxID}, nil
 }
 
-// stamp fingerprints spec and the backend generation, so a reconnect or a forgotten host key
-// makes earlier handles stale.
-func (m *Manager) stamp(b backend, spec EnvironmentSpec) string {
+// stamp fingerprints spec and the backend identity, so a new machine enrollment or a forgotten
+// host key makes earlier handles stale. A machine reconnect keeps the stamp.
+func (m *Manager) stamp(ctx context.Context, b backend, spec EnvironmentSpec) (string, error) {
+	identity, err := b.identity(ctx, spec.ID)
+	if err != nil {
+		return "", err
+	}
 	h := sha256.New()
-	for _, s := range []string{spec.ID, string(spec.Kind), spec.Config, spec.Secret, strconv.FormatInt(spec.UpdatedAt, 10)} {
+	for _, s := range []string{spec.ID, string(spec.Kind), spec.Config, spec.Secret, strconv.FormatInt(spec.UpdatedAt, 10), identity} {
 		_, _ = h.Write([]byte(s))
 		_, _ = h.Write([]byte{0})
 	}
-	_, _ = h.Write([]byte(strconv.FormatUint(b.generation(spec.ID), 10)))
-	return hex.EncodeToString(h.Sum(nil))
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // Open resolves the selected environment of agentID from control storage and opens a lease on it.
@@ -212,8 +215,11 @@ func (m *Manager) Open(ctx context.Context, agentID, environmentID string) (Hand
 	if err != nil {
 		return nil, err
 	}
-	// Stamp before the open: a reconnect during the open makes this handle stale, never fresh.
-	stamp := m.stamp(b, bound.spec)
+	// Stamp before the open: an identity change during the open makes this handle stale, never fresh.
+	stamp, err := m.stamp(ctx, b, bound.spec)
+	if err != nil {
+		return nil, err
+	}
 	var l lease
 	if bound.spec.Kind == KindE2B && environmentID != "" {
 		agent, getErr := m.q.GetAgent(ctx, agentID)
@@ -247,7 +253,7 @@ func (m *Manager) Stamp(ctx context.Context, agentID, environmentID string) (str
 	if err != nil {
 		return "", err
 	}
-	return m.stamp(b, bound.spec), nil
+	return m.stamp(ctx, b, bound.spec)
 }
 
 // Status reports whether agentID can use environmentID now: "available", "offline" for a

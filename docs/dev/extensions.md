@@ -73,9 +73,11 @@ value. A hint never holds value text.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata. Before the agent
 opens, servers are `idle`. `POST /api/agents/{agentId}/extensions/reload`
-validates the selected agent and requires idle execution across all agents.
-The idle check and registration of the selected replacement are atomic. Reload
-does not hold the global maintenance pause. After preflight succeeds, other
+validates the selected agent and requires idle execution of that agent only:
+no open, task, submission, settlement, or tool call of the agent can be in
+progress. Work of other agents does not block it. The idle check and
+registration of the selected replacement are atomic. Reload does not hold the
+global maintenance pause. A shutdown or a restore still waits for all agents. After preflight succeeds, other
 agents can start work while the selected agent closes and opens its resources.
 If the selected agent has not opened, Reload opens it and reports the MCP
 connection results. A failed preflight keeps its current resources.

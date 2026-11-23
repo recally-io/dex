@@ -491,8 +491,8 @@ func (*e2bRuntime) changed(context.Context, EnvironmentSpec, *EnvironmentSpec) e
 
 func (*e2bRuntime) disposable() bool { return true }
 
-// generation is constant: the stored spec and sandbox ID describe the whole E2B state.
-func (*e2bRuntime) generation(string) uint64 { return 0 }
+// identity is constant: the stored spec and sandbox ID describe the whole E2B state.
+func (*e2bRuntime) identity(context.Context, string) (string, error) { return "", nil }
 
 // release kills the agent's sandbox in spec's environment. It clears the stored sandbox ID only
 // when the row still names that sandbox, so a sandbox that a later open stored stays.

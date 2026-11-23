@@ -13,6 +13,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
 // Submission joins one durable input and the memory commit that follows its settlement.
@@ -47,10 +48,10 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	if input.Kind != "" && input.Kind != "message" && input.Kind != "task_result" {
 		return nil, fmt.Errorf("%w: input kind", ErrInvalidInput)
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return nil, err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -93,8 +94,15 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			// the model. This keeps pending Main alerts across restarts too.
 			// An explicit selection may report unavailability through its tools,
 			// but attachments must wait until they can be staged there.
-			if envErr != nil && (target.ID == "" || len(input.Attachments) > 0 || (input.Kind == "task_result" && IsMonitorEvent(input.RequestID))) {
-				return nil, envErr
+			// A lease stays valid while its machine is offline, so check the machine here
+			// without waiting: the input stays in business storage until the machine is back.
+			if waits := target.ID == "" || len(input.Attachments) > 0 || (input.Kind == "task_result" && IsMonitorEvent(input.RequestID)); waits {
+				if envErr == nil && envs.status(ctx, target.ID) == "offline" {
+					envErr = fmt.Errorf("%w: %w", execenv.ErrUnavailable, runner.ErrOffline)
+				}
+				if envErr != nil {
+					return nil, envErr
+				}
 			}
 		}
 		if input.Model.ModelID == "" {
@@ -226,12 +234,8 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 			slog.Error("track child activity", "agent", ref.AgentID, "conversation", ref.ID, "error", err)
 		}
 	}
-	a.mu.Lock()
-	a.settling++
-	a.mu.Unlock()
 	settlementCtx := context.WithoutCancel(ctx)
-	a.settlements.Go(func() {
-		defer func() { a.mu.Lock(); a.settling--; a.mu.Unlock() }()
+	a.settle(resourceKey(ref), func() {
 		defer close(result.done)
 		if stopActivity != nil {
 			defer stopActivity()

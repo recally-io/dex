@@ -206,6 +206,15 @@ func (s *Service) scheduleRetry() {
 	s.retryDelay = min(s.retryDelay*2, 30*time.Second)
 }
 
+// RetryNow restarts the retry delay and wakes admission. Call it when a resource that blocked
+// admission, such as the session of a machine, is back.
+func (s *Service) RetryNow() {
+	s.retryMu.Lock()
+	s.retryDelay = 0
+	s.retryMu.Unlock()
+	s.Wake()
+}
+
 func (s *Service) Wake() {
 	select {
 	case s.wake <- struct{}{}:

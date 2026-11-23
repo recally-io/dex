@@ -20,6 +20,120 @@ import (
 	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
+// machine is one remote machine environment and the dex-agent that serves it.
+type machine struct {
+	t     *testing.T
+	envID string
+	token string
+	state string
+	ws    *websocket.Conn
+	done  chan struct{}
+}
+
+// addMachine creates a machine environment in d. The machine is not enrolled yet.
+func addMachine(t *testing.T, d *dex, name string) *machine {
+	t.Helper()
+	var created apiEnvironment
+	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{"name": name, "kind": "runner"}, &created, http.StatusCreated)
+	m := &machine{t: t, envID: created.ID, state: t.TempDir()}
+	if err := os.Mkdir(filepath.Join(m.state, "workspace"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.disconnect)
+	return m
+}
+
+// enrollMachine creates a machine environment in d and enrolls a machine for it.
+func enrollMachine(t *testing.T, d *dex) *machine {
+	t.Helper()
+	m := addMachine(t, d, "Laptop")
+	status, token := m.pair(d, m.issue(d))
+	if status != http.StatusOK || token == "" {
+		t.Fatalf("enrollment returned %d and token %q", status, token)
+	}
+	m.token = token
+	return m
+}
+
+// issue makes a one-time enrollment code in Settings.
+func (m *machine) issue(d *dex) string {
+	m.t.Helper()
+	var issued struct {
+		Code string `json:"code"`
+	}
+	d.must(m.t, http.MethodPost, "/api/settings/environments/"+m.envID+"/runner-pairing", nil, &issued)
+	return issued.Code
+}
+
+// pair trades code for a machine token, as the installer does.
+func (m *machine) pair(d *dex, code string) (int, string) {
+	m.t.Helper()
+	req, err := http.NewRequestWithContext(m.t.Context(), http.MethodPost, d.srv.URL+"/machine/"+m.envID+"/pair", nil)
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+code)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var body struct {
+		Token string `json:"token"`
+	}
+	_ = json.NewDecoder(io.LimitReader(res.Body, 4096)).Decode(&body)
+	return res.StatusCode, body.Token
+}
+
+func (m *machine) dial(d *dex, token string) (*websocket.Conn, error) {
+	u := strings.Replace(d.srv.URL+"/machine/"+m.envID+"/connect", "http://", "ws://", 1)
+	header := http.Header{"Authorization": []string{"Bearer " + token}}
+	ws, res, err := websocket.Dial(m.t.Context(), u, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}})
+	if res != nil && res.Body != nil {
+		_ = res.Body.Close()
+	}
+	return ws, err
+}
+
+// connect opens a session to d with the machine token and waits until d reports it online.
+func (m *machine) connect(d *dex) {
+	m.t.Helper()
+	ws, err := m.dial(d, m.token)
+	if err != nil {
+		m.t.Fatalf("connect the machine: %v", err)
+	}
+	m.ws, m.done = ws, make(chan struct{})
+	go func(done chan struct{}) {
+		defer close(done)
+		_ = runner.Serve(m.t.Context(), ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: filepath.Join(m.state, "workspace")}))
+	}(m.done)
+	m.waitOnline(d, true)
+}
+
+// disconnect drops the session without a close handshake, like a network failure.
+func (m *machine) disconnect() {
+	if m.ws == nil {
+		return
+	}
+	_ = m.ws.CloseNow()
+	<-m.done
+	m.ws = nil
+}
+
+func (m *machine) waitOnline(d *dex, online bool) {
+	m.t.Helper()
+	eventually(m.t, fmt.Sprintf("machine online=%t", online), func() (bool, any) {
+		var probe apiEnvironmentTestResult
+		d.must(m.t, http.MethodPost, "/api/settings/environments/"+m.envID+"/test", nil, &probe)
+		return probe.OK == online, probe
+	})
+}
+
+// botWorkspace is the workspace of a bot on the machine.
+func (m *machine) botWorkspace(botID string) string {
+	return filepath.Join(m.state, "workspaces", botID, "workspace")
+}
+
 // TestUserEnrollsRemoteMachine installs a machine with one command. The machine trades the
 // one-time code for a token and then connects with that token, over the same listener as the
 // web UI, so a proxy in front of Dex needs no special configuration.
@@ -38,38 +152,15 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	}
 	d.srv.Client().Jar = jar
 	d.must(t, http.MethodPost, "/api/session", map[string]string{"token": "test-admin"}, nil, http.StatusNoContent)
-	var created apiEnvironment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{"name": "Debian VM", "kind": "runner"}, &created, http.StatusCreated)
-	settingsPath := "/api/settings/environments/" + created.ID
-	machinePath := d.srv.URL + "/machine/" + created.ID
-	var issued struct {
-		Code string `json:"code"`
-	}
-	d.must(t, http.MethodPost, settingsPath+"/runner-pairing", nil, &issued)
+	m := addMachine(t, d, "Debian VM")
+	settingsPath := "/api/settings/environments/" + m.envID
+	code := m.issue(d)
 
-	enroll := func(code string) (int, string) {
-		t.Helper()
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, machinePath+"/pair", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		req.Header.Set("Authorization", "Bearer "+code)
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer res.Body.Close()
-		var body struct {
-			Token string `json:"token"`
-		}
-		_ = json.NewDecoder(io.LimitReader(res.Body, 4096)).Decode(&body)
-		return res.StatusCode, body.Token
-	}
 	// The code needs no certificate, and a browser request is refused.
-	if status, _ := enroll(""); status != http.StatusUnauthorized {
+	if status, _ := m.pair(d, ""); status != http.StatusUnauthorized {
 		t.Fatalf("enrollment without a code returned %d", status)
 	}
-	anonymous, err := http.NewRequestWithContext(ctx, http.MethodPost, machinePath+"/pair", nil)
+	anonymous, err := http.NewRequestWithContext(ctx, http.MethodPost, d.srv.URL+"/machine/"+m.envID+"/pair", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,55 +173,20 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	if res.StatusCode == http.StatusOK {
 		t.Fatal("a browser origin enrolled a machine")
 	}
-	status, token := enroll(issued.Code)
+	status, token := m.pair(d, code)
 	if status != http.StatusOK || token == "" {
 		t.Fatalf("enrollment returned %d and token %q", status, token)
 	}
-	if status, _ := enroll(issued.Code); status != http.StatusUnauthorized {
+	if status, _ := m.pair(d, code); status != http.StatusUnauthorized {
 		t.Fatalf("a used code returned %d", status)
 	}
+	m.token = token
 
-	dial := func(token string) (*websocket.Conn, error) {
-		u := strings.Replace(machinePath+"/connect", "http://", "ws://", 1)
-		header := http.Header{"Authorization": []string{"Bearer " + token}}
-		ws, res, err := websocket.Dial(ctx, u, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}})
-		if res != nil && res.Body != nil {
-			_ = res.Body.Close()
-		}
-		return ws, err
-	}
-	if ws, err := dial("wrong-token-that-is-long-enough"); err == nil {
+	if ws, err := m.dial(d, "wrong-token-that-is-long-enough"); err == nil {
 		_ = ws.CloseNow()
 		t.Fatal("a wrong token connected")
 	}
-	ws, err := dial(token)
-	if err != nil {
-		t.Fatalf("connect with the enrolled token: %v", err)
-	}
-	defer func() { _ = ws.CloseNow() }()
-	machineState := t.TempDir()
-	work := filepath.Join(machineState, "workspace")
-	if err := os.Mkdir(work, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	stop := make(chan error, 1)
-	go func() {
-		stop <- runner.Serve(ctx, ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: work}))
-	}()
-	var probe apiEnvironmentTestResult
-	for !probe.OK {
-		d.must(t, http.MethodPost, settingsPath+"/test", nil, &probe)
-		if probe.OK {
-			break
-		}
-		select {
-		case err := <-stop:
-			t.Fatalf("machine stopped early: %v", err)
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-time.After(20 * time.Millisecond):
-		}
-	}
+	m.connect(d)
 	// Both bots remain local by default and explicitly select the same runner for a chat.
 	d.setModel(t, "bash")
 	var second apiAgent
@@ -144,14 +200,13 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 			map[string]string{"environmentId": environmentID}, nil)
 		return botChat{bots: &bots{t: t, d: d}, agent: agentID, id: session.ID}
 	}
-	first, other := newChat("default", created.ID), newChat(second.ID, created.ID)
+	first, other := newChat("default", m.envID), newChat(second.ID, m.envID)
 	first.send(`printf 'first' > note.txt; cat note.txt`)
 	first.watch().until(t, "first bot writes its own file", answeredWith("bash: first"))
 	other.send(`test ! -e note.txt && printf 'second' > note.txt && cat note.txt`)
 	other.watch().until(t, "second bot writes its own file", answeredWith("bash: second"))
 	for botID, want := range map[string]string{"default": "first", second.ID: "second"} {
-		file := filepath.Join(machineState, "workspaces", botID, "workspace", "note.txt")
-		got, err := os.ReadFile(file)
+		got, err := os.ReadFile(filepath.Join(m.botWorkspace(botID), "note.txt"))
 		if err != nil || string(got) != want {
 			t.Fatalf("bot %s file = %q, want %q (err %v)", botID, got, want, err)
 		}
@@ -160,20 +215,10 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	// Changing the bot default still connects to the machine and survives an extension reload.
 	var bot apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
-	bot.EnvironmentID = created.ID
+	bot.EnvironmentID = m.envID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
-	reload := func() {
-		t.Helper()
-		eventually(t, "reload idle bot", func() (bool, any) {
-			status, body := d.call(t, http.MethodPost, "/api/agents/default/extensions/reload", nil)
-			if status != http.StatusOK && status != http.StatusConflict {
-				t.Fatalf("reload: %d %s", status, body)
-			}
-			return status == http.StatusOK, body
-		})
-	}
 	for range 2 {
-		reload()
+		reloadBot(t, d)
 	}
 	chat := d.newSession(t).ID
 	if got := taskTurn(t, d, chat, `cat note.txt`); got != "bash: first" {
@@ -182,11 +227,11 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 
 	d.must(t, http.MethodDelete, settingsPath+"/runner-pairing", nil, nil)
 	select {
-	case <-stop:
+	case <-m.done:
 	case <-ctx.Done():
 		t.Fatal("revocation did not close the machine")
 	}
-	if ws, err := dial(token); err == nil {
+	if ws, err := m.dial(d, m.token); err == nil {
 		_ = ws.CloseNow()
 		t.Fatal("a revoked token reconnected")
 	}
@@ -196,7 +241,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		Environments []apiSessionEnvironment `json:"environments"`
 	}
 	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/environments", nil, &listed)
-	if len(listed.Environments) != 2 || listed.Environments[1].ID != created.ID || listed.Environments[1].Status != "offline" {
+	if len(listed.Environments) != 2 || listed.Environments[1].ID != m.envID || listed.Environments[1].Status != "offline" {
 		t.Fatalf("offline runner: %+v", listed.Environments)
 	}
 	other.send(`printf 'offline-fallback' > offline.txt`)
@@ -205,40 +250,108 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 		return !tr.running && last.Kind == "assistant" && (strings.Contains(last.Text, "offline") || strings.Contains(last.Text, "selected environment changed"))
 	})
 	// The unavailable default does not prevent an explicit local chat in that bot.
-	reload()
+	reloadBot(t, d)
 	local := newChat("default", "local")
 	local.send(`test ! -e note.txt && printf 'local-ok'`)
 	local.watch().until(t, "explicit local when its bot runner is offline", answeredWith("bash: local-ok"))
 
-	// The loaded bot uses the machine again after a new enrollment: the new session must not reuse
-	// the stamp of the revoked session, or the bot would keep its closed connection.
-	d.must(t, http.MethodPost, settingsPath+"/runner-pairing", nil, &issued)
-	status, token = enroll(issued.Code)
-	if status != http.StatusOK || token == "" {
-		t.Fatalf("second enrollment returned %d and token %q", status, token)
+	// The loaded bot uses the machine again after a new enrollment: the new enrollment changes
+	// the stamp, or the bot would keep a lease on the revoked enrollment.
+	status, m.token = m.pair(d, m.issue(d))
+	if status != http.StatusOK || m.token == "" {
+		t.Fatalf("second enrollment returned %d and token %q", status, m.token)
 	}
-	ws2, err := dial(token)
-	if err != nil {
-		t.Fatalf("connect after the second enrollment: %v", err)
-	}
-	defer func() { _ = ws2.CloseNow() }()
-	go func() {
-		_ = runner.Serve(ctx, ws2, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: work}))
-	}()
-	for probe = (apiEnvironmentTestResult{}); !probe.OK; {
-		d.must(t, http.MethodPost, settingsPath+"/test", nil, &probe)
-		if probe.OK {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-time.After(20 * time.Millisecond):
-		}
-	}
-	// The new session changes the stamp, so dex reloads the idle bot on its own.
+	m.connect(d)
 	d.applied(t)
 	if got := taskTurn(t, d, chat, `printf 'machine-again'`); !strings.Contains(got, "machine-again") {
 		t.Fatalf("remote command after a new enrollment returned %q", got)
 	}
+}
+
+// reloadBot reloads the extensions of the default bot when it is idle.
+func reloadBot(t *testing.T, d *dex) {
+	t.Helper()
+	eventually(t, "reload of the default bot", func() (bool, any) {
+		status, body := d.call(t, http.MethodPost, "/api/agents/default/extensions/reload", nil)
+		if status != http.StatusOK && status != http.StatusConflict {
+			t.Fatalf("reload: %d %s", status, body)
+		}
+		return status == http.StatusOK, body
+	})
+}
+
+// useMachine makes the machine the environment of the default bot and waits for the bot to load it.
+func useMachine(t *testing.T, d *dex, m *machine, model string) {
+	t.Helper()
+	var bot apiAgent
+	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	bot.Provider, bot.ModelID, bot.ThinkingLevel, bot.EnvironmentID = "faux", model, "off", m.envID
+	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
+	reloadBot(t, d)
+}
+
+// TestUserBotKeepsItsMachineAcrossAReconnect covers a short network failure of a laptop while
+// another bot works. The bot must not need a reload for the same machine.
+func TestUserBotKeepsItsMachineAcrossAReconnect(t *testing.T) {
+	// Given a bot on an enrolled machine, and another bot that runs a long local command.
+	d := startDexWith(t, app.Config{DataDir: t.TempDir()})
+	m := enrollMachine(t, d)
+	m.connect(d)
+	useMachine(t, d, m, "bash")
+	chat := d.newSession(t).ID
+	if got := taskTurn(t, d, chat, `printf before > note.txt; cat note.txt`); got != "bash: before" {
+		t.Fatalf("turn before the reconnect: %q", got)
+	}
+	var other apiAgent
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Busy", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "environmentId": "local"}, &other, http.StatusCreated)
+	var session sessionInfo
+	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/chats", nil, &session, http.StatusCreated)
+	busy := botChat{bots: &bots{t: t, d: d}, agent: other.ID, id: session.ID}
+	busy.send(`while :; do sleep 1; done`)
+	busy.watch().until(t, "the other bot runs", func(tr *transcript) bool { return tr.running })
+
+	// When the machine loses its session, a message arrives, and the machine connects again.
+	m.disconnect()
+	m.waitOnline(d, false)
+	id := d.send(t, chat, `cat note.txt; printf ' after'`)
+	m.connect(d)
+
+	// Then the message runs on the machine while the other bot still works, with no reload pending.
+	d.watch(t, chat).until(t, "answer to "+id+" after the reconnect", answeredWith("bash: before after"))
+	busy.watch().until(t, "the other bot still runs", func(tr *transcript) bool { return tr.running })
+	var ext apiExtensionsPending
+	d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &ext)
+	if ext.ReloadPending {
+		t.Fatal("a reconnect of the same machine made the bot stale")
+	}
+}
+
+// TestUserBotRecoversItsMachineAfterAnOfflineStart covers a restart of dex while the machine
+// is offline. The bot has no MCP server, so only the machine connection can start the recovery.
+func TestUserBotRecoversItsMachineAfterAnOfflineStart(t *testing.T) {
+	// Given a bot on an enrolled machine with a project skill there, and dex restarts while the machine is offline.
+	dataDir := t.TempDir()
+	first := startDexWith(t, app.Config{DataDir: dataDir})
+	m := enrollMachine(t, first)
+	m.connect(first)
+	useMachine(t, first, m, "section")
+	writeFile(t, filepath.Join(m.botWorkspace("default"), ".agents", "skills", "laptop-only", "SKILL.md"), "---\nname: laptop-only\ndescription: Skill on the laptop\n---\n")
+	m.disconnect()
+	first.stop()
+	d := startDexWith(t, app.Config{DataDir: dataDir})
+	chat := d.newSession(t).ID
+	id := d.send(t, chat, "skills")
+	// The extensions of a bot that is not open need its machine, so success means the bot opened.
+	eventually(t, "the bot opens without its machine", func() (bool, any) {
+		status, body := d.call(t, http.MethodGet, "/api/agents/default/extensions", nil)
+		return status == http.StatusOK, body
+	})
+
+	// When the machine connects again, with no other input.
+	m.connect(d)
+
+	// Then the bot reloads on its own, and the waiting message answers with the skill from the
+	// machine. A reload ends the event streams of the bot, so watch after it.
+	d.applied(t)
+	d.watch(t, chat).until(t, "answer to "+id, answeredWith("laptop-only"))
 }

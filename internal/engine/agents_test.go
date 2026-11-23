@@ -159,8 +159,12 @@ func TestUserStopWithdrawsQueuedInputWithoutModelContext(t *testing.T) {
 	if err := a.Quiesce(t.Context()); !errors.Is(err, ErrBusy) {
 		t.Fatalf("maintenance busy: %v", err)
 	}
-	if err := a.Reload(t.Context(), "beta"); !errors.Is(err, ErrBusy) {
-		t.Fatalf("reload accepted another agent's running and queued work: %v", err)
+	if err := a.Reload(t.Context(), "alpha"); !errors.Is(err, ErrBusy) {
+		t.Fatalf("reload accepted the agent's running and queued work: %v", err)
+	}
+	// The work of alpha does not block a reload of another agent.
+	if err := a.Reload(t.Context(), "beta"); err != nil {
+		t.Fatalf("reload of beta waited for alpha: %v", err)
 	}
 	// When Stop cancels the run and withdraws the queue.
 	if err := a.Abort(t.Context(), ref); err != nil {
@@ -324,7 +328,7 @@ func TestUserShutdownWaitsForPendingMemoryCommit(t *testing.T) {
 	if err := a.Quiesce(t.Context()); !errors.Is(err, ErrBusy) {
 		t.Fatalf("maintenance accepted pending memory commit: %v", err)
 	}
-	if err := a.Reload(t.Context(), "beta"); !errors.Is(err, ErrBusy) {
+	if err := a.Reload(t.Context(), "alpha"); !errors.Is(err, ErrBusy) {
 		t.Fatalf("reload accepted pending memory commit: %v", err)
 	}
 	closeCtx, cancel := context.WithCancel(t.Context())

@@ -15,10 +15,10 @@ func (a *Agents) History(ctx context.Context, ref Ref, before int64, limit int) 
 	if before <= 0 || limit <= 0 {
 		return out, fmt.Errorf("%w: history requires positive before and limit", ErrInvalidInput)
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return out, err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return out, err
@@ -75,10 +75,10 @@ func (a *Agents) Detail(ctx context.Context, ref Ref, entryID int64, itemID stri
 	if entryID <= 0 || itemID == "" {
 		return Item{}, fmt.Errorf("%w: detail requires an entry and an item", ErrInvalidInput)
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return Item{}, err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return Item{}, err

@@ -34,12 +34,19 @@ func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec Environ
 }
 
 func (b runnerBackend) open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error) {
-	session := b.runners.online(spec.ID)
-	if session == nil {
-		return nil, runner.ErrOffline
+	digest, err := b.runners.identity(ctx, spec.ID)
+	if err != nil {
+		return nil, err
 	}
-	base := path.Join(path.Dir(session.Info().Workspace), "workspaces")
-	h := &runnerHandle{id: spec.ID, client: session, workspace: remoteBotWorkspace(base, "/", agentID)}
+	b.runners.mu.Lock()
+	session, err := b.runners.sessionLocked(spec.ID, digest)
+	b.runners.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	info := session.Info()
+	base := path.Join(path.Dir(info.Workspace), "workspaces")
+	h := &runnerHandle{runners: b.runners, id: spec.ID, digest: digest, ready: info, workspace: remoteBotWorkspace(base, "/", agentID)}
 	if err := createRemoteBotWorkspace(ctx, h); err != nil {
 		return nil, fmt.Errorf("create runner workspace: %w", err)
 	}
@@ -56,17 +63,48 @@ func (b runnerBackend) changed(ctx context.Context, old EnvironmentSpec, cur *En
 // release keeps the machine workspace: the machine belongs to the user.
 func (runnerBackend) release(context.Context, string, EnvironmentSpec, string) error { return nil }
 func (runnerBackend) disposable() bool                                               { return false }
-func (b runnerBackend) generation(envID string) uint64                               { return b.runners.generation(envID) }
+func (b runnerBackend) identity(ctx context.Context, envID string) (string, error) {
+	return b.runners.identity(ctx, envID)
+}
 
+// runnerHandle is a lease on the enrollment of a machine. It finds the live session at each
+// call, so a reconnect does not make the lease stale.
 type runnerHandle struct {
-	id        string
-	client    *runner.Client
+	runners *Runners
+	id      string
+	digest  string
+	// ready is the report of the session that opened the lease. Paths of the lease depend on it.
+	ready     runner.Ready
 	workspace string
 }
 
 func (h *runnerHandle) Kind() Kind        { return KindRunner }
 func (h *runnerHandle) Workspace() string { return h.workspace }
-func (h *runnerHandle) Home() string      { return h.client.Info().Home }
+func (h *runnerHandle) Home() string      { return h.ready.Home }
+
+// do runs fn on the live session. It waits for a reconnect before the call starts. A session
+// that closes before the call is dispatched reports runner.ErrOffline, so one more attempt on
+// the next session cannot repeat work. A lost dispatched call reports runner.ErrUnknown, and
+// do never repeats it.
+func (h *runnerHandle) do(ctx context.Context, fn func(*runner.Client) error) error {
+	for attempt := 0; ; attempt++ {
+		client, err := h.runners.wait(ctx, h.id, h.digest)
+		if err != nil {
+			return err
+		}
+		if info := client.Info(); info.Workspace != h.ready.Workspace || info.Home != h.ready.Home {
+			// The machine runs from another state directory now, so the paths of the lease are wrong.
+			return fmt.Errorf("%w: the machine workspace changed; reload the bot", ErrUnavailable)
+		}
+		err = fn(client)
+		if !errors.Is(err, runner.ErrOffline) {
+			return err
+		}
+		if attempt > 0 {
+			return errRunnerOffline()
+		}
+	}
+}
 
 // Close releases the lease. Runners owns the connection.
 func (h *runnerHandle) Close(context.Context) error { return nil }
@@ -93,7 +131,7 @@ func (e *runnerEnv) resolve(p string) string {
 	if cwd == "" {
 		cwd = e.handle.Workspace()
 	}
-	home := e.handle.client.Info().Home
+	home := e.handle.Home()
 	if p == "~" {
 		return home
 	}
@@ -114,7 +152,7 @@ func (e *runnerEnv) JoinPath(ctx context.Context, p []string) (string, error) {
 
 // call runs one method on the machine.
 func (e *runnerEnv) call(ctx context.Context, method string, params runner.Tagger, result any) error {
-	return e.handle.client.Call(ctx, method, params, result)
+	return e.handle.do(ctx, func(client *runner.Client) error { return client.Call(ctx, method, params, result) })
 }
 func runnerValue[T any, P runner.Tagger](ctx context.Context, e *runnerEnv, method string, params P) (T, error) {
 	var value T
@@ -263,10 +301,15 @@ func (e *runnerEnv) Exec(ctx context.Context, command any, opts *env.ShellExecOp
 	params := runner.ExecParams{Cwd: e.resolve(opts.Cwd), InheritEnv: opts.InheritEnv, Timeout: opts.Timeout, Env: map[string]string{}}
 	maps.Copy(params.Env, e.extra)
 	maps.Copy(params.Env, opts.Env)
-	code, err := e.handle.client.Exec(ctx, command, params, func(text string, stream env.ShellStream) {
-		if opts.OnOutput != nil {
-			opts.OnOutput(ctx, text, env.ShellOutputInfo{Stream: stream})
-		}
+	var code int
+	err := e.handle.do(ctx, func(client *runner.Client) error {
+		var err error
+		code, err = client.Exec(ctx, command, params, func(text string, stream env.ShellStream) {
+			if opts.OnOutput != nil {
+				opts.OnOutput(ctx, text, env.ShellOutputInfo{Stream: stream})
+			}
+		})
+		return err
 	})
 	return env.ShellExecResult{ExitCode: code}, err
 }

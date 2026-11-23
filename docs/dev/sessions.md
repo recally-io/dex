@@ -305,6 +305,19 @@ that the user stopped. Dex waits for the canceled operation to finish before it
 sends the next call. The library owns call correlation, reply routing, and
 session loss, so Dex owns only the operations. A session does not replay calls
 after connection loss. Dex reports a missing final result as unknown.
+A lease on a machine holds its enrollment, which is the digest of the machine
+token in control storage. It does not hold the socket, and the stamp does not
+change when the machine disconnects or Dex restarts. Each call takes the current
+session of the machine. If the machine is offline, the call waits up to 10
+seconds for a session of the same enrollment before Dex sends it. A revoke during
+the wait ends the call at once. If the machine reports another workspace or home
+than the session that opened the lease, the call fails until a reload. If the session ends before Dex sends the call, Dex
+tries once more on the next session. A call that Dex sent is never sent again.
+When the machine connects again with the same token, the new session replaces
+the earlier one at once, so a half-open socket does not block the reconnect.
+Each new session wakes the chats that wait, so their input runs without a new
+message. A revoke or a new enrollment changes the identity, so a lease fails at
+once and the bot reloads.
 `execenv.Manager` dispatches each kind to one backend and owns the environment
 lifecycle (`Normalize`, `Probe`, `Changed`, `ForgetHostKey`) and the agent
 lifecycle (`CanResetAgent`, `ResetAgent`, `ReleaseAgent`). This keeps
@@ -367,13 +380,21 @@ staging, project paths, the project `AGENTS.md`, and artifact delivery. The open
 agent keeps one lease for each environment that its sessions use, and closes the
 leases on reload and close. A bot with an unavailable default can still run
 a session that selects another environment. New input that follows an
-unavailable default waits for that environment before native admission. Later
-attempts retry opening the default; an idle reload restores any MCP tools that
-could not load. The resolver checks the
+unavailable or offline default waits before native admission. This check does
+not wait for the machine; a running turn keeps its tool calls, which wait as
+above. Later attempts retry opening the default, and a new machine session ends
+the retry delay. The turn that opens the default uses its project files. After
+that turn, an idle reload restores any skills and MCP tools that could not load.
+A machine default that was offline at load does not need new input: when the
+machine connects again, the agent becomes stale, and the reload opens the
+default. Other kinds wait for a call that opens them, so a failing SSH or E2B
+endpoint does not rebuild the agent at each check. The resolver checks the
 environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
-environment, and dex does not replay an interrupted command. A changed stamp
-makes the agent stale, so the next idle reload opens a new lease.
+environment, and dex does not replay an interrupted command. The stamp holds
+the configuration and identity of the environment, not its connection state.
+A changed stamp makes the agent stale, so the next reload of that agent opens a
+new lease when that agent is idle. Work of other agents does not delay it.
 
 A local session gets the full bot tool environment. A remote session gets the
 bot's explicit tool values and inherits the remote process environment. Skills

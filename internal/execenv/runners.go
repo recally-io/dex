@@ -8,6 +8,8 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -19,25 +21,38 @@ import (
 var ErrRunnerCredential = errors.New("the machine certificate is not valid")
 var ErrRunnerConflict = errors.New("this environment already has a machine; revoke it before connecting another machine")
 
+// runnerGrace is how long a call waits for its machine to connect again before it fails.
+// The machine agent dials again one second after a lost session.
+const runnerGrace = 10 * time.Second
+
 // Runners owns the enrollment and the live sessions of remote machines. The HTTP routes
 // call it directly; the machine backend reads its sessions.
+//
+// A session is a connection, not an identity. The identity of a machine is its enrollment, the
+// credential digest in control storage. A reconnect with the same token keeps the identity, so
+// the leases of loaded bots stay valid across it.
 type Runners struct {
 	q        *sqlc.Queries
 	mu       sync.Mutex
 	sessions map[string]liveRunner
-	// lastGeneration numbers sessions for the whole process. A number is never reused, so a
-	// session after a revoke and a new enrollment cannot match a stamp from the earlier session.
-	lastGeneration uint64
-	closed         bool
+	// changed closes when a session starts or ends, or a machine is revoked, to wake the calls
+	// that wait for a session.
+	changed  chan struct{}
+	grace    time.Duration
+	onOnline func(id string)
+	closed   bool
 }
 
 type liveRunner struct {
-	client     *runner.Client
-	generation uint64
+	client *runner.Client
+	digest string
 }
 
+// errRunnerOffline is the error of a call that found no session. It never reached the machine.
+func errRunnerOffline() error { return fmt.Errorf("%w: %w", ErrUnavailable, runner.ErrOffline) }
+
 func newRunners(q *sqlc.Queries) *Runners {
-	return &Runners{q: q, sessions: map[string]liveRunner{}}
+	return &Runners{q: q, sessions: map[string]liveRunner{}, changed: make(chan struct{}), grace: runnerGrace}
 }
 
 func runnerDigest(value string) string {
@@ -91,7 +106,22 @@ func (rt *Runners) Verify(ctx context.Context, id, token string) error {
 	return nil
 }
 
+// OnOnline sets fn to run after each machine session starts. Set it before the HTTP server starts.
+func (rt *Runners) OnOnline(fn func(id string)) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.onOnline = fn
+}
+
+// notifyLocked wakes the calls that wait for a session. The caller holds mu.
+func (rt *Runners) notifyLocked() {
+	close(rt.changed)
+	rt.changed = make(chan struct{})
+}
+
 // Accept installs a ready connection after checking that its token is still valid.
+// A new session with the valid token replaces the earlier session of the same machine: the
+// earlier socket can be half open for up to two heartbeat periods after the machine left it.
 // It returns when the session ends.
 func (rt *Runners) Accept(ctx context.Context, id, token string, socket *websocket.Conn) error {
 	session, err := runner.Connect(ctx, socket)
@@ -104,24 +134,34 @@ func (rt *Runners) Accept(ctx context.Context, id, token string, socket *websock
 	if err == nil && rt.closed {
 		err = runner.ErrOffline
 	}
-	if _, live := rt.sessions[id]; err == nil && live {
-		err = ErrRunnerConflict
-	}
+	var earlier *runner.Client
 	if err == nil {
-		rt.lastGeneration++
-		rt.sessions[id] = liveRunner{client: session, generation: rt.lastGeneration}
+		earlier = rt.sessions[id].client
+		rt.sessions[id] = liveRunner{client: session, digest: runnerDigest(token)}
+		rt.notifyLocked()
 	}
+	onOnline := rt.onOnline
 	rt.mu.Unlock()
 	if err != nil {
 		return err
+	}
+	if earlier != nil {
+		// The calls that the earlier session dispatched report an unknown result. Two machines
+		// that use one token also get here, so make it visible.
+		slog.Warn("machine connected again; closing its earlier session", "environment", id)
+		earlier.Close()
 	}
 	defer func() {
 		rt.mu.Lock()
 		defer rt.mu.Unlock()
 		if rt.sessions[id].client == session {
 			delete(rt.sessions, id)
+			rt.notifyLocked()
 		}
 	}()
+	if onOnline != nil {
+		onOnline(id)
+	}
 	select {
 	case <-session.Done():
 		return nil
@@ -138,6 +178,7 @@ func (rt *Runners) Revoke(ctx context.Context, id string) error {
 	if err == nil {
 		session = rt.sessions[id].client
 		delete(rt.sessions, id)
+		rt.notifyLocked()
 	}
 	rt.mu.Unlock()
 	if session != nil {
@@ -181,12 +222,60 @@ func (rt *Runners) online(id string) *runner.Client {
 	return rt.sessions[id].client
 }
 
-// generation identifies the live session of a machine, or is 0 when the machine is offline.
-// A reconnect changes it, so a stamp from the earlier session cannot match.
-func (rt *Runners) generation(id string) uint64 {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	return rt.sessions[id].generation
+// identity is the credential digest of the enrollment of id, or empty when no machine is
+// enrolled. A revoke or a new enrollment changes it. A reconnect or a restart of Dex does not.
+func (rt *Runners) identity(ctx context.Context, id string) (string, error) {
+	digest, err := rt.q.GetRunnerCredential(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return digest, err
+}
+
+// sessionLocked returns the live session of id when it uses the enrollment digest. The caller
+// holds mu.
+func (rt *Runners) sessionLocked(id, digest string) (*runner.Client, error) {
+	s := rt.sessions[id]
+	switch {
+	case rt.closed || s.client == nil:
+		return nil, errRunnerOffline()
+	case s.digest != digest:
+		return nil, fmt.Errorf("%w: the machine enrollment changed; wait for reload", ErrUnavailable)
+	}
+	return s.client, nil
+}
+
+// wait returns the live session like sessionLocked, but waits up to the grace period for an
+// offline machine to connect again. It checks the enrollment at each change, so a revoke or a
+// new enrollment fails at once. The wait ends early when ctx ends.
+func (rt *Runners) wait(ctx context.Context, id, digest string) (*runner.Client, error) {
+	var expired <-chan time.Time
+	for {
+		rt.mu.Lock()
+		client, err := rt.sessionLocked(id, digest)
+		changed, closed := rt.changed, rt.closed
+		rt.mu.Unlock()
+		if err == nil || closed || !errors.Is(err, runner.ErrOffline) {
+			return client, err
+		}
+		if current, err := rt.identity(ctx, id); err != nil {
+			return nil, err
+		} else if current != digest {
+			return nil, fmt.Errorf("%w: the machine enrollment changed; wait for reload", ErrUnavailable)
+		}
+		if expired == nil {
+			timer := time.NewTimer(rt.grace)
+			defer timer.Stop()
+			expired = timer.C
+		}
+		select {
+		case <-changed:
+		case <-expired:
+			return nil, err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
 }
 
 func (rt *Runners) close() {
@@ -194,6 +283,7 @@ func (rt *Runners) close() {
 	rt.closed = true
 	sessions := rt.sessions
 	rt.sessions = nil
+	rt.notifyLocked()
 	rt.mu.Unlock()
 	for _, session := range sessions {
 		session.client.Close()
