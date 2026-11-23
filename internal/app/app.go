@@ -373,7 +373,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
 	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
-		native.MarkStale(agentID, "bot environment settings")
+		_ = native.CloseAgent(changeCtx, agentID)
 		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
 			slog.Warn("release the earlier execution environment of a bot", "agent", agentID, "err", err)
 		}

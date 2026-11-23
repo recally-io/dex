@@ -325,10 +325,6 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 			a.resources[agentID] = resource
 			resource.harness.Resume()
 			a.mu.Unlock()
-			// A machine can connect between the failed open and resource publication.
-			if resource.envs != nil && resource.envs.restorable(ctx) {
-				a.MarkStale(agentID, "default environment restored")
-			}
 			return resource.harness, nil
 		}
 		a.mu.Unlock()
@@ -367,7 +363,6 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	envs := &environments{
 		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
 		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
-		onRestored: func() { a.MarkStale(agentID, "default environment restored") },
 	}
 	defer func() {
 		if resultErr != nil {

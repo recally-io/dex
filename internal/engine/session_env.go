@@ -43,10 +43,9 @@ type environments struct {
 	agentID  string
 	provider execenv.Provider
 	// selected returns the explicit environment of a session, or empty when it follows the agent.
-	selected   func(ctx context.Context, ref Ref) (string, error)
-	onRestored func()
-	files      *agentExtensions
-	loaded     *loadedExtensions
+	selected func(ctx context.Context, ref Ref) (string, error)
+	files    *agentExtensions
+	loaded   *loadedExtensions
 
 	mu         sync.Mutex
 	own        execenv.Handle
@@ -113,9 +112,6 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 		files := e.files.forHandle(h)
 		files.trySyncSkills(ctx, nil, true)
 		e.own, e.ownFiles, e.ownErr = h, files, nil
-		if e.files.defaultUnavailable && e.onRestored != nil {
-			e.onRestored()
-		}
 		stamp = h.Stamp()
 	}
 	useOwn := e.own != nil && stamp == e.own.Stamp()
