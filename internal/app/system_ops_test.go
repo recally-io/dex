@@ -3,6 +3,7 @@ package app_test
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
@@ -206,6 +207,11 @@ func TestUserBacksUpDatabaseAndReadsRecentLogs(t *testing.T) {
 	}
 }
 
+func upgradeWaitStatus(status api.SystemStatus) string {
+	return fmt.Sprintf("state=%s pendingAction=%q lastError=%q", status.State,
+		*cmp.Or(status.PendingAction, new(api.SystemStatusPendingAction(""))), *cmp.Or(status.LastError, new("")))
+}
+
 func TestUserUpgradesServerWithAutomaticBackupAndSafeWaitWhenBusy(t *testing.T) {
 	t.Parallel()
 	// Given a running release build with an active bash tool blocking maintenance.
@@ -247,7 +253,7 @@ func TestUserUpgradesServerWithAutomaticBackupAndSafeWaitWhenBusy(t *testing.T) 
 	// Then dex stages v2.0.0, creates a backup, and waits for the active tool instead of interrupting it.
 	eventually(t, "waiting_idle with backup", func() (bool, any) {
 		d.must(t, http.MethodGet, "/api/system/status", nil, &status)
-		return status.State == api.SystemStatusStateWaitingIdle && len(status.Backups) == 1, status
+		return status.State == api.SystemStatusStateWaitingIdle && len(status.Backups) == 1, upgradeWaitStatus(status)
 	})
 	// The executable is not replaced yet while waiting.
 	if v, err := service.BinaryVersion(t.Context(), exe); err != nil || v != "v1.0.0" {
@@ -407,7 +413,7 @@ func TestUserForcesWaitingUpgradeWithoutRace(t *testing.T) {
 	d.must(t, http.MethodPost, "/api/system/upgrade", map[string]any{"version": "v2.0.0"}, &status)
 	eventually(t, "upgrade waiting_idle", func() (bool, any) {
 		d.must(t, http.MethodGet, "/api/system/status", nil, &status)
-		return status.State == api.SystemStatusStateWaitingIdle, status
+		return status.State == api.SystemStatusStateWaitingIdle, upgradeWaitStatus(status)
 	})
 
 	// When the user clicks Force now while the tool is still active.
