@@ -55,6 +55,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 		return err
 	}
 	blocked := make(map[string]bool)
+deliveries:
 	for _, r := range replies {
 		if blocked[r.Peer] {
 			continue
@@ -77,6 +78,15 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 				return err
 			}
 			if !allowed {
+				// A persisted revocation can race with the pending snapshot. No request
+				// went out for this part, so do not record it as delivered.
+				current, err := m.q.GetOutboxMessage(ctx, r.ID)
+				if err != nil {
+					return err
+				}
+				if current.Status == "revoked" {
+					continue deliveries
+				}
 				if err := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, Reason: "destination no longer authorized"}); err != nil {
 					return err
 				}
