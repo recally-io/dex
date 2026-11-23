@@ -238,6 +238,7 @@ type Monitor struct {
 	OutputHash                string         `json:"output_hash"`
 	Outcome                   string         `json:"outcome"`
 	Running                   int64          `json:"running"`
+	CheckEnv                  string         `json:"check_env"`
 }
 
 type OnePassword struct {

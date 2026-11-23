@@ -392,7 +392,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	}
 	registry := harness.CreateRegistry()
 	// All unscoped extension edits inherit this tool. Its execution checks the source receipt.
-	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), backgroundExtension(agentID, a.config.Tasks.Background, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), monitorExtension(agentID, a.config.Tasks.Monitors, background), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
 	if loaded.HasTools {
@@ -406,7 +406,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := registry.Install(frontDeskExtension()); err != nil {
 		return nil, err
 	}
-	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(monitorExtension(agentID, a.config.Tasks.Monitors))); err != nil {
+	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox))); err != nil {
 		return nil, err
 	}
 	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {

@@ -741,7 +741,8 @@ func (h *handler) CancelChatMonitor(ctx context.Context, req api.CancelChatMonit
 }
 
 func monitorResponse(t engine.MonitorInfo) api.Monitor {
-	return api.Monitor{Id: t.ID, DueAt: t.DueAt, TimeZone: t.TimeZone, Prompt: t.Prompt, State: api.MonitorState(t.State), ChainDepth: t.ChainDepth, CreatedAt: t.CreatedAt, Mode: api.MonitorMode(t.Mode), MaxRuns: t.MaxRuns, Runs: t.Runs, ExpiresAt: t.ExpiresAt, Outcome: t.Outcome}
+	// This endpoint serves schedules only and keeps their existing IDs.
+	return api.Monitor{Id: strings.TrimPrefix(t.ID, "schedule-"), DueAt: t.DueAt, TimeZone: t.TimeZone, Prompt: t.Prompt, State: api.MonitorState(t.State), ChainDepth: t.ChainDepth, CreatedAt: t.CreatedAt, Mode: api.MonitorMode(t.Mode), MaxRuns: t.MaxRuns, Runs: t.Runs, ExpiresAt: t.ExpiresAt, Outcome: t.Outcome}
 }
 
 func (h *handler) ListChatOutbox(ctx context.Context, req api.ListChatOutboxRequestObject) (api.ListChatOutboxResponseObject, error) {

@@ -351,7 +351,7 @@ when `/connect` is unsupported, and `uname -sm` platform detection. Memory tools
 (`memory_search`, `memory_read`, `memory_write`, `memory_edit`) stay bound to
 `<data dir>/memory/` on the control host. CLI tools must be
 logged in and run in the foreground with non-interactive options. Long work
-uses [background commands](execution.md#background-commands), which dex tracks. Any other
+uses [command Monitors](execution.md#command-monitors), which dex tracks. Any other
 process must not outlive its turn. A turn can start and supervise a process,
 such as a worker in a Rex tab, but must stop it before the final answer. Bash has no default
 timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,

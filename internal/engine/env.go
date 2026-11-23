@@ -49,7 +49,7 @@ func codingTools(session func(context.Context, durable.ConversationId) (sessionE
 				execution.Env["DEX_SKILL_CACHE"] = execenv.JoinTargetPath(s.Handle.Workspace(), ".dex", "cache", "skills")
 				return nil
 			}})
-			bash.Description += " The default timeout is 120 seconds. Set timeout for longer foreground work, or use background_start for long work."
+			bash.Description += " The default timeout is 120 seconds. Set timeout for longer foreground work, or use monitor_set_command for long work."
 			if properties, ok := bash.Parameters["properties"].(map[string]any); ok {
 				if timeout, ok := properties["timeout"].(map[string]any); ok {
 					timeout["description"] = "Timeout in seconds. The default is 120 seconds."
