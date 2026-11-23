@@ -52,7 +52,7 @@ func TestUserPromisedChannelFollowUpSendsOneConfirmedConclusion(t *testing.T) {
 			eventually(t, "platform confirmation", func() (bool, any) {
 				var state, delivery, peer string
 				err := conn.QueryRowContext(t.Context(), `SELECT f.state,o.status,o.peer FROM channel_follow_ups f JOIN outbox_messages o ON o.dedup_key='follow-up-final:'||f.delegation_id WHERE f.result_id=? AND o.delivered_at IS NOT NULL`, work.ResultID).Scan(&state, &delivery, &peer)
-				return err == nil && state == "queued" && delivery == "delivered" && peer == e.peer, []any{state, delivery, peer, err}
+				return err == nil && state == "notified" && delivery == "delivered" && peer == e.peer, []any{state, delivery, peer, err}
 			})
 			sent := 0
 			for _, m := range e.sends() {

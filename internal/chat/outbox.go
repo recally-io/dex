@@ -75,29 +75,18 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
-	var peer, identity string
-	if f.DelegationID != "" {
-		if final && f.State == "queued" {
-			existing, err := q.GetOutboxByDedupKey(ctx, followUpFinalKey(f.DelegationID))
-			return existing.ID, err
-		}
-		if f.State != "open" {
+	if f.ResultID != "" {
+		if source.ChannelRevoked != 0 || f.State != "open" && (!final || f.State != "notified") {
 			return "", errChannelFollowUp
 		}
-		if err := requireChannelFollowUp(ctx, q, f, conv, source); err != nil {
-			return "", err
-		}
-		peer, identity = f.Peer, f.ChannelContext
 		if final {
 			dedupKey = followUpFinalKey(f.DelegationID)
-			// A final conclusion must not be superseded by another update.
-			a.TopicKey = ""
+			a.TopicKey = "" // Progress cannot supersede the committed conclusion.
 		}
-	} else {
-		peer, identity, err = taskNotificationRoute(ctx, q, conv, source)
-		if err != nil {
-			return "", err
-		}
+	}
+	peer, identity, err := taskNotificationRoute(ctx, q, conv, source)
+	if err != nil {
+		return "", err
 	}
 	status, deliveredAt := outboxInitialStatus(peer, source.ChannelRevoked, now)
 
@@ -135,10 +124,13 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 			return "", err
 		}
 		outboxID = existing.ID
+		if f.ResultID != "" && final {
+			return outboxID, nil
+		}
 	}
 	if final {
-		if f.DelegationID != "" {
-			if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{DelegationID: f.DelegationID, State: "queued"}); err != nil {
+		if f.ResultID != "" {
+			if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: source.ID, State: "notified"}); err != nil {
 				return "", err
 			}
 		}
@@ -149,7 +141,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 			return "", err
 		}
 		ids := r.RunInputIDs
-		if f.DelegationID != "" {
+		if f.ResultID != "" {
 			ids = []string{source.ID}
 		}
 		for _, id := range ids {
@@ -271,18 +263,7 @@ func (s *Service) ToolStaySilent(ctx context.Context, r engine.TaskContext, _ en
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if f, err := q.GetChannelFollowUpByInput(ctx, r.SourceRequestID); err == nil {
-		sub, err := q.GetSubmission(ctx, r.SourceRequestID)
-		if err != nil {
-			return err
-		}
-		if err := requireChannelFollowUp(ctx, q, f, conv, sub); err != nil {
-			return err
-		}
-		if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{DelegationID: f.DelegationID, State: "intentional_silence"}); err != nil {
-			return err
-		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
+	if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: r.SourceRequestID, State: "silent"}); err != nil {
 		return err
 	}
 	for _, id := range ids {
@@ -369,6 +350,36 @@ func (s *Service) ListOutbox(ctx context.Context, agentID string, chatID int64) 
 func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submission, conv sqlc.Conversation, event engine.Outcome, now int64) (string, error) {
 	if conv.ParentID.Valid {
 		return "", nil
+	}
+	if sub.Kind == "task_result" {
+		f, err := q.GetChannelFollowUpByInput(ctx, sub.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		if f.ResultID != "" {
+			if f.State != "open" {
+				return "", nil
+			}
+			if sub.ChannelRevoked != 0 || event.Reason == "stopped" || event.Reason == "aborted" || event.Reason == "withdrawn" {
+				return "", q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: sub.ID, State: "cancelled"})
+			}
+			if sub.ExitAction != "ask_user" || event.Status != "done" {
+				return "", q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: sub.ID, State: "missed_follow_up"})
+			}
+			// The explicit question is the entire outbound body, even on recovery or promotion.
+			row, err := q.GetQuestionBySource(ctx, sub.ID)
+			if errors.Is(err, sql.ErrNoRows) || (err == nil && row.Status == "dismissed") {
+				return "", nil
+			}
+			if err != nil {
+				return "", err
+			}
+			question, err := questionOf(row)
+			if err != nil {
+				return "", err
+			}
+			event.Answer = renderQuestion(row, question.Options, row.AgentID, conv.ChannelKey == MainKey, quotes(sub.Origin))
+		}
 	}
 	if sub.ExitAction == "ask_user" {
 		question, err := q.GetQuestionBySource(ctx, sub.ID)

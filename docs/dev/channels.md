@@ -307,9 +307,10 @@ channel Outbox. A question does not complete the commitment. Plain final text
 stays internal. Dex records `missed_follow_up` without creating another turn,
 retrying the omission, or forwarding any draft or child output.
 
-The control store records the commitment separately from delivery. A `queued`
+The control store records the commitment separately from delivery. A `notified`
 commitment means an explicit conclusion entered the Outbox, not that the channel
-accepted it. Use the linked Outbox status for confirmed delivery. Stop, Clear,
+accepted it. Use the linked Outbox receipt, including its skipped-part and error diagnostics,
+for delivery confirmation. Stop, Clear,
 and channel revocation cancel outstanding commitments and their pending Outbox
 entries. A send already in progress cannot be recalled.
 

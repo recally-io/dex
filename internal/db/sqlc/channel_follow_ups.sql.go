@@ -10,11 +10,9 @@ import (
 )
 
 const cancelChannelFollowUps = `-- name: CancelChannelFollowUps :exec
-UPDATE channel_follow_ups SET state = 'cancelled'
-WHERE (channel_follow_ups.conversation_id = ?1 OR channel_follow_ups.child_id = ?1)
-  AND (state IN ('open', 'queued') OR (state IN ('intentional_silence', 'missed_follow_up')
-      AND EXISTS (SELECT 1 FROM outbox_messages WHERE source_submission_id = channel_follow_ups.result_id AND status = 'pending')))
-  AND NOT EXISTS (SELECT 1 FROM outbox_messages WHERE dedup_key = 'follow-up-final:' || channel_follow_ups.delegation_id AND outbox_messages.status = 'delivered')
+UPDATE channel_follow_ups SET state = 'cancelled' WHERE delegation_id IN (
+    SELECT p.delegation_id FROM pending_channel_follow_ups p WHERE p.conversation_id = ?1 OR p.child_id = ?1
+)
 `
 
 func (q *Queries) CancelChannelFollowUps(ctx context.Context, chatID int64) error {
@@ -22,42 +20,34 @@ func (q *Queries) CancelChannelFollowUps(ctx context.Context, chatID int64) erro
 	return err
 }
 
-const createChannelFollowUp = `-- name: CreateChannelFollowUp :exec
-INSERT INTO channel_follow_ups (delegation_id, source_id, conversation_id, child_id, agent_id, peer, account_id, sender_id, channel_context, result_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+const createChannelFollowUp = `-- name: CreateChannelFollowUp :execrows
+INSERT INTO channel_follow_ups (delegation_id, result_id, conversation_id)
+SELECT ?1, ?2, ?3
+FROM authorized_channel_follow_up_sources s WHERE s.id = ?4
 `
 
 type CreateChannelFollowUpParams struct {
 	DelegationID   string `json:"delegation_id"`
-	SourceID       string `json:"source_id"`
-	ConversationID int64  `json:"conversation_id"`
-	ChildID        int64  `json:"child_id"`
-	AgentID        string `json:"agent_id"`
-	Peer           string `json:"peer"`
-	AccountID      string `json:"account_id"`
-	SenderID       string `json:"sender_id"`
-	ChannelContext string `json:"channel_context"`
 	ResultID       string `json:"result_id"`
+	ConversationID int64  `json:"conversation_id"`
+	SourceID       string `json:"source_id"`
 }
 
-func (q *Queries) CreateChannelFollowUp(ctx context.Context, arg CreateChannelFollowUpParams) error {
-	_, err := q.db.ExecContext(ctx, createChannelFollowUp,
+func (q *Queries) CreateChannelFollowUp(ctx context.Context, arg CreateChannelFollowUpParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, createChannelFollowUp,
 		arg.DelegationID,
-		arg.SourceID,
-		arg.ConversationID,
-		arg.ChildID,
-		arg.AgentID,
-		arg.Peer,
-		arg.AccountID,
-		arg.SenderID,
-		arg.ChannelContext,
 		arg.ResultID,
+		arg.ConversationID,
+		arg.SourceID,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const getChannelFollowUpByDelegation = `-- name: GetChannelFollowUpByDelegation :one
-SELECT delegation_id, source_id, conversation_id, child_id, agent_id, peer, account_id, sender_id, channel_context, result_id, state FROM channel_follow_ups WHERE delegation_id = ?
+SELECT delegation_id, result_id, conversation_id, state FROM channel_follow_ups WHERE delegation_id = ?
 `
 
 func (q *Queries) GetChannelFollowUpByDelegation(ctx context.Context, delegationID string) (ChannelFollowUp, error) {
@@ -65,53 +55,39 @@ func (q *Queries) GetChannelFollowUpByDelegation(ctx context.Context, delegation
 	var i ChannelFollowUp
 	err := row.Scan(
 		&i.DelegationID,
-		&i.SourceID,
-		&i.ConversationID,
-		&i.ChildID,
-		&i.AgentID,
-		&i.Peer,
-		&i.AccountID,
-		&i.SenderID,
-		&i.ChannelContext,
 		&i.ResultID,
+		&i.ConversationID,
 		&i.State,
 	)
 	return i, err
 }
 
 const getChannelFollowUpByInput = `-- name: GetChannelFollowUpByInput :one
-SELECT delegation_id, source_id, conversation_id, child_id, agent_id, peer, account_id, sender_id, channel_context, result_id, state FROM channel_follow_ups WHERE result_id = ?1
+SELECT delegation_id, result_id, conversation_id, state FROM channel_follow_ups WHERE result_id = ?
 `
 
-func (q *Queries) GetChannelFollowUpByInput(ctx context.Context, id string) (ChannelFollowUp, error) {
-	row := q.db.QueryRowContext(ctx, getChannelFollowUpByInput, id)
+func (q *Queries) GetChannelFollowUpByInput(ctx context.Context, resultID string) (ChannelFollowUp, error) {
+	row := q.db.QueryRowContext(ctx, getChannelFollowUpByInput, resultID)
 	var i ChannelFollowUp
 	err := row.Scan(
 		&i.DelegationID,
-		&i.SourceID,
-		&i.ConversationID,
-		&i.ChildID,
-		&i.AgentID,
-		&i.Peer,
-		&i.AccountID,
-		&i.SenderID,
-		&i.ChannelContext,
 		&i.ResultID,
+		&i.ConversationID,
 		&i.State,
 	)
 	return i, err
 }
 
 const setOpenChannelFollowUpState = `-- name: SetOpenChannelFollowUpState :exec
-UPDATE channel_follow_ups SET state = ?1 WHERE delegation_id = ?2 AND state = 'open'
+UPDATE channel_follow_ups SET state = ?1 WHERE result_id = ?2 AND state = 'open'
 `
 
 type SetOpenChannelFollowUpStateParams struct {
-	State        string `json:"state"`
-	DelegationID string `json:"delegation_id"`
+	State    string `json:"state"`
+	ResultID string `json:"result_id"`
 }
 
 func (q *Queries) SetOpenChannelFollowUpState(ctx context.Context, arg SetOpenChannelFollowUpStateParams) error {
-	_, err := q.db.ExecContext(ctx, setOpenChannelFollowUpState, arg.State, arg.DelegationID)
+	_, err := q.db.ExecContext(ctx, setOpenChannelFollowUpState, arg.State, arg.ResultID)
 	return err
 }

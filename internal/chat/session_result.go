@@ -86,20 +86,8 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 		return 0, err
 	}
 	created, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{ID: "result:" + turn, TurnID: turn, Content: string(content), CreatedAt: s.now().UnixMilli(), NativeAnswerID: sql.NullInt64{Int64: event.AnswerID, Valid: outcome == "done"}})
-	if err != nil {
+	if err != nil || created == 0 {
 		return 0, err
-	}
-	if created == 0 {
-		if f.State == "open" {
-			// Another input can share this child's native answer. A replay of this result is not
-			// a miss, but a different delegation with no result should not stay open forever.
-			if _, err := q.GetSubmission(ctx, f.ResultID); errors.Is(err, sql.ErrNoRows) {
-				return 0, q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{DelegationID: turn, State: "missed_follow_up"})
-			} else if err != nil {
-				return 0, err
-			}
-		}
-		return 0, nil
 	}
 	return link.ParentID.Int64, nil
 }

@@ -161,11 +161,8 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 	followUp := false
 	if f, err := q.GetChannelFollowUpByInput(ctx, source.ID); err == nil {
 		followUp = true
-		if f.State != "open" {
+		if f.State != "open" || source.ChannelRevoked != 0 {
 			return engine.QuestionInfo{}, errChannelFollowUp
-		}
-		if err := requireChannelFollowUp(ctx, q, f, conv, source); err != nil {
-			return engine.QuestionInfo{}, err
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return engine.QuestionInfo{}, err
@@ -318,11 +315,7 @@ func (s *Service) withQuestion(ctx context.Context, id string, event engine.Outc
 		rendered = row.Text + "\n\n" + strings.Join(q.Options, "\n") + "\n\nOnly the initiating paired sender can answer in this conversation."
 	}
 	if event.Answer != "" {
-		if _, err := s.q.GetChannelFollowUpByInput(ctx, id); errors.Is(err, sql.ErrNoRows) {
-			rendered = event.Answer + "\n\n" + rendered
-		} else if err != nil {
-			return event, err
-		}
+		rendered = event.Answer + "\n\n" + rendered
 	}
 	event.Answer = rendered
 	return event, nil

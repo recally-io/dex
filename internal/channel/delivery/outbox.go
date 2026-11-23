@@ -163,9 +163,6 @@ func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string
 	}
 	if errors.Is(err, channel.ErrPermanent) {
 		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", index, "err", err)
-		if markErr := m.q.MarkSkippedFollowUpPart(ctx, id); markErr != nil {
-			return channel.Receipt{}, markErr
-		}
 		return channel.Receipt{}, m.saveDeliveryError(ctx, id, sql.NullString{String: id, Valid: true}, 0, err)
 	}
 	if err == nil && len(part.Buttons) > 0 && len(receipt.MessageIDs) == 1 {
@@ -264,10 +261,6 @@ func (m *Manager) authorizedReply(ctx context.Context, platform, peer, channelCo
 		}
 		if current.ChannelRevoked != 0 {
 			return false, nil
-		}
-		allowed, err := m.chats.ChannelFollowUpReplyAllowed(ctx, m.agentID, sourceSubmissionID, peer, channelContext)
-		if err != nil || !allowed {
-			return false, err
 		}
 	}
 	if platform != "telegram" {

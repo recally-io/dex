@@ -258,7 +258,7 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 		return engine.SessionRef{}, err
 	}
 	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, child, source, turn); err != nil {
+		if err := createChannelFollowUp(ctx, q, parent, source, turn); err != nil {
 			return engine.SessionRef{}, err
 		}
 	}
@@ -328,7 +328,7 @@ func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engin
 		return engine.SessionRef{}, err
 	}
 	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, child, source, turn); err != nil {
+		if err := createChannelFollowUp(ctx, q, parent, source, turn); err != nil {
 			return engine.SessionRef{}, err
 		}
 	}

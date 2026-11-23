@@ -108,7 +108,7 @@ func TestUserChannelFollowUpCanStaySilent(t *testing.T) {
 		t.Fatal(err)
 	}
 	f, err := r.q.GetChannelFollowUpByInput(ctx, call.SourceRequestID)
-	if err != nil || f.State != "intentional_silence" {
+	if err != nil || f.State != "silent" {
 		t.Fatalf("missing intentional silence: %+v, %v", f, err)
 	}
 	if _, err := r.q.GetOutboxByDedupKey(ctx, followUpFinalKey(f.DelegationID)); !errors.Is(err, sql.ErrNoRows) {
@@ -143,6 +143,10 @@ func TestUserChannelFollowUpCancellationRevokesQueuedConclusion(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The delivery worker may have loaded this row before cancellation.
+			if err := r.q.MarkOutboxDelivered(ctx, sqlc.MarkOutboxDeliveredParams{ID: outboxID, DeliveredAt: sql.NullInt64{Int64: 42, Valid: true}}); err != nil {
+				t.Fatal(err)
+			}
 			row, err := r.q.GetOutboxMessage(ctx, outboxID)
 			if err != nil || row.Status != "revoked" || row.DeliveredAt.Valid {
 				t.Fatalf("cancelled follow-up can still send: %+v, %v", row, err)
@@ -159,5 +163,62 @@ func TestUserWebDelegationCannotOptInToChannelFollowUp(t *testing.T) {
 	_, call := taskParent(t, r)
 	if _, err := r.service.ToolSessionNew(t.Context(), call, engine.SessionNewArgs{Title: "Web-only", Message: "work", FollowUp: true}); !errors.Is(err, errChannelFollowUp) {
 		t.Fatalf("web opt-in result: %v", err)
+	}
+}
+
+func TestUserRePairingDoesNotReviveAnAcknowledgedChannelFollowUp(t *testing.T) {
+	for _, platform := range []string{"telegram", "feishu", "wechat"} {
+		t.Run(platform, func(t *testing.T) {
+			r := startNative(t, "echo")
+			ctx := t.Context()
+			parent, call := taskParent(t, r)
+			change := func(owner string) {
+				t.Helper()
+				var err error
+				switch platform {
+				case "telegram":
+					_, err = r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: owner, Options: "{}"})
+				case "feishu":
+					err = r.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{AgentID: "bot", AppID: "123", OwnerID: owner, Brand: "feishu"})
+				case "wechat":
+					err = r.q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "bot", BotID: "123", Owner: owner})
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			change("42")
+			// Given the original acknowledgment was sent while the child still had work to do.
+			call.SourceRequestID = "channel-request"
+			if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, ConversationID: parent, Content: "Please report", Attachments: "null", Origin: platform + ":42", Kind: "message", SourceKey: sql.NullString{String: platform + ":123:1", Valid: true}, ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := r.service.ToolSessionNew(ctx, call, engine.SessionNewArgs{Title: "Worker", Message: "child findings", FollowUp: true}); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.service.settle(ctx, call.SourceRequestID, engine.Outcome{Status: "done", Answer: "I will report back"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: call.SourceRequestID, DeliveredAt: sql.NullInt64{Int64: 42, Valid: true}}); err != nil {
+				t.Fatal(err)
+			}
+			// When permission is revoked and restored before the original child result exists.
+			change("99")
+			change("42")
+			turn := turnID(call.Key)
+			if err := r.service.admit(ctx, taskInput(t, r, turn)); err != nil {
+				t.Fatal(err)
+			}
+			awaitReceipt(t, r, turn)
+			// Then re-pairing does not authorize an explicit action from the old result.
+			call.SourceRequestID = "result:" + turn
+			call.Key += "/notify"
+			if _, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "Reviewed conclusion"}); !errors.Is(err, errChannelFollowUp) {
+				t.Fatalf("old grant was revived: %v", err)
+			}
+			if _, err := r.q.GetOutboxByDedupKey(ctx, followUpFinalKey(turn)); !errors.Is(err, sql.ErrNoRows) {
+				t.Fatalf("unexpected final delivery: %v", err)
+			}
+		})
 	}
 }
