@@ -29,7 +29,7 @@ func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot channe
 		}
 	}
 	for member := int(r.GroupCursor); member < len(part.Group); member++ {
-		allowed, err := m.authorizedReply(ctx, platform, r.Peer, r.ChannelContext, r.SourceSubmissionID.String, r.ID)
+		allowed, err := m.authorizeOutboxPart(ctx, platform, r)
 		if err != nil {
 			return err
 		}
