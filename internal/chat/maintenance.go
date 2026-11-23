@@ -67,12 +67,20 @@ func (s *Service) release() error {
 
 // ReloadExtensions orders file reload with business receipt admission.
 func (s *Service) ReloadExtensions(ctx context.Context, agentID string) error {
+	return s.reloadExtensions(ctx, agentID, s.engine.Reload)
+}
+
+func (s *Service) ReloadDirtyExtensions(ctx context.Context, agentID string) error {
+	return s.reloadExtensions(ctx, agentID, s.engine.ReloadDirty)
+}
+
+func (s *Service) reloadExtensions(ctx context.Context, agentID string, reload func(context.Context, string) error) error {
 	unlock, err := s.lockAgent(ctx, agentID)
 	if err != nil {
 		return err
 	}
 	defer func() { unlock(); s.Wake() }()
-	return s.engine.Reload(ctx, agentID)
+	return reload(ctx, agentID)
 }
 
 // ResetEnvironment verifies agentID is idle, closes its active runtime resources and background

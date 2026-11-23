@@ -95,6 +95,9 @@ type Agents struct {
 	// all keys, and a Reload waits only for the key of its agent. Work that uses no agent
 	// resources counts under "".
 	busy        map[string]int
+	dirty       map[string]string // agent ID -> last change reason
+	refused     map[string]string // agent ID -> configuration stamp that failed validation
+	reloadWake  chan struct{}
 	operations  sync.WaitGroup
 	settlements sync.WaitGroup
 	closeDone   chan struct{}
@@ -125,7 +128,9 @@ func New(config Config) (*Agents, error) {
 		return nil, err
 	}
 	warnIgnoredEnv(config.DataDir)
-	return &Agents{vault: vault.New(config.DataDir), Catalog: NewCatalog(config.FakeModel), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	agents := &Agents{vault: vault.New(config.DataDir), Catalog: NewCatalog(config.FakeModel), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, dirty: map[string]string{}, refused: map[string]string{}, reloadWake: make(chan struct{}, 1), serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}
+	agents.Catalog.onDiscoveryDone = agents.wakeReloads
+	return agents, nil
 }
 
 // begin tracks one operation on the resources of key, the resource key of an agent or of a
@@ -159,6 +164,9 @@ func (a *Agents) end(key string) {
 func (a *Agents) untrackLocked(key string) {
 	if a.busy[key]--; a.busy[key] == 0 {
 		delete(a.busy, key)
+		if a.dirty[key] != "" {
+			a.wakeReloads()
+		}
 	}
 }
 
@@ -1152,6 +1160,9 @@ func (a *Agents) Resume() {
 	defer a.mu.Unlock()
 	if !a.closed {
 		a.paused = false
+		if len(a.dirty) != 0 {
+			a.wakeReloads()
+		}
 	}
 }
 
@@ -1198,6 +1209,7 @@ func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
 	files := newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
 	files.mcp = a.config.MCPServers
 	files.vault = a.vault
+	files.onSkillChange = func(scope string) { a.markExtensionChange(agentID, scope, "skill write") }
 	for _, level := range files.levels {
 		files.stores[level.Scope] = a.skillStore(level)
 	}
@@ -1305,7 +1317,11 @@ func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string
 
 // SetOnePassword changes the 1Password credentials of tools. Open agents become stale and
 // apply them at their next reload.
-func (a *Agents) SetOnePassword(op OnePassword) { a.env.setOnePassword(op) }
+func (a *Agents) SetOnePassword(op OnePassword) {
+	if a.env.setOnePassword(op) {
+		a.markExtensionChange("", "dex", "1Password settings")
+	}
+}
 
 // OnePasswordCLI returns the path of op in the PATH of the base tool environment, or "". It
 // captures the login shell first when no agent has, because the service PATH can lack op.
@@ -1314,34 +1330,6 @@ func (a *Agents) OnePasswordCLI(ctx context.Context) string {
 	return findOp(env)
 }
 
-// StaleExtensions returns the open agents whose extension files, shell rc files, 1Password
-// settings, or execution environment changed after their load, with the current stamp of each.
-func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
-	a.mu.Lock()
-	type loadedState struct {
-		extStamp  string
-		execStamp string
-		envs      *environments
-	}
-	loaded := map[string]loadedState{}
-	for id, resource := range a.resources {
-		if resource.loaded == nil {
-			continue
-		}
-		loaded[id] = loadedState{extStamp: resource.loaded.stamp, execStamp: resource.execStamp, envs: resource.envs}
-	}
-	a.mu.Unlock()
-	stale := map[string]string{}
-	for id, state := range loaded {
-		currentExt := a.files(id, nil).stamp()
-		currentExec, err := a.config.ExecEnv.Stamp(ctx, id, "")
-		// A default that was down at load recovers without new input once a reload can open it.
-		if state.envs.restorable(ctx) || currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
-			stale[id] = currentExt + "|" + currentExec
-		}
-	}
-	return stale
-}
 func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo, error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return ExtensionInfo{}, ErrInvalidInput
@@ -1352,6 +1340,7 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	defer a.end(agentID)
 	a.mu.Lock()
 	resource := a.resources[agentID]
+	pending := a.dirty[agentID] != "" || a.opening[agentID] != nil
 	a.mu.Unlock()
 	var info ExtensionInfo
 	var err, stampErr error
@@ -1379,11 +1368,17 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	}
 	if resource != nil {
 		info.Servers = resource.loaded.serverInfo()
-		info.ReloadPending = restoreMCP || a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
+		pending = pending || restoreMCP || a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
 	}
+	info.ReloadPending = pending
 	return info, nil
 }
+
 func (a *Agents) Reload(ctx context.Context, agentID string) error {
+	return a.reload(ctx, agentID, false)
+}
+
+func (a *Agents) reload(ctx context.Context, agentID string, automatic bool) (resultErr error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
 	}
@@ -1396,22 +1391,56 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 		a.mu.Unlock()
 		return ErrMaintenance
 	}
+	reason := a.dirty[agentID]
+	if automatic && reason == "" {
+		a.mu.Unlock()
+		return nil
+	}
 	if err := a.agentIdleLocked(ctx, agentID); err != nil {
 		a.mu.Unlock()
 		return err
 	}
+	if err := a.Catalog.discoveryReady(); err != nil {
+		a.mu.Unlock()
+		return err
+	}
+	refused := a.refused[agentID]
+	delete(a.dirty, agentID)
 	openCtx, cancel := context.WithCancel(ctx)
 	opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
 	a.opening[agentID] = opening
 	a.trackLocked(agentID)
 	a.mu.Unlock()
 	defer a.end(agentID)
-	// Preflight errors leave the loaded target intact.
-	if err := a.Catalog.discoveryReady(); err != nil {
+	files := a.files(agentID, nil)
+	execStamp, _ := a.config.ExecEnv.Stamp(openCtx, agentID, "")
+	stamp := files.stamp() + "|" + execStamp
+	if automatic && refused == stamp {
 		a.finishOpening(agentID, opening)
-		return err
+		return nil
 	}
-	if err := a.files(agentID, nil).Validate(openCtx); err != nil {
+	defer func() {
+		a.mu.Lock()
+		switch {
+		case resultErr == nil:
+			delete(a.refused, agentID)
+		case errors.Is(resultErr, ErrInvalidInput):
+			a.refused[agentID] = stamp
+		}
+		a.mu.Unlock()
+		if automatic {
+			switch {
+			case resultErr == nil:
+				slog.Info("reloaded extensions after a change", "agent", agentID, "reason", reason)
+			case errors.Is(resultErr, ErrInvalidInput):
+				slog.Warn("extension change not applied; fix the configuration", "agent", agentID, "reason", reason)
+			case ctx.Err() == nil:
+				slog.Warn("reload extensions", "agent", agentID, "reason", reason, "err", resultErr)
+			}
+		}
+	}()
+	// Preflight errors leave the loaded target intact.
+	if err := files.Validate(openCtx); err != nil {
 		a.finishOpening(agentID, opening)
 		return a.closedDuring(ctx, err)
 	}
@@ -1502,6 +1531,8 @@ func (a *Agents) CloseAgent(ctx context.Context, agentID string) error {
 	for _, key := range keys {
 		delete(a.resources, key)
 	}
+	delete(a.dirty, agentID)
+	delete(a.refused, agentID)
 	a.mu.Unlock()
 
 	cleanupCtx := context.WithoutCancel(ctx)
