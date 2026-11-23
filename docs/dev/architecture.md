@@ -161,7 +161,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
 | [Execution](execution.md)     | The native engine boundary, background commands, and transcripts           |
 | [Files](files.md)             | Artifacts, file results, channel file delivery, and attachments            |
 | [Channels](channels.md)       | Telegram, shared channels, Feishu and Lark, and WeChat                     |
-| [Extensions](extensions.md)   | Skills, MCP servers, `.env`, and `AGENTS.md`, and their reload             |
+| [Extensions](extensions.md)   | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload             |
 | [Automations](automations.md) | Routines, schedules, and results                                           |
 
 ## Failure behavior
@@ -209,8 +209,9 @@ Each subsystem has its own document. This overview gives only the boundaries.
 
 In `local` mode, agent tools (`read`, `write`, `edit`, `bash`) run on the host
 without a sandbox, inside the selected project directory or agent workspace.
-Bots bound to `pi-env` or `e2b` execute tools inside that remote host or cloud
-sandbox with explicit `.env` variables only (never host secrets). The HTTP server listens on
+Bots bound to a remote environment use that host or sandbox's environment.
+dex sends the configured 1Password credentials and only the vault values that
+an individual command requests. The HTTP server listens on
 `127.0.0.1:8787` by default. On loopback without DEX_TOKEN it has no
 authentication. On any other host, or with DEX_TOKEN, every `/api/` request
 needs the access token.
@@ -238,10 +239,10 @@ A stdio MCP server runs on the control host as the dex user, without a
 sandbox. It gets the explicit agent environment plus its own `env`.
 `control.sqlite` stores any plain MCP credentials in declarations as plain
 text, within the same trust boundary as provider keys. Use vault references
-in `env` and `headers`. The Extensions API returns only status and tool names.
-`mcp_server_get` hides plain environment and header values and URL queries.
-A server that fails shows only a category of the error,
-such as an HTTP status, in the API and in the dex log. To see the full
+in `env` and `headers`. The Extensions API and `mcp_server_list` show status,
+tool names, and the unresolved references. `mcp_server_get` hides plain
+environment and header values and URL queries. A failed server shows a safe
+error, such as an HTTP status or the name of a missing secret. To see the full
 error, run the server by hand.
 
 Every chat reads the memory, including Telegram chats of each allowed user.
@@ -249,14 +250,18 @@ A memory entry can carry a prompt injection from a web page or a file to
 later chats; the rules tell the agent that memory is data, not instructions,
 and git history shows each change.
 
-Control does not log the Telegram token; Bot API errors drop the request URL,
-which holds the token. Tool and stdio MCP processes receive the login shell
-environment plus dex and agent `.env` values and the 1Password
-credentials. A server's own `env` wins. The engine does not change the dex
-process environment, and the login shell starts from six process keys, so
-dex settings such as `DEX_TOKEN` do not reach tools. Tools see what the user's
-login shell exports, including credentials. Extension files remain outside the
-sandbox boundary; the model can read them through tools.
+Control does not log the Telegram token. Bot API errors drop the request URL,
+which holds the token. Local tool and stdio MCP processes receive the login
+shell environment and the configured 1Password credentials. A call or server
+can override variables explicitly. The engine does not change the dex process
+environment. The login shell starts from six process keys, so dex settings
+such as `DEX_TOKEN` do not reach tools unless a shell rc file exports them.
+
+The [vault](extensions.md#secret-vault) encrypts shared and agent-level
+secrets with age. Only the control host resolves references. It passes values
+in the process environment, not in command arguments. It masks exact values
+in final tool results and command Monitor wake-ups. Local tools run as the dex
+user and have the same access to the control files as that user.
 
 ## Limits
 

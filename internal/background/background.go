@@ -139,6 +139,7 @@ type StartParams struct {
 	// EnvironmentID is the explicit environment of the session, or empty for the environment of the agent.
 	EnvironmentID string
 	Env           map[string]string
+	MaskOutput    func(string) string
 	InheritEnv    bool
 	EnvKind       execenv.Kind
 	// OutputDir holds the output file.
@@ -231,9 +232,10 @@ func (m *Manager) Close() {
 }
 
 type proc struct {
-	row  sqlc.BackgroundCommand
-	run  runningProcess
-	done chan struct{} // closed when the final state is stored
+	row        sqlc.BackgroundCommand
+	run        runningProcess
+	done       chan struct{} // closed when the final state is stored
+	maskOutput func(string) string
 
 	// mu guards reason and waiter state so the first termination reason wins and finish() skips
 	// creating an end wake-up when an active Wait call is observing the command.
@@ -385,7 +387,7 @@ func (m *Manager) abandon(ctx context.Context, started *proc, id string) {
 }
 
 func (m *Manager) launch(ctx context.Context, r runner, id string, p StartParams, cwd, output string) (*proc, error) {
-	started := &proc{done: make(chan struct{})}
+	started := &proc{done: make(chan struct{}), maskOutput: p.MaskOutput}
 	run, err := r.Start(ctx, p, id, cwd, output, outputHooks{
 		OnStdoutLine: func(line string) { m.event(started, line) }, //nolint:contextcheck // line batching outlives the start tool call
 		OnSizeLimit:  func() { m.terminate(started, reasonOutputLimit) },
@@ -421,6 +423,9 @@ func (m *Manager) supervise(p *proc, timeout time.Duration) {
 	// A stop by the session or the user needs no wake-up: they know.
 	if reason != reasonStop {
 		p.flush(m)
+	}
+	if p.maskOutput != nil {
+		res.Tail = p.maskOutput(res.Tail)
 	}
 	m.finish(p, state, res.ExitCode, reason, res.Tail)
 	m.mu.Lock()
@@ -1167,6 +1172,9 @@ func (s *lineSplitter) flushLine() {
 // event adds one line to the batch. Too many lines in one window stop the command: a flood
 // would fill the context of the session.
 func (m *Manager) event(p *proc, line string) {
+	if p.maskOutput != nil {
+		line = p.maskOutput(line)
+	}
 	p.eventMu.Lock()
 	defer p.eventMu.Unlock()
 	now := m.now()

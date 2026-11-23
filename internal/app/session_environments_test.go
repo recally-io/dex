@@ -36,7 +36,7 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	cfg := app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()}
 	d := startDexWith(t, cfg)
 	writeFile(t, filepath.Join(cfg.DataDir, "agents", "default", "workspace", ".agents", "skills", "local-only", "SKILL.md"), "---\nname: local-only\ndescription: Local project skill\n---\n")
-	writeFile(t, filepath.Join(cfg.DataDir, "agents", "default", ".agents", ".env"), "BOT_MARKER=explicit\n")
+	saveVault(t, d, "default", "agent", "GITHUB_TOKEN", "github-test-vault-value")
 	writeFile(t, filepath.Join(cfg.DataDir, ".agents", "skills", "dex-shared", "SKILL.md"), "---\nname: dex-shared\ndescription: Shared skill\n---\n")
 
 	var remoteEnv, sandbox apiEnvironment
@@ -74,6 +74,7 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	if out := taskTurn(t, d, remote, `printf %s "${REMOTE_SSH_MARKER:-local}"`); out != "bash: ssh-fake-ok" {
 		t.Fatalf("remote bash=%q", out)
 	}
+	assertVaultCommand(t, d, remote)
 	if out := taskTool(t, d, remote, "write", map[string]any{"path": "report.md", "content": "# Remote\n"}); strings.HasPrefix(out, "tool error:") {
 		t.Fatalf("remote write=%q", out)
 	}
@@ -96,9 +97,11 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	fresh := d.newSession(t).ID
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", fresh), map[string]any{"environmentId": "missing"}, nil, http.StatusBadRequest)
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", fresh), map[string]any{"environmentId": sandbox.ID}, nil)
-	if out := taskTurn(t, d, fresh, `printf '%s:%s:%s:%s' "${REMOTE_E2B_MARKER:-local}" "$BOT_MARKER" "${DEX_DATA_DIR:-unset}" "$PWD"`); !strings.Contains(out, "e2b-fake-ok:explicit:unset:") || !strings.HasSuffix(out, "/home/user/workspace") {
+	if out := taskTurn(t, d, fresh, `printf '%s:%s:%s' "${REMOTE_E2B_MARKER:-local}" "${DEX_DATA_DIR:-unset}" "$PWD"`); !strings.Contains(out, "e2b-fake-ok:unset:") || !strings.HasSuffix(out, "/home/user/workspace") {
 		t.Fatalf("sandbox bash=%q", out)
 	}
+
+	assertVaultCommand(t, d, fresh)
 
 	// Then skill discovery and synchronization use the sandbox, not the bot's local project.
 	d.must(t, http.MethodPut, chatPath(fresh, "settings"), map[string]string{"provider": "faux", "modelId": "section"}, nil)

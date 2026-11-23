@@ -20,6 +20,7 @@ import (
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/MichaelKinsy/PiG/mcp"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/vault"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -36,41 +37,35 @@ type SkillInfo struct {
 	Error       string `json:"error,omitempty"`
 }
 type McpServerInfo struct {
-	Name      string   `json:"name"`
-	Scope     string   `json:"scope"`
-	Overrides bool     `json:"overrides"`
-	Transport string   `json:"transport,omitempty"`
-	State     string   `json:"state"`
-	Tools     []string `json:"tools"`
-	Error     string   `json:"error,omitempty"`
-}
-type EnvKeyInfo struct {
-	Key      string `json:"key"`
-	Scope    string `json:"scope"`
-	Shadowed bool   `json:"shadowed"`
-	// Hints are shape hints of the value (see envlint.go). They never contain value text.
-	Hints []string `json:"hints"`
+	Name            string              `json:"name"`
+	Scope           string              `json:"scope"`
+	Overrides       bool                `json:"overrides"`
+	Transport       string              `json:"transport,omitempty"`
+	State           string              `json:"state"`
+	Tools           []string            `json:"tools"`
+	Error           string              `json:"error,omitempty"`
+	VaultReferences *mcpVaultReferences `json:"vaultReferences,omitempty"`
 }
 type ExtensionInfo struct {
 	Levels   []ExtensionLevel `json:"levels"`
 	Skills   []SkillInfo      `json:"skills"`
 	Servers  []McpServerInfo  `json:"servers"`
-	Env      []EnvKeyInfo     `json:"env"`
 	Warnings []string         `json:"warnings"`
 	Errors   []string         `json:"errors"`
 	// ReloadPending reports changed files or settings that wait for all agents to be idle.
 	ReloadPending bool `json:"reloadPending"`
 }
-type EnvEditError struct{ Message string }
+type extensionValidationError struct{ Message string }
 
-func (e *EnvEditError) Error() string { return e.Message }
-func (e *EnvEditError) Unwrap() error { return ErrInvalidInput }
+func (e *extensionValidationError) Error() string { return e.Message }
+func (e *extensionValidationError) Unwrap() error { return ErrInvalidInput }
 
 type agentExtensions struct {
 	levels              []ExtensionLevel
 	workspace, agentDir string
 	agentID             string
 	mcp                 *MCPStore
+	vault               *vault.Store
 	// home only expands ~/ in AGENTS.md imports; it is not an extension level.
 	home            string
 	env             *toolEnv
@@ -95,6 +90,7 @@ type loadedExtensions struct {
 	Extension   *durable.Extension
 	Env         map[string]string
 	ExplicitEnv map[string]string
+	Vault       vault.Snapshot
 	HasTools    bool
 	Servers     []McpServerInfo
 	clients     []*mcp.Client
@@ -131,20 +127,14 @@ type serverEntry struct {
 	config serverConfig
 }
 type extensionScan struct {
-	info     ExtensionInfo
-	env      map[string]string
-	explicit map[string]string
-	servers  []serverEntry
+	info    ExtensionInfo
+	env     map[string]string
+	servers []serverEntry
 }
 
-var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 var toolName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
-var envLine = regexp.MustCompile(`^(?:export +)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:'([^']*)'|"([^"]*)"|([^'"]*?))(?:\s+#.*)?$`)
 var headerVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
-
-// A shared lock keeps edits to shared dex files from losing another agent's changes.
-var envWrites sync.Mutex
 
 func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, env *toolEnv) *agentExtensions {
 	agentDir := filepath.Join(dataDir, "agents", agentID)
@@ -152,7 +142,7 @@ func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, en
 	if handle != nil {
 		workspace = handle.Workspace()
 	}
-	a := &agentExtensions{env: env, home: home, agentID: agentID, agentDir: agentDir, workspace: workspace, execHandle: handle, stores: map[string]*skillStore{}}
+	a := &agentExtensions{env: env, home: home, agentID: agentID, agentDir: agentDir, vault: vault.New(dataDir), workspace: workspace, execHandle: handle, stores: map[string]*skillStore{}}
 	for _, l := range []ExtensionLevel{{"dex", dataDir}, {"agent", agentDir}} {
 		l.Dir = canonicalExtensionPath(filepath.Join(l.Dir, ".agents"))
 		a.levels = append(a.levels, l)
@@ -162,7 +152,7 @@ func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, en
 }
 
 func (a *agentExtensions) forHandle(h execenv.Handle) *agentExtensions {
-	return &agentExtensions{levels: a.levels, agentID: a.agentID, agentDir: a.agentDir, mcp: a.mcp, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h, stores: a.stores}
+	return &agentExtensions{levels: a.levels, agentID: a.agentID, agentDir: a.agentDir, mcp: a.mcp, vault: a.vault, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h, stores: a.stores}
 }
 
 func (a *agentExtensions) isRemote() bool {
@@ -385,51 +375,15 @@ func parseSkill(text, dirName string) (string, string, string) {
 	}
 	return name, strings.Join(strings.Fields(description), " "), ""
 }
-func readExtensionEnv(path string) (map[string]string, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // Fixed extension paths come from the agent configuration.
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string]string{}, nil
-	}
-	if err != nil {
-		return nil, &privateError{message: path + ": cannot read environment file", cause: err}
-	}
-	vars := map[string]string{}
-	for i, raw := range strings.Split(string(data), "\n") {
-		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		match := envLine.FindStringSubmatch(line)
-		if match == nil || strings.ContainsRune(line, 0) {
-			return nil, &EnvEditError{Message: fmt.Sprintf("%s: line %d is not a valid KEY=VALUE assignment", path, i+1)}
-		}
-		value := match[2]
-		if value == "" {
-			value = match[3]
-		}
-		if value == "" {
-			value = strings.TrimRight(match[4], " \t")
-		}
-		vars[match[1]] = value
-	}
-	return vars, nil
-}
 
 // stamp includes the revisions of the two MCP declaration levels.
 func (a *agentExtensions) stamp() string {
-	return a.mcp.stamp(a.agentID) + a.env.stamp() + fileStamp(func(yield func(string) bool) {
-		for _, l := range a.distinct() {
-			if !yield(filepath.Join(l.Dir, ".env")) {
-				return
-			}
-		}
-	})
+	return a.mcp.stamp(a.agentID) + a.env.stamp() + fileStamp(slices.Values(a.vault.Paths(a.agentID)))
 }
 func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remoteEnv durableenv.ExecutionEnv) extensionScan {
 	s := extensionScan{
-		info:     ExtensionInfo{Levels: a.levels, Skills: []SkillInfo{}, Servers: []McpServerInfo{}, Env: []EnvKeyInfo{}, Warnings: []string{}, Errors: []string{}},
-		env:      maps.Clone(base),
-		explicit: map[string]string{},
+		info: ExtensionInfo{Levels: a.levels, Skills: []SkillInfo{}, Servers: []McpServerInfo{}, Warnings: []string{}, Errors: []string{}},
+		env:  maps.Clone(base),
 	}
 	if s.env == nil {
 		s.env = map[string]string{}
@@ -441,29 +395,7 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 	if mcpErr != nil {
 		s.info.Errors = append(s.info.Errors, "cannot load MCP declarations")
 	}
-	validEnv := true
-	for _, l := range a.distinct() {
-		vars, err := readExtensionEnv(filepath.Join(l.Dir, ".env"))
-		if err != nil {
-			validEnv = false
-			s.info.Errors = append(s.info.Errors, err.Error())
-		}
-		for _, key := range slices.Sorted(maps.Keys(vars)) {
-			for i := range s.info.Env {
-				if s.info.Env[i].Key == key {
-					s.info.Env[i].Shadowed = true
-				}
-			}
-			s.info.Env = append(s.info.Env, EnvKeyInfo{Key: key, Scope: l.Scope, Hints: envHints(vars[key])})
-		}
-		maps.Copy(s.env, vars)
-		maps.Copy(s.explicit, vars)
-	}
-	if !validEnv {
-		s.env = maps.Clone(base)
-		s.explicit = map[string]string{}
-	}
-	if validEnv && mcpErr == nil {
+	if mcpErr == nil {
 		s.servers = servers
 		for _, entry := range servers {
 			s.info.Servers = append(s.info.Servers, entry.info)
@@ -505,10 +437,13 @@ func (a *agentExtensions) Validate(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
 	}
+	if _, err := a.vault.Load(a.agentID); err != nil {
+		return fmt.Errorf("%w: cannot open vault: %w", ErrInvalidInput, err)
+	}
 	base, _, _ := a.env.snapshot()
 	scan := a.scan(ctx, base, nil)
 	if len(scan.info.Errors) > 0 {
-		return &EnvEditError{Message: strings.Join(scan.info.Errors, "\n")}
+		return &extensionValidationError{Message: strings.Join(scan.info.Errors, "\n")}
 	}
 	return nil
 }
@@ -523,14 +458,19 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 			return nil, err
 		}
 	}
+	secrets, err := a.vault.Load(a.agentID)
+	if err != nil {
+		return nil, fmt.Errorf("load vault: %w", err)
+	}
 	base, op := a.env.load(ctx)
 	s := a.scan(ctx, base, remoteEnv)
 	op.apply(s.env)
-	op.apply(s.explicit)
+	explicit := map[string]string{}
+	op.apply(explicit)
 	// Keep the status slice stable before any connection can call OnClose.
-	loaded := &loadedExtensions{Env: s.env, ExplicitEnv: s.explicit, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}, stamp: stamp}
+	loaded := &loadedExtensions{Env: s.env, ExplicitEnv: explicit, Vault: secrets, Servers: s.info.Servers, Extension: &durable.Extension{Name: "extensions"}, stamp: stamp}
 	opPath := findOp(s.env)
-	guide := extensionGuide(a.levels, secretsGuide(op, opPath), envScopeGuide(s.info.Env, opPath))
+	guide := extensionGuide(a.levels, secretsGuide(op, opPath))
 	loaded.Extension.Sections = []*durable.PromptSection{{Key: "extension-guide", Render: func(context.Context, durable.PromptInput) (*string, error) { return new(guide), nil }}, {Key: "skills", Render: func(renderCtx context.Context, input durable.PromptInput) (*string, error) {
 		target := a
 		if a.sessionPrompts {
@@ -567,7 +507,7 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 		if entry.config.Disabled {
 			continue
 		}
-		client, tools, err := a.connect(ctx, entry, s.env)
+		client, tools, err := a.connect(ctx, entry, s.env, secrets)
 		if err != nil {
 			loaded.Servers[index].State = "failed"
 			loaded.Servers[index].Error = mcpFailure(err)
@@ -599,7 +539,7 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	loaded.HasTools = len(loaded.Extension.Tools) > 0
 	return loaded, nil
 }
-func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env map[string]string) (*mcp.Client, []*durable.ToolRegistration, error) {
+func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env map[string]string, secrets vault.Snapshot) (*mcp.Client, []*durable.ToolRegistration, error) {
 	c := entry.config
 	client := mcp.NewClient(mcp.ClientOptions{Name: "dex", Version: "1", RequestTimeoutMs: 30000})
 	var transport mcp.Transport
@@ -619,6 +559,10 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 		if missing {
 			return nil, nil, fmt.Errorf("missing header environment key")
 		}
+		headers, err := secrets.Resolve(headers, true)
+		if err != nil {
+			return nil, nil, err
+		}
 		t, err := mcp.NewStreamableHTTPTransport(mcp.StreamableHTTPTransportOptions{URL: c.URL, Headers: headers})
 		if err != nil {
 			return nil, nil, &privateError{message: "invalid MCP URL", cause: err}
@@ -629,7 +573,11 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 		if vars == nil {
 			vars = map[string]string{}
 		}
-		maps.Copy(vars, c.Env)
+		declared, err := secrets.Resolve(c.Env, true)
+		if err != nil {
+			return nil, nil, err
+		}
+		maps.Copy(vars, declared)
 		cwd := c.Cwd
 		if !filepath.IsAbs(cwd) {
 			workspace := filepath.Join(a.agentDir, "workspace")
@@ -694,6 +642,9 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 	return client, tools, nil
 }
 func mcpFailure(err error) string {
+	if e, ok := errors.AsType[*vault.MissingError](err); ok {
+		return e.Error()
+	}
 	if e, ok := errors.AsType[*mcp.McpHttpError](err); ok {
 		return fmt.Sprintf("the server answered with HTTP status %d", e.Status)
 	}
@@ -701,101 +652,6 @@ func mcpFailure(err error) string {
 		return "a header environment key is missing"
 	}
 	return "the connection failed"
-}
-func (a *agentExtensions) EditEnv(ctx context.Context, scope, key string, value *string) (ExtensionInfo, error) {
-	if scope != "agent" && scope != "dex" {
-		return ExtensionInfo{}, &EnvEditError{Message: "only bot and dex environment files are writable"}
-	}
-	if !envName.MatchString(key) {
-		return ExtensionInfo{}, &EnvEditError{Message: "the environment key is not valid"}
-	}
-	assignment := ""
-	if value != nil {
-		quoted, err := quoteExtensionEnv(*value)
-		if err != nil {
-			return ExtensionInfo{}, err
-		}
-		assignment = key + "=" + quoted
-	}
-	var path string
-	for _, l := range a.levels {
-		if l.Scope == scope {
-			path = filepath.Join(l.Dir, ".env")
-		}
-	}
-	envWrites.Lock()
-	err := writeExtensionEnv(path, key, assignment, value != nil)
-	envWrites.Unlock()
-	if err != nil {
-		return ExtensionInfo{}, err
-	}
-	return a.Info(ctx)
-}
-func quoteExtensionEnv(value string) (string, error) {
-	if strings.ContainsAny(value, "\n\r\x00") {
-		return "", &EnvEditError{Message: "the value must not contain LF, CR, or NUL"}
-	}
-	if strings.Contains(value, "'") && strings.Contains(value, "\"") {
-		return "", &EnvEditError{Message: "the value must not contain both single and double quotes"}
-	}
-	if strings.Contains(value, "'") {
-		return "\"" + value + "\"", nil
-	}
-	if strings.ContainsAny(value, "\"#") || strings.TrimSpace(value) != value {
-		return "'" + value + "'", nil
-	}
-	return value, nil
-}
-func writeExtensionEnv(path, key, assignment string, set bool) error {
-	if _, err := readExtensionEnv(path); err != nil {
-		return err
-	}
-	data, err := os.ReadFile(path) //nolint:gosec // Fixed extension paths come from the agent configuration.
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return &privateError{message: "cannot read environment file", cause: err}
-	}
-	var out strings.Builder
-	found := false
-	for _, line := range strings.SplitAfter(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		match := envLine.FindStringSubmatch(trimmed)
-		if match == nil || match[1] != key {
-			out.WriteString(line)
-			continue
-		}
-		if !found && set {
-			out.WriteString(assignment)
-			if strings.HasSuffix(line, "\r\n") {
-				out.WriteString("\r\n")
-			} else if strings.HasSuffix(line, "\n") {
-				out.WriteByte('\n')
-			}
-		}
-		found = true
-	}
-	if !found && set {
-		if out.Len() > 0 && !strings.HasSuffix(out.String(), "\n") {
-			out.WriteByte('\n')
-		}
-		out.WriteString(assignment + "\n")
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	file, err := os.CreateTemp(filepath.Dir(path), ".env-*.tmp")
-	if err != nil {
-		return &privateError{message: "cannot create environment file", cause: err}
-	}
-	defer os.Remove(file.Name())
-	_, err = file.WriteString(out.String())
-	err = errors.Join(err, file.Close())
-	if err == nil {
-		err = os.Rename(file.Name(), path)
-	}
-	if err != nil {
-		return &privateError{message: "cannot write environment file", cause: err}
-	}
-	return nil
 }
 func skillsText(skills []SkillInfo) *string {
 	lines := []string{"Skills are instructions for special tasks. Read the matching SKILL.md before the task. Relative paths start at the directory of SKILL.md.", ""}
@@ -809,24 +665,23 @@ func skillsText(skills []SkillInfo) *string {
 	}
 	return new(strings.Join(lines, "\n"))
 }
-func extensionGuide(levels []ExtensionLevel, secrets, scope string) string {
-	lines := []string{"Extension levels for this bot, from wide to narrow. Each can hold skills/ and .env:"}
+func extensionGuide(levels []ExtensionLevel, secrets string) string {
+	lines := []string{"Extension levels for this bot, from wide to narrow. Each can hold skills/:"}
 	for _, l := range levels {
 		lines = append(lines, "- "+l.Scope+": "+l.Dir+"/")
 	}
 	lines = append(lines,
-		"Narrower levels win. A skill or MCP server with the same name replaces the wider entry as a whole. Environment values merge per key.",
+		"Narrower levels win. A skill or MCP server with the same name replaces the wider entry as a whole.",
 		"",
 		"Skills: dex and agent skills live on the control host. Change them only with skill_write, skill_edit, skill_delete, or skill_import. Use skill_list and skill_read to inspect them. Skill file paths use <dex|agent>/<name>/<file>. To install a skill, run the installer in a temporary directory, then use skill_import on the skill directory.",
 		"Start SKILL.md with the YAML front matter fields name and description. The name defaults to the directory name. Project skills in <cwd>/.agents/skills override the other levels. Use the normal file tools for project skills.",
 		"Run a managed skill's scripts from its directory in the session environment. Use the returned path from a skill tool, or the path in the skills list. Bash sets DEX_SKILL_CACHE to <workspace>/.dex/cache/skills. Put runtime files in $DEX_SKILL_CACHE/<name> and create that directory with mkdir -p. Remote skill copies are read-only.",
-		"A .env file inside a skill is an ordinary file that dex copies but does not load. Keep secrets in the vault. Pass them to a script with the env argument of bash or monitor_set_command. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
+		"Keep secrets in the vault. Use vault_list to find names and pass vault:NAME references in the env argument of bash or a Monitor. Ask the user to add missing values in Settings. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
 		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or agent level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the agent finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,
 		"",
 		"The tool environment starts from the user's login shell environment.",
 		secrets,
-		scope,
-		"dex reloads .env, shell rc, and 1Password changes when the affected bot is idle.")
+		"dex reloads vault, shell rc, and 1Password changes when the affected bot is idle.")
 	return strings.Join(lines, "\n")
 }

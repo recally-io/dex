@@ -7,7 +7,7 @@ import { Failure, Loading } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Badge } from "../components/ui/badge";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
-import { EnvKeys } from "../components/env-keys";
+import { Vault } from "../components/vault";
 
 export function ExtensionsPage() {
   const agentId = useAgentId();
@@ -22,7 +22,7 @@ export function ExtensionsPage() {
     <FramedPage
       title="Tools"
       toolbar={<BotSettingsSwitcher segment="extensions" />}
-      description="Skills, MCP servers and environment keys of this bot. Tools start from your login shell environment. dex reads the dex level, then the bot. A narrower level replaces an entry with the same name. Changes apply automatically when all bots are idle."
+      description="Manage this bot’s skills, MCP servers, and secrets. A bot entry with the same name takes precedence over a shared entry."
       actions={
         query.data?.reloadPending && !query.data.errors.length ? (
           <Badge variant="secondary">Change waiting for idle bots</Badge>
@@ -31,9 +31,8 @@ export function ExtensionsPage() {
     >
       <div className="mb-6">
         <Note tone="warn">
-          Environment values stay out of this page, the extensions API, and app logs. The model can read .env
-          files or run env. Tool output becomes part of the transcript. Use mode 0600 and keep .env files out
-          of Git. Disabling a server does not remove environment keys.
+          Put secrets in the vault. Do not paste secret values in chats, instructions, or skill files. Use
+          vault:NAME to share a reference with the bot.
         </Note>
       </div>
       <Section title="Built in" caption="Always on. You cannot turn them off.">
@@ -58,7 +57,7 @@ export function ExtensionsPage() {
         </Panel>
       </Section>
       {query.data ? (
-        <Catalog extensions={query.data} agentId={agentId} />
+        <Catalog extensions={query.data} />
       ) : query.isError ? (
         <div className="px-5 py-8 sm:px-8">
           <Failure error={query.error} retry={() => void query.refetch()} />
@@ -66,14 +65,15 @@ export function ExtensionsPage() {
       ) : (
         <Loading />
       )}
+      <Vault key={agentId} target={{ scope: "agent", agentId }} />
     </FramedPage>
   );
 }
 
-function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: string }) {
+function Catalog({ extensions: e }: { extensions: Extensions }) {
   return (
     <>
-      <Section title="File levels" caption="Each holds skills/ and .env.">
+      <Section title="File levels" caption="Each holds skills/.">
         <Panel>
           <ul className="divide-y divide-border">
             {e.levels.map((level) => (
@@ -136,7 +136,6 @@ function Catalog({ extensions: e, agentId }: { extensions: Extensions; agentId: 
           }
         />
       </Section>
-      <EnvKeys target={{ scope: "agent", agentId }} />
     </>
   );
 }

@@ -1,7 +1,7 @@
-import { EnvKeys } from "../components/env-keys";
+import { Vault } from "../components/vault";
 import { ExecutionEnvironments } from "../components/execution-environments";
 import { OnePasswordSettings } from "../components/one-password";
-import { FramedPage, Note, Section } from "../components/page";
+import { FramedPage } from "../components/page";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
 export function EnvironmentPage() {
@@ -10,19 +10,11 @@ export function EnvironmentPage() {
       eyebrow="Settings for this computer"
       title="Environment"
       toolbar={<GlobalSettingsSwitcher page="/settings/environment" />}
-      description="Tools of all bots start from your login shell environment, then these keys. Configure execution environments and 1Password here, or set keys for one bot in its Tools tab. Changes apply automatically when all bots are idle."
+      description="Configure shared secrets, execution environments, and 1Password. To set secrets for one bot, use its Tools page."
     >
-      <EnvKeys target={{ scope: "dex" }} />
+      <Vault target={{ scope: "dex" }} />
       <ExecutionEnvironments />
       <OnePasswordSettings />
-      <Section title="Secret storage">
-        <Note tone="warn">
-          Use mode 0600 for .env files and keep them out of Git. The model can read the files or run env. Tool
-          output becomes part of the transcript. dex stores credentials as plain text. With 1Password, bots
-          read a secret only when a command needs it. Do not put passwords in chats, instructions or memory.
-          Memory is a git repository, so a password stays in its history.
-        </Note>
-      </Section>
     </FramedPage>
   );
 }

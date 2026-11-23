@@ -37,11 +37,6 @@ type extensions struct {
 	Servers  []serverInfo `json:"servers"`
 	Errors   []string     `json:"errors"`
 	Warnings []string     `json:"warnings"`
-	Env      []struct {
-		Key      string `json:"key"`
-		Scope    string `json:"scope"`
-		Shadowed bool   `json:"shadowed"`
-	} `json:"env"`
 }
 
 // dir returns the .agents directory of a level.
@@ -345,10 +340,10 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	w.until(t, "new server answer", answered("tool: appended 1"))
 
 	// When the tool environment is not valid, reload leaves the working connections intact.
-	envPath := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", ".env")
+	envPath := filepath.Join(dataDir, "vault", "agent-"+app.DefaultAgentID+".age")
 	writeFile(t, envPath, `invalid line`)
 	status, body = d.reload(t)
-	if status != http.StatusBadRequest || !strings.Contains(body, envPath) {
+	if status != http.StatusBadRequest || !strings.Contains(body, "vault") {
 		t.Fatalf("reload of a file that is not valid: %d %s", status, body)
 	}
 	d.send(t, chatID, `mcp__files__read {}`)

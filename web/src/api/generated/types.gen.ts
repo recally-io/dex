@@ -1127,9 +1127,15 @@ export type Model = {
     thinkingLevels: Array<ThinkingLevel>;
 };
 
+export type VaultEntry = {
+    name: string;
+    scope: ExtensionScope;
+    updatedAt: string;
+};
+
 export type Extensions = {
     /**
-     * The .agents directories, from wide to narrow. Each can hold skills/ and .env. Two levels can have the same directory.
+     * The .agents directories, from wide to narrow. Each can hold skills/. Two levels can have the same directory.
      *
      */
     levels: Array<{
@@ -1144,33 +1150,20 @@ export type Extensions = {
      * Loaded servers, or idle declarations before the agent opens.
      */
     servers: Array<McpServer>;
-    /**
-     * Names only. Values never leave the loader through this API.
-     */
-    env: Array<{
-        key: string;
-        scope: ExtensionScope;
-        shadowed: boolean;
-        /**
-         * Shape hints of the saved value. A hint never contains value text. assignment: the value looks like a pasted NAME=... line. empty: the value is empty or only whitespace. whitespace: the value has leading or trailing whitespace. op-reference: the value is an op:// reference. Only tools that can run op resolve it.
-         *
-         */
-        hints: Array<'assignment' | 'empty' | 'whitespace' | 'op-reference'>;
-    }>;
     warnings: Array<string>;
     /**
      * Invalid configuration prevents MCP startup and reload.
      */
     errors: Array<string>;
     /**
-     * Extension files, shell rc files, or 1Password settings changed after the agent loaded. dex reloads the agent when all agents are idle and the configuration is valid.
+     * Extension files, vault entries, shell rc files, or 1Password settings changed after the agent loaded. dex reloads the agent when all agents are idle and the configuration is valid.
      *
      */
     reloadPending: boolean;
 };
 
 /**
- * Resolved data directory or agent home, each under .agents/.
+ * Shared across dex or scoped to one agent.
  */
 export type ExtensionScope = 'dex' | 'agent';
 
@@ -1197,7 +1190,7 @@ export type Skill = {
 };
 
 /**
- * An MCP server from control storage, without its command, URL, headers or environment, because they can hold credentials.
+ * An MCP server from control storage. Plain environment and header values are not returned. Vault references are returned as written.
  *
  */
 export type McpServer = {
@@ -1219,6 +1212,14 @@ export type McpServer = {
      * The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
      */
     tools: Array<string>;
+    vaultReferences?: {
+        env?: {
+            [key: string]: string;
+        };
+        headers?: {
+            [key: string]: string;
+        };
+    };
     error?: string;
 };
 
@@ -4913,19 +4914,19 @@ export type GetExtensionsResponses = {
 
 export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
 
-export type DeleteExtensionEnvData = {
+export type DeleteVaultData = {
     body?: never;
     path: {
         agentId: string;
     };
     query: {
-        scope: 'agent' | 'dex';
-        key: string;
+        scope: ExtensionScope;
+        name: string;
     };
-    url: '/api/agents/{agentId}/extensions/env';
+    url: '/api/agents/{agentId}/vault';
 };
 
-export type DeleteExtensionEnvErrors = {
+export type DeleteVaultErrors = {
     /**
      * The request failed.
      */
@@ -4940,31 +4941,58 @@ export type DeleteExtensionEnvErrors = {
     default: Error;
 };
 
-export type DeleteExtensionEnvError = DeleteExtensionEnvErrors[keyof DeleteExtensionEnvErrors];
+export type DeleteVaultError = DeleteVaultErrors[keyof DeleteVaultErrors];
 
-export type DeleteExtensionEnvResponses = {
+export type DeleteVaultResponses = {
     /**
-     * Current extension declarations, with key names only.
+     * Vault value removed.
      */
-    200: Extensions;
+    200: Ok;
 };
 
-export type DeleteExtensionEnvResponse = DeleteExtensionEnvResponses[keyof DeleteExtensionEnvResponses];
+export type DeleteVaultResponse = DeleteVaultResponses[keyof DeleteVaultResponses];
 
-export type PutExtensionEnvData = {
+export type ListVaultData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/vault';
+};
+
+export type ListVaultErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type ListVaultError = ListVaultErrors[keyof ListVaultErrors];
+
+export type ListVaultResponses = {
+    /**
+     * Vault entries without their values.
+     */
+    200: Array<VaultEntry>;
+};
+
+export type ListVaultResponse = ListVaultResponses[keyof ListVaultResponses];
+
+export type PutVaultData = {
     body: {
-        scope: 'agent' | 'dex';
-        key: string;
+        scope: ExtensionScope;
+        name: string;
         value: string;
     };
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/extensions/env';
+    url: '/api/agents/{agentId}/vault';
 };
 
-export type PutExtensionEnvErrors = {
+export type PutVaultErrors = {
     /**
      * The request failed.
      */
@@ -4979,16 +5007,16 @@ export type PutExtensionEnvErrors = {
     default: Error;
 };
 
-export type PutExtensionEnvError = PutExtensionEnvErrors[keyof PutExtensionEnvErrors];
+export type PutVaultError = PutVaultErrors[keyof PutVaultErrors];
 
-export type PutExtensionEnvResponses = {
+export type PutVaultResponses = {
     /**
-     * Current extension declarations, with key names only.
+     * Vault value saved.
      */
-    200: Extensions;
+    200: Ok;
 };
 
-export type PutExtensionEnvResponse = PutExtensionEnvResponses[keyof PutExtensionEnvResponses];
+export type PutVaultResponse = PutVaultResponses[keyof PutVaultResponses];
 
 export type ReloadExtensionsData = {
     body?: never;

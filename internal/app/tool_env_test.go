@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"crypto/sha256"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"strings"
@@ -22,21 +23,59 @@ func (d *dex) applied(t *testing.T) {
 	})
 }
 
-func TestUserEnvironmentChangeAppliesWithoutReload(t *testing.T) {
+func TestUserInjectsVaultValueOnlyForOneCall(t *testing.T) {
 	t.Parallel()
-	// Given an agent that has loaded its environment.
+	// Given a value saved by the user.
 	d := startDex(t, t.TempDir(), "")
-	d.setModel(t, "bash")
-	command := `printf '%s' "${DEX_AUTO-unset}"`
-	w := d.watch(t, d.newChat(t, command))
-	w.until(t, "first answer", answered("bash: unset"))
-	// When the user saves a key and does not press Reload.
-	d.must(t, http.MethodPut, "/api/agents/default/extensions/env", map[string]string{"scope": "agent", "key": "DEX_AUTO", "value": "applied"}, nil)
-	// Then dex reloads the idle agent, and the next command sees the value.
+	d.setModel(t, "echo")
+	w := d.watch(t, d.newChat(t, "hello"))
+	w.until(t, "agent open", answered("echo: hello"))
+	saveVault(t, d, "default", "agent", "GITHUB_TOKEN", "github-test-vault-value")
 	d.applied(t)
-	w = d.watch(t, d.newChat(t, command))
-	w.until(t, "new value", answered("bash: applied"))
-	t.Log("artifact: a saved key reaches tools without a manual reload")
+	// When the model calls bash, then only the call with a reference gets the value.
+	d.setModel(t, "tool")
+	w = d.watch(t, d.newChat(t, `bash {"command":"printf %s \"${GITHUB_TOKEN-unset}/${GH_TOKEN-unset}\""}`))
+	w.until(t, "no injection", answered("tool: unset/unset"))
+	chat := d.newSession(t).ID
+	assertVaultCommand(t, d, chat)
+	w = d.watch(t, chat)
+	w.until(t, "settled transcript", answered("tool: [vault:GITHUB_TOKEN]"))
+	snapshot := taskJSON(t, w.tr.items)
+	found := false
+	for _, entry := range w.tr.items {
+		if entry.Name == "bash" {
+			env, _ := entry.Args["env"].(map[string]any)
+			found = env["GH_TOKEN"] == "vault:GITHUB_TOKEN" && entry.Output == "[vault:GITHUB_TOKEN]"
+		}
+	}
+	if !found || strings.Contains(snapshot, "github-test-vault-value") {
+		t.Fatalf("transcript: %s", snapshot)
+	}
+	got := taskTool(t, d, chat, "bash", map[string]any{"command": "touch should-not-run", "env": map[string]string{"T": "vault:MISSING_SECRET"}})
+	if !strings.Contains(got, "MISSING_SECRET") {
+		t.Fatalf("missing vault error: %s", got)
+	}
+	if got := taskTool(t, d, chat, "bash", map[string]string{"command": "test ! -e should-not-run && printf absent"}); got != "tool: absent" {
+		t.Fatalf("missing secret must prevent execution: %s", got)
+	}
+	got = taskTool(t, d, chat, "vault_list", map[string]any{})
+	_, raw, ok := strings.Cut(got, "tool: ")
+	var list []apiVaultEntry
+	if !ok || json.Unmarshal([]byte(raw), &list) != nil || len(list) != 1 || list[0].Name != "GITHUB_TOKEN" || list[0].Scope != "agent" || list[0].UpdatedAt == "" || strings.Contains(got, "github-test-vault-value") {
+		t.Fatalf("vault_list: %s", got)
+	}
+}
+
+func assertVaultCommand(t *testing.T, d *dex, chat int64) {
+	t.Helper()
+	// Check the actual process arguments before printing the injected value.
+	got := taskTool(t, d, chat, "bash", map[string]any{
+		"command": `line=$(ps -o args= -p "$$") && test -n "$line" && test -n "$GH_TOKEN" || exit 22; case "$line" in *"$GH_TOKEN"*) exit 23;; esac; printf %s "$GH_TOKEN"`,
+		"env":     map[string]string{"GH_TOKEN": "vault:GITHUB_TOKEN"},
+	})
+	if got != "tool: [vault:GITHUB_TOKEN]" {
+		t.Fatalf("vault command %d: %q", chat, got)
+	}
 }
 
 func TestUserSetsUpOnePasswordForTools(t *testing.T) {

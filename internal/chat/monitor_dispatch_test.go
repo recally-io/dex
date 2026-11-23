@@ -17,6 +17,9 @@ import (
 
 func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
 	r := startNative(t, "echo")
+	if err := r.service.engine.VaultEdit("bot", "agent", "MONITOR_FIXTURE", new("monitor-vault-fixture")); err != nil {
+		t.Fatal(err)
+	}
 	id, source := taskParent(t, r)
 	now := r.service.now()
 	r.service.now = func() time.Time { return now }
@@ -32,10 +35,14 @@ func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
 		}
 	}
 	write("waiting")
-	// Given a synthetic status file, a relative project path, and a per-check environment value.
-	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 10, Prompt: "Read the fixture's status", CheckCommand: `test "$MONITOR_FIXTURE" = "review fixture" || exit 3; cat ./reading || exit 2; if [ "$(cat ./reading)" = done ]; then exit 10; fi`, Env: map[string]string{"MONITOR_FIXTURE": "review fixture"}})
+	// Given a synthetic status file, a relative project path, and a per-check vault reference.
+	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 10, Prompt: "Read the fixture's status", CheckCommand: `case "$MONITOR_FIXTURE" in monitor-vault-*) ;; *) exit 3;; esac; cat ./reading || exit 2; if [ "$(cat ./reading)" = done ]; then exit 10; fi`, Env: map[string]string{"MONITOR_FIXTURE": "vault:MONITOR_FIXTURE"}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(info.ID, "schedule-"))
+	if err != nil || row.CheckEnv != `{"MONITOR_FIXTURE":"vault:MONITOR_FIXTURE"}` {
+		t.Fatalf("stored check environment: %s, %v", row.CheckEnv, err)
 	}
 	for _, want := range []struct {
 		reading, outcome string

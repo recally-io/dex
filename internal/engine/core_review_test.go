@@ -160,7 +160,7 @@ func TestUserReloadStartsOnlyOneReplacementMCP(t *testing.T) {
 		t.Fatalf("MCP starts after selected-agent reload: %q", data)
 	}
 	// Invalid target configuration must be rejected before any child starts or closes.
-	extensionFile(t, filepath.Join(config.DataDir, "agents", "alpha", ".agents", ".env"), `invalid line`)
+	extensionFile(t, filepath.Join(config.DataDir, "vault", "agent-alpha.age"), `invalid line`)
 	if err := agents.Reload(t.Context(), "alpha"); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("invalid reload: %v", err)
 	}

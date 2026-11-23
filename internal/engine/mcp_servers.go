@@ -49,7 +49,7 @@ func (s *MCPStore) list(ctx context.Context, agentID string) ([]serverEntry, err
 			return nil, &privateError{message: "invalid stored MCP declaration", cause: err}
 		}
 		pos, override := positions[row.Name]
-		info := McpServerInfo{Name: row.Name, Scope: "dex", Overrides: override, State: "idle", Tools: []string{}}
+		info := McpServerInfo{Name: row.Name, Scope: "dex", Overrides: override, State: "idle", Tools: []string{}, VaultReferences: listMCPVaultReferences(c)}
 		if row.AgentID != "" {
 			info.Scope = "agent"
 		}
@@ -149,7 +149,29 @@ func (s *MCPStore) remove(ctx context.Context, agentID, name string) error {
 
 const hiddenMCPValue = "[hidden]"
 
-var mcpVaultReference = regexp.MustCompile(`^(vault:[A-Za-z_][A-Za-z0-9_]*|\$\{vault:[A-Za-z_][A-Za-z0-9_]*\})$`)
+var mcpVaultReference = regexp.MustCompile(`^vault:[A-Za-z_][A-Za-z0-9_]*$|\$\{vault:[A-Za-z_][A-Za-z0-9_]*\}`)
+
+type mcpVaultReferences struct {
+	Env     map[string]string `json:"env,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
+}
+
+func listMCPVaultReferences(c serverConfig) *mcpVaultReferences {
+	references := func(values map[string]string) map[string]string {
+		out := map[string]string{}
+		for key, value := range values {
+			if mcpVaultReference.MatchString(value) {
+				out[key] = value
+			}
+		}
+		return out
+	}
+	env, headers := references(c.Env), references(c.Headers)
+	if len(env)+len(headers) == 0 {
+		return nil
+	}
+	return &mcpVaultReferences{Env: env, Headers: headers}
+}
 
 func redactMCPConfig(c serverConfig) serverConfig {
 	if c.Args == nil {
