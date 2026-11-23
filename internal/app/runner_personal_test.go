@@ -112,18 +112,7 @@ func TestUserKeepsAMachineThatRunsAsTheirAccountToTheBotThatItServes(t *testing.
 	// probe waits until Dex reaches the machine and reports what its work can reach.
 	probe := func() apiEnvironmentTestResult {
 		t.Helper()
-		for {
-			var result apiEnvironmentTestResult
-			d.must(t, http.MethodPost, settingsPath+"/test", nil, &result)
-			if result.OK {
-				return result
-			}
-			select {
-			case <-ctx.Done():
-				t.Fatal(ctx.Err())
-			case <-time.After(20 * time.Millisecond):
-			}
-		}
+		return probeMachine(t, d, settingsPath)
 	}
 	d.setModel(t, "bash")
 	var second apiAgent
@@ -208,5 +197,22 @@ func TestUserKeepsAMachineThatRunsAsTheirAccountToTheBotThatItServes(t *testing.
 	own.watch().until(t, "the bound bot uses the machine of its person", answeredWith("bash: mine"))
 	if got, err := os.ReadFile(filepath.Join(machineState, "workspaces", "default", "workspace", "note.txt")); err != nil || string(got) != "mine" {
 		t.Fatalf("the bound bot wrote %q on the machine (err %v)", got, err)
+	}
+}
+
+// probeMachine waits until Dex reaches a machine and returns what the probe reported.
+func probeMachine(t *testing.T, d *dex, settingsPath string) apiEnvironmentTestResult {
+	t.Helper()
+	for {
+		var result apiEnvironmentTestResult
+		d.must(t, http.MethodPost, settingsPath+"/test", nil, &result)
+		if result.OK {
+			return result
+		}
+		select {
+		case <-t.Context().Done():
+			t.Fatal(t.Context().Err())
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 }

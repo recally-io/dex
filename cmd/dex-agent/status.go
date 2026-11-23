@@ -18,7 +18,7 @@ import (
 // the state file holds the machine token, and this command reads only the fields it shows.
 func status(ctx context.Context, state string, out io.Writer) error {
 	a := currentAccount()
-	if _, err := os.Stat(state); err != nil {
+	if _, err := os.Stat(state); err != nil { //nolint:gosec // The operator chooses the state directory.
 		return stateError(state, err)
 	}
 	root, err := os.OpenRoot(state)
