@@ -10,13 +10,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 )
 
 const maxRetainedBackups = 20
-
-var backupMu sync.Mutex
 
 // BackupInfo describes one control.sqlite backup file in <dataDir>/backups/.
 type BackupInfo struct {
@@ -54,32 +51,28 @@ func BackupDatabase(ctx context.Context, db *sql.DB, dataDir, version string, no
 		return BackupInfo{}, fmt.Errorf("set backup permissions: %w", err)
 	}
 
-	backupMu.Lock()
-	defer backupMu.Unlock()
-	tag := sanitizeTag(version)
-	base := fmt.Sprintf("control-%s-%s", tag, now.UTC().Format("20060102-150405"))
-	name := base + ".sqlite"
-	dest := filepath.Join(dir, name)
-	for i := 1; i < 1000; i++ {
-		if _, err := os.Stat(dest); errors.Is(err, os.ErrNotExist) {
-			break
-		}
-		name = fmt.Sprintf("%s-%d.sqlite", base, i)
-		dest = filepath.Join(dir, name)
-	}
-	if err := os.Rename(staged, dest); err != nil {
-		return BackupInfo{}, fmt.Errorf("finalize backup: %w", err)
-	}
-	info, err := os.Stat(dest)
+	info, err := os.Stat(staged)
 	if err != nil {
 		return BackupInfo{}, err
 	}
-	pruneBackups(dir, maxRetainedBackups)
-	return BackupInfo{
-		Name:      name,
-		SizeBytes: info.Size(),
-		CreatedAt: info.ModTime().UnixMilli(),
-	}, nil
+	base := fmt.Sprintf("control-%s-%s", sanitizeTag(version), now.UTC().Format("20060102-150405"))
+	for i := range 1000 {
+		name := base + ".sqlite"
+		if i > 0 {
+			name = fmt.Sprintf("%s-%d.sqlite", base, i)
+		}
+		// Link publishes the complete backup without replacing an existing one.
+		err := os.Link(staged, filepath.Join(dir, name))
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return BackupInfo{}, fmt.Errorf("finalize backup: %w", err)
+		}
+		pruneBackups(dir, maxRetainedBackups)
+		return BackupInfo{Name: name, SizeBytes: info.Size(), CreatedAt: info.ModTime().UnixMilli()}, nil
+	}
+	return BackupInfo{}, errors.New("all backup names for this timestamp are in use")
 }
 
 // ListBackups returns backups in <dataDir>/backups/, newest first.

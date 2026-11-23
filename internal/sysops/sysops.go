@@ -92,7 +92,7 @@ type Manager struct {
 
 	mu              sync.Mutex
 	closed          bool
-	opID            uint64
+	op              *activeOp
 	state           string
 	pendingAction   string
 	targetVersion   string
@@ -102,10 +102,13 @@ type Manager struct {
 	updateAvailable bool
 	lastCheckedAt   int64
 	lastError       string
-	opCancel        context.CancelFunc
-	opDone          chan struct{}
-	forceCh         chan struct{}
 	wg              sync.WaitGroup
+}
+
+type activeOp struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	force  chan struct{}
 }
 
 // New creates a Manager for a running dex server.
@@ -159,15 +162,11 @@ func (m *Manager) Close() {
 		return
 	}
 	m.closed = true
-	m.opID++
 	close(m.closeCh)
-	cancel := m.opCancel
-	m.opCancel = nil
-	m.forceCh = nil
-	m.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if m.op != nil && m.state != StateRestarting {
+		m.op.cancel()
 	}
+	m.mu.Unlock()
 	m.wg.Wait()
 }
 
@@ -236,12 +235,10 @@ func (m *Manager) CheckUpdate(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 	m.mu.Lock()
-	if m.closed || m.opDone != nil || m.state == StateChecking || m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
+	if m.closed || m.state == StateChecking || m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	m.opID++
-	opID := m.opID
 	m.state = StateChecking
 	m.lastError = ""
 	m.mu.Unlock()
@@ -250,7 +247,7 @@ func (m *Manager) CheckUpdate(ctx context.Context) (Status, error) {
 	info, available, err := u.CheckRelease(ctx, update.Options{Channel: channel})
 	now := time.Now().UnixMilli()
 	m.mu.Lock()
-	if m.opID != opID || m.state != StateChecking {
+	if m.closed || m.state != StateChecking {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
@@ -304,18 +301,14 @@ func (m *Manager) Restart(ctx context.Context, force bool) (Status, error) {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	case StateWaitingIdle:
-		if force && m.forceCh != nil {
+		if force && m.op != nil {
 			select {
-			case m.forceCh <- struct{}{}:
+			case m.op.force <- struct{}{}:
 			default:
 			}
 		}
 		m.mu.Unlock()
 		return m.Status(ctx)
-	}
-	if m.opDone != nil {
-		m.mu.Unlock()
-		return Status{}, ErrBusy
 	}
 	m.pendingAction = ActionRestart
 	m.lastError = ""
@@ -326,18 +319,18 @@ func (m *Manager) Restart(ctx context.Context, force bool) (Status, error) {
 		return m.Status(ctx)
 	}
 	m.state = StateWaitingIdle
-	m.startOperation(ctx, func(ctx context.Context, id uint64, forceCh <-chan struct{}) {
-		held, err := m.waitForMaintenance(ctx, id, forceCh, ActionRestart, force)
+	m.startOperation(ctx, func(ctx context.Context, op *activeOp) error {
+		held, err := m.waitForMaintenance(ctx, op, ActionRestart, false)
 		if err != nil {
-			m.failOperation(id, err)
-			return
+			return err
 		}
-		if !m.beginRestart(ctx, id) {
+		if err := m.beginRestart(ctx); err != nil {
 			m.releaseMaintenance(ctx, held)
-			return
+			return err
 		}
 		slog.Info("restarting dex server")
 		m.scheduleRestart("")
+		return nil
 	})
 	m.mu.Unlock()
 	return m.Status(ctx)
@@ -362,15 +355,15 @@ func (m *Manager) Upgrade(ctx context.Context, targetTag string, force bool) (St
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	if m.state == StateWaitingIdle && m.pendingAction == ActionUpgrade && force && m.forceCh != nil {
+	if m.state == StateWaitingIdle && m.pendingAction == ActionUpgrade && force && m.op != nil {
 		select {
-		case m.forceCh <- struct{}{}:
+		case m.op.force <- struct{}{}:
 		default:
 		}
 		m.mu.Unlock()
 		return m.Status(ctx)
 	}
-	if m.opDone != nil || m.state == StateChecking || m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
+	if m.state == StateChecking || m.state == StateDownloading || m.state == StateWaitingIdle || m.state == StateRestarting {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
@@ -380,35 +373,37 @@ func (m *Manager) Upgrade(ctx context.Context, targetTag string, force bool) (St
 	m.downloadDone = 0
 	m.downloadTotal = 0
 	m.lastError = ""
-	m.startOperation(ctx, func(ctx context.Context, id uint64, forceCh <-chan struct{}) {
-		m.runUpgrade(ctx, id, forceCh, m.probe.Executable, channel, targetTag, force)
+	m.startOperation(ctx, func(ctx context.Context, op *activeOp) error {
+		return m.runUpgrade(ctx, op, m.probe.Executable, channel, targetTag, force)
 	})
 	m.mu.Unlock()
 	return m.Status(ctx)
 }
 
 // startOperation starts the sole owner of the pending operation. The caller holds m.mu.
-func (m *Manager) startOperation(ctx context.Context, run func(context.Context, uint64, <-chan struct{})) {
+func (m *Manager) startOperation(ctx context.Context, run func(context.Context, *activeOp) error) {
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	forceCh := make(chan struct{}, 1)
-	done := make(chan struct{})
-	m.opID++
-	id := m.opID
-	m.opCancel, m.forceCh, m.opDone = cancel, forceCh, done
+	op := &activeOp{cancel: cancel, done: make(chan struct{}), force: make(chan struct{}, 1)}
+	m.op = op
 	m.wg.Go(func() {
 		defer cancel()
-		run(ctx, id, forceCh)
+		defer close(op.done)
+		err := run(ctx, op)
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		defer close(done)
-		if m.opID != id {
+		m.op = nil
+		if m.closed || (err == nil && m.state == StateRestarting) {
 			return
 		}
-		m.opCancel, m.forceCh, m.opDone = nil, nil, nil
-		if m.state == StateDownloading || m.state == StateWaitingIdle {
-			m.state, m.pendingAction, m.targetVersion = StateIdle, "", ""
-			m.downloadDone, m.downloadTotal = 0, 0
+		m.pendingAction, m.targetVersion = "", ""
+		m.downloadDone, m.downloadTotal = 0, 0
+		if err == nil || errors.Is(err, context.Canceled) {
+			m.state = StateIdle
+			return
 		}
+		m.state = StateError
+		m.lastError = err.Error()
+		slog.Error("system operation failed", "err", err)
 	})
 }
 
@@ -419,14 +414,14 @@ func (m *Manager) CancelPending(ctx context.Context) (Status, error) {
 		m.mu.Unlock()
 		return Status{}, ErrBusy
 	}
-	done := m.opDone
-	if m.opCancel != nil {
-		m.opCancel()
+	op := m.op
+	if op != nil {
+		op.cancel()
 	}
 	m.mu.Unlock()
-	if done != nil {
+	if op != nil {
 		select {
-		case <-done:
+		case <-op.done:
 		case <-ctx.Done():
 			return Status{}, ctx.Err()
 		}
@@ -434,11 +429,10 @@ func (m *Manager) CancelPending(ctx context.Context) (Status, error) {
 	return m.Status(ctx)
 }
 
-func (m *Manager) runUpgrade(ctx context.Context, opID uint64, forceCh <-chan struct{}, executable, channel, targetTag string, force bool) {
+func (m *Manager) runUpgrade(ctx context.Context, op *activeOp, executable, channel, targetTag string, force bool) error {
 	u, err := update.NewWithBase(m.cfg.Version, executable, m.cfg.ReleaseBase)
 	if err != nil {
-		m.failOperation(opID, err)
-		return
+		return err
 	}
 	opt := update.Options{Channel: channel}
 	if targetTag != "" {
@@ -446,18 +440,14 @@ func (m *Manager) runUpgrade(ctx context.Context, opID uint64, forceCh <-chan st
 	}
 	stage, info, unlock, err := u.StageRelease(ctx, opt, func(done, total int64) {
 		m.mu.Lock()
-		if m.opID == opID && m.state == StateDownloading {
+		if !m.closed {
 			m.downloadDone = done
 			m.downloadTotal = total
 		}
 		m.mu.Unlock()
 	})
 	if err != nil {
-		if ctx.Err() != nil {
-			return
-		}
-		m.failOperation(opID, err)
-		return
+		return cmp.Or(ctx.Err(), err)
 	}
 	// Ownership of stage and unlock belongs strictly to this goroutine; release them on every exit.
 	defer unlock()
@@ -465,43 +455,38 @@ func (m *Manager) runUpgrade(ctx context.Context, opID uint64, forceCh <-chan st
 
 	// Back up control.sqlite before touching the running binary or acquiring maintenance.
 	if _, err := m.Backup(ctx); err != nil {
-		if ctx.Err() != nil {
-			return
-		}
-		m.failOperation(opID, err)
-		return
+		return cmp.Or(ctx.Err(), err)
 	}
 
 	m.mu.Lock()
-	if m.closed || ctx.Err() != nil || m.opID != opID {
+	if m.closed || ctx.Err() != nil {
 		m.mu.Unlock()
-		return
+		return context.Canceled
 	}
 	m.targetVersion = info.Tag
 	m.latest = &info
 	m.updateAvailable = true
 	m.mu.Unlock()
 
-	held, err := m.waitForMaintenance(ctx, opID, forceCh, ActionUpgrade, force)
+	held, err := m.waitForMaintenance(ctx, op, ActionUpgrade, force)
 	if err != nil {
-		m.failOperation(opID, err)
-		return
+		return err
 	}
-	if !m.beginRestart(ctx, opID) {
+	if err := m.beginRestart(ctx); err != nil {
 		m.releaseMaintenance(ctx, held)
-		return
+		return err
 	}
 	if err := u.Replace(stage); err != nil {
 		m.releaseMaintenance(ctx, held)
-		m.failOperation(opID, err)
-		return
+		return err
 	}
 	slog.Info("staged dex upgrade applied; restarting server", "target", info.Tag)
 	m.scheduleRestart(executable)
+	return nil
 }
 
 // waitForMaintenance reports whether this operation acquired the lease.
-func (m *Manager) waitForMaintenance(ctx context.Context, id uint64, forceCh <-chan struct{}, action string, force bool) (bool, error) {
+func (m *Manager) waitForMaintenance(ctx context.Context, op *activeOp, action string, force bool) (bool, error) {
 	if force || m.cfg.AcquireMaintenance == nil {
 		return false, nil
 	}
@@ -511,7 +496,7 @@ func (m *Manager) waitForMaintenance(ctx context.Context, id uint64, forceCh <-c
 		return false, err
 	}
 	m.mu.Lock()
-	if m.closed || ctx.Err() != nil || m.opID != id {
+	if m.closed || ctx.Err() != nil {
 		m.mu.Unlock()
 		return false, context.Canceled
 	}
@@ -526,7 +511,7 @@ func (m *Manager) waitForMaintenance(ctx context.Context, id uint64, forceCh <-c
 		select {
 		case <-ctx.Done():
 			return false, ctx.Err()
-		case <-forceCh:
+		case <-op.force:
 			return false, nil
 		case <-deadline.C:
 			return false, fmt.Errorf("timed out waiting for active runs to finish before %s", action)
@@ -547,16 +532,14 @@ func (m *Manager) releaseMaintenance(ctx context.Context, held bool) {
 }
 
 // beginRestart closes the cancellation window before an executable can be replaced.
-func (m *Manager) beginRestart(ctx context.Context, id uint64) bool {
+func (m *Manager) beginRestart(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.closed || ctx.Err() != nil || m.opID != id {
-		return false
+	if m.closed || ctx.Err() != nil {
+		return context.Canceled
 	}
 	m.state = StateRestarting
-	m.opCancel = nil
-	m.forceCh = nil
-	return true
+	return nil
 }
 
 func (m *Manager) scheduleRestart(execPath string) {
@@ -578,20 +561,6 @@ func (m *Manager) scheduleRestart(execPath string) {
 		}
 	})
 	m.mu.Unlock()
-}
-
-func (m *Manager) failOperation(opID uint64, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closed || m.opID != opID || errors.Is(err, context.Canceled) {
-		return
-	}
-	m.state = StateError
-	m.pendingAction = ""
-	m.opCancel = nil
-	m.forceCh = nil
-	m.lastError = err.Error()
-	slog.Error("system operation failed", "err", err)
 }
 
 func (m *Manager) channel(ctx context.Context) (string, error) {

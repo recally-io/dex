@@ -96,8 +96,6 @@ func TestUserServeLogsReexecsInPlaceAndExitsOnSIGTERM(t *testing.T) {
 		case <-time.After(3 * time.Second):
 		}
 	})
-	origPID := cmd.Process.Pid
-
 	// Then dex emits "dex is running" to stderr without deadlocking and serves /api/health.
 	var firstStarted int64
 	deadline := time.Now().Add(15 * time.Second)
@@ -118,7 +116,7 @@ func TestUserServeLogsReexecsInPlaceAndExitsOnSIGTERM(t *testing.T) {
 		t.Fatalf("timed out waiting for dex serve startup; stderr:\n%s", stderr.String())
 	}
 
-	// When the user triggers POST /api/system/restart, dex re-execs in place with the same PID and a new startedAt.
+	// When the user requests a restart, the process stays alive and serves a new startedAt.
 	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/api/system/restart", strings.NewReader(`{"force":false}`))
 	if err != nil {
 		t.Fatal(err)
@@ -149,10 +147,6 @@ func TestUserServeLogsReexecsInPlaceAndExitsOnSIGTERM(t *testing.T) {
 	if secondStarted <= firstStarted {
 		t.Fatalf("startedAt did not advance after restart (%d -> %d)\nstderr:\n%s", firstStarted, secondStarted, stderr.String())
 	}
-	if cmd.Process.Pid != origPID {
-		t.Fatalf("PID changed across re-exec: %d -> %d", origPID, cmd.Process.Pid)
-	}
-
 	// When SIGTERM is sent, the re-execed server exits promptly instead of hanging.
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)

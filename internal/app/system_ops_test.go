@@ -279,6 +279,36 @@ func TestUserUpgradesServerWithAutomaticBackupAndSafeWaitWhenBusy(t *testing.T) 
 	}
 }
 
+func TestUserCanRunWorkAfterServerUpgradeCannotReplaceBinary(t *testing.T) {
+	t.Parallel()
+	release := startReleaseFixture(t, []fixtureReleaseSpec{{tag: "v2.0.0"}})
+	exe := filepath.Join(t.TempDir(), "dex")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\nprintf 'dex v1.0.0\\n'\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// A directory at the rollback path prevents the updater from replacing the binary.
+	if err := os.Mkdir(exe+".previous", 0700); err != nil {
+		t.Fatal(err)
+	}
+	var restarts atomic.Int32
+	d := startDexWith(t, app.Config{
+		DataDir: t.TempDir(), Version: "v1.0.0", Executable: exe, ReleaseBase: release.URL,
+		RequestRestart: func(string) { restarts.Add(1) },
+	})
+	d.setModel(t, "bash")
+	var status api.SystemStatus
+	d.must(t, http.MethodPost, "/api/system/upgrade", map[string]string{"version": "v2.0.0"}, &status)
+	eventually(t, "failed upgrade", func() (bool, any) {
+		d.must(t, http.MethodGet, "/api/system/status", nil, &status)
+		return status.State == api.SystemStatusStateError, status
+	})
+	if status.LastError == nil || *status.LastError == "" || restarts.Load() != 0 {
+		t.Fatalf("unexpected upgrade result: %+v; restarts: %d", status, restarts.Load())
+	}
+	id := d.newChat(t, "echo still working")
+	d.watch(t, id).until(t, "work after failed upgrade", answered("bash: still working"))
+}
+
 func TestUserRestartsServerWhenIdleAndWaitsWhenBusy(t *testing.T) {
 	t.Parallel()
 	// Given a server with an active bash tool.
