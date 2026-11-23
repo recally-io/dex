@@ -566,9 +566,6 @@ func (q *Queries) ListRecentDeliveredOutbox(ctx context.Context, conversationID 
 
 const markOutboxDelivered = `-- name: MarkOutboxDelivered :exec
 UPDATE outbox_messages SET status = 'delivered', delivered_at = ?1 WHERE id = ?2
-AND NOT (status = 'revoked' AND EXISTS (
-    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
-))
 `
 
 type MarkOutboxDeliveredParams struct {
@@ -576,7 +573,6 @@ type MarkOutboxDeliveredParams struct {
 	ID          string        `json:"id"`
 }
 
-// A worker may hold a frozen follow-up row when Stop, Clear, or revocation cancels it.
 func (q *Queries) MarkOutboxDelivered(ctx context.Context, arg MarkOutboxDeliveredParams) error {
 	_, err := q.db.ExecContext(ctx, markOutboxDelivered, arg.DeliveredAt, arg.ID)
 	return err

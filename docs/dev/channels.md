@@ -309,10 +309,15 @@ retrying the omission, or forwarding any draft or child output.
 
 The control store records the commitment separately from delivery. A `notified`
 commitment means an explicit conclusion entered the Outbox, not that the channel
-accepted it. Use the linked Outbox receipt, including its skipped-part and error diagnostics,
-for delivery confirmation. Stop, Clear,
-and channel revocation cancel outstanding commitments and their pending Outbox
-entries. A send already in progress cannot be recalled.
+accepted it. Use the linked Outbox receipt, including its skipped-part and error
+information, for delivery confirmation. Stop and Clear cancel outstanding
+commitments and revoke their pending Outbox entries in the same transaction.
+If an already-started send succeeds, Dex still records its platform receipt.
+
+Channel revocation stays on the original input even if its reply was already
+delivered. It also applies to existing and future child results, with or without
+a follow-up commitment. Restoring the channel grant allows new inputs but does
+not authorize delivery from the old result.
 
 ## Feishu and Lark
 

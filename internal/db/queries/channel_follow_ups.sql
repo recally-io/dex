@@ -1,7 +1,5 @@
--- name: CreateChannelFollowUp :execrows
-INSERT INTO channel_follow_ups (delegation_id, result_id, conversation_id)
-SELECT @delegation_id, @result_id, @conversation_id
-FROM authorized_channel_follow_up_sources s WHERE s.id = @source_id;
+-- name: CreateChannelFollowUp :exec
+INSERT INTO channel_follow_ups (delegation_id, result_id, conversation_id) VALUES (?, ?, ?);
 
 -- name: GetChannelFollowUpByInput :one
 SELECT * FROM channel_follow_ups WHERE result_id = ?;
@@ -12,7 +10,11 @@ SELECT * FROM channel_follow_ups WHERE delegation_id = ?;
 -- name: SetOpenChannelFollowUpState :exec
 UPDATE channel_follow_ups SET state = @state WHERE result_id = @result_id AND state = 'open';
 
--- name: CancelChannelFollowUps :exec
-UPDATE channel_follow_ups SET state = 'cancelled' WHERE delegation_id IN (
-    SELECT p.delegation_id FROM pending_channel_follow_ups p WHERE p.conversation_id = @chat_id OR p.child_id = @chat_id
-);
+-- name: CancelChannelFollowUps :many
+UPDATE channel_follow_ups SET state = 'cancelled'
+WHERE (channel_follow_ups.conversation_id = @chat_id OR channel_follow_ups.delegation_id IN (
+    SELECT s.id FROM submissions s WHERE s.conversation_id = @chat_id
+)) AND (state IN ('open', 'notified') OR EXISTS (
+    SELECT 1 FROM outbox_messages o WHERE o.source_submission_id = channel_follow_ups.result_id AND o.status = 'pending'
+))
+RETURNING result_id;

@@ -1,9 +1,12 @@
 package app_test
 
 import (
+	"context"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestUserPromisedChannelFollowUpStaysInternalWithoutExplicitSend(t *testing.T) {
@@ -68,4 +71,42 @@ func TestUserPromisedChannelFollowUpSendsOneConfirmedConclusion(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUserSeesConfirmedFollowUpWhenStopRacesAnInFlightSend(t *testing.T) {
+	t.Parallel()
+	const conclusion = "Reviewed channel conclusion"
+	inFlight, release := make(chan struct{}, 1), make(chan struct{})
+	f := newFakeTelegram(t)
+	f.holdRich = func(ctx context.Context, text string) {
+		if text != conclusion {
+			return
+		}
+		inFlight <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+	}
+	d := startTelegram(t, f, t.TempDir(), 42)
+	d.setModel(t, "spawn-notify")
+	main := d.mainChat(t)
+	conn := sessionDB(t, d)
+	f.message(1, 42, 7, childJSON(t, map[string]any{"title": "In-flight follow-up", "message": "child data", "provider": "faux", "modelId": "echo", "follow_up": true}))
+	work := waitExecution(t, conn, main, "In-flight follow-up", "done")
+	select {
+	case <-inFlight:
+	case <-time.After(15 * time.Second):
+		t.Fatal("the conclusion never reached the platform fixture")
+	}
+	d.must(t, http.MethodPost, chatPath(main, "abort"), nil, nil)
+	if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ? AND status = 'revoked' AND delivered_at IS NULL`, work.ResultID); n != 1 {
+		t.Fatalf("stop did not revoke the pending row: %d", n)
+	}
+	close(release)
+	eventually(t, "platform receipt for the already in-flight conclusion", func() (bool, any) {
+		var status, remotes string
+		err := conn.QueryRowContext(t.Context(), `SELECT status, remote_ids FROM outbox_messages WHERE source_submission_id = ?`, work.ResultID).Scan(&status, &remotes)
+		return err == nil && status == "delivered" && remotes != "[]", []any{status, remotes, err}
+	})
 }

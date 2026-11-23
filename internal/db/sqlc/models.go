@@ -46,12 +46,6 @@ type Artifact struct {
 	CreatedAt             int64  `json:"created_at"`
 }
 
-type AuthorizedChannelFollowUpSource struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
-	Peer    string `json:"peer"`
-}
-
 type Automation struct {
 	ID                   string         `json:"id"`
 	AgentID              string         `json:"agent_id"`
@@ -282,16 +276,6 @@ type OutboxMessage struct {
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
 	SkippedPart        int64          `json:"skipped_part"`
-}
-
-type PendingChannelFollowUp struct {
-	DelegationID   string `json:"delegation_id"`
-	ConversationID int64  `json:"conversation_id"`
-	ChildID        int64  `json:"child_id"`
-	AgentID        string `json:"agent_id"`
-	SourceID       string `json:"source_id"`
-	ResultID       string `json:"result_id"`
-	Peer           string `json:"peer"`
 }
 
 type Provider struct {

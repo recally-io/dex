@@ -102,11 +102,7 @@ WHERE id = @id;
 UPDATE outbox_messages SET retry_at = @retry_at, error = @reason WHERE id = @id;
 
 -- name: MarkOutboxDelivered :exec
--- A worker may hold a frozen follow-up row when Stop, Clear, or revocation cancels it.
-UPDATE outbox_messages SET status = 'delivered', delivered_at = @delivered_at WHERE id = @id
-AND NOT (status = 'revoked' AND EXISTS (
-    SELECT 1 FROM channel_follow_ups f WHERE f.result_id = outbox_messages.source_submission_id
-));
+UPDATE outbox_messages SET status = 'delivered', delivered_at = @delivered_at WHERE id = @id;
 
 -- name: RevokeOutboxBySubmission :exec
 UPDATE outbox_messages SET status = 'revoked' WHERE source_submission_id = ? AND status = 'pending';
