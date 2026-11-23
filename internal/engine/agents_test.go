@@ -212,29 +212,20 @@ func TestUserStopWithdrawsQueuedInputWithoutModelContext(t *testing.T) {
 }
 
 func TestUserBashUsesExplicitAgentEnvironment(t *testing.T) {
-	// Given a process-only variable and distinct per-agent environment files.
+	// Given a process-only variable and an explicit login environment.
 	t.Setenv("DEX_CORE_PROCESS_SECRET", "must-not-inherit")
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": "/usr/bin:/bin", "CORE_BASE": "base"}}
-	for _, id := range []string{"alpha", "beta"} {
-		dir := filepath.Join(config.DataDir, "agents", id, ".agents")
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, ".env"), []byte("CORE_AGENT="+id+"\n"), 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
 	a := coreEngine(t, config)
 	// When the real bash tool runs for both agents.
 	for _, id := range []string{"alpha", "beta"} {
 		ref := coreCreate(t, a, id, coreOptions("bash"))
-		outcome := coreWait(t, coreSubmit(t, a, ref, "environment", `printf '%s|%s|%s|%s' "$CORE_BASE" "$CORE_AGENT" "${DEX_CORE_PROCESS_SECRET-unset}" "$PWD"`, "bash"))
+		outcome := coreWait(t, coreSubmit(t, a, ref, "environment", `printf '%s|%s|%s' "$CORE_BASE" "${DEX_CORE_PROCESS_SECRET-unset}" "$PWD"`, "bash"))
 		// Then each command sees only its explicit environment and its own workspace.
 		workspace, err := filepath.EvalSymlinks(filepath.Join(config.DataDir, "agents", id, "workspace"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		expected := "base|" + id + "|unset|" + workspace
+		expected := "base|unset|" + workspace
 		if outcome.Status != "done" || outcome.Answer != "bash: "+expected {
 			t.Fatalf("environment %s: %+v; want %q", id, outcome, expected)
 		}

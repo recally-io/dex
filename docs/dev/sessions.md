@@ -168,8 +168,8 @@ against them:
 - `session_new` with `bot` creates the conversation under the target bot. The
   child takes the model, thinking level and workspace defaults of that bot, not
   the settings of the parent. Admission reads the agent of the child, so the
-  child runs with the instructions, memory section, skills, MCP servers and
-  `.env` of that bot. A child still cannot create children.
+  child runs with the instructions, memory section, skills, MCP servers, and
+  vault of that bot. A child still cannot create children.
 - A result goes to `conversations.parent_id` in the settlement transaction, in the
   bot of the parent. Admission of the bot of the parent takes it from the
   database, as for a result from the same bot.

@@ -205,10 +205,11 @@ type item struct {
 	Steer   bool   `json:"steer"`
 	Failure string `json:"failure"`
 	// Boundary is reset or compaction on a boundary item.
-	Boundary string `json:"boundary"`
-	Name     string `json:"name"`
-	Status   string `json:"status"`
-	Output   string `json:"output"`
+	Boundary string         `json:"boundary"`
+	Name     string         `json:"name"`
+	Status   string         `json:"status"`
+	Args     map[string]any `json:"args"`
+	Output   string         `json:"output"`
 	// Truncated marks a long output that getChatItem returns.
 	Truncated bool   `json:"truncated"`
 	Reason    string `json:"reason"`

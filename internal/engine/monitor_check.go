@@ -58,9 +58,13 @@ func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string,
 		return "", false, nil
 	}
 
-	vars := make(map[string]string, len(target.Vars)+len(env))
+	resolved, err := envs.loaded.Vault.Resolve(env, false)
+	if err != nil {
+		return "", false, err
+	}
+	vars := make(map[string]string, len(target.Vars)+len(resolved))
 	maps.Copy(vars, target.Vars)
-	maps.Copy(vars, env)
+	maps.Copy(vars, resolved)
 	hash := sha256.New()
 	remaining := monitorOutputLimit
 	overflow := false

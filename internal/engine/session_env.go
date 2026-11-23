@@ -20,8 +20,8 @@ type sessionEnv struct {
 	ID     string
 	Handle execenv.Handle
 	Files  *agentExtensions
-	// Vars are the tool environment values. A remote environment gets only the explicit .env
-	// values, and its processes inherit the environment of their host (Inherit).
+	// Vars hold the base values, without any vault secrets. Remote commands use the target's
+	// environment with only the configured 1Password credentials from the control host.
 	Vars    map[string]string
 	Inherit bool
 }

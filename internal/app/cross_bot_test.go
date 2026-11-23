@@ -32,17 +32,19 @@ type botChat struct {
 	id    int64
 }
 
-// startBots starts dex with bot A and bot B. Each bot has its own .env with the same key CROSS_MARKER
+const crossMarkerCall = `bash {"command":"case $CROSS_MARKER in from-a-*) printf from-a;; from-b-*) printf from-b;; esac","env":{"CROSS_MARKER":"vault:CROSS_MARKER"}}`
+
+// startBots starts dex with two bots that have different values for CROSS_MARKER
 // and another value, and B has instructions with a marker. B has the default model "section".
 func startBots(t *testing.T) *bots {
 	t.Helper()
 	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "agents", "default", ".agents", ".env"), "CROSS_MARKER=from-a\n")
 	d := startDex(t, dir, "")
+	saveVault(t, d, "default", "agent", "CROSS_MARKER", "from-a-private")
 	d.setModel(t, "echo")
 	var b apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Coder", "provider": "faux", "modelId": "section", "thinkingLevel": "off", "instructions": "Instruction marker of Coder"}, &b, http.StatusCreated)
-	writeFile(t, filepath.Join(dir, "agents", b.ID, ".agents", ".env"), "CROSS_MARKER=from-b\n")
+	saveVault(t, d, b.ID, "agent", "CROSS_MARKER", "from-b-private")
 	if status, body := d.reload(t); status != http.StatusOK {
 		t.Fatalf("reload: %d %s", status, body)
 	}
@@ -147,11 +149,11 @@ func (s *bots) pending() int {
 
 func TestUserBotCreatesChildSessionInAnotherBot(t *testing.T) {
 	t.Parallel()
-	// Given bot A and bot B, with different .env values and B with its own instructions and model.
+	// Given bot A and bot B, with different vault values and B with its own instructions and model.
 	s := startBots(t)
 	parent := s.chat("default")
 	// When a chat of bot A creates a child in B by name, on a model that prints its environment.
-	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Env", "message": `printf %s "$CROSS_MARKER"`, "provider": "faux", "modelId": "bash"})
+	child := parent.newChild(map[string]any{"bot": "Coder", "title": "Env", "message": crossMarkerCall, "provider": "faux", "modelId": "tool"})
 	// Then the child belongs to B and names B.
 	if child.Bot != "Coder" || child.BotID != s.b.ID {
 		t.Fatalf("session_new named another bot: %+v", child)
@@ -160,9 +162,9 @@ func TestUserBotCreatesChildSessionInAnotherBot(t *testing.T) {
 	if conv.agent != s.b.ID || conv.parent.Int64 != parent.id || !conv.parent.Valid {
 		t.Fatalf("child conversation: %+v", conv)
 	}
-	// And the child ran with the .env of B, and the result reached the conversation of A once.
+	// And the child ran with the vault value of B, and the result reached the conversation of A once.
 	rows := waitResults(t, s.conn, parent.id, 1)
-	if got := resultBody(t, rows[0].content)["answer"]; got != "bash: from-b" {
+	if got := resultBody(t, rows[0].content)["answer"]; got != "tool: from-b" {
 		t.Fatalf("child environment: %v", got)
 	}
 	turns := waitDoneChildTurns(t, s.conn, child.conversation(t), 1)
@@ -179,9 +181,9 @@ func TestUserBotCreatesChildSessionInAnotherBot(t *testing.T) {
 		t.Fatalf("child defaults: %+v", conv)
 	}
 	// And a child with no bot stays in A, with the settings of its parent.
-	same := parent.newChild(map[string]any{"title": "Same", "message": `printf %s "$CROSS_MARKER"`, "provider": "faux", "modelId": "bash"})
+	same := parent.newChild(map[string]any{"title": "Same", "message": crossMarkerCall, "provider": "faux", "modelId": "tool"})
 	rows = waitResults(t, s.conn, parent.id, 3)
-	if got := resultBody(t, rows[2].content)["answer"]; same.BotID != "default" || got != "bash: from-a" {
+	if got := resultBody(t, rows[2].content)["answer"]; same.BotID != "default" || got != "tool: from-a" {
 		t.Fatalf("child without bot: %+v %v", same, got)
 	}
 	// And an unknown bot fails, and creates nothing.
@@ -650,7 +652,7 @@ func TestUserChildUsesTargetBotRuntimeContext(t *testing.T) {
 	if got := run("bash", "pwd"); !strings.Contains(got, filepath.Join("agents", s.b.ID, "workspace")) {
 		t.Errorf("workspace: %s", got)
 	}
-	if got := run("bash", `printf %s "$CROSS_MARKER"`); got != "bash: from-b" {
+	if got := run("tool", crossMarkerCall); got != "tool: from-b" {
 		t.Errorf("env: %s", got)
 	}
 	if got := run("think", "thinking marker"); !strings.Contains(got, "think off:") {

@@ -96,7 +96,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if strings.HasSuffix(r.URL.Path, "/extensions/env") {
+			if strings.HasSuffix(r.URL.Path, "/vault") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}
@@ -303,29 +303,27 @@ func (h *handler) GetExtensions(ctx context.Context, _ api.GetExtensionsRequestO
 	out, err := h.extensionView(ctx)
 	return api.GetExtensions200JSONResponse(out), err
 }
-func (h *handler) PutExtensionEnv(ctx context.Context, req api.PutExtensionEnvRequestObject) (api.PutExtensionEnvResponseObject, error) {
+func (h *handler) ListVault(ctx context.Context, _ api.ListVaultRequestObject) (api.ListVaultResponseObject, error) {
+	list, err := h.Engine.VaultList(agentID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out := make(api.ListVault200JSONResponse, 0, len(list))
+	for _, entry := range list {
+		out = append(out, api.VaultEntry{Name: entry.Name, Scope: api.ExtensionScope(entry.Scope), UpdatedAt: entry.UpdatedAt})
+	}
+	return out, nil
+}
+func (h *handler) PutVault(ctx context.Context, req api.PutVaultRequestObject) (api.PutVaultResponseObject, error) {
 	if req.Body == nil || req.Body.Value == nil {
 		return nil, errInvalid
 	}
-	out, err := h.editEnv(ctx, string(req.Body.Scope), req.Body.Key, req.Body.Value)
-	return api.PutExtensionEnv200JSONResponse(out), err
+	err := h.Engine.VaultEdit(agentID(ctx), string(req.Body.Scope), req.Body.Name, req.Body.Value)
+	return api.PutVault200JSONResponse(ok), err
 }
-func (h *handler) DeleteExtensionEnv(ctx context.Context, req api.DeleteExtensionEnvRequestObject) (api.DeleteExtensionEnvResponseObject, error) {
-	out, err := h.editEnv(ctx, string(req.Params.Scope), req.Params.Key, nil)
-	return api.DeleteExtensionEnv200JSONResponse(out), err
-}
-func (h *handler) editEnv(ctx context.Context, scope, key string, value *string) (api.Extensions, error) {
-	if (scope != "agent" && scope != "dex") || key == "" {
-		return api.Extensions{}, errInvalid
-	}
-	_, err := h.Engine.EditEnv(ctx, agentID(ctx), scope, key, value)
-	if err != nil {
-		if _, ok := errors.AsType[*engine.EnvEditError](err); ok {
-			return api.Extensions{}, errors.Join(errInvalid, err)
-		}
-		return api.Extensions{}, err
-	}
-	return h.extensionView(ctx)
+func (h *handler) DeleteVault(ctx context.Context, req api.DeleteVaultRequestObject) (api.DeleteVaultResponseObject, error) {
+	err := h.Engine.VaultEdit(agentID(ctx), string(req.Params.Scope), req.Params.Name, nil)
+	return api.DeleteVault200JSONResponse(ok), err
 }
 func (h *handler) ReloadExtensions(ctx context.Context, _ api.ReloadExtensionsRequestObject) (api.ReloadExtensionsResponseObject, error) {
 	if err := h.Chats.ReloadExtensions(ctx, agentID(ctx)); err != nil {

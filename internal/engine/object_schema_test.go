@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/MichaelKinsy/PiG/durable"
+	"github.com/recally-io/dex/internal/vault"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -26,10 +27,10 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 	ref := Ref{AgentID: "bot"}
 	link := WorkTaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
 	extensions := []*durable.Extension{
-		checkExtension("bot", nil), telegramExtension("bot", nil), codingTools(nil, 0), routineExtension("bot", RoutineTools{}),
+		checkExtension("bot", nil), telegramExtension("bot", nil), codingTools(nil, 0, vault.Snapshot{}), routineExtension("bot", RoutineTools{}),
 		sessionExtension("bot", TaskTools{}), sessionReadExtension("bot", TaskTools{}),
 		workLoopExtension(), artifactExtension("bot", nil, nil), (&memoryRepo{}).Extension("bot", nil), frontDeskExtension(),
-		outboxExtension("bot", OutboxTools{}), childOutboxExtension("bot", OutboxTools{}), monitorExtension("bot", MonitorTools{}, nil),
+		outboxExtension("bot", OutboxTools{}), childOutboxExtension("bot", OutboxTools{}), monitorExtension("bot", MonitorTools{}, nil, vault.Snapshot{}),
 		askUserExtension("bot", nil), botReadExtension("bot", BotTools{}), botManageExtension("bot", BotTools{}),
 		workTaskExtension("bot", WorkTaskTools{Links: []WorkTaskLinkTool{link}}), childExtension(), dreamMessageExtension("bot", nil),
 		routineCheckInstructions(), groupExtension(nil),

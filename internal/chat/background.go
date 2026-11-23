@@ -56,7 +56,7 @@ func (s *Service) ToolMonitorCommand(ctx context.Context, r engine.TaskContext, 
 		CallKey: r.Key, AgentID: conv.AgentID, ConversationID: conv.ID, SourceRequestID: r.SourceRequestID,
 		Command: a.Command, Wake: a.Wake, Timeout: time.Duration(a.Timeout) * time.Second, Cwd: a.Cwd,
 		DefaultCwd: cmp.Or(conv.Cwd, a.Workspace), Label: a.Label, EnvironmentID: a.EnvironmentID, Env: env,
-		InheritEnv: a.InheritEnv, EnvKind: a.EnvKind, OutputDir: a.OutputDir,
+		InheritEnv: a.InheritEnv, EnvKind: a.EnvKind, OutputDir: a.OutputDir, MaskOutput: a.MaskOutput,
 	})
 	if err != nil {
 		return engine.MonitorInfo{}, err

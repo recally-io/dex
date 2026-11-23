@@ -14,6 +14,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/vault"
 )
 
 // Submission joins one durable input and the memory commit that follows its settlement.
@@ -142,7 +143,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				// before the upgrade loses the same extensions.
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines), outboxExtension(ref.AgentID, a.config.Tasks.Outbox)}, Add: []*durable.Extension{childExtension(), childOutboxExtension(ref.AgentID, a.config.Tasks.Outbox)}}})
 			case dream:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), monitorExtension(ref.AgentID, a.config.Tasks.Monitors, nil), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), monitorExtension(ref.AgentID, a.config.Tasks.Monitors, nil, vault.Snapshot{}), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 			}
 		}
 		if err := a.groupAttachments(ref, input.Attachments); err != nil {

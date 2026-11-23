@@ -3,6 +3,7 @@ module github.com/recally-io/dex
 go 1.27.2
 
 require (
+	filippo.io/age v1.3.1
 	github.com/MichaelKinsy/PiG v0.7.0
 	github.com/coder/websocket v1.8.15
 	github.com/emersion/go-imap/v2 v2.0.0-beta.9
@@ -20,6 +21,7 @@ require (
 
 require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
+	filippo.io/hpke v0.4.0 // indirect
 	github.com/MichaelKinsy/PiG/extensions/sdk v0.7.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.47.1 // indirect
@@ -53,6 +55,7 @@ require (
 	github.com/tetratelabs/wazero v1.12.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect

@@ -1,12 +1,11 @@
 # Extensions
 
-This document describes how dex loads skills, MCP servers, `.env`, and
+This document describes how dex loads skills, MCP servers, vault secrets, and
 `AGENTS.md` for an agent, and how it reloads them.
 
-Skills and `.env` come from two file levels: dex
-(`<resolved data dir>/.agents/`) and agent (`<data dir>/agents/<id>/.agents/`).
-dex does not read the user home. Narrower levels win. Paths are fixed before
-`.env` is read. Equal real paths are read once as the narrower level.
+Skills come from two file levels: dex (`<data dir>/.agents/`) and agent
+(`<data dir>/agents/<id>/.agents/`). dex does not read the user home for skills.
+Narrower levels win. Equal real paths are read once as the narrower level.
 The engine reads `AGENTS.md` only from the conversation's cwd in its execution
 environment and adds it after the bot's saved instructions at each admission.
 On upgrade, dex imports old dex-level and agent-level files, including their
@@ -84,9 +83,8 @@ A skill mutation reports a sync failure to its caller.
 
 Run scripts from the skill directory in the session environment. Every `bash`
 call sets `DEX_SKILL_CACHE` to `<workspace>/.dex/cache/skills`. Create
-`$DEX_SKILL_CACHE/<name>` with `mkdir -p` and put runtime files there. A skill's
-`.env` is an ordinary file. dex copies it and does not load it. Keep secrets
-in the vault. Pass them with the `env` argument of `bash` or
+`$DEX_SKILL_CACHE/<name>` with `mkdir -p` and put runtime files there. Keep
+secrets in the vault. Pass references in the `env` argument of `bash` or
 `monitor_set_command`.
 
 Each host store is a Git repository. dex commits changes at submission settlement
@@ -95,32 +93,51 @@ recovers changes left by a crash. Git honors a skill's `.gitignore`; sync does n
 
 ## Tool environment and MCP
 
-Each agent has its own environment snapshot for tools and stdio MCP servers.
-It starts from the login shell environment, then the `.env` levels, then the
-1Password credentials of the settings. When `op` exists, the prompt tells the
-agent to read secrets with `op read`. Optional speech can resolve an explicitly
-selected provider key reference in memory through the same CLI and credentials.
-Other references remain under agent control. A scheduler job reloads an open
-agent when that agent is idle after an extension, shell rc, or 1Password
-configuration change.
-Invalid `.env` files prevent MCP startup for that agent. Invalid
-`.env` also removes all file environment values from that snapshot.
+Each agent has its own environment snapshot. Local tools and stdio MCP
+start from the control host's login shell environment and configured
+1Password credentials. Tools on a remote target use that target's environment
+and the configured 1Password credentials. A command or MCP declaration can
+add explicit environment variables. dex does not modify its process environment.
+A scheduler job reloads the affected open agent when it is idle after an
+MCP, vault, shell rc, or 1Password change.
+
 The [engine extension loader](../../internal/engine/extensions.go) connects
 servers before it resumes the agent Harness. It installs prompt sections for
 the extension guide and current skills. MCP tools use the names
-`mcp__<server>__<tool>` and deferred tool discovery. The guide lists fixed paths,
-file formats, environment use, secrecy, and Reload. It contains no environment
-key names or values, except the names of keys whose value has a shape hint
-(an assignment, empty, whitespace, or an `op://` reference). It also says that
-`.env` values reach only the tools that dex starts.
+`mcp__<server>__<tool>` and deferred tool discovery.
 
-`PUT` and `DELETE /api/agents/{agentId}/extensions/env` call the engine's
-write-only environment methods. Edits are serialized per path and replace
-the file atomically with mode `0600`. They preserve unrelated lines and refuse
-invalid files. Home is read-only. Saving does not reload; the automatic reload
-applies the change. The file is the only store.
-Each `env` entry of the Extensions API carries `hints`, the shape hints of its
-value. A hint never holds value text.
+### Secret vault
+
+Use Settings → Environment to set shared values. Use a bot's Tools page to
+set values for that bot. An agent entry overrides a shared entry with the same
+name. `GET /api/agents/{agentId}/vault` returns names, scopes, and last change
+times. `PUT` sets a value and `DELETE` removes it. Neither returns a value.
+The agent has only `vault_list`, which shows effective names and metadata.
+
+`bash`, `monitor_set_command`, and `monitor_set_schedule` accept `vault:NAME`
+as an `env` value. A schedule stores the reference and resolves it when the
+check runs. dex resolves values on the control host and sends only the
+requested variables to the command. Local, SSH, runner, and E2B use the same
+path. Remote targets need no extra program for vault access. A missing name stops the command
+before it starts. A plain Bash call gets no vault values.
+
+A snapshot masks exact values of at least 8 characters as `[vault:NAME]` in final
+top-level tool results and command Monitor wake-ups. Values passed between
+nested Code Mode tools are not masked. A long Bash call's full output file
+and a Monitor's output file stay as written on the execution host. Masking
+does not hide encoded values, or block another process of the same user from
+reading a process environment. The vault is not a sandbox on the control host.
+
+The vault uses an age file for each level in `<data dir>/vault/`. Writes are
+serialized and replace each file atomically. dex creates `identity.txt` with
+mode `0600` on the first write. A copy without that identity cannot decrypt
+the files. A process that can read the identity and the encrypted files can
+read the vault. Keep the identity separate from any copy that must not grant
+access to secrets.
+
+At startup dex warns about old `.env` files at the dex and agent levels and
+ignores them. It does not import them. Move secrets into the vault. Put other
+values in shell rc files or in the `env` of a call or MCP server.
 
 ### MCP declarations
 
@@ -142,11 +159,14 @@ the current work ends and the affected agent reloads. A dex change marks all
 open agents for reload.
 
 `mcp_server_get` hides plain `env` and `headers` values and the URL query.
-Vault references are visible as written. The vault resolves them at server
-startup once vault support is available. To keep a hidden `env` or `headers`
-value, include `[hidden]` for that key in `mcp_server_set`. Ask the user to
-move secrets to the vault before supplying a JSON snippet. Snippets can enter
-the transcript. Plain values in declarations are stored as plain text.
+dex resolves `vault:NAME` and inline `${vault:NAME}` in `env` and `headers`
+when it starts the server. For example, an HTTP header can use
+`Authorization: Bearer ${vault:NOTION_TOKEN}`. The declarations keep references,
+not resolved values. `mcp_server_get`, `mcp_server_list`, and the Extensions
+API show those references as written. To keep a hidden `env` or `headers`
+value, include `[hidden]` for that key in `mcp_server_set`. Do not paste
+literal secrets into a declaration. A snippet can enter the transcript.
+Plain values in declarations are stored as plain text.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
 The Web Extensions page uses the same server status as `mcp_server_list`.
