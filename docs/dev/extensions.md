@@ -7,9 +7,12 @@ Skills, MCP servers, and `.env` come from two levels: dex
 (`<resolved data dir>/.agents/`) and agent (`<data dir>/agents/<id>/.agents/`).
 dex does not read the user home. Narrower levels win. Paths are fixed before
 `.env` is read. Equal real paths are read once as the narrower level.
-`AGENTS.md` comes from the dex level, the agent level, and the conversation cwd;
-the engine adds it around the bot's instructions at each admission.
-Skills have a fourth, narrowest level: `.agents/skills` under the
+The engine reads `AGENTS.md` only from the conversation's cwd in its execution
+environment and adds it after the bot's saved instructions at each admission.
+On upgrade, dex imports old dex-level and agent-level files, including their
+imports, into the affected bots' saved instructions. It renames the old files
+with the `.migrated` suffix. New files at those levels have no effect.
+Skills have a third, narrowest level: `.agents/skills` under the
 conversation's cwd. The skills prompt section reads that cwd from the request's
 execution environment, so it follows the conversation. Chat sessions store
 their `cwd` in `control.sqlite`. Empty uses the workspace of the session's

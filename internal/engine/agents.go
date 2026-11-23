@@ -507,9 +507,8 @@ func agentChange(options Options) harness.AgentChange {
 	return change
 }
 
-// agentChange adds the AGENTS.md text to the instructions. It reads the files at each admission,
-// so an edit applies from the next input of a conversation.
-// agentChange reads the project AGENTS.md in the environment of the session ref.
+// agentChange adds the project AGENTS.md from the session's execution environment.
+// It reads the file at each admission so an edit applies on the next input.
 func (a *Agents) agentChange(ctx context.Context, ref Ref, options Options) harness.AgentChange {
 	files := a.files(ref.AgentID, nil)
 	if envs := a.environments(ref.AgentID); envs != nil {

@@ -29,6 +29,11 @@ type Agent struct {
 	FallbackModelID             string         `json:"fallback_model_id"`
 }
 
+type AgentInstructionImport struct {
+	ID           int64  `json:"id"`
+	PendingFiles string `json:"pending_files"`
+}
+
 type AppliedPluginMigration struct {
 	Plugin    string `json:"plugin"`
 	Version   int64  `json:"version"`
