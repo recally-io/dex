@@ -2,7 +2,10 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -21,7 +24,6 @@ type agentsMD struct {
 	text string
 	// path is the real path of the file.
 	path     string
-	scope    string
 	warnings []string
 }
 
@@ -29,7 +31,7 @@ type agentsMDReader struct {
 	ctx  context.Context
 	env  durableenv.ExecutionEnv
 	home string
-	// confine is the real project directory; empty means no limit (the agent level).
+	// confine is the real project directory; only the legacy import has no limit.
 	confine  string
 	seen     map[string]bool
 	out      strings.Builder
@@ -51,8 +53,39 @@ func readAgentsMDEnv(ctx context.Context, env durableenv.ExecutionEnv, targetPat
 		r.warnings = append(r.warnings, targetPath+": the file is outside the project directory and dex skips it")
 		return agentsMD{warnings: r.warnings}
 	}
-	r.load(resolved, 0)
+	_ = r.load(resolved, 0)
 	return agentsMD{text: strings.TrimSpace(r.out.String()), path: resolved, warnings: r.warnings}
+}
+
+// ReadLegacyAgentsMD snapshots a retired local file with the imports it used at runtime.
+// A non-regular file or a missing symlink target did not supply instructions.
+func ReadLegacyAgentsMD(ctx context.Context, file, home string) (text string, found bool, err error) {
+	resolved, err := filepath.EvalSymlinks(file)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", false, err
+	}
+	if !info.Mode().IsRegular() {
+		return "", false, nil
+	}
+	if home == "" {
+		home, err = os.UserHomeDir()
+		if err != nil {
+			return "", false, err
+		}
+	}
+	env := envnode.NewNodeExecutionEnv(envnode.NodeExecutionEnvOptions{Cwd: filepath.Dir(resolved)})
+	r := &agentsMDReader{ctx: ctx, env: env, home: home, seen: map[string]bool{}}
+	if err := r.load(resolved, 0); err != nil {
+		return "", false, err
+	}
+	return strings.TrimSpace(r.out.String()), true, nil
 }
 
 func (r *agentsMDReader) regularFile(target string) (string, bool) {
@@ -80,12 +113,12 @@ func (r *agentsMDReader) allowed(resolved string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func (r *agentsMDReader) load(resolved string, depth int) {
+func (r *agentsMDReader) load(resolved string, depth int) error {
 	r.seen[resolved] = true
 	data, err := r.env.ReadBinaryFile(r.ctx, resolved)
 	if err != nil {
 		r.warnings = append(r.warnings, resolved+": cannot read the file")
-		return
+		return err
 	}
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	if depth > 0 {
@@ -109,9 +142,10 @@ func (r *agentsMDReader) load(resolved string, depth int) {
 		case depth >= agentsMDDepth:
 			r.warnings = append(r.warnings, fmt.Sprintf("%s: the import @%s is deeper than %d levels and dex skips it", resolved, token, agentsMDDepth))
 		default:
-			r.load(target, depth+1)
+			_ = r.load(target, depth+1)
 		}
 	}
+	return nil
 }
 
 func (r *agentsMDReader) resolve(dir, token string) (string, bool) {
@@ -229,44 +263,31 @@ func maskCodeSpans(line string) string {
 }
 
 func (a *agentExtensions) instructionsContext(ctx context.Context, cwd, own string) string {
-	files := a.agentsMDContext(ctx, cwd)
-	var parts []string
-	for _, md := range files[:len(files)-1] {
-		if md.text != "" {
-			parts = append(parts, "AGENTS.md of the "+md.scope+" level ("+md.path+"):\n\n"+md.text)
-		}
+	project := a.agentsMDContext(ctx, cwd)
+	if project.text == "" {
+		return own
 	}
 	if own != "" {
-		parts = append(parts, own)
+		own += "\n\n---\n\n"
 	}
-	if project := files[len(files)-1]; project.text != "" {
-		parts = append(parts, "AGENTS.md of the project ("+project.path+"):\n\n"+project.text)
-	}
-	return strings.Join(parts, "\n\n---\n\n")
+	return own + "AGENTS.md of the project (" + project.path + "):\n\n" + project.text
 }
 
-// agentsMDContext reads AGENTS.md at the dex level, the agent level, and the project (cwd), in this order.
-func (a *agentExtensions) agentsMDContext(ctx context.Context, cwd string) []agentsMD {
+// agentsMDContext reads the project file in the session's execution environment.
+func (a *agentExtensions) agentsMDContext(ctx context.Context, cwd string) agentsMD {
 	if cwd == "" {
 		cwd = a.workspace
 	}
-	var out []agentsMD
-	for _, l := range a.distinct() {
-		md := readAgentsMDLocal(ctx, filepath.Join(l.Dir, "AGENTS.md"), a.home, "")
-		md.scope = l.Scope
-		out = append(out, md)
+	if !a.isRemote() {
+		return readAgentsMDLocal(ctx, filepath.Join(cwd, "AGENTS.md"), a.home, canonicalExtensionPath(cwd))
 	}
-	var project agentsMD
-	if a.isRemote() {
-		if env, err := a.execHandle.Env(ctx, cwd, nil); err == nil {
-			if canonCwd, err := env.CanonicalPath(ctx, cwd); err == nil {
-				remoteHome := a.execHandle.Home()
-				project = readAgentsMDEnv(ctx, env, execenv.JoinTargetPath(cwd, "AGENTS.md"), remoteHome, canonCwd)
-			}
-		}
-	} else {
-		project = readAgentsMDLocal(ctx, filepath.Join(cwd, "AGENTS.md"), a.home, canonicalExtensionPath(cwd))
+	env, err := a.execHandle.Env(ctx, cwd, nil)
+	if err != nil {
+		return agentsMD{}
 	}
-	project.scope = "project"
-	return append(out, project)
+	canonCwd, err := env.CanonicalPath(ctx, cwd)
+	if err != nil {
+		return agentsMD{}
+	}
+	return readAgentsMDEnv(ctx, env, execenv.JoinTargetPath(cwd, "AGENTS.md"), a.execHandle.Home(), canonCwd)
 }

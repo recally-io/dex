@@ -552,9 +552,7 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 			s.info.Servers = append(s.info.Servers, servers[name].info)
 		}
 	}
-	for _, md := range a.agentsMDContext(ctx, "") {
-		s.info.Warnings = append(s.info.Warnings, md.warnings...)
-	}
+	s.info.Warnings = append(s.info.Warnings, a.agentsMDContext(ctx, "").warnings...)
 	for _, name := range []string{"skills", "mcp.json"} {
 		path := filepath.Join(a.agentDir, name)
 		if _, err := os.Lstat(path); err == nil {

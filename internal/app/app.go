@@ -123,6 +123,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err != nil {
 		return nil, errors.Join(err, conn.Close())
 	}
+	if err := migrateAgentInstructions(ctx, conn, cfg); err != nil {
+		slog.Warn("import legacy bot instructions", "err", err)
+	}
 	jobs := scheduler.New()
 
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
