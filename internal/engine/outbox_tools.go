@@ -62,7 +62,7 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 		Tools: []*durable.ToolRegistration{
 			{
 				Name:        "notify_user",
-				Description: "Send a message to the user via the durable Outbox. On System Turns (task_result, background wakes, timers), this is how you report updates to the user. By default (final=true), must be the sole tool call in its round and ends the turn.",
+				Description: "Send a message to the user via the durable Outbox. On System Turns (task_result, background wakes, monitors), this is how you report updates to the user. By default (final=true), must be the sole tool call in its round and ends the turn.",
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false, "required": []string{"content"},
 					"properties": map[string]any{

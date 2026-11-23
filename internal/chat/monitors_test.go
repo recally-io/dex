@@ -12,7 +12,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserFollowupTimersBoundsChainDepthAndAuthority(t *testing.T) {
+func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 	r := startNative(t, "echo")
 	now := r.service.now()
 	r.service.now = func() time.Time { return now }
@@ -34,67 +34,67 @@ func TestUserFollowupTimersBoundsChainDepthAndAuthority(t *testing.T) {
 		SourceRequestID: "user-root-1", Key: "bot/t-invalid-1",
 	}
 	// Rejects delay < 60s and > 7 days.
-	if _, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 30, Prompt: "too soon"}); err == nil {
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 30, Prompt: "too soon"}); err == nil {
 		t.Fatal("expected error for delay < 60s")
 	}
-	if _, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 8 * 24 * 3600, Prompt: "too far"}); err == nil {
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 8 * 24 * 3600, Prompt: "too far"}); err == nil {
 		t.Fatal("expected error for delay > 7d")
 	}
 
-	// Enforces 32 active timers per conversation and allows cancel + re-add.
-	var firstTimerID string
-	for i := range maxActiveTimers {
+	// Enforces 32 active monitors per conversation and allows cancel + re-add.
+	var firstMonitorID string
+	for i := range maxActiveMonitors {
 		call.Key = fmt.Sprintf("bot/t-cap-%d", i)
-		info, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("check %d", i)})
+		info, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("check %d", i)})
 		if err != nil {
-			t.Fatalf("timer %d failed: %v", i, err)
+			t.Fatalf("monitor %d failed: %v", i, err)
 		}
 		if i == 0 {
-			firstTimerID = info.ID
+			firstMonitorID = info.ID
 		}
 		if info.ChainDepth != 0 {
 			t.Fatalf("expected depth 0 from user turn, got %d", info.ChainDepth)
 		}
 	}
 	call.Key = "bot/t-cap-overflow"
-	if _, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 120, Prompt: "overflow"}); err == nil {
-		t.Fatal("expected active timer cap error")
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: "overflow"}); err == nil {
+		t.Fatal("expected active monitor cap error")
 	}
-	cancelled, err := r.service.ToolTimerCancel(t.Context(), call, firstTimerID)
+	cancelled, err := r.service.ToolMonitorCancel(t.Context(), call, firstMonitorID)
 	if err != nil || cancelled.State != "cancelled" {
-		t.Fatalf("cancel timer: info=%+v err=%v", cancelled, err)
+		t.Fatalf("cancel monitor: info=%+v err=%v", cancelled, err)
 	}
 
 	// Verify chain depth 0 -> 6 succeeds and depth 7 is rejected.
 	sourceReq := "user-root-1"
-	for depth := range maxTimerChainDepth + 1 {
+	for depth := range maxMonitorChainDepth + 1 {
 		call.Key = fmt.Sprintf("bot/t-chain-%d", depth)
 		call.SourceRequestID = sourceReq
-		info, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("depth %d", depth)})
+		info, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("depth %d", depth)})
 		if err != nil {
 			t.Fatalf("chain depth %d failed: %v", depth, err)
 		}
 		now = now.Add(121 * time.Second)
-		if err := r.service.FireDueTimers(t.Context()); err != nil {
+		if err := r.service.FireDueMonitors(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		sourceReq = "timer:" + info.ID + ":fire"
+		sourceReq = "monitor:" + info.ID + ":1"
 		// Fire submission cannot call change=true bot tools.
 		if err := r.service.ToolBotCaller(t.Context(), engine.TaskContext{
 			AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
 			SourceRequestID: sourceReq, Key: fmt.Sprintf("bot/botcheck-%d", depth),
 		}, true); err == nil {
-			t.Fatal("expected ToolBotCaller to reject timer submission")
+			t.Fatal("expected ToolBotCaller to reject monitor submission")
 		}
 	}
 	call.Key = "bot/t-chain-exceeded"
 	call.SourceRequestID = sourceReq
-	if _, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 120, Prompt: "depth 7"}); err == nil || !strings.Contains(err.Error(), "depth limit") {
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: "depth 7"}); err == nil || !strings.Contains(err.Error(), "depth limit") {
 		t.Fatalf("expected chain depth limit error, got %v", err)
 	}
 }
 
-func TestUserFollowupTimersExpiryAndCancelHooks(t *testing.T) {
+func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	r := startNative(t, "echo")
 	now := r.service.now()
 	r.service.now = func() time.Time { return now }
@@ -115,60 +115,60 @@ func TestUserFollowupTimersExpiryAndCancelHooks(t *testing.T) {
 		AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
 		SourceRequestID: "user-root-2", Key: "bot/t-expire",
 	}
-	expInfo, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 60, Prompt: "missed check"})
+	expInfo, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 60, Prompt: "missed check"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Advance past 1h grace window.
 	now = now.Add(2 * time.Hour)
-	if err := r.service.FireDueTimers(t.Context()); err != nil {
+	if err := r.service.FireDueMonitors(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	row, err := r.q.GetFollowupTimer(t.Context(), expInfo.ID)
+	row, err := r.q.GetMonitor(t.Context(), expInfo.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.State != "expired" || row.FireSubmissionID.String != "timer:"+expInfo.ID+":expired" {
-		t.Fatalf("expected expired timer, got %+v", row)
+	if row.State != "expired" || row.FireSubmissionID.String != "monitor:"+expInfo.ID+":1" {
+		t.Fatalf("expected expired monitor, got %+v", row)
 	}
 
-	// Timer cancels on Stop, Clear, and Archive.
+	// Monitor cancels on Stop, Clear, and Archive.
 	call.Key = "bot/t-stop"
-	stopTimer, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 300, Prompt: "stop me"})
+	stopMonitor, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 300, Prompt: "stop me"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := r.service.Stop(t.Context(), "bot", conv); err != nil {
 		t.Fatal(err)
 	}
-	if row, err := r.q.GetFollowupTimer(t.Context(), stopTimer.ID); err != nil || row.State != "cancelled" {
+	if row, err := r.q.GetMonitor(t.Context(), stopMonitor.ID); err != nil || row.State != "cancelled" {
 		t.Fatalf("expected cancelled after Stop, got %+v, err=%v", row, err)
 	}
 
 	call.Key = "bot/t-clear"
-	clearTimer, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 300, Prompt: "clear me"})
+	clearMonitor, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 300, Prompt: "clear me"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.Clear(t.Context(), "bot", conv, "reset-timers", "web", ""); err != nil {
+	if err := r.service.Clear(t.Context(), "bot", conv, "reset-monitors", "web", ""); err != nil {
 		t.Fatal(err)
 	}
-	if row, err := r.q.GetFollowupTimer(t.Context(), clearTimer.ID); err != nil || row.State != "cancelled" {
+	if row, err := r.q.GetMonitor(t.Context(), clearMonitor.ID); err != nil || row.State != "cancelled" {
 		t.Fatalf("expected cancelled after Clear, got %+v, err=%v", row, err)
 	}
 
 	// Wait for Clear's context_reset to settle before ArchiveAgent.
-	awaitReceipt(t, r, "reset-timers")
+	awaitReceipt(t, r, "reset-monitors")
 
 	call.Key = "bot/t-archive"
-	archTimer, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 300, Prompt: "archive me"})
+	archMonitor, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 300, Prompt: "archive me"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := db.ArchiveAgent(t.Context(), r.q, "bot", r.service.now()); err != nil {
 		t.Fatal(err)
 	}
-	if row, err := r.q.GetFollowupTimer(t.Context(), archTimer.ID); err != nil || row.State != "cancelled" {
+	if row, err := r.q.GetMonitor(t.Context(), archMonitor.ID); err != nil || row.State != "cancelled" {
 		t.Fatalf("expected cancelled after ArchiveAgent, got %+v, err=%v", row, err)
 	}
 }

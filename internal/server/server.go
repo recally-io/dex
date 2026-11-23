@@ -704,43 +704,31 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
-func (h *handler) ListChatTimers(ctx context.Context, req api.ListChatTimersRequestObject) (api.ListChatTimersResponseObject, error) {
-	timers, err := h.Chats.ListTimers(ctx, agentID(ctx), req.ChatId)
+func (h *handler) ListChatMonitors(ctx context.Context, req api.ListChatMonitorsRequestObject) (api.ListChatMonitorsResponseObject, error) {
+	monitors, err := h.Chats.ListMonitors(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]api.FollowupTimer, len(timers))
-	for i, t := range timers {
-		out[i] = api.FollowupTimer{
-			Id:         t.ID,
-			DueAt:      t.DueAt,
-			TimeZone:   t.TimeZone,
-			Prompt:     t.Prompt,
-			State:      api.FollowupTimerState(t.State),
-			ChainDepth: t.ChainDepth,
-			CreatedAt:  t.CreatedAt,
-		}
+	out := make([]api.Monitor, len(monitors))
+	for i, t := range monitors {
+		out[i] = monitorResponse(t)
 	}
-	return api.ListChatTimers200JSONResponse{Timers: out}, nil
+	return api.ListChatMonitors200JSONResponse{Monitors: out}, nil
 }
 
-func (h *handler) CancelChatTimer(ctx context.Context, req api.CancelChatTimerRequestObject) (api.CancelChatTimerResponseObject, error) {
+func (h *handler) CancelChatMonitor(ctx context.Context, req api.CancelChatMonitorRequestObject) (api.CancelChatMonitorResponseObject, error) {
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	t, err := h.Chats.CancelTimer(ctx, agentID(ctx), req.ChatId, req.TimerId)
+	t, err := h.Chats.CancelMonitor(ctx, agentID(ctx), req.ChatId, req.MonitorId)
 	if err != nil {
 		return nil, err
 	}
-	return api.CancelChatTimer200JSONResponse{
-		Id:         t.ID,
-		DueAt:      t.DueAt,
-		TimeZone:   t.TimeZone,
-		Prompt:     t.Prompt,
-		State:      api.FollowupTimerState(t.State),
-		ChainDepth: t.ChainDepth,
-		CreatedAt:  t.CreatedAt,
-	}, nil
+	return api.CancelChatMonitor200JSONResponse(monitorResponse(t)), nil
+}
+
+func monitorResponse(t engine.MonitorInfo) api.Monitor {
+	return api.Monitor{Id: t.ID, DueAt: t.DueAt, TimeZone: t.TimeZone, Prompt: t.Prompt, State: api.MonitorState(t.State), ChainDepth: t.ChainDepth, CreatedAt: t.CreatedAt, Mode: api.MonitorMode(t.Mode), MaxRuns: t.MaxRuns, Runs: t.Runs, ExpiresAt: t.ExpiresAt, Outcome: t.Outcome}
 }
 
 func (h *handler) ListChatOutbox(ctx context.Context, req api.ListChatOutboxRequestObject) (api.ListChatOutboxResponseObject, error) {

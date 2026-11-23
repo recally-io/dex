@@ -137,6 +137,7 @@ type Service struct {
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
 	db            *sql.DB
+	monitorFireMu sync.Mutex // one active scheduler batch; SQLite claims survive restart
 	writeMu       sync.Mutex // writer-first control transactions; per agent if throughput matters
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
