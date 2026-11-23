@@ -7,10 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.20.0-rc.3] - 2026-11-23
+
+### Changed
+
+- **Feishu**: Use the official Lark Go SDK (`v3.13.0`) for tenant tokens, IM message/reaction requests, and WebSocket protobuf frames while preserving Dex's serialized socket ACK, streaming resource download, and per-client token cache (#275).
+
 ### Fixed
 
-- **Remote Machines**: Allow multiple bots to share a runner. Each bot starts in `workspaces/<bot-id>/workspace` under the runner state directory. Dex leaves files in the old `workspace/` directory in place (#230).
-  - **Rollback to v0.19.0**: Back up `control.sqlite` before the upgrade. Replacing the binary alone does not restore the single-bot limit. Before starting v0.19.0, restore the pre-upgrade database backup or reduce each runner to at most one active bot and apply the database downgrade. Restoring the backup discards database changes since the backup. v0.19.0 uses `workspace/` again and does not move files from the new directories.
+- **Remote Machines**: Keep bot leases across transient runner reconnects without forcing a reload, replace half-open sessions immediately on same-token reconnect, wait up to 10 seconds before dispatch for a reconnecting runner, wake waiting chats immediately on reconnect, and scope extension/environment reloads to the target agent so another busy bot cannot block recovery (#276).
+
+### Removed
+
+- **Web**: Remove the Feedback button and `/feedback` slash command from the Web chat composer. Channel `/feedback` commands remain unchanged (#274).
+
+## [v0.20.0-rc.2] - 2026-11-23
+
+### Added
+
+- **Server operations**: Use **Settings → About** to check for an update, select a release channel, upgrade or restart the server, back up `control.sqlite`, and view recent logs. Upgrades create a database backup before replacing the binary (#267).
+- **Runner updates**: A runner with a writable binary can download the matching version from Dex and restart when it reconnects. Existing Linux runners installed at `/usr/local/bin/dex-agent` need a manual migration to enable this feature. See [Remote machines](docs/remote-machines.md#automatic-version-alignment) (#268).
+
+### Changed
+
+- **Runner installation**: New installs run as the account that runs the install command. Tasks can use that account's tools, files, and credentials. On Linux, add `--dedicated` to use a separate account. Existing installations do not migrate automatically (#272).
+- **Release checks**: Build all four platform archives. Run the release smoke tests on Linux amd64, Linux arm64, and macOS arm64.
+
+### Fixed
+
+- **Tool schemas**: Encode an empty required list as `[]` (#271).
+
+### Upgrade and rollback
+
+- Keep a backup of `control.sqlite` from before the upgrade. To roll back to v0.19.x after plugin migrations apply, restore that backup before starting the old version. This discards database changes made after the backup.
+
+## [v0.20.0-rc.1] - 2026-11-23
+
+### Added
+
+- **Task Inbox & Lifecycle**: Add the Task Inbox, lifecycle states, Main-routed owner messages and queued Task questions, `task_*` tools with primary Session binding, Main alerts for new Tasks and alert waits, held-event triage for conflicting or unmatched source events, and source-agnostic Task links (#208, #212, #222, #225, #226, #231).
+- **Plugin System & In-Process Plugins**: Add plugin enable/disable settings and plugin-owned database migrations (#235, #243), with built-in plugins for **GitHub** (PR/issue/review/check-suite intake via webhooks and scheduled pulls; #217, #220, #227, #232), **Webhook** (signed Task event sources; #237), and **Email** (forwarded email intake and IMAP folder pulling; #239, #240).
+- **Bounded Monitors**: Replace session timers with bounded monitors supporting one-shot and recurring shell checks within the target session's Bash environment, output-change detection, and queued-event withdrawal on cancellation (#259).
+- **Routines**: Bind Routines to existing sessions (#265) and alert through the channel Outbox when a Routine fails to start (#264).
+- **Channels & Feedback**: Show channel input status with message reactions (#258), track explicit channel follow-up commitments with stop/clear/revocation cleanup (#262), and prepare public feedback drafts without calling a model (#255).
+- **Execution Environments**: Allow sessions to select any registered execution environment (#249).
+
+### Changed
+
+- **API & Monitors**: Replace `/api/agents/{agentId}/chats/{chatId}/timers` (and `followup_timers`) with `/api/agents/{agentId}/chats/{chatId}/monitors` (and `monitors`) (#259).
+- **Remote Machines**: Load the Runner login shell `PATH` at `dex-agent` startup (#254).
+- **Control**: Consolidate channel delivery bookkeeping (#246) and process child reports before silent System Turn exit (#263).
+- **Docs & Packaging**: Split `docs/dev/architecture.md` into per-subsystem documents and organize packaging and documentation assets (#238, #244).
+- **Upgrade & Rollback**: Back up `control.sqlite` before upgrading. Once plugin-owned migrations apply, automatic database downgrade is blocked; rolling back to `v0.19.x` requires restoring the pre-upgrade database backup.
+
+### Fixed
+
+- **Remote Machines**: Allow multiple bots to share a runner under `workspaces/<bot-id>/workspace` in the runner state directory while leaving legacy `workspace/` files in place (also shipped in `v0.19.1`) (#230, #233).
+- **Database**: Apply skipped `main` migrations when upgrading from a `v0.19.1` release-branch database (#242).
+- **Tests & CI**: Run app tests in one non-race CI job and stabilize runner-recovery and environment-switch integration tests (#229, #234, #236).
 
 ## [v0.19.0] - 2026-11-21
 
@@ -74,7 +128,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/recally-io/dex/compare/v0.20.0-rc.3...HEAD
+[v0.20.0-rc.3]: https://github.com/recally-io/dex/compare/v0.20.0-rc.2...v0.20.0-rc.3
+[v0.20.0-rc.2]: https://github.com/recally-io/dex/compare/v0.20.0-rc.1...v0.20.0-rc.2
+[v0.20.0-rc.1]: https://github.com/recally-io/dex/compare/v0.19.1...v0.20.0-rc.1
 [v0.19.0]: https://github.com/recally-io/dex/compare/v0.18.0...v0.19.0
 [v0.18.0]: https://github.com/recally-io/dex/compare/v0.17.0...v0.18.0
 [v0.17.0]: https://github.com/recally-io/dex/compare/v0.16.1...v0.17.0
