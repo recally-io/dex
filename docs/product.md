@@ -161,7 +161,12 @@ to read in an afternoon.
   failures recover without a settings change. Bot settings show runtime
   status. Saved Lark settings keep the Lark platform. Groups, threads and
   outbound media are not supported.
-- Timers: scheduled messages to an agent. In main or a writable Chat, the
+- Monitors: bounded follow-ups to the same Main or Chat session. A prompt
+  Monitor queues one or more scheduled prompts. A script Monitor uses the
+  session's Bash access and queues a prompt when its check output changes.
+  The user can list and cancel Monitors in the chat activity panel. Old
+  scheduled Timers appear as one-run Monitors after an upgrade.
+- Routines: long-lived automation. In Main or a writable Chat, the
   owner can ask the agent to list, create, inspect, update, pause, resume, or
   run a routine. The agent can read the 10 most recent run results and their
   transcript references. These tools use the current bot; they cannot manage another bot's
@@ -387,7 +392,7 @@ A turn can supervise another process it started, such as a worker in a terminal
 tab, but must stop it before the final answer.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
-background tasks, timers, skills, and MCP servers are available.
+background tasks, monitors, skills, and MCP servers are available.
 The API, web UI, and channels support several agents. One bot credential can
 belong to only one agent. A conflict names the agent that already uses it. Project bindings, task routing between agents, group chats,
 and task-specific automation result routing are later work. Other chat channels are not available.

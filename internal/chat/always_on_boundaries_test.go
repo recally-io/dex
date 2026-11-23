@@ -26,13 +26,13 @@ func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Inject both a timer System Turn and a background wake System Turn.
+	// Inject both a monitor System Turn and a background wake System Turn.
 	for _, tc := range []struct {
 		id     string
 		origin string
 		kind   string
 	}{
-		{id: "timer:t1:fire", origin: "timer", kind: "task_result"},
+		{id: "monitor:t1:fire", origin: "monitor", kind: "task_result"},
 		{id: "background:b1:end", origin: "task", kind: "task_result"},
 	} {
 		if _, err := r.service.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
@@ -58,16 +58,16 @@ func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
 	}
 }
 
-func TestUserTimerFireCommitBeforeWakeRecoversOnce(t *testing.T) {
+func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 	r := startNative(t, "echo")
 	main, err := r.service.Main(t.Context(), "bot")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-timer-rec", "start"); err != nil {
+	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-monitor-rec", "start"); err != nil {
 		t.Fatal(err)
 	}
-	awaitReceipt(t, r, "u-timer-rec")
+	awaitReceipt(t, r, "u-monitor-rec")
 	conv, err := r.service.q.GetConversation(t.Context(), main.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -78,29 +78,29 @@ func TestUserTimerFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 	call := engine.TaskContext{
 		AgentID:         "bot",
 		ConversationID:  conv.ExecutionID.Int64,
-		SourceRequestID: "u-timer-rec",
+		SourceRequestID: "u-monitor-rec",
 		Key:             "bot/t-rec-1",
 	}
-	info, err := r.service.ToolTimerSet(t.Context(), call, engine.TimerSetArgs{DelaySeconds: 120, Prompt: "recover once"})
+	info, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: "recover once"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Advance clock past due_at and fire the timer.
+	// Advance clock past due_at and fire the monitor.
 	now = now.Add(3 * time.Minute)
-	if err := r.service.FireDueTimers(t.Context()); err != nil {
+	if err := r.service.FireDueMonitors(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	// Re-running FireDueTimers must not double-fire or create a second submission.
-	if err := r.service.FireDueTimers(t.Context()); err != nil {
+	// Re-running FireDueMonitors must not double-fire or create a second submission.
+	if err := r.service.FireDueMonitors(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	row, err := r.service.q.GetFollowupTimer(t.Context(), info.ID)
+	row, err := r.service.q.GetMonitor(t.Context(), info.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if row.State != "fired" || !row.FireSubmissionID.Valid {
-		t.Fatalf("expected fired timer with submission ID, got %+v", row)
+		t.Fatalf("expected fired monitor with submission ID, got %+v", row)
 	}
 
 	// Simulate crash before native admission settled by checking that reconcile settles it exactly once,
@@ -110,14 +110,14 @@ func TestUserTimerFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 	}
 	sub := awaitReceipt(t, r, row.FireSubmissionID.String)
 	if sub.Status != "done" {
-		t.Fatalf("expected timer submission done, got %+v", sub)
+		t.Fatalf("expected monitor submission done, got %+v", sub)
 	}
 	var outboxCount int
 	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ?`, row.FireSubmissionID.String).Scan(&outboxCount); err != nil {
 		t.Fatal(err)
 	}
 	if outboxCount != 0 {
-		t.Fatalf("expected 0 outbox messages for quiet timer turn, got %d", outboxCount)
+		t.Fatalf("expected 0 outbox messages for quiet monitor turn, got %d", outboxCount)
 	}
 }
 
