@@ -115,8 +115,12 @@ func TestUserHeldAgentMCPDoesNotBlockOtherAgent(t *testing.T) {
 					t.Fatalf("%s: %v", operation.name, err)
 				}
 			}
-			if err := a.Reload(t.Context(), "gamma"); !errors.Is(err, ErrBusy) {
-				t.Fatalf("Reload ignored active alpha operation: %v", err)
+			// Reload waits only for its own agent: gamma reloads, and alpha reports busy.
+			if err := a.Reload(t.Context(), "gamma"); err != nil {
+				t.Fatalf("Reload of gamma waited for alpha: %v", err)
+			}
+			if err := a.Reload(t.Context(), "alpha"); !errors.Is(err, ErrBusy) {
+				t.Fatalf("Reload ignored the open of alpha: %v", err)
 			}
 			// Then alpha connects exactly once and completes after the gate opens.
 			release()

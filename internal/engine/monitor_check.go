@@ -26,10 +26,10 @@ func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string,
 	if ref.Scope != "" || ref.ID <= 0 {
 		return "", false, ErrInvalidInput
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return "", false, err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	if _, err := a.conversation(ctx, ref); err != nil {
 		return "", false, err
 	}

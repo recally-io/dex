@@ -48,6 +48,7 @@ type environments struct {
 	ownErr     error
 	retryAfter time.Time
 	retryStamp string
+	probeAfter time.Time
 	leases     map[string]sessionEnv
 	closed     bool
 }
@@ -146,21 +147,53 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 	return s, nil
 }
 
-// defaultFiles returns the current default inspection target and whether an idle
-// reload must restore MCP tools that could not load while the default was down.
+// defaultFiles returns the current default inspection target and whether an idle reload must
+// restore the skills and MCP tools that could not load while the default was down. The default
+// is back when a later call opened it.
 func (e *environments) defaultFiles() (*agentExtensions, bool) {
 	e.mu.Lock()
-	files, recovered := e.ownFiles, e.own != nil && e.files.defaultUnavailable
-	e.mu.Unlock()
-	if recovered {
-		for _, server := range e.loaded.serverInfo() {
-			if server.State == "failed" {
-				return files, true
-			}
-		}
-	}
-	return files, false
+	defer e.mu.Unlock()
+	return e.ownFiles, e.own != nil && e.files.defaultUnavailable
 }
+
+// degraded reports that the default opened after the agent loaded without it, so the loaded
+// skills and MCP tools are incomplete until a reload.
+func (e *environments) degraded() bool {
+	_, recovered := e.defaultFiles()
+	return recovered
+}
+
+// recover tries to open a default that was down when the agent loaded, and reports whether a
+// reload must restore it. It skips a machine that is offline. After a failed open it waits
+// recoverProbeDelay, so a failing sandbox endpoint does not get a request at each stale check.
+func (e *environments) recover(ctx context.Context) bool {
+	if !e.files.defaultUnavailable {
+		return false
+	}
+	if e.degraded() {
+		return true
+	}
+	if status, ok := e.provider.(interface {
+		Status(ctx context.Context, agentID, environmentID string) string
+	}); ok && status.Status(ctx, e.agentID, "") != "available" {
+		return false
+	}
+	e.mu.Lock()
+	wait := time.Now().Before(e.probeAfter)
+	e.mu.Unlock()
+	if wait {
+		return false
+	}
+	if _, err := e.byID(ctx, ""); err != nil {
+		e.mu.Lock()
+		e.probeAfter = time.Now().Add(recoverProbeDelay)
+		e.mu.Unlock()
+		return false
+	}
+	return e.degraded()
+}
+
+const recoverProbeDelay = 30 * time.Second
 
 // stale reports whether the configuration of an open explicit lease changed or became unavailable.
 func (e *environments) stale(ctx context.Context) bool {
@@ -199,10 +232,10 @@ func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID str
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(agentID); err != nil {
 		return err
 	}
-	defer a.end()
+	defer a.end(agentID)
 	if a.environments(agentID) == nil && environmentID != "" {
 		if _, err := a.config.ExecEnv.Stamp(ctx, agentID, environmentID); err != nil {
 			return err

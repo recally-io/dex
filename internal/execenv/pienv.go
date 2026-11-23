@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -476,10 +477,11 @@ func (r *piEnvRuntime) changed(_ context.Context, old EnvironmentSpec, cur *Envi
 func (*piEnvRuntime) release(context.Context, string, EnvironmentSpec, string) error { return nil }
 func (*piEnvRuntime) disposable() bool                                               { return false }
 
-func (r *piEnvRuntime) generation(envID string) uint64 {
+// identity is the retirement epoch of the shared connection of envID.
+func (r *piEnvRuntime) identity(_ context.Context, envID string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.epochs[envID]
+	return strconv.FormatUint(r.epochs[envID], 10), nil
 }
 
 // forgetHostKey removes the saved trust and retires the shared connection, so the next open

@@ -73,19 +73,22 @@ func (a *Agents) Activity(refs []Ref) map[Ref]Activity {
 
 // Agents owns the native execution resources. Harnesses stay open until Close or Reload.
 type Agents struct {
-	Catalog          *Catalog
-	config           Config
-	memory           *memoryRepo
-	env              *toolEnv
-	mu               sync.Mutex
-	resources        map[string]*agentResources
-	activity         map[Ref]*activityRecord
-	activityWatches  map[Ref]*childActivityWatch // one watch shared by live submissions
-	opening          map[string]*agentOpening
-	recovering       map[string]map[durable.ConversationId]bool
-	serial           map[Ref]chan struct{}
-	paused, closed   bool
+	Catalog         *Catalog
+	config          Config
+	memory          *memoryRepo
+	env             *toolEnv
+	mu              sync.Mutex
+	resources       map[string]*agentResources
+	activity        map[Ref]*activityRecord
+	activityWatches map[Ref]*childActivityWatch // one watch shared by live submissions
+	opening         map[string]*agentOpening
+	recovering      map[string]map[durable.ConversationId]bool
+	serial          map[Ref]chan struct{}
+	paused, closed  bool
+	// active and settling count all engine work for maintenance. busy counts the same work for
+	// each resource key, so a Reload waits only for its own agent.
 	active, settling int
+	busy             map[string]int
 	operations       sync.WaitGroup
 	settlements      sync.WaitGroup
 	closeDone        chan struct{}
@@ -110,10 +113,12 @@ func New(config Config) (*Agents, error) {
 	if config.ExecEnv == nil {
 		config.ExecEnv = execenv.NewLocalProvider(config.DataDir, "")
 	}
-	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
+	return &Agents{Catalog: NewCatalog(config.FakeModel), config: config, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}, nil
 }
 
-func (a *Agents) begin() error {
+// begin tracks one operation on the resources of key, the resource key of an agent or of a
+// group scope. An empty key tracks work that uses no agent resources.
+func (a *Agents) begin(key string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.closed {
@@ -122,12 +127,48 @@ func (a *Agents) begin() error {
 	if a.paused {
 		return ErrMaintenance
 	}
-	a.operations.Add(1)
-	a.active++
+	a.trackLocked(key)
 	return nil
 }
 
-func (a *Agents) end() { a.mu.Lock(); a.active--; a.mu.Unlock(); a.operations.Done() }
+// trackLocked counts one operation on key. The caller holds mu.
+func (a *Agents) trackLocked(key string) {
+	a.operations.Add(1)
+	a.active++
+	if key != "" {
+		a.busy[key]++
+	}
+}
+
+func (a *Agents) end(key string) {
+	a.mu.Lock()
+	a.active--
+	a.untrackLocked(key)
+	a.mu.Unlock()
+	a.operations.Done()
+}
+
+func (a *Agents) untrackLocked(key string) {
+	if key == "" {
+		return
+	}
+	if a.busy[key]--; a.busy[key] == 0 {
+		delete(a.busy, key)
+	}
+}
+
+// settle runs fn in the background as settlement work of key. Maintenance and a Reload of key
+// wait for it, because fn uses the Harness of key.
+func (a *Agents) settle(key string, fn func()) {
+	a.mu.Lock()
+	a.settling++
+	a.busy[key]++
+	a.mu.Unlock()
+	a.settlements.Go(func() {
+		defer func() { a.mu.Lock(); a.settling--; a.untrackLocked(key); a.mu.Unlock() }()
+		fn()
+	})
+}
 
 func (a *Agents) lock(ctx context.Context, ref Ref) (func(), error) {
 	a.mu.Lock()
@@ -492,10 +533,11 @@ func (a *Agents) agentChange(ctx context.Context, ref Ref, options Options) harn
 }
 
 func (a *Agents) Create(ctx context.Context, agentID string, options Options) (Ref, error) {
-	if err := a.begin(); err != nil {
+	key := resourceKey(Ref{AgentID: agentID, Scope: options.Scope})
+	if err := a.begin(key); err != nil {
 		return Ref{}, err
 	}
-	defer a.end()
+	defer a.end(key)
 	h, err := a.harness(ctx, agentID, options.Scope)
 	if err != nil {
 		return Ref{}, err
@@ -516,10 +558,10 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 // non-empty Move.Text ends the copy as a context entry, so the transcript shows it and the model
 // reads it before the next input.
 func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, move func(ranIn string) (Move, error)) (forked Ref, ok bool, err error) {
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return Ref{}, false, err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return Ref{}, false, err
@@ -689,10 +731,10 @@ func (a *Agents) checkIdle(ctx context.Context, conversation harness.Conversatio
 }
 
 func (a *Agents) CheckIdle(ctx context.Context, ref Ref) error {
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -711,10 +753,10 @@ func (a *Agents) Reset(ctx context.Context, ref Ref, requestID, handoff string) 
 	if requestID == "" {
 		return fmt.Errorf("%w: reset request ID", ErrInvalidInput)
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -760,10 +802,10 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 	if options.Model.ModelID == "" {
 		return ErrNoModel
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -791,10 +833,10 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 	if options.Model.ModelID == "" {
 		return ErrNoModel
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -830,11 +872,7 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 	if err != nil {
 		return err
 	}
-	a.mu.Lock()
-	a.settling++
-	a.mu.Unlock()
-	a.settlements.Go(func() {
-		defer func() { a.mu.Lock(); a.settling--; a.mu.Unlock() }()
+	a.settle(resourceKey(ref), func() {
 		if err := noteCompaction(context.WithoutCancel(ctx), h, conversation, id); err != nil {
 			slog.Error("note compaction outcome", "agent", ref.AgentID, "conversation", ref.ID, "task", id, "error", err)
 		}
@@ -939,9 +977,8 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 		return ErrClosed
 	}
 	// Stop may cancel open work while maintenance blocks new admission.
-	a.operations.Add(1)
-	a.active++
 	key := resourceKey(ref)
+	a.trackLocked(key)
 	if a.resources[key] == nil || a.opening[key] != nil {
 		if a.recovering[key] == nil {
 			a.recovering[key] = map[durable.ConversationId]bool{}
@@ -950,7 +987,7 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 		a.recovering[key][durable.ConversationId(ref.ID)] = true
 	}
 	a.mu.Unlock()
-	defer a.end()
+	defer a.end(key)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -1072,6 +1109,26 @@ func (a *Agents) idleLocked(ctx context.Context) error {
 		return ErrBusy
 	}
 	for _, resource := range a.resources {
+		state, err := resource.harness.Inspect(ctx)
+		if err != nil {
+			return err
+		}
+		if len(state.Tasks) > 0 || len(state.Submissions) > 0 {
+			return ErrBusy
+		}
+	}
+	return ctx.Err()
+}
+
+// agentIdleLocked reports ErrBusy while agentID opens, runs an operation or a settlement, or
+// has native work. Work of other agents and of group scopes does not count: Reload replaces
+// only the resources of agentID. The caller holds mu so the idle check and the registration
+// of the replacement stay atomic.
+func (a *Agents) agentIdleLocked(ctx context.Context, agentID string) error {
+	if a.opening[agentID] != nil || a.busy[agentID] > 0 {
+		return ErrBusy
+	}
+	if resource := a.resources[agentID]; resource != nil {
 		state, err := resource.harness.Inspect(ctx)
 		if err != nil {
 			return err
@@ -1205,10 +1262,10 @@ func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, "", "", nil, ErrInvalidInput
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(agentID); err != nil {
 		return nil, "", "", nil, err
 	}
-	defer a.end()
+	defer a.end(agentID)
 	if envs := a.environments(agentID); envs != nil {
 		s, err := envs.byID(ctx, environmentID)
 		if err != nil {
@@ -1265,7 +1322,8 @@ func (a *Agents) StaleExtensions(ctx context.Context) map[string]string {
 	for id, state := range loaded {
 		currentExt := a.files(id, nil).stamp()
 		currentExec, err := a.config.ExecEnv.Stamp(ctx, id, "")
-		_, restoreMCP := state.envs.defaultFiles()
+		// Probe a default that was down at load, so the agent recovers without new input.
+		restoreMCP := state.envs.recover(ctx)
 		if restoreMCP || currentExt != state.extStamp || (err == nil && currentExec != state.execStamp) || state.envs.stale(ctx) {
 			stale[id] = currentExt + "|" + currentExec
 		}
@@ -1276,10 +1334,10 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 	if !agentIDPattern.MatchString(agentID) {
 		return ExtensionInfo{}, ErrInvalidInput
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(agentID); err != nil {
 		return ExtensionInfo{}, err
 	}
-	defer a.end()
+	defer a.end(agentID)
 	a.mu.Lock()
 	resource := a.resources[agentID]
 	a.mu.Unlock()
@@ -1333,17 +1391,16 @@ func (a *Agents) Reload(ctx context.Context, agentID string) error {
 		a.mu.Unlock()
 		return ErrMaintenance
 	}
-	if err := a.idleLocked(ctx); err != nil {
+	if err := a.agentIdleLocked(ctx, agentID); err != nil {
 		a.mu.Unlock()
 		return err
 	}
 	openCtx, cancel := context.WithCancel(ctx)
 	opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
 	a.opening[agentID] = opening
-	a.operations.Add(1)
-	a.active++
+	a.trackLocked(agentID)
 	a.mu.Unlock()
-	defer a.end()
+	defer a.end(agentID)
 	// Preflight errors leave the loaded target intact.
 	if err := a.Catalog.discoveryReady(); err != nil {
 		a.finishOpening(agentID, opening)
@@ -1410,14 +1467,13 @@ func (a *Agents) CloseAgent(ctx context.Context, agentID string) error {
 	for _, key := range openKeys {
 		a.opening[key] = closing
 	}
-	a.operations.Add(1)
-	a.active++
+	a.trackLocked(agentID)
 	resources := make([]*agentResources, 0, len(keys))
 	for _, key := range keys {
 		resources = append(resources, a.resources[key])
 	}
 	a.mu.Unlock()
-	defer a.end()
+	defer a.end(agentID)
 	defer func() {
 		a.mu.Lock()
 		for _, key := range openKeys {

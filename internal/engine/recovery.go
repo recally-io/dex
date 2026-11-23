@@ -42,10 +42,10 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 || requestID == "" {
 		return Recovered{}, fmt.Errorf("%w: recovery input", ErrInvalidInput)
 	}
-	if err := a.begin(); err != nil {
+	if err := a.begin(""); err != nil {
 		return Recovered{}, err
 	}
-	defer a.end()
+	defer a.end("")
 	a.mu.Lock()
 	if len(a.resources) != 0 || len(a.opening) != 0 {
 		a.mu.Unlock()

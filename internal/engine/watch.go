@@ -27,10 +27,10 @@ func (w *Watch) Close() { w.cancel(); <-w.done }
 
 // Watch captures the snapshot and subscription at the same native revision.
 func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
-	if err := a.begin(); err != nil {
+	if err := a.begin(resourceKey(ref)); err != nil {
 		return nil, err
 	}
-	defer a.end()
+	defer a.end(resourceKey(ref))
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return nil, err

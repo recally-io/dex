@@ -80,6 +80,17 @@ type stampedHandle struct {
 
 func (h stampedHandle) Stamp() string { return h.stamp }
 
+// CheckOnline reports ErrUnavailable when the machine of h is disconnected now. It does not
+// wait, and it accepts every environment that has no live session.
+func CheckOnline(h Handle) error {
+	if wrapped, ok := h.(stampedHandle); ok {
+		if l, ok := wrapped.lease.(interface{ online() bool }); ok && !l.online() {
+			return errRunnerOffline()
+		}
+	}
+	return nil
+}
+
 // LeaseExpired reports that the provider confirmed that a disposable lease is
 // gone. A caller can reopen the same selection, but must not retry the failed operation.
 func LeaseExpired(h Handle) bool {
@@ -104,7 +115,8 @@ type backend interface {
 	release(ctx context.Context, agentID string, spec EnvironmentSpec, sandboxID string) error
 	// disposable reports that release discards the agent's files, so the user can reset the environment.
 	disposable() bool
-	// generation identifies the live connection state of an environment beyond its stored spec.
-	// A change makes the stamp of every earlier handle stale.
-	generation(envID string) uint64
+	// identity fingerprints the state of an environment beyond its stored spec that a lease
+	// depends on, such as a machine enrollment or a retired SSH connection. A change makes the
+	// stamp of every earlier handle stale. A lost connection that can come back must not change it.
+	identity(ctx context.Context, envID string) (string, error)
 }

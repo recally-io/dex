@@ -460,6 +460,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	a.sysops = sys
 
+	// Input that waited for an offline machine runs as soon as the machine connects again.
+	envs.Runners().OnOnline(func(string) { chats.RetryNow() })
 	a.handler = server.New(server.Config{
 		WorkTasks: workTasks,
 		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
@@ -553,9 +555,9 @@ func ToolEnv(environ []string) map[string]string {
 	return env
 }
 
-// reloadStale reloads each open agent whose extension files, shell rc files, or 1Password
-// settings changed. Reload needs all agents idle, so a busy engine waits for a later run. An
-// invalid configuration is not tried again until its files change.
+// reloadStale reloads each open agent whose extension files, shell rc files, 1Password
+// settings, or execution environment changed. Reload needs only that agent idle, so a busy
+// agent waits for a later run. An invalid configuration is not tried again until its files change.
 func reloadStale(native *engine.Agents, chats *chat.Service) func(context.Context) {
 	refused := map[string]string{} // agent ID -> stamp that failed validation
 	return func(ctx context.Context) {
@@ -571,6 +573,8 @@ func reloadStale(native *engine.Agents, chats *chat.Service) func(context.Contex
 			case errors.Is(err, engine.ErrInvalidInput):
 				refused[id] = stamp
 				slog.Warn("extension change not applied; fix the configuration", "agent", id)
+			case errors.Is(err, engine.ErrBusy):
+				slog.Debug("reload waits for the agent to become idle", "agent", id)
 			}
 		}
 	}

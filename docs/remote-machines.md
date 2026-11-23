@@ -216,5 +216,10 @@ If a connection drops after Dex sent a request, Dex cannot tell whether the comm
 the machine before you retry. A reconnect neither undoes earlier writes nor replays an
 interrupted operation.
 
+A short network failure does not need a reload. When the machine connects again with the same
+token, Dex replaces the earlier session at once. A command that starts while the machine is
+offline waits up to 10 seconds for it. A revoke or a new enrollment ends the leases on the
+machine, and each bot that uses it reloads.
+
 One machine runs one operation at a time. A file transfer is limited to 16 MiB. Use an SSH
 environment when you need concurrent commands or larger transfers.
