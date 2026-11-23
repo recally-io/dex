@@ -64,8 +64,10 @@ func fakeProvider() *ai.ModelsProvider {
 			if result, ok := last.(ai.ToolResultMessage); ok {
 				return fakeText("bash: " + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
-			return fakeCall("bash", map[string]any{"command": fakeBashCommand(text)}), nil
+			return fakeCall("bash", map[string]any{"command": fakeBashCommand(strings.TrimSuffix(text, boundRoutineCheckSuffix))}), nil
 		case "tool", "direct", "direct-content":
+			// The fixture parses the user prompt as literal arguments, not natural language.
+			text = strings.TrimSuffix(text, boundRoutineCheckSuffix)
 			if strings.HasPrefix(text, "Dex Task: ") {
 				if _, body, ok := strings.Cut(text, "\n\n"); ok {
 					text = body

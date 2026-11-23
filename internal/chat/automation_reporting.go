@@ -16,12 +16,16 @@ import (
 
 // ToolReportCheck stores a provisional report. Settlement decides the final outcome.
 func (s *Service) ToolReportCheck(ctx context.Context, caller engine.TaskContext, report engine.CheckReport) error {
-	conv, err := s.toolCaller(ctx, caller)
+	_, err := s.toolCaller(ctx, caller)
 	if err != nil {
 		return err
 	}
-	if !strings.HasPrefix(conv.ChannelKey, "automation:") {
-		return errors.New("report_check is only available in automation conversations")
+	source, err := s.q.GetSubmission(ctx, caller.SourceRequestID)
+	if err != nil {
+		return err
+	}
+	if source.Origin != "automation" || source.Kind != "message" {
+		return errors.New("report_check is only available during a Routine run")
 	}
 	report.Summary = strings.TrimSpace(report.Summary)
 	report.ChangeKey = strings.TrimSpace(report.ChangeKey)
@@ -125,7 +129,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 			return 0, 0, err
 		}
 	}
-	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && !isUserOrigin(sub.Origin) && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
+	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && sub.Origin != "automation" && !isUserOrigin(sub.Origin) && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
 		if archived, aerr := q.ConversationAgentArchived(ctx, conv.ParentID.Int64); aerr != nil {
 			return 0, 0, aerr
 		} else if archived == 0 {

@@ -29,7 +29,14 @@ import { Textarea } from "../components/ui/textarea";
 const runLabel = { done: "Done", failed: "Failed", skipped: "Skipped", running: "Running" } as const;
 
 function sessionText(automation: Automation) {
-  return automation.session === "new" ? "New session each run" : "One session";
+  switch (automation.session) {
+    case "session":
+      return "Existing session";
+    case "reuse":
+      return "One session";
+    default:
+      return "New session each run";
+  }
 }
 
 function nextText(automation: Automation) {
@@ -78,6 +85,8 @@ function useAutomationUpdate(automation: Automation) {
           schedule: automation.schedule,
           timeZone: automation.timeZone,
           session: automation.session,
+          targetConversationId:
+            (patch.session ?? automation.session) === "session" ? automation.targetConversationId : undefined,
           enabled: automation.enabled,
           cwd: automation.cwd,
           // A PUT replaces the routine, so an omitted environment would make it follow the bot.
@@ -111,7 +120,7 @@ export function AutomationsPage() {
   return (
     <FramedPage
       title="Routines"
-      description="Prompts that the bot runs on a schedule. Each run has its own session."
+      description="Prompts that the bot runs on a schedule. Each run has its own record."
     >
       <AutomationsSection />
     </FramedPage>
@@ -389,6 +398,11 @@ const eachRun = [
     label: "Continue from last run",
     hint: "The bot sees earlier runs. The context grows. A busy session skips the run.",
   },
+  {
+    value: "session",
+    label: "Use an existing session",
+    hint: "Runs join the chosen session as follow-ups.",
+  },
 ] as const;
 
 function Rail({ automation, onEdit }: { automation: Automation; onEdit: () => void }) {
@@ -419,7 +433,9 @@ function Rail({ automation, onEdit }: { automation: Automation; onEdit: () => vo
               type="button"
               aria-pressed={on}
               disabled={update.isPending}
-              onClick={() => (on ? undefined : update.change({ session: mode.value }))}
+              onClick={() =>
+                mode.value === "session" ? onEdit() : on ? undefined : update.change({ session: mode.value })
+              }
               className={`flex w-full flex-col items-start gap-0.5 p-2.5 text-left disabled:opacity-60 ${on ? "border-2 border-foreground bg-muted" : "border border-border hover:bg-muted"}`}
             >
               <span className="font-semibold">{mode.label}</span>

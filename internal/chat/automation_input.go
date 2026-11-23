@@ -17,9 +17,10 @@ var ErrAutomationChanged = errors.New("automation changed before scheduled input
 
 // These pre-start reasons are safe to store and put on a channel. Busy overlap is not a failure.
 const (
-	RoutineSkipNoModel = "the bot has no model"
-	RoutineSkipMissed  = "dex did not run at the scheduled time"
-	RoutineSkipBusy    = "the chat of the automation is busy"
+	RoutineSkipNoModel       = "the bot has no model"
+	RoutineSkipMissed        = "dex did not run at the scheduled time"
+	RoutineSkipBusy          = "the chat of the automation is busy"
+	routineSkipTargetSession = "the target session is missing or cannot accept routine inputs"
 )
 
 const (
@@ -50,29 +51,55 @@ type AutomationInput struct {
 	Target, Skip string
 }
 
+// AutomationTargetEligible applies the same rule to saves, admission, and the session picker.
+func AutomationTargetEligible(conv sqlc.Conversation, agentID string) bool {
+	return conv.AgentID == agentID && !conv.ArchivedAt.Valid && conv.ExecutionScope == "" && acceptsInput(conv.ChannelKey, conv.ParentID)
+}
+
+// ErrAutomationTarget identifies a binding that cannot accept a Routine input.
+var ErrAutomationTarget = errors.New(routineSkipTargetSession)
+
+func AutomationTarget(ctx context.Context, q *sqlc.Queries, agentID string, id sql.NullInt64) (sqlc.Conversation, error) {
+	if !id.Valid {
+		return sqlc.Conversation{}, ErrAutomationTarget
+	}
+	conv, err := q.GetConversation(ctx, id.Int64)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !AutomationTargetEligible(conv, agentID)) {
+		return sqlc.Conversation{}, ErrAutomationTarget
+	}
+	return conv, err
+}
+
+// AutomationInputResult describes a committed run or a replay that made no change.
+type AutomationInputResult struct {
+	ConversationID int64
+	Skip           string
+	Created        bool
+}
+
 // EnqueueAutomation commits both records before it wakes native delivery.
-func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (int64, bool, error) {
+func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (AutomationInputResult, error) {
 	s.admissionMu.RLock()
 	defer s.admissionMu.RUnlock()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, false, err
+		return AutomationInputResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
-	convID, created, err := StoreAutomationInput(ctx, q, in)
-	if err != nil || !created {
-		return 0, false, err
+	out, err := StoreAutomationInput(ctx, q, in)
+	if err != nil || !out.Created {
+		return AutomationInputResult{}, err
 	}
 	if err = tx.Commit(); err != nil {
-		return 0, false, err
+		return AutomationInputResult{}, err
 	}
-	if convID != 0 {
-		s.WakeConversation(convID)
+	if out.ConversationID != 0 {
+		s.WakeConversation(out.ConversationID)
 	} else {
 		s.WakeRoutineOutbox(ctx, in.Run.ID)
 	}
-	return convID, true, nil
+	return out, nil
 }
 
 // bindAutomationEnvironment selects the environment of the routine for its chat. A reused chat
@@ -118,65 +145,95 @@ func bindAutomationEnvironment(ctx context.Context, q *sqlc.Queries, conv sqlc.C
 // StoreAutomationInput stores a run and input in the caller's control transaction.
 // The caller must wake native delivery after commit only when the run has an input.
 // A skipped run has no input and its chat ID is 0.
-func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (int64, bool, error) {
+func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInput) (AutomationInputResult, error) {
 	// Take the SQLite writer before reading, so an edit or an archive cannot pass a check before the insert.
 	if err := q.LockRoutineTools(ctx); err != nil {
-		return 0, false, err
+		return AutomationInputResult{}, err
 	}
 	if err := db.RequireActive(ctx, q, in.AgentID); err != nil {
-		return 0, false, err
+		return AutomationInputResult{}, err
 	}
+	var current sqlc.Automation
 	if in.Expected != nil {
-		current, err := q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: in.Expected.ID, AgentID: in.Expected.AgentID})
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && current != *in.Expected) {
-			return 0, false, ErrAutomationChanged
+		var err error
+		current, err = q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: in.Expected.ID, AgentID: in.Expected.AgentID})
+		expected := *in.Expected
+		if current.Session == "session" && !current.TargetConversationID.Valid {
+			// ON DELETE SET NULL invalidates the binding, not the scheduled snapshot.
+			expected.TargetConversationID = sql.NullInt64{}
+		}
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && current != expected) {
+			return AutomationInputResult{}, ErrAutomationChanged
 		}
 		if err != nil {
-			return 0, false, err
+			return AutomationInputResult{}, err
 		}
 	}
-	// The bot is read under the writer lock, so a change of its environment cannot come between
-	// this read and the input.
+	// Resolve the target and its settings under the writer, without changing the conversation.
 	bot, err := q.GetAgent(ctx, in.AgentID)
 	if err != nil {
-		return 0, false, err
+		return AutomationInputResult{}, err
 	}
-	ranIn := effectiveEnvironment(bot, in.EnvironmentID)
+	bound := current.Session == "session"
+	var conv sqlc.Conversation
+	ranIn, cwd := effectiveEnvironment(bot, in.EnvironmentID), in.Cwd
+	if bound && in.Skip != RoutineSkipMissed {
+		conv, err = AutomationTarget(ctx, q, in.AgentID, current.TargetConversationID)
+		switch {
+		case errors.Is(err, ErrAutomationTarget):
+			in.Skip, in.Target = routineSkipTargetSession, ""
+		case err != nil:
+			return AutomationInputResult{}, err
+		default:
+			ranIn, cwd = effectiveEnvironment(bot, conv.EnvironmentID), conv.Cwd
+			busy, err := q.CountBoundAutomationPending(ctx, current.ID)
+			if err != nil {
+				return AutomationInputResult{}, err
+			}
+			if busy > 0 {
+				in.Skip, in.Target = RoutineSkipBusy, ""
+			} else if in.Skip == "" && bot.ModelID == "" && conv.ModelID == "" {
+				in.Skip = RoutineSkipNoModel
+			}
+		}
+	}
 	if in.Target != "" && ranIn != in.Target {
-		return 0, false, fmt.Errorf("%w: the environment of the routine changed during its check; run it again", engine.ErrBusy)
+		return AutomationInputResult{}, fmt.Errorf("%w: the environment of the routine changed during its check; run it again", engine.ErrBusy)
 	}
 	if in.Skip != "" {
 		in.Run.Status, in.Run.Reason = "skipped", sql.NullString{String: in.Skip, Valid: true}
 		created, err := q.CreateAutomationRun(ctx, in.Run)
 		if err != nil || created == 0 {
-			return 0, false, err
+			return AutomationInputResult{}, err
 		}
 		if err := queueRoutineOutbox(ctx, q, in.Run.ID, 0, in.Run.CreatedAt); err != nil {
-			return 0, false, err
+			return AutomationInputResult{}, err
 		}
-		return 0, true, nil
+		return AutomationInputResult{Skip: in.Skip, Created: true}, nil
 	}
-	in.Run.EnvironmentID, in.Run.Cwd = ranIn, in.Cwd
+	in.Run.EnvironmentID, in.Run.Cwd = ranIn, cwd
 	created, err := q.CreateAutomationRun(ctx, in.Run)
 	if err != nil || created == 0 {
-		return 0, false, err
+		return AutomationInputResult{}, err
 	}
-	conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: in.AgentID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
-	if err != nil {
-		return 0, false, err
-	}
-	if conv, err = bindAutomationEnvironment(ctx, q, conv, in, ranIn); err != nil {
-		return 0, false, err
-	}
-	if err = q.SetConversationCwd(ctx, sqlc.SetConversationCwdParams{ID: conv.ID, AgentID: in.AgentID, Cwd: in.Cwd}); err != nil {
-		return 0, false, err
+	if !bound {
+		conv, err = q.EnsureConversation(ctx, sqlc.EnsureConversationParams{AgentID: in.AgentID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
+		if err != nil {
+			return AutomationInputResult{}, err
+		}
+		if conv, err = bindAutomationEnvironment(ctx, q, conv, in, ranIn); err != nil {
+			return AutomationInputResult{}, err
+		}
+		if err = q.SetConversationCwd(ctx, sqlc.SetConversationCwdParams{ID: conv.ID, AgentID: in.AgentID, Cwd: in.Cwd}); err != nil {
+			return AutomationInputResult{}, err
+		}
 	}
 	inserted, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: in.Run.ID, ConversationID: conv.ID, Content: in.Content, Attachments: "[]", Origin: "automation", Kind: "message", CreatedAt: in.Run.CreatedAt})
 	if err != nil {
-		return 0, false, err
+		return AutomationInputResult{}, err
 	}
 	if inserted != 1 {
-		return 0, false, errors.New("automation run ID already has an input intent")
+		return AutomationInputResult{}, errors.New("automation run ID already has an input intent")
 	}
-	return conv.ID, true, nil
+	return AutomationInputResult{ConversationID: conv.ID, Created: true}, nil
 }

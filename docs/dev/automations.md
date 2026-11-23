@@ -28,12 +28,21 @@ automations and their runs in `control.sqlite`. One scheduler job calls its
 `Check` every minute for all agents. Each row supplies its owning agent ID.
 `Check` posts the prompt of each automation whose
 `next_due_at` has come, as a message to its chat (`automation:<id>`, or
-`automation:<id>:<run id>` for a new chat each run), and moves `next_due_at`
-past now. The message uses the normal durable delivery.
+`automation:<id>:<run id>` for a new chat each run), or to a saved existing
+session, and moves `next_due_at` past now. The message uses normal durable
+delivery.
+
+In `session` mode, the Routine stores the ID of a writable, unarchived session
+of its own bot. Sessions with a restricted execution scope do not qualify.
+Deleting the session clears the reference. Both a save and the input writer
+validate the target. A missing or ineligible target skips the run with a reason.
+A Routine does not create or fall back to another session. Its prompt queues as
+a follow-up if the session is busy. Only a pending input of the same Routine
+counts as overlap. Stop and Clear work on the session as usual.
 
 A routine selects its execution environment with `environmentId`: empty follows
 the bot, and `local` or an SSH environment pins the routine. E2B and runner
-environments are refused, as for sessions. `create_routine` takes the
+environments are not available as explicit Routine selections. `create_routine` takes the
 environment and the cwd of the chat that calls it. A run never falls back to
 another machine. Before a run, outside any transaction, `Preflight` resolves the
 effective environment and checks it: a removed target skips the run, and an SSH
@@ -46,6 +55,10 @@ and can run again, and a scheduled run is checked again next minute. `run_routin
 before its tool transaction. The skip reason names the environment. A change of
 the environment without a new cwd clears the cwd. A change of the bot's
 environment clears the cwd of the routines that follow the bot.
+In `session` mode the Routine has no environment or cwd of its own. Preflight
+checks the session's effective environment, including whether a Runner is online.
+The writer records the session's environment and cwd on the run, but does not
+change these settings on the session.
 
 Each run stores its effective environment and its cwd
 (`automation_runs.environment_id`, `cwd`). Runs from before this column have an
@@ -68,7 +81,8 @@ has no channel delivery.
 
 A settled routine with a resolved authorized target saves one delivery with the
 result in the same transaction as settlement. It freezes the target and message at that
-time. A skipped run has no delivery. Channel managers render and save message
+time. A skipped failure can queue an alert without starting a model turn. This
+includes a skip for a missing or ineligible bound session. Channel managers render and save message
 parts before sending. They retry pending parts after a failure or restart.
 Delivery is at least once: a platform can accept a part before the local receipt
 is stored. A permanent rejection is recorded separately from a delivery.
@@ -88,11 +102,15 @@ can admit. If the schedule cursor did not advance, the unique automation/due
 key prevents another input for that scheduled time.
 
 An automation can store a project `cwd`. The API uses the Chat path validator.
-Each run sets or clears its chat's cwd before it stores the input. Project
+In `new` and `reuse` mode, each run sets or clears its chat's cwd before it stores the input. Project
 skills therefore follow the run directory, including when a chat is reused.
 
-Only automation conversations have `report_check`. The tool stores an explicit
-`changed`, `unchanged`, or `failed` outcome, a summary, and an optional change
+Only a Routine input can write a report with `report_check`, including a run
+bound to an existing session. The tool is visible in unscoped sessions, but
+checks the current input's source receipt before it writes a result. Bound
+Routine inputs include reporting instructions. A failed Routine run in a child
+session does not send an automatic child error to the parent. The tool stores
+an explicit `changed`, `unchanged`, or `failed` outcome, a summary, and an optional change
 key. The report is provisional while the run is active. Submission settlement
 and the final run outcome commit together. Missing reports and execution errors
 produce `failed`; answer text cannot imply `unchanged`. Old terminal runs

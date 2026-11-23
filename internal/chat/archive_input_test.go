@@ -51,10 +51,10 @@ func TestArchivedBotRejectsSchedulerSnapshot(t *testing.T) {
 	if err := db.ArchiveAgent(t.Context(), r.q, "bot", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	_, created, err := r.service.EnqueueAutomation(t.Context(), AutomationInput{Expected: &snapshot, AgentID: "bot", ChannelKey: "automation:auto:run", Content: snapshot.Prompt,
+	result, err := r.service.EnqueueAutomation(t.Context(), AutomationInput{Expected: &snapshot, AgentID: "bot", ChannelKey: "automation:auto:run", Content: snapshot.Prompt,
 		Run: sqlc.CreateAutomationRunParams{ID: "run", AutomationID: snapshot.ID, Status: "started", DueAt: snapshot.NextDueAt, CreatedAt: now}})
-	if !errors.Is(err, db.ErrAgentArchived) || created {
-		t.Fatalf("created=%v err=%v, want ErrAgentArchived", created, err)
+	if !errors.Is(err, db.ErrAgentArchived) || result.Created {
+		t.Fatalf("created=%v err=%v, want ErrAgentArchived", result.Created, err)
 	}
 	var runs int
 	if err := r.conn.QueryRowContext(t.Context(), "SELECT count(*) FROM automation_runs").Scan(&runs); err != nil || runs != 0 || submissionCount(t, r) != 0 {

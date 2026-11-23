@@ -318,6 +318,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
+	automations.ConfigureEnvironmentStatus(envs.Status)
 	// Check admits due routines one at a time, so a dead host delays the others by this timeout;
 	// probe in parallel if many routines use SSH hosts.
 	automations.ConfigureProbe(func(ctx context.Context, agentID, environmentID string) error {

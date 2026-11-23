@@ -346,13 +346,13 @@ SELECT id FROM agents WHERE archived_at IS NULL ORDER BY id;
 
 -- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, session, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, environment_id
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, environment_id, session, target_conversation_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateAutomation :execrows
 UPDATE automations SET
     cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
-    notification_route = ?, notification_target_id = ?, environment_id = ?, updated_at = ?
+    notification_route = ?, notification_target_id = ?, environment_id = ?, updated_at = ?, target_conversation_id = ?
 WHERE id = ? AND agent_id = ?;
 
 -- name: GetAutomation :one
@@ -409,6 +409,14 @@ WHERE
     s.status = 'pending'
     AND (c.channel_key = 'automation:' || CAST(@automation_id AS TEXT)
         OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');
+
+-- name: ListRoutineTargetCandidates :many
+SELECT * FROM conversations WHERE agent_id = ? ORDER BY created_at DESC, id DESC;
+
+-- name: CountBoundAutomationPending :one
+SELECT count(*) FROM automation_runs r
+JOIN submissions s ON s.id = r.id
+WHERE r.automation_id = ? AND s.status = 'pending';
 
 -- name: SetTelegramPairing :exec
 UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE agent_id = ?;
