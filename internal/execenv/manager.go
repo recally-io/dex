@@ -20,6 +20,9 @@ type EnvironmentSpec struct {
 	Config    string
 	Secret    string
 	UpdatedAt int64
+	// RunAsUser is the account that an enrolled machine executes as when it runs as the account
+	// that installed it. Empty means a dedicated account.
+	RunAsUser string
 }
 
 // TestResult reports connectivity and platform details for an environment probe.
@@ -173,7 +176,7 @@ func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, er
 	if row.FoundID == "" {
 		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, row.EnvironmentID)
 	}
-	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt}
+	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt, RunAsUser: row.RunAsUser}
 	return binding{spec: spec, sandboxID: row.EnvironmentSandboxID}, nil
 }
 
@@ -328,5 +331,6 @@ func SpecFromRow(row sqlc.ExecutionEnvironment) EnvironmentSpec {
 		Config:    row.Config,
 		Secret:    row.Secret,
 		UpdatedAt: row.UpdatedAt,
+		RunAsUser: row.RunAsUser,
 	}
 }

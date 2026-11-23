@@ -3,12 +3,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	json "encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -27,11 +29,16 @@ import (
 )
 
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
-// returned, and stores only its digest.
+// returned, and stores only its digest. Mode, Account, UID, and Home describe how the machine
+// runs; they carry no secret, and status reports them.
 type device struct {
 	Origin      string `json:"origin"`
 	Environment string `json:"environmentId"`
 	Token       string `json:"token"`
+	Mode        string `json:"mode,omitempty"`
+	Account     string `json:"account,omitempty"`
+	UID         int    `json:"uid,omitempty"`
+	Home        string `json:"home,omitempty"`
 }
 
 func main() {
@@ -45,7 +52,7 @@ func main() {
 
 func command(ctx context.Context, args []string, input io.Reader) error {
 	if len(args) == 0 {
-		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE | dex-agent run")
+		return errors.New("usage: dex-agent enroll -url https://dex.example.com -id ENVIRONMENT_ID -code CODE [-mode user] | dex-agent run | dex-agent status")
 	}
 	private, err := defaultState()
 	if err != nil {
@@ -53,11 +60,13 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 	}
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	state := flags.String("state", private, "private machine state directory")
-	origin, id, code := new(string), new(string), new(string)
+	origin, id, code, mode := new(string), new(string), new(string), new(string)
 	if args[0] == "enroll" {
 		origin = flags.String("url", "", "Dex address, for example https://dex.example.com")
 		id = flags.String("id", "", "environment ID")
 		code = flags.String("code", "", "one-time enrollment code from the install command")
+		*mode = modeDedicated
+		flags.StringVar(mode, "mode", modeDedicated, "user: run work as the account that installed this machine; dedicated: run work as a dedicated account")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
@@ -74,11 +83,13 @@ func command(ctx context.Context, args []string, input io.Reader) error {
 			}
 			*code = strings.TrimSpace(line)
 		}
-		return enroll(ctx, *state, *origin, *id, *code)
+		return enroll(ctx, *state, *origin, *id, *code, *mode)
 	case "run":
 		return run(ctx, *state)
+	case "status":
+		return status(ctx, *state, os.Stdout)
 	default:
-		return errors.New("expected enroll or run")
+		return errors.New("expected enroll, run, or status")
 	}
 }
 
@@ -116,13 +127,25 @@ func endpoint(origin, id, action string) (string, error) {
 	return u.JoinPath("machine", id, action).String(), nil
 }
 
-func enroll(ctx context.Context, state, origin, id, code string) error {
+func enroll(ctx context.Context, state, origin, id, code, mode string) error {
 	address, err := endpoint(origin, id, "pair")
 	if err != nil {
 		return err
 	}
 	if code == "" {
 		return errors.New("the enrollment code is required")
+	}
+	switch mode {
+	case modeUser, modeDedicated:
+	default:
+		return fmt.Errorf("unknown mode %q: expected %s or %s", mode, modeUser, modeDedicated)
+	}
+	// A machine that runs as its install user reports that account, so Dex never leaves it open to
+	// an unrelated bot: the account holds the home, the login state, and the credentials of a person.
+	identity := device{Mode: mode}
+	if mode == modeUser {
+		a := currentAccount()
+		identity.Account, identity.UID, identity.Home = a.Name, a.UID, a.Home
 	}
 	if err := os.MkdirAll(state, 0700); err != nil { //nolint:gosec // The local operator chooses the state directory.
 		return err
@@ -139,11 +162,16 @@ func enroll(ctx context.Context, state, origin, id, code string) error {
 	defer func() { _ = file.Close(); _ = root.Remove("device.json.tmp") }()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, nil) //nolint:gosec // The operator chooses the validated Dex address.
+	body, err := json.Marshal(map[string]string{"runAsUser": identity.runAsUser()})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, bytes.NewReader(body)) //nolint:gosec // The operator chooses the validated Dex address.
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+code)
+	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req) //nolint:gosec // The operator chooses the validated Dex address.
 	if err != nil {
 		return err
@@ -164,7 +192,9 @@ func enroll(ctx context.Context, state, origin, id, code string) error {
 	if err := json.UnmarshalRead(io.LimitReader(res.Body, 4096), &issued); err != nil || issued.Token == "" {
 		return errors.New("the enrollment returned no machine token")
 	}
-	if err := json.MarshalWrite(file, device{Origin: origin, Environment: id, Token: issued.Token}); err != nil {
+	enrolled := identity
+	enrolled.Origin, enrolled.Environment, enrolled.Token = origin, id, issued.Token
+	if err := json.MarshalWrite(file, enrolled); err != nil {
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -178,7 +208,7 @@ func enroll(ctx context.Context, state, origin, id, code string) error {
 
 func run(ctx context.Context, state string) error {
 	if os.Geteuid() == 0 {
-		return errors.New("run the machine service as a dedicated non-root account")
+		return errors.New("the machine service must not run as root; install it as the account that uses it")
 	}
 	root, err := os.OpenRoot(state)
 	if err != nil {
@@ -186,6 +216,9 @@ func run(ctx context.Context, state string) error {
 	}
 	defer root.Close()
 	file, err := root.Open("device.json")
+	if errors.Is(err, fs.ErrPermission) || errors.Is(err, fs.ErrNotExist) {
+		return stateError(state, err)
+	}
 	if err != nil {
 		return err
 	}
@@ -204,6 +237,9 @@ func run(ctx context.Context, state string) error {
 	if cfg.Token == "" {
 		return errors.New("the machine state is incomplete; run the install command again")
 	}
+	// The mode is part of the state, so the log names the account that the work will run as.
+	cfg.Mode = modeOf(cfg)
+	log.Printf("machine %s runs as %s", cfg.Environment, describeMode(cfg))
 	address, err := endpoint(cfg.Origin, cfg.Environment, "connect")
 	if err != nil {
 		return err

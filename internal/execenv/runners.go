@@ -61,8 +61,9 @@ func (rt *Runners) IssueCode(ctx context.Context, id string) (string, error) {
 }
 
 // Enroll consumes a one-time code and returns the token of the machine. Dex stores only
-// the SHA-256 digest of the token.
-func (rt *Runners) Enroll(ctx context.Context, id, code string) (string, error) {
+// the SHA-256 digest of the token. runAsUser is the account that the machine executes as when
+// it runs as the account that installed it; empty means a dedicated account.
+func (rt *Runners) Enroll(ctx context.Context, id, code, runAsUser string) (string, error) {
 	token := rand.Text()
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
@@ -71,6 +72,9 @@ func (rt *Runners) Enroll(ctx context.Context, id, code string) (string, error) 
 		err = ErrRunnerCredential
 	}
 	if err != nil {
+		return "", err
+	}
+	if err := rt.q.SetEnvironmentRunAsUser(ctx, sqlc.SetEnvironmentRunAsUserParams{ID: id, RunAsUser: runAsUser}); err != nil {
 		return "", err
 	}
 	return token, nil
@@ -135,6 +139,9 @@ func (rt *Runners) Revoke(ctx context.Context, id string) error {
 	rt.mu.Lock()
 	err := rt.q.RevokeRunnerCredential(ctx, id)
 	var session *runner.Client
+	if err == nil {
+		err = rt.q.ClearEnvironmentRunAsUser(ctx, id)
+	}
 	if err == nil {
 		session = rt.sessions[id].client
 		delete(rt.sessions, id)
