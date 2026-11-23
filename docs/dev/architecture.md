@@ -45,8 +45,17 @@ reinstall across template changes. Install does not copy the shell PATH. Daily
 updates add only the selected `gh` directory. Agent tools use the login shell
 environment separately.
 
-`internal/update` verifies GitHub release assets, stages beside the executable,
-and retains `dex.previous`. `chat.Service` owns a two-minute maintenance lease.
+`internal/update` verifies GitHub release assets (falling back to unauthenticated
+public release downloads when no `GH_TOKEN` or `gh` credentials are present),
+stages beside the executable, verifies the staged binary with `--version`, and
+retains `dex.previous`. `internal/sysops` coordinates in-process server
+operations for `/api/system/*`: persisting the release channel (`stable` or
+`prerelease`) in `system_settings`, checking and staging releases with byte
+progress, taking `VACUUM INTO` hot backups of `control.sqlite` in
+`<dataDir>/backups/` before upgrading or on demand, capturing recent `slog`
+records in an in-memory ring buffer, and waiting on the maintenance lease before
+shutting down HTTP/App cleanly and re-execing the binary in place via
+`syscall.Exec`. `chat.Service` owns a two-minute maintenance lease.
 The engine closes admission and checks active operations, durable work, and
 pending settlement and memory commits. A busy check releases the gate and
 refuses maintenance. A short global receipt gate orders receipt commits and

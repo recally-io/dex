@@ -1,53 +1,569 @@
-import { useQuery } from "@tanstack/react-query";
-import { getHealthOptions } from "../api/generated/@tanstack/react-query.gen";
-import { Failure, Loading } from "../components/feedback";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import {
+  backupSystemDatabaseMutation,
+  cancelSystemOperationMutation,
+  checkSystemUpdateMutation,
+  getHealthOptions,
+  getHealthQueryKey,
+  getSystemLogsOptions,
+  getSystemStatusOptions,
+  getSystemStatusQueryKey,
+  restartSystemMutation,
+  updateSystemSettingsMutation,
+  upgradeSystemMutation,
+} from "../api/generated/@tanstack/react-query.gen";
+import type { SystemStatus, SystemUpdateChannel } from "../api/generated/types.gen";
+import { Confirm } from "../components/confirm";
+import { Failure, Loading, Spinner } from "../components/feedback";
+import { RadioSegments } from "../components/form";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
-import { Badge } from "../components/ui/badge";
-import { ThemeToggle } from "../components/theme";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
+import { ThemeToggle } from "../components/theme";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { useApp } from "../lib/app-state";
+import { queryClient } from "../lib/queries";
+
+const channelOptions: readonly { value: SystemUpdateChannel; label: string }[] = [
+  { value: "stable", label: "Stable" },
+  { value: "prerelease", label: "Prerelease (RC)" },
+];
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatTime(ms: number): string {
+  if (!ms) return "—";
+
+  return new Date(ms).toLocaleString();
+}
+
+function capabilityReasonText(reason?: string): string {
+  switch (reason) {
+    case "dev":
+      return "This server is running a development build. Self-upgrade is available only on release binaries.";
+    case "package":
+      return "This binary is managed by a package manager. Upgrade it through that package manager instead.";
+    case "not-writable":
+      return "The executable directory is not writable by this process. Replace the binary manually or move it to a user-writable path.";
+    default:
+      return "In-place self-upgrade is not available on this host.";
+  }
+}
+
+function stateBadge(state: SystemStatus["state"], reconnecting: boolean) {
+  if (reconnecting || state === "restarting") {
+    return (
+      <Badge variant="secondary" className="h-5 bg-orange-tint px-2 text-[11.5px] text-orange">
+        Restarting…
+      </Badge>
+    );
+  }
+
+  switch (state) {
+    case "downloading":
+      return (
+        <Badge variant="secondary" className="h-5 bg-blue-tint px-2 text-[11.5px] text-blue">
+          Downloading…
+        </Badge>
+      );
+    case "waiting_idle":
+      return (
+        <Badge variant="secondary" className="h-5 bg-orange-tint px-2 text-[11.5px] text-orange">
+          Waiting for active runs
+        </Badge>
+      );
+    case "checking":
+      return (
+        <Badge variant="secondary" className="h-5 px-2 text-[11.5px]">
+          Checking…
+        </Badge>
+      );
+    case "error":
+      return (
+        <Badge variant="secondary" className="h-5 bg-red-tint px-2 text-[11.5px] text-red">
+          Attention needed
+        </Badge>
+      );
+    default:
+      return (
+        <Badge variant="secondary" className="h-5 bg-green-tint px-2 text-[11.5px] text-green">
+          Running
+        </Badge>
+      );
+  }
+}
 
 export function AboutPage() {
-  const health = useQuery(getHealthOptions());
+  const { notify } = useApp();
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  const [confirmUpgrade, setConfirmUpgrade] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
+  const [reconnectingSince, setReconnectingSince] = useState<number | null>(null);
+  const notifiedRestart = useRef<number | null>(null);
+
+  const status = useQuery({
+    ...getSystemStatusOptions(),
+    refetchInterval: (query) => {
+      const st = query.state.data?.state;
+
+      return st === "downloading" || st === "waiting_idle" || st === "restarting" ? 1000 : false;
+    },
+  });
+
+  const restartOrigin =
+    reconnectingSince ??
+    (status.data?.state === "restarting" && status.data.startedAt > 0 ? status.data.startedAt : null);
+
+  const health = useQuery({
+    ...getHealthOptions(),
+    refetchInterval: (query) => {
+      if (restartOrigin === null) return false;
+
+      const currentStart = query.state.data?.startedAt;
+
+      return currentStart && currentStart !== restartOrigin ? false : 1500;
+    },
+    retry: restartOrigin !== null ? false : 1,
+  });
+
+  const reconnected =
+    restartOrigin !== null && Boolean(health.data?.startedAt && health.data.startedAt !== restartOrigin);
+
+  const reconnecting = restartOrigin !== null && !reconnected;
+
+  const logs = useQuery({
+    ...getSystemLogsOptions({ query: { limit: 200 } }),
+    enabled: showLogs && !reconnecting,
+  });
+
+  // Refresh system status and notify once a restarted server comes back with a new startedAt.
+  useEffect(() => {
+    if (!reconnected || !health.data) return;
+
+    if (notifiedRestart.current === health.data.startedAt) return;
+
+    notifiedRestart.current = health.data.startedAt;
+    void queryClient.invalidateQueries({ queryKey: getSystemStatusQueryKey() });
+    notify(`Server is back online (${health.data.version}).`);
+  }, [reconnected, health.data, notify]);
+
+  function applyStatus(next: SystemStatus) {
+    queryClient.setQueryData(getSystemStatusQueryKey(), next);
+
+    if (next.state === "restarting" && next.startedAt > 0) {
+      setReconnectingSince(next.startedAt);
+    } else if (reconnected) {
+      setReconnectingSince(null);
+    }
+  }
+
+  const setChannel = useMutation({
+    ...updateSystemSettingsMutation(),
+    onSuccess: (data) => {
+      applyStatus(data);
+      notify(`Update channel set to ${data.updateChannel}.`);
+    },
+  });
+
+  const checkUpdate = useMutation({
+    ...checkSystemUpdateMutation(),
+    onSuccess: (data) => {
+      applyStatus(data);
+
+      if (data.updateAvailable && data.latest) {
+        notify(`Update available: ${data.latest.tag}`);
+      } else if (data.latest) {
+        notify(`Up to date (latest on ${data.updateChannel}: ${data.latest.tag}).`);
+      }
+    },
+  });
+
+  const upgrade = useMutation({
+    ...upgradeSystemMutation(),
+    onSuccess: (data) => {
+      setConfirmUpgrade(false);
+      applyStatus(data);
+
+      if (data.state === "downloading") {
+        notify(`Downloading ${data.targetVersion ?? data.latest?.tag ?? "update"}…`);
+      } else if (data.state === "restarting") {
+        notify("Upgrade applied. Restarting server…");
+      }
+    },
+  });
+
+  const restart = useMutation({
+    ...restartSystemMutation(),
+    onSuccess: (data) => {
+      setConfirmRestart(false);
+      applyStatus(data);
+
+      if (data.state === "waiting_idle") {
+        notify("Waiting for active runs to finish before restarting.");
+      } else if (data.state === "restarting") {
+        notify("Restarting server…");
+      }
+    },
+  });
+
+  const cancelOp = useMutation({
+    ...cancelSystemOperationMutation(),
+    onSuccess: (data) => {
+      applyStatus(data);
+      notify("Pending server operation cancelled.");
+    },
+  });
+
+  const backup = useMutation({
+    ...backupSystemDatabaseMutation(),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: getSystemStatusQueryKey() });
+      notify(`Saved backup ${data.name}.`);
+    },
+  });
+
+  const sys = status.data;
+
+  const busyOp =
+    reconnecting ||
+    sys?.state === "downloading" ||
+    sys?.state === "waiting_idle" ||
+    sys?.state === "restarting";
 
   return (
     <FramedPage
       eyebrow="Settings for this computer"
       title="About"
-      description="A personal bot that runs on this computer."
+      description="Server status, upgrades, backups, and recent logs."
       toolbar={<GlobalSettingsSwitcher page="/settings/about" />}
     >
       <Section title="Appearance" caption="Applies to this browser.">
         <ThemeToggle />
       </Section>
-      <Section title="This server">
-        {health.isPending ? (
+
+      <Section
+        title="This server"
+        caption="Check for releases, switch between stable and release candidates, or restart the server in place."
+      >
+        {health.isPending && status.isPending ? (
           <Loading />
-        ) : health.isError ? (
+        ) : health.isError && !reconnecting ? (
           <Failure
             title="Could not reach the server"
             error={health.error}
-            retry={() => void health.refetch()}
+            retry={() => {
+              void queryClient.invalidateQueries({ queryKey: getHealthQueryKey() });
+              void status.refetch();
+            }}
           />
         ) : (
-          <Panel>
-            <Facts
-              rows={[
-                [
-                  "Server",
-                  <Badge
-                    key="server"
-                    variant="secondary"
-                    className="h-5 bg-green-tint px-2 text-[11.5px] text-green"
+          <div className="flex flex-col gap-3">
+            {reconnecting ? (
+              <Note tone="warn">
+                <span className="inline-flex items-center gap-2">
+                  <Spinner />
+                  Server is restarting. Waiting for it to come back online…
+                </span>
+              </Note>
+            ) : null}
+
+            {sys?.state === "downloading" ? (
+              <Note>
+                <span className="inline-flex items-center gap-2">
+                  <Spinner />
+                  Downloading {sys.targetVersion ?? sys.latest?.tag ?? "update"}
+                  {sys.downloadDone
+                    ? sys.downloadTotal
+                      ? ` (${formatBytes(sys.downloadDone)} / ${formatBytes(sys.downloadTotal)})`
+                      : ` (${formatBytes(sys.downloadDone)})`
+                    : "…"}
+                </span>
+              </Note>
+            ) : null}
+
+            {sys?.state === "waiting_idle" ? (
+              <Note tone="warn">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    {sys.pendingAction === "upgrade"
+                      ? `Upgrade to ${sys.targetVersion ?? "new version"} is staged and backed up. Waiting for active runs to finish.`
+                      : "Waiting for active runs to finish before restarting."}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={cancelOp.isPending}
+                      onClick={() => cancelOp.mutate({})}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="bg-red text-white"
+                      disabled={restart.isPending || upgrade.isPending}
+                      onClick={() =>
+                        sys.pendingAction === "upgrade"
+                          ? upgrade.mutate({ body: { version: sys.targetVersion, force: true } })
+                          : restart.mutate({ body: { force: true } })
+                      }
+                    >
+                      Force now
+                    </Button>
+                  </div>
+                </div>
+              </Note>
+            ) : null}
+
+            {sys?.lastError ? <Failure title="Last server operation failed" error={sys.lastError} /> : null}
+
+            {checkUpdate.isError ? (
+              <Failure title="Could not check for updates" error={checkUpdate.error} />
+            ) : null}
+            {setChannel.isError ? (
+              <Failure title="Could not change update channel" error={setChannel.error} />
+            ) : null}
+            {upgrade.isError ? <Failure title="Could not start upgrade" error={upgrade.error} /> : null}
+            {restart.isError ? <Failure title="Could not restart server" error={restart.error} /> : null}
+
+            <Panel>
+              <Facts
+                rows={[
+                  ["Server", stateBadge(sys?.state ?? "idle", reconnecting)],
+                  ["Version", <Mono key="version">{sys?.version ?? health.data?.version ?? "—"}</Mono>],
+                  [
+                    "Started",
+                    <span key="started" className="text-[12.5px] text-muted-foreground">
+                      {formatTime(sys?.startedAt ?? health.data?.startedAt ?? 0)}
+                    </span>,
+                  ],
+                  [
+                    "Update channel",
+                    <RadioSegments
+                      key="channel"
+                      label="Update channel"
+                      className="w-56"
+                      options={channelOptions}
+                      value={sys?.updateChannel ?? "stable"}
+                      onChange={(value) => {
+                        if (!busyOp && value !== sys?.updateChannel) {
+                          setChannel.mutate({ body: { updateChannel: value } });
+                        }
+                      }}
+                    />,
+                  ],
+                ]}
+              />
+              <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={busyOp || checkUpdate.isPending}
+                  onClick={() => checkUpdate.mutate({})}
+                >
+                  {checkUpdate.isPending ? "Checking…" : "Check for updates"}
+                </Button>
+                {sys?.updateAvailable && sys.latest && sys.capability.supported ? (
+                  <Button
+                    size="sm"
+                    disabled={busyOp || upgrade.isPending}
+                    onClick={() => setConfirmUpgrade(true)}
                   >
-                    Running
-                  </Badge>,
-                ],
-                ["Version", <Mono key="version">{health.data.version}</Mono>],
-              ]}
-            />
-          </Panel>
+                    Upgrade to {sys.latest.tag}
+                  </Button>
+                ) : null}
+                {sys?.capability.canRestart ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busyOp || restart.isPending}
+                    onClick={() => setConfirmRestart(true)}
+                  >
+                    Restart server
+                  </Button>
+                ) : null}
+                {sys?.lastCheckedAt ? (
+                  <span className="ml-auto text-[11.5px] text-muted-foreground">
+                    Checked {formatTime(sys.lastCheckedAt)}
+                  </span>
+                ) : null}
+              </div>
+            </Panel>
+
+            {sys && !sys.capability.supported ? (
+              <Note>{capabilityReasonText(sys.capability.reason)}</Note>
+            ) : null}
+
+            {sys?.latest ? (
+              <Panel className="px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-[13px]">
+                    <span className="font-medium text-foreground">
+                      Latest on {sys.updateChannel}: <Mono>{sys.latest.tag}</Mono>
+                    </span>
+                    {sys.latest.prerelease ? (
+                      <Badge variant="secondary" className="h-5 px-2 text-[11px]">
+                        Prerelease
+                      </Badge>
+                    ) : null}
+                    {sys.updateAvailable ? (
+                      <Badge variant="secondary" className="h-5 bg-green-tint px-2 text-[11px] text-green">
+                        Update available
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="h-5 px-2 text-[11px]">
+                        Current
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {sys.latest.notes ? (
+                      <Button size="sm" variant="ghost" onClick={() => setShowNotes((open) => !open)}>
+                        {showNotes ? "Hide notes" : "Release notes"}
+                      </Button>
+                    ) : null}
+                    {sys.latest.url ? (
+                      <a
+                        href={sys.latest.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[12px] text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      >
+                        GitHub
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+                {showNotes && sys.latest.notes ? (
+                  <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-accent/50 p-3 font-mono text-[11.5px] leading-5 whitespace-pre-wrap text-foreground">
+                    {sys.latest.notes}
+                  </pre>
+                ) : null}
+              </Panel>
+            ) : null}
+          </div>
         )}
       </Section>
+
+      <Section
+        title="Database backups"
+        caption="Upgrades back up control.sqlite automatically before replacing the binary. You can also take a hot backup anytime."
+      >
+        <div className="flex flex-col gap-3">
+          {backup.isError ? <Failure title="Could not create backup" error={backup.error} /> : null}
+          <Panel>
+            <div className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="text-[12.5px] text-muted-foreground">
+                Saved in <Mono>backups/</Mono> inside the data directory.
+              </span>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={reconnecting || backup.isPending}
+                onClick={() => backup.mutate({})}
+              >
+                {backup.isPending ? "Backing up…" : "Back up now"}
+              </Button>
+            </div>
+            {sys?.backups && sys.backups.length > 0 ? (
+              <div className="divide-y divide-border border-t border-border">
+                {sys.backups.slice(0, 8).map((item) => (
+                  <div
+                    key={item.name}
+                    className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-[12.5px]"
+                  >
+                    <Mono className="truncate">{item.name}</Mono>
+                    <span className="text-[11.5px] text-muted-foreground">
+                      {formatBytes(item.sizeBytes)} · {formatTime(item.createdAt)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="border-t border-border px-4 py-3 text-[12.5px] text-muted-foreground">
+                No backups yet.
+              </p>
+            )}
+          </Panel>
+        </div>
+      </Section>
+
+      <Section title="Recent logs" caption="In-memory ring buffer of recent dex server log records.">
+        <Panel>
+          <div className="flex items-center justify-between gap-2 px-4 py-3">
+            <span className="text-[12.5px] text-muted-foreground">
+              Up to the latest 200 entries from this process.
+            </span>
+            <div className="flex items-center gap-2">
+              {showLogs ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={logs.isFetching}
+                  onClick={() => void logs.refetch()}
+                >
+                  {logs.isFetching ? "Refreshing…" : "Refresh"}
+                </Button>
+              ) : null}
+              <Button size="sm" variant="secondary" onClick={() => setShowLogs((open) => !open)}>
+                {showLogs ? "Hide logs" : "Show logs"}
+              </Button>
+            </div>
+          </div>
+          {showLogs ? (
+            logs.isPending ? (
+              <div className="border-t border-border p-4">
+                <Loading />
+              </div>
+            ) : logs.isError ? (
+              <div className="border-t border-border p-4">
+                <Failure title="Could not load logs" error={logs.error} retry={() => void logs.refetch()} />
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-auto border-t border-border bg-accent/40 p-3 font-mono text-[11.5px] leading-5">
+                {logs.data.entries.length === 0 ? (
+                  <p className="text-muted-foreground">No log entries recorded yet.</p>
+                ) : (
+                  logs.data.entries.map((entry) => (
+                    <div key={entry.seq} className="flex gap-2 break-all">
+                      <span className="shrink-0 text-muted-foreground">
+                        {new Date(entry.time).toLocaleTimeString()}
+                      </span>
+                      <span
+                        className={
+                          entry.level === "ERROR"
+                            ? "shrink-0 font-semibold text-red"
+                            : entry.level === "WARN"
+                              ? "shrink-0 font-semibold text-orange"
+                              : "shrink-0 text-muted-foreground"
+                        }
+                      >
+                        {entry.level}
+                      </span>
+                      <span className="text-foreground">
+                        {entry.message}
+                        {entry.attrs ? (
+                          <span className="ml-1.5 text-muted-foreground">{entry.attrs}</span>
+                        ) : null}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )
+          ) : null}
+        </Panel>
+      </Section>
+
       <Section title="Files" caption="Everything is in the data directory.">
         {health.data ? (
           <Panel>
@@ -70,14 +586,7 @@ export function AboutPage() {
           Set <Mono>DEX_DATA_DIR</Mono> to use a different directory.
         </p>
       </Section>
-      <Section title="How it runs">
-        <Panel className="px-4 py-3.5">
-          <ul className="flex list-disc flex-col gap-1.5 pl-5 text-[13px] leading-6 text-muted-foreground marker:text-muted-foreground">
-            <li>dex serves this page and the API, runs bots, and keeps chats in control.sqlite.</li>
-            <li>The data directory holds the database, the bot memory and the workspace.</li>
-          </ul>
-        </Panel>
-      </Section>
+
       <Section title="Safety">
         <div className="flex flex-col gap-3">
           <Note tone="warn">
@@ -93,11 +602,36 @@ export function AboutPage() {
           </Panel>
         </div>
       </Section>
+
       <Section title="This design">
         <p className="px-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
           Built with shadcn/ui components and design inspiration from Beautiful UI by slev12397 (MIT).
         </p>
       </Section>
+
+      {confirmRestart ? (
+        <Confirm
+          title="Restart dex server?"
+          description="Dex will wait until active runs finish (or restart immediately if idle) and reconnect this page automatically."
+          confirmLabel="Restart"
+          pending={restart.isPending}
+          error={restart.error}
+          onCancel={() => setConfirmRestart(false)}
+          onConfirm={() => restart.mutate({ body: { force: false } })}
+        />
+      ) : null}
+
+      {confirmUpgrade && sys?.latest ? (
+        <Confirm
+          title={`Upgrade dex to ${sys.latest.tag}?`}
+          description="Dex will download and verify the release archive, back up control.sqlite automatically, wait until active runs settle, replace the executable, and restart in place."
+          confirmLabel={`Upgrade to ${sys.latest.tag}`}
+          pending={upgrade.isPending}
+          error={upgrade.error}
+          onCancel={() => setConfirmUpgrade(false)}
+          onConfirm={() => upgrade.mutate({ body: { version: sys.latest?.tag, force: false } })}
+        />
+      ) : null}
     </FramedPage>
   );
 }

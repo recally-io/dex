@@ -384,6 +384,11 @@ type Submission struct {
 	RequiredReplyID      string         `json:"required_reply_id"`
 }
 
+type SystemSetting struct {
+	ID            int64  `json:"id"`
+	UpdateChannel string `json:"update_channel"`
+}
+
 type TelegramAlbumMember struct {
 	SourceKey   string `json:"source_key"`
 	AgentID     string `json:"agent_id"`

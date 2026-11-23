@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AppendWorkTaskNoteData, AppendWorkTaskNoteErrors, AppendWorkTaskNoteResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelChatMonitorData, CancelChatMonitorErrors, CancelChatMonitorResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateEnvironmentData, CreateEnvironmentErrors, CreateEnvironmentResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, CreateWorkTaskData, CreateWorkTaskErrors, CreateWorkTaskResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteEnvironmentData, DeleteEnvironmentErrors, DeleteEnvironmentResponses, DeleteExtensionEnvData, DeleteExtensionEnvErrors, DeleteExtensionEnvResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyErrors, ForgetEnvironmentHostKeyResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetTurnChatData, GetTurnChatErrors, GetTurnChatResponses, GetUploadData, GetUploadErrors, GetUploadResponses, GetWorkData, GetWorkErrors, GetWorkResponses, GetWorkTaskData, GetWorkTaskErrors, GetWorkTaskResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentEnvironmentsData, ListAgentEnvironmentsErrors, ListAgentEnvironmentsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListChatMonitorsData, ListChatMonitorsErrors, ListChatMonitorsResponses, ListChatOutboxData, ListChatOutboxErrors, ListChatOutboxResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListEnvironmentsData, ListEnvironmentsErrors, ListEnvironmentsResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListPluginsData, ListPluginsErrors, ListPluginsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListWorkTasksData, ListWorkTasksErrors, ListWorkTasksResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeEnvironmentData, ProbeEnvironmentErrors, ProbeEnvironmentResponses, PutExtensionEnvData, PutExtensionEnvErrors, PutExtensionEnvResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentEnvironmentData, ResetAgentEnvironmentErrors, ResetAgentEnvironmentResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatEnvironmentData, SetChatEnvironmentErrors, SetChatEnvironmentResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPluginData, SetPluginErrors, SetPluginResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, SetWorkTaskLifecycleData, SetWorkTaskLifecycleErrors, SetWorkTaskLifecycleResponses, TestEnvironmentData, TestEnvironmentErrors, TestEnvironmentResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateEnvironmentData, UpdateEnvironmentErrors, UpdateEnvironmentResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AppendWorkTaskNoteData, AppendWorkTaskNoteErrors, AppendWorkTaskNoteResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelChatMonitorData, CancelChatMonitorErrors, CancelChatMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateEnvironmentData, CreateEnvironmentErrors, CreateEnvironmentResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, CreateWorkTaskData, CreateWorkTaskErrors, CreateWorkTaskResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteEnvironmentData, DeleteEnvironmentErrors, DeleteEnvironmentResponses, DeleteExtensionEnvData, DeleteExtensionEnvErrors, DeleteExtensionEnvResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyErrors, ForgetEnvironmentHostKeyResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTurnChatData, GetTurnChatErrors, GetTurnChatResponses, GetUploadData, GetUploadErrors, GetUploadResponses, GetWorkData, GetWorkErrors, GetWorkResponses, GetWorkTaskData, GetWorkTaskErrors, GetWorkTaskResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentEnvironmentsData, ListAgentEnvironmentsErrors, ListAgentEnvironmentsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListChatMonitorsData, ListChatMonitorsErrors, ListChatMonitorsResponses, ListChatOutboxData, ListChatOutboxErrors, ListChatOutboxResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListEnvironmentsData, ListEnvironmentsErrors, ListEnvironmentsResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListPluginsData, ListPluginsErrors, ListPluginsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListWorkTasksData, ListWorkTasksErrors, ListWorkTasksResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeEnvironmentData, ProbeEnvironmentErrors, ProbeEnvironmentResponses, PutExtensionEnvData, PutExtensionEnvErrors, PutExtensionEnvResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentEnvironmentData, ResetAgentEnvironmentErrors, ResetAgentEnvironmentResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatEnvironmentData, SetChatEnvironmentErrors, SetChatEnvironmentResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPluginData, SetPluginErrors, SetPluginResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramResponses, SetWorkTaskLifecycleData, SetWorkTaskLifecycleErrors, SetWorkTaskLifecycleResponses, TestEnvironmentData, TestEnvironmentErrors, TestEnvironmentResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateEnvironmentData, UpdateEnvironmentErrors, UpdateEnvironmentResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -385,6 +385,122 @@ export const acquireMaintenance = <ThrowOnError extends boolean = false>(options
             type: 'apiKey'
         }],
     url: '/api/maintenance',
+    ...options
+});
+
+/**
+ * Return server version, update channel, upgrade capability, pending operation state, and database backups.
+ */
+export const getSystemStatus = <ThrowOnError extends boolean = false>(options?: Options<GetSystemStatusData, ThrowOnError>): RequestResult<GetSystemStatusResponses, GetSystemStatusErrors, ThrowOnError> => (options?.client ?? client).get<GetSystemStatusResponses, GetSystemStatusErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/status',
+    ...options
+});
+
+/**
+ * Save global system settings such as the release update channel.
+ */
+export const updateSystemSettings = <ThrowOnError extends boolean = false>(options: Options<UpdateSystemSettingsData, ThrowOnError>): RequestResult<UpdateSystemSettingsResponses, UpdateSystemSettingsErrors, ThrowOnError> => (options.client ?? client).put<UpdateSystemSettingsResponses, UpdateSystemSettingsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/settings',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Check GitHub Releases for a newer dex version on the configured channel.
+ */
+export const checkSystemUpdate = <ThrowOnError extends boolean = false>(options?: Options<CheckSystemUpdateData, ThrowOnError>): RequestResult<CheckSystemUpdateResponses, CheckSystemUpdateErrors, ThrowOnError> => (options?.client ?? client).post<CheckSystemUpdateResponses, CheckSystemUpdateErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/check-update',
+    ...options
+});
+
+/**
+ * Download, verify, back up control.sqlite, and restart into a newer release.
+ */
+export const upgradeSystem = <ThrowOnError extends boolean = false>(options?: Options<UpgradeSystemData, ThrowOnError>): RequestResult<UpgradeSystemResponses, UpgradeSystemErrors, ThrowOnError> => (options?.client ?? client).post<UpgradeSystemResponses, UpgradeSystemErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/upgrade',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
+});
+
+/**
+ * Gracefully restart the dex server in place once idle, or immediately when forced.
+ */
+export const restartSystem = <ThrowOnError extends boolean = false>(options?: Options<RestartSystemData, ThrowOnError>): RequestResult<RestartSystemResponses, RestartSystemErrors, ThrowOnError> => (options?.client ?? client).post<RestartSystemResponses, RestartSystemErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/restart',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers
+    }
+});
+
+/**
+ * Cancel a pending restart or upgrade that is waiting for active runs to settle.
+ */
+export const cancelSystemOperation = <ThrowOnError extends boolean = false>(options?: Options<CancelSystemOperationData, ThrowOnError>): RequestResult<CancelSystemOperationResponses, CancelSystemOperationErrors, ThrowOnError> => (options?.client ?? client).post<CancelSystemOperationResponses, CancelSystemOperationErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/cancel',
+    ...options
+});
+
+/**
+ * Create a consistent hot backup of control.sqlite in the data directory backups folder.
+ */
+export const backupSystemDatabase = <ThrowOnError extends boolean = false>(options?: Options<BackupSystemDatabaseData, ThrowOnError>): RequestResult<BackupSystemDatabaseResponses, BackupSystemDatabaseErrors, ThrowOnError> => (options?.client ?? client).post<BackupSystemDatabaseResponses, BackupSystemDatabaseErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/backup',
+    ...options
+});
+
+/**
+ * Return recent structured server log entries from the in-memory ring buffer.
+ */
+export const getSystemLogs = <ThrowOnError extends boolean = false>(options?: Options<GetSystemLogsData, ThrowOnError>): RequestResult<GetSystemLogsResponses, GetSystemLogsErrors, ThrowOnError> => (options?.client ?? client).get<GetSystemLogsResponses, GetSystemLogsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }, {
+            in: 'cookie',
+            name: 'dex_session',
+            type: 'apiKey'
+        }],
+    url: '/api/system/logs',
     ...options
 });
 
