@@ -148,7 +148,7 @@ func (a *Agents) begin(key string) error {
 	}
 	owner, _, _ := strings.Cut(key, "/")
 	if slot := a.opening[owner]; slot != nil && slot.resetting {
-		return ErrBusy
+		return ErrEnvironmentResetting
 	}
 	a.trackLocked(key)
 	return nil
@@ -276,7 +276,7 @@ func (a *Agents) harness(ctx context.Context, agentID, scope string) (harness.Ha
 		owner, _, _ := strings.Cut(agentID, "/")
 		if slot := a.opening[owner]; slot != nil && slot.resetting {
 			a.mu.Unlock()
-			return nil, ErrBusy
+			return nil, ErrEnvironmentResetting
 		}
 		if opening := a.opening[agentID]; opening != nil {
 			a.mu.Unlock()

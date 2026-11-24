@@ -143,9 +143,9 @@ type Service struct {
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
 
-	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only
-	delivery       map[int64]*deliveryGate
-	coordinationMu sync.Mutex // delivery registry, worker registration, and Run shutdown
+	admissionMu    sync.RWMutex            // receipt changes, withdrawals and maintenance lease confirmation
+	delivery       map[int64]*deliveryGate // One entry per Session that used a gate since startup.
+	coordinationMu sync.Mutex              // delivery registry, worker registration, and Run shutdown
 
 	retryMu    sync.Mutex
 	retryTimer *time.Timer

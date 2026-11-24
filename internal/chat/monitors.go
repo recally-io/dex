@@ -270,6 +270,8 @@ func (s *Service) cancelMonitor(ctx context.Context, agentID string, chatID int6
 		return engine.MonitorInfo{}, err
 	}
 	defer unlock()
+	s.admissionMu.RLock()
+	defer s.admissionMu.RUnlock()
 	if s.leaseUntil.Load() != 0 {
 		return engine.MonitorInfo{}, engine.ErrMaintenance
 	}

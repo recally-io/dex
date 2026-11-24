@@ -58,11 +58,12 @@ shutting down HTTP/App cleanly and re-execing the binary in place via
 `syscall.Exec`. `chat.Service` owns a two-minute maintenance lease.
 The engine closes admission and checks active operations, durable work, and
 pending settlement and memory commits. A busy check releases the gate and
-refuses maintenance. A short global receipt gate orders receipt commits and
-lease confirmation. After lease confirmation, web input returns `409` before
-the service writes a receipt. A web receipt committed before confirmation can
-return `202` and remain pending until release. Channel input can also retain
-a pending business receipt. Reconciliation resumes admission after maintenance.
+refuses maintenance. A global gate orders receipt commits, message withdrawal,
+and Monitor cancellation with lease confirmation. After lease confirmation,
+web input returns `409` before the service writes a receipt. A web receipt
+committed before confirmation can return `202` and remain pending until release.
+Channel input can also retain a pending business receipt. Reconciliation resumes
+admission after maintenance.
 The client keeps the same request ID when it retries.
 A process restart clears the in-memory lease.
 

@@ -37,6 +37,9 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 		return WithdrawnMessage{}, err
 	}
 	defer unlock()
+	// Lease confirmation waits for the withdrawal, including its receipt update.
+	s.admissionMu.RLock()
+	defer s.admissionMu.RUnlock()
 	if s.leaseUntil.Load() != 0 {
 		return WithdrawnMessage{}, engine.ErrMaintenance
 	}
