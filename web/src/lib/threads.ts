@@ -1,5 +1,5 @@
 import type { ChildEvent, ToolItem } from "../api/generated/types.gen";
-import { arg } from "./tools";
+import { arg, isParentReport } from "./tools";
 
 /** A child session. A missing agentId means the bot of the open page. */
 export type ThreadRef = { chatId: number; agentId?: string };
@@ -34,8 +34,13 @@ function parse(output: string): SessionResult {
   }
 }
 
-/** The thread entry of a tool call, or undefined for any other tool. */
-export function threadCall(tool: ToolItem): ThreadCall | undefined {
+/**
+ * The thread entry of a tool call, or undefined for any other tool. child is true in a child chat,
+ * where session_send reports to the parent and names no thread.
+ */
+export function threadCall(tool: ToolItem, child = false): ThreadCall | undefined {
+  if (isParentReport(tool, child)) return undefined;
+
   const send = tool.name === "session_send";
 
   if (!send && !creates.includes(tool.name)) return undefined;

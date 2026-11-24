@@ -74,7 +74,10 @@ sandbox, in an unavailable environment, or with no recorded environment stops
 before any chat is created.
 Each child session reads like a thread. The transcript shows one card at a
 `session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
-call, and one "replied · View thread" line at each result mark. A click opens the
+call of a parent, and one "replied · View thread" line at each result mark.
+In a child chat (`parentId` is set), `isParentReport` in `src/lib/tools.ts`
+shows a `session_send` without `id`, `message`, `mode` or `follow_up`, and an
+old `report_parent` call, as a "Reported to parent" step. A click opens the
 child as a read-only panel on the right, which covers the transcript on a narrow
 screen. Task conversations are read-only while queued or running and writable
 after they end.

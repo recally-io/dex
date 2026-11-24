@@ -150,10 +150,36 @@ writing child separate files or directories. The tools are:
 
 Each session, list row and match names its bot (`bot` and `botId`).
 
-Only a parent can send to, stop or fork a child. A child has no session tools,
-no routine tools and no `ask_user`: the engine removes them from every input of
+Only a parent can send to, stop or fork a child. A child has none of the parent
+session tools, no routine tools and no `ask_user`: the engine removes them from every input of
 a conversation that has a parent, and the handlers refuse the call as well.
 A conversation that was a task before the upgrade is a child in the same way.
+
+### Child reports
+
+A child has its own `session_send` from the `child-outbox` extension, in place
+of the parent tool with the same name. Its only arguments are `content` and
+`final`. The recipient is always the direct parent, which can be a Routine
+session. The tool cannot name another session, and the native validator
+rejects `id`, `message`, `mode` and `follow_up`. The handler refuses a call from
+a conversation without a parent.
+
+A report is an internal `task_result` with the ID `report:<bot>/<tool task ID>`
+in the inbox of the parent. It does not notify the user and does not grant
+authority. With `final` true (the default), the call must be the only tool call
+of its round. It ends the child turn and stores the exit action
+`report_parent` on the run inputs. Settlement then works as for any other
+turn. With `final` false, the report is a milestone and the turn continues.
+
+The child edit of each input removes the `sessions` extension when it adds
+`child-outbox`, so no conversation selects both tools. Registration is global,
+and PiG resolves a tool name from the extensions that a conversation selects.
+The tool had the name `report_parent` before. It has no alias, because PiG
+runs a model call only through a tool that it offers. A restart can resume a
+`report_parent` call that an older release started. Before the call ran, it gets
+`tool_unavailable`. While it ran, it gets an interrupted result, and its report
+can already be in the parent inbox. A new `session_send` report can then repeat
+it.
 
 ## Cross-bot sessions
 
@@ -228,7 +254,10 @@ Neither layer uses message text or an ID pattern to hide results.
 
 The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
-line at each `session_send` call. A result mark is one line with a "View thread"
+line at each `session_send` call of a parent. In a child chat, a
+`session_send` call without a parent argument, and an old `report_parent` call,
+show as a "Reported to parent" step. That step keeps a System Turn trace
+unfolded. A result mark is one line with a "View thread"
 action. The card, the line and the action open a read-only side panel that
 shows the child's own transcript with the usual chat reads and stream. The web
 reads the child ID from the session tool result and finds the child of a result

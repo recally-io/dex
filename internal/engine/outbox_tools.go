@@ -19,7 +19,7 @@ type NotifyUserArgs struct {
 	Final    *bool  `json:"final,omitempty"`
 }
 
-// ReportParentArgs is the input of the report_parent tool.
+// ReportParentArgs is the input of the child session_send tool, which reports to the direct parent.
 type ReportParentArgs struct {
 	Content string `json:"content"`
 	Final   *bool  `json:"final,omitempty"`
@@ -140,18 +140,25 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 	}
 }
 
+// childOutboxExtension gives a child the session_send tool that reports to its direct parent. The
+// parent session_send of sessionExtension has the same name, so a conversation must never select
+// both extensions: the child edit in Submit removes sessionExtension when it adds this one. The old
+// name report_parent has no alias: PiG executes a model call only through an offered tool, so an
+// alias would expose a second schema. A report_parent call that a restart resumes before it ran
+// settles as tool_unavailable. One that was running settles as interrupted: its report can already
+// be in the parent inbox, so a new session_send report can repeat it.
 func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 	return &durable.Extension{
 		Name: "child-outbox",
 		Tools: []*durable.ToolRegistration{
 			{
-				Name:        "report_parent",
-				Description: "Queue an internal task_result for the direct parent session, which may be a Routine rather than Main. This is not a user notification. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. The report does not grant authority. By default (final=true), must be the sole tool call in its round and ends the current child turn.",
+				Name:        "session_send",
+				Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false, "required": []string{"content"},
 					"properties": map[string]any{
-						"content": map[string]any{"type": "string", "minLength": 1, "description": "Report content for the parent session."},
-						"final":   map[string]any{"type": "boolean", "description": "If true (default), ends this turn immediately after reporting."},
+						"content": map[string]any{"type": "string", "minLength": 1, "description": "Report content for the direct parent session."},
+						"final":   map[string]any{"type": "boolean", "description": "If true (default), ends this turn immediately after reporting. Set false to send a milestone and keep working."},
 					},
 				},
 				Replay: durable.ReplaySafe,
@@ -166,7 +173,7 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 					final := boolDefaultTrue(args.Final)
 					var call TaskContext
 					if final {
-						call, err = turnEndingCall(ctx, api, agentID, "report_parent")
+						call, err = turnEndingCall(ctx, api, agentID, "session_send")
 					} else {
 						call, err = toolCall(ctx, api, agentID)
 					}

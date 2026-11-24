@@ -72,10 +72,10 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 			}
 			if !tc.interrupted {
 				steps = append(steps, step(func(req ai.TranscriptContext) ai.AssistantMessage {
-					if got := description(req, "report_parent"); !strings.Contains(got, "direct parent") || !strings.Contains(got, "Routine") || !strings.Contains(got, "not a user notification") {
+					if got := description(req, "session_send"); !strings.Contains(got, "direct parent") || !strings.Contains(got, "Routine") || !strings.Contains(got, "not a user notification") {
 						t.Errorf("model did not receive the internal report routing guidance: %q", got)
 					}
-					return tool("report_parent", map[string]any{"content": report})
+					return tool("session_send", map[string]any{"content": report})
 				}))
 			}
 			steps = append(steps, step(func(req ai.TranscriptContext) ai.AssistantMessage {

@@ -49,6 +49,20 @@ export const arg = (tool: ToolItem, key: string) => {
   return typeof value === "string" ? value : "";
 };
 
+// The arguments of the parent form of session_send. The child form has only content and final.
+const dispatchKeys = ["id", "message", "mode", "follow_up"];
+
+/**
+ * A report from a child session to its direct parent: the old report_parent tool, or the
+ * session_send of a child. A child chat offers only the report form of session_send, so a call
+ * counts only in a child chat and only without an argument of the parent form.
+ */
+export function isParentReport(tool: ToolItem, child: boolean) {
+  if (tool.name === "report_parent") return true;
+
+  return child && tool.name === "session_send" && !dispatchKeys.some((key) => Object.hasOwn(tool.args, key));
+}
+
 // The memory folder is <data dir>/memory. Without the data dir, no call counts as a memory call.
 function inMemory(path: string, memory?: string) {
   return !!memory && (path === memory || path.startsWith(`${memory}/`));
@@ -60,7 +74,7 @@ function touchesMemory(tool: ToolItem, memory?: string) {
 }
 
 // The verb and the main argument of a step row. dex sends only the tool name and its arguments.
-export function describeTool(tool: ToolItem, memory?: string) {
+export function describeTool(tool: ToolItem, memory?: string, child = false) {
   const path = arg(tool, "path");
 
   if (tool.name === "bash") {
@@ -75,7 +89,7 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Notify user", target: arg(tool, "topicKey") || arg(tool, "content") };
   }
 
-  if (tool.name === "report_parent") {
+  if (isParentReport(tool, child)) {
     return { verb: "Report parent", target: arg(tool, "content") };
   }
 
@@ -119,8 +133,9 @@ const pastTense = new Map([
 /**
  * The header of a steps row. active is set while a call runs or the model thinks; done is the
  * summary after the steps end. thinking is true while the last step is a thought that streams.
+ * child is true in a child chat, where session_send reports to the parent.
  */
-export function stepTitle(steps: Step[], memory?: string, thinking = false) {
+export function stepTitle(steps: Step[], memory?: string, thinking = false, child = false) {
   const tools = steps.filter((step) => step.kind === "tool");
   const running = tools.find((t) => t.status === "running");
   const failed = tools.filter((t) => t.status === "error").length;
@@ -132,6 +147,8 @@ export function stepTitle(steps: Step[], memory?: string, thinking = false) {
       n === 1
         ? describeTool(tools[0], memory).verb.replace(/^\w+/, (verb) => pastTense.get(verb) ?? verb)
         : `Used memory ${n} times`;
+  else if (n === 1 && tools[0].status !== "error" && isParentReport(tools[0], child))
+    done = "Reported to parent";
   else if (n === 1) done = tools[0].name === "bash" ? "Ran a command" : `Used ${tools[0].name}`;
   else if (n) done = `Ran ${n} tools`;
 

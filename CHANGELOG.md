@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Tool discovery**: Enable `tool_search` in owner sessions without MCP. Search built-in tools and available MCP tools without changing session permissions.
 - **Memory**: Rename `read_dream_message` to `memory_source_read`. It still reads only the sources supplied for the current consolidation run.
+- **Child sessions**: Rename the child `report_parent` tool to `session_send`. In a child it takes only `content` and `final` and always reports to the direct parent as an internal result. The parent `session_send` is unchanged. The web shows both the new and old child calls as "Reported to parent".
 
 ### Removed
 
