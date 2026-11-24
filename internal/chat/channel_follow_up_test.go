@@ -97,22 +97,37 @@ func TestUserChannelFollowUpQuestionIsNotAConclusion(t *testing.T) {
 	}
 }
 
-func TestUserChannelFollowUpCanStaySilent(t *testing.T) {
-	r := startNative(t, "echo")
-	ctx := t.Context()
-	_, call := followUpResult(t, r)
-	if err := r.service.ToolStaySilent(ctx, call, engine.StaySilentArgs{Reason: "No conclusion needed"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.service.settle(ctx, call.SourceRequestID, engine.Outcome{Status: "done", Answer: "private draft"}); err != nil {
-		t.Fatal(err)
-	}
-	f, err := r.q.GetChannelFollowUpByInput(ctx, call.SourceRequestID)
-	if err != nil || f.State != "silent" {
-		t.Fatalf("missing intentional silence: %+v, %v", f, err)
-	}
-	if _, err := r.q.GetOutboxByDedupKey(ctx, followUpFinalKey(f.DelegationID)); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("silence generated delivery: %v", err)
+func TestUserChannelFollowUpWithoutNotificationKeepsItsOutcome(t *testing.T) {
+	for _, tc := range []struct{ state, want string }{
+		{"open", "missed_follow_up"},
+		{"silent", "silent"},
+	} {
+		t.Run(tc.state, func(t *testing.T) {
+			r := startNative(t, "echo")
+			ctx := t.Context()
+			parent, call := followUpResult(t, r)
+			// Older releases could save an explicit silent decision before the turn settled.
+			if tc.state == "silent" {
+				if err := r.q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: call.SourceRequestID, State: tc.state}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := r.q.ListOutboxByConversation(ctx, parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := r.service.settle(ctx, call.SourceRequestID, engine.Outcome{Status: "done", Answer: "private draft"}); err != nil {
+				t.Fatal(err)
+			}
+			f, err := r.q.GetChannelFollowUpByInput(ctx, call.SourceRequestID)
+			if err != nil || f.State != tc.want {
+				t.Fatalf("follow-up state = %q, want %q: %v", f.State, tc.want, err)
+			}
+			after, err := r.q.ListOutboxByConversation(ctx, parent)
+			if err != nil || len(after) != len(before) {
+				t.Fatalf("settlement without a notification added an outbox entry: %v", err)
+			}
+		})
 	}
 }
 

@@ -25,13 +25,13 @@ type DreamMessagePage struct {
 
 func dreamMessageExtension(agentID string, read func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)) *durable.Extension {
 	return &durable.Extension{Name: "dream-message", Tools: []*durable.ToolRegistration{{
-		Name: "read_dream_message", Description: "Read a page of the original user message or answer for a record in this dream. Offset is in Unicode characters; use nextOffset while hasMore is true.", Replay: durable.ReplaySafe,
+		Name: "memory_source_read", Description: "Read a page of the original user message or answer for a source supplied in this memory consolidation run. Offset is in Unicode characters; use nextOffset while hasMore is true.", Replay: durable.ReplaySafe,
 		Parameters: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"messageId", "field", "offset"}, "properties": map[string]any{
 			"messageId": map[string]any{"type": "string", "minLength": 1}, "field": map[string]any{"type": "string", "enum": []string{"user", "answer"}}, "offset": map[string]any{"type": "integer", "minimum": 0},
 		}},
 		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 			if read == nil {
-				return durable.ToolExecutionResult{}, errors.New("dream message service unavailable")
+				return durable.ToolExecutionResult{}, errors.New("memory source service is unavailable")
 			}
 			request, err := taskSource(ctx, api)
 			if err != nil {

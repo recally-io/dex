@@ -32,9 +32,9 @@ const targets: NotificationTargets = {
   ],
 };
 
-async function render(channel: ChannelId) {
+async function render(channel: ChannelId, channels = connected) {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
-  client.setQueryData(getChannelsOptions(path).queryKey, connected);
+  client.setQueryData(getChannelsOptions(path).queryKey, channels);
   client.setQueryData(getFeishuOptions(path).queryKey, connected.feishu satisfies Feishu);
   client.setQueryData(getNotificationTargetsOptions(path).queryKey, targets);
 
@@ -99,11 +99,15 @@ test("user sees the saved Lark app and can replace it", async () => {
   expect(html).toContain(">Paired<");
 });
 
-test("user sees that Telegram speech is off before any provider is selected", async () => {
-  // Given saved Telegram settings without explicit speech configuration.
-  const html = await render("telegram");
-  // Then the page shows the data-sending boundary before the user opens the editor.
-  expect(html).toContain("Speech is off");
+test("user sees that old Telegram speech output settings do not enable transcription", async () => {
+  // Given a saved speech output setting without transcription.
+  const html = await render("telegram", {
+    ...connected,
+    telegram: { ...connected.telegram, options: { tts: { enabled: true } } },
+  });
+
+  // Then the page shows the active transcription setting and the data-sending boundary.
+  expect(html).toContain("Transcription is off");
   expect(html).toContain("selected provider");
 });
 

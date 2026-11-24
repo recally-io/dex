@@ -112,7 +112,9 @@ restarts. dex does not poll for changes or watch these files.
 The [engine extension loader](../../internal/engine/extensions.go) connects
 servers before it resumes the agent Harness. It installs prompt sections for
 the extension guide and current skills. MCP tools use the names
-`mcp__<server>__<tool>` and deferred tool discovery.
+`mcp__<server>__<tool>`. In owner sessions, `tool_search` searches the built-in
+and MCP tools available to the current model. It adds only matching deferred
+tools to the next model call. It does not expand the session's permissions.
 
 ### Secret vault
 

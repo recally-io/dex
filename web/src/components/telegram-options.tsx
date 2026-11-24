@@ -93,15 +93,13 @@ export function TelegramOptionsFields({
         <summary className="cursor-pointer text-[13px] text-muted-foreground">Optional speech</summary>
         <div className="mt-3 flex flex-col gap-4">
           <Note tone="warn">
-            Speech is off by default. STT sends audio and TTS sends text to the selected provider. This can
-            disclose data to a third party and can incur charges. dex does not choose another provider or
-            retry an unknown request.
+            Speech is off by default. Transcription sends audio to the selected provider. This can incur
+            charges. dex does not choose another provider or retry an unknown request.
           </Note>
-          <SpeechFields kind="stt" value={value.stt ?? {}} onChange={(stt) => onChange({ ...value, stt })} />
-          <SpeechFields kind="tts" value={value.tts ?? {}} onChange={(tts) => onChange({ ...value, tts })} />
+          <TranscriptionFields value={value.stt ?? {}} onChange={(stt) => onChange({ ...value, stt })} />
           <p className="text-[12px] text-muted-foreground">
-            Default limits: 30 seconds per request, 20 MiB, 300 seconds of reported input audio and 4000 text
-            characters for TTS. Original incoming audio stays attached. TTS keeps a readable text response.
+            Default limits: 30 seconds per request, 20 MiB, and 300 seconds of reported input audio. Original
+            incoming audio stays attached.
           </p>
         </div>
       </details>
@@ -109,16 +107,14 @@ export function TelegramOptionsFields({
   );
 }
 
-function SpeechFields({
-  kind,
+function TranscriptionFields({
   value,
   onChange,
 }: {
-  kind: "stt" | "tts";
   value: TelegramSpeechOptions;
   onChange: (next: TelegramSpeechOptions) => void;
 }) {
-  const title = kind === "stt" ? "Transcription (STT)" : "Speech output (TTS)";
+  const title = "Transcription (STT)";
 
   return (
     <fieldset className="flex flex-col gap-4">
@@ -159,29 +155,17 @@ function SpeechFields({
               />
             )}
           </Field>
-          {kind === "tts" ? (
-            <Field label="TTS voice">
-              {({ id }) => (
-                <Input
-                  id={id}
-                  value={value.voice ?? ""}
-                  onChange={(e) => onChange({ ...value, voice: e.target.value })}
-                />
-              )}
-            </Field>
-          ) : (
-            <Field label="STT language" hint="Optional provider language code.">
-              {({ id }) => (
-                <Input
-                  id={id}
-                  value={value.language ?? ""}
-                  onChange={(e) => onChange({ ...value, language: e.target.value })}
-                />
-              )}
-            </Field>
-          )}
+          <Field label="STT language" hint="Optional provider language code.">
+            {({ id }) => (
+              <Input
+                id={id}
+                value={value.language ?? ""}
+                onChange={(e) => onChange({ ...value, language: e.target.value })}
+              />
+            )}
+          </Field>
           <Field
-            label={`Allow sending ${kind === "stt" ? "audio" : "text"} to this provider`}
+            label="Allow sending audio to this provider"
             hint="Explicit consent is required before speech can start."
           >
             {({ id, describedBy }) => (

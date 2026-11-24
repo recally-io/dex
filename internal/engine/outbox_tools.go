@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -26,11 +25,6 @@ type ReportParentArgs struct {
 	Final   *bool  `json:"final,omitempty"`
 }
 
-// StaySilentArgs is the input of the stay_silent tool.
-type StaySilentArgs struct {
-	Reason string `json:"reason"`
-}
-
 // OutboxSummary is one recent delivered Outbox entry rendered into the prompt.
 type OutboxSummary struct {
 	ID          string
@@ -45,7 +39,6 @@ type OutboxSummary struct {
 type OutboxTools struct {
 	NotifyUser   func(context.Context, TaskContext, NotifyUserArgs) (string, error)
 	ReportParent func(context.Context, TaskContext, ReportParentArgs) (string, error)
-	StaySilent   func(context.Context, TaskContext, StaySilentArgs) error
 	RecentOutbox func(context.Context, Ref) ([]OutboxSummary, error)
 }
 
@@ -110,7 +103,6 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 					return res, nil
 				},
 			},
-			staySilentTool(agentID, tools),
 		},
 		Sections: []*durable.PromptSection{
 			harness.Section("recent-outbox", func(ctx context.Context, input durable.PromptInput) (*string, error) {
@@ -194,41 +186,6 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 					return res, nil
 				},
 			},
-			staySilentTool(agentID, tools),
-		},
-	}
-}
-
-func staySilentTool(agentID string, tools OutboxTools) *durable.ToolRegistration {
-	return &durable.ToolRegistration{
-		Name:        "stay_silent",
-		Description: "End this System Turn or child turn without sending a message to the user or parent. Do not use silence to skip internal work. First verify any incoming child report and carry out already-authorized follow-up or record a concrete blocker. Use this only when no work remains for this turn and no message is needed. Must be the sole tool call in its round. Rejected if an unanswered direct user message is in this run.",
-		Parameters: map[string]any{
-			"type": "object", "additionalProperties": false, "required": []string{"reason"},
-			"properties": map[string]any{
-				"reason": map[string]any{"type": "string", "minLength": 1, "description": "Internal reason why no outbound message is needed."},
-			},
-		},
-		Replay: durable.ReplaySafe,
-		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
-			if tools.StaySilent == nil {
-				return durable.ToolExecutionResult{}, errors.New("outbox service is unavailable")
-			}
-			args, err := durable.FromJsonValue[StaySilentArgs](raw)
-			if err != nil {
-				return durable.ToolExecutionResult{}, err
-			}
-			call, err := turnEndingCall(ctx, api, agentID, "stay_silent")
-			if err != nil {
-				return durable.ToolExecutionResult{}, err
-			}
-			if err := tools.StaySilent(ctx, call, args); err != nil {
-				return durable.ToolExecutionResult{}, err
-			}
-			return durable.ToolExecutionResult{
-				Output:  []ai.ToolResultMessageContent{ai.TextContent{Text: fmt.Sprintf("Staying silent (%s). Turn ended.", args.Reason)}},
-				Control: &durable.ToolControl{Terminate: true},
-			}, nil
 		},
 	}
 }

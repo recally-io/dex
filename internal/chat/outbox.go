@@ -237,43 +237,6 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	return resultID, nil
 }
 
-func (s *Service) ToolStaySilent(ctx context.Context, r engine.TaskContext, _ engine.StaySilentArgs) error {
-	conv, err := s.toolCaller(ctx, r)
-	if err != nil {
-		return err
-	}
-	ids := r.RunInputIDs
-	if len(ids) == 0 {
-		ids = []string{r.SourceRequestID}
-	}
-	for _, id := range ids {
-		sub, err := s.q.GetSubmission(ctx, id)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if sub.ConversationID == conv.ID && sub.Status == "pending" && sub.Kind == "message" && isUserOrigin(sub.Origin) {
-			return errors.New("cannot stay silent when an unanswered user message is in this turn")
-		}
-	}
-	tx, q, err := s.writeTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: r.SourceRequestID, State: "silent"}); err != nil {
-		return err
-	}
-	for _, id := range ids {
-		if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "stay_silent"}); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
 func (s *Service) ToolRecentOutbox(ctx context.Context, ref engine.Ref) ([]engine.OutboxSummary, error) {
 	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{
 		AgentID:        ref.AgentID,

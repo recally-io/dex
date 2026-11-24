@@ -10,7 +10,7 @@ import (
 
 var errChannelFollowUp = errors.New("follow-up requires an active commitment and the original channel authorization")
 
-const followUpPrompt = "You committed to report on this delegation. Plain final text is internal. Use notify_user for your reviewed conclusion, ask_user if blocked on a decision, or stay_silent to intentionally suppress the follow-up. Do not forward private drafts or raw child output."
+const followUpPrompt = "You committed to report on this delegation. Plain final text is internal. Use notify_user for your reviewed conclusion, or ask_user if blocked on a decision. Do not forward private drafts or raw child output."
 
 func followUpFinalKey(delegationID string) string { return "follow-up-final:" + delegationID }
 
