@@ -221,7 +221,12 @@ references belong to the requested agent. A stored receipt means control
 received the input, even when native admission is pending. Adapters do not infer
 this state from `admitted_at` or terminal status. Native admission remains the
 execution authority; reconciliation still retries pending input with its
-stable request ID.
+stable request ID. Telegram polling advances after an ordinary input commits its
+source receipt. It does not wait for a native admission attempt. Deferred input
+uses the same authorization and Session queue. Commands still use their own
+receipts and acknowledgements. Polling and the outbox serialize replays of the
+same command by source key. They do not hold a Bot-wide command lock. A native rejection settles the input receipt
+without setting `admitted_at`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
 channels enters the bot's agent `main` conversation with that peer as origin.
@@ -261,7 +266,7 @@ no feedback store, model input, or GitHub write. The reply remains on the
 messaging platform like any other message.
 
 Each platform has one durable sender. Settlement wakes the origin's sender.
-Main Stop wakes all senders for withdrawn input. At start
+Legacy Stop wakes senders for withdrawn input. At start
 and after a failed send, it reads settled submissions and command replies
 that remain undelivered, in submission admission order. It records each confirmed part and marks the reply
 delivered after its last part. A permanent rejection skips that part and does

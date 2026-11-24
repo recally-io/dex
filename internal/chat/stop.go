@@ -51,38 +51,50 @@ func (s *Service) stop(ctx context.Context, agentID string, id int64, command *s
 	if _, err := s.Get(ctx, agentID, id); err != nil {
 		return "", err
 	}
-	unlock, err := s.lockAgent(ctx, agentID)
+	unlock, err := s.lockSession(ctx, id)
 	if err != nil {
 		return "", err
 	}
-	defer func() { unlock(); s.Wake() }()
 	w, err := s.withdraw(ctx, agentID, id, command, call)
+	// Do not take a child's gate until the parent gate is released.
+	unlock()
 	if err != nil || w.stored != "" {
 		return w.stored, err
 	}
-	conversations, targets := w.conversations, w.targets
-	s.stopBackground(ctx, w.stopped)
-	for _, c := range conversations {
+	for _, c := range w.conversations {
 		s.signal(c.ID)
 		if s.notify != nil {
 			s.notify(c.ChannelKey)
 		}
 	}
-	for _, target := range targets {
-		if _, err := s.abort(ctx, target); err != nil {
-			s.scheduleRetry()
-			return "", err
+	var errs []error
+	for _, c := range w.conversations {
+		if c.AgentID != agentID {
+			continue // the target's dispatcher owns cross-bot cancellations
+		}
+		gate := s.sessionGate(c.ID)
+		select {
+		case gate.token <- struct{}{}:
+			callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
+			err := s.reconcileStop(callCtx, c.ID)
+			cancel()
+			if err != nil {
+				s.retrySession(c.ID)
+				if !errors.Is(err, errStopPending) {
+					errs = append(errs, err)
+				}
+			}
+			<-gate.token
+		default:
+			// An active target owner will release the gate and wake dispatch.
 		}
 	}
 	s.Wake()
-	return "", nil
+	return "", errors.Join(errs...)
 }
 
 type withdrawal struct {
 	conversations []sqlc.Conversation
-	targets       []engine.Ref
-	// stopped are the conversations that the stop ended as a whole. A child that keeps its run is not one.
-	stopped []int64
 	// stored is the result of the first run of a replayed tool call.
 	stored string
 }
@@ -91,6 +103,8 @@ type withdrawal struct {
 // and, when included, its child sessions with pending input of the parent. The writer also admits
 // user input, so a child is either stopped as a whole or has the user input that this read saw.
 func (s *Service) withdraw(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (withdrawal, error) {
+	s.admissionMu.RLock()
+	defer s.admissionMu.RUnlock()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
@@ -122,8 +136,6 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	if err != nil {
 		return withdrawal{}, err
 	}
-	var targets []engine.Ref
-	var stopped []int64
 	now := sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}
 	for _, c := range conversations {
 		if c.ID != id {
@@ -132,7 +144,10 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 				return withdrawal{}, err
 			}
 			if slices.ContainsFunc(pending, func(p sqlc.ListChildPendingRow) bool { return !p.FromParent }) {
-				if err := s.withdrawQueuedParentInputs(ctx, q, c, pending, now); err != nil {
+				if c.ExecutionID.Valid && s.leaseUntil.Load() != 0 {
+					return withdrawal{}, engine.ErrMaintenance
+				}
+				if err := q.RequestParentInputStop(ctx, c.ID); err != nil {
 					return withdrawal{}, err
 				}
 				continue
@@ -162,7 +177,6 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if _, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now}); err != nil {
 			return withdrawal{}, err
 		}
-		stopped = append(stopped, c.ID)
 		if err := q.RequestExecutionAbort(ctx, c.ID); err != nil {
 			return withdrawal{}, err
 		}
@@ -171,12 +185,6 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		}
 		if _, err := q.CancelMonitorsByConversation(ctx, sqlc.CancelMonitorsByConversationParams{ConversationID: c.ID, UpdatedAt: now.Int64}); err != nil {
 			return withdrawal{}, err
-		}
-		// A child of another bot is not aborted here. Its bot has its own delivery gate, and this call
-		// holds one gate only. The abort request above is durable, and the dispatcher of that bot
-		// carries it out. Holding two gates could deadlock two parents that stop each other's children.
-		if c.ExecutionID.Valid && c.AgentID == agentID {
-			targets = append(targets, engine.Ref{AgentID: agentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope})
 		}
 	}
 	if command != nil {
@@ -200,53 +208,57 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	if err := tx.Commit(); err != nil {
 		return withdrawal{}, err
 	}
-	return withdrawal{conversations: conversations, targets: targets, stopped: stopped}, nil
+	return withdrawal{conversations: conversations}, nil
 }
 
-// withdrawQueuedParentInputs withdraws the parent input of a child that native execution still
-// holds in its queue. A placed input is part of a run and keeps running. A failed withdrawal fails
-// Stop, so the user can repeat it. A pending input that native execution never saw has no run, and
-// its receipt settles at once. The native queue belongs to the bot of the child, which can differ
-// from the bot of the parent.
-func (s *Service) withdrawQueuedParentInputs(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation, pending []sqlc.ListChildPendingRow, now sql.NullInt64) error {
-	for _, p := range pending {
-		if !p.FromParent {
-			continue
-		}
+var errStopPending = errors.New("session cancellation is pending")
+
+// reconcileStop owns only the target gate. All native calls run outside the control writer.
+func (s *Service) reconcileStop(ctx context.Context, id int64) error {
+	c, err := s.q.GetConversation(ctx, id)
+	if err != nil {
+		return err
+	}
+	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope}
+	if c.AbortPending != 0 {
+		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
+		defer cancel()
+		s.stopBackground(callCtx, []int64{id})
 		if c.ExecutionID.Valid {
-			outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope}, p.ID)
-			if err != nil {
+			if err := s.engine.Abort(callCtx, ref); err != nil && !errors.Is(err, engine.ErrNotFound) {
+				if errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
+					return errStopPending
+				}
+				slog.Warn("cancel native execution", "execution", ref.ID, "err", err)
 				return err
 			}
-			if outcome == engine.Placed {
-				continue
-			}
 		}
-		if _, err := q.StopSubmission(ctx, sqlc.StopSubmissionParams{ID: p.ID, Now: now}); err != nil {
+		if err := s.q.FinishExecutionAbort(callCtx, id); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-// abort completes only after native cancellation and its durable acknowledgement.
-func (s *Service) abort(ctx context.Context, target engine.Ref) (completed bool, err error) {
-	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
-	defer cancel()
-	if err := s.engine.Abort(callCtx, target); err != nil && !errors.Is(err, engine.ErrNotFound) {
-		if errors.Is(err, engine.ErrModelsPending) {
-			// Discovery completion or retry wakes cancellation before later admission.
-			s.scheduleRetry()
-			return false, nil
-		}
-		if errors.Is(err, engine.ErrMaintenance) {
-			// Lease publication can follow Quiesce. Keep cancellation durable in both windows.
-			s.scheduleRetry()
-			return false, nil
-		}
-		slog.Warn("cancel native execution", "execution", target.ID, "err", err)
-		return false, err
+	pending, err := s.q.ListParentInputStops(ctx, id)
+	if err != nil {
+		return err
 	}
-	err = s.q.FinishExecutionAbort(callCtx, sqlc.FinishExecutionAbortParams{AgentID: target.AgentID, ExecutionScope: target.Scope, ExecutionID: sql.NullInt64{Int64: target.ID, Valid: true}})
-	return err == nil, err
+	for _, request := range pending {
+		outcome := engine.NotAdmitted
+		if c.ExecutionID.Valid {
+			outcome, err = s.engine.Withdraw(ctx, ref, request)
+			if err != nil {
+				return err
+			}
+		}
+		// The exact request still belongs to this snapshot. A placed input keeps running.
+		if outcome != engine.Placed {
+			if _, err := s.q.StopSubmission(ctx, sqlc.StopSubmissionParams{ID: request, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+				return err
+			}
+			s.signal(id)
+		}
+		if err := s.q.FinishParentInputStop(ctx, request); err != nil {
+			return err
+		}
+	}
+	return s.reconcileMainStops(ctx, id, ref)
 }

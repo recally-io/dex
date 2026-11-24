@@ -122,7 +122,26 @@ ORDER BY id DESC
 LIMIT 50;
 
 -- name: ListChildPending :many
-SELECT id, parent_request_id IS NOT NULL AS from_parent
+SELECT id, parent_request_id IS NOT NULL AS from_parent, stop_requested
 FROM submissions
 WHERE conversation_id = ? AND status = 'pending'
 ORDER BY rowid;
+
+-- name: RequestParentInputStop :exec
+UPDATE submissions SET stop_requested = 1
+WHERE conversation_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL;
+
+-- name: ListStopPendingSessions :many
+SELECT DISTINCT conversation_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
+UNION SELECT conversation_id FROM main_turn_stops;
+
+-- name: ListRecoveryParentInputStops :many
+SELECT s.id, c.agent_id, c.execution_id, c.execution_scope
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL;
+
+-- name: ListParentInputStops :many
+SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid;
+
+-- name: FinishParentInputStop :exec
+UPDATE submissions SET stop_requested = 0 WHERE id = ?;

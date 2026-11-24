@@ -42,8 +42,6 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	if len(msg.Attachments) > 10 {
 		return errors.New("a message can have at most 10 attachments")
 	}
-	m.receiveMu.Lock()
-	defer m.receiveMu.Unlock()
 	if received, err := m.ReceivedSource(ctx, source); err != nil {
 		return err
 	} else if received {
@@ -60,7 +58,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 				return chat.ErrGroupUnauthorized
 			}
 		}
-		return m.complete(ctx, command)
+		return m.complete(ctx, source)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
@@ -83,6 +81,9 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	}
 	basicCommand := cmd == "/clear" || cmd == "/new" || cmd == "/stop" || cmd == "/help"
 	if !channel.IsCommand(cmd) || !strings.HasPrefix(peer, "telegram:") && !basicCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
+		if strings.HasPrefix(peer, "telegram:") {
+			return m.chats.AcceptMessage(ctx, m.agentID, peer, source, msg)
+		}
 		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
 	}
 	key := chat.MainKey
@@ -100,11 +101,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: key, Command: cmd, ChannelContext: string(identity)}); err != nil {
 		return err
 	}
-	command, err = m.q.GetChannelCommand(ctx, source)
-	if err != nil {
-		return err
-	}
-	return m.complete(ctx, command)
+	return m.complete(ctx, source)
 }
 
 const feedbackInstructions = "Send /feedback followed by your title on the first line and your description on the lines below. " + feedback.PublicWarning
@@ -132,7 +129,35 @@ func feedbackReply(text string) string {
 	return answer
 }
 
-func (m *Manager) complete(ctx context.Context, c sqlc.ChannelCommand) error {
+func (m *Manager) complete(ctx context.Context, source string) error {
+	// Polling and the outbox can replay the same command. Never hold a bot-wide
+	// lock while the command calls a target Session.
+	owned := make(chan struct{})
+	for {
+		m.mu.Lock()
+		prior := m.commands[source]
+		if prior == nil {
+			m.commands[source] = owned
+			m.mu.Unlock()
+			break
+		}
+		m.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-prior:
+		}
+	}
+	defer func() {
+		m.mu.Lock()
+		delete(m.commands, source)
+		close(owned)
+		m.mu.Unlock()
+	}()
+	c, err := m.q.GetChannelCommand(ctx, source)
+	if err != nil {
+		return err
+	}
 	if c.AgentID != m.agentID || c.Completed != 0 {
 		return nil
 	}

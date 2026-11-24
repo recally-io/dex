@@ -265,13 +265,11 @@ func (s *Service) CancelMonitor(ctx context.Context, agentID string, chatID int6
 }
 
 func (s *Service) cancelMonitor(ctx context.Context, agentID string, chatID int64, monitorID string) (engine.MonitorInfo, error) {
-	unlock, err := s.lockAgent(ctx, agentID)
+	unlock, err := s.lockSession(ctx, chatID)
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	defer func() { unlock(); s.Wake() }()
-	s.admissionMu.RLock()
-	defer s.admissionMu.RUnlock()
+	defer unlock()
 	if s.leaseUntil.Load() != 0 {
 		return engine.MonitorInfo{}, engine.ErrMaintenance
 	}

@@ -144,7 +144,7 @@ func monitorResultParams(row sqlc.Monitor, now time.Time) sqlc.FinishMonitorPara
 
 func (s *Service) finishMonitor(ctx context.Context, row sqlc.Monitor, result monitorResult) error {
 	// Order event insertion with admission and native withdrawal. The shell never holds this gate.
-	unlock, err := s.lockAgent(ctx, row.AgentID)
+	unlock, err := s.lockSession(ctx, row.ConversationID)
 	if err != nil {
 		return err
 	}

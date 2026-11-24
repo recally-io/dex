@@ -123,6 +123,11 @@ func TestUserUnrelatedSaveKeepsCatalogAndOpenAgentUsable(t *testing.T) {
 	if got := coreWait(t, coreSubmit(t, a, ref, "unrelated-save", "still usable", "echo")); got.Answer != "echo: still usable" {
 		t.Fatalf("open harness: %+v", got)
 	}
+	other := coreCreate(t, a, "alpha", coreOptions("echo"))
+	input := Input{RequestID: "selected-model", Content: "wait for the model", Model: ModelRef{Provider: "held", ModelID: "known"}}
+	if _, err := a.Submit(t.Context(), other, input); !errors.Is(err, ErrModelsPending) {
+		t.Fatalf("input that selects the pending provider did not wait: %v", err)
+	}
 	if _, err := a.Create(t.Context(), "cold", coreOptions("echo")); !errors.Is(err, ErrModelsPending) {
 		t.Fatalf("cold native admission: %v", err)
 	}

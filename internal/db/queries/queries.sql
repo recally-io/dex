@@ -171,6 +171,7 @@ SELECT
     s.attachments,
     s.kind,
     s.origin,
+    s.created_at,
     s.admitted_at,
     s.when_busy,
     s.conversation_id,
@@ -178,7 +179,7 @@ SELECT
     c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending'
+WHERE s.status = 'pending' AND (CAST(@conversation_id AS INTEGER) = 0 OR s.conversation_id = @conversation_id)
 ORDER BY s.rowid;
 
 -- name: ListChats :many
@@ -436,10 +437,10 @@ SELECT count(*) FROM submissions WHERE conversation_id = ? AND status = 'pending
 UPDATE submissions SET admitted_at = ? WHERE id = ? AND admitted_at IS NULL;
 
 -- name: RequestExecutionAbort :exec
-UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT NULL;
+UPDATE conversations SET abort_pending = 1 WHERE id = ?;
 
 -- name: FinishExecutionAbort :exec
-UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?;
+UPDATE conversations SET abort_pending = 0 WHERE id = ?;
 
 -- name: ListPendingExecutionAborts :many
 SELECT id, agent_id, execution_id, execution_scope FROM conversations WHERE abort_pending = 1;

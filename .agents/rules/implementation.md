@@ -71,8 +71,9 @@ Read this before you change code, dependencies, native execution, or stored data
   directly to the engine catalog.
 - Keep slow resource work outside the engine's global state lock. Track opens
   and reloads before they start. Register recovery isolation before Harness
-  resume. Use per-agent delivery locks for input, Stop, Clear, and reconciliation.
-  The global receipt gate must order receipt commits and maintenance confirmation.
+  resume. Use a delivery gate for each Session. Never hold two Session gates or
+  hold the control writer across a native call. The global receipt gate orders
+  receipt commits and maintenance confirmation.
 - Reload replaces only the selected agent's resources. Tools and stdio MCP
   receive an explicit environment. Do not change the dex process environment.
 - Do not edit generated code: `internal/db/sqlc/` and `plugins/*/store/`

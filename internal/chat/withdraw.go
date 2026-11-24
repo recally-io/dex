@@ -32,14 +32,11 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 	if !c.Writable {
 		return WithdrawnMessage{}, ErrNotFound
 	}
-	unlock, err := s.lockAgent(ctx, agentID)
+	unlock, err := s.lockSession(ctx, chatID)
 	if err != nil {
 		return WithdrawnMessage{}, err
 	}
-	defer func() { unlock(); s.Wake() }()
-	// Lease confirmation waits for this read lock, so maintenance cannot start mid-withdrawal.
-	s.admissionMu.RLock()
-	defer s.admissionMu.RUnlock()
+	defer unlock()
 	if s.leaseUntil.Load() != 0 {
 		return WithdrawnMessage{}, engine.ErrMaintenance
 	}
@@ -65,8 +62,12 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 	}
 	// Without a native conversation the input cannot have been admitted. The delivery lock keeps
 	// admission from starting meanwhile.
-	if c.ExecutionID != 0 {
-		outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}, id)
+	conv, err := s.q.GetConversation(ctx, chatID)
+	if err != nil {
+		return WithdrawnMessage{}, err
+	}
+	if conv.ExecutionID.Valid {
+		outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, id)
 		if err != nil {
 			return WithdrawnMessage{}, err
 		}

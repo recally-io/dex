@@ -103,7 +103,7 @@ message IDs for the same peer. Telegram reads
 answers the question. A quote of a closed question, an unknown ID or a platform
 without quoting (WeChat) is a plain message. A crash between the remote send and
 the mapping write loses the mapping of that part, so its quote is a plain message.
-The settle worker takes the agent delivery lock before it settles an aborted
+The settle worker takes the Session delivery gate before it settles an aborted
 input. A withdraw holds the same lock, so a withdrawn channel message never gets
 a "no answer" reply.
 
@@ -174,18 +174,15 @@ against them:
   child runs with the instructions, memory section, skills, MCP servers, and
   vault of that bot. A child still cannot create children.
 - A result goes to `conversations.parent_id` in the settlement transaction, in the
-  bot of the parent. Admission of the bot of the parent takes it from the
-  database, as for a result from the same bot.
-- Locks. No call path holds two delivery gates. A session tool runs in the run of
-  its conversation and holds no gate. `session_stop` takes the gate of the bot of
-  the child, as a Stop in that bot does. A Stop takes the gate of the stopped
-  conversation only. It withdraws the input that the parent started in the
-  children, in every bot, in one transaction, and it aborts only the executions of its own bot. The
-  abort of a child in another bot stays a durable `abort_pending` request. The
-  reconciliation of that bot, under its own gate, carries it out. Two parents
-  in two bots that stop each other's children therefore cannot wait for each
-  other's gate. `settleNative` takes the gate of the bot of the child only for an
-  aborted run, and the result for the parent is a database write without a gate.
+  bot of the parent. The parent Session takes it from the same receipt queue as its other inputs.
+- No call path holds two Session delivery gates. A session tool runs in its own
+  conversation without the delivery gate. `session_stop` takes only the target
+  child's gate. A cascading Stop records the targets in a short control
+  transaction. It does not call native execution under the writer. Each target
+  processes its cancellation under its own gate, across bots as necessary.
+  For a native abort, settlement waits for the target's gate so Withdraw can
+  finish its receipt first. The transaction that stores a result does not take
+  the parent's gate.
 - Restart recovery settles the admitted inputs of each child under the agent of
   the child, and sends the one `interrupted` result to the parent in its bot.
 - `session_read` reads any session except dreams. With `session: "all"`,
@@ -263,20 +260,21 @@ Monitors. PiG 0.7 task abort keeps the Inbox but does not start its next input.
 Dex records the Stop intent and takes a native Continue boundary if the target
 aborted, the Session is idle, and input is queued. Recovery can finish this step
 after a restart.
-Web Stop on other sessions and channel `/stop` can also stop children that have
-pending input from the parent, including children in other bots. Other sessions
-stay outside the scope. `/clear` does not cancel children.
-Submission, Stop, Clear and reconciliation share a delivery lock per agent.
-Stop withdraws pending input in scope in one transaction, then requests
-cancellation through the engine for each execution of its own bot. A child in
-another bot waits for the reconciliation of its bot.
-Pending cancellation intent stays in business storage until native abort
-succeeds. Reconciliation completes cancellation before it admits later input.
-Both cold recovery and ordinary Stop atomically withdraw queued input and save
-passive transcript entries that retain origin, attachments and labels without
-adding model context. A slow admission or reload for one agent does not hold
-another agent's delivery lock. The short global receipt gate orders maintenance
-confirmation, as described in [Service and updates](architecture.md#service-and-updates).
+
+Web Stop on other sessions and channel `/stop` keep legacy behavior. They
+withdraw pending inputs and stop eligible work, including background commands,
+Monitors and child work the parent started. A child with pending user input
+keeps its run. Only its parent inputs that are still queued or not yet admitted
+are eligible for withdrawal. Its own dispatcher checks placement before it
+withdraws each exact request. `/clear` does not cancel children.
+
+Admission, Clear, Withdraw and reconciliation use a delivery gate for each
+Session. Legacy Stop requests stay in business storage until the target processes
+them. Admission on that target reconciles the requests before later input. Cold
+recovery and legacy full Stop save passive display entries for withdrawn native
+inputs without adding model context. The shared SQLite writer runs short
+transactions. The global receipt gate orders maintenance confirmation, as
+described in [Service and updates](architecture.md#service-and-updates).
 The reply of Stop confirms the request. It does not prove process exit.
 Processes and remote work can continue. Cancellation does not undo file writes
 or remote actions.

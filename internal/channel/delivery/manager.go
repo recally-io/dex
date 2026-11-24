@@ -35,20 +35,20 @@ type runtime struct {
 
 // Manager runs bots and sends replies from durable storage.
 type Manager struct {
-	ctx       context.Context
-	q         *sqlc.Queries
-	db        *sql.DB
-	chats     *chat.Service
-	agentID   string
-	setMu     sync.Mutex
-	receiveMu sync.Mutex // command receipts; per peer if throughput matters
-	mu        sync.Mutex
-	bots      map[string]*runtime
+	ctx      context.Context
+	q        *sqlc.Queries
+	db       *sql.DB
+	chats    *chat.Service
+	agentID  string
+	setMu    sync.Mutex
+	mu       sync.Mutex
+	commands map[string]chan struct{} // source key to active command owner
+	bots     map[string]*runtime
 }
 
 // New creates a manager. Close it before closing the database.
 func New(ctx context.Context, db *sql.DB, chats *chat.Service, agentID string) *Manager {
-	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), chats: chats, agentID: agentID, bots: make(map[string]*runtime)}
+	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), chats: chats, agentID: agentID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime)}
 }
 
 // Set stops the old bot and waits for it before starting its replacement.

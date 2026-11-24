@@ -150,7 +150,7 @@ func TestUserWithdrawnMessageIsNotSettledByTheWorkerBeforeTheWithdrawal(t *testi
 	}
 
 	// When the native abort has happened but the receipt write has not, then the receipt stays pending.
-	unlock, err := r.service.lockAgent(t.Context(), "bot")
+	unlock, err := r.service.lockSession(t.Context(), main.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

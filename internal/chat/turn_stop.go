@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -31,11 +30,11 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	if c.ExecutionID == 0 {
 		return engine.ErrStaleRunTarget
 	}
-	unlock, err := s.lockAgent(ctx, agentID)
+	unlock, err := s.lockSession(ctx, id)
 	if err != nil {
 		return err
 	}
-	defer func() { unlock(); s.Wake() }()
+	defer unlock()
 	conv, err := s.q.GetConversation(ctx, id)
 	if err != nil {
 		return err
@@ -59,30 +58,23 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 		return err
 	}
 	if err := s.applyMainStop(ctx, id, ref, target); err != nil {
-		s.scheduleRetry()
+		s.retrySession(id)
 		return err
 	}
 	return nil
 }
 
-// reconcileMainStops runs under the existing agent gate, after legacy aborts.
-func (s *Service) reconcileMainStops(ctx context.Context, agentID string, blocked map[int64]bool) error {
-	targets, err := s.q.ListAgentMainTurnStops(ctx, agentID)
+func (s *Service) reconcileMainStops(ctx context.Context, id int64, ref engine.Ref) error {
+	targets, err := s.q.ListMainTurnStops(ctx, id)
 	if err != nil {
 		return err
 	}
-	var errs []error
-	for _, stop := range targets {
-		if blocked[stop.ConversationID] {
-			continue
-		}
-		ref := engine.Ref{AgentID: agentID, ID: stop.ExecutionID.Int64, Scope: stop.ExecutionScope}
-		if err := s.applyMainStop(ctx, stop.ConversationID, ref, stop.Target); err != nil {
-			blocked[stop.ConversationID] = true
-			errs = append(errs, err)
+	for _, target := range targets {
+		if err := s.applyMainStop(ctx, id, ref, target); err != nil {
+			return err
 		}
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
 func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, target string) error {

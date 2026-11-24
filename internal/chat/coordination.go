@@ -2,34 +2,69 @@ package chat
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"log/slog"
+	"time"
+
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
 )
 
-// Each agent has one delivery owner. Receipts stay in SQLite while callers wait.
-type deliveryGate chan struct{}
+// The gate orders native operations for one Session. SQLite orders receipt insertion.
+type deliveryGate struct {
+	token chan struct{}
+	// Retry fields are protected by coordinationMu.
+	timer *time.Timer
+	delay time.Duration
+}
 
-func (s *Service) agentGate(id string) deliveryGate {
+func (s *Service) sessionGate(id int64) *deliveryGate {
 	s.coordinationMu.Lock()
 	defer s.coordinationMu.Unlock()
 	gate := s.delivery[id]
 	if gate == nil {
-		gate = make(deliveryGate, 1)
+		gate = &deliveryGate{token: make(chan struct{}, 1)}
 		s.delivery[id] = gate
 	}
 	return gate
 }
 
-func (s *Service) lockAgent(ctx context.Context, id string) (func(), error) {
-	gate := s.agentGate(id)
+func (s *Service) lockSession(ctx context.Context, id int64) (func(), error) {
+	gate := s.sessionGate(id)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	select {
-	case gate <- struct{}{}:
-		return func() { <-gate }, nil
+	case gate.token <- struct{}{}:
+		return func() { <-gate.token; s.Wake() }, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+func (s *Service) retrySession(id int64) {
+	gate := s.sessionGate(id)
+	s.coordinationMu.Lock()
+	if s.ctx.Err() != nil || gate.timer != nil {
+		s.coordinationMu.Unlock()
+		return
+	}
+	if gate.delay == 0 {
+		gate.delay = 100 * time.Millisecond
+	}
+	timer := time.AfterFunc(gate.delay, func() {
+		s.coordinationMu.Lock()
+		gate.timer = nil
+		s.coordinationMu.Unlock()
+		s.Wake()
+	})
+	gate.timer = timer
+	delay := gate.delay
+	gate.delay = min(delay*2, 30*time.Second)
+	s.coordinationMu.Unlock()
+	slog.Debug("session retry scheduled", "session", id, "delay_ms", delay.Milliseconds())
 }
 
 // Registration and cancellation share a boundary so Wait cannot miss a worker.
@@ -51,43 +86,89 @@ func (s *Service) dispatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	pending, err := s.q.ListPendingSubmissions(ctx)
+	pending, err := s.q.ListPendingSubmissions(ctx, 0)
 	if err != nil {
 		return err
 	}
-	stops, err := s.q.ListMainTurnStopAgents(ctx)
-	if err != nil {
-		return err
-	}
-	agents := make(map[string]struct{})
-	for _, id := range stops {
-		agents[id] = struct{}{}
-	}
+	sessions := make(map[int64]struct{})
 	for _, c := range aborts {
-		agents[c.AgentID] = struct{}{}
+		sessions[c.ID] = struct{}{}
+	}
+	stops, err := s.q.ListStopPendingSessions(ctx)
+	if err != nil {
+		return err
+	}
+	for _, id := range stops {
+		sessions[id] = struct{}{}
 	}
 	for _, p := range pending {
 		if _, waiting := s.waiting.Load(p.ID); !waiting {
-			agents[p.AgentID] = struct{}{}
+			sessions[p.ConversationID] = struct{}{}
 		}
 	}
-	for id := range agents {
-		gate := s.agentGate(id)
+	for id := range sessions {
+		gate := s.sessionGate(id)
+		s.coordinationMu.Lock()
+		retrying := gate.timer != nil
+		s.coordinationMu.Unlock()
+		if retrying {
+			continue
+		}
 		select {
-		case gate <- struct{}{}:
+		case gate.token <- struct{}{}:
 			if !s.startWorker(func() {
-				defer func() { <-gate }()
-				if err := s.reconcileAgent(s.ctx, id); err != nil && s.ctx.Err() == nil {
-					slog.Warn("reconcile agent receipts", "agent", id, "err", err)
-					s.scheduleRetry()
-				}
+				defer func() { <-gate.token; s.Wake() }()
+				s.deliverSession(s.ctx, id, "")
 			}) {
-				<-gate
+				<-gate.token
 			}
 		default:
-			// A wake can arrive while this agent's worker is still running.
-			s.scheduleRetry()
+			// The current owner wakes dispatch after release.
 		}
 	}
 	return nil
+}
+
+func (s *Service) deliverSession(ctx context.Context, id int64, until string) {
+	if err := s.reconcileSession(ctx, id, until); err != nil {
+		if ctx.Err() == nil {
+			slog.DebugContext(ctx, "session reconciliation deferred", "session", id, "reason", admissionRetryReason(err))
+		}
+		s.retrySession(id)
+	}
+}
+
+// Intake and native-admission timestamps remain in the receipt. At debug level,
+// log individual attempts without message content or remote error strings.
+func (s *Service) attemptAdmission(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
+	if !slog.Default().Enabled(ctx, slog.LevelDebug) {
+		return s.admit(ctx, p)
+	}
+	started := time.Now()
+	queueMS := max(0, s.now().UnixMilli()-p.CreatedAt)
+	digest := sha256.Sum256([]byte(p.ID)) // A Web caller can supply arbitrary request IDs.
+	request := hex.EncodeToString(digest[:8])
+	slog.DebugContext(ctx, "session admission attempt started", "session", p.ConversationID, "request", request, "queued_ms", queueMS, "recovery", p.AdmittedAt.Valid)
+	err := s.admit(ctx, p)
+	result := "processed"
+	if err != nil {
+		result = admissionRetryReason(err)
+	}
+	slog.DebugContext(ctx, "session admission attempt finished", "session", p.ConversationID, "request", request, "elapsed_ms", time.Since(started).Milliseconds(), "result", result)
+	return err
+}
+
+func admissionRetryReason(err error) string {
+	switch {
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return "interrupted"
+	case errors.Is(err, engine.ErrMaintenance):
+		return "maintenance"
+	case errors.Is(err, engine.ErrModelsPending):
+		return "model_discovery"
+	case errors.Is(err, errStopPending):
+		return "stop_pending"
+	default:
+		return "retry"
+	}
 }

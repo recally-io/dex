@@ -40,7 +40,7 @@ func TestUserMainStopIntentRecoversWithoutNewInput(t *testing.T) {
 	if sub := awaitReceipt(t, r, "active"); sub.Status != "unanswered" || sub.Reason.String != "aborted" {
 		t.Fatalf("recorded Stop did not cancel its target: %+v", sub)
 	}
-	if stops, err := r.q.ListAgentMainTurnStops(t.Context(), "bot"); err != nil || len(stops) != 0 {
+	if stops, err := r.q.ListMainTurnStops(t.Context(), id); err != nil || len(stops) != 0 {
 		t.Fatalf("Stop intent was not cleared: %v, %v", stops, err)
 	}
 }

@@ -118,8 +118,16 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    does the chat service set `admitted_at` on the business receipt.
 3. If admission or the receipt write fails, reconciliation retries the same
    request ID. A pending receipt alone does not prove native admission and
-   must not suppress that retry. Reconciliation scans receipts in insertion
-   order. It stops later input of the same chat after a retryable failure.
+   must not suppress that retry. Each Session has an independent delivery gate
+   and retry delay. SQLite receipt insertion order defines FIFO in that Session.
+   A blocked input does not hold the delivery gate of another Session of the same Bot.
+   Cold Harness initialization and recovery share the execution store and registry.
+   Cold open waits for startup model discovery without holding a delivery gate of
+   another Session. Sessions on the same environment can share its lease. The
+   engine does not hold its lease registry lock during remote preparation.
+   Receipt creation and native admission have distinct timestamps. Debug logs
+   show admission attempt start, finish and retry delay by Session. They use
+   a short hash of the request ID and omit message content and remote errors.
 4. The engine runs the model and tools. Each browser subscription receives
    typed transcript events through `live.Hub`. Queued input comes from the
    native Inbox, not from a second control transcript.
@@ -351,9 +359,12 @@ A script claim is durable. On restart an unfinished claim stops with an
 interrupted outcome, rather than rerunning a command whose effect is not
 known. A committed baseline and the next due time survive restart. Dex
 commits the result and any follow-up intent together with a stable request
-ID. The normal session dispatcher admits that intent as a follow-up, not a
-steer. Stop, Clear, cancellation, archive, and changed target authority block
-stale results. Dex rechecks the target before native admission. Cancellation
+ID. The scheduler still checks due Monitors in one serial batch. A finish can
+wait for its own Session gate so it cannot race explicit Monitor cancellation.
+Ordinary inputs do not use the scheduler. The normal Session dispatcher admits
+the Monitor intent as a follow-up. Legacy Stop, Clear, cancellation, archive,
+and changed target authority block stale results. Web Main turn-stop leaves
+Monitors alone. Dex rechecks the target before native admission. Cancellation
 withdraws any Monitor inputs that are still queued. It does not interrupt a
 prompt that already started. An in-flight check can finish within its time
 limit, but it cannot queue a new prompt after cancellation. Dex does not move

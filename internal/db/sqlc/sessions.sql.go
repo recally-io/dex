@@ -136,6 +136,15 @@ func (q *Queries) CreateTurnResult(ctx context.Context, arg CreateTurnResultPara
 	return result.RowsAffected()
 }
 
+const finishParentInputStop = `-- name: FinishParentInputStop :exec
+UPDATE submissions SET stop_requested = 0 WHERE id = ?
+`
+
+func (q *Queries) FinishParentInputStop(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, finishParentInputStop, id)
+	return err
+}
+
 const getTurn = `-- name: GetTurn :one
 SELECT s.id, s.conversation_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
@@ -298,15 +307,16 @@ func (q *Queries) ListAudienceChildren(ctx context.Context, arg ListAudienceChil
 }
 
 const listChildPending = `-- name: ListChildPending :many
-SELECT id, parent_request_id IS NOT NULL AS from_parent
+SELECT id, parent_request_id IS NOT NULL AS from_parent, stop_requested
 FROM submissions
 WHERE conversation_id = ? AND status = 'pending'
 ORDER BY rowid
 `
 
 type ListChildPendingRow struct {
-	ID         string `json:"id"`
-	FromParent bool   `json:"from_parent"`
+	ID            string `json:"id"`
+	FromParent    bool   `json:"from_parent"`
+	StopRequested int64  `json:"stop_requested"`
 }
 
 func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([]ListChildPendingRow, error) {
@@ -318,10 +328,37 @@ func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([
 	items := []ListChildPendingRow{}
 	for rows.Next() {
 		var i ListChildPendingRow
-		if err := rows.Scan(&i.ID, &i.FromParent); err != nil {
+		if err := rows.Scan(&i.ID, &i.FromParent, &i.StopRequested); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listParentInputStops = `-- name: ListParentInputStops :many
+SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid
+`
+
+func (q *Queries) ListParentInputStops(ctx context.Context, conversationID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listParentInputStops, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -359,6 +396,47 @@ func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChild
 	items := []ListRecoveryChildrenRow{}
 	for rows.Next() {
 		var i ListRecoveryChildrenRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ExecutionID,
+			&i.ExecutionScope,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecoveryParentInputStops = `-- name: ListRecoveryParentInputStops :many
+SELECT s.id, c.agent_id, c.execution_id, c.execution_scope
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL
+`
+
+type ListRecoveryParentInputStopsRow struct {
+	ID             string        `json:"id"`
+	AgentID        string        `json:"agent_id"`
+	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	ExecutionScope string        `json:"execution_scope"`
+}
+
+func (q *Queries) ListRecoveryParentInputStops(ctx context.Context) ([]ListRecoveryParentInputStopsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRecoveryParentInputStops)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecoveryParentInputStopsRow{}
+	for rows.Next() {
+		var i ListRecoveryParentInputStopsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.AgentID,
@@ -465,6 +543,34 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 	return items, nil
 }
 
+const listStopPendingSessions = `-- name: ListStopPendingSessions :many
+SELECT DISTINCT conversation_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
+UNION SELECT conversation_id FROM main_turn_stops
+`
+
+func (q *Queries) ListStopPendingSessions(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listStopPendingSessions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var conversation_id int64
+		if err := rows.Scan(&conversation_id); err != nil {
+			return nil, err
+		}
+		items = append(items, conversation_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTurns = `-- name: ListTurns :many
 SELECT s.id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
@@ -533,6 +639,16 @@ func (q *Queries) PendingCount(ctx context.Context, conversationID int64) (int64
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
+}
+
+const requestParentInputStop = `-- name: RequestParentInputStop :exec
+UPDATE submissions SET stop_requested = 1
+WHERE conversation_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL
+`
+
+func (q *Queries) RequestParentInputStop(ctx context.Context, conversationID int64) error {
+	_, err := q.db.ExecContext(ctx, requestParentInputStop, conversationID)
+	return err
 }
 
 const searchTurns = `-- name: SearchTurns :many

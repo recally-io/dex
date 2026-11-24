@@ -144,7 +144,7 @@ type Service struct {
 	background    *background.Manager
 
 	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only
-	delivery       map[string]deliveryGate
+	delivery       map[int64]*deliveryGate
 	coordinationMu sync.Mutex // delivery registry, worker registration, and Run shutdown
 
 	retryMu    sync.Mutex
@@ -159,7 +159,7 @@ type Service struct {
 // New connects durable business receipts to native execution.
 func New(db *sql.DB, agents *engine.Agents, now func() time.Time, notify func(string), changed func(int64)) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, delivery: make(map[string]deliveryGate)}
+	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, delivery: make(map[int64]*deliveryGate)}
 }
 
 // Run reconciles receipts at startup and after a failed cross-store write.
@@ -167,6 +167,11 @@ func (s *Service) Run(ctx context.Context) {
 	defer func() {
 		s.coordinationMu.Lock()
 		s.cancel()
+		for _, gate := range s.delivery {
+			if gate.timer != nil {
+				gate.timer.Stop()
+			}
+		}
 		s.coordinationMu.Unlock()
 		s.retryMu.Lock()
 		if s.retryTimer != nil {
@@ -213,6 +218,14 @@ func (s *Service) RetryNow() {
 	s.retryMu.Lock()
 	s.retryDelay = 0
 	s.retryMu.Unlock()
+	s.coordinationMu.Lock()
+	for _, gate := range s.delivery {
+		if gate.timer != nil && gate.timer.Stop() {
+			gate.timer = nil
+		}
+		gate.delay = 0
+	}
+	s.coordinationMu.Unlock()
 	s.Wake()
 }
 
@@ -223,51 +236,29 @@ func (s *Service) Wake() {
 	}
 }
 
-// reconcileAgent runs with the agent delivery gate held.
-func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
-	aborts, err := s.q.ListPendingExecutionAborts(ctx)
+// reconcileSession runs with only the target Session's delivery gate held.
+func (s *Service) reconcileSession(ctx context.Context, id int64, until string) error {
+	if s.leaseUntil.Load() != 0 {
+		return nil
+	}
+	if err := s.reconcileStop(ctx, id); err != nil {
+		return err
+	}
+	pending, err := s.q.ListPendingSubmissions(ctx, id)
 	if err != nil {
 		return err
 	}
-	blocked := make(map[int64]bool)
-	var errs []error
-	for _, c := range aborts {
-		if c.AgentID != agentID {
-			continue
-		}
-		completed, err := s.abort(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope})
-		blocked[c.ID] = !completed
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if err := s.reconcileMainStops(ctx, agentID, blocked); err != nil {
-		errs = append(errs, err)
-	}
-	pending, err := s.q.ListPendingSubmissions(ctx)
-	if err != nil {
-		return errors.Join(append(errs, err)...)
-	}
 	for _, p := range pending {
-		if p.AgentID != agentID {
-			continue
-		}
-		if blocked[p.ConversationID] {
-			continue
-		}
-		if _, ok := s.waiting.Load(p.ID); ok {
-			continue
-		}
-		if err := s.admit(ctx, p); err != nil {
-			blocked[p.ConversationID] = true
-			if errors.Is(err, engine.ErrOriginBusy) {
-				s.scheduleRetry()
-			} else {
-				errs = append(errs, err)
+		if _, ok := s.waiting.Load(p.ID); !ok {
+			if err := s.attemptAdmission(ctx, p); err != nil {
+				return err
 			}
 		}
+		if p.ID == until {
+			break
+		}
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
 // ErrMessageID means a message ID was reused for a different request.
@@ -300,7 +291,7 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 	if model == "" {
 		return 0, ErrNoModel
 	}
-	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m)
+	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m, false)
 }
 
 // ConfigureChannelReceipts connects best-effort observations before the service starts.
@@ -309,8 +300,17 @@ func (s *Service) ConfigureChannelReceipts(intake func(string, string, string, C
 	s.channelIntake, s.channelAdmission = intake, admission
 }
 
-// SubmitMessage stores a channel update with its attachments and source identity.
+// SubmitMessage stores a channel update and attempts native admission before returning.
 func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
+	return s.submitMessage(ctx, agentID, peer, sourceKey, m, false)
+}
+
+// AcceptMessage returns when the source receipt commits, without waiting for native admission.
+func (s *Service) AcceptMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
+	return s.submitMessage(ctx, agentID, peer, sourceKey, m, true)
+}
+
+func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message, deferAdmission bool) error {
 	channelKey := MainKey
 	if groupPeer(peer) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
 		key, _, _, err := groupTarget(peer, m.ChannelContext)
@@ -340,17 +340,17 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 	if m.AnswersQuestion == "" {
 		addContext()
 	}
-	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m)
+	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m, deferAdmission)
 	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" && !m.QuestionOnly {
 		// The question closed while the user wrote. The words still reach the agent as a plain message.
 		m.AnswersQuestion = ""
 		addContext()
-		_, err = s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m)
+		_, err = s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m, deferAdmission)
 	}
 	return err
 }
 
-func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message) (int64, error) {
+func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message, deferAdmission bool) (int64, error) {
 	scope, binding := "", "{}"
 	if groupPeer(origin) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
 		key, audience, identity, err := groupTarget(origin, m.ChannelContext)
@@ -395,6 +395,11 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		}
 		if conv.ExecutionScope != scope || scope != "" && conv.ScopeContext != binding {
 			return 0, ErrGroupUnauthorized
+		}
+		if scope == "" && privateTelegramSource(origin, m.ChannelContext) {
+			if err := authorizeTelegramActor(ctx, q, agentID, m.ChannelContext.AccountID, m.ChannelContext.SenderID); err != nil {
+				return 0, err
+			}
 		}
 		if scope != "" {
 			identity, err := json.Marshal(m.ChannelContext)
@@ -555,6 +560,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			m.ID = prior.ID
 			if prior.Status != "pending" || prior.AdmittedAt.Valid {
 				complete = true
+				if deferAdmission {
+					return conv.ID, nil
+				}
 				return conv.ID, receiptError(prior)
 			}
 		}
@@ -567,20 +575,21 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	}
 
 	s.signal(chatID)
-	unlock, err := s.lockAgent(ctx, agentID)
-	if err != nil {
-		s.scheduleRetry()
+	if deferAdmission {
+		s.Wake()
 		return chatID, nil
 	}
-	defer func() { unlock(); s.Wake() }()
-	admissionErr := s.reconcileAgent(ctx, agentID)
-	if admissionErr != nil {
-		s.scheduleRetry()
+	unlock, err := s.lockSession(ctx, chatID)
+	if err != nil {
+		s.Wake()
+		return chatID, nil
 	}
+	defer unlock()
+	s.deliverSession(ctx, chatID, m.ID)
 	sub, err := s.q.GetSubmission(ctx, m.ID)
 	if err != nil {
 		// The committed intent remains ours to reconcile if this read fails.
-		s.scheduleRetry()
+		s.retrySession(chatID)
 		return chatID, nil
 	}
 	return chatID, receiptError(sub)
@@ -770,19 +779,16 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err != nil {
 		return err
 	}
+	if conv.AbortPending != 0 {
+		return errStopPending
+	}
 	if conv.ExecutionScope != "" {
 		source, err := s.q.GetSubmission(ctx, p.ID)
 		if err != nil {
 			return err
 		}
 		if err := authorizeGroupSource(ctx, s.q, conv, source); err != nil {
-			if !errors.Is(err, ErrGroupUnauthorized) {
-				return err
-			}
-			if err := s.q.RevokeChannelSubmission(ctx, p.ID); err != nil {
-				return err
-			}
-			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: ErrGroupUnauthorized.Error()})
+			return s.channelAdmissionError(ctx, p.ID, err)
 		}
 	}
 	options := chatOptions(agent, conv)
@@ -800,6 +806,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if current.Status != "pending" {
 		return nil
 	}
+	if current.StopRequested != 0 {
+		return errStopPending
+	}
 	if p.Kind == "context_reset" {
 		if err = s.engine.Reset(ctx, ref, p.ID, p.Content); err != nil {
 			return s.admissionError(ctx, p.ID, err)
@@ -814,6 +823,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
+	input.Authorize = func(ctx context.Context) error { return s.checkAdmission(ctx, conv, p.ID) }
 	// An owner message or a Task alert of a Task carries the Task context.
 	var workTask sqlc.WorkTask
 	if input.Main {
@@ -839,6 +849,12 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
 	if err != nil {
+		if errors.Is(err, errInputSettled) {
+			return nil
+		}
+		if errors.Is(err, ErrGroupUnauthorized) {
+			return s.channelAdmissionError(ctx, p.ID, err)
+		}
 		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.
 			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
@@ -857,12 +873,12 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	started := s.startWorker(func() {
 		outcome, err := sub.Wait(s.ctx)
 		if err == nil {
-			err = s.settleNative(p.AgentID, p.ID, outcome)
+			err = s.settleNative(p.ConversationID, p.ID, outcome)
 		}
 		s.waiting.Delete(p.ID)
 		if err != nil && s.ctx.Err() == nil {
 			slog.Error("reconcile execution receipt", "submission", p.ID, "err", err)
-			s.scheduleRetry()
+			s.retrySession(p.ConversationID)
 		}
 	})
 	if !started {
@@ -870,6 +886,54 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		s.waiting.Delete(p.ID)
 	}
 	return nil
+}
+
+func privateTelegramSource(peer string, source ChannelContext) bool {
+	return strings.HasPrefix(peer, "telegram:") && (source.AccountID != "" || source.SenderID != "")
+}
+
+var errInputSettled = errors.New("input is no longer pending")
+
+// A cascading Stop can update this receipt during remote preparation. Check again
+// before the native commit, without holding the control writer across either store.
+func (s *Service) checkAdmission(ctx context.Context, conv sqlc.Conversation, id string) error {
+	source, err := s.q.GetSubmission(ctx, id)
+	if err != nil {
+		return err
+	}
+	if source.Status != "pending" {
+		return errInputSettled
+	}
+	if source.StopRequested != 0 {
+		return errStopPending
+	}
+	if conv.ExecutionScope != "" {
+		return authorizeGroupSource(ctx, s.q, conv, source)
+	}
+	if source.Kind != "message" || !strings.HasPrefix(source.Origin, "telegram:") {
+		return nil
+	}
+	var actor ChannelContext
+	if err := json.Unmarshal([]byte(source.ChannelContext), &actor); err != nil {
+		return err
+	}
+	if !privateTelegramSource(source.Origin, actor) {
+		return nil // Old receipts without platform identity keep their existing behavior.
+	}
+	if source.ChannelRevoked != 0 {
+		return ErrGroupUnauthorized
+	}
+	return authorizeTelegramActor(ctx, s.q, conv.AgentID, actor.AccountID, actor.SenderID)
+}
+
+func (s *Service) channelAdmissionError(ctx context.Context, id string, err error) error {
+	if !errors.Is(err, ErrGroupUnauthorized) {
+		return err
+	}
+	if err := s.q.RevokeChannelSubmission(ctx, id); err != nil {
+		return err
+	}
+	return s.settle(ctx, id, engine.Outcome{Status: "unanswered", Reason: ErrGroupUnauthorized.Error()})
 }
 
 // chatOptions are the run settings of a chat: its own model and thinking level, else the agent's.
@@ -902,12 +966,12 @@ func source(p sqlc.ListPendingSubmissionsRow) string {
 }
 
 // settleNative records a native outcome. A native abort comes from Withdraw (Stop settles the receipt
-// first). Withdraw holds the agent delivery lock from the abort to the receipt write, so waiting for
+// first). Withdraw holds the Session delivery lock from the abort to the receipt write, so waiting for
 // the lock lets it finish first. The settlement then finds a withdrawn receipt and changes nothing,
 // so no "No answer" reply goes to the channel.
-func (s *Service) settleNative(agentID, id string, event engine.Outcome) error {
+func (s *Service) settleNative(chatID int64, id string, event engine.Outcome) error {
 	if event.Status == "unanswered" && event.Reason == "aborted" {
-		unlock, err := s.lockAgent(s.ctx, agentID)
+		unlock, err := s.lockSession(s.ctx, chatID)
 		if err != nil {
 			return err
 		}
@@ -929,9 +993,14 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if err != nil {
 		return err
 	}
-	s.retryMu.Lock()
-	s.retryDelay = 0
-	s.retryMu.Unlock()
+	s.coordinationMu.Lock()
+	if gate := s.delivery[reply.ConversationID]; gate != nil {
+		if gate.timer != nil && gate.timer.Stop() {
+			gate.timer = nil
+		}
+		gate.delay = 0
+	}
+	s.coordinationMu.Unlock()
 	s.signal(reply.ConversationID)
 	s.Wake()
 	if parent != 0 {
