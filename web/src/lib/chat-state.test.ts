@@ -325,6 +325,23 @@ describe("chat transcript", () => {
       historyBefore: undefined,
     });
   });
+  test("a run handoff and a reconnect replace the exact Stop target", () => {
+    const first = applyChatEvent(emptyChatState, {
+      type: "snapshot",
+      running: true,
+      runTarget: "bot/1/8",
+      items: [],
+    });
+
+    expect(first.runTarget).toBe("bot/1/8");
+
+    const next = applyChatEvent(first, { type: "run", running: true, runTarget: "bot/1/9" });
+
+    expect(next.runTarget).toBe("bot/1/9");
+    expect(applyChatEvent(next, { type: "run", running: false }).runTarget).toBeUndefined();
+    expect(applyChatEvent(next, { type: "snapshot", running: false, items: [] }).runTarget).toBeUndefined();
+  });
+
   test("user sees replaced text and one tool result in the original order", () => {
     const state = applyChatEvent(emptyChatState, {
       type: "snapshot",

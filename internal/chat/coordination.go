@@ -55,7 +55,14 @@ func (s *Service) dispatch(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	stops, err := s.q.ListMainTurnStopAgents(ctx)
+	if err != nil {
+		return err
+	}
 	agents := make(map[string]struct{})
+	for _, id := range stops {
+		agents[id] = struct{}{}
+	}
 	for _, c := range aborts {
 		agents[c.AgentID] = struct{}{}
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -288,6 +289,35 @@ func TestUserStopsTheSessionAndItsBackgroundCommandsEnd(t *testing.T) {
 	if wakes := bgWakes(t, conn, chat); len(wakes) != 0 {
 		t.Fatalf("a stopped session got a wake-up: %+v", wakes)
 	}
+}
+
+func TestUserMainStopLeavesBackgroundCommandAndMonitorActive(t *testing.T) {
+	t.Parallel()
+	// Given a background command and a scheduled Monitor on Main.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := taskResultDB(t, dir)
+	main := d.mainChat(t)
+	d.setModel(t, "spawn")
+	command := bgStart(t, d, main, map[string]any{"command": taskGate(t, dir, "main-bg"), "wake": "none"})
+	waitTaskFile(t, filepath.Join(dir, "main-bg.pid"))
+	var schedule bgInfo
+	toolJSON(t, callSessionTool(t, d, main, "monitor_set_schedule", map[string]any{"delaySeconds": 300, "prompt": "check later"}), &schedule)
+
+	// When the user stops the foreground turn, only that turn ends.
+	d.setModel(t, "bash")
+	d.send(t, main, taskGate(t, dir, "main-fg"))
+	waitTaskFile(t, filepath.Join(dir, "main-fg.pid"))
+	target := d.watch(t, main).activeRunTarget(t)
+	d.must(t, http.MethodPost, chatPath(main, "abort?runTarget="+url.QueryEscape(target)), nil, nil)
+	waitTaskPIDGone(t, filepath.Join(dir, "main-fg.pid"))
+	if state, _ := bgRow(t, conn, command.ID); state != "running" {
+		t.Fatalf("background command after Main Stop: %s", state)
+	}
+	if n := count(t, conn, `SELECT count(*) FROM monitors WHERE conversation_id=? AND state='scheduled'`, main); n != 1 {
+		t.Fatalf("expected the scheduled Monitor after Main Stop, got %d", n)
+	}
+	releaseResultGate(t, dir, "main-bg")
 }
 
 func TestUserSeesAnUnknownStateAfterDexCrashes(t *testing.T) {

@@ -123,7 +123,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrWorkTaskConflict), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrWorkTaskConflict), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -711,7 +711,7 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Stop(ctx, agentID(ctx), req.ChatId); err != nil {
+	if err := h.Chats.StopWeb(ctx, agentID(ctx), req.ChatId, deref(req.Params.RunTarget)); err != nil {
 		return nil, err
 	}
 	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
