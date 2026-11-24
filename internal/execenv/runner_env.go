@@ -9,6 +9,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	env "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/execenv/runner"
@@ -100,9 +101,12 @@ func SkillConnection(ctx context.Context, h Handle) (*runner.Client, error) {
 // that closes before the call is dispatched reports runner.ErrOffline, so one more attempt on
 // the next session cannot repeat work. A lost dispatched call reports runner.ErrUnknown, and
 // do never repeats it.
-func (h *runnerHandle) do(ctx context.Context, fn func(*runner.Client) error) error {
+func (h *runnerHandle) do(ctx context.Context, method string, fn func(context.Context, *runner.Client) error) error {
+	callCtx, waitDone := runner.TraceConnectionWait(ctx, h.id, method)
 	for attempt := 0; ; attempt++ {
-		client, err := h.runners.wait(ctx, h.id, h.digest)
+		waitStart := time.Now()
+		client, err := h.runners.wait(callCtx, h.id, h.digest)
+		waitDone(waitStart, err)
 		if err != nil {
 			return err
 		}
@@ -110,7 +114,7 @@ func (h *runnerHandle) do(ctx context.Context, fn func(*runner.Client) error) er
 			// The machine runs from another state directory now, so the paths of the lease are wrong.
 			return fmt.Errorf("%w: the machine workspace changed; reload the bot", ErrUnavailable)
 		}
-		err = fn(client)
+		err = fn(callCtx, client)
 		if !errors.Is(err, runner.ErrOffline) {
 			return err
 		}
@@ -166,7 +170,9 @@ func (e *runnerEnv) JoinPath(ctx context.Context, p []string) (string, error) {
 
 // call runs one method on the machine.
 func (e *runnerEnv) call(ctx context.Context, method string, params runner.Tagger, result any) error {
-	return e.handle.do(ctx, func(client *runner.Client) error { return client.Call(ctx, method, params, result) })
+	return e.handle.do(ctx, method, func(ctx context.Context, client *runner.Client) error {
+		return client.Call(ctx, method, params, result)
+	})
 }
 func runnerValue[T any, P runner.Tagger](ctx context.Context, e *runnerEnv, method string, params P) (T, error) {
 	var value T
@@ -316,7 +322,7 @@ func (e *runnerEnv) Exec(ctx context.Context, command any, opts *env.ShellExecOp
 	maps.Copy(params.Env, e.extra)
 	maps.Copy(params.Env, opts.Env)
 	var code int
-	err := e.handle.do(ctx, func(client *runner.Client) error {
+	err := e.handle.do(ctx, runner.MethodExec, func(ctx context.Context, client *runner.Client) error {
 		var err error
 		code, err = client.Exec(ctx, command, params, func(text string, stream env.ShellStream) {
 			if opts.OnOutput != nil {

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -61,10 +63,14 @@ func TestUserCancelsCommandWithoutDisconnectingRunner(t *testing.T) {
 	}
 }
 
-func TestUserWaitsForTheMachineBeforeRunningAnotherCommand(t *testing.T) {
+func TestUserReadsFileWhileAnotherRunnerCommandWaits(t *testing.T) {
+	// Given a file and a command that cannot finish until canceled.
 	client, _ := connect(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
+	if err := client.WriteFile(ctx, "file", []byte("ready")); err != nil {
+		t.Fatal(err)
+	}
 	firstCtx, stopFirst := context.WithCancel(ctx)
 	defer stopFirst()
 	started := make(chan struct{})
@@ -81,49 +87,66 @@ func TestUserWaitsForTheMachineBeforeRunningAnotherCommand(t *testing.T) {
 		t.Fatal("first command did not start")
 	}
 
-	// The second command cannot start while the first holds the machine.
-	queued, stopQueued := context.WithTimeout(ctx, 500*time.Millisecond)
-	defer stopQueued()
-	if _, err := client.Exec(queued, "touch queued", runner.ExecParams{}, nil); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("queued command should time out without running, got %v", err)
+	// When another call reads the file, it finishes before the command is canceled.
+	readCtx, stopRead := context.WithTimeout(ctx, 2*time.Second)
+	defer stopRead()
+	if got, err := client.ReadFile(readCtx, "file"); err != nil || string(got) != "ready" {
+		t.Fatalf("read while command is running returned %q, %v", got, err)
 	}
 	stopFirst()
 	if err := <-finished; !errors.Is(err, context.Canceled) {
 		t.Fatalf("first command did not cancel: %v", err)
 	}
-	var output strings.Builder
-	code, err := client.Exec(ctx, "test ! -e queued && printf next", runner.ExecParams{}, func(text string, _ env.ShellStream) {
-		output.WriteString(text)
-	})
-	if err != nil || code != 0 || output.String() != "next" {
-		t.Fatalf("next command returned (%d, %q, %v)", code, output.String(), err)
-	}
 }
 
-func TestUserSeesUnknownResultAfterRunnerDisconnects(t *testing.T) {
+func TestUserSeesUnknownResultsAndProcessesStopAfterRunnerDisconnects(t *testing.T) {
 	client, stopped := connect(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	_, err := client.Exec(ctx, "printf started; exec sleep 60", runner.ExecParams{}, func(text string, _ env.ShellStream) {
-		if strings.Contains(text, "started") {
-			client.Close()
+	pids := make(chan int, 2)
+	finished := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, err := client.Exec(ctx, `printf '%s\n' "$$"; exec sleep 60`, runner.ExecParams{}, func(text string, _ env.ShellStream) {
+				pid, err := strconv.Atoi(strings.TrimSpace(text))
+				if err != nil {
+					t.Error(err)
+				}
+				pids <- pid
+			})
+			finished <- err
+		}()
+	}
+	first, second := receive(ctx, t, pids), receive(ctx, t, pids)
+	client.Close()
+	for range 2 {
+		if err := receive(ctx, t, finished); !errors.Is(err, runner.ErrUnknown) {
+			t.Fatalf("disconnect returned %v", err)
 		}
-	})
-	if !errors.Is(err, runner.ErrUnknown) {
-		t.Fatalf("disconnect returned %v", err)
 	}
-	select {
-	case <-stopped:
-	case <-ctx.Done():
-		t.Fatal("runner did not finish cleanup")
+	receive(ctx, t, stopped)
+	for _, pid := range []int{first, second} {
+		if pid <= 0 {
+			t.Fatal("invalid child PID")
+		}
+		if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
+			t.Fatalf("command PID %d still present after cleanup: %v", pid, err)
+		}
 	}
-	_, err = client.Exec(ctx, "exit 0", runner.ExecParams{}, nil)
+	_, err := client.Exec(ctx, "exit 0", runner.ExecParams{}, nil)
 	if !errors.Is(err, runner.ErrOffline) {
 		t.Fatalf("new command on old session returned %v", err)
 	}
 }
 
 func connect(t *testing.T) (*runner.Client, <-chan struct{}) {
+	t.Helper()
+	return connectWith(t, func(ctx context.Context, socket *websocket.Conn, work string) {
+		_ = runner.Serve(ctx, socket, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: work}))
+	})
+}
+
+func connectWith(t *testing.T, serve func(context.Context, *websocket.Conn, string)) (*runner.Client, <-chan struct{}) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	t.Cleanup(cancel)
@@ -134,7 +157,7 @@ func connect(t *testing.T) (*runner.Client, <-chan struct{}) {
 			t.Error(err)
 			return
 		}
-		session, err := runner.Connect(ctx, c)
+		session, err := runner.Connect(ctx, c, "test-runner")
 		if err != nil {
 			t.Error(err)
 			return
@@ -151,7 +174,7 @@ func connect(t *testing.T) (*runner.Client, <-chan struct{}) {
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		_ = runner.Serve(ctx, socket, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: work}))
+		serve(ctx, socket, work)
 	}()
 	t.Cleanup(func() { _ = socket.CloseNow(); <-stopped })
 	select {
@@ -161,5 +184,17 @@ func connect(t *testing.T) (*runner.Client, <-chan struct{}) {
 	case <-ctx.Done():
 		t.Fatal(ctx.Err())
 		return nil, nil
+	}
+}
+
+func receive[T any](ctx context.Context, t *testing.T, ch <-chan T) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+		var zero T
+		return zero
 	}
 }
