@@ -3,12 +3,14 @@
 #MISE depends=["build:web"]
 set -euo pipefail
 
-package="${1:?Pass ./internal/chat}"
+package="${1:?Pass ./internal/chat or ./internal/app}"
 index="${2:?Pass a zero-based shard index}"
 count="${3:?Pass the shard count}"
+# The app tests run without the race detector, as in check:app.
 case "$package" in
-  ./internal/chat) ;;
-  *) echo "Expected ./internal/chat. check:app runs ./internal/app." >&2; exit 2 ;;
+  ./internal/chat) race=(-race) ;;
+  ./internal/app) race=() ;;
+  *) echo "Expected ./internal/chat or ./internal/app." >&2; exit 2 ;;
 esac
 name="${package##*/}"
 if [[ ! "$index" =~ ^(0|[1-9][0-9]*)$ || ! "$count" =~ ^[1-9][0-9]*$ ]] || (( index >= count )); then
@@ -17,7 +19,7 @@ if [[ ! "$index" =~ ^(0|[1-9][0-9]*)$ || ! "$count" =~ ^[1-9][0-9]*$ ]] || (( in
 fi
 
 # Discover every top-level test, example, and fuzz seed. New tests need no manual assignment.
-listing="$(go test -race -list . "$package")"
+listing="$(go test "${race[@]}" -list . "$package")"
 tests="$(printf '%s\n' "$listing" | grep -E '^(Test|Example|Fuzz)[^[:space:]]*$' | LC_ALL=C sort)"
 selected="$(printf '%s\n' "$tests" | awk -v shard="$index" -v count="$count" '(NR - 1) % count == shard')"
 if [[ -z "$selected" ]]; then
@@ -30,4 +32,4 @@ printf '%s\n' "$tests" > ".local/ci/$name-$index-all.txt"
 printf '%s\n' "$selected" > ".local/ci/$name-$index-selected.txt"
 pattern="$(printf '%s\n' "$selected" | paste -sd '|' -)"
 printf '%s shard %s/%s: %s tests\n' "$name" "$index" "$count" "$(printf '%s\n' "$selected" | wc -l | tr -d ' ')"
-go test -race -json -run "^($pattern)$" "$package" | tee ".local/ci/$name-$index.jsonl"
+go test "${race[@]}" -json -run "^($pattern)$" "$package" | tee ".local/ci/$name-$index.jsonl"
