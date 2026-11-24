@@ -3,6 +3,7 @@ package delivery
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -10,12 +11,16 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
+	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 )
 
 const (
 	maxReactionWatches = 64
 	reactionTimeout    = 5 * time.Second
+	reactionPoll       = 150 * time.Millisecond
+	queueAckWindow     = 30 * time.Second
+	queueAckAttempts   = 3
 )
 
 type reactionWatch struct {
@@ -78,7 +83,14 @@ func (m *Manager) watchReaction(ctx context.Context, platform string, bot channe
 	last := channel.Reaction(0)
 	previous := ""
 	status := channel.ReactionQueued
-	tick := time.NewTicker(150 * time.Millisecond)
+	if platform == "telegram" && !strings.HasPrefix(watch.peer, "telegram:-") {
+		if err := m.acknowledgeTelegramQueue(ctx, bot, watch); errors.Is(err, channel.ErrReactionUnknown) {
+			return
+		}
+		last = channel.ReactionQueued
+		status = m.reactionState(ctx, watch, last)
+	}
+	tick := time.NewTicker(reactionPoll)
 	defer tick.Stop()
 	for {
 		if status > last {
@@ -92,7 +104,7 @@ func (m *Manager) watchReaction(ctx context.Context, platform string, bot channe
 			if !allowed || errors.Is(err, channel.ErrReactionUnknown) || status >= channel.ReactionSucceeded {
 				return
 			}
-			last = status // Never retry a reaction, even if the platform rejected it.
+			last = status
 		}
 		select {
 		case <-ctx.Done():
@@ -101,6 +113,103 @@ func (m *Manager) watchReaction(ctx context.Context, platform string, bot channe
 		}
 		status = m.reactionState(ctx, watch, last)
 	}
+}
+
+// The same watcher owns the acknowledgement and later reactions. An unknown
+// mutation ends the watcher because Telegram may still apply it.
+func (m *Manager) acknowledgeTelegramQueue(ctx context.Context, bot channel.Reactor, watch *reactionWatch) error {
+	deadline := time.Now().Add(queueAckWindow)
+	for attempt := range queueAckAttempts {
+		callCtx, cancel := context.WithTimeout(ctx, reactionTimeout)
+		allowed := m.reactionAllowed(callCtx, "telegram", watch)
+		if allowed && attempt == 0 {
+			// Claim before the remote call. A crash leaves an unknown outcome, not
+			// permission to send again.
+			claimed, err := m.q.ClaimTelegramQueueAcknowledgement(callCtx, sqlc.ClaimTelegramQueueAcknowledgementParams{
+				SubmissionID: watch.id, UpdatedAt: time.Now().UnixMilli(),
+			})
+			if err != nil && ctx.Err() == nil {
+				slog.Warn("telegram: claim queued acknowledgement", "submission", watch.id, "err", err)
+			}
+			allowed = err == nil && claimed == 1
+		}
+		if allowed && attempt > 0 {
+			_, queued := m.telegramQueueState(callCtx, watch)
+			allowed = queued && time.Now().Before(deadline)
+		}
+		if !allowed {
+			cancel()
+			return nil
+		}
+		if err := callCtx.Err(); err != nil {
+			cancel()
+			return err
+		}
+		_, err := bot.React(callCtx, watch.peer, watch.source.MessageID, "", channel.ReactionQueued)
+		retryAt := time.Now()
+		cancel()
+		outcome := "accepted"
+		if errors.Is(err, channel.ErrReactionUnknown) {
+			outcome = "unknown"
+		} else if err != nil {
+			outcome = "failed"
+		}
+		// A bot can stop after Telegram has confirmed the request. Save the result
+		// before the runtime joins this worker.
+		saveCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), reactionTimeout)
+		saveErr := m.q.RecordTelegramQueueAcknowledgement(saveCtx, sqlc.RecordTelegramQueueAcknowledgementParams{
+			SubmissionID: watch.id, Outcome: outcome, UpdatedAt: time.Now().UnixMilli(),
+		})
+		cancel()
+		if saveErr != nil {
+			slog.Warn("telegram: record queued acknowledgement", "submission", watch.id, "err", saveErr)
+			return err
+		}
+		retry, ok := errors.AsType[*channel.RetryError](err)
+		if !ok || attempt+1 == queueAckAttempts {
+			return err
+		}
+		retryAt = retryAt.Add(max(time.Second<<attempt, retry.After))
+		if !retryAt.Before(deadline) {
+			return err
+		}
+		if !m.waitTelegramQueueRetry(ctx, watch, retryAt, deadline) {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) waitTelegramQueueRetry(ctx context.Context, watch *reactionWatch, retryAt, deadline time.Time) bool {
+	for time.Now().Before(deadline) {
+		pending, queued := m.telegramQueueState(ctx, watch)
+		if !pending {
+			return false
+		}
+		if queued && !time.Now().Before(retryAt) {
+			return true
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(reactionPoll):
+		}
+	}
+	return false
+}
+
+// A missing native handle is not proof that the input has not started. Wait for
+// admission to publish the handle before retrying.
+func (m *Manager) telegramQueueState(ctx context.Context, watch *reactionWatch) (pending, queued bool) {
+	r, err := m.q.GetChannelReactionReceipt(ctx, watch.id)
+	if err != nil || r.Status != "pending" || r.StopRequested != 0 {
+		return false, false
+	}
+	if sub := watch.native.Load(); sub != nil {
+		queued, err := sub.Queued(ctx)
+		return err == nil && queued, err == nil && queued
+	}
+	return true, false
 }
 
 func (m *Manager) reactionAllowed(ctx context.Context, platform string, watch *reactionWatch) bool {
@@ -116,6 +225,10 @@ func (m *Manager) reactionAllowed(ctx context.Context, platform string, watch *r
 	if strings.HasPrefix(watch.peer, "telegram:-") {
 		allowed, err := m.chats.GroupReplyAllowed(ctx, m.agentID, watch.id)
 		return err == nil && allowed
+	}
+	enabled, err := m.q.TelegramPrivateReactionsEnabled(ctx, m.agentID)
+	if err != nil || !enabled {
+		return false
 	}
 	allowed, err := m.chats.TelegramInputAllowed(ctx, m.agentID, watch.peer, watch.source)
 	return err == nil && allowed

@@ -82,7 +82,7 @@ func (q *Queries) FreezeOutboxMessage(ctx context.Context, arg FreezeOutboxMessa
 }
 
 const getChannelReactionReceipt = `-- name: GetChannelReactionReceipt :one
-SELECT s.status, s.reason, s.exit_action, s.required_reply_id,
+SELECT s.status, s.stop_requested, s.reason, s.exit_action, s.required_reply_id,
        coalesce(o.status, '') AS reply_status, coalesce(o.skipped_part, 0) AS skipped_part
 FROM submissions s LEFT JOIN outbox_messages o ON o.id = s.required_reply_id
 WHERE s.id = ?
@@ -90,6 +90,7 @@ WHERE s.id = ?
 
 type GetChannelReactionReceiptRow struct {
 	Status          string         `json:"status"`
+	StopRequested   int64          `json:"stop_requested"`
 	Reason          sql.NullString `json:"reason"`
 	ExitAction      string         `json:"exit_action"`
 	RequiredReplyID string         `json:"required_reply_id"`
@@ -102,6 +103,7 @@ func (q *Queries) GetChannelReactionReceipt(ctx context.Context, id string) (Get
 	var i GetChannelReactionReceiptRow
 	err := row.Scan(
 		&i.Status,
+		&i.StopRequested,
 		&i.Reason,
 		&i.ExitAction,
 		&i.RequiredReplyID,

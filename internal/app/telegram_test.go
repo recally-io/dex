@@ -337,9 +337,25 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 				m.Text += reaction.Emoji
 			}
 		}
-		if method == "setMessageReaction" && f.reactGate != nil && !f.reactGate.handle(r, fmt.Sprint(m.MessageID), m.Text) {
-			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": 60}})
-			return
+		if method == "setMessageReaction" && f.reactGate != nil {
+			gate := f.reactGate
+			limited := m.Text == "👀" && gate.limitNextQueued.Swap(false)
+			if m.Text == "👀" && gate.queuedTimes != nil {
+				gate.queuedTimes <- time.Now()
+			}
+			if !gate.handle(r, fmt.Sprint(m.MessageID), m.Text) || limited {
+				if gate.unknownOutcome {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				after := 60
+				if limited {
+					after = gate.retryAfter
+				}
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": after}})
+				return
+			}
 		}
 		if method == "setMyCommands" {
 			for _, command := range m.Commands {

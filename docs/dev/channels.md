@@ -284,8 +284,23 @@ input and confirmation of every part of its required reply, if any. A skipped
 part is not confirmation. Failure and cancellation use distinct reactions.
 Access is checked again before any reaction. A short-lived observer serializes
 changes for its message; slow, rejected, and unknown reaction requests never
-control intake or the reply sender's retries. Commands and Telegram edits do not reset a message's status. Dex can drop reactions under
-load, after a timeout, or when the bot stops. It does not retry or replay them.
+control intake or the reply sender's retries. Commands and Telegram edits do not
+reset a message's status. Dex can drop reactions under load or when the bot stops.
+Only Telegram private-chat queued acknowledgements retry. Telegram must return a
+429 that confirms rejection. Dex makes at most 3 attempts, with backoff of 1 s
+and 2 s. Telegram's `retry_after` can extend either delay. No retry starts after
+30 s or after the input leaves the native inbox. Each retry checks current
+sender authorization and the private reaction setting. If a request has an
+unknown outcome, Dex stops sending reactions for that input. Dex does not replay
+reactions after restart.
+
+To inspect an acknowledgement, join `submissions.id` to
+`telegram_queue_acknowledgements.submission_id` in `control.sqlite`. Find the
+submission by its `source_key`. A missing acknowledgement row means no attempt
+was recorded. Dex saves `unknown` before the first request, so a crash at that
+boundary cannot appear as a confirmed result. `failed` records a definite
+rejection. `accepted` means Telegram confirmed the request. It does not prove the
+user saw the reaction. `updated_at` is Unix time in milliseconds.
 
 ### Promised follow-ups
 
