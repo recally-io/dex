@@ -36,6 +36,7 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 		routineCheckInstructions(), groupExtension(nil),
 		{Name: "group-tools", Tools: []*durable.ToolRegistration{a.groupQuestionTool(ref), a.groupSessionTool(ref), a.groupDeliveryTool(ref, nil)}},
 	}
+	extensions = append(extensions, channelExtensions("bot", ChannelTools{})...)
 	count := 0
 	for _, extension := range extensions {
 		for _, tool := range extension.Tools {

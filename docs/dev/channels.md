@@ -312,6 +312,41 @@ delivered. It also applies to existing and future child results, with or without
 a follow-up commitment. Restoring the channel grant allows new inputs but does
 not authorize delivery from the old result.
 
+## Owner channel tools
+
+`channel_status`, `channel_pairing`, and `channel_notification_targets` read
+one active bot at a time. The current bot is the default. The owner can use a
+bot ID to select another active bot. The tools return runtime states, pairing
+flags, and authorized notification destinations. They omit runtime error text,
+credentials, pairing codes, and login details. The transcript omits raw tool
+arguments. Argument errors do not echo rejected values.
+
+Each call checks the stored source of the live run. Only a web message in a
+top-level Main or Chat session can use these tools. A run that mixes web and
+channel input does not qualify. A paired sender, group, child session, or
+background input cannot make a call as the web owner.
+
+`channel_request_change` can request a Telegram or Feishu pairing revocation,
+a disconnect, or a change to the primary notification destination. WeChat
+pairing ends when the owner disconnects the channel. Use Channels settings to
+enter credentials, get a pairing link or code, or scan a login QR code.
+
+The change tool has no apply operation. It returns a link to a server-rendered
+review page. The page shows the stored operation, bot, and target. A same-origin
+POST from the owner surface applies that request. When dex requires sign-in,
+the review page requires the web session cookie. A chat message or a tool call
+cannot approve a request. The request belongs to its originating session and
+expires after 10 minutes. Control consumes it once and checks that the session,
+bots, and target are still valid. Changed channel credentials or pairing make
+an earlier request invalid. A restart clears requests that are still pending.
+
+Control uses the same channel settings service as the web UI. It logs the
+outcome of applied and denied mutations with the verified bot and operation
+when available. It omits credentials, raw arguments, remote peer IDs, and
+approval links. The owner review separates tool authority from control-plane
+writes. It does not isolate code that runs as the dex OS user, which can access
+local settings and storage directly.
+
 ## Feishu and Lark
 
 [`feishu.Bot`](../../internal/channel/feishu/bot.go) receives private messages through
