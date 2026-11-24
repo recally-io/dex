@@ -83,6 +83,11 @@ jobs:
       # Go builds embed the web UI. install also downloads Go modules.
       - run: mise run install
       - run: mise run check:go without-integration
+      # A restored cache keeps the entries of earlier runs, so it grows on each save. Go and
+      # golangci-lint update the mtime of an entry they use when it is older than one hour. Delete
+      # the entries this job did not use before the save.
+      - if: github.ref == 'refs/heads/main'
+        run: find ~/.cache/go-build ~/.cache/golangci-lint -type f -mmin +90 -delete
       - if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6.1.0
         with:
@@ -94,31 +99,37 @@ jobs:
 
   # The race detector made app tests several times slower for little gain, so they run without it.
   app:
-    name: App tests
+    name: App tests (${{ matrix.shard }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jdx/mise-action@v5.2.10
         with:
           install: true
           cache: true
-      # Reuse the Go job's main-branch cache; do not save duplicate archives.
+      # Reuse the Go job's main-branch cache; do not save duplicate archives. The paths must equal
+      # the Go job's paths: actions/cache gives a different cache version for other paths.
       - uses: actions/cache/restore@v6.1.0
         with:
           path: |
             ~/.cache/go-build
+            ~/.cache/golangci-lint
             ~/go/pkg/mod
           key: go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
             go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-
       - run: mise run install
-      - run: mise run check:app
+      - run: mise run check:go-shard ./internal/app ${{ strategy.job-index }} ${{ strategy.job-total }}
       - if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: app-tests
+          name: app-tests-${{ matrix.shard }}
           path: .local/ci/
           include-hidden-files: true
           retention-days: 7
@@ -131,17 +142,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jdx/mise-action@v5.2.10
         with:
           install: true
           cache: true
+      # The same paths as the Go job, as in the app job.
       - uses: actions/cache/restore@v6.1.0
         with:
           path: |
             ~/.cache/go-build
+            ~/.cache/golangci-lint
             ~/go/pkg/mod
           key: go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
@@ -180,6 +193,9 @@ jobs:
             go-native-${{ runner.os }}-
       - run: mise run install
       - run: mise run check:native
+      # Delete the build entries this job did not use, as in the Go job.
+      - if: github.ref == 'refs/heads/main'
+        run: find ~/.cache/go-build -type f -mmin +90 -delete
       - if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v6.1.0
         with:
