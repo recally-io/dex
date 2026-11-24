@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.20.0-rc.4] - 2026-11-24
+
+### Added
+
+- **Secret vault**: Store shared and bot secrets in an encrypted vault. Pass `vault:NAME` references to Bash, command Monitors, and MCP servers (#288).
+
+### Changed
+
+- **Bot instructions**: Import legacy dex and bot `AGENTS.md` files into bot settings on startup. Keep the source files with the `.migrated` suffix (#283).
+- **MCP servers**: Store declarations in the control database. Use the `mcp_server_*` tools to manage them (#284).
+- **Skills**: Store managed skills on the control host and sync read-only copies to remote workspaces (#285).
+- **Monitors**: Replace the `background_*` tools with command Monitors. Use `monitor_set_command` for long-running commands (#286).
+- **Extension reloads**: Reload an idle bot when supported settings or tools change its configuration. Manual file changes require a reload or restart (#289).
+
+### Fixed
+
+- **Upgrade diagnostics**: Log the error when Dex cannot replace its executable during an upgrade (#287).
+
+### Upgrade and rollback
+
+- Back up the data directory before upgrading. To roll back, stop Dex and restore the pre-upgrade backup before starting `v0.20.0-rc.3`. This discards changes made after the backup.
+- Dex ignores legacy `.env` and `mcp.json` files at the dex and bot levels. It does not import them. Move secrets into the vault and register MCP servers again. For non-secret environment values, use shell startup files or the explicit `env` of a call or MCP declaration. See [Extensions](https://github.com/recally-io/dex/blob/v0.20.0-rc.4/docs/dev/extensions.md).
+
 ## [v0.20.0-rc.3] - 2026-11-23
 
 ### Changed
@@ -128,7 +151,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.20.0-rc.3...HEAD
+[Unreleased]: https://github.com/recally-io/dex/compare/v0.20.0-rc.4...HEAD
+[v0.20.0-rc.4]: https://github.com/recally-io/dex/compare/v0.20.0-rc.3...v0.20.0-rc.4
 [v0.20.0-rc.3]: https://github.com/recally-io/dex/compare/v0.20.0-rc.2...v0.20.0-rc.3
 [v0.20.0-rc.2]: https://github.com/recally-io/dex/compare/v0.20.0-rc.1...v0.20.0-rc.2
 [v0.20.0-rc.1]: https://github.com/recally-io/dex/compare/v0.19.1...v0.20.0-rc.1
