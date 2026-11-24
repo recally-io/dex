@@ -16,7 +16,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// TelegramAlbum is a sealed set of member receipts. SubmitMessage still owns native admission.
+// TelegramAlbum is a sealed set of member receipts. AcceptMessage records the input for admission.
 type TelegramAlbum struct {
 	Source  string
 	Peer    string

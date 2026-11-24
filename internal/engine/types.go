@@ -9,14 +9,15 @@ import (
 )
 
 var (
-	ErrBusy         = errors.New("conversation is busy")
-	ErrOriginBusy   = errors.New("follow-up queue holds another origin")
-	ErrMaintenance  = errors.New("engine admission is paused")
-	ErrClosed       = errors.New("engine is closed")
-	ErrInvalidInput = errors.New("invalid engine input")
-	ErrNotFound     = errors.New("conversation not found")
-	ErrItemNotFound = errors.New("transcript item not found")
-	ErrNoModel      = errors.New("the bot has no model; choose one in Settings")
+	ErrBusy                 = errors.New("conversation is busy")
+	ErrEnvironmentResetting = errors.New("environment reset in progress")
+	ErrOriginBusy           = errors.New("follow-up queue holds another origin")
+	ErrMaintenance          = errors.New("engine admission is paused")
+	ErrClosed               = errors.New("engine is closed")
+	ErrInvalidInput         = errors.New("invalid engine input")
+	ErrNotFound             = errors.New("conversation not found")
+	ErrItemNotFound         = errors.New("transcript item not found")
+	ErrNoModel              = errors.New("the bot has no model; choose one in Settings")
 )
 
 type Ref struct {
@@ -56,6 +57,8 @@ type Attachment struct {
 }
 
 type Input struct {
+	// Authorize checks a new admission after environment preparation. It does not guard native replay.
+	Authorize func(context.Context) error
 	// Changed wakes content-free execution subscribers. It must not block.
 	Changed                                  func()
 	RequestID, Content, Kind, Origin, Source string

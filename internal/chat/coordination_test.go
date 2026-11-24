@@ -159,7 +159,7 @@ func TestUserBackgroundRecoverySkipsOtherAgentLoading(t *testing.T) {
 	}
 }
 
-func TestUserCancelledSameAgentWaitKeepsOrderedDurableInputs(t *testing.T) {
+func TestUserCancelledWaitForSharedReloadKeepsOrderedDurableInputs(t *testing.T) {
 	// Given an agent whose reload is held at a real MCP handshake.
 	r := startNative(t, "context")
 	entered, release := holdAgentMCP(t, r)
@@ -201,25 +201,12 @@ func TestUserCancelledSameAgentWaitKeepsOrderedDurableInputs(t *testing.T) {
 			t.Fatalf("waiting input: %+v", sub)
 		}
 	}
-	// Non-durable operations also stop waiting when their request is cancelled.
-	for _, operation := range []func(context.Context) error{
-		func(ctx context.Context) error { return r.service.Stop(ctx, "bot", c.ID) },
-		func(ctx context.Context) error { return r.service.Clear(ctx, "bot", c.ID, "reset", "web", "") },
-		func(ctx context.Context) error { return r.service.ReloadExtensions(ctx, "bot") },
-	} {
-		callCtx, stop := context.WithTimeout(t.Context(), 100*time.Millisecond)
-		done := make(chan error, 1)
-		go func() { done <- operation(callCtx) }()
-		select {
-		case err := <-done:
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatalf("cancelled operation: %v", err)
-			}
-		case <-time.After(2 * time.Second):
-			stop()
-			t.Fatal("cancelled operation did not return")
-		}
-		stop()
+	// Clear cannot skip the accepted inputs, and a concurrent reload cannot replace the open slot.
+	if err := r.service.Clear(ctx, "bot", c.ID, "reset", "web", ""); !errors.Is(err, ErrConversationBusy) {
+		t.Fatalf("Clear during pending input: %v", err)
+	}
+	if err := r.service.ReloadExtensions(ctx, "bot"); !errors.Is(err, engine.ErrBusy) {
+		t.Fatalf("second Reload during open: %v", err)
 	}
 	// Then recovery admits both inputs in receipt order after reload releases.
 	release()

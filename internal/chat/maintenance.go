@@ -75,11 +75,7 @@ func (s *Service) ReloadDirtyExtensions(ctx context.Context, agentID string) err
 }
 
 func (s *Service) reloadExtensions(ctx context.Context, agentID string, reload func(context.Context, string) error) error {
-	unlock, err := s.lockAgent(ctx, agentID)
-	if err != nil {
-		return err
-	}
-	defer func() { unlock(); s.Wake() }()
+	defer s.Wake()
 	return reload(ctx, agentID)
 }
 
@@ -89,12 +85,7 @@ func (s *Service) ResetEnvironment(ctx context.Context, agentID string, reset fu
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	unlock, err := s.lockAgent(ctx, agentID)
-	if err != nil {
-		return err
-	}
-	defer func() { unlock(); s.Wake() }()
-
+	defer s.Wake()
 	pending, err := s.q.CountPendingAgent(ctx, agentID)
 	if err != nil {
 		return err
@@ -102,18 +93,15 @@ func (s *Service) ResetEnvironment(ctx context.Context, agentID string, reset fu
 	if pending > 0 {
 		return ErrConversationBusy
 	}
-	if s.engine != nil {
-		if err := s.engine.CloseAgent(ctx, agentID); err != nil {
-			return err
+	return s.engine.ResetAgent(ctx, agentID, func(ctx context.Context) error {
+		if s.background != nil {
+			if err := s.background.StopAgent(ctx, agentID); err != nil {
+				return err
+			}
 		}
-	}
-	if s.background != nil {
-		if err := s.background.StopAgent(ctx, agentID); err != nil {
-			return err
+		if reset != nil {
+			return reset(ctx)
 		}
-	}
-	if reset != nil {
-		return reset(ctx)
-	}
-	return nil
+		return nil
+	})
 }

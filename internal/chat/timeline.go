@@ -123,11 +123,11 @@ func (s *Service) ClearGroup(ctx context.Context, agentID string, chatID int64, 
 }
 
 func (s *Service) clear(ctx context.Context, agentID string, chatID int64, requestID, origin, handoff string, identity *ChannelContext) error {
-	unlock, err := s.lockAgent(ctx, agentID)
+	unlock, err := s.lockSession(ctx, chatID)
 	if err != nil {
 		return err
 	}
-	defer func() { unlock(); s.Wake() }()
+	defer unlock()
 	c, err := s.Get(ctx, agentID, chatID)
 	if err != nil {
 		return err
@@ -253,9 +253,7 @@ func (s *Service) clear(ctx context.Context, agentID string, chatID int64, reque
 	if c.ChannelKey == MainKey && s.notify != nil {
 		s.notify(MainKey)
 	}
-	if err := s.reconcileAgent(ctx, agentID); err != nil {
-		s.scheduleRetry()
-	}
+	s.deliverSession(ctx, chatID, requestID)
 	return nil
 }
 

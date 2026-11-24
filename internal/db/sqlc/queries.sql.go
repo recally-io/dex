@@ -683,17 +683,11 @@ func (q *Queries) FinalizeAutomationRun(ctx context.Context, arg FinalizeAutomat
 }
 
 const finishExecutionAbort = `-- name: FinishExecutionAbort :exec
-UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?
+UPDATE conversations SET abort_pending = 0 WHERE id = ?
 `
 
-type FinishExecutionAbortParams struct {
-	AgentID        string        `json:"agent_id"`
-	ExecutionScope string        `json:"execution_scope"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
-}
-
-func (q *Queries) FinishExecutionAbort(ctx context.Context, arg FinishExecutionAbortParams) error {
-	_, err := q.db.ExecContext(ctx, finishExecutionAbort, arg.AgentID, arg.ExecutionScope, arg.ExecutionID)
+func (q *Queries) FinishExecutionAbort(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, finishExecutionAbort, id)
 	return err
 }
 
@@ -1034,7 +1028,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -1070,6 +1064,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.ChannelGroupCursor,
 		&i.ExitAction,
 		&i.RequiredReplyID,
+		&i.StopRequested,
 	)
 	return i, err
 }
@@ -1651,6 +1646,7 @@ SELECT
     s.attachments,
     s.kind,
     s.origin,
+    s.created_at,
     s.admitted_at,
     s.when_busy,
     s.conversation_id,
@@ -1658,7 +1654,7 @@ SELECT
     c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending'
+WHERE s.status = 'pending' AND (CAST(?1 AS INTEGER) = 0 OR s.conversation_id = ?1)
 ORDER BY s.rowid
 `
 
@@ -1668,6 +1664,7 @@ type ListPendingSubmissionsRow struct {
 	Attachments    string        `json:"attachments"`
 	Kind           string        `json:"kind"`
 	Origin         string        `json:"origin"`
+	CreatedAt      int64         `json:"created_at"`
 	AdmittedAt     sql.NullInt64 `json:"admitted_at"`
 	WhenBusy       string        `json:"when_busy"`
 	ConversationID int64         `json:"conversation_id"`
@@ -1676,8 +1673,8 @@ type ListPendingSubmissionsRow struct {
 }
 
 // SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
-func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubmissionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listPendingSubmissions)
+func (q *Queries) ListPendingSubmissions(ctx context.Context, conversationID int64) ([]ListPendingSubmissionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingSubmissions, conversationID)
 	if err != nil {
 		return nil, err
 	}
@@ -1691,6 +1688,7 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context) ([]ListPendingSubm
 			&i.Attachments,
 			&i.Kind,
 			&i.Origin,
+			&i.CreatedAt,
 			&i.AdmittedAt,
 			&i.WhenBusy,
 			&i.ConversationID,
@@ -1887,7 +1885,7 @@ func (q *Queries) ReportAutomationRun(ctx context.Context, arg ReportAutomationR
 }
 
 const requestExecutionAbort = `-- name: RequestExecutionAbort :exec
-UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT NULL
+UPDATE conversations SET abort_pending = 1 WHERE id = ?
 `
 
 func (q *Queries) RequestExecutionAbort(ctx context.Context, id int64) error {

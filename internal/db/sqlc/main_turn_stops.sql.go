@@ -7,7 +7,6 @@ package sqlc
 
 import (
 	"context"
-	"database/sql"
 )
 
 const finishMainTurnStop = `-- name: FinishMainTurnStop :exec
@@ -24,64 +23,23 @@ func (q *Queries) FinishMainTurnStop(ctx context.Context, arg FinishMainTurnStop
 	return err
 }
 
-const listAgentMainTurnStops = `-- name: ListAgentMainTurnStops :many
-SELECT s.target, c.id AS conversation_id, c.execution_id, c.execution_scope
-FROM main_turn_stops s JOIN conversations c ON c.id = s.conversation_id
-WHERE c.agent_id = ? ORDER BY s.rowid
+const listMainTurnStops = `-- name: ListMainTurnStops :many
+SELECT target FROM main_turn_stops WHERE conversation_id = ? ORDER BY rowid
 `
 
-type ListAgentMainTurnStopsRow struct {
-	Target         string        `json:"target"`
-	ConversationID int64         `json:"conversation_id"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
-	ExecutionScope string        `json:"execution_scope"`
-}
-
-func (q *Queries) ListAgentMainTurnStops(ctx context.Context, agentID string) ([]ListAgentMainTurnStopsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAgentMainTurnStops, agentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListAgentMainTurnStopsRow{}
-	for rows.Next() {
-		var i ListAgentMainTurnStopsRow
-		if err := rows.Scan(
-			&i.Target,
-			&i.ConversationID,
-			&i.ExecutionID,
-			&i.ExecutionScope,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listMainTurnStopAgents = `-- name: ListMainTurnStopAgents :many
-SELECT DISTINCT c.agent_id FROM main_turn_stops s JOIN conversations c ON c.id = s.conversation_id
-`
-
-func (q *Queries) ListMainTurnStopAgents(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listMainTurnStopAgents)
+func (q *Queries) ListMainTurnStops(ctx context.Context, conversationID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listMainTurnStops, conversationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	items := []string{}
 	for rows.Next() {
-		var agent_id string
-		if err := rows.Scan(&agent_id); err != nil {
+		var target string
+		if err := rows.Scan(&target); err != nil {
 			return nil, err
 		}
-		items = append(items, agent_id)
+		items = append(items, target)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

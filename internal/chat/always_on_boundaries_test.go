@@ -106,7 +106,7 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 
 	// Simulate crash before native admission settled by checking that reconcile settles it exactly once,
 	// and produces zero unsolicited outbox rows (fail-quiet System Turn).
-	if err := r.service.reconcileAgent(t.Context(), "bot"); err != nil {
+	if err := r.service.reconcileSession(t.Context(), row.ConversationID, ""); err != nil {
 		t.Fatal(err)
 	}
 	sub := awaitReceipt(t, r, row.FireSubmissionID.String)
@@ -124,17 +124,18 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 
 func TestUserTopLevelLostAdmissionReceiptReconcilesWithoutDuplicateOutbox(t *testing.T) {
 	r := startNative(t, "echo")
-	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-lost-admit", "ping"); err != nil {
+	chatID, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-lost-admit", "ping")
+	if err != nil {
 		t.Fatal(err)
 	}
 	awaitReceipt(t, r, "u-lost-admit")
 
 	// Simulate a crash between engine.Submit and markAdmitted by resetting admitted_at=NULL and status='pending'
-	// on an already-settled native submission, then running reconcileAgent.
+	// on an already-settled native submission, then reconciling its Session.
 	if _, err := r.conn.ExecContext(t.Context(), `UPDATE submissions SET status = 'pending', admitted_at = NULL, settled_at = NULL, answer = NULL WHERE id = 'u-lost-admit'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.reconcileAgent(t.Context(), "bot"); err != nil {
+	if err := r.service.reconcileSession(t.Context(), chatID, ""); err != nil {
 		t.Fatal(err)
 	}
 	sub := awaitReceipt(t, r, "u-lost-admit")

@@ -30,7 +30,7 @@ func taskParent(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 
 func taskInput(t *testing.T, r *nativeTest, id string) sqlc.ListPendingSubmissionsRow {
 	t.Helper()
-	rows, err := r.q.ListPendingSubmissions(t.Context())
+	rows, err := r.q.ListPendingSubmissions(t.Context(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}

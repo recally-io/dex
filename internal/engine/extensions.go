@@ -84,7 +84,9 @@ type agentExtensions struct {
 // same lease even if another request replaces an expired sandbox.
 type sessionPromptEnv struct {
 	durableenv.ExecutionEnv
-	files *agentExtensions
+	files        *agentExtensions
+	agentID      string
+	conversation durable.ConversationId
 }
 
 type loadedExtensions struct {

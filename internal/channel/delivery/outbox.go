@@ -23,20 +23,16 @@ import (
 )
 
 func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error {
-	m.receiveMu.Lock()
 	commands, err := m.q.ListChannelCommands(ctx, m.agentID)
-	if err == nil {
-		for _, c := range commands {
-			if strings.HasPrefix(c.Peer, name+":") {
-				if err = m.complete(ctx, c); err != nil {
-					break
-				}
-			}
-		}
-	}
-	m.receiveMu.Unlock()
 	if err != nil {
 		return err
+	}
+	for _, c := range commands {
+		if strings.HasPrefix(c.Peer, name+":") {
+			if err := m.complete(ctx, c.SourceKey); err != nil {
+				return err
+			}
+		}
 	}
 	acks, err := m.q.ListChannelCommandReplies(ctx, sqlc.ListChannelCommandRepliesParams{AgentID: m.agentID, Prefix: sql.NullString{String: name + ":", Valid: true}})
 	if err != nil {

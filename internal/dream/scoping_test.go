@@ -153,7 +153,7 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	if _, err := q.LatestDream(t.Context(), "busy"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("parallel dream admitted: %v", err)
 	}
-	pending, err := q.ListPendingSubmissions(t.Context())
+	pending, err := q.ListPendingSubmissions(t.Context(), 0)
 	if err != nil || len(pending) != 1 || pending[0].ID != idle.ID {
 		t.Fatalf("pending dream count=%d err=%v", len(pending), err)
 	}

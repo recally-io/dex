@@ -37,8 +37,8 @@ func (s sessionEnv) executionEnv(ctx context.Context, cwd string) (durableenv.Ex
 	return env, err
 }
 
-// environments holds the leases of one open agent: its own environment and the explicit
-// environments that its sessions select. Opens run under mu, outside the engine state lock.
+// environments owns the leases shared by sessions that select the same environment.
+// Only opens of the same lease wait for each other.
 type environments struct {
 	agentID  string
 	provider execenv.Provider
@@ -54,6 +54,7 @@ type environments struct {
 	retryAfter time.Time
 	retryStamp string
 	leases     map[string]sessionEnv
+	opening    map[string]chan struct{}
 	closed     bool
 }
 
@@ -90,68 +91,111 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 	if err != nil {
 		return sessionEnv{}, err
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.closed {
-		return sessionEnv{}, ErrClosed
-	}
-	if id == "" && e.own == nil {
-		// Admission and tool resolution can both ask for the default in one turn.
-		// Back off on repeated failures, but let a changed binding retry immediately.
-		// A machine that connected again ends the backoff of its offline error.
-		if stamp == e.retryStamp && time.Now().Before(e.retryAfter) && !e.backOnline(ctx, e.ownErr) {
-			return sessionEnv{}, e.ownErr
+	for {
+		e.mu.Lock()
+		if e.closed {
+			e.mu.Unlock()
+			return sessionEnv{}, ErrClosed
 		}
-		h, err := e.provider.Open(ctx, e.agentID, "")
-		if err != nil {
-			if ctx.Err() == nil {
-				e.ownErr, e.retryStamp, e.retryAfter = err, stamp, time.Now().Add(time.Second)
+		own, ownFiles := e.own, e.ownFiles
+		if own != nil && stamp == own.Stamp() {
+			e.mu.Unlock()
+			useOwn := true
+			if id != "" && own.Kind() == execenv.KindE2B {
+				// A pinned selection cannot use the bot's old sandbox after a default change.
+				current, err := e.provider.Stamp(ctx, e.agentID, "")
+				useOwn = err == nil && current == stamp
 			}
-			return sessionEnv{}, err
+			if useOwn {
+				vars, inherit := e.vars(own)
+				return sessionEnv{ID: id, Handle: own, Files: ownFiles, Vars: vars, Inherit: inherit}, nil
+			}
+			e.mu.Lock()
 		}
-		files := e.files.forHandle(h)
-		files.trySyncSkills(ctx, nil, true)
-		e.own, e.ownFiles, e.ownErr = h, files, nil
-		stamp = h.Stamp()
-	}
-	useOwn := e.own != nil && stamp == e.own.Stamp()
-	if useOwn && id != "" && e.own.Kind() == execenv.KindE2B {
-		// A pinned E2B selection can remain after the bot changes its default. In that
-		// case, it must not use the bot's old persisted sandbox lease.
-		current, err := e.provider.Stamp(ctx, e.agentID, "")
-		useOwn = err == nil && current == stamp
-	}
-	if useOwn {
-		vars, inherit := e.vars(e.own)
-		return sessionEnv{ID: id, Handle: e.own, Files: e.ownFiles, Vars: vars, Inherit: inherit}, nil
-	}
-	if id == "" {
-		return sessionEnv{}, fmt.Errorf("%w: the bot environment changed; wait for reload", execenv.ErrUnavailable)
-	}
-	if s, ok := e.leases[id]; ok {
-		if stamp != s.Handle.Stamp() {
-			return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; wait for reload", execenv.ErrUnavailable)
+		if id == "" && own != nil {
+			e.mu.Unlock()
+			return sessionEnv{}, fmt.Errorf("%w: the bot environment changed; wait for reload", execenv.ErrUnavailable)
 		}
-		if !execenv.LeaseExpired(s.Handle) {
-			return s, nil
+		if active := e.opening[id]; active != nil {
+			e.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return sessionEnv{}, ctx.Err()
+			case <-active:
+				stamp, err = e.provider.Stamp(ctx, e.agentID, id)
+				if err != nil {
+					return sessionEnv{}, err
+				}
+				continue
+			}
 		}
-		// Expiry is specific to this lease, not the configuration or other bots.
-		delete(e.leases, id)
-		if err := s.Handle.Close(ctx); err != nil {
+		previous := e.leases[id]
+		if h := previous.Handle; h != nil {
+			if stamp != h.Stamp() {
+				e.mu.Unlock()
+				return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; wait for reload", execenv.ErrUnavailable)
+			}
+			if !execenv.LeaseExpired(h) {
+				e.mu.Unlock()
+				return previous, nil
+			}
+			delete(e.leases, id)
+		}
+		done := make(chan struct{})
+		if e.opening == nil {
+			e.opening = map[string]chan struct{}{}
+		}
+		e.opening[id] = done
+		var recentErr error
+		if id == "" && stamp == e.retryStamp && time.Now().Before(e.retryAfter) {
+			recentErr = e.ownErr
+		}
+		e.mu.Unlock()
+		return e.openLease(ctx, id, stamp, previous.Handle, recentErr, done)
+	}
+}
+
+func (e *environments) openLease(ctx context.Context, id, stamp string, expired execenv.Handle, recentErr error, done chan struct{}) (sessionEnv, error) {
+	defer func() {
+		e.mu.Lock()
+		delete(e.opening, id)
+		close(done)
+		e.mu.Unlock()
+	}()
+	if recentErr != nil && !e.backOnline(ctx, recentErr) {
+		return sessionEnv{}, recentErr
+	}
+	if expired != nil {
+		if err := expired.Close(ctx); err != nil {
 			return sessionEnv{}, err
 		}
 	}
 	h, err := e.provider.Open(ctx, e.agentID, id)
 	if err != nil {
+		if id == "" && ctx.Err() == nil {
+			e.mu.Lock()
+			e.ownErr, e.retryStamp, e.retryAfter = err, stamp, time.Now().Add(time.Second)
+			e.mu.Unlock()
+		}
 		return sessionEnv{}, err
-	}
-	if e.leases == nil {
-		e.leases = map[string]sessionEnv{}
 	}
 	vars, inherit := e.vars(h)
 	s := sessionEnv{ID: id, Handle: h, Files: e.files.forHandle(h), Vars: vars, Inherit: inherit}
 	s.Files.trySyncSkills(ctx, nil, true)
-	e.leases[id] = s
+	e.mu.Lock()
+	if e.closed {
+		e.mu.Unlock()
+		return sessionEnv{}, errors.Join(ErrClosed, h.Close(context.WithoutCancel(ctx)))
+	}
+	if id == "" {
+		e.own, e.ownFiles, e.ownErr = h, s.Files, nil
+	} else {
+		if e.leases == nil {
+			e.leases = map[string]sessionEnv{}
+		}
+		e.leases[id] = s
+	}
+	e.mu.Unlock()
 	return s, nil
 }
 

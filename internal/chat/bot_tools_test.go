@@ -49,7 +49,7 @@ func askArchive(t *testing.T, r *nativeTest, source engine.TaskContext) engine.Q
 // answer sends an answer through the receipt path with the given origin.
 func answer(t *testing.T, r *nativeTest, questionID, origin, text string) error {
 	t.Helper()
-	_, err := r.service.enqueue(t.Context(), "bot", MainKey, "", origin, Message{ID: "answer-" + origin + "-" + text, Content: text, AnswersQuestion: questionID})
+	_, err := r.service.enqueue(t.Context(), "bot", MainKey, "", origin, Message{ID: "answer-" + origin + "-" + text, Content: text, AnswersQuestion: questionID}, false)
 	return err
 }
 

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -26,9 +27,19 @@ func (s *Service) RecoverSessions(ctx context.Context) error {
 	}
 	refs := make([]engine.Ref, 0, len(aborts))
 	for _, c := range aborts {
-		refs = append(refs, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope})
+		if c.ExecutionID.Valid {
+			refs = append(refs, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope})
+		}
 	}
-	return s.engine.Recover(ctx, refs)
+	stops, err := s.q.ListRecoveryParentInputStops(ctx)
+	if err != nil {
+		return err
+	}
+	var withdrawals []engine.RecoveryWithdrawal
+	for _, stop := range stops {
+		withdrawals = append(withdrawals, engine.RecoveryWithdrawal{Ref: engine.Ref{AgentID: stop.AgentID, ID: stop.ExecutionID.Int64, Scope: stop.ExecutionScope}, RequestID: stop.ID})
+	}
+	return s.engine.Recover(ctx, refs, withdrawals...)
 }
 
 type recoveredInput struct {
@@ -58,6 +69,9 @@ func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenR
 		switch recovered.State {
 		case engine.RecoverySettled:
 			in.outcome = recovered.Outcome
+			if p.StopRequested != 0 && in.outcome.Reason == "aborted" {
+				in.outcome.Reason = "stopped"
+			}
 			settled = append(settled, in)
 		case engine.RecoveryPlaced:
 			in.outcome = engine.Outcome{Status: "unanswered", Reason: "interrupted"}
@@ -86,6 +100,12 @@ func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenR
 	defer func() { _ = tx.Rollback() }()
 	var parents []int64
 	for _, in := range settled {
+		if in.outcome.Reason == "stopped" {
+			if _, err := q.StopSubmission(ctx, sqlc.StopSubmissionParams{ID: in.id, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+				return err
+			}
+			continue
+		}
 		// Only an interrupted turn names the withdrawn inputs: they waited behind it.
 		count := 0
 		if in.outcome.Reason == "interrupted" {

@@ -85,7 +85,7 @@ func (d *Dreamer) start(ctx context.Context, agentID string) error {
 	}
 	// Prefer a quiet moment. This is not a lock: a chat that starts during the dream runs with it,
 	// and both change the memory with the edit tool, which fails on a stale file.
-	pending, err := d.q.ListPendingSubmissions(ctx)
+	pending, err := d.q.ListPendingSubmissions(ctx, 0)
 	if err != nil {
 		return err
 	}
