@@ -188,7 +188,7 @@ func TestUserSwitchesTelegramWebhookWithDurableRetriesAndRollback(t *testing.T) 
 
 func TestUserKeepsPendingAndRecentWebhookEventsAfterCleanup(t *testing.T) {
 	t.Parallel()
-	// Given one recent handled event and two old events, one still pending.
+	// Given handled events of different ages and an old pending event.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := controlWriteDB(t, dir)
@@ -197,8 +197,9 @@ func TestUserKeepsPendingAndRecentWebhookEventsAfterCleanup(t *testing.T) {
 	if _, err := conn.ExecContext(t.Context(), `
 INSERT INTO channel_webhook_inbox (platform, account, event_id, agent_id, received_at, payload)
 VALUES ('telegram', '123', 'recent', 'default', ?, NULL),
+       ('telegram', '123', 'skew-margin', 'default', ?, NULL),
        ('telegram', '123', 'handled', 'default', ?, NULL),
-       ('telegram', '123', 'pending', 'default', ?, CAST('{}' AS BLOB))`, now.UnixMilli(), old, old); err != nil {
+       ('telegram', '123', 'pending', 'default', ?, CAST('{}' AS BLOB))`, now.UnixMilli(), now.Add(-7*24*time.Hour-time.Minute).UnixMilli(), old, old); err != nil {
 		t.Fatal(err)
 	}
 	d.stop()
@@ -211,7 +212,7 @@ VALUES ('telegram', '123', 'recent', 'default', ?, NULL),
 		if err != nil {
 			t.Fatal(err)
 		}
-		return events == "pending,recent", events
+		return events == "pending,recent,skew-margin", events
 	})
 }
 
@@ -292,6 +293,18 @@ func TestUserSwitchesFeishuToEncryptedWebhookAndBack(t *testing.T) {
 	oldBody := encryptedFeishuHook(t, feishuHookTextAt(t, "secure", "owner", "p2p", "verify-me", "old event", old))
 	sign(oldBody)
 	postChannelHook(t, d, feishuHook, oldBody, headers, http.StatusBadRequest)
+
+	// A signed time beyond the skew is rejected. A small clock difference is allowed.
+	future := time.Now().Add(6 * time.Minute)
+	headers[larkevent.EventRequestTimestamp] = strconv.FormatInt(future.Unix(), 10)
+	sign(body)
+	postChannelHook(t, d, feishuHook, body, headers, http.StatusBadRequest)
+	nearFuture := time.Now().Add(30 * time.Second)
+	headers[larkevent.EventRequestTimestamp] = strconv.FormatInt(nearFuture.Unix(), 10)
+	futureBody := encryptedFeishuHook(t, feishuHookTextAt(t, "secure", "owner", "p2p", "verify-me", "future event", future))
+	sign(futureBody)
+	postChannelHook(t, d, feishuHook, futureBody, headers, http.StatusBadRequest)
+	body = encryptedFeishuHook(t, feishuHookTextAt(t, "secure", "owner", "p2p", "verify-me", "signed webhook", nearFuture))
 	postChannelHook(t, d, feishuHook, body, nil, http.StatusUnauthorized)
 	headers[larkevent.EventSignature] = "bad-signature"
 	postChannelHook(t, d, feishuHook, body, headers, http.StatusUnauthorized)

@@ -508,7 +508,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	if err := jobs.Every("channel-webhook-prune", time.Hour, func(ctx context.Context) {
-		cutoff := time.Now().Add(-channel.WebhookRetention).UnixMilli()
+		cutoff := time.Now().Add(-(channel.WebhookRetention + channel.WebhookFutureSkew)).UnixMilli()
 		if err := q.PruneHandledChannelWebhooks(ctx, cutoff); err != nil && ctx.Err() == nil {
 			slog.Warn("prune handled channel webhooks", "err", err)
 		}

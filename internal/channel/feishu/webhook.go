@@ -92,8 +92,7 @@ func (b *Bot) InboundWebhook() *channel.Webhook {
 }
 
 func freshWebhookTime(platformTime, now time.Time) bool {
-	// Future timestamps could outlive the deduplication row.
-	return !platformTime.Before(now.Add(-channel.WebhookRetention)) && !platformTime.After(now)
+	return !platformTime.Before(now.Add(-channel.WebhookRetention)) && !platformTime.After(now.Add(channel.WebhookFutureSkew))
 }
 
 func decryptWebhook(ciphertext, key string) (body []byte, err error) {

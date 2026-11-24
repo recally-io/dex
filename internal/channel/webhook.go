@@ -12,6 +12,10 @@ import (
 // retries, whose longest interval is 6 hours. Pending events are not pruned.
 const WebhookRetention = 7 * 24 * time.Hour
 
+// WebhookFutureSkew allows for a host clock that is behind Feishu's clock.
+// Retain handled IDs for WebhookRetention plus this skew to block replays.
+const WebhookFutureSkew = 5 * time.Minute
+
 // Webhook identifies an active HTTP receiver and verifies its platform requests.
 // Implementations must not perform platform I/O from Decode.
 type Webhook struct {

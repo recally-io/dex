@@ -316,14 +316,14 @@ One worker per integration processes committed events in intake order. The
 worker calls the same receive function as polling or WebSocket. The current
 sender grants, pairing, and routing rules still apply. A transient failure can
 delay later events. On success, dex clears the payload. A background job runs at
-startup and every hour. It prunes handled IDs more than 7 days after intake,
-which covers both platforms' retry windows. The job never prunes pending events.
+startup and every hour. It prunes handled IDs more than 7 days and 5 minutes
+after intake. This covers both platforms' retry windows and Feishu's clock skew.
+The job never prunes pending events.
 
-Feishu webhook events must have a timestamp within the last 7 days. Dex checks
-the signed request timestamp in encrypted mode and also checks `header.create_time`
-when present. Token-only mode requires `header.create_time`. Dex rejects future
-timestamps, so keep the host clock synchronized. For Telegram, the secret header
-is the security boundary. Dex cannot use the update timestamp to reject replays
+Feishu webhook events can be at most 7 days old or 5 minutes ahead of the
+host clock. Dex checks the signed request timestamp in encrypted mode and also
+checks `header.create_time` when present. Token-only mode requires
+`header.create_time`. For Telegram, the secret header is the security boundary. Dex cannot use the update timestamp to reject replays
 once the deduplication record expires. Keep the secret private and rotate it
 if exposed.
 
