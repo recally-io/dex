@@ -193,7 +193,7 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 			}
 		}
 	}
-	extensions := []*durable.Extension{extension, compactionExtension()}
+	extensions := []*durable.Extension{extension, compactionExtension(), sessionTraceExtension(ref.AgentID, ref.Scope)}
 	registry := harness.CreateRegistry()
 	for _, ext := range extensions {
 		if err := registry.Install(ext); err != nil {

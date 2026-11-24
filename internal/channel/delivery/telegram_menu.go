@@ -240,8 +240,6 @@ func (m *Manager) addButtons(ctx context.Context, parts []channel.Part, source, 
 // ClaimTelegramCallback consumes a button and queues its durable command in the same transaction.
 // The adapter must verify the signature before it calls this method.
 func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity chat.ChannelContext) (bool, error) {
-	m.receiveMu.Lock()
-	defer m.receiveMu.Unlock()
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -301,11 +299,7 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
-	command, err := m.q.GetChannelCommand(ctx, source)
-	if err != nil {
-		return true, err
-	}
-	return true, m.complete(ctx, command)
+	return true, m.complete(ctx, source)
 }
 
 // callbackCurrent applies the same post-claim validity check that effects repeat under the writer.

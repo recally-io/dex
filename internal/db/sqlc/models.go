@@ -397,6 +397,7 @@ type Submission struct {
 	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
 	ExitAction           string         `json:"exit_action"`
 	RequiredReplyID      string         `json:"required_reply_id"`
+	StopRequested        int64          `json:"stop_requested"`
 }
 
 type SystemSetting struct {

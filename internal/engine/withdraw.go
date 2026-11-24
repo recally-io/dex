@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/MichaelKinsy/PiG/durable"
+	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
 // Withdrawal is the native outcome of withdrawing one input.
@@ -70,8 +71,16 @@ func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withd
 	if err != nil {
 		return "", err
 	}
+	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+	if err != nil {
+		return "", err
+	}
+	return withdrawNative(ctx, h, conversation, requestID)
+}
+
+func withdrawNative(ctx context.Context, h harness.Harness, conversation harness.Conversation, requestID string) (Withdrawal, error) {
 	var record *durable.SubmissionRecord
-	if _, err = conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+	if _, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 		var err error
 		record, err = tx.SubmissionByRequest(conversation.Id(), requestID)
 		return nil, err
@@ -80,10 +89,6 @@ func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withd
 	}
 	if record == nil {
 		return NotAdmitted, nil
-	}
-	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
-	if err != nil {
-		return "", err
 	}
 	native, err := h.Submission(ctx, record.Id)
 	if err != nil {

@@ -14,7 +14,7 @@ const (
 	// MaxMessageBytes bounds one JSON-RPC message. A 16 MiB file grows about a third in base64.
 	MaxMessageBytes = 24 << 20
 	// Limit both the number of active calls and their aggregate memory and I/O.
-	maxInFlight = 4
+	maxInFlight = 16
 
 	// MethodReady is the first message from the machine.
 	MethodReady = "ready"

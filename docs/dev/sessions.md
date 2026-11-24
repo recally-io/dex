@@ -103,7 +103,7 @@ message IDs for the same peer. Telegram reads
 answers the question. A quote of a closed question, an unknown ID or a platform
 without quoting (WeChat) is a plain message. A crash between the remote send and
 the mapping write loses the mapping of that part, so its quote is a plain message.
-The settle worker takes the agent delivery lock before it settles an aborted
+The settle worker takes the Session delivery gate before it settles an aborted
 input. A withdraw holds the same lock, so a withdrawn channel message never gets
 a "no answer" reply.
 
@@ -197,18 +197,15 @@ against them:
   child runs with the instructions, memory section, skills, MCP servers, and
   vault of that bot. A child still cannot create children.
 - A result goes to `conversations.parent_id` in the settlement transaction, in the
-  bot of the parent. Admission of the bot of the parent takes it from the
-  database, as for a result from the same bot.
-- Locks. No call path holds two delivery gates. A session tool runs in the run of
-  its conversation and holds no gate. `session_stop` takes the gate of the bot of
-  the child, as a Stop in that bot does. A Stop takes the gate of the stopped
-  conversation only. It withdraws the input that the parent started in the
-  children, in every bot, in one transaction, and it aborts only the executions of its own bot. The
-  abort of a child in another bot stays a durable `abort_pending` request. The
-  reconciliation of that bot, under its own gate, carries it out. Two parents
-  in two bots that stop each other's children therefore cannot wait for each
-  other's gate. `settleNative` takes the gate of the bot of the child only for an
-  aborted run, and the result for the parent is a database write without a gate.
+  bot of the parent. The parent Session takes it from the same receipt queue as its other inputs.
+- No call path holds two Session delivery gates. A session tool runs in its own
+  conversation without the delivery gate. `session_stop` takes only the target
+  child's gate. A cascading Stop records the targets in a short control
+  transaction. It does not call native execution under the writer. Each target
+  processes its cancellation under its own gate, across bots as necessary.
+  For a native abort, settlement waits for the target's gate so Withdraw can
+  finish its receipt first. The transaction that stores a result does not take
+  the parent's gate.
 - Restart recovery settles the admitted inputs of each child under the agent of
   the child, and sends the one `interrupted` result to the parent in its bot.
 - `session_read` reads any session except dreams. With `session: "all"`,
@@ -288,23 +285,94 @@ Monitors. PiG 0.7 task abort keeps the Inbox but does not start its next input.
 Dex records the Stop intent and takes a native Continue boundary if the target
 aborted, the Session is idle, and input is queued. Recovery can finish this step
 after a restart.
-Web Stop on other sessions and channel `/stop` can also stop children that have
-pending input from the parent, including children in other bots. Other sessions
-stay outside the scope. `/clear` does not cancel children.
-Submission, Stop, Clear and reconciliation share a delivery lock per agent.
-Stop withdraws pending input in scope in one transaction, then requests
-cancellation through the engine for each execution of its own bot. A child in
-another bot waits for the reconciliation of its bot.
-Pending cancellation intent stays in business storage until native abort
-succeeds. Reconciliation completes cancellation before it admits later input.
-Both cold recovery and ordinary Stop atomically withdraw queued input and save
-passive transcript entries that retain origin, attachments and labels without
-adding model context. A slow admission or reload for one agent does not hold
-another agent's delivery lock. The short global receipt gate orders maintenance
-confirmation, as described in [Service and updates](architecture.md#service-and-updates).
+
+Web Stop on other sessions and channel `/stop` record a durable request to
+withdraw pending inputs and stop eligible work. This includes background commands,
+Monitors and child work the parent started. A child with pending user input
+keeps its run. Its parent inputs can be withdrawn only if they are still queued
+or not yet admitted when the target processes the request. For a child in another
+Bot or with a busy delivery gate, Stop can return before the target checks the
+queue. A queued parent input can enter execution in this interval. If it does,
+Stop leaves it running. `/clear` does not cancel children.
+
+Admission, Clear, Withdraw and reconciliation use a delivery gate for each
+Session. Legacy Stop requests stay in business storage until the target processes
+them. Admission on that target reconciles the requests before later input. Cold
+recovery and legacy full Stop save passive display entries for withdrawn native
+inputs without adding model context. The shared SQLite writer runs short
+transactions. The global receipt gate orders maintenance confirmation, as
+described in [Service and updates](architecture.md#service-and-updates).
 The reply of Stop confirms the request. It does not prove process exit.
 Processes and remote work can continue. Cancellation does not undo file writes
 or remote actions.
+
+### Diagnose a slow Session input
+
+1. Use the Session ID in `session input` logs. Match `request_hash` across
+   `enqueued`, `admission_attempt`, `admitted`, and `settled`. The hash is the
+   first 16 bytes of SHA-256, in hex. These logs do not show the raw request ID or
+   payload. `admission_wait` records an observed occupied Session gate.
+   `queued_ms` is the age of the receipt at the attempt. `elapsed_ms` measures
+   the wait or attempt separately. `environment_offline`, `session_busy`,
+   `model_discovery`, `deadline`, and `canceled` come from known error types.
+   `unknown` does not identify a cause. An attempt result of `ok` does not
+   prove admission. Only `admitted` records the native ID and the receipt write.
+2. Match `admitted` to `generation_started` by agent, native namespace,
+   native conversation ID, and the native submission ID in the generation's
+   input list. The PiG `BeforeRequest` hook runs inside the native generation
+   task. It proves that the task reached request preparation, not that it sent
+   a provider request. Placement in the native Inbox or a `202` does not prove
+   the task ran. A bounded in-memory cache suppresses repeat observations of
+   the same input set across tool rounds and task handoffs. Recovery can log
+   it again. A fast native start can log before the admitted receipt commits.
+3. On a build with Runner RPC diagnostics, compare the `environment` ID and
+   timestamps with `runner RPC` logs. The Session log shows the effective
+   environment at admission. The Runner client generates `call_id` for each
+   RPC. It does not share a key with the PiG task. On a shared Runner this is
+   only a time association, not attribution to the Session. Within one
+   `call_id`, `connection_wait` is distinct from `slot_waiting` or `slot_wait`.
+   `sent` is not a start. `remote_started` or `remote_start_observed_after`
+   proves the client received a start acknowledgement. If it did not observe
+   one, the remote start can be unknown. Check the RPC result and
+   `cancel_settlement`; a deadline alone does not prove remote exit. A
+   `session execution` / `shell_timeout` event reports a typed shell deadline
+   at the execution boundary. Match its agent and native conversation ID.
+   It does not label an untyped model or tool error as a timeout.
+4. For exact Web Main Stop, match `stop_recorded` to `stop_attempt` by native
+   conversation and task. The last component of the validated `target` is the
+   task ID. `stop_attempt_ended` with `deadline` describes the
+   local wait. `abort_observed` reports whether PiG's exact task abort was seen.
+   A durable intent can still retry. `stop_rejected` does not cancel a successor.
+   Legacy Stop can settle pending receipts in bulk; inspect the durable status.
+
+The receipt timestamps survive restart. On the control host this query opens
+SQLite read-only and emits recent receipt metadata, with the same hash as the
+logs. It prints no input, output, raw IDs, or channel data:
+
+```sh
+python3 - /path/to/control.sqlite 123 <<'PYTHON'
+import hashlib, pathlib, sqlite3, sys
+from contextlib import closing
+
+uri = pathlib.Path(sys.argv[1]).resolve().as_uri() + "?mode=ro"
+with closing(sqlite3.connect(uri, uri=True)) as db:
+    for request, *fields in db.execute("""
+        SELECT id, rowid, created_at, admitted_at, settled_at, status
+        FROM submissions WHERE conversation_id = ? AND kind = 'message'
+        ORDER BY rowid DESC LIMIT 20
+        """, (int(sys.argv[2]),)):
+        print(hashlib.sha256(request.encode()).hexdigest()[:32], *fields)
+PYTHON
+```
+
+Times are Unix milliseconds. A null `admitted_at` means no control marker was
+saved; native admission may have committed before that write. `recovery` on
+an attempt means an earlier marker exists. It does not prove a restart, and
+absence of a marker does not rule out replay. The start and timing logs are
+not durable receipts. If earlier logs are unavailable after restart, past
+start and Runner acknowledgement times are unknown.
+
+### Child recovery
 
 At process start, control reads the native state of every pending input in a
 child with a pending parent input, including admission gaps. The engine reads
@@ -337,7 +405,7 @@ them: all bots on
 one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
 operation. The Runner reports its connection limit in `ready`. Current peers
-allow four calls; older peers continue to use one slot. A call waits for a slot
+allow 16 calls; older peers continue to use one slot. A call waits for a slot
 before it is sent. Responses, stdout, stderr, and `cancel` are scoped to the call.
 Dex holds a canceled call's slot until the Runner responds, or closes the session
 if it does not respond in time. A slow output consumer can fill its bounded
@@ -405,8 +473,8 @@ when `/connect` is unsupported, and `uname -sm` platform detection. Memory tools
 logged in and run in the foreground with non-interactive options. Long work
 uses [command Monitors](execution.md#command-monitors), which dex tracks. Any other
 process must not outlive its turn. A turn can start and supervise a process,
-such as a worker in a Rex tab, but must stop it before the final answer. Bash has no default
-timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
+such as a worker in a Rex tab, but must stop it before the final answer. Bash has a default
+timeout of 600 seconds. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
 external actions occurred once.

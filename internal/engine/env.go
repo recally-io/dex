@@ -34,7 +34,7 @@ type bashEnvKey struct{}
 // codingTools has the command and file tools. session returns the environment of the calling
 // session; the Harness Env hook resolves the same environment for the file tools.
 func codingTools(session func(context.Context, durable.ConversationId) (sessionEnv, error), bashTimeout time.Duration, secrets vault.Snapshot) *durable.Extension {
-	timeoutSeconds := cmp.Or(bashTimeout, 120*time.Second).Seconds()
+	timeoutSeconds := cmp.Or(bashTimeout, 600*time.Second).Seconds()
 	extension := tools.CreateCodingTools(nil)
 	for i, tool := range extension.Tools {
 		if tool.Name == "write" || tool.Name == "edit" {
@@ -54,10 +54,10 @@ func codingTools(session func(context.Context, durable.ConversationId) (sessionE
 				maps.Copy(execution.Env, extra)
 				return nil
 			}})
-			bash.Description += " The default timeout is 120 seconds. Set timeout for longer foreground work, or use monitor_set_command for long work."
+			bash.Description += " The default timeout is 600 seconds. Set timeout for longer foreground work, or use monitor_set_command for long work."
 			if properties, ok := bash.Parameters["properties"].(map[string]any); ok {
 				if timeout, ok := properties["timeout"].(map[string]any); ok {
-					timeout["description"] = "Timeout in seconds. The default is 120 seconds."
+					timeout["description"] = "Timeout in seconds. The default is 600 seconds."
 				}
 				properties["env"] = commandEnvSchema("Environment variables for this call only. Use vault:NAME for secrets.")
 			}

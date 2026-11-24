@@ -25,12 +25,20 @@ func (s *Service) Continue(ctx context.Context, agentID string, chatID int64, re
 	if !c.Writable {
 		return ErrNotFound
 	}
+	unlock, err := s.lockSession(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if s.leaseUntil.Load() != 0 {
 		return engine.ErrMaintenance
 	}
 	conv, err := s.q.GetConversation(ctx, chatID)
 	if err != nil {
 		return err
+	}
+	if conv.AbortPending != 0 {
+		return ErrConversationBusy
 	}
 	if !conv.ExecutionID.Valid {
 		return ErrNothingToContinue
@@ -57,12 +65,20 @@ func (s *Service) Compact(ctx context.Context, agentID string, chatID int64, ins
 	if !c.Writable {
 		return ErrNotFound
 	}
+	unlock, err := s.lockSession(ctx, chatID)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	if s.leaseUntil.Load() != 0 {
 		return engine.ErrMaintenance
 	}
 	conv, err := s.q.GetConversation(ctx, chatID)
 	if err != nil {
 		return err
+	}
+	if conv.AbortPending != 0 {
+		return ErrConversationBusy
 	}
 	if !conv.ExecutionID.Valid {
 		return ErrNothingToCompact

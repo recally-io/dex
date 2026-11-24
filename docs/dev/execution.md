@@ -171,7 +171,7 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
   as JSON at the SSE boundary.
 
 `POST /api/agents/{agentId}/chats/{id}/messages/{messageId}/withdraw` removes one
-queued input. Under the agent delivery lock, `Agents.Withdraw` calls PiG's
+queued input. Under the Session delivery gate, `Agents.Withdraw` calls PiG's
 `Submission.Abort`. PiG decides: `aborted` means the input never runs, and
 `already_placed` means it runs, so dex answers 409. The control receipt settles
 as `unanswered` with reason `withdrawn` and keeps its request ID and source
@@ -179,7 +179,7 @@ key, so a channel redelivery does not run it. It sets `delivered_at`, so the
 reply outbox sends nothing. A repeated call returns the same message. The
 withdrawal writes no `dex.withdrawn` entry, so Edit leaves no stale bubble.
 
-`POST /api/agents/{agentId}/chats/{id}/clear` uses the agent delivery lock and a SQLite writer
+`POST /api/agents/{agentId}/chats/{id}/clear` uses the Session delivery gate and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
 engine also checks its active run and Inbox. A refused request stores no reset.
 `Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and

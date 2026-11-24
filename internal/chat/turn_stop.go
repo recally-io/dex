@@ -32,11 +32,12 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	if c.ExecutionID == 0 {
 		return engine.ErrStaleRunTarget
 	}
-	unlock, err := s.lockAgent(ctx, agentID)
+	unlock, err := s.lockSession(ctx, id)
 	if err != nil {
+		slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_wait_ended", "reason", admissionRetryReason(err))
 		return err
 	}
-	defer func() { unlock(); s.Wake() }()
+	defer unlock()
 	conv, err := s.q.GetConversation(ctx, id)
 	if err != nil {
 		return err
@@ -45,7 +46,9 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 		return engine.ErrStaleRunTarget
 	}
 	ref := engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}
+	trace := slog.With("session", id, "agent", agentID, "native_conversation_id", ref.ID)
 	if err := s.engine.ValidateRunTarget(ctx, ref, target); err != nil {
+		trace.InfoContext(ctx, "session stop", "phase", "stop_rejected", "reason", admissionRetryReason(err))
 		return err
 	}
 	// The intent covers a crash between the native abort mark and the Inbox boundary.
@@ -59,47 +62,44 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	if err != nil {
 		return err
 	}
-	if _, err := s.applyMainStop(ctx, id, ref, target); err != nil {
-		s.scheduleRetry()
-		return err
+	trace.InfoContext(ctx, "session stop", "phase", "stop_recorded", "target", target)
+	if err := s.applyMainStop(ctx, id, ref, target); err != nil {
+		s.retrySession(ctx, id)
+		if !errors.Is(err, engine.ErrModelsPending) && !errors.Is(err, engine.ErrMaintenance) {
+			return err
+		}
 	}
 	return nil
 }
 
-// reconcileMainStops runs under the existing agent gate, after legacy aborts.
-func (s *Service) reconcileMainStops(ctx context.Context, agentID string, blocked map[int64]bool) error {
-	targets, err := s.q.ListAgentMainTurnStops(ctx, agentID)
+func (s *Service) reconcileMainStops(ctx context.Context, id int64, ref engine.Ref) error {
+	targets, err := s.q.ListMainTurnStops(ctx, id)
 	if err != nil {
 		return err
 	}
-	var errs []error
-	for _, stop := range targets {
-		if blocked[stop.ConversationID] {
-			continue
-		}
-		ref := engine.Ref{AgentID: agentID, ID: stop.ExecutionID.Int64, Scope: stop.ExecutionScope}
-		completed, err := s.applyMainStop(ctx, stop.ConversationID, ref, stop.Target)
-		blocked[stop.ConversationID] = !completed
-		if err != nil {
-			errs = append(errs, err)
+	for _, target := range targets {
+		if err := s.applyMainStop(ctx, id, ref, target); err != nil {
+			return err
 		}
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
-func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, target string) (completed bool, err error) {
+func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, target string) error {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 	defer cancel()
 	if ref.ID > 0 {
-		if err := s.engine.StopRun(callCtx, ref, target); err != nil && !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrStaleRunTarget) {
-			if errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
-				s.scheduleRetry()
-				return false, nil
+		err := s.engine.StopRun(callCtx, ref, target)
+		if err != nil {
+			slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_reconcile", "reason", admissionRetryReason(err))
+			if !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrStaleRunTarget) {
+				return err
 			}
-			slog.Warn("cancel main turn", "execution", ref.ID, "err", err)
-			return false, err
 		}
 	}
-	err = s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
-	return err == nil, err
+	err := s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
+	if err != nil {
+		slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_receipt_pending", "reason", admissionRetryReason(err))
+	}
+	return err
 }

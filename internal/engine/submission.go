@@ -109,6 +109,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if input.Model.ModelID == "" {
 			return nil, ErrNoModel
 		}
+		if err := a.Catalog.ModelReady(input.Model.Provider); err != nil {
+			return nil, err
+		}
 		var change harness.AgentChange
 		if ref.Scope != "" {
 			change = a.changeFor(ctx, ref, input.Options)
@@ -172,6 +175,11 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			}
 		}
 		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+			if input.Authorize != nil {
+				if err := input.Authorize(ctx); err != nil {
+					return nil, err
+				}
+			}
 			if whenBusy == durable.WhenBusyFollowUp {
 				inbox, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, conversation.Id())
 				if err != nil {

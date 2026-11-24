@@ -58,11 +58,12 @@ shutting down HTTP/App cleanly and re-execing the binary in place via
 `syscall.Exec`. `chat.Service` owns a two-minute maintenance lease.
 The engine closes admission and checks active operations, durable work, and
 pending settlement and memory commits. A busy check releases the gate and
-refuses maintenance. A short global receipt gate orders receipt commits and
-lease confirmation. After lease confirmation, web input returns `409` before
-the service writes a receipt. A web receipt committed before confirmation can
-return `202` and remain pending until release. Channel input can also retain
-a pending business receipt. Reconciliation resumes admission after maintenance.
+refuses maintenance. A global gate orders receipt commits, message withdrawal,
+and Monitor cancellation with lease confirmation. After lease confirmation,
+web input returns `409` before the service writes a receipt. A web receipt
+committed before confirmation can return `202` and remain pending until release.
+Channel input can also retain a pending business receipt. Reconciliation resumes
+admission after maintenance.
 The client keeps the same request ID when it retries.
 A process restart clears the in-memory lease.
 
@@ -118,8 +119,16 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    does the chat service set `admitted_at` on the business receipt.
 3. If admission or the receipt write fails, reconciliation retries the same
    request ID. A pending receipt alone does not prove native admission and
-   must not suppress that retry. Reconciliation scans receipts in insertion
-   order. It stops later input of the same chat after a retryable failure.
+   must not suppress that retry. Each Session has an independent delivery gate
+   and retry delay. SQLite receipt insertion order defines FIFO in that Session.
+   A blocked input does not hold the delivery gate of another Session of the same Bot.
+   Cold Harness initialization and recovery share the execution store and registry.
+   Cold open waits for startup model discovery without holding a delivery gate of
+   another Session. Sessions on the same environment can share its lease. The
+   engine does not hold its lease registry lock during remote preparation.
+   Receipt creation and native admission have distinct timestamps. Structured
+   logs correlate Session waits, native start, and settlement without logging
+   message content or remote errors. See the [slow input procedure](sessions.md#diagnose-a-slow-session-input).
 4. The engine runs the model and tools. Each browser subscription receives
    typed transcript events through `live.Hub`. Queued input comes from the
    native Inbox, not from a second control transcript.
@@ -351,9 +360,12 @@ A script claim is durable. On restart an unfinished claim stops with an
 interrupted outcome, rather than rerunning a command whose effect is not
 known. A committed baseline and the next due time survive restart. Dex
 commits the result and any follow-up intent together with a stable request
-ID. The normal session dispatcher admits that intent as a follow-up, not a
-steer. Stop, Clear, cancellation, archive, and changed target authority block
-stale results. Dex rechecks the target before native admission. Cancellation
+ID. The scheduler still checks due Monitors in one serial batch. A finish can
+wait for its own Session gate so it cannot race explicit Monitor cancellation.
+Ordinary inputs do not use the scheduler. The normal Session dispatcher admits
+the Monitor intent as a follow-up. Legacy Stop, Clear, cancellation, archive,
+and changed target authority block stale results. Web Main turn-stop leaves
+Monitors alone. Dex rechecks the target before native admission. Cancellation
 withdraws any Monitor inputs that are still queued. It does not interrupt a
 prompt that already started. An in-flight check can finish within its time
 limit, but it cannot queue a new prompt after cancellation. Dex does not move
