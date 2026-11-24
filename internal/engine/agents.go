@@ -299,7 +299,7 @@ func (a *Agents) harness(ctx context.Context, agentID, scope string) (harness.Ha
 		opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
 		a.opening[agentID] = opening
 		a.mu.Unlock()
-		h, err := a.openAndPublish(openCtx, agentID, opening)
+		h, err := a.openAndPublish(openCtx, agentID, opening, false)
 		return h, a.closedDuring(ctx, err)
 	}
 }
@@ -320,9 +320,9 @@ func (a *Agents) closedDuring(ctx context.Context, err error) error {
 }
 
 // The opening slot owns the target until recovery finishes and Resume is safe.
-func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *agentOpening) (_ harness.Harness, resultErr error) {
+func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *agentOpening, reload bool) (_ harness.Harness, resultErr error) {
 	defer a.finishOpening(agentID, opening)
-	resource, err := a.open(ctx, agentID)
+	resource, err := a.open(ctx, agentID, reload)
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +379,7 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 	}
 }
 
-func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, resultErr error) {
+func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agentResources, resultErr error) {
 	if owner, scope, group := strings.Cut(agentID, "/"); group {
 		return a.openGroup(ctx, Ref{AgentID: owner, Scope: scope})
 	}
@@ -393,20 +393,24 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	execHandle, ownErr := a.config.ExecEnv.Open(ctx, agentID, "")
+	var execHandle execenv.Handle
+	var ownErr error
+	// Reload refreshes the default workspace. A cold Harness leaves that work to its Sessions.
+	if reload {
+		execHandle, ownErr = a.config.ExecEnv.Open(ctx, agentID, "")
+	}
 	var execStamp string
-	if ownErr == nil {
+	if execHandle != nil {
 		execStamp = execHandle.Stamp()
 	} else {
-		// Keep the Harness available to sessions that select a different environment.
-		// Remember the stamp so a reconnect can reload the default and its MCP tools.
 		execStamp, _ = a.config.ExecEnv.Stamp(ctx, agentID, "")
 	}
 	files := a.files(agentID, execHandle)
-	files.defaultUnavailable = ownErr != nil
+	files.defaultUnavailable = execHandle == nil
 	envs := &environments{
 		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
 		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
+		restoreDefault: reload && ownErr != nil,
 	}
 	defer func() {
 		if resultErr != nil {
@@ -421,6 +425,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return envs.session(ctx, int64(id))
 	}
 	files.sessionPrompts = true
+	// MCP tools are shared by all Sessions. Register them before recovery can resume.
 	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -1500,7 +1505,7 @@ func (a *Agents) reload(ctx context.Context, agentID string, automatic bool) (re
 			return err
 		}
 	}
-	_, err := a.openAndPublish(openCtx, agentID, opening)
+	_, err := a.openAndPublish(openCtx, agentID, opening, true)
 	return a.closedDuring(ctx, err)
 }
 

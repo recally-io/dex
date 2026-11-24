@@ -122,10 +122,11 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    must not suppress that retry. Each Session has an independent delivery gate
    and retry delay. SQLite receipt insertion order defines FIFO in that Session.
    A blocked input does not hold the delivery gate of another Session of the same Bot.
-   Cold Harness initialization and recovery share the execution store and registry.
-   Cold open waits for startup model discovery without holding a delivery gate of
-   another Session. Sessions on the same environment can share its lease. The
-   engine does not hold its lease registry lock during remote preparation.
+   Cold Harness initialization still waits for shared model discovery, extension
+   and MCP loading, and recovery. It publishes the Harness without opening the
+   default execution environment. A Session opens the lease it needs after that
+   shared barrier. Sessions that select the same environment can share its lease.
+   The engine does not hold its lease registry lock during remote preparation.
    Receipt creation and native admission have distinct timestamps. Structured
    logs correlate Session waits, native start, and settlement without logging
    message content or remote errors. See the [slow input procedure](sessions.md#diagnose-a-slow-session-input).

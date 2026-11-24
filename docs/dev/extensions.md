@@ -100,8 +100,8 @@ and the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
 request a reload. Environment settings changes request a reload for agents
-that use the environment. A machine reconnect requests a reload for agents
-that could not load that machine as their default. Each open agent reloads
+that use the environment. A machine reconnect requests a reload if the last
+reload could not open that machine as the default. Each open agent reloads
 when it is idle. If validation fails, dex keeps the current resources and
 does not try the same configuration again automatically.
 
@@ -110,7 +110,9 @@ the next reload from another change, after an explicit reload, or when dex
 restarts. dex does not poll for changes or watch these files.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
-servers before it resumes the agent Harness. It installs prompt sections for
+servers before it resumes the agent Harness. This is a shared wait for all
+Sessions of a Bot, including Sessions that use another environment. Cold open
+does not open the default workspace for MCP. The loader installs prompt sections for
 the extension guide and current skills. MCP tools use the names
 `mcp__<server>__<tool>`. In owner sessions, `tool_search` searches the built-in
 and MCP tools available to the current model. It adds only matching deferred

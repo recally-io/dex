@@ -504,12 +504,12 @@ a session that selects another environment. New input that follows an
 unavailable or offline default waits before native admission. This check does
 not wait for the machine; a running turn keeps its tool calls, which wait as
 above. Later attempts retry opening the default, and a new machine session ends
-the retry delay. The turn that opens the default uses its project files. After
-that turn, an idle reload restores any skills and MCP tools that could not load.
-A machine default that was offline at load does not need new input: when the
-machine connects again, the agent becomes stale, and the reload opens the
-default. Other kinds wait for a call that opens them, so a failing SSH or E2B
-endpoint does not rebuild the agent at each check. The resolver checks the
+the retry delay. On cold open, the Harness loads the shared extensions and MCP
+servers without opening the default workspace. After it publishes, a Session
+that needs the default opens it and uses its project files. Reload still tries
+to refresh the default workspace. If the default is offline during Reload,
+a later successful open or a machine reconnect can request another idle reload.
+The resolver checks the
 environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. The stamp holds
