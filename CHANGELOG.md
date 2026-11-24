@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.20.0-rc.5] - 2026-11-24
+
 ### Changed
 
 - **Tool discovery**: Enable `tool_search` in owner sessions without MCP. Search built-in tools and available MCP tools without changing session permissions.
@@ -161,7 +163,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.20.0-rc.4...HEAD
+[Unreleased]: https://github.com/recally-io/dex/compare/v0.20.0-rc.5...HEAD
+[v0.20.0-rc.5]: https://github.com/recally-io/dex/compare/v0.20.0-rc.4...v0.20.0-rc.5
 [v0.20.0-rc.4]: https://github.com/recally-io/dex/compare/v0.20.0-rc.3...v0.20.0-rc.4
 [v0.20.0-rc.3]: https://github.com/recally-io/dex/compare/v0.20.0-rc.2...v0.20.0-rc.3
 [v0.20.0-rc.2]: https://github.com/recally-io/dex/compare/v0.20.0-rc.1...v0.20.0-rc.2
