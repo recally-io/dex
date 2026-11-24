@@ -507,10 +507,10 @@ above. Later attempts retry opening the default, and a new machine session ends
 the retry delay. On cold open, the Harness loads the shared extensions and MCP
 servers without opening the default workspace. After it publishes, a Session
 that needs the default opens it and uses its project files. Reload still tries
-to refresh the default workspace. If the default is offline during Reload,
-a later successful open or a machine reconnect can request another idle reload.
-The resolver checks the
-environment in control storage. A removed, unselectable, or offline environment
+to refresh the default workspace. If the default machine is offline at cold
+open or during Reload, reconnect requests an idle reload even without new input.
+After a failed Reload, a later successful lease open can also request an idle reload.
+The resolver checks the environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. The stamp holds
 the configuration and identity of the environment, not its connection state.

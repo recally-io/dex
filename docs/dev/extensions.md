@@ -100,8 +100,8 @@ and the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
 request a reload. Environment settings changes request a reload for agents
-that use the environment. A machine reconnect requests a reload if the last
-reload could not open that machine as the default. Each open agent reloads
+that use the environment. A machine reconnect requests a reload if the default
+machine was offline at cold open or the last reload could not open it. Each open agent reloads
 when it is idle. If validation fails, dex keeps the current resources and
 does not try the same configuration again automatically.
 

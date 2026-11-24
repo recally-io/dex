@@ -23,6 +23,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	storage "github.com/MichaelKinsy/PiG/durable/storage/sqlite/node"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/execenv/runner"
 	"github.com/recally-io/dex/internal/vault"
 )
 
@@ -369,6 +370,10 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 			a.resources[agentID] = resource
 			resource.harness.Resume()
 			a.mu.Unlock()
+			// A machine can reconnect before the cold Harness is visible to OnOnline.
+			if !reload && resource.envs != nil && resource.envs.restoreDefault {
+				a.MarkRestorable(ctx, agentID)
+			}
 			return resource.harness, nil
 		}
 		a.mu.Unlock()
@@ -410,8 +415,12 @@ func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agen
 	envs := &environments{
 		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
 		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
-		restoreDefault: reload && ownErr != nil,
 	}
+	// Status does not dial the environment. Keep the reconnect signal without opening a lease.
+	if !reload && envs.status(ctx, "") == "offline" {
+		envs.ownErr = runner.ErrOffline
+	}
+	envs.restoreDefault = envs.ownErr != nil
 	defer func() {
 		if resultErr != nil {
 			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
