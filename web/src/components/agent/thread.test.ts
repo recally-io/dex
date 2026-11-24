@@ -295,12 +295,12 @@ test("user sees a child report to its parent as a step, never as a thread line",
     title: "Background wake",
   });
 
-  const transcript = (tool: ToolItem, child: boolean) =>
+  const transcript = (child: boolean, ...tools: ToolItem[]) =>
     render(
       createElement(Transcript, {
         chatId: 2,
         child,
-        items: [mark(tool.id), tool],
+        items: [mark(tools[0].id), ...tools],
         running: false,
         retry: () => {},
         canRetry: false,
@@ -311,10 +311,15 @@ test("user sees a child report to its parent as a step, never as a thread line",
   const final = send("final", { content: "Checks pass" });
   const milestone = send("milestone", { content: "Half done", final: false });
 
-  const [finalHtml, milestoneHtml] = await Promise.all([
-    transcript(final, true),
-    transcript(milestone, true),
+  const [finalHtml, milestoneHtml, groupedHtml] = await Promise.all([
+    transcript(true, final),
+    transcript(true, milestone),
+    transcript(true, milestone, final),
   ]);
+
+  expect(
+    groupedHtml.match(/<button\b[^>]*aria-expanded="false"[^>]*>.*?<\/button>/g)?.join(" ") ?? "",
+  ).toContain("Reported to parent 2 times");
 
   for (const html of [finalHtml, milestoneHtml]) {
     expect(html).toContain("Reported to parent");
@@ -326,15 +331,15 @@ test("user sees a child report to its parent as a step, never as a thread line",
   expect(describeTool(milestone, undefined, true)).toEqual({ verb: "Report parent", target: "Half done" });
 
   // A rejected report does not claim that it reached the parent.
-  expect(await transcript(send("rejected", { content: "Batched" }, "error"), true)).toContain(
+  expect(await transcript(true, send("rejected", { content: "Batched" }, "error"))).toContain(
     "Used session_send · 1 failed",
   );
 
   // A streaming call without arguments yet is still the report of a child.
-  expect(await transcript(send("pending", {}, "running"), true)).not.toContain("Sent to");
+  expect(await transcript(true, send("pending", {}, "running"))).not.toContain("Sent to");
 
   // A legacy report_parent call keeps its label in any chat.
-  const legacy = await transcript({ ...send("old", { content: "Legacy" }), name: "report_parent" }, false);
+  const legacy = await transcript(false, { ...send("old", { content: "Legacy" }), name: "report_parent" });
 
   expect(legacy).toContain("Reported to parent");
   expect(legacy).not.toContain("Internal trace (silent)");
@@ -350,8 +355,8 @@ test("user sees a child report to its parent as a step, never as a thread line",
   const malformed = { ...send("d2", { content: "Wrong form" }, "error"), output: "content: unknown field" };
 
   const [dispatchHtml, malformedHtml] = await Promise.all([
-    transcript(dispatch, false),
-    transcript(malformed, false),
+    transcript(false, dispatch),
+    transcript(false, malformed),
   ]);
 
   expect(threadCall(dispatch)?.kind).toBe("send");

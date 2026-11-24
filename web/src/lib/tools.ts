@@ -139,16 +139,20 @@ export function stepTitle(steps: Step[], memory?: string, thinking = false, chil
   const tools = steps.filter((step) => step.kind === "tool");
   const running = tools.find((t) => t.status === "running");
   const failed = tools.filter((t) => t.status === "error").length;
+  const reports = tools.filter((t) => t.status === "done" && isParentReport(t, child)).length;
   const n = tools.length;
   let done = "";
 
-  if (n && tools.every((t) => touchesMemory(t, memory)))
+  if (reports) {
+    done = reports === 1 ? "Reported to parent" : `Reported to parent ${reports} times`;
+    const other = n - reports;
+
+    if (other) done += ` · Ran ${other} ${other === 1 ? "tool" : "tools"}`;
+  } else if (n && tools.every((t) => touchesMemory(t, memory)))
     done =
       n === 1
         ? describeTool(tools[0], memory).verb.replace(/^\w+/, (verb) => pastTense.get(verb) ?? verb)
         : `Used memory ${n} times`;
-  else if (n === 1 && tools[0].status !== "error" && isParentReport(tools[0], child))
-    done = "Reported to parent";
   else if (n === 1) done = tools[0].name === "bash" ? "Ran a command" : `Used ${tools[0].name}`;
   else if (n) done = `Ran ${n} tools`;
 
