@@ -124,7 +124,7 @@ func (rt *Runners) notifyLocked() {
 // earlier socket can be half open for up to two heartbeat periods after the machine left it.
 // It returns when the session ends.
 func (rt *Runners) Accept(ctx context.Context, id, token string, socket *websocket.Conn) error {
-	session, err := runner.Connect(ctx, socket)
+	session, err := runner.Connect(ctx, socket, id)
 	if err != nil {
 		return err
 	}
