@@ -221,7 +221,7 @@ references belong to the requested agent. A stored receipt means control
 received the input, even when native admission is pending. Adapters do not infer
 this state from `admitted_at` or terminal status. Native admission remains the
 execution authority; reconciliation still retries pending input with its
-stable request ID. Telegram polling advances after an ordinary input commits its
+stable request ID. Channel intake advances after an ordinary input commits its
 source receipt. It does not wait for a native admission attempt. Deferred input
 uses the same authorization and Session queue. Commands still use their own
 receipts and acknowledgements. Polling and the outbox serialize replays of the

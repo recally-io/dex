@@ -405,7 +405,7 @@ them: all bots on
 one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
 operation. The Runner reports its connection limit in `ready`. Current peers
-allow four calls; older peers continue to use one slot. A call waits for a slot
+allow 16 calls; older peers continue to use one slot. A call waits for a slot
 before it is sent. Responses, stdout, stderr, and `cancel` are scoped to the call.
 Dex holds a canceled call's slot until the Runner responds, or closes the session
 if it does not respond in time. A slow output consumer can fill its bounded

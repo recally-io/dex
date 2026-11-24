@@ -65,12 +65,12 @@ func TestUserWaitsForAFreeRunnerSlotAndCanCancelTheWait(t *testing.T) {
 	client, _ := connect(t)
 	ctx, deadline := context.WithTimeout(t.Context(), 10*time.Second)
 	defer deadline()
-	if got := client.Info().MaxInFlight; got != 4 {
-		t.Fatalf("negotiated %d slots, want 4", got)
+	if got := client.Info().MaxInFlight; got != 16 {
+		t.Fatalf("negotiated %d slots, want 16", got)
 	}
-	starts, finishes := make(chan struct{}, 4), make(chan error, 4)
-	stops := make([]context.CancelFunc, 0, 4)
-	for range 4 {
+	starts, finishes := make(chan struct{}, 16), make(chan error, 16)
+	stops := make([]context.CancelFunc, 0, 16)
+	for range 16 {
 		callCtx, stop := context.WithCancel(ctx)
 		defer stop()
 		stops = append(stops, stop)
@@ -81,7 +81,7 @@ func TestUserWaitsForAFreeRunnerSlotAndCanCancelTheWait(t *testing.T) {
 			finishes <- err
 		}()
 	}
-	for range 4 {
+	for range 16 {
 		receive(ctx, t, starts)
 	}
 	queued, stopQueued := context.WithTimeout(ctx, 200*time.Millisecond)
@@ -236,7 +236,7 @@ func TestUserRunnerCapsRawCallsAndOnlySendsStartWhenRequested(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	events := make(chan string, 16)
+	events := make(chan string, 64)
 	conn := jsonrpc2.NewConn(ctx, runner.NewStream(ctx, socket), wireHandler(func(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Request) {
 		events <- req.Method
 	}))
@@ -248,7 +248,7 @@ func TestUserRunnerCapsRawCallsAndOnlySendsStartWhenRequested(t *testing.T) {
 		t.Fatalf("first event was %q", event)
 	}
 	var waiters []jsonrpc2.Waiter
-	for tag := uint64(1); tag <= 4; tag++ {
+	for tag := uint64(1); tag <= 16; tag++ {
 		var opts []jsonrpc2.CallOption
 		if tag > 1 { // Tag 1 uses the legacy control's request shape.
 			opts = append(opts, jsonrpc2.Meta(true))
@@ -267,9 +267,9 @@ func TestUserRunnerCapsRawCallsAndOnlySendsStartWhenRequested(t *testing.T) {
 			t.Fatalf("call %d expected output, got %q", tag, got)
 		}
 	}
-	params := runner.ExecParams{Tag: 5, Shell: "touch should-not-run"}
+	params := runner.ExecParams{Tag: 17, Shell: "touch should-not-run"}
 	if err := conn.Call(ctx, runner.MethodExec, params, nil); err == nil || !strings.Contains(err.Error(), "busy") {
-		t.Fatalf("raw fifth call should be rejected, got %v", err)
+		t.Fatalf("raw 17th call should be rejected, got %v", err)
 	}
 	if err := conn.Notify(ctx, runner.MethodCancel, runner.CancelParams{Tag: 2}); err != nil {
 		t.Fatal(err)

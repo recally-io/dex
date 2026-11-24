@@ -81,10 +81,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	}
 	basicCommand := cmd == "/clear" || cmd == "/new" || cmd == "/stop" || cmd == "/help"
 	if !channel.IsCommand(cmd) || !strings.HasPrefix(peer, "telegram:") && !basicCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
-		if strings.HasPrefix(peer, "telegram:") {
-			return m.chats.AcceptMessage(ctx, m.agentID, peer, source, msg)
-		}
-		return m.chats.SubmitMessage(ctx, m.agentID, peer, source, msg)
+		return m.chats.AcceptMessage(ctx, m.agentID, peer, source, msg)
 	}
 	key := chat.MainKey
 	if group {
