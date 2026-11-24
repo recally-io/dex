@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.20.0-rc.6] - 2026-11-24
+
 ### Added
 
 - **Execution environments**: Add an optional description to Runner, SSH, and E2B environments, such as "Use for macOS builds". Settings and the `environment_list` tool return it as `desc` (#295).
@@ -179,7 +181,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.20.0-rc.5...HEAD
+[Unreleased]: https://github.com/recally-io/dex/compare/v0.20.0-rc.6...HEAD
+[v0.20.0-rc.6]: https://github.com/recally-io/dex/compare/v0.20.0-rc.5...v0.20.0-rc.6
 [v0.20.0-rc.5]: https://github.com/recally-io/dex/compare/v0.20.0-rc.4...v0.20.0-rc.5
 [v0.20.0-rc.4]: https://github.com/recally-io/dex/compare/v0.20.0-rc.3...v0.20.0-rc.4
 [v0.20.0-rc.3]: https://github.com/recally-io/dex/compare/v0.20.0-rc.2...v0.20.0-rc.3
