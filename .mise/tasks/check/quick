@@ -1,30 +1,69 @@
 #!/usr/bin/env bash
 #MISE description="Fast pre-push check: static checks and the tests of changed Go packages"
-#MISE depends=["build:web"]
 set -euo pipefail
 
-# CI runs the full `mise run check`. The app tests alone take about 5 minutes with -race, so this
-# check skips them and the four cross-platform builds, and tests only the changed packages.
-prek validate-config prek.toml
-dprint check
-mise run check:testpolicy
-mise run check:db-drift
-mise run check:api-drift
-mise run check:web
-golangci-lint fmt --diff
-golangci-lint run
-go build ./...
+# CI runs the full `mise run check`. This check must stay fast, so it does three things:
+# - It skips the checks whose inputs did not change since origin/main.
+# - It runs the Go tests without -race. The race detector instruments the modernc SQLite engine,
+#   so internal/chat takes about 510 s with -race and about 40 s without it. CI keeps -race.
+# - It runs the independent checks in parallel.
+# It skips internal/app (about 5 minutes) and the four cross-platform builds.
 
 base="$(git merge-base HEAD origin/main)"
+changed="$({ git diff --name-only "$base"; git diff --name-only; git ls-files --others --exclude-standard; } | sort -u)"
+
+# A change to the tools or the check scripts can change any result, so it runs every check.
+all=false
+if grep -qE '^(mise\.toml|prek\.toml|\.mise/tasks/)' <<<"$changed"; then all=true; fi
+touched() { $all || grep -qE "$1" <<<"$changed"; }
+
+# go build and golangci-lint need the embedded web assets, so build them before the parallel step.
+if touched '^web/' || [[ ! -f web/dist/index.html ]]; then
+  (cd web && bunx --no-install vp build)
+fi
+
+logs="$(mktemp -d)"
+trap 'rm -rf "$logs"' EXIT
+pids=()
+names=()
+job() {
+  local name="$1"
+  shift
+  ("$@") >"$logs/$name.log" 2>&1 &
+  pids+=("$!")
+  names+=("$name")
+}
+
+job static bash -c 'prek validate-config prek.toml && dprint check && mise run check:testpolicy'
+if touched '^(sqlc\.yaml|internal/db/|plugins/[^/]+/(migrations|queries|store)/)'; then
+  job db-drift mise run check:db-drift
+fi
+if touched '^(go\.(mod|sum)|api/|internal/api/|plugins/[^/]+/api/|web/openapi-ts\.config\.ts|web/package\.json|web/bun\.lock|web/src/api/generated/)'; then
+  job api-drift mise run check:api-drift
+fi
+if touched '^web/'; then
+  job web mise run check:web
+fi
+job go-lint bash -c 'golangci-lint fmt --diff && golangci-lint run && go build ./...'
+
 packages=()
 while IFS= read -r dir; do
   if [[ "$dir" != internal/app && -n "$(find "$dir" -maxdepth 1 -name '*.go' -print -quit 2>/dev/null)" ]]; then
     packages+=("./$dir")
   fi
-done < <({ git diff --name-only "$base"; git diff --name-only; git ls-files --others --exclude-standard; } | xargs -n1 dirname | sort -u)
-
+done < <(xargs -rn1 dirname <<<"$changed" | sort -u)
 if ((${#packages[@]})); then
-  go test -race "${packages[@]}"
-else
-  echo "No changed Go packages to test."
+  job go-test go test "${packages[@]}"
 fi
+
+failed=0
+for i in "${!pids[@]}"; do
+  if wait "${pids[$i]}"; then
+    echo "ok   ${names[$i]}"
+  else
+    echo "FAIL ${names[$i]}"
+    sed 's/^/  /' "$logs/${names[$i]}.log"
+    failed=1
+  fi
+done
+exit "$failed"

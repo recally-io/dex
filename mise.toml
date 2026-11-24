@@ -8,7 +8,6 @@ dprint = "0.63.0"
 prek = "0.5.5"
 "aqua:sqlc-dev/sqlc" = "1.31.1"
 "aqua:pressly/goose" = "3.29.0"
-"npm:@markdown-viewer/documd" = "5.3.2"
 goreleaser = "2.18.3"
 
 [tasks.install]
@@ -48,6 +47,12 @@ run = ["prek uninstall -t pre-commit", "prek install"]
 description = "Build the embedded web UI"
 dir = "web"
 run = "bunx --no-install vp build"
+
+[tasks.documd]
+description = "Render a figure with documd: mise run documd <source> <png>"
+# mise refuses to install documd as a tool: it has fewer weekly downloads than the supply-chain
+# threshold. npx runs the pinned version on demand instead.
+run = "npx --yes @markdown-viewer/documd@5.3.2"
 
 [tasks."dev:web"]
 description = "Start the web UI with the local API proxy"
