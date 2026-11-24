@@ -18,8 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Compaction**: Manual and automatic compaction use a local view of the session context and make no model call (#293).
 - **Child sessions**: Rename `report_parent` to `session_report`. It takes only `content` and `final` and reports to the direct parent as an internal result. The parent `session_send` is unchanged. The web shows both the new and old child calls as "Reported to parent" (#302).
 - **Web Main**: Main offers Send while its children work. Main Stop cancels only the foreground task shown in the browser. It keeps Main's pending inputs and does not stop child sessions, background commands, or Monitors. Other sessions' Stop and channel `/stop` keep their scope (#306).
-- **Remote Machines**: Run up to four operations at the same time on one Runner connection, so a short file read does not wait for a long command. An old Dex or Runner still uses one slot (#309).
-- **Session admission**: Each session has its own admission queue and retry backoff, so a stalled child session does not hold Main or other sessions. Telegram input returns to polling after the durable receipt. `session input` logs record the hashed request ID, session, and environment (#310).
+- **Remote Machines**: Run up to 16 operations at the same time on one Runner connection, so a short file read does not wait for a long command. An old Dex or Runner still uses one slot (#309, #310).
+- **Session admission**: Each session has its own admission queue and retry backoff, so a stalled child session does not hold Main or other sessions. Telegram, Feishu, and WeChat input returns to polling or the callback after the durable receipt. `session input` logs record the hashed request ID, session, and environment (#310).
+- **Bash**: The default timeout of the `bash` tool is 600 seconds instead of 120 seconds (#310).
 
 ### Upgrade and rollback
 
