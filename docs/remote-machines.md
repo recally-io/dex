@@ -66,6 +66,11 @@ If the service does not start, run `dex-agent status` as that account, then
 `status` prints the mode of the machine, the account and home that it runs as, the state
 directory, the workspace root, and the `PATH` that its tools use.
 
+If the machine reconnects with a different workspace or home, Dex rejects
+calls from the old lease before it sends them. In the `runner RPC` log, match
+`finished` with `reason=workspace_mismatch` to `connection_wait` by `call_id`.
+The event shows the elapsed time and does not include either path.
+
 ## The account that runs the work
 
 The machine runs as the account that ran the command, so its tools are the tools of that

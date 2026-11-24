@@ -26,6 +26,13 @@ func TraceConnectionWait(ctx context.Context, environment, method string) (conte
 	}
 }
 
+// TraceWorkspaceMismatch records a call rejected before dispatch after a reconnect.
+func TraceWorkspaceMismatch(ctx context.Context, start time.Time) {
+	if trace, ok := ctx.Value(callTraceKey{}).(callTrace); ok {
+		trace.log(ctx, slog.LevelInfo, "finished", "elapsed", time.Since(start), "result", "failed", "reason", "workspace_mismatch", "sent", false)
+	}
+}
+
 func newCallTrace(environment, method string) callTrace {
 	// Use only protocol method names; never log arbitrary client data or error text.
 	switch method {
