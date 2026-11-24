@@ -84,7 +84,7 @@ Run `mise tasks` for the full list. The main tasks:
 | `check`             | All checks; CI runs its steps in jobs                                                                            |
 | `check:quick`       | Static checks and the tests of changed Go packages, without `internal/app`; the pre-push hook runs it            |
 | `check:go`          | golangci-lint, `go build`, `go test -race`; `internal/app` runs without `-race`                                  |
-| `check:app`         | The `internal/app` tests without the race detector, as in CI                                                     |
+| `check:app`         | The `internal/app` tests without the race detector; CI runs them in shards with `check:go-shard`                 |
 | `check:native`      | Checks removed backend paths, rejects PiG TUI and extension-host imports, and builds four platforms with cgo off |
 | `generate:diagrams` | Renders the architecture, message-flow, always-on-flow, and plugins PNGs from PlantUML                           |
 | `generate:db`       | Regenerates `internal/db/sqlc`                                                                                   |
