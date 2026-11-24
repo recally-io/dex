@@ -3,9 +3,12 @@ package app_test
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -44,6 +47,65 @@ func TestUserTelegramGroupTopicCannotReadPrivateMain(t *testing.T) {
 	f.groupText(3, 42, -200, 7, "OTHER_GROUP_CONTEXT_CANARY")
 	if other := f.next(t); other.ChatID != -200 || strings.Contains(other.Text, "PUBLIC_GROUP_CONTEXT_CANARY") || strings.Contains(other.Text, "PRIVATE_MAIN_CONTEXT_CANARY") {
 		t.Fatalf("chat audiences mixed: %+v", other)
+	}
+}
+
+func TestUserTelegramGroupAutomaticallyCompactsLocally(t *testing.T) {
+	t.Parallel()
+	// Given a Telegram group and a model with a small context window.
+	var calls atomic.Int64
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "GET /v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"data":[{"id":"small","context_window":36000,"max_output_tokens":1024}]}`)
+		case "POST /v1/chat/completions":
+			calls.Add(1)
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = fmt.Fprint(w, `data: {"id":"group","object":"chat.completion.chunk","created":1,"model":"small","choices":[{"index":0,"delta":{"role":"assistant","content":"Group answer."},"finish_reason":null}]}`+"\n\n"+
+				`data: {"id":"group","object":"chat.completion.chunk","created":1,"model":"small","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`+"\n\ndata: [DONE]\n\n")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(provider.Close)
+	f := newFakeTelegram(t)
+	dir := t.TempDir()
+	d := startTelegram(t, f, dir, 42)
+	d.must(t, http.MethodPut, "/api/settings/providers/group-fixture", map[string]string{
+		"api": "openai-completions", "baseUrl": provider.URL + "/v1",
+	}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
+		"name": "Dex", "provider": "group-fixture", "modelId": "small", "thinkingLevel": "off",
+	}, nil)
+
+	// When the topic exceeds the 20,000 tokens that PiG keeps, using messages within Telegram's limit.
+	const turns = 22
+	for i := range turns {
+		f.groupText(int64(i+1), 42, -100, 7, fmt.Sprintf("Group message %d: %s", i+1, strings.Repeat("history ", 480)))
+		if got := f.next(t); got.ChatID != -100 || got.TopicID != 7 || got.Text != "Group answer." {
+			t.Fatalf("turn %d: unexpected group reply: %+v", i+1, got)
+		}
+	}
+
+	// Then the topic has a local compaction boundary and each turn made only its answer request.
+	var chatID int64
+	conn := controlWriteDB(t, dir)
+	if err := conn.QueryRowContext(t.Context(), "SELECT id FROM conversations WHERE execution_scope = ?", "tg_123_-100_7").Scan(&chatID); err != nil {
+		t.Fatal(err)
+	}
+	d.waitSettled(t, chatID)
+	var history struct {
+		Items []item `json:"items"`
+	}
+	d.must(t, http.MethodGet, chatPath(chatID, "history?before=9007199254740991&limit=100"), nil, &history)
+	if !slices.ContainsFunc(history.Items, func(it item) bool {
+		return it.Kind == "boundary" && it.Boundary == "compaction" && it.Status == "" && strings.HasPrefix(it.Text, "Compacted history")
+	}) {
+		t.Error("group history has no local compaction boundary")
+	}
+	if got := calls.Load(); got != turns {
+		t.Errorf("provider received %d completion requests for %d group turns; want no extra summary requests", got, turns)
 	}
 }
 

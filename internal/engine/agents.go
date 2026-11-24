@@ -36,13 +36,14 @@ type agentOpening struct {
 }
 
 type agentResources struct {
-	harness        harness.Harness
-	store          durable.Storage
-	loaded         *loadedExtensions
-	execStamp      string
-	envs           *environments
-	groupRoot      *os.Root
-	groupExtension *durable.Extension
+	harness         harness.Harness
+	store           durable.Storage
+	loaded          *loadedExtensions
+	execStamp       string
+	envs            *environments
+	groupRoot       *os.Root
+	groupExtensions []*durable.Extension
+	groupTools      []*durable.ToolRegistration
 }
 
 type activityRecord struct {

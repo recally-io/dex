@@ -156,7 +156,6 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 	}()
 	var h harness.Harness
 	extension := groupExtension(root)
-	compact := compactionExtension()
 	if a.config.Tasks.GroupQuestion != nil {
 		extension.Tools = append(extension.Tools, a.groupQuestionTool(ref))
 	}
@@ -194,17 +193,20 @@ func (a *Agents) openGroup(ctx context.Context, ref Ref) (_ *agentResources, res
 			}
 		}
 	}
+	extensions := []*durable.Extension{extension, compactionExtension()}
 	registry := harness.CreateRegistry()
-	if err := errors.Join(registry.Install(extension), registry.Install(compact)); err != nil {
-		return nil, err
+	for _, ext := range extensions {
+		if err := registry.Install(ext); err != nil {
+			return nil, err
+		}
 	}
 	h, err = harness.OpenHarness(ctx, store, harness.HarnessOptions{Models: a.modelsFor(ref.AgentID), Registry: registry, Settings: func() *harness.HarnessSettings {
-		return &harness.HarnessSettings{Extensions: []*durable.Extension{extension, compact}, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll, FollowUpMode: durable.QueueAll}
+		return &harness.HarnessSettings{Extensions: extensions, AfterFailedRun: durable.AfterFailedRunContinue, SteeringMode: durable.QueueAll, FollowUpMode: durable.QueueAll}
 	}})
 	if err != nil {
 		return nil, err
 	}
-	return &agentResources{harness: h, store: store, groupRoot: root, groupExtension: extension}, nil
+	return &agentResources{harness: h, store: store, groupRoot: root, groupExtensions: extensions, groupTools: extension.Tools}, nil
 }
 
 // authorizeGroupRun includes steered actors, not only the first input that owns a tool operation.
@@ -241,11 +243,12 @@ func (a *Agents) changeFor(ctx context.Context, ref Ref, options Options) harnes
 	options.Cwd = ""
 	change := agentChange(options)
 	a.mu.Lock()
-	extension := a.resources[resourceKey(ref)].groupExtension
+	res := a.resources[resourceKey(ref)]
 	a.mu.Unlock()
-	change.Extensions = harness.SetTo(harness.ExtensionChange{List: []*durable.Extension{extension}})
-	change.Tools = harness.SetTo(harness.ToolChange{List: extension.Tools})
-	change.ModelTools = harness.SetTo(harness.ToolChange{List: extension.Tools})
+	// The exact list must retain the local compaction hook from the defaults.
+	change.Extensions = harness.SetTo(harness.ExtensionChange{List: res.groupExtensions})
+	change.Tools = harness.SetTo(harness.ToolChange{List: res.groupTools})
+	change.ModelTools = harness.SetTo(harness.ToolChange{List: res.groupTools})
 	return change
 }
 
