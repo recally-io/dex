@@ -54,6 +54,59 @@ type gatedHandle struct{ execenv.Handle }
 
 func (gatedHandle) Stamp() string { return gatedEnvironment }
 
+func TestUserRejectModeInputWaitsForEnvironmentReset(t *testing.T) {
+	// Given an idle Session with an existing execution and an environment reset in progress.
+	r := startNative(t, "echo")
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if _, err := r.service.Post(ctx, "bot", MainKey, "", "before-reset", "before reset"); err != nil {
+		t.Fatal(err)
+	}
+	awaitReceipt(t, r, "before-reset")
+	entered := make(chan struct{})
+	released := make(chan struct{})
+	release := sync.OnceFunc(func() { close(released) })
+	defer release()
+	done := make(chan error, 1)
+	go func() {
+		done <- r.service.ResetEnvironment(ctx, "bot", func(ctx context.Context) error {
+			close(entered)
+			select {
+			case <-released:
+				return nil
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		})
+	}()
+	select {
+	case <-entered:
+	case err := <-done:
+		t.Fatalf("environment reset did not start: %v", err)
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+
+	// When the user sends reject-mode input, the reset must not reject it.
+	const request = "during-reset"
+	if _, err := r.service.Send(ctx, "bot", MainKey, Message{ID: request, Content: "during reset", WhenBusy: "reject"}); err != nil {
+		t.Fatalf("send during environment reset: %v", err)
+	}
+	if got := receipt(t, r, request); got.Status != "pending" || got.AdmittedAt.Valid {
+		t.Fatalf("input must wait for environment reset: %+v", got)
+	}
+
+	// Then the same input runs after the reset ends.
+	release()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	runReconciler(t, r)
+	if got := awaitReceipt(t, r, request); got.Status != "done" || got.Answer.String != "echo: during reset" {
+		t.Fatalf("input after environment reset: %+v", got)
+	}
+}
+
 func TestUserSameBotSessionsAdmitWhileChildWaitsForEnvironment(t *testing.T) {
 	// Given a warm bot and a child whose first admission waits on its environment.
 	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{})}

@@ -261,12 +261,14 @@ Dex records the Stop intent and takes a native Continue boundary if the target
 aborted, the Session is idle, and input is queued. Recovery can finish this step
 after a restart.
 
-Web Stop on other sessions and channel `/stop` keep legacy behavior. They
-withdraw pending inputs and stop eligible work, including background commands,
+Web Stop on other sessions and channel `/stop` record a durable request to
+withdraw pending inputs and stop eligible work. This includes background commands,
 Monitors and child work the parent started. A child with pending user input
-keeps its run. Only its parent inputs that are still queued or not yet admitted
-are eligible for withdrawal. Its own dispatcher checks placement before it
-withdraws each exact request. `/clear` does not cancel children.
+keeps its run. Its parent inputs can be withdrawn only if they are still queued
+or not yet admitted when the target processes the request. For a child in another
+Bot or with a busy delivery gate, Stop can return before the target checks the
+queue. A queued parent input can enter execution in this interval. If it does,
+Stop leaves it running. `/clear` does not cancel children.
 
 Admission, Clear, Withdraw and reconciliation use a delivery gate for each
 Session. Legacy Stop requests stay in business storage until the target processes

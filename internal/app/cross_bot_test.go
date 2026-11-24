@@ -440,9 +440,8 @@ func (s *bots) webList(agent string) map[int64]crossBotChat {
 
 func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	t.Parallel()
-	// Given a parent chat in each bot, each with a gated child in the other bot that also holds a
-	// queued user input and a queued parent input. Stop then calls the native queue of the other bot
-	// while it holds the control writer.
+	// Given a parent chat in each bot with a gated child in the other bot.
+	// Each child has a queued user input and a queued parent input.
 	s := startBots(t)
 	parents := []botChat{s.chat("default"), s.chat(s.b.ID)}
 	targets := []string{s.b.ID, "default"}
@@ -471,12 +470,12 @@ func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing
 	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK {
 		t.Fatalf("abort statuses: %v", statuses)
 	}
-	// Then each Stop withdrew only the queued parent input, and the parent runs go on.
+	// Then each target withdraws only the queued parent input while the child run stays active.
 	for i, child := range children {
-		turns := childTurns(t, s.conn, child)
-		if len(turns) < 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
-			t.Fatalf("child %d after Stop: %+v", i, turns)
-		}
+		eventually(t, fmt.Sprintf("child %d withdraws queued parent input", i), func() (bool, any) {
+			turns := childTurns(t, s.conn, child)
+			return len(turns) >= 3 && turns[0].status == "pending" && turns[1].status == "pending" && turns[2].status == "unanswered" && turns[2].reason == "stopped", turns
+		})
 	}
 	// And every run ends after its gate opens.
 	for i, child := range children {
