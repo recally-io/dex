@@ -456,6 +456,22 @@ type TelegramEffect struct {
 	CreatedAt    int64  `json:"created_at"`
 }
 
+type TelegramManagedSetup struct {
+	ID        string        `json:"id"`
+	AgentID   string        `json:"agent_id"`
+	ManagerID int64         `json:"manager_id"`
+	Username  string        `json:"username"`
+	ExpiresAt int64         `json:"expires_at"`
+	OwnerID   int64         `json:"owner_id"`
+	BotID     sql.NullInt64 `json:"bot_id"`
+	State     string        `json:"state"`
+}
+
+type TelegramManager struct {
+	ID            int64  `json:"id"`
+	CredentialRef string `json:"credential_ref"`
+}
+
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`

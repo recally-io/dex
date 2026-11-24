@@ -99,6 +99,12 @@ The Environment page also edits shared vault secrets. A bot's Tools page
 edits that bot's secrets. The vault API returns metadata only. The editor
 clears the secret value after submit and does not store it in the browser.
 
+The Telegram page under Channels uses the existing token form. It also offers
+managed creation when the API confirms Bot Management Mode for the saved manager.
+The managed dialog polls its setup state. It shows a private owner verification
+link first and the Telegram bot creation link second. Cancel calls the API.
+Neither the managed dialog nor the Channels response receives the created token.
+
 The old `/settings/<section>` addresses redirect to the new pages.
 
 ## Components and theme

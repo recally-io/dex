@@ -1768,11 +1768,13 @@ type TaskItemKind string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
-	AllowedUsers []int64          `json:"allowedUsers"`
-	BotId        *string          `json:"botId,omitempty"`
-	Enabled      bool             `json:"enabled"`
-	Options      *TelegramOptions `json:"options,omitempty"`
-	Status       ChannelStatus    `json:"status"`
+	AllowedUsers             []int64          `json:"allowedUsers"`
+	BotId                    *string          `json:"botId,omitempty"`
+	Enabled                  bool             `json:"enabled"`
+	ManagedCreationAvailable *bool            `json:"managedCreationAvailable,omitempty"`
+	ManagerConfigured        *bool            `json:"managerConfigured,omitempty"`
+	Options                  *TelegramOptions `json:"options,omitempty"`
+	Status                   ChannelStatus    `json:"status"`
 }
 
 // TelegramInput defines model for TelegramInput.
@@ -1783,6 +1785,9 @@ type TelegramInput struct {
 	// Token Write-only. Empty keeps the saved token.
 	Token string `json:"token"`
 }
+
+// TelegramManagedSetup defines model for TelegramManagedSetup.
+type TelegramManagedSetup = agent.TelegramManagedSetup
 
 // TelegramOptions defines model for TelegramOptions.
 type TelegramOptions = telegram.Options
@@ -2178,6 +2183,11 @@ type UpgradeSystemJSONBody struct {
 	Version *string `json:"version,omitempty"`
 }
 
+// SetTelegramManagerJSONBody defines parameters for SetTelegramManager.
+type SetTelegramManagerJSONBody struct {
+	Token *string `json:"token,omitempty"`
+}
+
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgentInput
 
@@ -2288,6 +2298,9 @@ type UpdateSystemSettingsJSONRequestBody UpdateSystemSettingsJSONBody
 
 // UpgradeSystemJSONRequestBody defines body for UpgradeSystem for application/json ContentType.
 type UpgradeSystemJSONRequestBody UpgradeSystemJSONBody
+
+// SetTelegramManagerJSONRequestBody defines body for SetTelegramManager for application/json ContentType.
+type SetTelegramManagerJSONRequestBody SetTelegramManagerJSONBody
 
 // AsSnapshotEvent returns the union data inside the ChatEvent as a SnapshotEvent
 func (t ChatEvent) AsSnapshotEvent() (SnapshotEvent, error) {
@@ -2857,6 +2870,15 @@ type ServerInterface interface {
 	// (PUT /api/agents/{agentId}/channels/telegram)
 	SetTelegram(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
+	// (POST /api/agents/{agentId}/channels/telegram/managed)
+	BeginTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (DELETE /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	CancelTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string)
+
+	// (GET /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	GetTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string)
+
 	// (POST /api/agents/{agentId}/channels/telegram/pairing)
 	CreateTelegramPairing(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
@@ -3108,6 +3130,9 @@ type ServerInterface interface {
 
 	// (POST /api/system/upgrade)
 	UpgradeSystem(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/telegram/manager)
+	SetTelegramManager(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/work)
 	GetWork(w http.ResponseWriter, r *http.Request)
@@ -3811,6 +3836,102 @@ func (siw *ServerInterfaceWrapper) SetTelegram(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetTelegram(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BeginTelegramManagedSetup operation middleware
+func (siw *ServerInterfaceWrapper) BeginTelegramManagedSetup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginTelegramManagedSetup(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelTelegramManagedSetup operation middleware
+func (siw *ServerInterfaceWrapper) CancelTelegramManagedSetup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "setupId" -------------
+	var setupId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setupId", r.PathValue("setupId"), &setupId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setupId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelTelegramManagedSetup(w, r, agentId, setupId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTelegramManagedSetup operation middleware
+func (siw *ServerInterfaceWrapper) GetTelegramManagedSetup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "setupId" -------------
+	var setupId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setupId", r.PathValue("setupId"), &setupId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setupId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTelegramManagedSetup(w, r, agentId, setupId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6128,6 +6249,20 @@ func (siw *ServerInterfaceWrapper) UpgradeSystem(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// SetTelegramManager operation middleware
+func (siw *ServerInterfaceWrapper) SetTelegramManager(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTelegramManager(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWork operation middleware
 func (siw *ServerInterfaceWrapper) GetWork(w http.ResponseWriter, r *http.Request) {
 
@@ -6308,6 +6443,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels", wrapper.GetChannels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/notification-targets", wrapper.GetNotificationTargets)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/notification-targets", wrapper.SetPrimaryNotificationTarget)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/telegram/manager", wrapper.SetTelegramManager)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/managed", wrapper.BeginTelegramManagedSetup)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/managed/{setupId}", wrapper.CancelTelegramManagedSetup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/managed/{setupId}", wrapper.GetTelegramManagedSetup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/pairing", wrapper.CreateTelegramPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login", wrapper.BeginWechatLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login/{loginId}/poll", wrapper.PollWechatLogin)
@@ -7645,6 +7784,125 @@ type SetTelegramdefaultJSONResponse struct {
 }
 
 func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginTelegramManagedSetupRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type BeginTelegramManagedSetupResponseObject interface {
+	VisitBeginTelegramManagedSetupResponse(w http.ResponseWriter) error
+}
+
+type BeginTelegramManagedSetup200JSONResponse TelegramManagedSetup
+
+func (response BeginTelegramManagedSetup200JSONResponse) VisitBeginTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginTelegramManagedSetupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginTelegramManagedSetupdefaultJSONResponse) VisitBeginTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTelegramManagedSetupRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	SetupId string  `json:"setupId"`
+}
+
+type CancelTelegramManagedSetupResponseObject interface {
+	VisitCancelTelegramManagedSetupResponse(w http.ResponseWriter) error
+}
+
+type CancelTelegramManagedSetup200JSONResponse Ok
+
+func (response CancelTelegramManagedSetup200JSONResponse) VisitCancelTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTelegramManagedSetupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelTelegramManagedSetupdefaultJSONResponse) VisitCancelTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramManagedSetupRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	SetupId string  `json:"setupId"`
+}
+
+type GetTelegramManagedSetupResponseObject interface {
+	VisitGetTelegramManagedSetupResponse(w http.ResponseWriter) error
+}
+
+type GetTelegramManagedSetup200JSONResponse TelegramManagedSetup
+
+func (response GetTelegramManagedSetup200JSONResponse) VisitGetTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramManagedSetupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetTelegramManagedSetupdefaultJSONResponse) VisitGetTelegramManagedSetupResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12348,6 +12606,45 @@ func (response UpgradeSystemdefaultJSONResponse) VisitUpgradeSystemResponse(w ht
 	return err
 }
 
+type SetTelegramManagerRequestObject struct {
+	Body *SetTelegramManagerJSONRequestBody
+}
+
+type SetTelegramManagerResponseObject interface {
+	VisitSetTelegramManagerResponse(w http.ResponseWriter) error
+}
+
+type SetTelegramManager200JSONResponse Ok
+
+func (response SetTelegramManager200JSONResponse) VisitSetTelegramManagerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTelegramManagerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetTelegramManagerdefaultJSONResponse) VisitSetTelegramManagerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetWorkRequestObject struct {
 }
 
@@ -12463,6 +12760,15 @@ type StrictServerInterface interface {
 
 	// (PUT /api/agents/{agentId}/channels/telegram)
 	SetTelegram(ctx context.Context, request SetTelegramRequestObject) (SetTelegramResponseObject, error)
+
+	// (POST /api/agents/{agentId}/channels/telegram/managed)
+	BeginTelegramManagedSetup(ctx context.Context, request BeginTelegramManagedSetupRequestObject) (BeginTelegramManagedSetupResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	CancelTelegramManagedSetup(ctx context.Context, request CancelTelegramManagedSetupRequestObject) (CancelTelegramManagedSetupResponseObject, error)
+
+	// (GET /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	GetTelegramManagedSetup(ctx context.Context, request GetTelegramManagedSetupRequestObject) (GetTelegramManagedSetupResponseObject, error)
 
 	// (POST /api/agents/{agentId}/channels/telegram/pairing)
 	CreateTelegramPairing(ctx context.Context, request CreateTelegramPairingRequestObject) (CreateTelegramPairingResponseObject, error)
@@ -12715,6 +13021,9 @@ type StrictServerInterface interface {
 
 	// (POST /api/system/upgrade)
 	UpgradeSystem(ctx context.Context, request UpgradeSystemRequestObject) (UpgradeSystemResponseObject, error)
+
+	// (PUT /api/telegram/manager)
+	SetTelegramManager(ctx context.Context, request SetTelegramManagerRequestObject) (SetTelegramManagerResponseObject, error)
 
 	// (GET /api/work)
 	GetWork(ctx context.Context, request GetWorkRequestObject) (GetWorkResponseObject, error)
@@ -13469,6 +13778,86 @@ func (sh *strictHandler) SetTelegram(w http.ResponseWriter, r *http.Request, age
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetTelegramResponseObject); ok {
 		if err := validResponse.VisitSetTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginTelegramManagedSetup operation middleware
+func (sh *strictHandler) BeginTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request BeginTelegramManagedSetupRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginTelegramManagedSetup(ctx, request.(BeginTelegramManagedSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginTelegramManagedSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginTelegramManagedSetupResponseObject); ok {
+		if err := validResponse.VisitBeginTelegramManagedSetupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelTelegramManagedSetup operation middleware
+func (sh *strictHandler) CancelTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string) {
+	var request CancelTelegramManagedSetupRequestObject
+
+	request.AgentId = agentId
+	request.SetupId = setupId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelTelegramManagedSetup(ctx, request.(CancelTelegramManagedSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelTelegramManagedSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelTelegramManagedSetupResponseObject); ok {
+		if err := validResponse.VisitCancelTelegramManagedSetupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTelegramManagedSetup operation middleware
+func (sh *strictHandler) GetTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string) {
+	var request GetTelegramManagedSetupRequestObject
+
+	request.AgentId = agentId
+	request.SetupId = setupId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTelegramManagedSetup(ctx, request.(GetTelegramManagedSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTelegramManagedSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTelegramManagedSetupResponseObject); ok {
+		if err := validResponse.VisitGetTelegramManagedSetupResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -15846,6 +16235,37 @@ func (sh *strictHandler) UpgradeSystem(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpgradeSystemResponseObject); ok {
 		if err := validResponse.VisitUpgradeSystemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTelegramManager operation middleware
+func (sh *strictHandler) SetTelegramManager(w http.ResponseWriter, r *http.Request) {
+	var request SetTelegramManagerRequestObject
+
+	var body SetTelegramManagerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTelegramManager(ctx, request.(SetTelegramManagerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTelegramManager")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTelegramManagerResponseObject); ok {
+		if err := validResponse.VisitSetTelegramManagerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

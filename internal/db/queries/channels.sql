@@ -76,7 +76,11 @@ UPDATE submissions SET channel_group_cursor = channel_group_cursor + 1,
     channel_remote_ids = @remote_ids, channel_retry_at = 0 WHERE id = @id;
 
 -- name: TelegramCredentialOwner :one
-SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id WHERE s.token = ?;
+SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id
+WHERE s.token = @credential OR (
+    s.token GLOB '*::vault:*'
+    AND substr(s.token, 1, instr(s.token, ':') - 1) = substr(@credential, 1, instr(@credential, ':') - 1)
+) LIMIT 1;
 
 -- name: WechatCredentialOwner :one
 SELECT a.id, a.name FROM agents a JOIN wechat_settings s ON s.agent_id = a.id WHERE s.bot_id = ?;

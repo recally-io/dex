@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -39,16 +40,22 @@ func (s *Service) channelSession(agentID string) *channelSession {
 
 func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error) {
 	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}}
-	cfg, err := s.TelegramConfig(ctx, agentID)
-	if err != nil {
+	row, err := s.q.GetTelegramSettings(ctx, agentID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Channels{}, err
 	}
-	if cfg != nil {
+	if err == nil {
 		tg.Enabled = true
-		tg.BotID, _, _ = strings.Cut(cfg.Token, ":")
-		tg.AllowedUsers = cfg.AllowedUsers
-		tg.Options = cfg.Options
+		tg.BotID, _, _ = strings.Cut(row.Token, ":")
+		tg.AllowedUsers, err = parseUsers(row.AllowedUsers)
+		if err != nil {
+			return Channels{}, err
+		}
+		if err := json.Unmarshal([]byte(row.Options), &tg.Options); err != nil {
+			return Channels{}, err
+		}
 	}
+	tg.ManagerConfigured, tg.ManagedCreationAvailable = s.managerStatus()
 	if s.ChannelStatus != nil {
 		tg.Status = s.ChannelStatus(agentID, "telegram")
 	}

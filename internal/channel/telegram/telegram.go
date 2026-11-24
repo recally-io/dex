@@ -33,6 +33,8 @@ type Config struct {
 	Options Options
 	Speech  speech.Resolve
 	Token   string
+	// CredentialRef is the stored key for a vault-backed token.
+	CredentialRef string
 	// AllowedUsers are the Telegram user IDs that can talk to the agent. The bot ignores all other
 	// users, because agent tools run on the host.
 	AllowedUsers []int64
@@ -105,10 +107,14 @@ func New(cfg Config, chats inbound) *Bot {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://api.telegram.org"
 	}
+	client := &http.Client{Timeout: 90 * time.Second} // above the 30 s long poll
+	if cfg.CredentialRef != "" {
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	return &Bot{
 		cfg:       cfg,
 		chats:     chats,
-		client:    &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
+		client:    client,
 		previews:  map[string]*preview{},
 		retryAt:   time.UnixMilli(cfg.RetryAt),
 		albumWake: make(chan struct{}, 1),
@@ -376,7 +382,11 @@ func (b *Bot) requestAPI(ctx context.Context, method string, body io.Reader, con
 			}
 			b.rateMu.Unlock()
 			if b.chats != nil {
-				if err := b.chats.SetTelegramRetryAt(ctx, b.cfg.Token, until.UnixMilli()); err != nil {
+				key := b.cfg.Token
+				if b.cfg.CredentialRef != "" {
+					key = b.cfg.CredentialRef
+				}
+				if err := b.chats.SetTelegramRetryAt(ctx, key, until.UnixMilli()); err != nil {
 					return errors.Join(&apiError{Code: out.Code, Description: "Telegram flood control", RetryAfter: out.Parameters.RetryAfter}, fmt.Errorf("store Telegram retry window: %w", err))
 				}
 			}

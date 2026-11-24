@@ -107,6 +107,25 @@ so dex needs no public URL.
   change cancels the previous code. Manual user-ID entry remains available.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
+- Managed setup uses one dedicated manager bot per Dex server. The owner sets
+  its token on the Telegram channel page. The manager cannot also be a channel
+  bot and must have no other poller or webhook. SQLite stores its credential
+  reference. Dex checks `getMe.can_manage_bots` before it offers setup and again
+  when setup starts. It polls for `message` and `managed_bot` updates. A change
+  to the manager cancels pending setups without changing saved channels.
+- A managed setup lasts 10 minutes. The owner taps Start in the manager's
+  private chat through a one-time link. Dex records that sender as the owner
+  and then shows the official `t.me/newbot` link. Telegram sends no setup ID
+  in `managed_bot`, so Dex matches `user.id` and the exact random bot username.
+  The owner can change the display name. A different username does not connect.
+- SQLite binds the new `bot.id` to one setup. Dex calls `getManagedBotToken` and
+  checks the returned token with `getMe`. It writes the token to the private
+  vault before it commits the channel and setup state together. Duplicate
+  updates for a finished setup do not fetch the token again. Until commit, the
+  old bot keeps running. Cancellation, expiry, failure, or a manual channel
+  save leaves the saved channel unchanged by that setup. Only a confirmed setup
+  restarts the channel with the new bot and its verified owner as sole sender.
+  A crash before the SQLite commit can leave an unused encrypted credential.
 - The bot registers `/menu`, `/status`, `/settings`, `/sessions`, `/workflows`,
   `/question`, `/clear`, `/stop`, `/feedback`, and `/help` with `setMyCommands`.
   The channel manager owns command execution and deduplication.
