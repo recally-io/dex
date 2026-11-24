@@ -101,11 +101,11 @@ func (m *machine) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2
 func (m *machine) reply(callCtx, sessionCtx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, tag uint64, stop context.CancelFunc) {
 	defer stop()
 	value, err := m.execute(callCtx, conn, req, tag)
-	// Hold the slot through the reply write. If the peer sends another call
-	// as soon as it gets the reply, Handle observes the released slot.
+	// Release the slot before writing the reply so Handle never blocks on network
+	// I/O and still observes the freed slot if the peer sends another call at once.
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	defer delete(m.active, tag)
+	delete(m.active, tag)
+	m.mu.Unlock()
 	if err != nil {
 		err = conn.ReplyWithError(sessionCtx, req.ID, machineError(callCtx, err))
 	} else {
@@ -153,7 +153,7 @@ func (m *machine) run(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Re
 				}
 				if err := conn.Notify(outputCtx, MethodOutput, OutputParams{
 					Tag: tag, Stream: string(info.Stream), Text: text,
-				}); err != nil {
+				}); err != nil && !errors.Is(err, ErrMessageTooLarge) {
 					_ = conn.Close()
 				}
 			},
