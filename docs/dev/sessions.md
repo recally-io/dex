@@ -145,8 +145,11 @@ writing child separate files or directories. The tools are:
   fail or end before settlement. It reads any session of any bot except dreams.
   `turn` with `offset` reads the rest of a cut text.
 - `session_search` finds turns whose input or answer contains every word of a
-  query, in sessions except dreams. `bot` is empty (the bot of the caller),
-  `all`, or a bot ID or name.
+  query. It searches the current session by default, including turns before
+  compaction. It skips the turn that calls the tool and excludes dreams. Pass a
+  numeric session ID to search one specific session, or `session: "all"` to
+  search all sessions in the selected bot scope. `bot` defaults to the caller's
+  bot and also accepts `all`, a bot ID, or a bot name.
 
 Each session, list row and match names its bot (`bot` and `botId`).
 
@@ -185,11 +188,11 @@ against them:
   aborted run, and the result for the parent is a database write without a gate.
 - Restart recovery settles the admitted inputs of each child under the agent of
   the child, and sends the one `interrupted` result to the parent in its bot.
-- `session_read` reads any session except dreams. `session_search` reads one
-  bot, or all bots with `all`. `session_list` always shows the children of the
-  caller and takes `bot` for the other sessions. The default is the bot of the
-  caller. A name is not unique: an ambiguous name is an error that lists the
-  IDs.
+- `session_read` reads any session except dreams. With `session: "all"`,
+  `session_search` searches all sessions of the selected bot or bots.
+  `session_list` always shows the children of the caller and takes `bot` for the
+  other sessions. The default bot is the caller's bot. An ambiguous bot name is
+  an error that lists the IDs.
 - A child delivers files to its own bot's artifacts directory. Its tool result
   provides that bot's file URL. A parent can link to the URL, but its bot's
   directory does not contain or list the child's files.

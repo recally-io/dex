@@ -145,21 +145,56 @@ func TestUserCompactsChat(t *testing.T) {
 	// Given a context above the 20000 tokens that compaction keeps.
 	d.fillContext(t, w, chatID)
 
-	// When the user compacts it with instructions, then a pending boundary becomes a summary.
+	// When the user compacts it with instructions, then the boundary shows a bounded local view.
 	d.must(t, http.MethodPost, chatPath(chatID, "compact"), map[string]string{"instructions": "keep the words"}, nil, http.StatusAccepted)
-	w.until(t, "summary placed", func(tr *transcript) bool {
-		return !compaction("pending")(tr) && slices.ContainsFunc(tr.items, func(it item) bool {
-			return it.Kind == "boundary" && it.Boundary == "compaction" && it.Status == "" && it.Text != ""
-		})
-	})
+	w.until(t, "summary placed", compaction(""))
+	if !slices.ContainsFunc(w.tr.items, func(it item) bool {
+		return it.Kind == "boundary" && it.Boundary == "compaction" && it.Status == "" &&
+			strings.Contains(it.Text, "Compacted history") && strings.Contains(it.Text, "keep the words") &&
+			strings.Contains(it.Text, "alpha") && len(it.Text) <= 4096
+	}) {
+		t.Fatal("compact did not place a bounded local view with the input and instructions")
+	}
 	if slices.ContainsFunc(w.tr.items, func(it item) bool { return it.Boundary == "compaction" && it.Status == "failed" }) {
 		t.Fatalf("a compaction failed: %+v", w.tr.items)
+	}
+
+	// The full input remains in the session history.
+	status, history := d.call(t, http.MethodGet, chatPath(chatID, "history?before=9007199254740991&limit=100"), nil)
+	if status != http.StatusOK || !strings.Contains(history, strings.Repeat("alpha ", 200)) {
+		t.Fatalf("full input is missing from history (HTTP %d)", status)
 	}
 
 	// When the next message runs, then the chat still answers.
 	d.setModel(t, "echo")
 	d.send(t, chatID, "after")
 	w.until(t, "answer after compaction", answered("echo: after"))
+}
+
+func TestUserAutomaticCompactUsesLocalView(t *testing.T) {
+	t.Parallel()
+	// Given a model with a small context window.
+	d := startDex(t, t.TempDir(), "")
+	chatID := d.newSession(t).ID
+	w := d.watch(t, chatID)
+	d.setModel(t, "section-small")
+
+	// When the chat reaches the automatic compaction threshold.
+	for range 5 {
+		previous := lastItem(&w.tr).ID
+		d.send(t, chatID, strings.Repeat("history ", 3750))
+		w.until(t, "answer", func(tr *transcript) bool {
+			last := lastItem(tr)
+			return !tr.running && last.Kind == "assistant" && last.ID != previous
+		})
+	}
+
+	// Then automatic compaction also places a local view and the chat continues.
+	if !slices.ContainsFunc(w.tr.items, func(it item) bool {
+		return it.Boundary == "compaction" && it.Status == "" && strings.HasPrefix(it.Text, "Compacted history")
+	}) {
+		t.Fatal("automatic compact did not place a local view")
+	}
 }
 
 // fillContext sends messages until the context is above the 20000 tokens that compaction keeps.
@@ -187,8 +222,7 @@ func TestUserCompactsDuringRun(t *testing.T) {
 	d.send(t, chatID, gate)
 	waitTaskFile(t, filepath.Join(dir, "compact-busy.pid"))
 
-	// When the user compacts while the command runs. The summarizer uses the chat model.
-	d.setModel(t, "section")
+	// When the user compacts while the command runs.
 	d.must(t, http.MethodPost, chatPath(chatID, "compact"), nil, nil, http.StatusAccepted)
 
 	// Then the transcript shows the compaction while the run goes on. The summary is quick, so it
@@ -224,7 +258,6 @@ func TestUserStopsRunAfterCompacting(t *testing.T) {
 	d.setModel(t, "bash")
 	d.send(t, chatID, taskGate(t, dir, "compact-stop"))
 	waitTaskFile(t, filepath.Join(dir, "compact-stop.pid"))
-	d.setModel(t, "section")
 	d.must(t, http.MethodPost, chatPath(chatID, "compact"), nil, nil, http.StatusAccepted)
 	w.until(t, "summary ready", compaction("queued"))
 
@@ -251,33 +284,22 @@ func TestUserStopsRunAfterCompacting(t *testing.T) {
 	}
 }
 
-func TestUserClearsWhileCompacting(t *testing.T) {
+func TestUserClearsCompactedContext(t *testing.T) {
 	t.Parallel()
-	// Given a long chat whose summarizer is slow: the echo model streams its prompt back. The
-	// three long turns stay in the kept 20000 tokens, so only the short first turn is summarized.
+	// Given a chat with a placed compact view.
 	d := startDex(t, t.TempDir(), "")
 	chatID := d.newSession(t).ID
 	w := d.watch(t, chatID)
-	d.setModel(t, "section")
-	for i, text := range []string{"a short start", strings.Repeat("bravo ", 5000), strings.Repeat("charlie ", 3750), strings.Repeat("delta ", 5000)} {
-		d.send(t, chatID, text)
-		w.until(t, fmt.Sprintf("answer %d", i), func(tr *transcript) bool { return !tr.running && countKind(tr, "assistant") == i+1 })
-	}
+	d.fillContext(t, w, chatID)
 	d.waitSettled(t, chatID)
-	d.setModel(t, "echo")
-
-	// When the user clears the context while the summary is made.
 	d.must(t, http.MethodPost, chatPath(chatID, "compact"), nil, nil, http.StatusAccepted)
-	w.until(t, "compacting", compaction("pending"))
-	d.must(t, http.MethodPost, chatPath(chatID, "clear"), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+	w.until(t, "compacted", compaction(""))
 
-	// Then the late summary is not used, and the transcript says why.
-	w.until(t, "stale summary", func(tr *transcript) bool {
-		return slices.ContainsFunc(tr.items, func(it item) bool {
-			return it.Boundary == "compaction" && it.Status == "failed" && strings.HasPrefix(it.Reason, "The context changed")
-		})
-	})
-	if compaction("")(&w.tr) {
-		t.Fatalf("a stale summary was placed: %+v", w.tr.items)
-	}
+	// When the user clears the chat and sends another message.
+	d.must(t, http.MethodPost, chatPath(chatID, "clear"), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+	d.setModel(t, "context")
+	d.send(t, chatID, "fresh context")
+
+	// Then the model sees neither the compact view nor the kept turns.
+	w.until(t, "fresh context only", answered(`context: ["fresh context"]`))
 }

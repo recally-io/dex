@@ -559,6 +559,26 @@ func searchSessions(t *testing.T, d *dex, caller int64, args map[string]any) []s
 	return slices.DeleteFunc(out.Matches, func(m searchMatch) bool { return m.Session == fmt.Sprint(caller) })
 }
 
+func TestUserSessionSearchDefaultsToCurrentSession(t *testing.T) {
+	t.Parallel()
+	// Given two sessions with matching messages, with the other session newer.
+	d := startDex(t, t.TempDir(), "")
+	d.setModel(t, "echo")
+	current := d.newChat(t, "needle in current history")
+	d.watch(t, current).until(t, "current answer", answered("echo: needle in current history"))
+	other := d.newChat(t, "needle in other history")
+	d.watch(t, other).until(t, "other answer", answered("echo: needle in other history"))
+
+	// When the current session searches without a target, it finds its own earlier turn.
+	var out struct {
+		Matches []searchMatch `json:"matches"`
+	}
+	toolJSON(t, callSessionTool(t, d, current, "session_search", map[string]any{"query": "needle", "limit": 1}), &out)
+	if len(out.Matches) != 1 || out.Matches[0].Session != fmt.Sprint(current) || !strings.Contains(out.Matches[0].Snippet, "needle in current history") {
+		t.Fatalf("default search did not find the earlier current turn: %+v", out.Matches)
+	}
+}
+
 func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	t.Parallel()
 	// Given sessions with a Chinese phrase, mixed-case English, a child result, and another bot.
@@ -582,19 +602,19 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	waitResults(t, conn, parent, 1)
 	searcher := d.newSession(t).ID
 	// When a Chat searches, a Chinese phrase matches inside a sentence.
-	if got := searchSessions(t, d, searcher, map[string]any{"query": "迁移方案"}); len(got) != 1 || got[0].Session != fmt.Sprint(notes) || !strings.Contains(got[0].Snippet, "迁移方案") {
+	if got := searchSessions(t, d, searcher, map[string]any{"query": "迁移方案", "session": "all"}); len(got) != 1 || got[0].Session != fmt.Sprint(notes) || !strings.Contains(got[0].Snippet, "迁移方案") {
 		t.Fatalf("chinese: %+v", got)
 	}
 	// And English ignores ASCII case, and every word must match.
-	if got := searchSessions(t, d, searcher, map[string]any{"query": "QUARTERLY report"}); len(got) != 1 || got[0].Session != fmt.Sprint(english) {
+	if got := searchSessions(t, d, searcher, map[string]any{"query": "QUARTERLY report", "session": "all"}); len(got) != 1 || got[0].Session != fmt.Sprint(english) {
 		t.Fatalf("english: %+v", got)
 	}
-	if got := searchSessions(t, d, searcher, map[string]any{"query": "quarterly missing"}); len(got) != 0 {
+	if got := searchSessions(t, d, searcher, map[string]any{"query": "quarterly missing", "session": "all"}); len(got) != 0 {
 		t.Fatalf("a missing word still matched: %+v", got)
 	}
 	// And child inputs and answers are searched, but the result rows in the parent are not.
 	found := false
-	for _, hit := range searchSessions(t, d, searcher, map[string]any{"query": "needle"}) {
+	for _, hit := range searchSessions(t, d, searcher, map[string]any{"query": "needle", "session": "all"}) {
 		found = found || hit.Title == "Finder"
 		if strings.HasPrefix(hit.Turn, "result:") {
 			t.Fatalf("a result row matched: %+v", hit)
@@ -604,7 +624,7 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 		t.Fatal("the child was not found")
 	}
 	for _, query := range []string{"task-result", "outcome"} {
-		if got := searchSessions(t, d, searcher, map[string]any{"query": query}); len(got) != 0 {
+		if got := searchSessions(t, d, searcher, map[string]any{"query": query, "session": "all"}); len(got) != 0 {
 			t.Fatalf("%q matched a result row: %+v", query, got)
 		}
 	}
@@ -612,7 +632,7 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	if got := searchSessions(t, d, searcher, map[string]any{"query": "echo", "session": fmt.Sprint(notes)}); len(got) != 1 || got[0].Session != fmt.Sprint(notes) {
 		t.Fatalf("session filter: %+v", got)
 	}
-	if got := searchSessions(t, d, searcher, map[string]any{"query": "zebra"}); len(got) != 0 {
+	if got := searchSessions(t, d, searcher, map[string]any{"query": "zebra", "session": "all"}); len(got) != 0 {
 		t.Fatalf("another bot leaked: %+v", got)
 	}
 }
