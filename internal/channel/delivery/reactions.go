@@ -122,20 +122,14 @@ func (m *Manager) acknowledgeTelegramQueue(ctx context.Context, bot channel.Reac
 	for attempt := range queueAckAttempts {
 		callCtx, cancel := context.WithTimeout(ctx, reactionTimeout)
 		allowed := m.reactionAllowed(callCtx, "telegram", watch)
-		if allowed && attempt == 0 {
-			// Claim before the remote call. A crash leaves an unknown outcome, not
-			// permission to send again.
-			claimed, err := m.q.ClaimTelegramQueueAcknowledgement(callCtx, sqlc.ClaimTelegramQueueAcknowledgementParams{
-				SubmissionID: watch.id, UpdatedAt: time.Now().UnixMilli(),
-			})
-			if err != nil && ctx.Err() == nil {
-				slog.Warn("telegram: claim queued acknowledgement", "submission", watch.id, "err", err)
-			}
-			allowed = err == nil && claimed == 1
+		if allowed {
+			allowed = m.beginTelegramQueueAcknowledgement(callCtx, watch.id, attempt > 0)
 		}
 		if allowed && attempt > 0 {
+			// The durable write can wait for SQLite. Check again before sending.
+			allowed = m.reactionAllowed(callCtx, "telegram", watch)
 			_, queued := m.telegramQueueState(callCtx, watch)
-			allowed = queued && time.Now().Before(deadline)
+			allowed = allowed && queued && time.Now().Before(deadline)
 		}
 		if !allowed {
 			cancel()
@@ -178,6 +172,26 @@ func (m *Manager) acknowledgeTelegramQueue(ctx context.Context, bot channel.Reac
 		}
 	}
 	return nil
+}
+
+// Record the unknown outcome before each request. A crash after this write
+// cannot leave a prior rejection as the outcome of the current attempt.
+func (m *Manager) beginTelegramQueueAcknowledgement(ctx context.Context, id string, retry bool) bool {
+	var changed int64
+	var err error
+	if retry {
+		changed, err = m.q.BeginTelegramQueueAcknowledgementRetry(ctx, sqlc.BeginTelegramQueueAcknowledgementRetryParams{
+			SubmissionID: id, UpdatedAt: time.Now().UnixMilli(),
+		})
+	} else {
+		changed, err = m.q.ClaimTelegramQueueAcknowledgement(ctx, sqlc.ClaimTelegramQueueAcknowledgementParams{
+			SubmissionID: id, UpdatedAt: time.Now().UnixMilli(),
+		})
+	}
+	if err != nil && !errors.Is(err, context.Canceled) {
+		slog.Warn("telegram: begin queued acknowledgement", "submission", id, "err", err)
+	}
+	return err == nil && changed == 1
 }
 
 func (m *Manager) waitTelegramQueueRetry(ctx context.Context, watch *reactionWatch, retryAt, deadline time.Time) bool {

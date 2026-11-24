@@ -297,10 +297,11 @@ reactions after restart.
 To inspect an acknowledgement, join `submissions.id` to
 `telegram_queue_acknowledgements.submission_id` in `control.sqlite`. Find the
 submission by its `source_key`. A missing acknowledgement row means no attempt
-was recorded. Dex saves `unknown` before the first request, so a crash at that
-boundary cannot appear as a confirmed result. `failed` records a definite
-rejection. `accepted` means Telegram confirmed the request. It does not prove the
-user saw the reaction. `updated_at` is Unix time in milliseconds.
+was recorded. Dex saves `unknown` before each request, including retries. A
+crash at that boundary cannot leave the outcome of an earlier attempt in place.
+`failed` records a definite rejection. `accepted` means Telegram confirmed the
+request. It does not prove the user saw the reaction. `updated_at` is Unix time
+in milliseconds.
 
 ### Promised follow-ups
 

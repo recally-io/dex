@@ -356,6 +356,13 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 				_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": after}})
 				return
 			}
+			if m.Text == "👀" && gate.holdQueuedRetry != nil {
+				select {
+				case <-gate.holdQueuedRetry:
+				case <-r.Context().Done():
+					return
+				}
+			}
 		}
 		if method == "setMyCommands" {
 			for _, command := range m.Commands {

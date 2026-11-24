@@ -9,6 +9,29 @@ import (
 	"context"
 )
 
+const beginTelegramQueueAcknowledgementRetry = `-- name: BeginTelegramQueueAcknowledgementRetry :execrows
+UPDATE telegram_queue_acknowledgements
+SET outcome = 'unknown', updated_at = ?1
+WHERE submission_id = ?2 AND outcome = 'failed'
+AND EXISTS (
+    SELECT 1 FROM submissions
+    WHERE id = telegram_queue_acknowledgements.submission_id AND status = 'pending' AND stop_requested = 0
+)
+`
+
+type BeginTelegramQueueAcknowledgementRetryParams struct {
+	UpdatedAt    int64  `json:"updated_at"`
+	SubmissionID string `json:"submission_id"`
+}
+
+func (q *Queries) BeginTelegramQueueAcknowledgementRetry(ctx context.Context, arg BeginTelegramQueueAcknowledgementRetryParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, beginTelegramQueueAcknowledgementRetry, arg.UpdatedAt, arg.SubmissionID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const claimTelegramQueueAcknowledgement = `-- name: ClaimTelegramQueueAcknowledgement :execrows
 INSERT INTO telegram_queue_acknowledgements (submission_id, outcome, updated_at)
 SELECT id, 'unknown', ?1 FROM submissions

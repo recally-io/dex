@@ -11,7 +11,8 @@ func TestUserTelegramQueuedAcknowledgementRetriesWhileWaiting(t *testing.T) {
 	t.Parallel()
 	// Given a busy conversation and a Telegram rate limit on the first acknowledgement.
 	data := t.TempDir()
-	gate := &reactionGate{calls: make(chan reactionCall, 20), retryAfter: 2, queuedTimes: make(chan time.Time, 20)}
+	releaseRetry := make(chan struct{})
+	gate := &reactionGate{calls: make(chan reactionCall, 20), retryAfter: 2, queuedTimes: make(chan time.Time, 20), holdQueuedRetry: releaseRetry}
 	gate.limitNextQueued.Store(true)
 	f := newFakeTelegram(t)
 	f.reactGate = gate
@@ -30,8 +31,12 @@ func TestUserTelegramQueuedAcknowledgementRetriesWhileWaiting(t *testing.T) {
 		t.Fatalf("retried before retry_after: %s", elapsed)
 	}
 
-	// Then Telegram accepts the acknowledgement while the input is still waiting.
+	// Then an in-flight retry has an unknown outcome until Telegram accepts it.
 	conn := controlWriteDB(t, data)
+	if got, err := telegramQueueAck(t, conn, 1); err != nil || got != "unknown" {
+		t.Fatalf("queued acknowledgement = %q, %v; want unknown", got, err)
+	}
+	close(releaseRetry)
 	waitTelegramQueueAck(t, conn, 1, "accepted")
 	releaseResultGate(t, data, "earlier")
 	if got := f.next(t).Text; got != "bash: waiting" {
@@ -117,13 +122,19 @@ func TestUserTelegramQueuedAcknowledgementDoesNotReplayUnknownOutcome(t *testing
 	waitTelegramQueueAck(t, conn, 1, "unknown")
 }
 
+func telegramQueueAck(t *testing.T, conn *sql.DB, update int64) (string, error) {
+	t.Helper()
+	var outcome string
+	err := conn.QueryRowContext(t.Context(), `SELECT coalesce(a.outcome, 'not_attempted') FROM submissions s
+		LEFT JOIN telegram_queue_acknowledgements a ON a.submission_id = s.id
+		WHERE s.source_key = 'telegram:123:' || ?`, update).Scan(&outcome)
+	return outcome, err
+}
+
 func waitTelegramQueueAck(t *testing.T, conn *sql.DB, update int64, want string) {
 	t.Helper()
 	eventually(t, "queued acknowledgement "+want, func() (bool, any) {
-		var got string
-		err := conn.QueryRowContext(t.Context(), `SELECT coalesce(a.outcome, 'not_attempted') FROM submissions s
-			LEFT JOIN telegram_queue_acknowledgements a ON a.submission_id = s.id
-			WHERE s.source_key = 'telegram:123:' || ?`, update).Scan(&got)
+		got, err := telegramQueueAck(t, conn, update)
 		return err == nil && got == want, []any{got, err}
 	})
 }

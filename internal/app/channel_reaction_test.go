@@ -18,6 +18,7 @@ type reactionGate struct {
 	limitNextQueued atomic.Bool
 	retryAfter      int
 	queuedTimes     chan time.Time
+	holdQueuedRetry <-chan struct{}
 	unknownOutcome  bool
 }
 
