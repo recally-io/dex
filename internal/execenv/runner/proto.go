@@ -4,7 +4,6 @@ import (
 	"context"
 	json "encoding/json/v2"
 	"errors"
-	"sync"
 
 	"github.com/coder/websocket"
 )
@@ -14,9 +13,13 @@ const (
 	Version = "dex-agent.v1"
 	// MaxMessageBytes bounds one JSON-RPC message. A 16 MiB file grows about a third in base64.
 	MaxMessageBytes = 24 << 20
+	// Limit both the number of active calls and their aggregate memory and I/O.
+	maxInFlight = 4
 
 	// MethodReady is the first message from the machine.
 	MethodReady = "ready"
+	// MethodStarted confirms a requested operation reached the Runner worker.
+	MethodStarted = "started"
 	// MethodOutput carries one chunk of command output while exec runs.
 	MethodOutput = "output"
 	// MethodCancel stops the call with the same tag.
@@ -48,6 +51,11 @@ type Ready struct {
 	Version          string `json:"version,omitempty"`
 	CanSelfUpdate    bool   `json:"canSelfUpdate,omitzero"`
 	SelfUpdateReason string `json:"selfUpdateReason,omitempty"`
+	// MaxInFlight is the number of calls the runner accepts per connection.
+	// Older peers omit or ignore this field and continue to use one slot.
+	MaxInFlight int `json:"maxInFlight,omitzero"`
+	// StartEvents permits a request with meta:true to receive a started notification.
+	StartEvents bool `json:"startEvents,omitzero"`
 }
 
 // Identity names one call, so a cancel notification can stop it and so output can follow
@@ -160,7 +168,6 @@ type TempFileParams struct {
 type Stream struct {
 	ctx    context.Context
 	socket *websocket.Conn
-	mu     sync.Mutex
 }
 
 // NewStream takes ownership of a socket that already negotiated Version.
@@ -185,14 +192,18 @@ func (s *Stream) WriteObject(value any) error {
 	if len(data) > MaxMessageBytes {
 		return ErrMessageTooLarge
 	}
-	// The socket accepts one writer at a time.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.socket.Write(s.ctx, websocket.MessageText, data)
+	// jsonrpc2 serializes writes and ignores the contexts passed to send.
+	// Bound each actual write so a stalled peer cannot hold that lock forever.
+	ctx, cancel := context.WithTimeout(s.ctx, messageTimeout)
+	defer cancel()
+	if err := s.socket.Write(ctx, websocket.MessageText, data); err != nil {
+		return errors.Join(errStreamWrite, err)
+	}
+	return nil
 }
 
 func (s *Stream) Close() error {
-	return s.socket.Close(websocket.StatusNormalClosure, "")
+	return s.socket.CloseNow()
 }
 
 // Tagger gives each call a tag, so a cancel notification can name it.
@@ -217,3 +228,5 @@ type Failure struct {
 
 // ErrMessageTooLarge refuses a message that exceeds MaxMessageBytes.
 var ErrMessageTooLarge = errors.New("runner message exceeds the session limit")
+
+var errStreamWrite = errors.New("runner transport write failed")

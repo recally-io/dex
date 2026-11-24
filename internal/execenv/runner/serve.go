@@ -23,11 +23,18 @@ func Serve(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv) 
 // ServeWithInfo executes calls on socket and reports extra version and self-update metadata in Ready.
 func ServeWithInfo(ctx context.Context, socket *websocket.Conn, local env.ExecutionEnv, meta Ready) error {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	defer func() { _ = local.Cleanup(context.WithoutCancel(ctx)) }()
-	m := &machine{local: local}
+	m := &machine{local: local, active: make(map[uint64]context.CancelFunc)}
 	conn := jsonrpc2.NewConn(ctx, NewStream(ctx, socket), m)
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		cancel()
+		_ = conn.Close()
+		// Prevent WaitGroup registration from racing the drain and cleanup.
+		m.mu.Lock()
+		m.draining = true
+		m.mu.Unlock()
+		m.calls.Wait()
+		_ = local.Cleanup(context.WithoutCancel(ctx))
+	}()
 	home, _ := os.UserHomeDir()
 	ready, readyCancel := context.WithTimeout(ctx, messageTimeout)
 	defer readyCancel()
@@ -39,6 +46,8 @@ func ServeWithInfo(ctx context.Context, socket *websocket.Conn, local env.Execut
 		Version:          meta.Version,
 		CanSelfUpdate:    meta.CanSelfUpdate,
 		SelfUpdateReason: meta.SelfUpdateReason,
+		MaxInFlight:      maxInFlight,
+		StartEvents:      true,
 	}
 	if err := conn.Notify(ready, MethodReady, info); err != nil {
 		return err
@@ -50,50 +59,83 @@ func ServeWithInfo(ctx context.Context, socket *websocket.Conn, local env.Execut
 
 // machine answers the calls of one session.
 type machine struct {
-	local  env.ExecutionEnv
-	mu     sync.Mutex
-	tag    uint64
-	cancel context.CancelFunc
+	local    env.ExecutionEnv
+	mu       sync.Mutex
+	active   map[uint64]context.CancelFunc
+	calls    sync.WaitGroup
+	draining bool
 }
 
 func (m *machine) Handle(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
 	var id Identity
-	_ = decode(req.Params, &id)
+	if err := decode(req.Params, &id); err != nil || id.Tag == 0 {
+		if !req.Notif {
+			_ = conn.ReplyWithError(ctx, req.ID, &jsonrpc2.Error{Code: jsonrpc2.CodeInvalidParams, Message: "invalid call tag"})
+		}
+		return
+	}
 	m.mu.Lock()
 	if req.Notif {
-		if req.Method == MethodCancel && m.cancel != nil && m.tag == id.Tag {
-			m.cancel()
+		if stop := m.active[id.Tag]; req.Method == MethodCancel && stop != nil {
+			stop()
 		}
 		m.mu.Unlock()
 		return
 	}
-	if m.cancel != nil {
+	if m.draining || ctx.Err() != nil {
 		m.mu.Unlock()
-		_ = conn.ReplyWithError(ctx, req.ID, machineError(ctx, errors.New("the machine is busy")))
+		return
+	}
+	if len(m.active) >= maxInFlight || m.active[id.Tag] != nil {
+		m.mu.Unlock()
+		_ = conn.ReplyWithError(ctx, req.ID, machineError(ctx, errors.New("the machine is busy or the call tag is already active")))
 		return
 	}
 	// Register the operation in the read loop before the next cancel can arrive.
 	callCtx, stop := context.WithCancel(ctx)
-	m.tag, m.cancel = id.Tag, stop
+	m.active[id.Tag] = stop
+	m.calls.Go(func() { m.reply(callCtx, ctx, conn, req, id.Tag, stop) })
 	m.mu.Unlock()
-	go m.reply(callCtx, ctx, conn, req, id.Tag, stop)
 }
 
-func (m *machine) reply(callCtx, ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, tag uint64, stop context.CancelFunc) {
+func (m *machine) reply(callCtx, sessionCtx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, tag uint64, stop context.CancelFunc) {
 	defer stop()
-	value, err := m.run(callCtx, conn, req, req.Method, tag)
+	value, err := m.execute(callCtx, conn, req, tag)
+	// Release the slot before writing the reply so Handle never blocks on network
+	// I/O and still observes the freed slot if the peer sends another call at once.
 	m.mu.Lock()
-	m.cancel = nil
+	delete(m.active, tag)
 	m.mu.Unlock()
 	if err != nil {
-		_ = conn.ReplyWithError(ctx, req.ID, machineError(callCtx, err))
-		return
+		err = conn.ReplyWithError(sessionCtx, req.ID, machineError(callCtx, err))
+	} else {
+		err = conn.Reply(sessionCtx, req.ID, value)
+		if errors.Is(err, ErrMessageTooLarge) {
+			err = conn.ReplyWithError(sessionCtx, req.ID, machineError(callCtx, err))
+		}
 	}
-	_ = conn.Reply(ctx, req.ID, value)
+	if err != nil {
+		// Without a final result the peer must treat the operation as unknown.
+		_ = conn.Close()
+	}
 }
 
-func (m *machine) run(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, method string, tag uint64) (any, error) {
-	switch method {
+func (m *machine) execute(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, tag uint64) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var wantStart bool
+	if decode(req.Meta, &wantStart) == nil && wantStart {
+		if err := conn.Notify(ctx, MethodStarted, IdentityOf(tag)); err != nil {
+			_ = conn.Close()
+			return nil, err
+		}
+	}
+	return m.run(ctx, conn, req, tag)
+}
+
+func (m *machine) run(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request, tag uint64) (any, error) {
+	switch req.Method {
 	case MethodExec:
 		var params ExecParams
 		if err := decode(req.Params, &params); err != nil {
@@ -109,9 +151,11 @@ func (m *machine) run(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Re
 				if outputCtx.Err() != nil {
 					return
 				}
-				_ = conn.Notify(context.WithoutCancel(outputCtx), MethodOutput, OutputParams{
-					Identity: IdentityOf(tag), Stream: string(info.Stream), Text: text,
-				})
+				if err := conn.Notify(outputCtx, MethodOutput, OutputParams{
+					Tag: tag, Stream: string(info.Stream), Text: text,
+				}); err != nil && !errors.Is(err, ErrMessageTooLarge) {
+					_ = conn.Close()
+				}
 			},
 		})
 		if err != nil {
@@ -148,7 +192,7 @@ func (m *machine) run(ctx context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Re
 		if len(params.Data) > maxFileBytes {
 			return nil, errFileLimit
 		}
-		if method == MethodWrite {
+		if req.Method == MethodWrite {
 			return nil, m.local.WriteFile(ctx, params.Path, params.Data)
 		}
 		return nil, m.local.AppendFile(ctx, params.Path, params.Data)

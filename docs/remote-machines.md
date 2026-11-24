@@ -221,5 +221,7 @@ token, Dex replaces the earlier session at once. A command that starts while the
 offline waits up to 10 seconds for it. A revoke or a new enrollment ends the leases on the
 machine, and each bot that uses it reloads.
 
-One machine runs one operation at a time. A file transfer is limited to 16 MiB. Use an SSH
-environment when you need concurrent commands or larger transfers.
+A current Dex and Runner can execute up to four operations at a time per connection. If either
+peer is older, it still uses one slot. These operations share the target filesystem. Wait for a
+write or rename to finish before starting work that depends on it. A file transfer is limited to
+16 MiB. Use an SSH environment when you need larger transfers.
