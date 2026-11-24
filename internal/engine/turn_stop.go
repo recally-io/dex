@@ -113,7 +113,7 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) error {
 	if err != nil || task == nil || task.ConversationId != c.Id() {
 		return err
 	}
-	if current && task.State.Status != durable.TaskTerminal {
+	if task.State.Status != durable.TaskTerminal {
 		settled, err := h.WaitForTask(ctx, id)
 		if err != nil {
 			return err

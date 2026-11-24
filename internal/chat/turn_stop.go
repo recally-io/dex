@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -58,7 +59,7 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	if err != nil {
 		return err
 	}
-	if err := s.applyMainStop(ctx, id, ref, target); err != nil {
+	if _, err := s.applyMainStop(ctx, id, ref, target); err != nil {
 		s.scheduleRetry()
 		return err
 	}
@@ -77,19 +78,28 @@ func (s *Service) reconcileMainStops(ctx context.Context, agentID string, blocke
 			continue
 		}
 		ref := engine.Ref{AgentID: agentID, ID: stop.ExecutionID.Int64, Scope: stop.ExecutionScope}
-		if err := s.applyMainStop(ctx, stop.ConversationID, ref, stop.Target); err != nil {
-			blocked[stop.ConversationID] = true
+		completed, err := s.applyMainStop(ctx, stop.ConversationID, ref, stop.Target)
+		blocked[stop.ConversationID] = !completed
+		if err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
 }
 
-func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, target string) error {
-	callCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, target string) (completed bool, err error) {
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 	defer cancel()
-	if err := s.engine.StopRun(callCtx, ref, target); err != nil {
-		return err
+	if ref.ID > 0 {
+		if err := s.engine.StopRun(callCtx, ref, target); err != nil && !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrStaleRunTarget) {
+			if errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
+				s.scheduleRetry()
+				return false, nil
+			}
+			slog.Warn("cancel main turn", "execution", ref.ID, "err", err)
+			return false, err
+		}
 	}
-	return s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
+	err = s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
+	return err == nil, err
 }
