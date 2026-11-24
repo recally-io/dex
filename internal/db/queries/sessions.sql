@@ -72,6 +72,7 @@ FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%'
+    AND s.id <> @excluded_turn_id
     AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
     AND (CAST(@session_id AS INTEGER) = 0 OR c.id = @session_id)
     AND s.created_at >= @since

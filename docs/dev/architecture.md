@@ -135,6 +135,13 @@ A retry with the same source and boundary returns that Chat; a mismatch returns
 `409`. A concurrent retry can create an extra native conversation before control
 rejects its receipt. That conversation has no control reference and is invisible.
 
+Manual and automatic compaction use the native range selection and keep recent
+context unchanged. Dex supplies a local view of older context instead of calling
+a model for a summary. The view contains selected user and assistant text, with
+native entry IDs. It is limited to 4 KiB, including up to 1 KiB of manual compact
+instructions. It does not copy tool output, thinking, or attachments. Compaction
+does not delete entries from session history or change who can read them.
+
 Manual compact with a UUID runs at most once per ID. Control records the chat and
 instructions before the native call. The native transaction commits a request
 record with the compaction task. Every retry calls native admission again, so a

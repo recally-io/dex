@@ -541,31 +541,33 @@ FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%'
-    AND (CAST(?1 AS INTEGER) = 1 OR c.agent_id = ?2)
-    AND (CAST(?3 AS INTEGER) = 0 OR c.id = ?3)
-    AND s.created_at >= ?4
-    AND (CAST(?5 AS TEXT) = '' OR instr(lower(s.content), CAST(?5 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?5 AS TEXT)) > 0)
+    AND s.id <> ?1
+    AND (CAST(?2 AS INTEGER) = 1 OR c.agent_id = ?3)
+    AND (CAST(?4 AS INTEGER) = 0 OR c.id = ?4)
+    AND s.created_at >= ?5
     AND (CAST(?6 AS TEXT) = '' OR instr(lower(s.content), CAST(?6 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?6 AS TEXT)) > 0)
     AND (CAST(?7 AS TEXT) = '' OR instr(lower(s.content), CAST(?7 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?7 AS TEXT)) > 0)
     AND (CAST(?8 AS TEXT) = '' OR instr(lower(s.content), CAST(?8 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?8 AS TEXT)) > 0)
     AND (CAST(?9 AS TEXT) = '' OR instr(lower(s.content), CAST(?9 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?9 AS TEXT)) > 0)
     AND (CAST(?10 AS TEXT) = '' OR instr(lower(s.content), CAST(?10 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?10 AS TEXT)) > 0)
+    AND (CAST(?11 AS TEXT) = '' OR instr(lower(s.content), CAST(?11 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?11 AS TEXT)) > 0)
 ORDER BY s.rowid DESC
-LIMIT ?11
+LIMIT ?12
 `
 
 type SearchTurnsParams struct {
-	AllBots   int64  `json:"all_bots"`
-	AgentID   string `json:"agent_id"`
-	SessionID int64  `json:"session_id"`
-	Since     int64  `json:"since"`
-	W1        string `json:"w1"`
-	W2        string `json:"w2"`
-	W3        string `json:"w3"`
-	W4        string `json:"w4"`
-	W5        string `json:"w5"`
-	W6        string `json:"w6"`
-	MaxRows   int64  `json:"max_rows"`
+	ExcludedTurnID string `json:"excluded_turn_id"`
+	AllBots        int64  `json:"all_bots"`
+	AgentID        string `json:"agent_id"`
+	SessionID      int64  `json:"session_id"`
+	Since          int64  `json:"since"`
+	W1             string `json:"w1"`
+	W2             string `json:"w2"`
+	W3             string `json:"w3"`
+	W4             string `json:"w4"`
+	W5             string `json:"w5"`
+	W6             string `json:"w6"`
+	MaxRows        int64  `json:"max_rows"`
 }
 
 type SearchTurnsRow struct {
@@ -583,6 +585,7 @@ type SearchTurnsRow struct {
 // lowercases ASCII letters of the words, and lower() does the same for the text.
 func (q *Queries) SearchTurns(ctx context.Context, arg SearchTurnsParams) ([]SearchTurnsRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchTurns,
+		arg.ExcludedTurnID,
 		arg.AllBots,
 		arg.AgentID,
 		arg.SessionID,

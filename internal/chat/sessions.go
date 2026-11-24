@@ -631,15 +631,20 @@ func (s *Service) ToolSessionSearch(ctx context.Context, r engine.TaskContext, a
 	if err != nil {
 		return nil, err
 	}
-	params := sqlc.SearchTurnsParams{AgentID: agentID, AllBots: boolInt(all), MaxRows: int64(cmp.Or(a.Limit, 20))}
+	params := sqlc.SearchTurnsParams{AgentID: agentID, AllBots: boolInt(all), ExcludedTurnID: r.SourceRequestID, MaxRows: int64(cmp.Or(a.Limit, 20))}
 	for i, slot := range []*string{&params.W1, &params.W2, &params.W3, &params.W4, &params.W5, &params.W6} {
 		if i < len(words) {
 			*slot = words[i]
 		}
 	}
-	if a.Session != "" {
+	switch a.Session {
+	case "":
+		params.SessionID = caller.ID
+	case "all":
+		// The bot filter still applies when there is no session filter.
+	default:
 		if params.SessionID, err = strconv.ParseInt(a.Session, 10, 64); err != nil || params.SessionID <= 0 {
-			return nil, fmt.Errorf("%w: session is a session ID", errSessionInvalid)
+			return nil, fmt.Errorf("%w: session must be a session ID or all", errSessionInvalid)
 		}
 	}
 	if a.Since != "" {

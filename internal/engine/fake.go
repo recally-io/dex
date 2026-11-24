@@ -15,6 +15,7 @@ func fakeProvider() *ai.ModelsProvider {
 	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "spawn", "spawn-notify", "spawn-monitor", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
+	defs = append(defs, ai.FauxModelDefinition{ID: "section-small", ContextWindow: 36000})
 	faux := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "faux", Models: defs, TokensPerSecond: 200})
 	reply := ai.FauxResponseFactory(func(t ai.TranscriptContext, o ai.StreamOptions, _ *ai.FauxProviderState, m *ai.Model) (ai.AssistantMessage, error) {
 		text := lastUserText(t)
@@ -52,7 +53,7 @@ func fakeProvider() *ai.ModelsProvider {
 			return fakeText("context: " + string(data)), err
 		case "memory":
 			return fakeText("memory: " + fakeSection(t, "memory")), nil
-		case "section":
+		case "section", "section-small":
 			return fakeText("section: " + fakeSection(t, text)), nil
 		case "think":
 			level := string(o.Thinking)
