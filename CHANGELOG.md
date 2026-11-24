@@ -7,13 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Execution environments**: Add an optional description to Runner, SSH, and E2B environments, such as "Use for macOS builds". Settings and the `environment_list` tool return it as `desc` (#295).
+
+### Changed
+
+- **Compaction**: Manual and automatic compaction use a local view of the session context and make no model call (#293).
+- **Child sessions**: Rename `report_parent` to `session_report`. It takes only `content` and `final` and reports to the direct parent as an internal result. The parent `session_send` is unchanged. The web shows both the new and old child calls as "Reported to parent" (#302).
+- **Web Main**: Main offers Send while its children work. Main Stop cancels only the foreground task shown in the browser. It keeps Main's pending inputs and does not stop child sessions, background commands, or Monitors. Other sessions' Stop and channel `/stop` keep their scope (#306).
+- **Remote Machines**: Run up to four operations at the same time on one Runner connection, so a short file read does not wait for a long command. An old Dex or Runner still uses one slot (#309).
+- **Session admission**: Each session has its own admission queue and retry backoff, so a stalled child session does not hold Main or other sessions. Telegram input returns to polling after the durable receipt. `session input` logs record the hashed request ID, session, and environment (#310).
+
+### Upgrade and rollback
+
+- This release adds three database migrations: Main turn Stop receipts, parent input Stop flags, and environment descriptions. Back up the data directory before upgrading. To roll back to `v0.20.0-rc.5`, stop Dex and restore the pre-upgrade backup. This discards changes made after the backup.
+
 ## [v0.20.0-rc.5] - 2026-11-24
 
 ### Changed
 
 - **Tool discovery**: Enable `tool_search` in owner sessions without MCP. Search built-in tools and available MCP tools without changing session permissions.
 - **Memory**: Rename `read_dream_message` to `memory_source_read`. It still reads only the sources supplied for the current consolidation run.
-- **Child sessions**: Rename `report_parent` to `session_report`. It takes only `content` and `final` and reports to the direct parent as an internal result. The parent `session_send` is unchanged. The web shows both the new and old child calls as "Reported to parent".
 
 ### Removed
 
