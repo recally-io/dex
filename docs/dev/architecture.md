@@ -316,6 +316,8 @@ it is not the source of execution state.
 Keep one transcript projection in the engine. History, snapshots, and live
 events use durable entries and the native Inbox. The live hub owns transport
 and empty-chat attachment, with no second transcript or execution model.
+The Web client also displays a separate [Outbox projection](sessions.md#web-notifications)
+for explicit Web notifications. That projection does not write native entries.
 
 The tests cover separate behavior and failure cases. Keep restart, duplicate
 message, multiple browser streams, model errors, tool results, and DST cases.

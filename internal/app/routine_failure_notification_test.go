@@ -4,9 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/recally-io/dex/internal/api"
 )
 
 func createFailureRoutine(t *testing.T, d *dex, mode, target string) (string, map[string]any) {
@@ -71,6 +74,18 @@ func TestUserRoutineNotifiesWhenItCannotStart(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE conversation_id = ?`, main).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("Main received %d inputs: %v", n, err)
 	}
+	w := d.watch(t, main)
+	w.until(t, "Main's notification snapshot", func(tr *transcript) bool { return len(tr.noticeEvents) > 0 })
+	if len(w.tr.noticeEvents[0].Notifications) != 0 {
+		t.Fatalf("Routine alert leaked into Main: %+v", w.tr.noticeEvents)
+	}
+	var outbox api.OutboxMessageList
+	d.must(t, http.MethodGet, chatPath(main, "outbox"), nil, &outbox)
+	if !slices.ContainsFunc(outbox.Messages, func(m api.OutboxMessage) bool {
+		return m.Id == "routine:"+first.ID && m.Body == body && m.Status == api.OutboxMessageStatusPending
+	}) {
+		t.Fatalf("Main's Outbox did not retain the pending alert: %+v", outbox)
+	}
 }
 
 func assertRoutineOutbox(t *testing.T, conn *sql.DB, runID string, want bool) {
@@ -92,6 +107,7 @@ func TestUserRoutineFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing.T)
 	body["session"] = "reuse"
 	conn := sessionDB(t, d)
 	var alertIDs []string
+	var routineChat int64
 	for _, step := range []struct {
 		outcome, summary, key    string
 		alert, businessDuplicate bool
@@ -114,6 +130,17 @@ func TestUserRoutineFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing.T)
 		assertRoutineOutbox(t, conn, run.ID, step.alert)
 		if step.alert {
 			alertIDs = append(alertIDs, run.ID)
+			routineChat = run.ChatID
+		}
+	}
+	// The owner can review the pending deliveries from their read-only Routine transcript.
+	var outbox api.OutboxMessageList
+	d.must(t, http.MethodGet, chatPath(routineChat, "outbox"), nil, &outbox)
+	for _, id := range alertIDs {
+		if !slices.ContainsFunc(outbox.Messages, func(m api.OutboxMessage) bool {
+			return m.Id == "routine:"+id && m.Status == api.OutboxMessageStatusPending
+		}) {
+			t.Fatalf("Routine Outbox did not show pending alert %s: %+v", id, outbox)
 		}
 	}
 	// Pending failure alerts do not replace each other even in a reused chat.

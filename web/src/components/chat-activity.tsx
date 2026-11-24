@@ -123,6 +123,7 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
             title="Follow-up monitors and outbound deliveries"
           >
             <Clock className="size-3.5 shrink-0" />
+            <span>Outbox</span>
             {scheduledCount > 0 ? (
               <span className="text-[12px] font-medium text-foreground tabular-nums">{scheduledCount}</span>
             ) : null}
@@ -208,18 +209,22 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
               </span>
               <span className="text-[11px] text-muted-foreground tabular-nums">{messages.length} recent</span>
             </div>
-            {messages.length === 0 ? (
+            {outboxQuery.isError ? (
+              <p className="text-[12px] text-destructive">{errorText(outboxQuery.error)}</p>
+            ) : outboxQuery.isPending ? (
+              <p className="text-[12px] text-muted-foreground">Loading Outbox…</p>
+            ) : messages.length === 0 ? (
               <p className="text-[12px] text-muted-foreground">No outbound messages yet.</p>
             ) : (
-              <ul className="space-y-2">
-                {messages.slice(0, 10).map((m) => (
+              <ul aria-label="Recent Outbox entries" className="space-y-2">
+                {messages.map((m) => (
                   <li
                     key={m.id}
                     className="space-y-1 rounded-md border border-border/70 bg-muted/30 px-2.5 py-2 text-[12px]"
                   >
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Badge variant={outboxBadgeVariant(m.status)} className="h-4 px-1.5 text-[10px]">
-                        {m.status}
+                        {m.peer ? `Delivery: ${m.status}` : "Web record"}
                       </Badge>
                       <span className="font-mono text-[11px] text-muted-foreground">{m.kind}</span>
                       {m.peer ? (
@@ -235,7 +240,7 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
                       </span>
                     </div>
                     {m.body || m.reason ? (
-                      <p className="line-clamp-2 text-[12px] text-foreground [overflow-wrap:anywhere]">
+                      <p className="text-[12px] whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]">
                         {m.body || m.reason}
                       </p>
                     ) : null}

@@ -77,6 +77,20 @@ parent's `session_send` can steer. Channel, automation and dream inputs always
 use `followUp`. Bot and routine management check the source input, not the
 steered input.
 
+## Web notifications
+
+Main and Chat display explicit `notify_user` output when the stored source
+submission has Web origin. The Outbox row, source submission, and requested
+conversation must agree on the original binding. An isolated channel session
+or a Routine does not get a Web timeline notification. A channel target on an
+otherwise eligible Web notification does not change its origin.
+
+The Web stream reads a recent page from the Outbox when it connects. A committed
+notification wakes that conversation's stream. Older notifications use an Outbox
+ID cursor in chat history, separate from the native entry cursor. The Web client
+merges pages and live updates by Outbox ID. Neither the engine transcript nor
+the platform delivery receipt changes when the Web client reads an entry.
+
 ## Internal delegation
 
 `ask_user` is installed only on Main and Chat conversations. Extension edits
