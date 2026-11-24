@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"sync"
 
 	"github.com/recally-io/dex/internal/channel"
@@ -30,6 +31,22 @@ func (r *channelRegistry) Agent(id string) *delivery.Manager {
 		r.managers[id] = delivery.New(r.ctx, r.db, r.chats, id)
 	}
 	return r.managers[id]
+}
+
+func (r *channelRegistry) webhook(w http.ResponseWriter, req *http.Request) {
+	platform := req.PathValue("platform")
+	if platform != "telegram" && platform != "feishu" {
+		http.NotFound(w, req)
+		return
+	}
+	r.mu.Lock()
+	manager := r.managers[req.PathValue("agentId")]
+	r.mu.Unlock()
+	if manager == nil {
+		http.NotFound(w, req)
+		return
+	}
+	manager.Webhook(w, req, platform)
 }
 
 func (r *channelRegistry) Status(agentID, platform string) channel.Status {

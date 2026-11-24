@@ -21,6 +21,7 @@ import (
 
 // Config holds credentials. APIURL is a test boundary; an empty URL selects Brand.
 type Config struct {
+	Webhook   WebhookConfig
 	AppID     string
 	AppSecret string
 	OwnerID   string

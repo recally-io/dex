@@ -14,7 +14,11 @@ func (h *handler) GetFeishu(ctx context.Context, _ api.GetFeishuRequestObject) (
 	return api.GetFeishu200JSONResponse(view), nil
 }
 func (h *handler) SetFeishu(ctx context.Context, req api.SetFeishuRequestObject) (api.SetFeishuResponseObject, error) {
-	view, err := h.Agents.SetFeishu(ctx, agentID(ctx), req.Body.AppId, req.Body.AppSecret, req.Body.Brand, req.Body.Reactions)
+	var transport string
+	if req.Body.Transport != nil {
+		transport = string(*req.Body.Transport)
+	}
+	view, err := h.Agents.SetFeishu(ctx, agentID(ctx), req.Body.AppId, req.Body.AppSecret, req.Body.Brand, req.Body.Reactions, transport, req.Body.Webhook)
 	if err != nil {
 		return nil, err
 	}

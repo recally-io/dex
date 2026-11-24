@@ -475,16 +475,23 @@ func (q *Queries) StartChannelGroupFallback(ctx context.Context, arg StartChanne
 }
 
 const telegramCredentialOwner = `-- name: TelegramCredentialOwner :one
-SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id WHERE s.token = ?
+SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id
+WHERE substr(s.token, 1, instr(s.token, ':') - 1) = ?1 AND s.agent_id != ?2
+ORDER BY a.id LIMIT 1
 `
+
+type TelegramCredentialOwnerParams struct {
+	Account string `json:"account"`
+	AgentID string `json:"agent_id"`
+}
 
 type TelegramCredentialOwnerRow struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-func (q *Queries) TelegramCredentialOwner(ctx context.Context, token string) (TelegramCredentialOwnerRow, error) {
-	row := q.db.QueryRowContext(ctx, telegramCredentialOwner, token)
+func (q *Queries) TelegramCredentialOwner(ctx context.Context, arg TelegramCredentialOwnerParams) (TelegramCredentialOwnerRow, error) {
+	row := q.db.QueryRowContext(ctx, telegramCredentialOwner, arg.Account, arg.AgentID)
 	var i TelegramCredentialOwnerRow
 	err := row.Scan(&i.ID, &i.Name)
 	return i, err

@@ -466,8 +466,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		chats.RetryNow()
 	})
 	a.handler = server.New(server.Config{
-		WorkTasks: workTasks,
-		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
+		ChannelWebhooks: http.HandlerFunc(bots.webhook),
+		WorkTasks:       workTasks,
+		Plugins:         plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine: native,
 		Envs:   envs,
 		EnvironmentChanged: func(ctx context.Context, id string) {

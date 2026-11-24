@@ -21,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/chat"
@@ -264,6 +265,24 @@ func (e ExtensionScope) Valid() bool {
 	case ExtensionScopeAgent:
 		return true
 	case ExtensionScopeDex:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FeishuInputTransport.
+const (
+	FeishuInputTransportWebhook   FeishuInputTransport = "webhook"
+	FeishuInputTransportWebsocket FeishuInputTransport = "websocket"
+)
+
+// Valid indicates whether the value is a known member of the FeishuInputTransport enum.
+func (e FeishuInputTransport) Valid() bool {
+	switch e {
+	case FeishuInputTransportWebhook:
+		return true
+	case FeishuInputTransportWebsocket:
 		return true
 	default:
 		return false
@@ -657,6 +676,42 @@ const (
 func (e TaskItemKind) Valid() bool {
 	switch e {
 	case Task:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TelegramTransport.
+const (
+	TelegramTransportPolling TelegramTransport = "polling"
+	TelegramTransportWebhook TelegramTransport = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the TelegramTransport enum.
+func (e TelegramTransport) Valid() bool {
+	switch e {
+	case TelegramTransportPolling:
+		return true
+	case TelegramTransportWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TelegramInputTransport.
+const (
+	TelegramInputTransportPolling TelegramInputTransport = "polling"
+	TelegramInputTransportWebhook TelegramInputTransport = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the TelegramInputTransport enum.
+func (e TelegramInputTransport) Valid() bool {
+	switch e {
+	case TelegramInputTransportPolling:
+		return true
+	case TelegramInputTransportWebhook:
 		return true
 	default:
 		return false
@@ -1234,7 +1289,14 @@ type FeishuInput struct {
 
 	// Reactions Omission preserves the saved preference. False disables private chat status reactions.
 	Reactions *bool `json:"reactions,omitempty"`
+
+	// Transport Omission keeps the transport for the same app. New apps default to WebSocket.
+	Transport *FeishuInputTransport `json:"transport,omitempty"`
+	Webhook   *FeishuWebhookInput   `json:"webhook,omitempty"`
 }
+
+// FeishuInputTransport Omission keeps the transport for the same app. New apps default to WebSocket.
+type FeishuInputTransport string
 
 // FeishuPoll defines model for FeishuPoll.
 type FeishuPoll struct {
@@ -1243,6 +1305,9 @@ type FeishuPoll struct {
 
 // FeishuSetup defines model for FeishuSetup.
 type FeishuSetup = agent.FeishuSetup
+
+// FeishuWebhookInput defines model for FeishuWebhookInput.
+type FeishuWebhookInput = feishu.WebhookConfig
 
 // Health defines model for Health.
 type Health struct {
@@ -1768,12 +1833,17 @@ type TaskItemKind string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
-	AllowedUsers []int64          `json:"allowedUsers"`
-	BotId        *string          `json:"botId,omitempty"`
-	Enabled      bool             `json:"enabled"`
-	Options      *TelegramOptions `json:"options,omitempty"`
-	Status       ChannelStatus    `json:"status"`
+	AllowedUsers []int64            `json:"allowedUsers"`
+	BotId        *string            `json:"botId,omitempty"`
+	Enabled      bool               `json:"enabled"`
+	Options      *TelegramOptions   `json:"options,omitempty"`
+	Status       ChannelStatus      `json:"status"`
+	Transport    *TelegramTransport `json:"transport,omitempty"`
+	WebhookUrl   *string            `json:"webhookUrl,omitempty"`
 }
+
+// TelegramTransport defines model for Telegram.Transport.
+type TelegramTransport string
 
 // TelegramInput defines model for TelegramInput.
 type TelegramInput struct {
@@ -1782,7 +1852,14 @@ type TelegramInput struct {
 
 	// Token Write-only. Empty keeps the saved token.
 	Token string `json:"token"`
+
+	// Transport Omission keeps the transport for the same bot. New bots default to polling.
+	Transport *TelegramInputTransport `json:"transport,omitempty"`
+	Webhook   *TelegramWebhookInput   `json:"webhook,omitempty"`
 }
+
+// TelegramInputTransport Omission keeps the transport for the same bot. New bots default to polling.
+type TelegramInputTransport string
 
 // TelegramOptions defines model for TelegramOptions.
 type TelegramOptions = telegram.Options
@@ -1813,6 +1890,9 @@ type TelegramSpeechOptions struct {
 
 // TelegramSpeechOptionsFormat defines model for TelegramSpeechOptions.Format.
 type TelegramSpeechOptionsFormat string
+
+// TelegramWebhookInput defines model for TelegramWebhookInput.
+type TelegramWebhookInput = telegram.WebhookConfig
 
 // ThinkingItem defines model for ThinkingItem.
 type ThinkingItem struct {
