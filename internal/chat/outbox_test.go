@@ -2,6 +2,7 @@ package chat
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -117,6 +118,31 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}
 	if len(recent) == 0 || recent[0].ID != secondID || recent[0].Body != "step 2" {
 		t.Fatalf("unexpected recent outbox: %+v", recent)
+	}
+}
+
+func TestUserChildTurnKeepsSavedSilentExit(t *testing.T) {
+	r := startNative(t, "echo")
+	ctx := t.Context()
+	_, source := taskParent(t, r)
+	if _, err := r.service.ToolSessionNew(ctx, source, engine.SessionNewArgs{Title: "Worker", Message: "Finish this turn"}); err != nil {
+		t.Fatal(err)
+	}
+	// Given a child turn with a silent exit saved by an older release.
+	turn := turnID(source.Key)
+	if err := r.q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: turn, ExitAction: "stay_silent"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// When the current release settles the turn, the parent gets no result.
+	if err := r.service.admit(ctx, taskInput(t, r, turn)); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitReceipt(t, r, turn); got.Status != "done" {
+		t.Fatalf("child did not complete: %s", got.Status)
+	}
+	if _, err := r.q.GetSubmission(ctx, "result:"+turn); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("saved silent exit must not send a child result: %v", err)
 	}
 }
 

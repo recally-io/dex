@@ -147,6 +147,25 @@ func TestUserUnknownTelegramTranscriptionIsNotSentToProviderAgain(t *testing.T) 
 	}
 }
 
+func TestUserTelegramTranscriptionDoesNotUploadOverDurationBudget(t *testing.T) {
+	t.Parallel()
+	// Given a duration budget shorter than the incoming voice message.
+	f := newFakeTelegram(t)
+	f.files["voice.ogg"] = "OggS\x00\x00OpusHeadsynthetic"
+	d := startTelegram(t, f, t.TempDir(), 42)
+	boundary, calls := localSTT(t, "must not happen")
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit", "maxDurationSeconds": 2})
+
+	// When the user sends the voice message, dex keeps the original audio without an upload to the provider.
+	f.voice()
+	if got := f.next(t).Text; !strings.Contains(got, "duration budget") || !strings.Contains(got, "voice.ogg") {
+		t.Fatalf("duration refusal=%q", got)
+	}
+	if calls.Load() != 0 {
+		t.Fatalf("over-budget audio sent to provider: %d", calls.Load())
+	}
+}
+
 func TestUserTelegramTranscriptionTimeoutKeepsAudioWithoutProviderRetry(t *testing.T) {
 	t.Parallel()
 	// Given an explicitly selected local endpoint that does not finish before the configured timeout.
