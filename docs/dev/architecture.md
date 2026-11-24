@@ -125,9 +125,9 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    Cold open waits for startup model discovery without holding a delivery gate of
    another Session. Sessions on the same environment can share its lease. The
    engine does not hold its lease registry lock during remote preparation.
-   Receipt creation and native admission have distinct timestamps. Debug logs
-   show admission attempt start, finish and retry delay by Session. They use
-   a short hash of the request ID and omit message content and remote errors.
+   Receipt creation and native admission have distinct timestamps. Structured
+   logs correlate Session waits, native start, and settlement without logging
+   message content or remote errors. See the [slow input procedure](sessions.md#diagnose-a-slow-session-input).
 4. The engine runs the model and tools. Each browser subscription receives
    typed transcript events through `live.Hub`. Queued input comes from the
    native Inbox, not from a second control transcript.

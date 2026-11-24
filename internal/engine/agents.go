@@ -446,7 +446,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return backgroundEnv{EnvironmentID: s.ID, Env: s.Vars, InheritEnv: s.Inherit, Kind: s.Handle.Kind(), OutputDir: outputDir, Workspace: s.Handle.Workspace()}, nil
 	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{compactionExtension(), checkExtension(agentID, a.config.Tasks.ReportCheck), toolSearchExtension(), codingTools(session, a.config.BashTimeout, loaded.Vault), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), monitorExtension(agentID, a.config.Tasks.Monitors, background, loaded.Vault), vaultExtension(agentID, loaded.Vault), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+	extensions := []*durable.Extension{sessionTraceExtension(agentID, ""), compactionExtension(), checkExtension(agentID, a.config.Tasks.ReportCheck), toolSearchExtension(), codingTools(session, a.config.BashTimeout, loaded.Vault), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), monitorExtension(agentID, a.config.Tasks.Monitors, background, loaded.Vault), vaultExtension(agentID, loaded.Vault), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
 	}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
 	for _, extension := range extensions {
@@ -505,7 +505,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			if err != nil {
 				return nil, err
 			}
-			return &sessionPromptEnv{ExecutionEnv: exec, files: s.Files}, nil
+			return &sessionPromptEnv{ExecutionEnv: exec, files: s.Files, agentID: agentID, conversation: target.ConversationId}, nil
 		},
 		OnReport: func(report durable.Report) {
 			slog.Error("agent execution", "agent", agentID, "type", report.Kind, "error", report.Error)

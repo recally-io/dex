@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -32,6 +33,7 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	}
 	unlock, err := s.lockSession(ctx, id)
 	if err != nil {
+		slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_wait_ended", "reason", admissionRetryReason(err))
 		return err
 	}
 	defer unlock()
@@ -43,7 +45,9 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 		return engine.ErrStaleRunTarget
 	}
 	ref := engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}
+	trace := slog.With("session", id, "agent", agentID, "native_conversation_id", ref.ID)
 	if err := s.engine.ValidateRunTarget(ctx, ref, target); err != nil {
+		trace.InfoContext(ctx, "session stop", "phase", "stop_rejected", "reason", admissionRetryReason(err))
 		return err
 	}
 	// The intent covers a crash between the native abort mark and the Inbox boundary.
@@ -57,8 +61,9 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	if err != nil {
 		return err
 	}
+	trace.InfoContext(ctx, "session stop", "phase", "stop_recorded", "target", target)
 	if err := s.applyMainStop(ctx, id, ref, target); err != nil {
-		s.retrySession(id)
+		s.retrySession(ctx, id)
 		return err
 	}
 	return nil
@@ -83,5 +88,9 @@ func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, t
 	if err := s.engine.StopRun(callCtx, ref, target); err != nil {
 		return err
 	}
-	return s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
+	err := s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
+	if err != nil {
+		slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_receipt_pending", "reason", admissionRetryReason(err))
+	}
+	return err
 }

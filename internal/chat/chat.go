@@ -188,7 +188,7 @@ func (s *Service) Run(ctx context.Context) {
 	for {
 		err := s.dispatch(ctx)
 		if err != nil && ctx.Err() == nil {
-			slog.Warn("reconcile business receipts", "err", err)
+			slog.Warn("reconcile business receipts", "reason", admissionRetryReason(err))
 			s.scheduleRetry()
 		}
 		select {
@@ -250,7 +250,7 @@ func (s *Service) reconcileSession(ctx context.Context, id int64, until string) 
 	}
 	for _, p := range pending {
 		if _, ok := s.waiting.Load(p.ID); !ok {
-			if err := s.attemptAdmission(ctx, p); err != nil {
+			if err := s.admit(ctx, p); err != nil {
 				return err
 			}
 		}
@@ -363,6 +363,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		scope, binding = audience, identity
 	}
 	complete, archived := false, ""
+	createdReceipt := false
 	chatID, err := func() (int64, error) {
 		s.admissionMu.RLock()
 		defer s.admissionMu.RUnlock()
@@ -539,6 +540,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			return 0, err
 		}
 		if created > 0 {
+			createdReceipt = true
 			archived = decision.archive
 			if s.channelIntake != nil && sourceKey != "" && m.ChannelContext.MessageID != "" && !m.QuestionOnly {
 				s.channelIntake(agentID, origin, m.ID, m.ChannelContext)
@@ -570,6 +572,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	}()
 	// Channel runtime changes run outside the receipt gate, so a busy bot cannot block the gate.
 	s.botArchived(archived)
+	if createdReceipt {
+		receiptTrace(chatID, m.ID).InfoContext(ctx, "session input", "phase", "enqueued", "agent", agentID)
+	}
 	if err != nil || complete {
 		return chatID, err
 	}
@@ -579,7 +584,15 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		s.Wake()
 		return chatID, nil
 	}
+	busy := len(s.sessionGate(chatID).token) != 0
+	waitingAt := time.Now()
+	if busy {
+		receiptTrace(chatID, m.ID).InfoContext(ctx, "session input", "phase", "admission_wait", "reason", "session_busy")
+	}
 	unlock, err := s.lockSession(ctx, chatID)
+	if busy || err != nil {
+		receiptTrace(chatID, m.ID).InfoContext(ctx, "session input", "phase", "admission_wait_ended", "reason", admissionRetryReason(err), "elapsed_ms", time.Since(waitingAt).Milliseconds())
+	}
 	if err != nil {
 		s.Wake()
 		return chatID, nil
@@ -589,7 +602,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	sub, err := s.q.GetSubmission(ctx, m.ID)
 	if err != nil {
 		// The committed intent remains ours to reconcile if this read fails.
-		s.retrySession(chatID)
+		s.retrySession(ctx, chatID)
 		return chatID, nil
 	}
 	return chatID, receiptError(sub)
@@ -767,7 +780,7 @@ func forkOrigin(r sqlc.GetChatRow) *Origin {
 }
 
 // admit crosses the durable admission boundary with a stable request ID.
-func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
+func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (resultErr error) {
 	if s.leaseUntil.Load() != 0 {
 		return nil
 	}
@@ -778,6 +791,28 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	conv, err := s.q.GetConversation(ctx, p.ConversationID)
 	if err != nil {
 		return err
+	}
+	var trace *slog.Logger
+	var admissionErr error
+	if p.Kind == "message" {
+		environment := effectiveEnvironment(agent, conv.EnvironmentID)
+		if conv.ExecutionScope != "" {
+			environment = "local"
+		}
+		trace = receiptTrace(p.ConversationID, p.ID).With("agent", p.AgentID, "native_namespace", engine.TraceNamespace(conv.ExecutionScope), "environment", environment)
+		reason := "unknown"
+		switch {
+		case p.AdmittedAt.Valid:
+			reason = "recovery"
+		case !conv.ExecutionID.Valid:
+			reason = "initialization"
+		}
+		started := time.Now()
+		trace.InfoContext(ctx, "session input", "phase", "admission_attempt", "reason", reason, "queued_ms", max(0, s.now().UnixMilli()-p.CreatedAt))
+		defer func() {
+			err := cmp.Or(admissionErr, resultErr)
+			trace.InfoContext(ctx, "session input", "phase", "admission_attempt_ended", "reason", admissionRetryReason(err), "elapsed_ms", time.Since(started).Milliseconds())
+		}()
 	}
 	if conv.AbortPending != 0 {
 		return errStopPending
@@ -849,6 +884,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
 	if err != nil {
+		admissionErr = err
 		if errors.Is(err, errInputSettled) {
 			return nil
 		}
@@ -867,6 +903,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err = s.markAdmitted(ctx, p.ID); err != nil {
 		return err
 	}
+	if trace != nil {
+		trace.InfoContext(ctx, "session input", "phase", "admitted", "native_conversation_id", ref.ID, "native_submission_id", sub.ID, "prior_receipt", p.AdmittedAt.Valid)
+	}
 	if _, loaded := s.waiting.LoadOrStore(p.ID, struct{}{}); loaded {
 		return nil
 	}
@@ -877,12 +916,12 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		}
 		s.waiting.Delete(p.ID)
 		if err != nil && s.ctx.Err() == nil {
-			slog.Error("reconcile execution receipt", "submission", p.ID, "err", err)
-			s.retrySession(p.ConversationID)
+			receiptTrace(p.ConversationID, p.ID).Warn("reconcile execution receipt", "reason", admissionRetryReason(err))
+			s.retrySession(s.ctx, p.ConversationID)
 		}
 	})
 	if !started {
-		slog.Warn("input worker did not start", "submission", p.ID)
+		receiptTrace(p.ConversationID, p.ID).Warn("input worker did not start")
 		s.waiting.Delete(p.ID)
 	}
 	return nil
@@ -993,6 +1032,7 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if err != nil {
 		return err
 	}
+	receiptTrace(reply.ConversationID, id).InfoContext(ctx, "session input", "phase", "settled", "reason", settlementTraceReason(event))
 	s.coordinationMu.Lock()
 	if gate := s.delivery[reply.ConversationID]; gate != nil {
 		if gate.timer != nil && gate.timer.Stop() {

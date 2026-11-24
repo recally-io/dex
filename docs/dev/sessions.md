@@ -279,6 +279,74 @@ The reply of Stop confirms the request. It does not prove process exit.
 Processes and remote work can continue. Cancellation does not undo file writes
 or remote actions.
 
+### Diagnose a slow Session input
+
+1. Use the Session ID in `session input` logs. Match `request_hash` across
+   `enqueued`, `admission_attempt`, `admitted`, and `settled`. The hash is the
+   first 16 bytes of SHA-256, in hex. These logs do not show the raw request ID or
+   payload. `admission_wait` records an observed occupied Session gate.
+   `queued_ms` is the age of the receipt at the attempt. `elapsed_ms` measures
+   the wait or attempt separately. `environment_offline`, `session_busy`,
+   `model_discovery`, `deadline`, and `canceled` come from known error types.
+   `unknown` does not identify a cause. An attempt result of `ok` does not
+   prove admission. Only `admitted` records the native ID and the receipt write.
+2. Match `admitted` to `generation_started` by agent, native namespace,
+   native conversation ID, and the native submission ID in the generation's
+   input list. The PiG `BeforeRequest` hook runs inside the native generation
+   task. It proves that the task reached request preparation, not that it sent
+   a provider request. Placement in the native Inbox or a `202` does not prove
+   the task ran. A bounded in-memory cache suppresses repeat observations of
+   the same input set across tool rounds and task handoffs. Recovery can log
+   it again. A fast native start can log before the admitted receipt commits.
+3. On a build with Runner RPC diagnostics, compare the `environment` ID and
+   timestamps with `runner RPC` logs. The Session log shows the effective
+   environment at admission. The Runner client generates `call_id` for each
+   RPC. It does not share a key with the PiG task. On a shared Runner this is
+   only a time association, not attribution to the Session. Within one
+   `call_id`, `connection_wait` is distinct from `slot_waiting` or `slot_wait`.
+   `sent` is not a start. `remote_started` or `remote_start_observed_after`
+   proves the client received a start acknowledgement. If it did not observe
+   one, the remote start can be unknown. Check the RPC result and
+   `cancel_settlement`; a deadline alone does not prove remote exit. A
+   `session execution` / `shell_timeout` event reports a typed shell deadline
+   at the execution boundary. Match its agent and native conversation ID.
+   It does not label an untyped model or tool error as a timeout.
+4. For exact Web Main Stop, match `stop_recorded` to `stop_attempt` by native
+   conversation and task. The last component of the validated `target` is the
+   task ID. `stop_attempt_ended` with `deadline` describes the
+   local wait. `abort_observed` reports whether PiG's exact task abort was seen.
+   A durable intent can still retry. `stop_rejected` does not cancel a successor.
+   Legacy Stop can settle pending receipts in bulk; inspect the durable status.
+
+The receipt timestamps survive restart. On the control host this query opens
+SQLite read-only and emits recent receipt metadata, with the same hash as the
+logs. It prints no input, output, raw IDs, or channel data:
+
+```sh
+python3 - /path/to/control.sqlite 123 <<'PYTHON'
+import hashlib, pathlib, sqlite3, sys
+from contextlib import closing
+
+uri = pathlib.Path(sys.argv[1]).resolve().as_uri() + "?mode=ro"
+with closing(sqlite3.connect(uri, uri=True)) as db:
+    for request, *fields in db.execute("""
+        SELECT id, rowid, created_at, admitted_at, settled_at, status
+        FROM submissions WHERE conversation_id = ? AND kind = 'message'
+        ORDER BY rowid DESC LIMIT 20
+        """, (int(sys.argv[2]),)):
+        print(hashlib.sha256(request.encode()).hexdigest()[:32], *fields)
+PYTHON
+```
+
+Times are Unix milliseconds. A null `admitted_at` means no control marker was
+saved; native admission may have committed before that write. `recovery` on
+an attempt means an earlier marker exists. It does not prove a restart, and
+absence of a marker does not rule out replay. The start and timing logs are
+not durable receipts. If earlier logs are unavailable after restart, past
+start and Runner acknowledgement times are unknown.
+
+### Child recovery
+
 At process start, control reads the native state of every pending input in a
 child with a pending parent input, including admission gaps. The engine reads
 committed records without opening or resuming a Harness. Control never opens

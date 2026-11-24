@@ -79,7 +79,7 @@ func (s *Service) stop(ctx context.Context, agentID string, id int64, command *s
 			err := s.reconcileStop(callCtx, c.ID)
 			cancel()
 			if err != nil {
-				s.retrySession(c.ID)
+				s.retrySession(ctx, c.ID)
 				if !errors.Is(err, errStopPending) {
 					errs = append(errs, err)
 				}
@@ -229,7 +229,7 @@ func (s *Service) reconcileStop(ctx context.Context, id int64) error {
 				if errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
 					return errStopPending
 				}
-				slog.Warn("cancel native execution", "execution", ref.ID, "err", err)
+				slog.Warn("cancel native execution", "session", id, "native_conversation_id", ref.ID, "reason", admissionRetryReason(err))
 				return err
 			}
 		}

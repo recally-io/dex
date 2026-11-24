@@ -96,6 +96,7 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 	if err := tx.Commit(); err != nil {
 		return WithdrawnMessage{}, err
 	}
+	receiptTrace(chatID, id).InfoContext(ctx, "session input", "phase", "settled", "reason", "withdrawn")
 	s.signal(chatID)
 	return s.withdrawnMessage(ctx, sub)
 }

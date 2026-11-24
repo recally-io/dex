@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
@@ -75,11 +77,30 @@ func (a *Agents) ValidateRunTarget(ctx context.Context, ref Ref, target string) 
 
 // StopRun applies an exact, previously validated stop intent. PiG mints task IDs in durable
 // storage. A handoff, reset or next run uses another ID, not a new invocation of this ID.
-func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) error {
+func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr error) {
 	id, err := runTargetID(ref, target)
 	if err != nil {
 		return err
 	}
+	trace := slog.With("agent", ref.AgentID, "native_conversation_id", ref.ID, "native_task_id", id)
+	started := time.Now()
+	aborted := false
+	trace.InfoContext(ctx, "session stop", "phase", "stop_attempt")
+	defer func() {
+		result := "no_abort_observed"
+		switch {
+		case errors.Is(resultErr, context.DeadlineExceeded):
+			result = "deadline"
+		case errors.Is(resultErr, context.Canceled):
+			result = "canceled"
+		case resultErr != nil:
+			result = "unknown"
+		case aborted:
+			result = "aborted"
+		}
+		trace.InfoContext(ctx, "session stop", "phase", "stop_attempt_ended", "reason", result,
+			"abort_observed", aborted, "elapsed_ms", time.Since(started).Milliseconds())
+	}()
 	if err := a.begin(resourceKey(ref)); err != nil {
 		return err
 	}
@@ -123,6 +144,7 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) error {
 	if task.State.Outcome == nil || task.State.Outcome.Status != durable.OutcomeAborted {
 		return nil
 	}
+	aborted = true
 
 	// PiG 0.7 ends the generation on task abort without taking a final Inbox boundary.
 	// Continue admits that boundary, without another user entry. Check idle + queued in

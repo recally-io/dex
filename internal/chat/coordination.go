@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
 // The gate orders native operations for one Session. SQLite orders receipt insertion.
@@ -44,7 +44,7 @@ func (s *Service) lockSession(ctx context.Context, id int64) (func(), error) {
 	}
 }
 
-func (s *Service) retrySession(id int64) {
+func (s *Service) retrySession(ctx context.Context, id int64) {
 	gate := s.sessionGate(id)
 	s.coordinationMu.Lock()
 	if s.ctx.Err() != nil || gate.timer != nil {
@@ -64,7 +64,11 @@ func (s *Service) retrySession(id int64) {
 	delay := gate.delay
 	gate.delay = min(delay*2, 30*time.Second)
 	s.coordinationMu.Unlock()
-	slog.Debug("session retry scheduled", "session", id, "delay_ms", delay.Milliseconds())
+	level := slog.LevelDebug
+	if delay == 100*time.Millisecond {
+		level = slog.LevelInfo
+	}
+	slog.Log(ctx, level, "session retry scheduled", "session", id, "delay_ms", delay.Milliseconds())
 }
 
 // Registration and cancellation share a boundary so Wait cannot miss a worker.
@@ -134,34 +138,43 @@ func (s *Service) deliverSession(ctx context.Context, id int64, until string) {
 		if ctx.Err() == nil {
 			slog.DebugContext(ctx, "session reconciliation deferred", "session", id, "reason", admissionRetryReason(err))
 		}
-		s.retrySession(id)
+		s.retrySession(ctx, id)
 	}
 }
 
-// Intake and native-admission timestamps remain in the receipt. At debug level,
-// log individual attempts without message content or remote error strings.
-func (s *Service) attemptAdmission(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
-	if !slog.Default().Enabled(ctx, slog.LevelDebug) {
-		return s.admit(ctx, p)
+func receiptTrace(id int64, request string) *slog.Logger {
+	digest := sha256.Sum256([]byte(request)) // A Web caller can supply an arbitrary request ID.
+	return slog.With("session", id, "request_hash", hex.EncodeToString(digest[:16]))
+}
+
+func settlementTraceReason(out engine.Outcome) string {
+	if out.Status == "done" {
+		return "done"
 	}
-	started := time.Now()
-	queueMS := max(0, s.now().UnixMilli()-p.CreatedAt)
-	digest := sha256.Sum256([]byte(p.ID)) // A Web caller can supply arbitrary request IDs.
-	request := hex.EncodeToString(digest[:8])
-	slog.DebugContext(ctx, "session admission attempt started", "session", p.ConversationID, "request", request, "queued_ms", queueMS, "recovery", p.AdmittedAt.Valid)
-	err := s.admit(ctx, p)
-	result := "processed"
-	if err != nil {
-		result = admissionRetryReason(err)
+	switch out.Reason {
+	case "aborted", "withdrawn", "stopped", "interrupted", "no_model", "model_error", "nothing_to_answer":
+		return out.Reason
+	case rejectedBusy:
+		return "session_busy"
+	default:
+		return "unknown"
 	}
-	slog.DebugContext(ctx, "session admission attempt finished", "session", p.ConversationID, "request", request, "elapsed_ms", time.Since(started).Milliseconds(), "result", result)
-	return err
 }
 
 func admissionRetryReason(err error) string {
 	switch {
-	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return "interrupted"
+	case err == nil:
+		return "ok"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, runner.ErrOffline):
+		return "environment_offline"
+	case errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrOriginBusy):
+		return "session_busy"
+	case errors.Is(err, engine.ErrStaleRunTarget):
+		return "stale_target"
 	case errors.Is(err, engine.ErrMaintenance):
 		return "maintenance"
 	case errors.Is(err, engine.ErrModelsPending):
@@ -169,6 +182,6 @@ func admissionRetryReason(err error) string {
 	case errors.Is(err, errStopPending):
 		return "stop_pending"
 	default:
-		return "retry"
+		return "unknown"
 	}
 }
