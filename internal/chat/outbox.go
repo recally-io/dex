@@ -202,6 +202,8 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	if err != nil {
 		return "", err
 	}
+	// A replay uses the original tool task key. The insert ignores that same ID,
+	// and the exit action commits in the same transaction as the report.
 	resultID := "report:" + r.Key
 	now := s.now().UnixMilli()
 	final := boolPtrOrTrue(a.Final)

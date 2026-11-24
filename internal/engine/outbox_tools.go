@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -140,61 +141,103 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 	}
 }
 
-// childOutboxExtension gives a child the session_send tool that reports to its direct parent. The
-// parent session_send of sessionExtension has the same name, so a conversation must never select
-// both extensions: the child edit in Submit removes sessionExtension when it adds this one. The old
-// name report_parent has no alias: PiG executes a model call only through an offered tool, so an
-// alias would expose a second schema. A report_parent call that a restart resumes before it ran
-// settles as tool_unavailable. One that was running settles as interrupted: its report can already
-// be in the parent inbox, so a new session_send report can repeat it.
+const legacyParentReport = "report_parent"
+const hideLegacyReportMemo = "dex.hideLegacyParentReport"
+
+// childOutboxExtension replaces sessionExtension in a child. The two extensions give session_send
+// different schemas and must never be active in the same conversation.
 func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension {
-	return &durable.Extension{
-		Name: "child-outbox",
-		Tools: []*durable.ToolRegistration{
-			{
-				Name:        "session_send",
-				Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
-				Parameters: map[string]any{
-					"type": "object", "additionalProperties": false, "required": []string{"content"},
-					"properties": map[string]any{
-						"content": map[string]any{"type": "string", "minLength": 1, "description": "Report content for the direct parent session."},
-						"final":   map[string]any{"type": "boolean", "description": "If true (default), ends this turn immediately after reporting. Set false to send a milestone and keep working."},
-					},
-				},
-				Replay: durable.ReplaySafe,
-				Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
-					if tools.ReportParent == nil {
-						return durable.ToolExecutionResult{}, errors.New("parent reporting is unavailable")
-					}
-					args, err := durable.FromJsonValue[ReportParentArgs](raw)
-					if err != nil {
-						return durable.ToolExecutionResult{}, err
-					}
-					final := boolDefaultTrue(args.Final)
-					var call TaskContext
-					if final {
-						call, err = turnEndingCall(ctx, api, agentID, "session_send")
-					} else {
-						call, err = toolCall(ctx, api, agentID)
-					}
-					if err != nil {
-						return durable.ToolExecutionResult{}, err
-					}
-					resultID, err := tools.ReportParent(ctx, call, args)
-					if err != nil {
-						return durable.ToolExecutionResult{}, err
-					}
-					res := durable.ToolExecutionResult{
-						Output: []ai.ToolResultMessageContent{ai.TextContent{Text: "Reported to parent: " + resultID}},
-					}
-					if final {
-						res.Control = &durable.ToolControl{Terminate: true}
-					}
-					return res, nil
-				},
+	report := &durable.ToolRegistration{
+		Name:        "session_send",
+		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
+		Parameters: map[string]any{
+			"type": "object", "additionalProperties": false, "required": []string{"content"},
+			"properties": map[string]any{
+				"content": map[string]any{"type": "string", "minLength": 1, "description": "Report content for the direct parent session."},
+				"final":   map[string]any{"type": "boolean", "description": "If true (default), ends this turn immediately after reporting. Set false to send a milestone and keep working."},
 			},
 		},
+		Replay: durable.ReplaySafe,
+		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+			if tools.ReportParent == nil {
+				return durable.ToolExecutionResult{}, errors.New("parent reporting is unavailable")
+			}
+			args, err := durable.FromJsonValue[ReportParentArgs](raw)
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			final := boolDefaultTrue(args.Final)
+			var call TaskContext
+			if final {
+				call, err = turnEndingCall(ctx, api, agentID, "session_send")
+			} else {
+				call, err = toolCall(ctx, api, agentID)
+			}
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			resultID, err := tools.ReportParent(ctx, call, args)
+			if err != nil {
+				return durable.ToolExecutionResult{}, err
+			}
+			res := durable.ToolExecutionResult{
+				Output: []ai.ToolResultMessageContent{ai.TextContent{Text: "Reported to parent: " + resultID}},
+			}
+			if final {
+				res.Control = &durable.ToolControl{Terminate: true}
+			}
+			return res, nil
+		},
 	}
+	legacy := *report
+	legacy.Name = legacyParentReport
+	legacy.Callers = []durable.ToolCaller{durable.CallerModel}
+	legacy.Execute = func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+		// PiG uses the committed tool list for dispatch, not the request hook's list.
+		// Admit only calls whose owning generation predates the hook.
+		unavailable := errors.New("report_parent is not available; use session_send")
+		task, err := api.GetTask(ctx, api.TaskId())
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		if task == nil || task.Owner == nil {
+			return durable.ToolExecutionResult{}, unavailable
+		}
+		generation, err := api.GetTask(ctx, *task.Owner)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		if generation == nil || generation.Kind != harness.GenerationTask.AnyDefinition().Name || generation.Memos[hideLegacyReportMemo] != nil {
+			return durable.ToolExecutionResult{}, unavailable
+		}
+		return report.Execute(ctx, raw, api)
+	}
+	return &durable.Extension{
+		Name:  "child-outbox",
+		Tools: []*durable.ToolRegistration{report, &legacy},
+		Hooks: []durable.HookRegistration{harness.Hook(harness.GenerationTask, &harness.GenerationHooks{
+			BeforeRequest: hideLegacyParentReport,
+		})},
+	}
+}
+
+func hideLegacyParentReport(ctx context.Context, request harness.GenerationRequest, api harness.HookApi) (*harness.GenerationRequest, error) {
+	if _, err := api.MemoCandidate(ctx, hideLegacyReportMemo, true); err != nil {
+		return nil, err
+	}
+	// Remove older declarations too. Some providers replay the sequence of tool changes.
+	for i, message := range request.Messages {
+		if system, ok := message.(ai.SystemMessage); ok {
+			system.ToolsAdded = slices.DeleteFunc(system.ToolsAdded, func(tool ai.ToolSchema) bool {
+				return tool.Name == legacyParentReport
+			})
+			system.ToolsRemoved = slices.DeleteFunc(system.ToolsRemoved, func(tool ai.ToolReference) bool {
+				return tool.Name == legacyParentReport
+			})
+			request.Messages[i] = system
+		}
+	}
+	return &request, nil
 }
 
 func truncateRunes(s string, maxRunes int) string {

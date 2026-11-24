@@ -177,12 +177,11 @@ turn. With `final` false, the report is a milestone and the turn continues.
 The child edit of each input removes the `sessions` extension when it adds
 `child-outbox`, so no conversation selects both tools. Registration is global,
 and PiG resolves a tool name from the extensions that a conversation selects.
-The tool had the name `report_parent` before. It has no alias, because PiG
-runs a model call only through a tool that it offers. A restart can resume a
-`report_parent` call that an older release started. Before the call ran, it gets
-`tool_unavailable`. While it ran, it gets an interrupted result, and its report
-can already be in the parent inbox. A new `session_send` report can then repeat
-it.
+The old name `report_parent` remains available only to direct model calls that
+an older release admitted and that recovery lets resume. New model requests
+and tool search do not show it. A resumed call uses its original task ID, so
+the parent gets one result even when the report transaction committed before
+the restart. Recovery does not resolve the old name for calls from other tools.
 
 ## Cross-bot sessions
 

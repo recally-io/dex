@@ -248,6 +248,13 @@ func TestUserChildSessionSendReportsOnlyToItsDirectParent(t *testing.T) {
 			}),
 			step(func(req ai.TranscriptContext) ai.AssistantMessage {
 				expectError(req, "report_parent", "not available")
+				return calls(call("tool_search", map[string]any{"query": "report_parent"}))
+			}),
+			step(func(req ai.TranscriptContext) ai.AssistantMessage {
+				result, ok := toolResults(req)["tool_search"]
+				if !ok || result.IsError || strings.Contains(resultText(result), "- report_parent:") {
+					t.Errorf("tool search exposed the old tool name or failed: %+v", result)
+				}
 				return text("Kept internal.")
 			}),
 		)
