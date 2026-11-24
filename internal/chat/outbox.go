@@ -48,7 +48,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 		return "", err
 	}
 	if conv.ParentID.Valid {
-		return "", errors.New("child sessions cannot call notify_user; use report_parent instead")
+		return "", errors.New("child sessions cannot call notify_user; use session_report to report to the parent instead")
 	}
 	source, err := s.q.GetSubmission(ctx, r.SourceRequestID)
 	if err != nil {
@@ -163,16 +163,18 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 	return outboxID, nil
 }
 
+// ToolReportParent runs the session_report tool. The recipient is always the direct parent,
+// and a final report keeps the stored exit action report_parent.
 func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a engine.ReportParentArgs) (string, error) {
 	if strings.TrimSpace(a.Content) == "" {
-		return "", errors.New("report_parent requires non-empty content")
+		return "", errors.New("session_report requires non-empty content")
 	}
 	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return "", err
 	}
 	if !conv.ParentID.Valid {
-		return "", errors.New("only child sessions can call report_parent")
+		return "", errors.New("only child sessions can report to a parent")
 	}
 	if archived, err := s.q.ConversationAgentArchived(ctx, conv.ParentID.Int64); err != nil {
 		return "", err
@@ -200,6 +202,8 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	if err != nil {
 		return "", err
 	}
+	// A replay uses the original tool task key. The insert ignores that same ID,
+	// and the exit action commits in the same transaction as the report.
 	resultID := "report:" + r.Key
 	now := s.now().UnixMilli()
 	final := boolPtrOrTrue(a.Final)

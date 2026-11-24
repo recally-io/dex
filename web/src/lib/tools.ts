@@ -49,6 +49,11 @@ export const arg = (tool: ToolItem, key: string) => {
   return typeof value === "string" ? value : "";
 };
 
+/** Reports use session_report. Old transcripts use report_parent. */
+export function isParentReport(tool: ToolItem) {
+  return tool.name === "session_report" || tool.name === "report_parent";
+}
+
 // The memory folder is <data dir>/memory. Without the data dir, no call counts as a memory call.
 function inMemory(path: string, memory?: string) {
   return !!memory && (path === memory || path.startsWith(`${memory}/`));
@@ -75,7 +80,7 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Notify user", target: arg(tool, "topicKey") || arg(tool, "content") };
   }
 
-  if (tool.name === "report_parent") {
+  if (isParentReport(tool)) {
     return { verb: "Report parent", target: arg(tool, "content") };
   }
 
@@ -124,10 +129,16 @@ export function stepTitle(steps: Step[], memory?: string, thinking = false) {
   const tools = steps.filter((step) => step.kind === "tool");
   const running = tools.find((t) => t.status === "running");
   const failed = tools.filter((t) => t.status === "error").length;
+  const reports = tools.filter((t) => t.status === "done" && isParentReport(t)).length;
   const n = tools.length;
   let done = "";
 
-  if (n && tools.every((t) => touchesMemory(t, memory)))
+  if (reports) {
+    done = reports === 1 ? "Reported to parent" : `Reported to parent ${reports} times`;
+    const other = n - reports;
+
+    if (other) done += ` · Ran ${other} ${other === 1 ? "tool" : "tools"}`;
+  } else if (n && tools.every((t) => touchesMemory(t, memory)))
     done =
       n === 1
         ? describeTool(tools[0], memory).verb.replace(/^\w+/, (verb) => pastTense.get(verb) ?? verb)
