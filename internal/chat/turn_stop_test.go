@@ -44,3 +44,32 @@ func TestUserMainStopIntentRecoversWithoutNewInput(t *testing.T) {
 		t.Fatalf("Stop intent was not cleared: %v, %v", stops, err)
 	}
 }
+
+func TestUserStaleMainStopIntentDoesNotBlockFollowingInput(t *testing.T) {
+	// Given Main has a persisted Stop intent whose target can no longer match its execution.
+	r := startNative(t, "echo")
+	id, err := r.service.Post(t.Context(), "bot", MainKey, "", "first", "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub := awaitReceipt(t, r, "first"); sub.Status != "done" {
+		t.Fatalf("first input did not finish: %+v", sub)
+	}
+	if err := r.q.RecordMainTurnStop(t.Context(), sqlc.RecordMainTurnStopParams{ConversationID: id, Target: "bot/999999/1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// When reconciliation runs and the user sends another message, the stale intent clears
+	// and does not block subsequent Main admission.
+	runReconciler(t, r)
+	waitFor(t, func() bool {
+		stops, err := r.q.ListMainTurnStops(t.Context(), id)
+		return err == nil && len(stops) == 0
+	})
+	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "after", "next"); err != nil {
+		t.Fatal(err)
+	}
+	if sub := awaitReceipt(t, r, "after"); sub.Status != "done" || sub.Answer.String != "echo: next" {
+		t.Fatalf("following input was blocked by stale Stop intent: %+v", sub)
+	}
+}

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -64,7 +65,9 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	trace.InfoContext(ctx, "session stop", "phase", "stop_recorded", "target", target)
 	if err := s.applyMainStop(ctx, id, ref, target); err != nil {
 		s.retrySession(ctx, id)
-		return err
+		if !errors.Is(err, engine.ErrModelsPending) && !errors.Is(err, engine.ErrMaintenance) {
+			return err
+		}
 	}
 	return nil
 }
@@ -83,10 +86,16 @@ func (s *Service) reconcileMainStops(ctx context.Context, id int64, ref engine.R
 }
 
 func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, target string) error {
-	callCtx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 	defer cancel()
-	if err := s.engine.StopRun(callCtx, ref, target); err != nil {
-		return err
+	if ref.ID > 0 {
+		err := s.engine.StopRun(callCtx, ref, target)
+		if err != nil {
+			slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_reconcile", "reason", admissionRetryReason(err))
+			if !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrStaleRunTarget) {
+				return err
+			}
+		}
 	}
 	err := s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
 	if err != nil {

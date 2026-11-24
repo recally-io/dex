@@ -377,11 +377,27 @@ its machine. Each backend owns its connections, and a `Handle` is one lease on
 them: all bots on
 one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
-operation, one operation at a time, and a `cancel` notification for the call
-that the user stopped. Dex waits for the canceled operation to finish before it
-sends the next call. The library owns call correlation, reply routing, and
-session loss, so Dex owns only the operations. A session does not replay calls
-after connection loss. Dex reports a missing final result as unknown.
+operation. The Runner reports its connection limit in `ready`. Current peers
+allow four calls; older peers continue to use one slot. A call waits for a slot
+before it is sent. Responses, stdout, stderr, and `cancel` are scoped to the call.
+Dex holds a canceled call's slot until the Runner responds, or closes the session
+if it does not respond in time. A slow output consumer can fill its bounded
+buffer. Dex stops that command and reports the error without blocking other
+calls. On disconnect, the Runner cancels its calls and waits for them before
+cleaning up the execution environment. Self-update remains outside the serving
+loop. A session does not replay calls after connection loss. Dex reports a
+missing final result as unknown.
+
+The `runner RPC` control log correlates connection wait, slot wait, send,
+remote start, and completion by `call_id`, environment, and method. Slow slot
+waits, cancellations, offline calls, and unknown results are visible at Info.
+Fast successful calls and routine file errors use Debug. Completion of slow
+calls includes the send and remote-start timings when available. The
+`started` event is opt-in on both sides. It confirms the remote worker reached
+operation dispatch, not a successful shell spawn. The local receipt time can
+include network delay; Dex does not infer start for old Runners. Logs do not
+include command arguments, paths, error text, or stream data.
+
 A lease on a machine holds its enrollment, which is the digest of the machine
 token in control storage. It does not hold the socket, and the stamp does not
 change when the machine disconnects or Dex restarts. Each call takes the current
@@ -445,7 +461,8 @@ of truth. Empty means that the session follows the bot's environment
 selection, which does not change when the bot's environment changes. An unscoped
 session can select local or any registered SSH, runner, or E2B environment in the
 same Dex instance. Bots that use the same runner share its connection, not their
-workspaces. They execute one operation at a time. SSH and runner
+workspaces. Calls on one Runner can overlap, including calls to the same files.
+Sequence dependent operations explicitly. SSH and runner
 use the same `<base>/<bot-id>/workspace` layout under their respective base
 directories. These workspaces are not permission boundaries.
 
