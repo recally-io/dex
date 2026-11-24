@@ -1,6 +1,6 @@
 import { beforeEach, describe, test } from "@e2e-dev/web";
 import { expect } from "e2e";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -68,6 +68,7 @@ describe("chat", () => {
 
       // When the user sends to Main, then Main answers before the child can finish.
       await expect(send).toBeVisible();
+      await expect(screen.getByRole("button", "Stop run")).not.toBeVisible();
       await composer.fill(`bash {"command":"printf main-replied-${stamp}"}`);
       await send.tap();
       await screen.getByText(new RegExp(`^tool:.*main-replied-${stamp}`)).waitFor();
@@ -91,7 +92,8 @@ describe("chat", () => {
       await screen.getByRole("button", "Remove", { exact: true }).waitFor();
       const queuedReply = screen.getByText(new RegExp(`^tool:.*queued-reply-${stamp}`));
       await expect(queuedReply).not.toBeVisible();
-      await writeFile(mainGate, "");
+      await stop.tap();
+      await screen.getByText(/^Stop requested/).waitFor();
       await queuedReply.waitFor();
 
       // The child still has its own Stop button.

@@ -79,6 +79,9 @@ child as a read-only panel on the right, which covers the transcript on a narrow
 screen. Task conversations are read-only while queued or running and writable
 after they end.
 The bot header opens the Sessions page and creates new sessions. Legacy Sessions and transcript URLs remain readable.
+Main shows Stop only for its own native run target on a connected stream. A
+retry sends the original target. A child can be active while Main sends an
+ordinary input. Non-Main Stop keeps its legacy behavior.
 
 The chat activity panel lists the session's Monitors and Outbox entries. It
 shows the Monitor mode, attempt limit, and latest outcome. The user can cancel

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -337,7 +338,7 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	}
 }
 
-func TestUserMainStopLeavesSameBotAndCrossBotChildrenRunning(t *testing.T) {
+func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 	t.Parallel()
 	// Given Main started a gated child in each bot and now has a gated turn of its own.
 	s := startBots(t)
@@ -367,13 +368,49 @@ func TestUserMainStopLeavesSameBotAndCrossBotChildrenRunning(t *testing.T) {
 	mainPID := filepath.Join(s.dir, "main-turn.pid")
 	waitTaskFile(t, mainPID)
 
-	// When the user stops Main, then its own turn ends, and both children can finish normally.
-	s.d.must(t, http.MethodPost, path+"/abort", nil, nil)
-	waitTaskPIDGone(t, mainPID)
-	for _, child := range children {
-		releaseResultGate(t, s.dir, child.gate)
-		botChat{bots: s, agent: child.agent, id: child.id}.watch().until(t, child.gate+" finished normally after Main Stop", answeredWith("bash: gate released"))
+	// When the next input is queued, Main Stop rejects a missing or foreign target.
+	main.send(taskGate(t, s.dir, "main-next"))
+	s.d.must(t, http.MethodPost, path+"/abort", nil, nil, http.StatusBadRequest)
+	abort := func(path, target string, status int) {
+		t.Helper()
+		s.d.must(t, http.MethodPost, path+"/abort?runTarget="+url.QueryEscape(target), nil, nil, status)
 	}
+	for _, child := range children {
+		target := (botChat{bots: s, agent: child.agent, id: child.id}).watch().activeRunTarget(t)
+		abort(path, target, http.StatusConflict)
+		if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
+			t.Fatalf("foreign target stopped %s", child.gate)
+		}
+	}
+	w := main.watch()
+	first := w.activeRunTarget(t)
+	abort(fmt.Sprintf("/api/agents/%s/chats/%d", s.b.ID, main.id), first, http.StatusNotFound)
+	abort(path, first, http.StatusOK)
+	waitTaskPIDGone(t, mainPID)
+
+	// Then the next turn really runs, and a reconnect supplies its new target.
+	waitTaskFile(t, filepath.Join(s.dir, "main-next.pid"))
+	w.until(t, "successor target", func(tr *transcript) bool { return tr.running && tr.runTarget != "" && tr.runTarget != first })
+	next := main.watch().activeRunTarget(t)
+	if next != w.tr.runTarget {
+		t.Fatalf("snapshot and live target differ: %q and %q", next, w.tr.runTarget)
+	}
+	abort(path, first, http.StatusConflict)
+	abort(path, first, http.StatusConflict)
+	releaseResultGate(t, s.dir, "main-next")
+	w.until(t, "successor answer after stale Stops", answeredWith("bash: gate released"))
+	for _, child := range children {
+		if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
+			t.Fatalf("Main Stop crossed into %s", child.gate)
+		}
+	}
+	// An explicit Stop on a child still works without a Main run target.
+	child := children[0]
+	s.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/abort", child.agent, child.id), nil, nil)
+	waitTaskPIDGone(t, filepath.Join(s.dir, child.gate+".pid"))
+	child = children[1]
+	releaseResultGate(t, s.dir, child.gate)
+	(botChat{bots: s, agent: child.agent, id: child.id}).watch().until(t, "cross-bot child answer", answeredWith("bash: gate released"))
 }
 
 // crossBotChat is a session in the list of the web API. The bot fields are set only when the session

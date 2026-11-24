@@ -204,6 +204,11 @@ type ForkReceipt struct {
 	ForkID      int64  `json:"fork_id"`
 }
 
+type MainTurnStop struct {
+	ConversationID int64  `json:"conversation_id"`
+	Target         string `json:"target"`
+}
+
 type McpServer struct {
 	AgentID   string `json:"agent_id"`
 	Name      string `json:"name"`

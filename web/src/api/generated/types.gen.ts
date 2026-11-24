@@ -599,7 +599,7 @@ export type BoundaryItem = {
      */
     text?: string;
     /**
-     * Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+     * Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (legacy Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
      *
      */
     status?: 'pending' | 'queued' | 'nothing' | 'failed';
@@ -784,6 +784,7 @@ export type SnapshotEvent = {
     type: 'snapshot';
     items: Array<Item>;
     running: boolean;
+    runTarget?: RunTarget;
     /**
      * Load history before this entry ID.
      */
@@ -811,8 +812,14 @@ export type AppendEvent = {
 export type RunEvent = {
     type: 'run';
     running: boolean;
+    runTarget?: RunTarget;
     retry?: Retry;
 };
+
+/**
+ * The exact foreground task of this session. Absent when no task can be stopped.
+ */
+export type RunTarget = string;
 
 export type Settings = {
     /**
@@ -4528,11 +4535,20 @@ export type AbortChatData = {
         agentId: string;
         chatId: number;
     };
-    query?: never;
+    query?: {
+        /**
+         * Required on Main. Use the exact target from the snapshot or run event. Omit for other sessions.
+         */
+        runTarget?: string;
+    };
     url: '/api/agents/{agentId}/chats/{chatId}/abort';
 };
 
 export type AbortChatErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
     /**
      * The request failed.
      */
@@ -4544,6 +4560,10 @@ export type AbortChatErrors = {
     /**
      * The request failed.
      */
+    409: Error;
+    /**
+     * The request failed.
+     */
     default: Error;
 };
 
@@ -4551,7 +4571,7 @@ export type AbortChatError = AbortChatErrors[keyof AbortChatErrors];
 
 export type AbortChatResponses = {
     /**
-     * Pending input is withdrawn and cancellation is requested.
+     * Cancellation is requested.
      */
     200: Ok;
 };

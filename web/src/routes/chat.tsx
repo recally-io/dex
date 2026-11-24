@@ -354,7 +354,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const abort = useMutation({
     ...abortChatMutation(),
     onSuccess: async () => {
-      setQueued([]);
+      if (!isMain) setQueued([]);
       await Promise.all([refreshChats(agentId), refetchChat()]);
     },
   });
@@ -610,7 +610,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 void sendText(failedMessage.current.body.text, failedMessage.current.attachments).catch(
                   () => {},
                 );
-              else if (abort.isError && chatId) abort.mutate({ path: { agentId, chatId } });
+              else if (abort.isError && abort.variables) abort.mutate(abort.variables);
             }}
           />
         </div>
@@ -658,10 +658,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         files={files}
         running={running}
         stoppable={
-          running ||
-          activeChildren ||
-          items.some((item) => item.kind === "user" && item.queued) ||
-          (connection !== "ready" && chat.data?.busy === true)
+          isMain
+            ? connection === "ready" && running && Boolean(state.runTarget)
+            : running ||
+              activeChildren ||
+              items.some((item) => item.kind === "user" && item.queued) ||
+              (connection !== "ready" && chat.data?.busy === true)
         }
         pending={pending}
         disabledReason={reason}
@@ -669,7 +671,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         autoFocus
         onSend={(text, mode) => sendText(text, files.ready, undefined, mode)}
         onStop={() => {
-          if (chatId) abort.mutate({ path: { agentId, chatId } });
+          if (!chatId) return;
+
+          if (isMain) {
+            if (connection !== "ready" || !running || !state.runTarget) return;
+
+            abort.mutate({ path: { agentId, chatId }, query: { runTarget: state.runTarget } });
+          } else {
+            abort.mutate({ path: { agentId, chatId } });
+          }
         }}
         text={draft}
         onTextChange={setDraft}

@@ -241,6 +241,9 @@ func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
 			errs = append(errs, err)
 		}
 	}
+	if err := s.reconcileMainStops(ctx, agentID, blocked); err != nil {
+		errs = append(errs, err)
+	}
 	pending, err := s.q.ListPendingSubmissions(ctx)
 	if err != nil {
 		return errors.Join(append(errs, err)...)

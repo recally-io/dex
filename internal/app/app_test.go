@@ -231,18 +231,20 @@ type transcript struct {
 	children  map[int64]string
 	items     []item
 	running   bool
+	runTarget string
 	snapshots int
 }
 
 type chatEvent struct {
-	ChatID  int64  `json:"chatId"`
-	State   string `json:"state"`
-	Type    string `json:"type"`
-	Items   []item `json:"items"`
-	Item    item   `json:"item"`
-	ID      string `json:"id"`
-	Text    string `json:"text"`
-	Running bool   `json:"running"`
+	ChatID    int64  `json:"chatId"`
+	State     string `json:"state"`
+	Type      string `json:"type"`
+	Items     []item `json:"items"`
+	Item      item   `json:"item"`
+	ID        string `json:"id"`
+	Text      string `json:"text"`
+	Running   bool   `json:"running"`
+	RunTarget string `json:"runTarget"`
 }
 
 func (tr *transcript) apply(ev chatEvent) {
@@ -253,7 +255,7 @@ func (tr *transcript) apply(ev chatEvent) {
 		}
 		tr.children[ev.ChatID] = ev.State
 	case "snapshot":
-		tr.items, tr.running = ev.Items, ev.Running
+		tr.items, tr.running, tr.runTarget = ev.Items, ev.Running, ev.RunTarget
 		tr.snapshots++
 	case "item":
 		if i := slices.IndexFunc(tr.items, func(it item) bool { return it.ID == ev.Item.ID }); i >= 0 {
@@ -266,7 +268,7 @@ func (tr *transcript) apply(ev chatEvent) {
 			tr.items[i].Text += ev.Text
 		}
 	case "run":
-		tr.running = ev.Running
+		tr.running, tr.runTarget = ev.Running, ev.RunTarget
 	}
 }
 
@@ -345,6 +347,12 @@ func (w *watcher) until(t *testing.T, what string, cond func(*transcript) bool) 
 			t.Fatalf("no %s after 30 s; transcript: %+v", what, w.tr)
 		}
 	}
+}
+
+func (w *watcher) activeRunTarget(t *testing.T) string {
+	t.Helper()
+	w.until(t, "foreground run target", func(tr *transcript) bool { return tr.running && tr.runTarget != "" })
+	return w.tr.runTarget
 }
 
 // answered holds when the run is over and the last item is an answer with text.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/MichaelKinsy/PiG/chord"
@@ -47,7 +48,7 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 		cancel()
 		return nil, err
 	}
-	var active activeContext
+	active := activeContext{ref: ref}
 	current, err := active.project(ctx, conversation, native.Value())
 	if err != nil {
 		cancel()
@@ -76,8 +77,8 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 		changes, ok := diff(current.Items, next.Items)
 		if !ok || current.HistoryBefore != next.HistoryBefore {
 			changes = []Event{next}
-		} else if current.Running != next.Running || !reflect.DeepEqual(current.Retry, next.Retry) {
-			changes = append(changes, Event{Type: "run", Running: next.Running, Retry: next.Retry})
+		} else if current.Running != next.Running || current.RunTarget != next.RunTarget || !reflect.DeepEqual(current.Retry, next.Retry) {
+			changes = append(changes, Event{Type: "run", Running: next.Running, RunTarget: next.RunTarget, Retry: next.Retry})
 		}
 		current = next
 		for _, event := range changes {
@@ -119,6 +120,7 @@ const snapshotEntries = 300
 // Entries are immutable, so a read pinned to the view's tail matches that revision's docs.
 // Refresh on entry changes only; streamed tokens reuse the same entries.
 type activeContext struct {
+	ref     Ref
 	tail    durable.EntryId
 	entries []durable.EntryRecord
 	// from is the first entry of the window, or 0 for the full context. It is fixed for the
@@ -145,7 +147,7 @@ func (active *activeContext) project(ctx context.Context, conversation harness.C
 		}
 	}
 	view.Entries = active.entries
-	event, err := projectView(view)
+	event, err := projectView(view, active.ref)
 	event.HistoryBefore = max(event.HistoryBefore, int64(active.from))
 	return event, err
 }
@@ -176,7 +178,7 @@ func windowStart(entries []durable.EntryRecord) durable.EntryId {
 	return sorted[start].Id
 }
 
-func projectView(view harness.ConversationView) (Event, error) {
+func projectView(view harness.ConversationView, ref Ref) (Event, error) {
 	p := projection{entries: view.Entries}
 	if doc, ok := view.Docs.Get("pi.live"); ok {
 		live, err := durable.FromJsonValue[harness.LiveState](doc)
@@ -192,5 +194,9 @@ func projectView(view harness.ConversationView) (Event, error) {
 		}
 		p.inbox = inbox.Items
 	}
-	return p.event(), nil
+	event := p.event()
+	if ref.ID != 0 && ref.Scope == "" && p.live.Run != nil {
+		event.RunTarget = runTargetPrefix(ref) + strconv.FormatInt(int64(p.live.Run.TaskId), 10)
+	}
+	return event, nil
 }

@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"context"
-	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -99,10 +98,11 @@ func TestUserSeesConfirmedFollowUpWhenStopRacesAnInFlightSend(t *testing.T) {
 	case <-time.After(15 * time.Second):
 		t.Fatal("the conclusion never reached the platform fixture")
 	}
-	d.must(t, http.MethodPost, chatPath(main, "abort"), nil, nil)
-	if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ? AND status = 'revoked' AND delivered_at IS NULL`, work.ResultID); n != 1 {
-		t.Fatalf("stop did not revoke the pending row: %d", n)
-	}
+	f.message(2, 42, 7, "/stop")
+	eventually(t, "legacy channel Stop revokes the in-flight conclusion", func() (bool, any) {
+		n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ? AND status = 'revoked' AND delivered_at IS NULL`, work.ResultID)
+		return n == 1, n
+	})
 	close(release)
 	eventually(t, "platform receipt for the already in-flight conclusion", func() (bool, any) {
 		var status, remotes string

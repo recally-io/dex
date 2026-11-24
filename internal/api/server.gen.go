@@ -920,7 +920,7 @@ type BoundaryItem struct {
 	// Reason Why the compaction failed.
 	Reason *string `json:"reason,omitempty"`
 
-	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (legacy Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 	Status *BoundaryItemStatus `json:"status,omitempty"`
 
 	// Text The handoff of a reset, the summary of a compaction, or the notice of a fork to another environment. Absent when there is none.
@@ -933,7 +933,7 @@ type BoundaryItemBoundary string
 // BoundaryItemKind defines model for BoundaryItem.Kind.
 type BoundaryItemKind string
 
-// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (legacy Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 type BoundaryItemStatus string
 
 // ChannelStatus defines model for ChannelStatus.
@@ -1566,13 +1566,19 @@ type Retry struct {
 
 // RunEvent defines model for RunEvent.
 type RunEvent struct {
-	Retry   *Retry       `json:"retry,omitempty"`
-	Running bool         `json:"running"`
-	Type    RunEventType `json:"type"`
+	Retry *Retry `json:"retry,omitempty"`
+
+	// RunTarget The exact foreground task of this session. Absent when no task can be stopped.
+	RunTarget *RunTarget   `json:"runTarget,omitempty"`
+	Running   bool         `json:"running"`
+	Type      RunEventType `json:"type"`
 }
 
 // RunEventType defines model for RunEvent.Type.
 type RunEventType string
+
+// RunTarget The exact foreground task of this session. Absent when no task can be stopped.
+type RunTarget = string
 
 // RunnerStatus defines model for RunnerStatus.
 type RunnerStatus struct {
@@ -1643,11 +1649,14 @@ type SkillScope string
 // SnapshotEvent defines model for SnapshotEvent.
 type SnapshotEvent struct {
 	// HistoryBefore Load history before this entry ID.
-	HistoryBefore *int64            `json:"historyBefore,omitempty"`
-	Items         []Item            `json:"items"`
-	Retry         *Retry            `json:"retry,omitempty"`
-	Running       bool              `json:"running"`
-	Type          SnapshotEventType `json:"type"`
+	HistoryBefore *int64 `json:"historyBefore,omitempty"`
+	Items         []Item `json:"items"`
+	Retry         *Retry `json:"retry,omitempty"`
+
+	// RunTarget The exact foreground task of this session. Absent when no task can be stopped.
+	RunTarget *RunTarget        `json:"runTarget,omitempty"`
+	Running   bool              `json:"running"`
+	Type      SnapshotEventType `json:"type"`
 }
 
 // SnapshotEventType defines model for SnapshotEvent.Type.
@@ -2004,6 +2013,12 @@ type RenameArtifactJSONBody struct {
 // PollWechatLoginJSONBody defines parameters for PollWechatLogin.
 type PollWechatLoginJSONBody struct {
 	VerifyCode *string `json:"verifyCode,omitempty"`
+}
+
+// AbortChatParams defines parameters for AbortChat.
+type AbortChatParams struct {
+	// RunTarget Required on Main. Use the exact target from the snapshot or run event. Omit for other sessions.
+	RunTarget *string `form:"runTarget,omitempty" json:"runTarget,omitempty"`
 }
 
 // ClearContextJSONBody defines parameters for ClearContext.
@@ -2867,7 +2882,7 @@ type ServerInterface interface {
 	GetChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
 
 	// (POST /api/agents/{agentId}/chats/{chatId}/abort)
-	AbortChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
+	AbortChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params AbortChatParams)
 
 	// (DELETE /api/agents/{agentId}/chats/{chatId}/archive)
 	UnarchiveChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId)
@@ -4055,8 +4070,24 @@ func (siw *ServerInterfaceWrapper) AbortChat(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AbortChatParams
+
+	// ------------- Optional query parameter "runTarget" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "runTarget", r.URL.Query(), &params.RunTarget, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "runTarget"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runTarget", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AbortChat(w, r, agentId, chatId)
+		siw.Handler.AbortChat(w, r, agentId, chatId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8013,6 +8044,7 @@ func (response GetChatdefaultJSONResponse) VisitGetChatResponse(w http.ResponseW
 type AbortChatRequestObject struct {
 	AgentId string `json:"agentId"`
 	ChatId  ChatId `json:"chatId"`
+	Params  AbortChatParams
 }
 
 type AbortChatResponseObject interface {
@@ -8033,7 +8065,21 @@ func (response AbortChat200JSONResponse) VisitAbortChatResponse(w http.ResponseW
 	return err
 }
 
-type AbortChat403JSONResponse struct{ ErrorJSONResponse }
+type AbortChat400JSONResponse struct{ ErrorJSONResponse }
+
+func (response AbortChat400JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortChat403JSONResponse Error
 
 func (response AbortChat403JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
 
@@ -8057,6 +8103,20 @@ func (response AbortChat404JSONResponse) VisitAbortChatResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AbortChat409JSONResponse Error
+
+func (response AbortChat409JSONResponse) VisitAbortChatResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -13637,11 +13697,12 @@ func (sh *strictHandler) GetChat(w http.ResponseWriter, r *http.Request, agentId
 }
 
 // AbortChat operation middleware
-func (sh *strictHandler) AbortChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId) {
+func (sh *strictHandler) AbortChat(w http.ResponseWriter, r *http.Request, agentId string, chatId ChatId, params AbortChatParams) {
 	var request AbortChatRequestObject
 
 	request.AgentId = agentId
 	request.ChatId = chatId
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.AbortChat(ctx, request.(AbortChatRequestObject))
