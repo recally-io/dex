@@ -4,6 +4,8 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	larkevent "github.com/larksuite/oapi-sdk-go/v3/event"
 	"github.com/recally-io/dex/internal/channel"
@@ -23,11 +25,12 @@ func (b *Bot) InboundWebhook() *channel.Webhook {
 	}
 	return &channel.Webhook{Account: appID, Decode: func(headers http.Header, body []byte) (channel.WebhookEvent, int) {
 		var signed bool
+		requestTime := headers.Get(larkevent.EventRequestTimestamp)
 		if config.EncryptKey != "" {
 			signature := headers.Get(larkevent.EventSignature)
 			if signature != "" {
-				timestamp, nonce := headers.Get(larkevent.EventRequestTimestamp), headers.Get(larkevent.EventRequestNonce)
-				if timestamp == "" || nonce == "" || !channel.MatchWebhookSecret(signature, larkevent.Signature(timestamp, nonce, config.EncryptKey, string(body))) {
+				nonce := headers.Get(larkevent.EventRequestNonce)
+				if requestTime == "" || nonce == "" || !channel.MatchWebhookSecret(signature, larkevent.Signature(requestTime, nonce, config.EncryptKey, string(body))) {
 					return channel.WebhookEvent{}, http.StatusUnauthorized
 				}
 				signed = true
@@ -47,9 +50,10 @@ func (b *Bot) InboundWebhook() *channel.Webhook {
 			Challenge string `json:"challenge"`
 			Token     string `json:"token"`
 			Header    struct {
-				ID    string `json:"event_id"`
-				AppID string `json:"app_id"`
-				Token string `json:"token"`
+				ID         string `json:"event_id"`
+				AppID      string `json:"app_id"`
+				Token      string `json:"token"`
+				CreateTime string `json:"create_time"`
 			} `json:"header"`
 		}
 		err := json.Unmarshal(body, &event)
@@ -69,8 +73,27 @@ func (b *Bot) InboundWebhook() *channel.Webhook {
 		if event.Header.AppID != appID || (!signed && !channel.MatchWebhookSecret(event.Header.Token, config.VerificationToken)) {
 			return channel.WebhookEvent{}, http.StatusUnauthorized
 		}
+		now := time.Now()
+		if signed {
+			seconds, err := strconv.ParseInt(requestTime, 10, 64)
+			if err != nil || !freshWebhookTime(time.Unix(seconds, 0), now) {
+				return channel.WebhookEvent{}, http.StatusBadRequest
+			}
+		}
+		// A new signature on a retry must not make an old event fresh again.
+		if !signed || event.Header.CreateTime != "" {
+			millis, err := strconv.ParseInt(event.Header.CreateTime, 10, 64)
+			if err != nil || !freshWebhookTime(time.UnixMilli(millis), now) {
+				return channel.WebhookEvent{}, http.StatusBadRequest
+			}
+		}
 		return channel.WebhookEvent{ID: event.Header.ID, Payload: body}, http.StatusOK
 	}}
+}
+
+func freshWebhookTime(platformTime, now time.Time) bool {
+	// Future timestamps could outlive the deduplication row.
+	return !platformTime.Before(now.Add(-channel.WebhookRetention)) && !platformTime.After(now)
 }
 
 func decryptWebhook(ciphertext, key string) (body []byte, err error) {

@@ -52,7 +52,7 @@ func (m *Manager) Webhook(w http.ResponseWriter, r *http.Request, platform strin
 		return
 	}
 	if err := m.q.EnqueueChannelWebhook(r.Context(), sqlc.EnqueueChannelWebhookParams{
-		Platform: platform, Account: hook.Account, EventID: event.ID, AgentID: m.agentID, Payload: event.Payload,
+		Platform: platform, Account: hook.Account, EventID: event.ID, AgentID: m.agentID, ReceivedAt: time.Now().UnixMilli(), Payload: event.Payload,
 	}); err != nil {
 		slog.Warn("channel: callback could not commit", "channel", platform, "err", err)
 		w.WriteHeader(http.StatusServiceUnavailable)

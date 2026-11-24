@@ -308,15 +308,26 @@ Dex commits each authenticated event to the channel webhook inbox in
 `control.sqlite` before it returns HTTP 200. A failed commit gets HTTP 503.
 The ACK does not wait for message processing, downloads, or agent execution.
 Telegram uses the bot ID and update ID. Feishu uses the app ID and
-`header.event_id`. The unique key also includes the platform. Retries of an
-accepted event get HTTP 200 without adding another item, even after a restart.
-A URL verification challenge does not enter the inbox.
+`header.event_id`. The unique key also includes the platform. Valid retries
+within the deduplication window get HTTP 200 without adding another item, even
+after a restart. A URL verification challenge does not enter the inbox.
 
 One worker per integration processes committed events in intake order. The
 worker calls the same receive function as polling or WebSocket. The current
 sender grants, pairing, and routing rules still apply. A transient failure can
-delay later events. On success, dex clears the payload and keeps the event ID
-for deduplication. The inbox, not platform replay, recovers accepted events
+delay later events. On success, dex clears the payload. A background job runs at
+startup and every hour. It prunes handled IDs more than 7 days after intake,
+which covers both platforms' retry windows. The job never prunes pending events.
+
+Feishu webhook events must have a timestamp within the last 7 days. Dex checks
+the signed request timestamp in encrypted mode and also checks `header.create_time`
+when present. Token-only mode requires `header.create_time`. Dex rejects future
+timestamps, so keep the host clock synchronized. For Telegram, the secret header
+is the security boundary. Dex cannot use the update timestamp to reject replays
+once the deduplication record expires. Keep the secret private and rotate it
+if exposed.
+
+The inbox, not platform replay, recovers accepted events
 after restart. The default transport drains an existing inbox before it starts
 receiving from the platform. It skips events already processed from the inbox
 when the platform sends the same event ID again. Pending payloads stay bound to the agent that

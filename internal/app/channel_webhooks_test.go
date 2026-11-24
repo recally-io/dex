@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -68,6 +69,8 @@ func TestUserVerifiesFeishuWebhook(t *testing.T) {
 	postChannelHook(t, d, feishuHook, feishuHookText(t, "group", "stranger", "group", "verify-me", "/pair "+setup.PairingCode), nil, http.StatusOK)
 	postChannelHook(t, d, feishuHook, feishuHookText(t, "pair", "owner", "p2p", "verify-me", "/pair "+setup.PairingCode), nil, http.StatusOK)
 	f.waitReply(t, "Paired.")
+	old := time.Now().Add(-8 * 24 * time.Hour)
+	postChannelHook(t, d, feishuHook, feishuHookTextAt(t, "hello", "owner", "p2p", "verify-me", "old replay", old), map[string]string{larkevent.EventRequestTimestamp: strconv.FormatInt(time.Now().Unix(), 10)}, http.StatusBadRequest)
 	postChannelHook(t, d, feishuHook, feishuHookText(t, "hello", "owner", "p2p", "verify-me", "hello webhook"), nil, http.StatusOK)
 	f.waitReply(t, "echo: hello webhook")
 	_, view := d.call(t, http.MethodGet, "/api/agents/default/channels/feishu", nil)
@@ -183,6 +186,35 @@ func TestUserSwitchesTelegramWebhookWithDurableRetriesAndRollback(t *testing.T) 
 	}
 }
 
+func TestUserKeepsPendingAndRecentWebhookEventsAfterCleanup(t *testing.T) {
+	t.Parallel()
+	// Given one recent handled event and two old events, one still pending.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	conn := controlWriteDB(t, dir)
+	now := time.Now()
+	old := now.Add(-8 * 24 * time.Hour).UnixMilli()
+	if _, err := conn.ExecContext(t.Context(), `
+INSERT INTO channel_webhook_inbox (platform, account, event_id, agent_id, received_at, payload)
+VALUES ('telegram', '123', 'recent', 'default', ?, NULL),
+       ('telegram', '123', 'handled', 'default', ?, NULL),
+       ('telegram', '123', 'pending', 'default', ?, CAST('{}' AS BLOB))`, now.UnixMilli(), old, old); err != nil {
+		t.Fatal(err)
+	}
+	d.stop()
+
+	// On restart the cleanup job removes only the old handled event.
+	_ = startDex(t, dir, "")
+	eventually(t, "old handled webhook row pruned", func() (bool, any) {
+		var events string
+		err := conn.QueryRowContext(t.Context(), `SELECT group_concat(event_id ORDER BY event_id) FROM channel_webhook_inbox`).Scan(&events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return events == "pending,recent", events
+	})
+}
+
 func assertWebhookInputs(t *testing.T, dir, source string, want int) {
 	t.Helper()
 	var count int
@@ -193,8 +225,13 @@ func assertWebhookInputs(t *testing.T, dir, source string, want int) {
 
 func feishuHookText(t *testing.T, id, user, chatType, token, text string) []byte {
 	t.Helper()
+	return feishuHookTextAt(t, id, user, chatType, token, text, time.Now())
+}
+
+func feishuHookTextAt(t *testing.T, id, user, chatType, token, text string, created time.Time) []byte {
+	t.Helper()
 	return hookJSON(t, map[string]any{
-		"schema": "2.0", "header": map[string]string{"event_type": "im.message.receive_v1", "event_id": "event-" + id, "app_id": "app", "token": token},
+		"schema": "2.0", "header": map[string]string{"event_type": "im.message.receive_v1", "event_id": "event-" + id, "app_id": "app", "token": token, "create_time": strconv.FormatInt(created.UnixMilli(), 10)},
 		"event": map[string]any{
 			"sender":  map[string]any{"sender_type": "user", "sender_id": map[string]string{"open_id": user}},
 			"message": map[string]string{"message_id": id, "chat_type": chatType, "message_type": "text", "content": string(hookJSON(t, map[string]string{"text": text}))},
@@ -242,11 +279,19 @@ func TestUserSwitchesFeishuToEncryptedWebhookAndBack(t *testing.T) {
 	if raw := postChannelHook(t, d, feishuHook, body, nil, http.StatusOK); !strings.Contains(raw, `"challenge":"encrypted-proof"`) {
 		t.Fatalf("encrypted challenge: %s", raw)
 	}
-	headers := map[string]string{larkevent.EventRequestTimestamp: "1700000000", larkevent.EventRequestNonce: "nonce"}
+	headers := map[string]string{larkevent.EventRequestNonce: "nonce"}
 	sign := func(body []byte) {
 		headers[larkevent.EventSignature] = larkevent.Signature(headers[larkevent.EventRequestTimestamp], headers[larkevent.EventRequestNonce], feishuTestEncryptKey, string(body))
 	}
+	old := time.Now().Add(-8 * 24 * time.Hour)
 	body = encryptedFeishuHook(t, feishuHookText(t, "secure", "owner", "p2p", "verify-me", "signed webhook"))
+	headers[larkevent.EventRequestTimestamp] = strconv.FormatInt(old.Unix(), 10)
+	sign(body)
+	postChannelHook(t, d, feishuHook, body, headers, http.StatusBadRequest)
+	headers[larkevent.EventRequestTimestamp] = strconv.FormatInt(time.Now().Unix(), 10)
+	oldBody := encryptedFeishuHook(t, feishuHookTextAt(t, "secure", "owner", "p2p", "verify-me", "old event", old))
+	sign(oldBody)
+	postChannelHook(t, d, feishuHook, oldBody, headers, http.StatusBadRequest)
 	postChannelHook(t, d, feishuHook, body, nil, http.StatusUnauthorized)
 	headers[larkevent.EventSignature] = "bad-signature"
 	postChannelHook(t, d, feishuHook, body, headers, http.StatusUnauthorized)

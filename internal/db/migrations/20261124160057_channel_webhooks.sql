@@ -10,10 +10,12 @@ CREATE TABLE channel_webhook_inbox (
     account TEXT NOT NULL,
     event_id TEXT NOT NULL,
     agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    received_at INTEGER NOT NULL,
     payload BLOB,
     UNIQUE (platform, account, event_id)
 ) STRICT;
 CREATE INDEX channel_webhook_pending ON channel_webhook_inbox(agent_id, platform, account, id) WHERE payload IS NOT NULL;
+CREATE INDEX channel_webhook_handled_received_at ON channel_webhook_inbox(received_at) WHERE payload IS NULL;
 
 -- +goose Down
 DROP TABLE channel_webhook_inbox;

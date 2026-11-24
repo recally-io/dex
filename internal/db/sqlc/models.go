@@ -137,12 +137,13 @@ type ChannelReplyFile struct {
 }
 
 type ChannelWebhookInbox struct {
-	ID       int64  `json:"id"`
-	Platform string `json:"platform"`
-	Account  string `json:"account"`
-	EventID  string `json:"event_id"`
-	AgentID  string `json:"agent_id"`
-	Payload  []byte `json:"payload"`
+	ID         int64  `json:"id"`
+	Platform   string `json:"platform"`
+	Account    string `json:"account"`
+	EventID    string `json:"event_id"`
+	AgentID    string `json:"agent_id"`
+	ReceivedAt int64  `json:"received_at"`
+	Payload    []byte `json:"payload"`
 }
 
 type CompactReceipt struct {

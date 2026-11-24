@@ -5,7 +5,12 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"net/http"
+	"time"
 )
+
+// WebhookRetention covers Telegram's 24-hour update hold and all four Feishu
+// retries, whose longest interval is 6 hours. Pending events are not pruned.
+const WebhookRetention = 7 * 24 * time.Hour
 
 // Webhook identifies an active HTTP receiver and verifies its platform requests.
 // Implementations must not perform platform I/O from Decode.

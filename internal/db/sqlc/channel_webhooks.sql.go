@@ -28,17 +28,18 @@ func (q *Queries) CountHandledChannelWebhook(ctx context.Context, arg CountHandl
 }
 
 const enqueueChannelWebhook = `-- name: EnqueueChannelWebhook :exec
-INSERT INTO channel_webhook_inbox (platform, account, event_id, agent_id, payload)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO channel_webhook_inbox (platform, account, event_id, agent_id, received_at, payload)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (platform, account, event_id) DO NOTHING
 `
 
 type EnqueueChannelWebhookParams struct {
-	Platform string `json:"platform"`
-	Account  string `json:"account"`
-	EventID  string `json:"event_id"`
-	AgentID  string `json:"agent_id"`
-	Payload  []byte `json:"payload"`
+	Platform   string `json:"platform"`
+	Account    string `json:"account"`
+	EventID    string `json:"event_id"`
+	AgentID    string `json:"agent_id"`
+	ReceivedAt int64  `json:"received_at"`
+	Payload    []byte `json:"payload"`
 }
 
 func (q *Queries) EnqueueChannelWebhook(ctx context.Context, arg EnqueueChannelWebhookParams) error {
@@ -47,6 +48,7 @@ func (q *Queries) EnqueueChannelWebhook(ctx context.Context, arg EnqueueChannelW
 		arg.Account,
 		arg.EventID,
 		arg.AgentID,
+		arg.ReceivedAt,
 		arg.Payload,
 	)
 	return err
@@ -83,4 +85,13 @@ func (q *Queries) NextChannelWebhook(ctx context.Context, arg NextChannelWebhook
 	var i NextChannelWebhookRow
 	err := row.Scan(&i.ID, &i.Payload)
 	return i, err
+}
+
+const pruneHandledChannelWebhooks = `-- name: PruneHandledChannelWebhooks :exec
+DELETE FROM channel_webhook_inbox WHERE payload IS NULL AND received_at < ?
+`
+
+func (q *Queries) PruneHandledChannelWebhooks(ctx context.Context, receivedAt int64) error {
+	_, err := q.db.ExecContext(ctx, pruneHandledChannelWebhooks, receivedAt)
+	return err
 }
