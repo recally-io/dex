@@ -158,6 +158,22 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		t.Fatalf("did not clear primary: %s", got)
 	}
 
+	// A revoked target cannot be selected. Reusing its ID for another allowed peer cannot revive the approval.
+	removed := channelApprovalPath(t, request(bot.ID, "set_notification_target", target.ID))
+	reused := channelApprovalPath(t, request(bot.ID, "set_notification_target", target.ID))
+	setTelegram(42)
+	reviewChannelChange(t, d, owner, http.MethodPost, removed, "", http.StatusConflict)
+	setTelegram(42, 44)
+	conn := sessionDB(t, d)
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO routine_notification_targets (id, agent_id, platform, account_id, peer)
+		SELECT ?, agent_id, 'telegram', substr(token, 1, instr(token, ':') - 1), 'telegram:44' FROM telegram_settings WHERE agent_id = ?`, target.ID, bot.ID); err != nil {
+		t.Fatal(err)
+	}
+	reviewChannelChange(t, d, owner, http.MethodPost, reused, "", http.StatusConflict)
+	if got := primary(); got != "" {
+		t.Fatalf("a stale approval selected a primary destination: %s", got)
+	}
+
 	// A change to the pairing invalidates the pending approval. A fresh approval revokes it.
 	stale := channelApprovalPath(t, request(bot.ID, "revoke_pairing", "telegram"))
 	setTelegram(44)
@@ -182,7 +198,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	}
 
 	// The audit contains both outcomes and no credentials, peer IDs or confirmation links.
-	var applied, denied int
+	var applied, denied, staleDenied int
 	for _, entry := range logs.Entries(0) {
 		if entry.Message != "channel tool mutation" {
 			continue
@@ -195,10 +211,13 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		}
 		if strings.Contains(entry.Attrs, "outcome=denied") {
 			denied++
+			if strings.Contains(entry.Attrs, "operation=set_notification_target") && strings.Contains(entry.Attrs, "bot="+bot.ID) {
+				staleDenied++
+			}
 		}
 	}
-	if applied != 4 || denied < 5 {
-		t.Fatalf("audit: %d applied, %d denied", applied, denied)
+	if applied != 4 || denied < 5 || staleDenied != 2 {
+		t.Fatalf("audit: %d applied, %d denied, %d stale destinations denied", applied, denied, staleDenied)
 	}
 }
 

@@ -337,15 +337,16 @@ POST from the owner surface applies that request. When dex requires sign-in,
 the review page requires the web session cookie. A chat message or a tool call
 cannot approve a request. The request belongs to its originating session and
 expires after 10 minutes. Control consumes it once and checks that the session,
-bots, and target are still valid. Changed channel credentials or pairing make
-an earlier request invalid. A restart clears requests that are still pending.
+bots, and target are still valid. A notification destination must still map to
+the peer shown on the page. Changed credentials or pairing make an earlier
+request invalid. A restart clears requests that are still pending.
 
 Control uses the same channel settings service as the web UI. It logs the
 outcome of applied and denied mutations with the verified bot and operation
 when available. It omits credentials, raw arguments, remote peer IDs, and
-approval links. The owner review separates tool authority from control-plane
-writes. It does not isolate code that runs as the dex OS user, which can access
-local settings and storage directly.
+approval links. The approval link is a bearer capability given to the model.
+The link does not isolate the owner on a no-token install or from code that
+runs as the dex OS user.
 
 ## Feishu and Lark
 

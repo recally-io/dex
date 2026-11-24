@@ -234,7 +234,7 @@ func (s *Service) ConfirmChannelChange(ctx context.Context, id string) (err erro
 func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) error {
 	switch p.operation {
 	case "set_notification_target", "clear_notification_target":
-		return s.setPrimaryNotificationTarget(ctx, p.BotID, p.target)
+		return s.setPrimaryNotificationTarget(ctx, p.BotID, p.target, p.Destination)
 	case "disconnect":
 		switch p.target {
 		case "telegram":
