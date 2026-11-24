@@ -86,6 +86,7 @@ Run `mise tasks` for the full list. The main tasks:
 | `check:go`          | golangci-lint, `go build`, `go test -race`; `internal/app` runs without `-race`                                  |
 | `check:app`         | The `internal/app` tests without the race detector, as in CI                                                     |
 | `check:native`      | Checks removed backend paths, rejects PiG TUI and extension-host imports, and builds four platforms with cgo off |
+| `documd`            | Renders one figure: `mise run documd <source> <png>`                                                             |
 | `generate:diagrams` | Renders the architecture, message-flow, always-on-flow, and plugins PNGs from PlantUML                           |
 | `generate:db`       | Regenerates `internal/db/sqlc`                                                                                   |
 | `generate:api`      | Regenerates the Go server and the TS client from `api/openapi.yaml`                                              |
