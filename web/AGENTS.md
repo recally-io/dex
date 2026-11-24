@@ -90,6 +90,9 @@ an active Monitor here. Monitor creation uses the session tool, not this panel.
 The About page (`/settings/about`) manages server operations through `/api/system/*`: switching the persisted update channel (`stable` or `prerelease`), checking releases, running an in-place upgrade with automatic `control.sqlite` backup, restarting the server gracefully (with wait-until-idle, cancel, and force-now controls), taking manual hot backups, and reading recent entries from the in-memory log ring buffer. When a restart or upgrade begins, it polls `GET /api/system/status`. A change in `startedAt` confirms the restart and refreshes health data.
 
 Execution Environments (`/settings/environment`) shows each `dex runner`'s live online state, platform, reported version, and version alignment status against `GET /api/health`'s server version (`Matches server`, auto-update on reconnect, or why manual update is needed).
+The shared environment editor lets the owner set or clear an optional plain-text
+Description for a Runner, SSH host, or E2B sandbox. The environment card shows
+it when set. The description is separate from Runner enrollment.
 The Environment page also edits shared vault secrets. A bot's Tools page
 edits that bot's secrets. The vault API returns metadata only. The editor
 clears the secret value after submit and does not store it in the browser.

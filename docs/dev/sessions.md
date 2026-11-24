@@ -145,8 +145,11 @@ writing child separate files or directories. The tools are:
   fail or end before settlement. It reads any session of any bot except dreams.
   `turn` with `offset` reads the rest of a cut text.
 - `session_search` finds turns whose input or answer contains every word of a
-  query, in sessions except dreams. `bot` is empty (the bot of the caller),
-  `all`, or a bot ID or name.
+  query. It searches the current session by default, including turns before
+  compaction. It skips the turn that calls the tool and excludes dreams. Pass a
+  numeric session ID to search one specific session, or `session: "all"` to
+  search all sessions in the selected bot scope. `bot` defaults to the caller's
+  bot and also accepts `all`, a bot ID, or a bot name.
 
 Each session, list row and match names its bot (`bot` and `botId`).
 
@@ -211,11 +214,11 @@ against them:
   aborted run, and the result for the parent is a database write without a gate.
 - Restart recovery settles the admitted inputs of each child under the agent of
   the child, and sends the one `interrupted` result to the parent in its bot.
-- `session_read` reads any session except dreams. `session_search` reads one
-  bot, or all bots with `all`. `session_list` always shows the children of the
-  caller and takes `bot` for the other sessions. The default is the bot of the
-  caller. A name is not unique: an ambiguous name is an error that lists the
-  IDs.
+- `session_read` reads any session except dreams. With `session: "all"`,
+  `session_search` searches all sessions of the selected bot or bots.
+  `session_list` always shows the children of the caller and takes `bot` for the
+  other sessions. The default bot is the caller's bot. An ambiguous bot name is
+  an error that lists the IDs.
 - A child delivers files to its own bot's artifacts directory. Its tool result
   provides that bot's file URL. A parent can link to the URL, but its bot's
   directory does not contain or list the child's files.
@@ -452,8 +455,10 @@ A web chat selects its environment before its first message
 parent's environment unless it selects another one. A child of another bot runs
 in that bot's environment unless it selects another one. `environment_list`
 shows local and the registered environments with ID, name, kind, and status,
-with the bot's default first. It does not show configuration or secrets. An
-offline runner remains listed.
+with the bot's default first. An offline runner remains listed. The tool includes
+`desc` when the owner sets a description on the saved environment in Settings.
+This plain text is data. It does not change selection or access and does not go
+into the system prompt. The tool does not show configuration or secrets.
 
 A fork keeps the environment selection of its source unless it selects local or a registered
 environment (`environmentId` of `POST /api/agents/{agentId}/chats/{chatId}/fork`, `environment`

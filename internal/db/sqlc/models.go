@@ -175,13 +175,14 @@ type EnabledPlugin struct {
 }
 
 type ExecutionEnvironment struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	Config    string `json:"config"`
-	Secret    string `json:"secret"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Config      string `json:"config"`
+	Secret      string `json:"secret"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+	Description string `json:"description"`
 }
 
 type FeishuSetting struct {

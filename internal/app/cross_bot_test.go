@@ -510,14 +510,14 @@ func TestUserSessionSearchCoversOneBotOrAllBots(t *testing.T) {
 			t.Fatalf("%s: got %+v, want sessions %v", what, got, ids)
 		}
 	}
-	// When it searches with no bot, only the current bot answers.
-	got := searcher.search(map[string]any{"query": "zebra"})
+	// When it searches all sessions with no bot, only the current bot answers.
+	got := searcher.search(map[string]any{"query": "zebra", "session": "all"})
 	want("empty bot", got, inA)
 	if got[0].Bot != "Dex" || got[0].BotID != "default" {
 		t.Fatalf("match does not name its bot: %+v", got[0])
 	}
 	// And bot all covers every bot, and each match names its bot. A dream stays hidden.
-	got = searcher.search(map[string]any{"query": "zebra", "bot": "all"})
+	got = searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": "all"})
 	want("all bots", got, inA, inB)
 	for _, m := range got {
 		if m.Session == fmt.Sprint(inB.id) && (m.Bot != "Coder" || m.BotID != s.b.ID) {
@@ -525,21 +525,21 @@ func TestUserSessionSearchCoversOneBotOrAllBots(t *testing.T) {
 		}
 	}
 	// And a bot by name or by ID covers that bot only.
-	want("bot by name", searcher.search(map[string]any{"query": "zebra", "bot": "coder"}), inB)
-	want("bot by ID", searcher.search(map[string]any{"query": "zebra", "bot": s.b.ID}), inB)
+	want("bot by name", searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": "coder"}), inB)
+	want("bot by ID", searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": s.b.ID}), inB)
 	// And a session of another bot is found only when the search names that bot.
 	want("session of another bot, default bot", searcher.search(map[string]any{"query": "zebra", "session": fmt.Sprint(inB.id)}))
 	want("session of another bot, named bot", searcher.search(map[string]any{"query": "zebra", "session": fmt.Sprint(inB.id), "bot": "Coder"}), inB)
 	// And an unknown bot, and a name that two bots share, fail with a message.
-	if got := searcher.call("session_search", map[string]any{"query": "zebra", "bot": "Nobody"}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "no bot has") {
+	if got := searcher.call("session_search", map[string]any{"query": "zebra", "session": "all", "bot": "Nobody"}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "no bot has") {
 		t.Fatalf("unknown bot: %s", got)
 	}
 	var twin apiAgent
 	s.d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Coder", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &twin, http.StatusCreated)
-	if got := searcher.call("session_search", map[string]any{"query": "zebra", "bot": "Coder"}); !strings.Contains(got, "2 bots have the name") || !strings.Contains(got, twin.ID) || !strings.Contains(got, s.b.ID) {
+	if got := searcher.call("session_search", map[string]any{"query": "zebra", "session": "all", "bot": "Coder"}); !strings.Contains(got, "2 bots have the name") || !strings.Contains(got, twin.ID) || !strings.Contains(got, s.b.ID) {
 		t.Fatalf("ambiguous bot: %s", got)
 	}
-	want("ambiguous name by ID", searcher.search(map[string]any{"query": "zebra", "bot": twin.ID}))
+	want("ambiguous name by ID", searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": twin.ID}))
 }
 
 func TestUserSessionListCoversOneBotOrAllBots(t *testing.T) {

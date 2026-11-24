@@ -354,6 +354,9 @@ function EnvironmentCard({
         </Button>
       </div>
 
+      {env.desc ? (
+        <p className="px-4 pt-3 text-sm break-words whitespace-pre-wrap text-muted-foreground">{env.desc}</p>
+      ) : null}
       <Facts rows={rows} />
 
       {isRunner ? (
