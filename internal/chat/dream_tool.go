@@ -13,7 +13,7 @@ import (
 
 // ToolReadDreamMessage reads a page of one record included in the active dream.
 func (s *Service) ToolReadDreamMessage(ctx context.Context, caller engine.TaskContext, args engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
-	denied := errors.New("dream message is unavailable")
+	denied := errors.New("memory source is unavailable")
 	if args.Offset < 0 || (args.Field != "user" && args.Field != "answer") {
 		return engine.DreamMessagePage{}, denied
 	}

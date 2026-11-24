@@ -35,7 +35,6 @@ type TaskTools struct {
 	GroupQuestion    func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)
 	GroupSession     func(context.Context, TaskContext, GroupSessionArgs) (GroupSessionResult, error)
 	DeliverGroupFile func(context.Context, TaskContext, string, io.Reader) error
-	Telegram         func(context.Context, TaskContext, TelegramRequest) (TelegramResult, error)
 	ReadDreamMessage func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)
 	DeliverArtifact  func(context.Context, TaskContext, string) (ArtifactInfo, error)
 	ReportCheck      func(context.Context, TaskContext, CheckReport) error
@@ -407,7 +406,7 @@ const sessionRules = `A session result is the saved answer of one turn of a chil
 
 System Turns (task results and Monitor wake-ups) are silent to the user by default: plain text stays in this session's internal trace. On a System Turn, process an incoming child report as internal work first. Verify the result against the assignment and available evidence. Take any next step the user already authorized, or record the concrete blocker in this session if you cannot proceed. Silence is a delivery choice, not a reason to skip this work.
 
-Only then decide how to end the turn. Use notify_user for a significant update the user needs (name the work and verified outcome in the first sentence, in the user's language, with key findings, checks, and files). Use ask_user when progress requires a decision from the user. Use stay_silent when no internal work remains for this turn and no message is needed. Use these tools only where available and within existing permissions; otherwise keep the result in this session. Do not route a report to Main or a channel just because its direct parent is a Routine.
+Only then decide how to end the turn. Use notify_user for a significant update the user needs (name the work and verified outcome in the first sentence, in the user's language, with key findings, checks, and files). Use ask_user when progress requires a decision from the user. When no internal work remains and no message is needed, finish normally. Use these tools only where available and within existing permissions; otherwise keep the result in this session. Do not route a report to Main or a channel just because its direct parent is a Routine.
 
 The outcome is done, failed, or interrupted. A done result is the claim of the child. Inspect files and test results before you accept it. If the answer is cut, call session_read with the child ID, the turn ID, and the offset to read the rest of it. Call session_list to see the state of every child. It shows every child of this conversation with its bot name. For a failed result, inspect the failure and do not repeat an attempt without new evidence. An interrupted result means that the process restarted during the turn. Files or other side effects may exist, and the result names the queued inputs that were withdrawn. Check what already happened before taking any next step. Use session_send to continue in the same context only within the scope already authorized. After handling the internal work, tell the user what happened via notify_user where available and permitted. A stopped run sends no result. Respect Stop and wait for new user authorization.`
 

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -120,7 +121,32 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}
 }
 
-func TestUserStaySilentRejectsUnansweredUserMessageAndReportParent(t *testing.T) {
+func TestUserChildTurnKeepsSavedSilentExit(t *testing.T) {
+	r := startNative(t, "echo")
+	ctx := t.Context()
+	_, source := taskParent(t, r)
+	if _, err := r.service.ToolSessionNew(ctx, source, engine.SessionNewArgs{Title: "Worker", Message: "Finish this turn"}); err != nil {
+		t.Fatal(err)
+	}
+	// Given a child turn with a silent exit saved by an older release.
+	turn := turnID(source.Key)
+	if err := r.q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: turn, ExitAction: "stay_silent"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// When the current release settles the turn, the parent gets no result.
+	if err := r.service.admit(ctx, taskInput(t, r, turn)); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitReceipt(t, r, turn); got.Status != "done" {
+		t.Fatalf("child did not complete: %s", got.Status)
+	}
+	if _, err := r.q.GetSubmission(ctx, "result:"+turn); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("saved silent exit must not send a child result: %v", err)
+	}
+}
+
+func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Worker", Message: "init"})
@@ -131,22 +157,6 @@ func TestUserStaySilentRejectsUnansweredUserMessageAndReportParent(t *testing.T)
 		t.Fatal(err)
 	}
 	awaitReceipt(t, r, turnID(source.Key))
-
-	// Steered user message in RunInputIDs must reject stay_silent.
-	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "steered-user-1", "wait"); err != nil {
-		t.Fatal(err)
-	}
-	pRow, err := r.q.GetConversation(t.Context(), parent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.service.ToolStaySilent(t.Context(), engine.TaskContext{
-		AgentID: "bot", ConversationID: pRow.ExecutionID.Int64,
-		SourceRequestID: "steered-user-1", RunInputIDs: []string{"steered-user-1"}, Key: "bot/201",
-	}, engine.StaySilentArgs{Reason: "nothing"})
-	if err == nil || !strings.Contains(err.Error(), "unanswered user message") {
-		t.Fatalf("expected stay_silent rejection on unanswered user message, got %v", err)
-	}
 
 	// Child System Turn can explicitly escalate to parent via ToolReportParent.
 	var childID int64

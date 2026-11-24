@@ -92,7 +92,6 @@ type loadedExtensions struct {
 	Env         map[string]string
 	ExplicitEnv map[string]string
 	Vault       vault.Snapshot
-	HasTools    bool
 	Servers     []McpServerInfo
 	clients     []*mcp.Client
 	mu          sync.Mutex
@@ -537,7 +536,6 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 			loaded.Servers[index].Error = "the server closed the connection; reload to connect again"
 		})
 	}
-	loaded.HasTools = len(loaded.Extension.Tools) > 0
 	return loaded, nil
 }
 func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env map[string]string, secrets vault.Snapshot) (*mcp.Client, []*durable.ToolRegistration, error) {

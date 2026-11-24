@@ -36,7 +36,7 @@ func TestUserDreamUsesNativeToolToReadItsEvidence(t *testing.T) {
 		}
 	}
 	// When the actual native model invokes the dream-only tool.
-	sub, err := r.agents.Submit(ctx, ref, engine.Input{RequestID: "run", Origin: "dream", Kind: "message", Source: "dex:bot/dream/run", Content: `read_dream_message {"messageId":"original","field":"user","offset":0}`, Model: engine.ModelRef{Provider: "faux", ModelID: "tool"}, ThinkingLevel: "off"})
+	sub, err := r.agents.Submit(ctx, ref, engine.Input{RequestID: "run", Origin: "dream", Kind: "message", Source: "dex:bot/dream/run", Content: `memory_source_read {"messageId":"original","field":"user","offset":0}`, Model: engine.ModelRef{Provider: "faux", ModelID: "tool"}, ThinkingLevel: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}

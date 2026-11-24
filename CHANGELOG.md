@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Tool discovery**: Enable `tool_search` in owner sessions without MCP. Search built-in tools and available MCP tools without changing session permissions.
+- **Memory**: Rename `read_dream_message` to `memory_source_read`. It still reads only the sources supplied for the current consolidation run.
+
+### Removed
+
+- **Telegram**: Remove the `telegram_message` tool and agent speech output. Normal replies, previews, status reactions, and incoming audio transcription are unchanged.
+- **System turns**: Remove `stay_silent`. Top-level system turns still finish without sending a message by default. Delegated child turns return their results, and an unmet channel commitment is recorded as a missed follow-up.
+
 ## [v0.20.0-rc.4] - 2026-11-24
 
 ### Added
