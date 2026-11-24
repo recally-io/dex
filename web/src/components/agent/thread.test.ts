@@ -5,6 +5,7 @@ import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } fr
 import { expect, test } from "vite-plus/test";
 import type { Chat, Item, ToolItem } from "../../api/generated/types.gen";
 import { threadCall, threadState } from "../../lib/threads";
+import { describeTool } from "../../lib/tools";
 import { ResultLine, ThreadContext } from "./thread";
 import { ThreadView } from "./thread-panel";
 import { Steps, Transcript } from "./transcript";
@@ -275,6 +276,94 @@ test("user sees silent system turn trace folded under task mark", async () => {
 
   expect(html).toContain("<details");
   expect(html).toContain("Internal trace (silent)");
+});
+
+test("user sees a child report to its parent as a step, never as a thread line", async () => {
+  const report = (id: string, args: ToolItem["args"], status: ToolItem["status"] = "done"): ToolItem => ({
+    kind: "tool",
+    id,
+    name: "session_report",
+    args,
+    status,
+    output: "Reported to parent: report:bot/1",
+  });
+
+  const mark = (id: string): Item => ({
+    kind: "task",
+    id: `${id}-mark`,
+    taskId: id,
+    title: "Background wake",
+  });
+
+  const transcript = (...tools: ToolItem[]) =>
+    render(
+      createElement(Transcript, {
+        chatId: 2,
+        items: [mark(tools[0].id), ...tools],
+        running: false,
+        retry: () => {},
+        canRetry: false,
+      }),
+    );
+
+  const final = report("final", { content: "Checks pass" });
+  const milestone = report("milestone", { content: "Half done", final: false });
+
+  const [finalHtml, milestoneHtml, groupedHtml] = await Promise.all([
+    transcript(final),
+    transcript(milestone),
+    transcript(milestone, final),
+  ]);
+
+  expect(
+    groupedHtml.match(/<button\b[^>]*aria-expanded="false"[^>]*>.*?<\/button>/g)?.join(" ") ?? "",
+  ).toContain("Reported to parent 2 times");
+
+  for (const html of [finalHtml, milestoneHtml]) {
+    expect(html).toContain("Reported to parent");
+    expect(html).not.toContain("Sent to");
+    expect(html).not.toContain("Internal trace (silent)");
+  }
+
+  expect(threadCall(final)).toBeUndefined();
+  expect(describeTool(milestone)).toEqual({ verb: "Report parent", target: "Half done" });
+
+  // A rejected report does not claim that it reached the parent.
+  expect(await transcript(report("rejected", { content: "Batched" }, "error"))).toContain(
+    "Used session_report · 1 failed",
+  );
+
+  // A streaming call without arguments yet is still the report of a child.
+  expect(await transcript(report("pending", {}, "running"))).not.toContain("Sent to");
+
+  // A legacy report_parent call keeps its label in any chat.
+  const legacy = await transcript({ ...report("old", { content: "Legacy" }), name: "report_parent" });
+
+  expect(legacy).toContain("Reported to parent");
+  expect(legacy).not.toContain("Internal trace (silent)");
+
+  // A session_send stays a thread line, even if its arguments are invalid.
+  const dispatch = session(
+    "d1",
+    "session_send",
+    { id: "7", message: "More" },
+    JSON.stringify({ id: "7", title: "Check logs" }),
+  );
+
+  const malformed = {
+    ...report("d2", { content: "Wrong form" }, "error"),
+    name: "session_send",
+    output: "content: unknown field",
+  };
+
+  const [dispatchHtml, malformedHtml] = await Promise.all([transcript(dispatch), transcript(malformed)]);
+
+  expect(threadCall(dispatch)?.kind).toBe("send");
+  expect(threadCall(malformed)?.kind).toBe("send");
+  expect(dispatchHtml).not.toContain("Reported to parent");
+  expect(malformedHtml).not.toContain("Reported to parent");
+  // A parent dispatch in a System Turn does not stop the trace from folding.
+  expect(dispatchHtml).toContain("Internal trace (silent)");
 });
 
 test("user sees a Task alert on Main with the Task title", async () => {

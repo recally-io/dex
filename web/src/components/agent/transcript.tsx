@@ -18,7 +18,15 @@ import remarkGfm from "remark-gfm";
 import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
 import { getChatItemOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { formatSize, isImage } from "../../lib/attachments";
-import { blocks, describeTool, seconds, stepTitle, type ContentBlock, type Step } from "../../lib/tools";
+import {
+  blocks,
+  describeTool,
+  isParentReport,
+  seconds,
+  stepTitle,
+  type ContentBlock,
+  type Step,
+} from "../../lib/tools";
 import { remarkStrong, strongText } from "../../lib/strong";
 import { retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
@@ -989,7 +997,7 @@ function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
       for (const s of b.steps) {
         if (s.kind !== "tool") continue;
 
-        if (s.name === "notify_user" || s.name === "ask_user" || s.name === "report_parent") {
+        if (s.name === "notify_user" || s.name === "ask_user" || isParentReport(s)) {
           return false;
         }
 
