@@ -131,7 +131,14 @@ Ask the agent in an owner session to manage MCP declarations with the
 `mcp_server_*` tools. Use vault references for secrets. dex stores declarations
 in `control.sqlite` and shows their status in the bot's Extensions tab.
 Changes apply after the agent finishes its current work. dex ignores old
-`mcp.json` files. See [Extensions](docs/dev/extensions.md#mcp-declarations).
+`mcp.json` files. See [MCP declarations](docs/dev/extensions.md#mcp-declarations).
+
+For an OAuth-enabled remote MCP server, ask the agent to add an HTTP declaration
+with `oauth: {}` and no static headers. If the provider requires a registered
+client, use its client ID and a vault reference for its secret. In the bot's
+Tools tab, select **Authorize** and sign in with the provider. See
+[MCP browser authorization](docs/dev/extensions.md#mcp-browser-authorization)
+for the callback URL and client settings.
 
 ## Secrets
 

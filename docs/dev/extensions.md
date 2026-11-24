@@ -179,9 +179,50 @@ literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
-The Web Extensions page uses the same server status as `mcp_server_list`.
-Before the agent opens, the API shows declarations that are not disabled as
-`idle`.
+The Web Extensions page shows the loaded server state from `mcp_server_list`
+and the current OAuth grant state. Before the agent opens, the API shows
+connection state `idle` for declarations that are not disabled.
+
+### MCP browser authorization
+
+For an HTTP declaration, set `oauth: {}` to use browser authorization instead
+of static headers. Use `oauth.clientId` for a pre-registered client. If the
+client needs a secret, set `oauth.clientSecret` to `vault:NAME`. Put the secret
+in the vault at the same level as the declaration. A bot secret cannot change
+the client of a dex-level connection. `oauth.tokenEndpointAuthMethod` can
+select `client_secret_basic` or `client_secret_post` for a confidential client.
+If the provider does not advertise a registration endpoint, dex requires a
+pre-registered client. Dex does not serve Client ID Metadata Documents.
+
+Register `<dex origin>/mcp/oauth/callback` with the provider. Open dex over
+HTTPS or on loopback HTTP. Select **Authorize** or **Reauthorize** on the
+connection in Tools. Dex probes the MCP endpoint without credentials. Dex
+uses the protected resource metadata and then discovers the issuer with
+RFC 8414 or OIDC. Dex uses a challenged scope when present. Otherwise dex
+uses `oauth.scope` or the scopes in the protected resource metadata, in that
+order. Dex uses the first listed issuer. Discovered endpoints on other origins
+must use public HTTPS. Discovery and token requests do not follow redirects.
+
+The authenticated start binds a 10-minute, one-time state to the initiating
+browser, effective declaration, and MCP resource. Dex holds the PKCE verifier
+in memory. The callback consumes state before exchange. Dex does not use the
+regular session cookie on the cross-site return. It uses a separate Lax,
+HttpOnly cookie that the authenticated start set for this attempt. Dex sends
+the resource indicator during authorization, exchange, and refresh.
+
+The one dex owner has one grant per declaration level and name. A dex-level
+grant is shared across bots that use that declaration. A same-name bot
+connection uses a separate grant. Dex encrypts grants in private `vault/mcp-*.age`
+files with the vault identity. Vault listing and reference resolution do not
+read these files. A declaration replacement that changes the OAuth settings
+or URL cannot use the old grant. The server reads the current pre-registered
+secret from its vault entry at exchange and refresh. To preserve grants,
+back up the private vault files with the other vault files.
+
+A successful callback returns to Tools and marks the affected connections for
+idle reload. Dex refreshes an expired token when a refresh token is available.
+On HTTP 401, dex attempts at most one refresh and retry. If the grant no longer
+works, Tools shows **Reauthorize**. Dex does not fall back to static headers.
 
 ### Reload
 

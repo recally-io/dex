@@ -98,7 +98,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if strings.HasSuffix(r.URL.Path, "/vault") {
+			if strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}
@@ -144,6 +144,7 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
+	mux.HandleFunc("GET "+mcpCallbackPath, h.finishMcpOAuth)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	for _, p := range cfg.Plugins {
 		if p.Hooks != nil {
@@ -213,6 +214,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 type handler struct {
 	Config
 	runnerReleaseMu sync.Mutex
+	mcpOAuth        mcpOAuthRequests
 }
 
 type agentKey struct{}
@@ -243,7 +245,12 @@ func (h *handler) withAgent(next http.Handler) http.Handler {
 				writeError(w, status, err.Error())
 				return
 			}
-			r = r.WithContext(context.WithValue(r.Context(), agentKey{}, id))
+			ctx := context.WithValue(r.Context(), agentKey{}, id)
+			if strings.HasSuffix(r.URL.Path, "/oauth") {
+				w.Header().Set("Cache-Control", "no-store")
+				ctx = context.WithValue(ctx, mcpOAuthRequestKey{}, mcpOAuthOrigin{origin: r.Header.Get("Origin"), host: r.Host})
+			}
+			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
 	})

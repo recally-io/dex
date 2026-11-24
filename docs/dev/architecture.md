@@ -259,7 +259,10 @@ in `env` and `headers`. The Extensions API and `mcp_server_list` show status,
 tool names, and the unresolved references. `mcp_server_get` hides plain
 environment and header values and URL queries. A failed server shows a safe
 error, such as an HTTP status or the name of a missing secret. To see the full
-error, run the server by hand.
+error, run the server by hand. Remote HTTP MCP connections can use
+[browser OAuth](extensions.md#mcp-browser-authorization). Dex stores those
+grants in private vault files and sends bearer tokens only to the authorized
+MCP endpoint.
 
 Every chat reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to

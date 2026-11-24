@@ -318,6 +318,27 @@ func (e ItemEventType) Valid() bool {
 	}
 }
 
+// Defines values for McpServerOauth.
+const (
+	Authorize   McpServerOauth = "authorize"
+	Authorized  McpServerOauth = "authorized"
+	Reauthorize McpServerOauth = "reauthorize"
+)
+
+// Valid indicates whether the value is a known member of the McpServerOauth enum.
+func (e McpServerOauth) Valid() bool {
+	switch e {
+	case Authorize:
+		return true
+	case Authorized:
+		return true
+	case Reauthorize:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for McpServerState.
 const (
 	McpServerStateConnected McpServerState = "connected"
@@ -1312,6 +1333,9 @@ type McpServer struct {
 	Error *string `json:"error,omitempty"`
 	Name  string  `json:"name"`
 
+	// Oauth The action or status of an OAuth connection. Absent for other connections.
+	Oauth *McpServerOauth `json:"oauth,omitempty"`
+
 	// Overrides The server replaces a wider server with the same name.
 	Overrides bool `json:"overrides"`
 
@@ -1331,6 +1355,9 @@ type McpServer struct {
 		Headers *map[string]string `json:"headers,omitempty"`
 	} `json:"vaultReferences,omitempty"`
 }
+
+// McpServerOauth The action or status of an OAuth connection. Absent for other connections.
+type McpServerOauth string
 
 // McpServerState idle means that the agent has not started, so dex has not connected.
 type McpServerState string
@@ -2080,6 +2107,12 @@ type SetChatProjectJSONBody struct {
 	Cwd string `json:"cwd"`
 }
 
+// StartMcpOAuthJSONBody defines parameters for StartMcpOAuth.
+type StartMcpOAuthJSONBody struct {
+	// Scope Shared across dex or scoped to one agent.
+	Scope ExtensionScope `json:"scope"`
+}
+
 // CreateWorkTaskJSONBody defines parameters for CreateWorkTask.
 type CreateWorkTaskJSONBody struct {
 	Title string `json:"title"`
@@ -2231,6 +2264,9 @@ type SetChatProjectJSONRequestBody SetChatProjectJSONBody
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
+
+// StartMcpOAuthJSONRequestBody defines body for StartMcpOAuth for application/json ContentType.
+type StartMcpOAuthJSONRequestBody StartMcpOAuthJSONBody
 
 // CreateWorkTaskJSONRequestBody defines body for CreateWorkTask for application/json ContentType.
 type CreateWorkTaskJSONRequestBody CreateWorkTaskJSONBody
@@ -2943,6 +2979,9 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (POST /api/agents/{agentId}/extensions/mcp/{name}/oauth)
+	StartMcpOAuth(w http.ResponseWriter, r *http.Request, agentId string, name string)
 
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
@@ -4842,6 +4881,41 @@ func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// StartMcpOAuth operation middleware
+func (siw *ServerInterfaceWrapper) StartMcpOAuth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartMcpOAuth(w, r, agentId, name)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReloadExtensions operation middleware
 func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *http.Request) {
 
@@ -6360,6 +6434,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/artifacts/{artifactName}", wrapper.GetArtifact)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/agents/{agentId}/artifacts/{artifactName}", wrapper.RenameArtifact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/extensions", wrapper.GetExtensions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/extensions/mcp/{name}/oauth", wrapper.StartMcpOAuth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.DeleteVault)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.ListVault)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.PutVault)
@@ -9661,6 +9736,59 @@ func (response GetExtensionsdefaultJSONResponse) VisitGetExtensionsResponse(w ht
 	return err
 }
 
+type StartMcpOAuthRequestObject struct {
+	AgentId string `json:"agentId"`
+	Name    string `json:"name"`
+	Body    *StartMcpOAuthJSONRequestBody
+}
+
+type StartMcpOAuthResponseObject interface {
+	VisitStartMcpOAuthResponse(w http.ResponseWriter) error
+}
+
+type StartMcpOAuth200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type StartMcpOAuth200JSONResponse struct {
+	Body struct {
+		AuthorizationUrl string `json:"authorizationUrl"`
+	}
+	Headers StartMcpOAuth200ResponseHeaders
+}
+
+func (response StartMcpOAuth200JSONResponse) VisitStartMcpOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartMcpOAuthdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StartMcpOAuthdefaultJSONResponse) VisitStartMcpOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReloadExtensionsRequestObject struct {
 	AgentId string `json:"agentId"`
 }
@@ -12551,6 +12679,9 @@ type StrictServerInterface interface {
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
 
+	// (POST /api/agents/{agentId}/extensions/mcp/{name}/oauth)
+	StartMcpOAuth(ctx context.Context, request StartMcpOAuthRequestObject) (StartMcpOAuthResponseObject, error)
+
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
 
@@ -14318,6 +14449,40 @@ func (sh *strictHandler) GetExtensions(w http.ResponseWriter, r *http.Request, a
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetExtensionsResponseObject); ok {
 		if err := validResponse.VisitGetExtensionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartMcpOAuth operation middleware
+func (sh *strictHandler) StartMcpOAuth(w http.ResponseWriter, r *http.Request, agentId string, name string) {
+	var request StartMcpOAuthRequestObject
+
+	request.AgentId = agentId
+	request.Name = name
+
+	var body StartMcpOAuthJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartMcpOAuth(ctx, request.(StartMcpOAuthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartMcpOAuth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartMcpOAuthResponseObject); ok {
+		if err := validResponse.VisitStartMcpOAuthResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
