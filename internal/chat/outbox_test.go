@@ -120,7 +120,7 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}
 }
 
-func TestUserStaySilentRejectsUnansweredUserMessageAndReportParent(t *testing.T) {
+func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Worker", Message: "init"})
@@ -131,22 +131,6 @@ func TestUserStaySilentRejectsUnansweredUserMessageAndReportParent(t *testing.T)
 		t.Fatal(err)
 	}
 	awaitReceipt(t, r, turnID(source.Key))
-
-	// Steered user message in RunInputIDs must reject stay_silent.
-	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "steered-user-1", "wait"); err != nil {
-		t.Fatal(err)
-	}
-	pRow, err := r.q.GetConversation(t.Context(), parent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.service.ToolStaySilent(t.Context(), engine.TaskContext{
-		AgentID: "bot", ConversationID: pRow.ExecutionID.Int64,
-		SourceRequestID: "steered-user-1", RunInputIDs: []string{"steered-user-1"}, Key: "bot/201",
-	}, engine.StaySilentArgs{Reason: "nothing"})
-	if err == nil || !strings.Contains(err.Error(), "unanswered user message") {
-		t.Fatalf("expected stay_silent rejection on unanswered user message, got %v", err)
-	}
 
 	// Child System Turn can explicitly escalate to parent via ToolReportParent.
 	var childID int64

@@ -97,19 +97,16 @@ func TestUserChannelFollowUpQuestionIsNotAConclusion(t *testing.T) {
 	}
 }
 
-func TestUserChannelFollowUpCanStaySilent(t *testing.T) {
+func TestUserChannelFollowUpWithoutNotificationIsMissed(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	_, call := followUpResult(t, r)
-	if err := r.service.ToolStaySilent(ctx, call, engine.StaySilentArgs{Reason: "No conclusion needed"}); err != nil {
-		t.Fatal(err)
-	}
 	if err := r.service.settle(ctx, call.SourceRequestID, engine.Outcome{Status: "done", Answer: "private draft"}); err != nil {
 		t.Fatal(err)
 	}
 	f, err := r.q.GetChannelFollowUpByInput(ctx, call.SourceRequestID)
-	if err != nil || f.State != "silent" {
-		t.Fatalf("missing intentional silence: %+v, %v", f, err)
+	if err != nil || f.State != "missed_follow_up" {
+		t.Fatalf("missing missed follow-up status: %+v, %v", f, err)
 	}
 	if _, err := r.q.GetOutboxByDedupKey(ctx, followUpFinalKey(f.DelegationID)); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("silence generated delivery: %v", err)

@@ -16,6 +16,12 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
+// TelegramHooks provides optional Telegram operations used by the durable sender.
+type TelegramHooks interface {
+	GroupParts([]channel.Part) []channel.Part
+	WakeMedia()
+}
+
 type runtime struct {
 	ctx             context.Context
 	bot             channel.Bot

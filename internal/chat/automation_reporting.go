@@ -124,6 +124,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 			return 0, 0, err
 		}
 	}
+	// An older run can have a saved exit action when dex resumes after an upgrade.
 	if sub.ExitAction != "stay_silent" {
 		if parent, err = s.sendResult(ctx, q, id, event, withdrawn); err != nil {
 			return 0, 0, err

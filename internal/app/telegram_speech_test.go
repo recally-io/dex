@@ -15,16 +15,10 @@ import (
 	"github.com/recally-io/dex/internal/app"
 )
 
-func configureTelegramSpeech(t *testing.T, d *dex, endpoint string, stt, tts map[string]any) {
+func configureTelegramSpeech(t *testing.T, d *dex, endpoint string, stt map[string]any) {
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/providers/speech", map[string]any{"api": "openai-completions", "baseUrl": endpoint + "/v1", "apiKey": "synthetic-local-key", "models": []string{"chat-only"}}, nil)
-	options := map[string]any{}
-	if stt != nil {
-		options["stt"] = stt
-	}
-	if tts != nil {
-		options["tts"] = tts
-	}
+	options := map[string]any{"stt": stt}
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
 }
 
@@ -82,7 +76,7 @@ func TestUserConfiguredTelegramTranscriptionSurvivesAdmissionFailureAndRestart(t
 	f.files["voice.ogg"] = "OggS\x00\x00OpusHeadsynthetic audio"
 	d := startTelegram(t, f, data, 42)
 	boundary, calls := localSTT(t, "recognised synthetic words")
-	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"}, nil)
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"})
 	conn := cleanupDB(t, data, "telegram:123:1")
 	f.voice()
 	eventually(t, "one persisted transcription before admission", func() (bool, any) {
@@ -113,7 +107,7 @@ func TestUserEmptyTelegramTranscriptionKeepsOriginalAudioAndDoesNotRetry(t *test
 	f.files["voice.ogg"] = "OggS\x00\x00OpusHeadsynthetic"
 	d := startTelegram(t, f, data, 42)
 	boundary, calls := localSTT(t, "   ")
-	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"}, nil)
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"})
 	f.voice()
 	if got := f.next(t).Text; !strings.Contains(got, "empty transcript") || !strings.Contains(got, "voice.ogg") {
 		t.Fatalf("empty transcript fallback=%q", got)
@@ -133,7 +127,7 @@ func TestUserUnknownTelegramTranscriptionIsNotSentToProviderAgain(t *testing.T) 
 	f.files["voice.ogg"] = "OggS\x00\x00OpusHeadsynthetic"
 	d := startTelegram(t, f, data, 42)
 	boundary, calls := localSTT(t, "provider accepted")
-	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"}, nil)
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"})
 	conn := controlWriteDB(t, data)
 	execSQL(t, conn, "CREATE TRIGGER hold_speech_result BEFORE UPDATE OF state ON telegram_effects WHEN NEW.state='done' BEGIN SELECT RAISE(ABORT,'hold speech result'); END")
 	f.voice()
@@ -171,7 +165,7 @@ func TestUserTelegramTranscriptionTimeoutKeepsAudioWithoutProviderRetry(t *testi
 		<-r.Context().Done()
 	}))
 	t.Cleanup(boundary.Close)
-	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit", "timeoutSeconds": 1}, nil)
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit", "timeoutSeconds": 1})
 	f.voice()
 	if got := f.next(t).Text; !strings.Contains(got, "outcome unknown") || !strings.Contains(got, "voice.ogg") {
 		t.Fatalf("timeout=%q", got)
@@ -224,7 +218,7 @@ printf synthetic-local-key
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	d.must(t, http.MethodPut, "/api/settings/onepassword", map[string]any{"mode": "service-account", "serviceAccountToken": "synthetic-auth"}, nil)
 	boundary, calls := localSTT(t, "reference credential works")
-	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"}, nil)
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"})
 	d.must(t, http.MethodPut, "/api/settings/providers/speech", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "apiKey": "op://Synthetic/provider/api-key", "models": []string{"chat-only"}}, nil)
 	// When STT starts, only its selected endpoint receives the resolved in-memory key.
 	f.voice()
@@ -264,7 +258,7 @@ func TestUserRevokedTelegramSpeechCannotAdmitItsStagedAudio(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	t.Cleanup(boundary.Close)
-	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"}, nil)
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"})
 	f.voice()
 	select {
 	case <-entered:

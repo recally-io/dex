@@ -205,10 +205,8 @@ function Telegram({ settings }: { settings: Settings }) {
               rows={[
                 ["Bot ID", <Mono key="bot">{telegram.botId ?? "Unknown"}</Mono>],
                 [
-                  "Speech",
-                  telegram.options?.stt?.enabled || telegram.options?.tts?.enabled
-                    ? "Explicit provider configured"
-                    : "Speech is off",
+                  "Transcription",
+                  telegram.options?.stt?.enabled ? "Explicit provider configured" : "Transcription is off",
                 ],
                 [
                   "Bot token",
@@ -234,8 +232,7 @@ function Telegram({ settings }: { settings: Settings }) {
           </Panel>
         )}
         <p className="mt-3 text-[12px] text-muted-foreground">
-          Speech sends audio or text only to your explicitly selected provider. Review data-sending consent in
-          Edit.
+          Transcription sends audio only to your selected provider. Review data-sending consent in Edit.
         </p>
         {telegram.status.reason ? (
           <div className="mt-3">

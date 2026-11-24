@@ -10,6 +10,12 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 )
 
+func (b *Bot) presentation(params map[string]any, method string) {
+	if b.cfg.Options.Silent && method == "sendRichMessage" {
+		params["disable_notification"] = true
+	}
+}
+
 func richContent(content *channel.RichMessage) map[string]any {
 	return map[string]any{"html": content.HTML}
 }

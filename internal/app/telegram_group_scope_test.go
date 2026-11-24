@@ -121,7 +121,7 @@ func TestUserTelegramGroupAudioDoesNotBorrowPrivateSpeechConsent(t *testing.T) {
 	f.files["voice.ogg"] = "OggS\x00\x00OpusHeadpublic"
 	d := startTelegram(t, f, directory, 42)
 	boundary, calls := localSTT(t, "PRIVATE_STT_MUST_NOT_APPLY")
-	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "explicit-stt"}, nil)
+	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "explicit-stt"})
 	// When a paired actor sends group audio, retain the original file without a speech request.
 	f.groupMedia(1, 42, -100, 7, "voice", "voice.ogg")
 	got := f.next(t)

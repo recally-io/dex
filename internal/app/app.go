@@ -171,9 +171,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 			return nil
 		},
-		Telegram: func(ctx context.Context, caller engine.TaskContext, args engine.TelegramRequest) (engine.TelegramResult, error) {
-			return bots.Agent(caller.AgentID).TelegramAction(ctx, caller, args, prefs.SpeechEndpoint)
-		},
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
 		},
@@ -231,9 +228,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			},
 			ReportParent: func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
 				return chats.ToolReportParent(ctx, c, a)
-			},
-			StaySilent: func(ctx context.Context, c engine.TaskContext, a engine.StaySilentArgs) error {
-				return chats.ToolStaySilent(ctx, c, a)
 			},
 			RecentOutbox: func(ctx context.Context, ref engine.Ref) ([]engine.OutboxSummary, error) {
 				return chats.ToolRecentOutbox(ctx, ref)
