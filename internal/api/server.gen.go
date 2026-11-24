@@ -1094,12 +1094,15 @@ type CreateAgentInput struct {
 type Environment struct {
 	Config    EnvironmentConfig `json:"config"`
 	CreatedAt int64             `json:"createdAt"`
-	Id        string            `json:"id"`
-	Kind      EnvironmentKind   `json:"kind"`
-	Name      string            `json:"name"`
-	Runner    *RunnerStatus     `json:"runner,omitempty"`
-	SecretSet bool              `json:"secretSet"`
-	UpdatedAt int64             `json:"updatedAt"`
+
+	// Description Owner-provided plain text.
+	Description *string         `json:"desc,omitempty"`
+	Id          string          `json:"id"`
+	Kind        EnvironmentKind `json:"kind"`
+	Name        string          `json:"name"`
+	Runner      *RunnerStatus   `json:"runner,omitempty"`
+	SecretSet   bool            `json:"secretSet"`
+	UpdatedAt   int64           `json:"updatedAt"`
 }
 
 // EnvironmentConfig defines model for EnvironmentConfig.
@@ -1123,8 +1126,11 @@ type EnvironmentConfig struct {
 // EnvironmentInput defines model for EnvironmentInput.
 type EnvironmentInput struct {
 	Config *EnvironmentConfig `json:"config,omitempty"`
-	Kind   EnvironmentKind    `json:"kind"`
-	Name   string             `json:"name"`
+
+	// Description Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
+	Description *string         `json:"desc,omitempty"`
+	Kind        EnvironmentKind `json:"kind"`
+	Name        string          `json:"name"`
 
 	// Secret Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
 	Secret *string `json:"secret,omitempty"`

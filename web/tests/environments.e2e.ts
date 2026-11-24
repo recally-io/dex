@@ -28,6 +28,7 @@ test("adds a dex runner environment and copies its command in the same dialog", 
   const dialog = screen.getByRole("dialog");
 
   await dialog.getByLabel("Name").fill(name);
+  await dialog.getByLabel("Description").fill("Use for macOS builds");
   await screen.getByRole("button", "Get install command").tap();
 
   // The test server is plain HTTP on loopback, so Dex refuses to hand out a command that a
@@ -39,7 +40,50 @@ test("adds a dex runner environment and copies its command in the same dialog", 
 
   await screen.getByRole("button", "Done").tap();
   await expect(screen.getByRole("heading", { name })).toBeVisible();
+  await expect(screen.getByText("Use for macOS builds", { exact: true })).toBeVisible();
 });
+
+for (const [action, desc] of [
+  ["edits", "<strong>Run UI checks</strong>"],
+  ["clears", ""],
+] as const) {
+  test(`${action} a Runner description in Settings`, async ({ app, browser, screen }) => {
+    const path = "/settings/environment";
+    await app.open(path);
+
+    const api = new URL("/api/settings/environments", await browser.url());
+    const name = `Description Runner ${action}`;
+
+    const saved = await fetch(api, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, kind: "runner", desc: "Previous description" }),
+    });
+
+    if (!saved.ok) throw new Error(`Could not create the Runner fixture (${saved.status})`);
+
+    const { id }: { id: string } = await saved.json();
+
+    try {
+      await app.open(path);
+
+      const edit = screen.getByRole("button", { name: `Edit ${name}`, exact: true });
+      const dialog = screen.getByRole("dialog");
+      await edit.tap();
+      await dialog.getByLabel("Description").fill(desc);
+      await dialog.getByRole("button", "Save changes").tap();
+      await expect(dialog).not.toBeVisible();
+      await app.open(path);
+
+      if (desc) await expect(screen.getByText(desc, { exact: true })).toBeVisible();
+
+      await edit.tap();
+      await expect(dialog.getByLabel("Description")).toHaveValue(desc);
+    } finally {
+      await fetch(`${api}/${id}`, { method: "DELETE" });
+    }
+  });
+}
 
 test("a new chat can select a sandbox and shows a disconnected runner", async ({ app, browser, screen }) => {
   await app.open("/a/default");

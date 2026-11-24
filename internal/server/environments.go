@@ -54,11 +54,13 @@ func (h *handler) UpdateEnvironment(ctx context.Context, req api.UpdateEnvironme
 	if err != nil {
 		return nil, err
 	}
-	updated, err := h.Settings.UpdateEnvironment(ctx, req.EnvironmentId, in)
+	updated, runtimeChanged, err := h.Settings.UpdateEnvironment(ctx, req.EnvironmentId, in)
 	if err != nil {
 		return nil, err
 	}
-	h.environmentChanged(ctx, req.EnvironmentId)
+	if runtimeChanged {
+		h.environmentChanged(ctx, req.EnvironmentId)
+	}
 	view, err := h.environmentView(updated)
 	if err != nil {
 		return nil, err
@@ -196,10 +198,11 @@ func environmentInput(body api.EnvironmentInput) (settings.EnvironmentInput, err
 		return settings.EnvironmentInput{}, err
 	}
 	return settings.EnvironmentInput{
-		Name:   body.Name,
-		Kind:   string(body.Kind),
-		Config: rawConfig,
-		Secret: deref(body.Secret),
+		Name:        body.Name,
+		Description: body.Description,
+		Kind:        string(body.Kind),
+		Config:      rawConfig,
+		Secret:      deref(body.Secret),
 	}, nil
 }
 
@@ -211,13 +214,14 @@ func (h *handler) environmentView(env settings.Environment) (api.Environment, er
 		}
 	}
 	out := api.Environment{
-		Id:        env.ID,
-		Name:      env.Name,
-		Kind:      api.EnvironmentKind(env.Kind),
-		Config:    cfg,
-		SecretSet: env.SecretSet,
-		CreatedAt: env.CreatedAt,
-		UpdatedAt: env.UpdatedAt,
+		Id:          env.ID,
+		Name:        env.Name,
+		Description: optional(env.Description),
+		Kind:        api.EnvironmentKind(env.Kind),
+		Config:      cfg,
+		SecretSet:   env.SecretSet,
+		CreatedAt:   env.CreatedAt,
+		UpdatedAt:   env.UpdatedAt,
 	}
 	if env.Kind == execenv.KindRunner && h.Runners != nil {
 		st := h.Runners.Status(env.ID)

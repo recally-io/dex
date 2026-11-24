@@ -2799,6 +2799,11 @@ components:
             properties:
               id: { type: string }
               name: { type: string }
+              desc: {
+                type: string,
+                maxLength: 500,
+                description: Owner-provided plain text.,
+              }
               kind: { type: string }
               default: {
                 type: boolean,
@@ -3646,6 +3651,12 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
+        desc: {
+          type: string,
+          maxLength: 500,
+          x-go-name: Description,
+          description: Owner-provided plain text.,
+        }
         kind: { $ref: "#/components/schemas/EnvironmentKind" }
         config: { $ref: "#/components/schemas/EnvironmentConfig" }
         secretSet: { type: boolean }
@@ -3666,6 +3677,11 @@ components:
       required: [name, kind]
       properties:
         name: { type: string, minLength: 1, maxLength: 60 }
+        desc:
+          type: string
+          maxLength: 500
+          x-go-name: Description
+          description: Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
         kind: { $ref: "#/components/schemas/EnvironmentKind" }
         config: { $ref: "#/components/schemas/EnvironmentConfig" }
         secret:

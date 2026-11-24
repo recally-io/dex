@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 )
 
 const clearAgentEnvironmentSandboxID = `-- name: ClearAgentEnvironmentSandboxID :exec
@@ -77,19 +78,20 @@ func (q *Queries) CountPendingAgent(ctx context.Context, agentID string) (int64,
 }
 
 const createEnvironment = `-- name: CreateEnvironment :one
-INSERT INTO execution_environments (id, name, kind, config, secret, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, kind, config, secret, created_at, updated_at
+INSERT INTO execution_environments (id, name, kind, config, secret, created_at, updated_at, description)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, kind, config, secret, created_at, updated_at, description
 `
 
 type CreateEnvironmentParams struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	Config    string `json:"config"`
-	Secret    string `json:"secret"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Config      string `json:"config"`
+	Secret      string `json:"secret"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+	Description string `json:"description"`
 }
 
 func (q *Queries) CreateEnvironment(ctx context.Context, arg CreateEnvironmentParams) (ExecutionEnvironment, error) {
@@ -101,6 +103,7 @@ func (q *Queries) CreateEnvironment(ctx context.Context, arg CreateEnvironmentPa
 		arg.Secret,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.Description,
 	)
 	var i ExecutionEnvironment
 	err := row.Scan(
@@ -111,6 +114,7 @@ func (q *Queries) CreateEnvironment(ctx context.Context, arg CreateEnvironmentPa
 		&i.Secret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Description,
 	)
 	return i, err
 }
@@ -172,7 +176,7 @@ func (q *Queries) GetAgentBinding(ctx context.Context, id string) (GetAgentBindi
 }
 
 const getEnvironment = `-- name: GetEnvironment :one
-SELECT id, name, kind, config, secret, created_at, updated_at FROM execution_environments WHERE id = ?
+SELECT id, name, kind, config, secret, created_at, updated_at, description FROM execution_environments WHERE id = ?
 `
 
 func (q *Queries) GetEnvironment(ctx context.Context, id string) (ExecutionEnvironment, error) {
@@ -186,6 +190,7 @@ func (q *Queries) GetEnvironment(ctx context.Context, id string) (ExecutionEnvir
 		&i.Secret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Description,
 	)
 	return i, err
 }
@@ -241,7 +246,7 @@ func (q *Queries) ListActiveAgentsByEnvironment(ctx context.Context, environment
 }
 
 const listEnvironments = `-- name: ListEnvironments :many
-SELECT id, name, kind, config, secret, created_at, updated_at FROM execution_environments ORDER BY created_at, id
+SELECT id, name, kind, config, secret, created_at, updated_at, description FROM execution_environments ORDER BY created_at, id
 `
 
 func (q *Queries) ListEnvironments(ctx context.Context) ([]ExecutionEnvironment, error) {
@@ -261,6 +266,7 @@ func (q *Queries) ListEnvironments(ctx context.Context) ([]ExecutionEnvironment,
 			&i.Secret,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Description,
 		); err != nil {
 			return nil, err
 		}
@@ -330,18 +336,20 @@ func (q *Queries) SetChatEnvironment(ctx context.Context, arg SetChatEnvironment
 
 const updateEnvironment = `-- name: UpdateEnvironment :one
 UPDATE execution_environments
-SET name = ?, kind = ?, config = ?, secret = ?, updated_at = ?
-WHERE id = ?
-RETURNING id, name, kind, config, secret, created_at, updated_at
+SET name = ?1, kind = ?2, config = ?3, secret = ?4, updated_at = ?5,
+    description = coalesce(?6, description)
+WHERE id = ?7
+RETURNING id, name, kind, config, secret, created_at, updated_at, description
 `
 
 type UpdateEnvironmentParams struct {
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	Config    string `json:"config"`
-	Secret    string `json:"secret"`
-	UpdatedAt int64  `json:"updated_at"`
-	ID        string `json:"id"`
+	Name        string         `json:"name"`
+	Kind        string         `json:"kind"`
+	Config      string         `json:"config"`
+	Secret      string         `json:"secret"`
+	UpdatedAt   int64          `json:"updated_at"`
+	Description sql.NullString `json:"description"`
+	ID          string         `json:"id"`
 }
 
 func (q *Queries) UpdateEnvironment(ctx context.Context, arg UpdateEnvironmentParams) (ExecutionEnvironment, error) {
@@ -351,6 +359,7 @@ func (q *Queries) UpdateEnvironment(ctx context.Context, arg UpdateEnvironmentPa
 		arg.Config,
 		arg.Secret,
 		arg.UpdatedAt,
+		arg.Description,
 		arg.ID,
 	)
 	var i ExecutionEnvironment
@@ -362,6 +371,7 @@ func (q *Queries) UpdateEnvironment(ctx context.Context, arg UpdateEnvironmentPa
 		&i.Secret,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Description,
 	)
 	return i, err
 }
