@@ -88,8 +88,11 @@ otherwise eligible Web notification does not change its origin.
 The Web stream reads a recent page from the Outbox when it connects. A committed
 notification wakes that conversation's stream. Older notifications use an Outbox
 ID cursor in chat history, separate from the native entry cursor. The Web client
-merges pages and live updates by Outbox ID. Neither the engine transcript nor
-the platform delivery receipt changes when the Web client reads an entry.
+merges pages and live updates by Outbox ID. If a newer notice with the same
+`topicKey` supersedes a pending channel delivery, the timeline keeps both
+notices. Channel revocation does not hide a Web-origin notice. Neither the
+engine transcript nor the platform delivery receipt changes when the Web client
+reads an entry.
 
 ## Internal delegation
 

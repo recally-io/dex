@@ -49,8 +49,20 @@ func TestUserSeesWebChildAndMonitorNotificationsInTheirOrigin(t *testing.T) {
 	d.send(t, chatID, `{"title":"Web notification fixture","provider":"faux","modelId":"echo","message":"raw child data"}`)
 	child := waitTimelineNotice(t, chatWatch, "Reviewed child conclusion", false)
 	d.waitSettled(t, chatID)
-	if replay := waitTimelineNotice(t, d.watch(t, chatID), child.Text, true); replay != child {
-		t.Fatalf("reconnect changed the Outbox projection: %+v != %+v", replay, child)
+	conn := sessionDB(t, d)
+	// Model delivery bookkeeping on a notice that also had a channel target.
+	if _, err := conn.ExecContext(t.Context(), `UPDATE outbox_messages
+		SET status = 'superseded', topic_key = 'review', peer = 'telegram:42', delivered_at = NULL WHERE id = ?`, child.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(t.Context(), `UPDATE submissions SET channel_revoked = 1
+		WHERE id = (SELECT source_submission_id FROM outbox_messages WHERE id = ?)`, child.Id); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := d.watch(t, chatID)
+	reloaded.until(t, "initial notification page after delivery changes", func(tr *transcript) bool { return len(tr.noticeEvents) > 0 })
+	if page := reloaded.tr.noticeEvents[0]; !page.Initial || !slices.Equal(page.Notifications, []api.TimelineNotification{child}) {
+		t.Fatalf("delivery changes must not hide the Web notice: %+v", page)
 	}
 	var outbox api.OutboxMessageList
 	d.must(t, http.MethodGet, chatPath(chatID, "outbox"), nil, &outbox)
@@ -62,7 +74,6 @@ func TestUserSeesWebChildAndMonitorNotificationsInTheirOrigin(t *testing.T) {
 	d.setModel(t, "tool")
 	d.send(t, mainID, `monitor_set_schedule {"delaySeconds":60,"prompt":"notify_user {\"content\":\"Monitor conclusion\"}"}`)
 	d.waitSettled(t, mainID)
-	conn := sessionDB(t, d)
 	if _, err := conn.ExecContext(t.Context(), `UPDATE monitors SET due_at = ? WHERE conversation_id = ?`, time.Now().UnixMilli(), mainID); err != nil {
 		t.Fatal(err)
 	}

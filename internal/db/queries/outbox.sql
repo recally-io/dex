@@ -161,6 +161,7 @@ LIMIT 30;
 
 -- name: ListTimelineNotifications :many
 -- The submission is the trusted origin even when a Web task also has a channel target.
+-- Keep the tool: prefix in sync with ToolNotifyUser in internal/chat/outbox.go.
 -- rowid is only a live read position; history sends the durable ID as its cursor.
 SELECT CAST(o.rowid AS INTEGER) AS position, o.id, o.body, o.created_at
 FROM outbox_messages o
@@ -171,7 +172,7 @@ WHERE o.conversation_id = @conversation_id AND o.agent_id = @agent_id
   AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
   AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
   AND o.kind = 'proactive' AND o.dedup_key LIKE 'tool:%'
-  AND s.origin = 'web' AND s.channel_revoked = 0
+  AND s.origin = 'web'
   AND o.rowid > CAST(@after_position AS INTEGER)
   AND (CAST(@before_id AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM outbox_messages prior
       WHERE prior.id = @before_id AND prior.conversation_id = @conversation_id AND prior.agent_id = @agent_id))
