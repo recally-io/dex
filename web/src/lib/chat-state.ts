@@ -3,6 +3,7 @@ import type { ChatEvent, ChildEvent, HistoryPage, Item, Retry } from "../api/gen
 type ChatState = {
   items: Item[];
   running: boolean;
+  runTarget?: string;
   children?: Record<number, ChildEvent["state"]>;
   retry?: Retry;
   history?: Item[];
@@ -39,6 +40,7 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return {
         items: mergeItems(history, event.items),
         running: event.running,
+        runTarget: event.running ? event.runTarget : undefined,
         children: state.children,
         retry: event.retry,
         history,
@@ -77,7 +79,12 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         ),
       };
     case "run":
-      return { ...state, running: event.running, retry: event.retry };
+      return {
+        ...state,
+        running: event.running,
+        runTarget: event.running ? event.runTarget : undefined,
+        retry: event.retry,
+      };
   }
 }
 

@@ -26,7 +26,7 @@ import { errorText, refreshChats } from "../lib/queries";
 import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
+import { sessionKind, sessionTime } from "../lib/sessions";
 import { ChatActivity } from "../components/chat-activity";
 import { SessionSettings } from "../components/session-settings";
 import { useEnvironmentSendBlock } from "../components/chat-environment";
@@ -268,12 +268,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     refetchInterval: 3000,
   });
 
-  // Stop acts on a child only while it has input that this session sent. The server says which.
-  const activeHere = activeSessionCount(
-    (sessions.data?.chats ?? []).filter(
-      (session) => session.parentId === chatId && session.stoppedWithParent,
-    ),
-  );
+  // Main can stop only its own run. Other parents can also stop eligible children.
+  const isMain = main || chat.data?.main === true;
+
+  const activeChildren =
+    !isMain &&
+    (sessions.data?.chats.some(
+      (session) => session.parentId === chatId && session.stoppedWithParent && session.busy,
+    ) ??
+      false);
 
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
@@ -351,7 +354,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const abort = useMutation({
     ...abortChatMutation(),
     onSuccess: async () => {
-      setQueued([]);
+      if (!isMain) setQueued([]);
       await Promise.all([refreshChats(agentId), refetchChat()]);
     },
   });
@@ -607,7 +610,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 void sendText(failedMessage.current.body.text, failedMessage.current.attachments).catch(
                   () => {},
                 );
-              else if (abort.isError && chatId) abort.mutate({ path: { agentId, chatId } });
+              else if (abort.isError && abort.variables) abort.mutate(abort.variables);
             }}
           />
         </div>
@@ -655,10 +658,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         files={files}
         running={running}
         stoppable={
-          running ||
-          activeHere > 0 ||
-          items.some((item) => item.kind === "user" && item.queued) ||
-          (connection !== "ready" && chat.data?.busy === true)
+          isMain
+            ? connection === "ready" && running && Boolean(state.runTarget)
+            : running ||
+              activeChildren ||
+              items.some((item) => item.kind === "user" && item.queued) ||
+              (connection !== "ready" && chat.data?.busy === true)
         }
         pending={pending}
         disabledReason={reason}
@@ -666,7 +671,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         autoFocus
         onSend={(text, mode) => sendText(text, files.ready, undefined, mode)}
         onStop={() => {
-          if (chatId) abort.mutate({ path: { agentId, chatId } });
+          if (!chatId) return;
+
+          if (isMain) {
+            if (connection !== "ready" || !running || !state.runTarget) return;
+
+            abort.mutate({ path: { agentId, chatId }, query: { runTarget: state.runTarget } });
+          } else {
+            abort.mutate({ path: { agentId, chatId } });
+          }
         }}
         text={draft}
         onTextChange={setDraft}

@@ -64,6 +64,7 @@ type Event struct {
 	ID            string `json:"id,omitempty"`
 	Text          string `json:"text,omitempty"`
 	Running       bool   `json:"running,omitzero"`
+	RunTarget     string `json:"runTarget,omitempty"`
 	Retry         *Retry `json:"retry,omitzero"`
 	HistoryBefore int64  `json:"historyBefore,omitzero"`
 }
@@ -76,15 +77,17 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Type          string `json:"type"`
 			Items         []Item `json:"items"`
 			Running       bool   `json:"running"`
+			RunTarget     string `json:"runTarget,omitempty"`
 			Retry         *Retry `json:"retry,omitzero"`
 			HistoryBefore int64  `json:"historyBefore,omitzero"`
-		}{e.Type, e.Items, e.Running, e.Retry, e.HistoryBefore})
+		}{e.Type, e.Items, e.Running, e.RunTarget, e.Retry, e.HistoryBefore})
 	case "run":
 		return json.Marshal(struct {
-			Type    string `json:"type"`
-			Running bool   `json:"running"`
-			Retry   *Retry `json:"retry,omitzero"`
-		}{e.Type, e.Running, e.Retry})
+			Type      string `json:"type"`
+			Running   bool   `json:"running"`
+			RunTarget string `json:"runTarget,omitempty"`
+			Retry     *Retry `json:"retry,omitzero"`
+		}{e.Type, e.Running, e.RunTarget, e.Retry})
 	}
 	type plain Event
 	return json.Marshal(plain(e))

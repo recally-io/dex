@@ -1345,7 +1345,7 @@ export const forkChat = <ThrowOnError extends boolean = false>(options: Options<
 });
 
 /**
- * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary, and Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or chat return 409. 409 when the session never ran. Automation and channel sessions return 403.
+ * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary. Legacy Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or chat return 409. 409 when the session never ran. Automation and channel sessions return 403.
  *
  */
 export const compactChat = <ThrowOnError extends boolean = false>(options: Options<CompactChatData, ThrowOnError>): RequestResult<CompactChatResponses, CompactChatErrors, ThrowOnError> => (options.client ?? client).post<CompactChatResponses, CompactChatErrors, ThrowOnError>({
@@ -1391,7 +1391,7 @@ export const getChatItem = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Automation and channel sessions return 403.
+ * Main stops only the current run identified by runTarget. It keeps queued input, child sessions, background commands and Monitors. Other writable sessions use legacy Stop, which withdraws pending input and can stop child work. Earlier actions are not undone. Processes and remote work may continue. Automation and channel sessions return 403.
  *
  */
 export const abortChat = <ThrowOnError extends boolean = false>(options: Options<AbortChatData, ThrowOnError>): RequestResult<AbortChatResponses, AbortChatErrors, ThrowOnError> => (options.client ?? client).post<AbortChatResponses, AbortChatErrors, ThrowOnError>({

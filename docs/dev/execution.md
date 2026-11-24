@@ -154,7 +154,8 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
   returns the full item when the user opens the step.
 - A text-only increase sends `append`. Other item changes send `item`.
   Removal, reordering, a committed partial ID change, or a new history boundary
-  sends a replacement `snapshot`. Running and retry changes send `run`.
+  sends a replacement `snapshot`. Running, foreground task target, and retry
+  changes send `run`. A reconnect receives the current target in the snapshot.
 - Each subscriber has its own native watch. Snapshot capture and subscription
   share one revision. A reconnect needs no replay. Closing one browser tab
   cannot stop another tab's subscription.
@@ -196,8 +197,9 @@ and `/compact` when the last non-compaction item is a plain reset or is absent.
 
 `Agents.Compact` starts a native manual compaction. It also runs during a run;
 the summary then waits in the inbox for the run's next boundary. Native abort
-keeps queued writes for a later run, so `Agents.Abort` withdraws queued
-summaries; otherwise one would wait for the next message and block maintenance.
+keeps queued writes for a later run, so legacy `Agents.Abort` withdraws queued
+summaries. Web Main Stop uses task abort instead. It keeps the Inbox and takes
+its next boundary if input waits.
 The view shows a `pending` compaction boundary for each live compaction and a
 `queued` one for each summary in the inbox. A goroutine waits for the task, and
 then for the queued summary. When no summary is placed, it writes a

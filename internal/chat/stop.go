@@ -88,8 +88,8 @@ type withdrawal struct {
 }
 
 // Withdraw takes the writer before reading. The first commit defines Stop's scope: the conversation
-// and the child sessions of it that have pending input of the parent. The writer also admits user
-// input, so a child is either stopped as a whole or has the user input that this read saw.
+// and, when included, its child sessions with pending input of the parent. The writer also admits
+// user input, so a child is either stopped as a whole or has the user input that this read saw.
 func (s *Service) withdraw(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (withdrawal, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -139,6 +139,10 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			}
 		}
 		if c.AgentID == agentID && c.ChannelKey == MainKey {
+			// Legacy Stop owns the entire Inbox and supersedes an unfinished turn stop.
+			if err := q.SupersedeMainTurnStops(ctx, c.ID); err != nil {
+				return withdrawal{}, err
+			}
 			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
 				return withdrawal{}, err
 			}

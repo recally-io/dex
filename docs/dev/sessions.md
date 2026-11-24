@@ -91,7 +91,7 @@ error and no question. The answer is a normal message with `answersQuestionId`.
 The receipt, the new `answered` status and the content wrapper `Answer to:
 <question>` commit in one transaction. A message without that field never closes
 a question. Withdrawing the answer reopens the question. The answered input's
-settlement consumes it. Stop, Clear and archive dismiss open and answered
+settlement consumes it. Legacy Stop, Clear and archive dismiss open and answered
 questions in their own writer transaction. Settlement of the asking input adds
 the question to the reply, so a channel receives it through the reply outbox.
 `Bot.Send` returns the remote message ID. After each confirmed part, the sender
@@ -253,15 +253,23 @@ Disconnect makes status unavailable. A reconnect reads the current snapshot
 and child states.
 
 A child is writable on the web at any time. A user message goes to the child
-like to any Chat and sends no result. Web Stop covers the selected session and
-its children that have pending input. Channel `/stop` calls main Stop with the
-same scope. Other Chats, automations and other agents stay outside it. The
-scope includes children in other bots. `/clear` does not
-cancel children.
+like to any Chat and sends no result. On Main, the web composer uses Main's
+live run state. It can send while a child runs. Web Main Stop requires the
+exact foreground task target from the connected snapshot or run event. The
+engine checks ownership and the current generation. PiG does not reuse task
+IDs on handoff, reset, or restart, so replay cannot stop a successor.
+Main keeps queued and awaiting inputs, children, background commands and
+Monitors. PiG 0.7 task abort keeps the Inbox but does not start its next input.
+Dex records the Stop intent and takes a native Continue boundary if the target
+aborted, the Session is idle, and input is queued. Recovery can finish this step
+after a restart.
+Web Stop on other sessions and channel `/stop` can also stop children that have
+pending input from the parent, including children in other bots. Other sessions
+stay outside the scope. `/clear` does not cancel children.
 Submission, Stop, Clear and reconciliation share a delivery lock per agent.
-Stop withdraws pending input of the session and of its children in one
-transaction, then requests cancellation through the engine for each execution
-of its own bot. A child in another bot waits for the reconciliation of its bot.
+Stop withdraws pending input in scope in one transaction, then requests
+cancellation through the engine for each execution of its own bot. A child in
+another bot waits for the reconciliation of its bot.
 Pending cancellation intent stays in business storage until native abort
 succeeds. Reconciliation completes cancellation before it admits later input.
 Both cold recovery and ordinary Stop atomically withdraw queued input and save
