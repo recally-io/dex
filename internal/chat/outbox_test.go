@@ -158,7 +158,7 @@ func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	}
 	awaitReceipt(t, r, turnID(source.Key))
 
-	// Child System Turn can explicitly escalate to parent via ToolReportParent.
+	// Child System Turn can explicitly escalate to parent via session_report (ToolReportParent).
 	var childID int64
 	if err := r.conn.QueryRowContext(t.Context(), `SELECT id FROM conversations WHERE parent_id = ?`, parent).Scan(&childID); err != nil {
 		t.Fatal(err)

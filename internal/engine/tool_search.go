@@ -27,6 +27,9 @@ func toolSearchExtension() *durable.Extension {
 		candidates := make([]*durable.ToolRegistration, 0, len(agent.Deferred)+len(agent.Tools))
 		catalog := make(map[string]*durable.ToolRegistration, cap(candidates))
 		for _, entry := range agent.Tools {
+			if entry.Name == legacyParentReport {
+				continue
+			}
 			offered[entry.Name] = true
 			catalog[entry.Name] = entry
 			candidates = append(candidates, entry)
