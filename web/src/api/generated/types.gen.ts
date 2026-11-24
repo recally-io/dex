@@ -195,6 +195,10 @@ export type AgentEnvironments = {
     environments: Array<{
         id: string;
         name: string;
+        /**
+         * Owner-provided plain text.
+         */
+        desc?: string;
         kind: string;
         /**
          * This is the environment of the agent.
@@ -879,6 +883,10 @@ export type RunnerStatus = {
 export type Environment = {
     id: string;
     name: string;
+    /**
+     * Owner-provided plain text.
+     */
+    desc?: string;
     kind: EnvironmentKind;
     config: EnvironmentConfig;
     secretSet: boolean;
@@ -893,6 +901,10 @@ export type EnvironmentList = {
 
 export type EnvironmentInput = {
     name: string;
+    /**
+     * Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
+     */
+    desc?: string;
     kind: EnvironmentKind;
     config?: EnvironmentConfig;
     /**

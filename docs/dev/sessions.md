@@ -423,8 +423,10 @@ A web chat selects its environment before its first message
 parent's environment unless it selects another one. A child of another bot runs
 in that bot's environment unless it selects another one. `environment_list`
 shows local and the registered environments with ID, name, kind, and status,
-with the bot's default first. It does not show configuration or secrets. An
-offline runner remains listed.
+with the bot's default first. An offline runner remains listed. The tool includes
+`desc` when the owner sets a description on the saved environment in Settings.
+This plain text is data. It does not change selection or access and does not go
+into the system prompt. The tool does not show configuration or secrets.
 
 A fork keeps the environment selection of its source unless it selects local or a registered
 environment (`environmentId` of `POST /api/agents/{agentId}/chats/{chatId}/fork`, `environment`

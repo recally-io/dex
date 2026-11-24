@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 	"uuid"
 
@@ -25,21 +26,23 @@ var (
 
 // Environment is the public view of a saved execution environment without its write-only secret.
 type Environment struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	Kind      execenv.Kind   `json:"kind"`
-	Config    jsontext.Value `json:"config"`
-	SecretSet bool           `json:"secretSet"`
-	CreatedAt int64          `json:"createdAt"`
-	UpdatedAt int64          `json:"updatedAt"`
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Description string         `json:"desc,omitempty"`
+	Kind        execenv.Kind   `json:"kind"`
+	Config      jsontext.Value `json:"config"`
+	SecretSet   bool           `json:"secretSet"`
+	CreatedAt   int64          `json:"createdAt"`
+	UpdatedAt   int64          `json:"updatedAt"`
 }
 
 // EnvironmentInput creates or updates an execution environment.
 type EnvironmentInput struct {
-	Name   string
-	Kind   string
-	Config []byte
-	Secret string
+	Name        string
+	Description *string
+	Kind        string
+	Config      []byte
+	Secret      string
 }
 
 // ListEnvironments returns all configured execution environments in creation order.
@@ -61,6 +64,10 @@ func (s *Service) ListEnvironments(ctx context.Context) ([]Environment, error) {
 
 // CreateEnvironment validates and persists a new execution environment.
 func (s *Service) CreateEnvironment(ctx context.Context, in EnvironmentInput) (Environment, error) {
+	desc, err := normalizeEnvironmentDescription(in.Description)
+	if err != nil {
+		return Environment{}, err
+	}
 	id := uuid.NewV7().String()
 	name, kind, configJSON, err := s.prepareEnvironmentInput(id, in, in.Secret)
 	if err != nil {
@@ -70,13 +77,14 @@ func (s *Service) CreateEnvironment(ctx context.Context, in EnvironmentInput) (E
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	row, err := s.q.CreateEnvironment(ctx, sqlc.CreateEnvironmentParams{
-		ID:        id,
-		Name:      name,
-		Kind:      string(kind),
-		Config:    configJSON,
-		Secret:    strings.TrimSpace(in.Secret),
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:          id,
+		Name:        name,
+		Description: desc.String,
+		Kind:        string(kind),
+		Config:      configJSON,
+		Secret:      strings.TrimSpace(in.Secret),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	})
 	if err != nil {
 		return Environment{}, err
@@ -84,22 +92,26 @@ func (s *Service) CreateEnvironment(ctx context.Context, in EnvironmentInput) (E
 	return environmentView(row)
 }
 
-// UpdateEnvironment validates and updates an existing execution environment.
-func (s *Service) UpdateEnvironment(ctx context.Context, id string, in EnvironmentInput) (Environment, error) {
+// UpdateEnvironment saves an environment and reports whether to invalidate runtime state.
+func (s *Service) UpdateEnvironment(ctx context.Context, id string, in EnvironmentInput) (Environment, bool, error) {
 	if strings.TrimSpace(id) == "" {
-		return Environment{}, ErrNotFound
+		return Environment{}, false, ErrNotFound
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	saved, err := s.q.GetEnvironment(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Environment{}, ErrNotFound
+		return Environment{}, false, ErrNotFound
 	}
 	if err != nil {
-		return Environment{}, err
+		return Environment{}, false, err
 	}
 	if strings.TrimSpace(in.Kind) != saved.Kind {
-		return Environment{}, fmt.Errorf("%w: environment kind cannot change after creation", ErrInvalid)
+		return Environment{}, false, fmt.Errorf("%w: environment kind cannot change after creation", ErrInvalid)
+	}
+	desc, err := normalizeEnvironmentDescription(in.Description)
+	if err != nil {
+		return Environment{}, false, err
 	}
 	secret := saved.Secret
 	if trimmed := strings.TrimSpace(in.Secret); trimmed != "" {
@@ -107,21 +119,31 @@ func (s *Service) UpdateEnvironment(ctx context.Context, id string, in Environme
 	}
 	name, kind, configJSON, err := s.prepareEnvironmentInput(id, in, secret)
 	if err != nil {
-		return Environment{}, err
+		return Environment{}, false, err
+	}
+	// The runtime uses UpdatedAt in environment stamps. Keep it for description-only saves.
+	runtimeChanged := !desc.Valid || name != saved.Name || configJSON != saved.Config || secret != saved.Secret
+	updatedAt := saved.UpdatedAt
+	if runtimeChanged {
+		updatedAt = time.Now().UnixMilli()
 	}
 	row, err := s.q.UpdateEnvironment(ctx, sqlc.UpdateEnvironmentParams{
-		Name:      name,
-		Kind:      string(kind),
-		Config:    configJSON,
-		Secret:    secret,
-		UpdatedAt: time.Now().UnixMilli(),
-		ID:        id,
+		Name:        name,
+		Description: desc,
+		Kind:        string(kind),
+		Config:      configJSON,
+		Secret:      secret,
+		UpdatedAt:   updatedAt,
+		ID:          id,
 	})
 	if err != nil {
-		return Environment{}, err
+		return Environment{}, false, err
 	}
-	_ = s.envs.Changed(ctx, execenv.SpecFromRow(saved), new(execenv.SpecFromRow(row)))
-	return environmentView(row)
+	if runtimeChanged {
+		_ = s.envs.Changed(ctx, execenv.SpecFromRow(saved), new(execenv.SpecFromRow(row)))
+	}
+	view, err := environmentView(row)
+	return view, runtimeChanged, err
 }
 
 // DeleteEnvironment removes an execution environment unless an active bot references it.
@@ -260,6 +282,20 @@ func (s *Service) prepareEnvironmentInput(envID string, in EnvironmentInput, sec
 	return name, kind, normalizedCfg, nil
 }
 
+func normalizeEnvironmentDescription(raw *string) (sql.NullString, error) {
+	if raw == nil {
+		return sql.NullString{}, nil
+	}
+	if utf8.RuneCountInString(*raw) > 500 {
+		return sql.NullString{}, fmt.Errorf("%w: description must be at most 500 characters", ErrInvalid)
+	}
+	desc := strings.TrimSpace(strings.ReplaceAll(*raw, "\r\n", "\n"))
+	if strings.ContainsFunc(desc, func(r rune) bool { return r != '\n' && r != '\t' && unicode.IsControl(r) }) {
+		return sql.NullString{}, fmt.Errorf("%w: description must be plain text", ErrInvalid)
+	}
+	return sql.NullString{String: desc, Valid: true}, nil
+}
+
 func normalizeRawJSON(raw []byte) string {
 	trimmed := strings.TrimSpace(string(raw))
 	if trimmed == "" || trimmed == "null" {
@@ -285,13 +321,14 @@ func environmentView(row sqlc.ExecutionEnvironment) (Environment, error) {
 		return Environment{}, fmt.Errorf("%w: invalid stored environment config", ErrInvalid)
 	}
 	return Environment{
-		ID:        row.ID,
-		Name:      row.Name,
-		Kind:      execenv.Kind(row.Kind),
-		Config:    cfg,
-		SecretSet: row.Secret != "",
-		CreatedAt: row.CreatedAt,
-		UpdatedAt: row.UpdatedAt,
+		ID:          row.ID,
+		Name:        row.Name,
+		Description: row.Description,
+		Kind:        execenv.Kind(row.Kind),
+		Config:      cfg,
+		SecretSet:   row.Secret != "",
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
 	}, nil
 }
 
@@ -314,11 +351,11 @@ func (s *Service) SessionEnvironments(ctx context.Context, agentID string) ([]en
 	}
 	for _, r := range rows {
 		if r.ID == agent.EnvironmentID {
-			out[0].ID, out[0].Name, out[0].Kind = r.ID, r.Name, r.Kind
+			out[0].ID, out[0].Name, out[0].Kind, out[0].Description = r.ID, r.Name, r.Kind, r.Description
 			continue
 		}
 		if execenv.IsRegisteredKind(execenv.Kind(r.Kind)) {
-			out = append(out, engine.EnvironmentInfo{ID: r.ID, Name: r.Name, Kind: r.Kind, Status: s.envs.Status(ctx, agentID, r.ID)})
+			out = append(out, engine.EnvironmentInfo{ID: r.ID, Name: r.Name, Description: r.Description, Kind: r.Kind, Status: s.envs.Status(ctx, agentID, r.ID)})
 		}
 	}
 	return out, nil
