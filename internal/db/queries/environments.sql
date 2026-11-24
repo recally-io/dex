@@ -5,14 +5,15 @@ SELECT * FROM execution_environments ORDER BY created_at, id;
 SELECT * FROM execution_environments WHERE id = ?;
 
 -- name: CreateEnvironment :one
-INSERT INTO execution_environments (id, name, kind, config, secret, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO execution_environments (id, name, kind, config, secret, created_at, updated_at, description)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: UpdateEnvironment :one
 UPDATE execution_environments
-SET name = ?, kind = ?, config = ?, secret = ?, updated_at = ?
-WHERE id = ?
+SET name = @name, kind = @kind, config = @config, secret = @secret, updated_at = @updated_at,
+    description = coalesce(sqlc.narg(description), description)
+WHERE id = @id
 RETURNING *;
 
 -- name: DeleteEnvironmentIfUnused :execrows
