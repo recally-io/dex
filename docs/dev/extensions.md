@@ -111,9 +111,10 @@ restarts. dex does not poll for changes or watch these files.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
 servers before it resumes the agent Harness. This is a shared wait for all
-Sessions of a Bot, including Sessions that use another environment. Cold open
-does not open the default workspace for MCP. The loader installs prompt sections for
-the extension guide and current skills. MCP tools use the names
+Sessions of a Bot, including Sessions that use another environment. MCP servers
+use control-host configuration and do not need a lease on the default environment.
+The loader installs prompt sections for the extension guide and current skills.
+MCP tools use the names
 `mcp__<server>__<tool>`. In owner sessions, `tool_search` searches the built-in
 and MCP tools available to the current model. It adds only matching deferred
 tools to the next model call. It does not expand the session's permissions.
@@ -181,7 +182,10 @@ literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
-The Web Extensions page uses the same server status as `mcp_server_list`.
+For an open Harness, the request uses the default environment's lease to inspect
+workspace skills. If the lease has not opened, this request can open it without
+blocking admission in other environments. The Web Extensions page uses the same
+server status as `mcp_server_list`.
 Before the agent opens, the API shows declarations that are not disabled as
 `idle`.
 

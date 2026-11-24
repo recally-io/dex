@@ -1404,6 +1404,12 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 			// Show the stored configuration, not project skills from a stale handle.
 			files = a.files(agentID, nil)
 			files.defaultUnavailable = true
+		} else if files.defaultUnavailable && !resource.envs.restoreDefault {
+			// Info needs the default workspace even if no turn has used it yet.
+			// Use the same lease as a Session. If it cannot open, show the stored configuration.
+			if target, openErr := resource.envs.byID(ctx, ""); openErr == nil {
+				files = target.Files
+			}
 		}
 		info, err = files.Info(ctx)
 	} else {
