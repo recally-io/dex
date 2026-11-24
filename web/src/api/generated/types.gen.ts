@@ -283,7 +283,7 @@ export type Chat = {
      */
     toolStartedAt?: number;
     /**
-     * True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+     * True when a cascading Stop on the parent would act on this child. Web Stop on Main does not cascade. Only the session list sets it.
      */
     stoppedWithParent?: boolean;
 };

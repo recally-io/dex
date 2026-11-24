@@ -23,14 +23,20 @@ import (
 //     spare queued input. Stop withdraws only the parent input that is still queued. A run that the
 //     parent started continues, and its result can start a new parent turn after Stop.
 func (s *Service) Stop(ctx context.Context, agentID string, id int64) error {
-	_, err := s.stop(ctx, agentID, id, nil, nil)
+	_, err := s.stop(ctx, agentID, id, nil, nil, false)
+	return err
+}
+
+// StopWeb leaves child sessions alone when the user stops Main.
+func (s *Service) StopWeb(ctx context.Context, agentID string, id int64) error {
+	_, err := s.stop(ctx, agentID, id, nil, nil, true)
 	return err
 }
 
 // StopChannelCommand saves the answer in the withdrawal transaction.
 // A repeated channel command can finish its receipt without stopping later work.
 func (s *Service) StopChannelCommand(ctx context.Context, agentID string, id int64, sourceKey, answer string) error {
-	_, err := s.stop(ctx, agentID, id, &sqlc.SaveChannelCommandAnswerParams{SourceKey: sourceKey, Answer: answer}, nil)
+	_, err := s.stop(ctx, agentID, id, &sqlc.SaveChannelCommandAnswerParams{SourceKey: sourceKey, Answer: answer}, nil, false)
 	return err
 }
 
@@ -47,16 +53,18 @@ type stopCall struct {
 const toolStopAction = "session_stop"
 
 // stop returns the stored result of a replayed tool call, and an empty string otherwise.
-func (s *Service) stop(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (string, error) {
-	if _, err := s.Get(ctx, agentID, id); err != nil {
+func (s *Service) stop(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall, webStop bool) (string, error) {
+	c, err := s.Get(ctx, agentID, id)
+	if err != nil {
 		return "", err
 	}
+	includeChildren := !webStop || c.ChannelKey != MainKey
 	unlock, err := s.lockAgent(ctx, agentID)
 	if err != nil {
 		return "", err
 	}
 	defer func() { unlock(); s.Wake() }()
-	w, err := s.withdraw(ctx, agentID, id, command, call)
+	w, err := s.withdraw(ctx, agentID, id, includeChildren, command, call)
 	if err != nil || w.stored != "" {
 		return w.stored, err
 	}
@@ -88,9 +96,9 @@ type withdrawal struct {
 }
 
 // Withdraw takes the writer before reading. The first commit defines Stop's scope: the conversation
-// and the child sessions of it that have pending input of the parent. The writer also admits user
-// input, so a child is either stopped as a whole or has the user input that this read saw.
-func (s *Service) withdraw(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (withdrawal, error) {
+// and, when included, its child sessions with pending input of the parent. The writer also admits
+// user input, so a child is either stopped as a whole or has the user input that this read saw.
+func (s *Service) withdraw(ctx context.Context, agentID string, id int64, includeChildren bool, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (withdrawal, error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
@@ -118,7 +126,14 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	if err := cancelChannelFollowUps(ctx, q, id); err != nil {
 		return withdrawal{}, err
 	}
-	conversations, err := q.ListStopConversations(ctx, sqlc.ListStopConversationsParams{AgentID: agentID, ChatID: id})
+	var conversations []sqlc.Conversation
+	if includeChildren {
+		conversations, err = q.ListStopConversations(ctx, sqlc.ListStopConversationsParams{AgentID: agentID, ChatID: id})
+	} else {
+		var c sqlc.Conversation
+		c, err = q.GetConversation(ctx, id)
+		conversations = []sqlc.Conversation{c}
+	}
 	if err != nil {
 		return withdrawal{}, err
 	}

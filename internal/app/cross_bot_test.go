@@ -337,6 +337,45 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	}
 }
 
+func TestUserMainStopLeavesSameBotAndCrossBotChildrenRunning(t *testing.T) {
+	t.Parallel()
+	// Given Main started a gated child in each bot and now has a gated turn of its own.
+	s := startBots(t)
+	main := botChat{bots: s, agent: "default", id: s.d.mainChat(t)}
+	path := fmt.Sprintf("/api/agents/default/chats/%d", main.id)
+	setModel := func(model string) {
+		s.d.must(t, http.MethodPut, path+"/settings", map[string]string{"provider": "faux", "modelId": model, "thinkingLevel": "off"}, nil)
+	}
+	setModel("spawn")
+	children := []struct {
+		bot, agent, gate string
+		id               int64
+	}{
+		{agent: "default", gate: "main-local-child"},
+		{bot: "Coder", agent: s.b.ID, gate: "main-cross-child"},
+	}
+	for i, child := range children {
+		args := map[string]any{"title": child.gate, "message": taskGate(t, s.dir, child.gate), "provider": "faux", "modelId": "bash"}
+		if child.bot != "" {
+			args["bot"] = child.bot
+		}
+		children[i].id = main.newChild(args).conversation(t)
+		waitTaskFile(t, filepath.Join(s.dir, child.gate+".pid"))
+	}
+	setModel("bash")
+	main.send(taskGate(t, s.dir, "main-turn"))
+	mainPID := filepath.Join(s.dir, "main-turn.pid")
+	waitTaskFile(t, mainPID)
+
+	// When the user stops Main, then its own turn ends, and both children can finish normally.
+	s.d.must(t, http.MethodPost, path+"/abort", nil, nil)
+	waitTaskPIDGone(t, mainPID)
+	for _, child := range children {
+		releaseResultGate(t, s.dir, child.gate)
+		botChat{bots: s, agent: child.agent, id: child.id}.watch().until(t, child.gate+" finished normally after Main Stop", answeredWith("bash: gate released"))
+	}
+}
+
 // crossBotChat is a session in the list of the web API. The bot fields are set only when the session
 // or its parent belongs to another bot than the one in the path.
 type crossBotChat struct {

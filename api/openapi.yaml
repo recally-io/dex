@@ -2013,6 +2013,8 @@ paths:
         Withdraws queued input and results, then requests cancellation of the
         current turn and background execution of this session. Earlier actions are
         not undone. Processes and remote work may continue.
+        Stopping Main does not stop its child sessions. Stopping another writable
+        session can also stop child work that it started.
         Automation and channel sessions return 403.
       responses:
         "200":
@@ -2898,7 +2900,7 @@ components:
           description: The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
         stoppedWithParent:
           type: boolean
-          description: True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+          description: True when a cascading Stop on the parent would act on this child. Web Stop on Main does not cascade. Only the session list sets it.
 
     ChatOrigin:
       type: object

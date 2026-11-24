@@ -1742,7 +1742,7 @@ export const getChatItemOptions = (options: Options<GetChatItemData>) => queryOp
 });
 
 /**
- * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Automation and channel sessions return 403.
+ * Withdraws queued input and results, then requests cancellation of the current turn and background execution of this session. Earlier actions are not undone. Processes and remote work may continue. Stopping Main does not stop its child sessions. Stopping another writable session can also stop child work that it started. Automation and channel sessions return 403.
  *
  */
 export const abortChatMutation = (options?: Partial<Options<AbortChatData>>): UseMutationOptions<AbortChatResponse, AbortChatError, Options<AbortChatData>> => {

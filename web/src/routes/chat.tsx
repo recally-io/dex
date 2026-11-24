@@ -26,7 +26,7 @@ import { errorText, refreshChats } from "../lib/queries";
 import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
+import { sessionKind, sessionTime } from "../lib/sessions";
 import { ChatActivity } from "../components/chat-activity";
 import { SessionSettings } from "../components/session-settings";
 import { useEnvironmentSendBlock } from "../components/chat-environment";
@@ -268,12 +268,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     refetchInterval: 3000,
   });
 
-  // Stop acts on a child only while it has input that this session sent. The server says which.
-  const activeHere = activeSessionCount(
-    (sessions.data?.chats ?? []).filter(
-      (session) => session.parentId === chatId && session.stoppedWithParent,
-    ),
-  );
+  // Main can stop only its own run. Other parents can also stop eligible children.
+  const isMain = main || chat.data?.main === true;
+
+  const activeChildren =
+    !isMain &&
+    (sessions.data?.chats.some(
+      (session) => session.parentId === chatId && session.stoppedWithParent && session.busy,
+    ) ??
+      false);
 
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
@@ -656,7 +659,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         running={running}
         stoppable={
           running ||
-          activeHere > 0 ||
+          activeChildren ||
           items.some((item) => item.kind === "user" && item.queued) ||
           (connection !== "ready" && chat.data?.busy === true)
         }

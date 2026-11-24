@@ -997,7 +997,7 @@ type Chat struct {
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
 	Settings ChatSettings `json:"settings"`
 
-	// StoppedWithParent True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+	// StoppedWithParent True when a cascading Stop on the parent would act on this child. Web Stop on Main does not cascade. Only the session list sets it.
 	StoppedWithParent *bool  `json:"stoppedWithParent,omitempty"`
 	Title             string `json:"title"`
 
