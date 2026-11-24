@@ -29,7 +29,7 @@ package "Native PiG session run (QueueAll boundary batching)" as run {
   rectangle "System Turn\nOnly task / Monitor / routine\nFail-quiet trace by default" as sys_turn
 }
 
-rectangle "Explicit exit tools\nnotify_user / ask_user\nchild session_send (report to parent)" as tools
+rectangle "Explicit exit tools\nnotify_user / ask_user\nsession_report (report to parent)" as tools
 database "Agent Outbox (outbox_messages)\nDeduplicated + topic superseding" as outbox
 rectangle "Channel Dispatcher + Web UI\nAt-least-once parts + Attention Inbox" as dispatch
 

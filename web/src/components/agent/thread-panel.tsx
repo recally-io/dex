@@ -158,14 +158,7 @@ export function ThreadView({
                 </Failure>
               ) : null}
               <LoadEarlierButton chatId={chatId} before={historyBefore} onPage={onPage} />
-              <Transcript
-                chatId={chatId}
-                child={chat.data?.parentId !== undefined}
-                items={items}
-                running={running}
-                retry={() => {}}
-                canRetry={false}
-              />
+              <Transcript chatId={chatId} items={items} running={running} retry={() => {}} canRetry={false} />
             </>
           )}
         </div>

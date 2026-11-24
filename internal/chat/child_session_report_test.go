@@ -57,7 +57,7 @@ func resultText(result ai.ToolResultMessage) string {
 	return b.String()
 }
 
-func TestUserChildSessionSendReportsOnlyToItsDirectParent(t *testing.T) {
+func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 	// Given a Routine parent, which is not Main, with one delegated child, and a scripted model.
 	r := startNative(t, "echo")
 	provider := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "child-send-fixture", Models: []ai.FauxModelDefinition{{ID: "script"}}, TokensPerSecond: 10000})
@@ -116,11 +116,10 @@ func TestUserChildSessionSendReportsOnlyToItsDirectParent(t *testing.T) {
 			return calls(call("session_new", map[string]any{"title": "Verifier", "message": "Wait for a wake."}))
 		}),
 		step(func(ai.TranscriptContext) ai.AssistantMessage {
-			// The parent cannot use the report form: the native validator rejects it.
-			return calls(call("session_send", map[string]any{"content": "Not a parent call"}))
+			return calls(call("session_report", map[string]any{"content": "Not a parent call"}))
 		}),
 		step(func(req ai.TranscriptContext) ai.AssistantMessage {
-			expectError(req, "session_send", "content: unknown field")
+			expectError(req, "session_report", "not available")
 			return text("Setup recorded.")
 		}),
 		step(func(ai.TranscriptContext) ai.AssistantMessage { return text("Waiting for the wake.") }),
@@ -173,27 +172,27 @@ func TestUserChildSessionSendReportsOnlyToItsDirectParent(t *testing.T) {
 		got := wake("wake-final",
 			step(func(req ai.TranscriptContext) ai.AssistantMessage {
 				tools := offeredTools(req)
-				if got := schemaProperties(tools["session_send"]); !slices.Equal(got, []string{"content", "final"}) {
-					t.Errorf("child session_send schema = %v", got)
+				if got := schemaProperties(tools["session_report"]); !slices.Equal(got, []string{"content", "final"}) {
+					t.Errorf("child session_report schema = %v", got)
 				}
-				for _, name := range []string{"report_parent", "session_new", "session_stop", "session_fork", "notify_user"} {
+				for _, name := range []string{"report_parent", "session_send", "session_new", "session_stop", "session_fork", "notify_user"} {
 					if _, ok := tools[name]; ok {
 						t.Errorf("child was offered %s", name)
 					}
 				}
-				if d := tools["session_send"].Description; !strings.Contains(d, "direct parent") || !strings.Contains(d, "Routine") || !strings.Contains(d, "not a user notification") {
-					t.Errorf("child session_send description lacks routing guidance: %q", d)
+				if d := tools["session_report"].Description; !strings.Contains(d, "direct parent") || !strings.Contains(d, "Routine") || !strings.Contains(d, "not a user notification") {
+					t.Errorf("child session_report description lacks routing guidance: %q", d)
 				}
-				return calls(call("session_send", map[string]any{"content": "Half of the checks pass.", "final": false}))
+				return calls(call("session_report", map[string]any{"content": "Half of the checks pass.", "final": false}))
 			}),
 			step(func(req ai.TranscriptContext) ai.AssistantMessage {
-				if result := toolResults(req)["session_send"]; result.IsError || !strings.Contains(resultText(result), "Reported to parent") {
+				if result := toolResults(req)["session_report"]; result.IsError || !strings.Contains(resultText(result), "Reported to parent") {
 					t.Errorf("milestone did not report: %+v", result)
 				}
-				return calls(call("session_send", map[string]any{"content": "All checks pass."}))
+				return calls(call("session_report", map[string]any{"content": "All checks pass."}))
 			}),
 			step(func(ai.TranscriptContext) ai.AssistantMessage {
-				t.Error("a final session_send did not end the child turn")
+				t.Error("a final session_report did not end the child turn")
 				return text("unexpected")
 			}),
 		)
@@ -214,13 +213,13 @@ func TestUserChildSessionSendReportsOnlyToItsDirectParent(t *testing.T) {
 
 	t.Run("final report in a batch", func(t *testing.T) {
 		before := len(reports(parent))
-		// When a final session_send shares its round with another tool call.
+		// When a final session_report shares its round with another tool call.
 		got := wake("wake-batch",
 			step(func(ai.TranscriptContext) ai.AssistantMessage {
-				return calls(call("session_send", map[string]any{"content": "Batched report"}), call("session_list", map[string]any{}))
+				return calls(call("session_report", map[string]any{"content": "Batched report"}), call("session_list", map[string]any{}))
 			}),
 			step(func(req ai.TranscriptContext) ai.AssistantMessage {
-				expectError(req, "session_send", "session_send must be the only tool call")
+				expectError(req, "session_report", "session_report must be the only tool call")
 				return text("Kept internal.")
 			}),
 		)
@@ -239,11 +238,11 @@ func TestUserChildSessionSendReportsOnlyToItsDirectParent(t *testing.T) {
 				return calls(call("session_send", map[string]any{"id": "1", "message": "Go to Main"}))
 			}),
 			step(func(req ai.TranscriptContext) ai.AssistantMessage {
-				expectError(req, "session_send", "id: unknown field")
-				return calls(call("session_send", map[string]any{"id": "1", "content": "Mixed"}))
+				expectError(req, "session_send", "not available")
+				return calls(call("session_report", map[string]any{"id": "1", "content": "Wrong target"}))
 			}),
 			step(func(req ai.TranscriptContext) ai.AssistantMessage {
-				expectError(req, "session_send", "id: unknown field")
+				expectError(req, "session_report", "id: unknown field")
 				return calls(call("report_parent", map[string]any{"content": "Old name"}))
 			}),
 			step(func(req ai.TranscriptContext) ai.AssistantMessage {

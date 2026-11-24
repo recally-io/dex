@@ -186,9 +186,6 @@ const outputBox =
 // The chat of the transcript, to load a step that the server truncated.
 const TranscriptChat = createContext(0);
 
-// True when the transcript is a child session. Its session_send reports to the parent.
-const TranscriptChild = createContext(false);
-
 /**
  * The server leaves out a long tool output or thought until its step opens. A committed item does
  * not change, so its full form loads once.
@@ -285,11 +282,10 @@ function StepLine({
   onToggle: () => void;
 }) {
   const thought = step.kind === "thinking";
-  const child = useContext(TranscriptChild);
 
   const { verb, target } = thought
     ? { verb: "Thought", target: step.text.split("\n", 1)[0] || "Not shared by the provider" }
-    : describeTool(step, memory, child);
+    : describeTool(step, memory);
 
   return (
     <div data-tool={thought ? undefined : step.id}>
@@ -343,13 +339,12 @@ export function Steps({
   memory?: string;
   thinking?: boolean;
 }) {
-  const child = useContext(TranscriptChild);
   const parts: ({ card: ToolItem } | { rest: Step[] })[] = [];
 
   for (const step of steps) {
     const last = parts.at(-1);
 
-    if (step.kind === "tool" && threadCall(step, child)) parts.push({ card: step });
+    if (step.kind === "tool" && threadCall(step)) parts.push({ card: step });
     else if (last && "rest" in last) last.rest.push(step);
     else parts.push({ rest: [step] });
   }
@@ -392,8 +387,7 @@ function StepsRow({
   const [picked, setPicked] = useState<string | null>();
   const selected = picked === undefined ? (failedId ?? null) : picked;
   const expanded = open ?? !!failedId;
-  const child = useContext(TranscriptChild);
-  const title = stepTitle(steps, memory, thinking, child);
+  const title = stepTitle(steps, memory, thinking);
   // Tools run without a sandbox, so a closed row still shows what runs now.
   const running = steps.find((step) => step.kind === "tool" && step.status === "running");
 
@@ -415,7 +409,7 @@ function StepsRow({
         </span>
         {running?.kind === "tool" ? (
           <span className="min-w-0 truncate font-mono text-[12px]">
-            {describeTool(running, memory, child).target}
+            {describeTool(running, memory).target}
           </span>
         ) : null}
         <ChevronRight
@@ -922,7 +916,6 @@ function retryable(items: Item[], index: number) {
 
 export function Transcript({
   chatId,
-  child = false,
   items,
   running,
   retry,
@@ -932,8 +925,6 @@ export function Transcript({
   messageActions,
 }: {
   chatId: number;
-  /** True for a child session. */
-  child?: boolean;
   items: Item[];
   running: boolean;
   retry: (index: number) => void;
@@ -975,25 +966,23 @@ export function Transcript({
 
   return (
     <TranscriptChat.Provider value={chatId}>
-      <TranscriptChild.Provider value={child}>
-        {grouped.map((block, blockIndex) =>
-          block.kind === "task" ? (
-            <TaskSection
-              key={block.item.id}
-              block={block}
-              content={content}
-              streaming={running && blockIndex === grouped.length - 1}
-            />
-          ) : (
-            content(block)
-          ),
-        )}
-      </TranscriptChild.Provider>
+      {grouped.map((block, blockIndex) =>
+        block.kind === "task" ? (
+          <TaskSection
+            key={block.item.id}
+            block={block}
+            content={content}
+            streaming={running && blockIndex === grouped.length - 1}
+          />
+        ) : (
+          content(block)
+        ),
+      )}
     </TranscriptChat.Provider>
   );
 }
 
-function isSilentSystemTask(taskBlocks: ContentBlock[], child: boolean): boolean {
+function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
   let hasStaySilent = false;
   let hasAssistant = false;
 
@@ -1008,7 +997,7 @@ function isSilentSystemTask(taskBlocks: ContentBlock[], child: boolean): boolean
       for (const s of b.steps) {
         if (s.kind !== "tool") continue;
 
-        if (s.name === "notify_user" || s.name === "ask_user" || isParentReport(s, child)) {
+        if (s.name === "notify_user" || s.name === "ask_user" || isParentReport(s)) {
           return false;
         }
 
@@ -1029,8 +1018,7 @@ function TaskSection({
   content: (b: ContentBlock) => React.ReactNode;
   streaming: boolean;
 }) {
-  const child = useContext(TranscriptChild);
-  const silent = !streaming && isSilentSystemTask(block.blocks, child);
+  const silent = !streaming && isSilentSystemTask(block.blocks);
 
   return (
     <section

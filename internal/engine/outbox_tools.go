@@ -20,7 +20,7 @@ type NotifyUserArgs struct {
 	Final    *bool  `json:"final,omitempty"`
 }
 
-// ReportParentArgs is the input of the child session_send tool, which reports to the direct parent.
+// ReportParentArgs is the input of session_report, which reports to the direct parent.
 type ReportParentArgs struct {
 	Content string `json:"content"`
 	Final   *bool  `json:"final,omitempty"`
@@ -144,11 +144,10 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 const legacyParentReport = "report_parent"
 const hideLegacyReportMemo = "dex.hideLegacyParentReport"
 
-// childOutboxExtension replaces sessionExtension in a child. The two extensions give session_send
-// different schemas and must never be active in the same conversation.
+// childOutboxExtension lets a child report without access to the parent dispatch tools.
 func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 	report := &durable.ToolRegistration{
-		Name:        "session_send",
+		Name:        "session_report",
 		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
 		Parameters: map[string]any{
 			"type": "object", "additionalProperties": false, "required": []string{"content"},
@@ -169,7 +168,7 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 			final := boolDefaultTrue(args.Final)
 			var call TaskContext
 			if final {
-				call, err = turnEndingCall(ctx, api, agentID, "session_send")
+				call, err = turnEndingCall(ctx, api, agentID, "session_report")
 			} else {
 				call, err = toolCall(ctx, api, agentID)
 			}
@@ -195,7 +194,7 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 	legacy.Execute = func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 		// PiG uses the committed tool list for dispatch, not the request hook's list.
 		// Admit only calls whose owning generation predates the hook.
-		unavailable := errors.New("report_parent is not available; use session_send")
+		unavailable := errors.New("report_parent is not available; use session_report")
 		task, err := api.GetTask(ctx, api.TaskId())
 		if err != nil {
 			return durable.ToolExecutionResult{}, err

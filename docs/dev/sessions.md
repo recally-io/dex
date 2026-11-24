@@ -160,12 +160,11 @@ A conversation that was a task before the upgrade is a child in the same way.
 
 ### Child reports
 
-A child has its own `session_send` from the `child-outbox` extension, in place
-of the parent tool with the same name. Its only arguments are `content` and
-`final`. The recipient is always the direct parent, which can be a Routine
-session. The tool cannot name another session, and the native validator
-rejects `id`, `message`, `mode` and `follow_up`. The handler refuses a call from
-a conversation without a parent.
+A child uses `session_report` from the `child-outbox` extension. Its only
+arguments are `content` and `final`. The recipient is always the direct parent,
+which can be a Routine session. The tool cannot name another session. The
+native validator rejects `id`, `message`, `mode` and `follow_up`. The handler
+refuses a call from a conversation without a parent.
 
 A report is an internal `task_result` with the ID `report:<bot>/<tool task ID>`
 in the inbox of the parent. It does not notify the user and does not grant
@@ -175,8 +174,7 @@ of its round. It ends the child turn and stores the exit action
 turn. With `final` false, the report is a milestone and the turn continues.
 
 The child edit of each input removes the `sessions` extension when it adds
-`child-outbox`, so no conversation selects both tools. Registration is global,
-and PiG resolves a tool name from the extensions that a conversation selects.
+`child-outbox`, so the child can report but cannot dispatch to other sessions.
 The old name `report_parent` remains available only to direct model calls that
 an older release admitted and that recovery lets resume. New model requests
 and tool search do not show it. A resumed call uses its original task ID, so
@@ -256,10 +254,9 @@ Neither layer uses message text or an ID pattern to hide results.
 
 The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
-line at each `session_send` call of a parent. In a child chat, a
-`session_send` call without a parent argument, and an old `report_parent` call,
-show as a "Reported to parent" step. That step keeps a System Turn trace
-unfolded. A result mark is one line with a "View thread"
+line at each `session_send` call. A `session_report` call and an old
+`report_parent` call show as a "Reported to parent" step. That step keeps a
+System Turn trace unfolded. A result mark is one line with a "View thread"
 action. The card, the line and the action open a read-only side panel that
 shows the child's own transcript with the usual chat reads and stream. The web
 reads the child ID from the session tool result and finds the child of a result

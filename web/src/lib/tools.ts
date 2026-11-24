@@ -49,18 +49,9 @@ export const arg = (tool: ToolItem, key: string) => {
   return typeof value === "string" ? value : "";
 };
 
-// The arguments of the parent form of session_send. The child form has only content and final.
-const dispatchKeys = ["id", "message", "mode", "follow_up"];
-
-/**
- * A report from a child session to its direct parent: the old report_parent tool, or the
- * session_send of a child. A child chat offers only the report form of session_send, so a call
- * counts only in a child chat and only without an argument of the parent form.
- */
-export function isParentReport(tool: ToolItem, child: boolean) {
-  if (tool.name === "report_parent") return true;
-
-  return child && tool.name === "session_send" && !dispatchKeys.some((key) => Object.hasOwn(tool.args, key));
+/** Reports use session_report. Old transcripts use report_parent. */
+export function isParentReport(tool: ToolItem) {
+  return tool.name === "session_report" || tool.name === "report_parent";
 }
 
 // The memory folder is <data dir>/memory. Without the data dir, no call counts as a memory call.
@@ -74,7 +65,7 @@ function touchesMemory(tool: ToolItem, memory?: string) {
 }
 
 // The verb and the main argument of a step row. dex sends only the tool name and its arguments.
-export function describeTool(tool: ToolItem, memory?: string, child = false) {
+export function describeTool(tool: ToolItem, memory?: string) {
   const path = arg(tool, "path");
 
   if (tool.name === "bash") {
@@ -89,7 +80,7 @@ export function describeTool(tool: ToolItem, memory?: string, child = false) {
     return { verb: "Notify user", target: arg(tool, "topicKey") || arg(tool, "content") };
   }
 
-  if (isParentReport(tool, child)) {
+  if (isParentReport(tool)) {
     return { verb: "Report parent", target: arg(tool, "content") };
   }
 
@@ -133,13 +124,12 @@ const pastTense = new Map([
 /**
  * The header of a steps row. active is set while a call runs or the model thinks; done is the
  * summary after the steps end. thinking is true while the last step is a thought that streams.
- * child is true in a child chat, where session_send reports to the parent.
  */
-export function stepTitle(steps: Step[], memory?: string, thinking = false, child = false) {
+export function stepTitle(steps: Step[], memory?: string, thinking = false) {
   const tools = steps.filter((step) => step.kind === "tool");
   const running = tools.find((t) => t.status === "running");
   const failed = tools.filter((t) => t.status === "error").length;
-  const reports = tools.filter((t) => t.status === "done" && isParentReport(t, child)).length;
+  const reports = tools.filter((t) => t.status === "done" && isParentReport(t)).length;
   const n = tools.length;
   let done = "";
 
