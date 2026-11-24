@@ -82,7 +82,7 @@ Run `mise tasks` for the full list. The main tasks:
 | ------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `build`             | Builds `bin/dex` for this platform                                                                               |
 | `check`             | All checks; CI runs its steps in jobs                                                                            |
-| `check:quick`       | Static checks and the tests of changed Go packages, without `internal/app`; the pre-push hook runs it            |
+| `check:quick`       | Checks only what changed: Go tests without `-race`, skips `internal/app`; the pre-push hook runs it              |
 | `check:go`          | golangci-lint, `go build`, `go test -race`; `internal/app` runs without `-race`                                  |
 | `check:app`         | The `internal/app` tests without the race detector, as in CI                                                     |
 | `check:native`      | Checks removed backend paths, rejects PiG TUI and extension-host imports, and builds four platforms with cgo off |
