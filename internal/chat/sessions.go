@@ -258,7 +258,7 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 		return engine.SessionRef{}, err
 	}
 	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, source, turn); err != nil {
+		if err := createChannelFollowUp(ctx, q, parent, child, source, turn); err != nil {
 			return engine.SessionRef{}, err
 		}
 	}
@@ -298,6 +298,9 @@ func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engin
 	switch a.Mode {
 	case "", "queue":
 	case "steer":
+		if a.FollowUp {
+			return engine.SessionRef{}, fmt.Errorf("%w: follow_up requires independent mode: queue", errSessionInvalid)
+		}
 		whenBusy = "steer"
 	default:
 		return engine.SessionRef{}, fmt.Errorf("%w: mode is queue or steer", errSessionInvalid)
@@ -328,7 +331,7 @@ func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engin
 		return engine.SessionRef{}, err
 	}
 	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, source, turn); err != nil {
+		if err := createChannelFollowUp(ctx, q, parent, child, source, turn); err != nil {
 			return engine.SessionRef{}, err
 		}
 	}

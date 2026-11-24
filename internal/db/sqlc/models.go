@@ -117,10 +117,15 @@ type ChannelCommand struct {
 }
 
 type ChannelFollowUp struct {
-	DelegationID   string `json:"delegation_id"`
-	ResultID       string `json:"result_id"`
-	ConversationID int64  `json:"conversation_id"`
-	State          string `json:"state"`
+	DelegationID       string         `json:"delegation_id"`
+	ResultID           string         `json:"result_id"`
+	ConversationID     int64          `json:"conversation_id"`
+	State              string         `json:"state"`
+	ChildID            sql.NullInt64  `json:"child_id"`
+	ParentRequestID    sql.NullString `json:"parent_request_id"`
+	ParentSourceKey    sql.NullString `json:"parent_source_key"`
+	NativeActivationID sql.NullInt64  `json:"native_activation_id"`
+	StagedReport       sql.NullString `json:"staged_report"`
 }
 
 type ChannelPeer struct {
@@ -253,6 +258,14 @@ type OnePassword struct {
 	ConnectHost         string `json:"connect_host"`
 	ConnectToken        string `json:"connect_token"`
 	ServiceAccountToken string `json:"service_account_token"`
+}
+
+type OutboxDeliveryDiagnostic struct {
+	ID                 string         `json:"id"`
+	SourceSubmissionID sql.NullString `json:"source_submission_id"`
+	Peer               string         `json:"peer"`
+	RemoteIds          string         `json:"remote_ids"`
+	Disposition        string         `json:"disposition"`
 }
 
 type OutboxFile struct {

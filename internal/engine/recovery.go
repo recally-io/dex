@@ -105,6 +105,15 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 			return Recovered{}, errors.New("completed native input has no answer entry")
 		}
 		outcome.Answer = answerText(entry.Entry.Model)
+		if record.Entry != nil {
+			start, err := store.Entry(readCtx, *record.Entry)
+			if err != nil {
+				return Recovered{}, err
+			}
+			if start != nil {
+				outcome.ActivationID = activationOf(*record, &start.Entry)
+			}
+		}
 	}
 	return Recovered{State: RecoverySettled, Outcome: outcome}, nil
 }

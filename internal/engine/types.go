@@ -56,6 +56,14 @@ type Attachment struct {
 	Path     string `json:"path"`
 }
 
+// InputIsolation keeps an input out of PiG's shared Inbox boundaries.
+type InputIsolation string
+
+const (
+	IsolatedDelegation InputIsolation = "delegation"
+	IsolatedReview     InputIsolation = "review"
+)
+
 type Input struct {
 	// Authorize checks a new admission after environment preparation. It does not guard native replay.
 	Authorize func(context.Context) error
@@ -76,24 +84,28 @@ type Input struct {
 	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
 	// waits for the run to end, "steer" joins the run after its current tool step, and "reject"
 	// returns ErrBusy.
-	WhenBusy string
+	WhenBusy  string
+	Isolation InputIsolation
 }
 type inputMetadata struct {
-	Scope       string       `json:"scope,omitempty"`
-	RequestID   string       `json:"requestId"`
-	Content     string       `json:"content"`
-	HasWorkTask bool         `json:"hasWorkTask,omitzero"`
-	Kind        string       `json:"kind,omitempty"`
-	Origin      string       `json:"origin"`
-	Source      string       `json:"source"`
-	Attachments []Attachment `json:"attachments"`
-	TaskID      string       `json:"taskId,omitempty"`
-	TaskTitle   string       `json:"taskTitle,omitempty"`
-	Reason      string       `json:"reason,omitempty"`
+	Scope       string         `json:"scope,omitempty"`
+	RequestID   string         `json:"requestId"`
+	Content     string         `json:"content"`
+	HasWorkTask bool           `json:"hasWorkTask,omitzero"`
+	Kind        string         `json:"kind,omitempty"`
+	Origin      string         `json:"origin"`
+	Source      string         `json:"source"`
+	Attachments []Attachment   `json:"attachments"`
+	TaskID      string         `json:"taskId,omitempty"`
+	TaskTitle   string         `json:"taskTitle,omitempty"`
+	Reason      string         `json:"reason,omitempty"`
+	Isolation   InputIsolation `json:"isolation,omitempty"`
 }
 type Outcome struct {
 	Status, Answer, Reason string
 	AnswerID               int64
+	// ActivationID is the native first entry of an isolated run, not a submission or task ID.
+	ActivationID int64
 }
 type Config struct {
 	MCPServers    *MCPStore

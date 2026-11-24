@@ -264,7 +264,7 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 		}
 	}
 	for i, part := range parts {
-		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part, privateDraft); err != nil {
+		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part, privateDraft, nil); err != nil {
 			return fmt.Errorf("send command reply: %w", err)
 		}
 	}

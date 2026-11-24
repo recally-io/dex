@@ -859,6 +859,23 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
 	input.Authorize = func(ctx context.Context) error { return s.checkAdmission(ctx, conv, p.ID) }
+	if input.Child {
+		_, err := s.q.GetChannelFollowUpByDelegation(ctx, p.ID)
+		if err == nil {
+			// Isolation is a native execution property, not a channel grant.
+			input.Isolation = engine.IsolatedDelegation
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	} else if current.Kind == "task_result" && current.ChannelRevoked == 0 {
+		f, err := s.q.GetChannelFollowUpByInput(ctx, p.ID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if f.State == "open" && f.ConversationID == conv.ID {
+			input.Isolation = engine.IsolatedReview
+		}
+	}
 	// An owner message or a Task alert of a Task carries the Task context.
 	var workTask sqlc.WorkTask
 	if input.Main {
@@ -900,7 +917,12 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	if s.channelAdmission != nil {
 		s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
 	}
-	if err = s.markAdmitted(ctx, p.ID); err != nil {
+	if input.Isolation == engine.IsolatedDelegation && sub.ActivationID != 0 {
+		err = s.markDelegationAdmitted(ctx, p.ID, sub.ActivationID)
+	} else {
+		err = s.markAdmitted(ctx, p.ID)
+	}
+	if err != nil {
 		return err
 	}
 	if trace != nil {
@@ -985,8 +1007,31 @@ func chatOptions(agent sqlc.Agent, conv sqlc.Conversation) engine.Options {
 }
 
 func (s *Service) markAdmitted(ctx context.Context, id string) error {
-	return s.q.AdmitSubmission(ctx, sqlc.AdmitSubmissionParams{ID: id, AdmittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	return s.recordAdmission(ctx, s.q, id)
 }
+func (s *Service) markDelegationAdmitted(ctx context.Context, id string, activation int64) error {
+	tx, q, err := s.writeTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	n, err := bindChannelFollowUp(ctx, q, id, activation)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("delegation %s does not own native activation %d", id, activation)
+	}
+	if err := s.recordAdmission(ctx, q, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Service) recordAdmission(ctx context.Context, q *sqlc.Queries, id string) error {
+	return q.AdmitSubmission(ctx, sqlc.AdmitSubmissionParams{ID: id, AdmittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+}
+
 func (s *Service) admissionError(ctx context.Context, id string, err error) error {
 	if errors.Is(err, engine.ErrInvalidInput) || errors.Is(err, engine.ErrNotFound) || errors.Is(err, ErrNoModel) {
 		return s.settle(ctx, id, engine.Outcome{Status: "unanswered", Reason: err.Error()})

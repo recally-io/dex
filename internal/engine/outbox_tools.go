@@ -26,6 +26,11 @@ type ReportParentArgs struct {
 	Final   *bool  `json:"final,omitempty"`
 }
 
+const (
+	ReportStaged  = "Final report staged for canonical completion; not sent."
+	ReportIgnored = "Final report ignored; not sent."
+)
+
 // OutboxSummary is one recent delivered Outbox entry rendered into the prompt.
 type OutboxSummary struct {
 	ID          string
@@ -148,7 +153,7 @@ const hideLegacyReportMemo = "dex.hideLegacyParentReport"
 func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 	report := &durable.ToolRegistration{
 		Name:        "session_report",
-		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
+		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. For an opted-in delegation, the final report is staged for the canonical completion and does not send a separate update. Set final=false to send a milestone and continue.",
 		Parameters: map[string]any{
 			"type": "object", "additionalProperties": false, "required": []string{"content"},
 			"properties": map[string]any{
@@ -169,6 +174,9 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 			var call TaskContext
 			if final {
 				call, err = turnEndingCall(ctx, api, agentID, "session_report")
+				if err == nil {
+					err = reportActivation(ctx, api, &call)
+				}
 			} else {
 				call, err = toolCall(ctx, api, agentID)
 			}
@@ -179,8 +187,12 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
+			text := resultID
+			if text != ReportStaged && text != ReportIgnored {
+				text = "Reported to parent: " + resultID
+			}
 			res := durable.ToolExecutionResult{
-				Output: []ai.ToolResultMessageContent{ai.TextContent{Text: "Reported to parent: " + resultID}},
+				Output: []ai.ToolResultMessageContent{ai.TextContent{Text: text}},
 			}
 			if final {
 				res.Control = &durable.ToolControl{Terminate: true}
