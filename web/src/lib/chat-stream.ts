@@ -33,12 +33,13 @@ export function useChatStream(chatId: number) {
         setState((previous) => ({ ...previous, children: undefined }));
       };
 
+      const types = ["snapshot", "item", "append", "run", "child", "notifications"];
+
       const receive = (message: MessageEvent<string>) => {
         try {
           const event: ChatEvent = JSON.parse(message.data);
 
-          if (!["snapshot", "item", "append", "run", "child"].includes(event.type))
-            throw new Error("Unknown chat event.");
+          if (!types.includes(event.type)) throw new Error("Unknown chat event.");
 
           if (!snapshotSeen && event.type !== "snapshot")
             throw new Error("The stream did not start with a snapshot.");
@@ -76,8 +77,7 @@ export function useChatStream(chatId: number) {
         }
       };
 
-      for (const type of ["snapshot", "item", "append", "run", "child"])
-        source.addEventListener(type, receive);
+      for (const type of types) source.addEventListener(type, receive);
       source.onerror = () => {
         setConnection("error");
         checkSession();

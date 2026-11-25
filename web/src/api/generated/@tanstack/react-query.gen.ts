@@ -1646,7 +1646,7 @@ export const compactChatMutation = (options?: Partial<Options<CompactChatData>>)
 export const getChatHistoryQueryKey = (options: Options<GetChatHistoryData>) => createQueryKey('getChatHistory', options);
 
 /**
- * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
+ * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call. Notifications use a separate cursor and are newest first. Supply at least one cursor.
  *
  */
 export const getChatHistoryOptions = (options: Options<GetChatHistoryData>) => queryOptions<GetChatHistoryResponse, GetChatHistoryError, GetChatHistoryResponse, ReturnType<typeof getChatHistoryQueryKey>>({
@@ -1694,7 +1694,7 @@ const createInfiniteParams = <K extends Pick<QueryKey<Options>[0], 'body' | 'hea
 export const getChatHistoryInfiniteQueryKey = (options: Options<GetChatHistoryData>): QueryKey<Options<GetChatHistoryData>> => createQueryKey('getChatHistory', options, true);
 
 /**
- * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
+ * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call. Notifications use a separate cursor and are newest first. Supply at least one cursor.
  *
  */
 export const getChatHistoryInfiniteOptions = (options: Options<GetChatHistoryData>) => {

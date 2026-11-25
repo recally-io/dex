@@ -19,6 +19,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/execenv/execenvtest"
 	"github.com/recally-io/dex/internal/mcptest"
@@ -228,27 +229,33 @@ type attachment struct {
 // transcript applies chat events as the web UI does: a snapshot replaces all, an item replaces the
 // item with its ID or is added, and an append adds text to an item.
 type transcript struct {
-	children  map[int64]string
-	items     []item
-	running   bool
-	runTarget string
-	snapshots int
+	children     map[int64]string
+	items        []item
+	running      bool
+	runTarget    string
+	snapshots    int
+	noticeEvents []chatEvent
 }
 
 type chatEvent struct {
-	ChatID    int64  `json:"chatId"`
-	State     string `json:"state"`
-	Type      string `json:"type"`
-	Items     []item `json:"items"`
-	Item      item   `json:"item"`
-	ID        string `json:"id"`
-	Text      string `json:"text"`
-	Running   bool   `json:"running"`
-	RunTarget string `json:"runTarget"`
+	ChatID                 int64                      `json:"chatId"`
+	State                  string                     `json:"state"`
+	Type                   string                     `json:"type"`
+	Items                  []item                     `json:"items"`
+	Item                   item                       `json:"item"`
+	ID                     string                     `json:"id"`
+	Text                   string                     `json:"text"`
+	Running                bool                       `json:"running"`
+	RunTarget              string                     `json:"runTarget"`
+	Initial                bool                       `json:"initial"`
+	Notifications          []api.TimelineNotification `json:"notifications"`
+	NextBeforeNotification string                     `json:"nextBeforeNotification"`
 }
 
 func (tr *transcript) apply(ev chatEvent) {
 	switch ev.Type {
+	case "notifications":
+		tr.noticeEvents = append(tr.noticeEvents, ev)
 	case "child":
 		if tr.children == nil {
 			tr.children = map[int64]string{}

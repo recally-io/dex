@@ -564,6 +564,76 @@ func (q *Queries) ListRecentDeliveredOutbox(ctx context.Context, conversationID 
 	return items, nil
 }
 
+const listTimelineNotifications = `-- name: ListTimelineNotifications :many
+SELECT CAST(o.rowid AS INTEGER) AS position, o.id, o.body, o.created_at
+FROM outbox_messages o
+JOIN submissions s ON s.id = o.source_submission_id AND s.conversation_id = o.conversation_id
+JOIN conversations c ON c.id = o.conversation_id AND c.agent_id = o.agent_id
+JOIN agents a ON a.id = c.agent_id
+WHERE o.conversation_id = ?1 AND o.agent_id = ?2
+  AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
+  AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
+  AND o.kind = 'proactive' AND o.dedup_key LIKE 'tool:%'
+  AND s.origin = 'web'
+  AND o.rowid > CAST(?3 AS INTEGER)
+  AND (CAST(?4 AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM outbox_messages prior
+      WHERE prior.id = ?4 AND prior.conversation_id = ?1 AND prior.agent_id = ?2))
+ORDER BY o.rowid DESC
+LIMIT ?5
+`
+
+type ListTimelineNotificationsParams struct {
+	ConversationID int64  `json:"conversation_id"`
+	AgentID        string `json:"agent_id"`
+	AfterPosition  int64  `json:"after_position"`
+	BeforeID       string `json:"before_id"`
+	PageSize       int64  `json:"page_size"`
+}
+
+type ListTimelineNotificationsRow struct {
+	Position  int64  `json:"position"`
+	ID        string `json:"id"`
+	Body      string `json:"body"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+// The submission is the trusted origin even when a Web task also has a channel target.
+// Keep the tool: prefix in sync with ToolNotifyUser in internal/chat/outbox.go.
+// rowid is only a live read position; history sends the durable ID as its cursor.
+func (q *Queries) ListTimelineNotifications(ctx context.Context, arg ListTimelineNotificationsParams) ([]ListTimelineNotificationsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTimelineNotifications,
+		arg.ConversationID,
+		arg.AgentID,
+		arg.AfterPosition,
+		arg.BeforeID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTimelineNotificationsRow{}
+	for rows.Next() {
+		var i ListTimelineNotificationsRow
+		if err := rows.Scan(
+			&i.Position,
+			&i.ID,
+			&i.Body,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markOutboxDelivered = `-- name: MarkOutboxDelivered :exec
 UPDATE outbox_messages SET status = 'delivered', delivered_at = ?1 WHERE id = ?2
 `

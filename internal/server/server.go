@@ -770,7 +770,7 @@ func (h *handler) ListChatOutbox(ctx context.Context, req api.ListChatOutboxRequ
 }
 
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {
-	body, err := h.Live.Open(ctx, agentID(ctx), req.ChatId)
+	body, err := h.Live.OpenWeb(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -1080,20 +1080,43 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 	if req.Params.Limit != nil {
 		limit = *req.Params.Limit
 	}
-	if req.Params.Before < 1 || limit < 1 || limit > 200 {
+	before, beforeNotice := req.Params.Before, req.Params.BeforeNotification
+	if (before == nil && beforeNotice == nil) || (before != nil && *before < 1) ||
+		(beforeNotice != nil && *beforeNotice == "") || limit < 1 || limit > 200 {
 		return nil, errInvalid
 	}
-	page, err := h.Live.History(ctx, agentID(ctx), req.ChatId, req.Params.Before, limit)
-	if err != nil {
+	agent := agentID(ctx)
+	out := api.GetChatHistory200JSONResponse{Items: []api.Item{}}
+	if before != nil {
+		page, err := h.Live.History(ctx, agent, req.ChatId, *before, limit)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(page)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return nil, err
+		}
+	} else if _, err := h.Chats.Get(ctx, agent, req.ChatId); err != nil {
 		return nil, err
 	}
-	var out api.GetChatHistory200JSONResponse
-	// Native projection provides the same items for history and live events.
-	raw, err := json.Marshal(page)
-	if err == nil {
-		err = json.Unmarshal(raw, &out)
+	if beforeNotice != nil {
+		page, err := h.Chats.TimelineNotifications(ctx, agent, req.ChatId, *beforeNotice, 0, limit)
+		if err != nil {
+			return nil, err
+		}
+		notices := make([]api.TimelineNotification, len(page.Notifications))
+		for i, notice := range page.Notifications {
+			notices[i] = api.TimelineNotification{Id: notice.ID, Text: notice.Text, At: notice.At}
+		}
+		out.Notifications = &notices
+		if page.NextBeforeNotification != "" {
+			out.NextBeforeNotification = &page.NextBeforeNotification
+		}
 	}
-	return out, err
+	return out, nil
 }
 
 func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRequestObject) (api.ListDirectoriesResponseObject, error) {
