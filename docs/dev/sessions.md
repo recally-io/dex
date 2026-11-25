@@ -77,6 +77,23 @@ parent's `session_send` can steer. Channel, automation and dream inputs always
 use `followUp`. Bot and routine management check the source input, not the
 steered input.
 
+## Web notifications
+
+Main and Chat display explicit `notify_user` output when the stored source
+submission has Web origin. The Outbox row, source submission, and requested
+conversation must agree on the original binding. An isolated channel session
+or a Routine does not get a Web timeline notification. A channel target on an
+otherwise eligible Web notification does not change its origin.
+
+The Web stream reads a recent page from the Outbox when it connects. A committed
+notification wakes that conversation's stream. Older notifications use an Outbox
+ID cursor in chat history, separate from the native entry cursor. The Web client
+merges pages and live updates by Outbox ID. If a newer notice with the same
+`topicKey` supersedes a pending channel delivery, the timeline keeps both
+notices. Channel revocation does not hide a Web-origin notice. Neither the
+engine transcript nor the platform delivery receipt changes when the Web client
+reads an entry.
+
 ## Internal delegation
 
 `ask_user` is installed only on Main and Chat conversations. Extension edits
@@ -504,13 +521,13 @@ a session that selects another environment. New input that follows an
 unavailable or offline default waits before native admission. This check does
 not wait for the machine; a running turn keeps its tool calls, which wait as
 above. Later attempts retry opening the default, and a new machine session ends
-the retry delay. The turn that opens the default uses its project files. After
-that turn, an idle reload restores any skills and MCP tools that could not load.
-A machine default that was offline at load does not need new input: when the
-machine connects again, the agent becomes stale, and the reload opens the
-default. Other kinds wait for a call that opens them, so a failing SSH or E2B
-endpoint does not rebuild the agent at each check. The resolver checks the
-environment in control storage. A removed, unselectable, or offline environment
+the retry delay. On cold open, the Harness loads the shared extensions and MCP
+servers without opening the default workspace. After it publishes, a Session
+that needs the default opens it and uses its project files. Reload still tries
+to refresh the default workspace. If the default machine is offline at cold
+open or during Reload, reconnect requests an idle reload even without new input.
+After a failed Reload, a later successful lease open can also request an idle reload.
+The resolver checks the environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. The stamp holds
 the configuration and identity of the environment, not its connection state.

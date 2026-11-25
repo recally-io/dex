@@ -46,6 +46,8 @@ type environments struct {
 	selected func(ctx context.Context, ref Ref) (string, error)
 	files    *agentExtensions
 	loaded   *loadedExtensions
+	// Restore a default that was offline at cold open or failed to open on reload.
+	restoreDefault bool
 
 	mu         sync.Mutex
 	own        execenv.Handle
@@ -90,6 +92,18 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 	stamp, err := e.provider.Stamp(ctx, e.agentID, id)
 	if err != nil {
 		return sessionEnv{}, err
+	}
+	if id != "" && e.defaultUnopened() {
+		// An explicit selection of the default shares its lease even on first open.
+		// In particular, do not start two opens of the same persisted E2B sandbox.
+		if current, err := e.provider.Stamp(ctx, e.agentID, ""); err == nil && current == stamp {
+			s, err := e.byID(ctx, "")
+			if err == nil && s.Handle.Stamp() != stamp {
+				return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; retry", execenv.ErrUnavailable)
+			}
+			s.ID = id
+			return s, err
+		}
 	}
 	for {
 		e.mu.Lock()
@@ -155,6 +169,12 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 	}
 }
 
+func (e *environments) defaultUnopened() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.own == nil
+}
+
 func (e *environments) openLease(ctx context.Context, id, stamp string, expired execenv.Handle, recentErr error, done chan struct{}) (sessionEnv, error) {
 	defer func() {
 		e.mu.Lock()
@@ -199,21 +219,20 @@ func (e *environments) openLease(ctx context.Context, id, stamp string, expired 
 	return s, nil
 }
 
-// defaultFiles returns the current default inspection target and whether an idle reload must
-// restore the skills and MCP tools that could not load while the default was down. The default
-// is back when a later call opened it.
+// defaultFiles returns the current inspection target and whether the default lease
+// opened after an unavailable default was recorded.
 func (e *environments) defaultFiles() (*agentExtensions, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return e.ownFiles, e.own != nil && e.files.defaultUnavailable
+	return e.ownFiles, e.own != nil && e.restoreDefault
 }
 
-// restorable reports whether a reload can restore a default that was down at load: a later
+// restorable reports whether a reload can restore an unavailable default: a later
 // call opened it, or its machine was offline and is connected now. A reload opens the default
 // itself, so the check does not open a lease. Other kinds wait for a call that opens them,
 // because a failing SSH or sandbox endpoint must not rebuild the agent at each check.
 func (e *environments) restorable(ctx context.Context) bool {
-	if !e.files.defaultUnavailable {
+	if !e.restoreDefault {
 		return false
 	}
 	e.mu.Lock()

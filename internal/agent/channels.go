@@ -39,6 +39,15 @@ func (s *Service) channelSession(agentID string) *channelSession {
 }
 
 func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error) {
+	channels, err := s.channels(ctx, agentID)
+	if err == nil {
+		channels.Telegram.ManagerConfigured, channels.Telegram.ManagedCreationAvailable = s.managerStatus()
+	}
+	return channels, err
+}
+
+// channels leaves out the web setup capability so callers can hold the settings lock.
+func (s *Service) channels(ctx context.Context, agentID string) (Channels, error) {
 	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}}
 	row, err := s.q.GetTelegramSettings(ctx, agentID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -55,7 +64,6 @@ func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error
 			return Channels{}, err
 		}
 	}
-	tg.ManagerConfigured, tg.ManagedCreationAvailable = s.managerStatus()
 	if s.ChannelStatus != nil {
 		tg.Status = s.ChannelStatus(agentID, "telegram")
 	}

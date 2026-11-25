@@ -159,6 +159,26 @@ WHERE conversation_id = @conversation_id
 ORDER BY created_at DESC, rowid DESC
 LIMIT 30;
 
+-- name: ListTimelineNotifications :many
+-- The submission is the trusted origin even when a Web task also has a channel target.
+-- Keep the tool: prefix in sync with ToolNotifyUser in internal/chat/outbox.go.
+-- rowid is only a live read position; history sends the durable ID as its cursor.
+SELECT CAST(o.rowid AS INTEGER) AS position, o.id, o.body, o.created_at
+FROM outbox_messages o
+JOIN submissions s ON s.id = o.source_submission_id AND s.conversation_id = o.conversation_id
+JOIN conversations c ON c.id = o.conversation_id AND c.agent_id = o.agent_id
+JOIN agents a ON a.id = c.agent_id
+WHERE o.conversation_id = @conversation_id AND o.agent_id = @agent_id
+  AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
+  AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
+  AND o.kind = 'proactive' AND o.dedup_key LIKE 'tool:%'
+  AND s.origin = 'web'
+  AND o.rowid > CAST(@after_position AS INTEGER)
+  AND (CAST(@before_id AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM outbox_messages prior
+      WHERE prior.id = @before_id AND prior.conversation_id = @conversation_id AND prior.agent_id = @agent_id))
+ORDER BY o.rowid DESC
+LIMIT @page_size;
+
 -- name: SetRequiredChannelReply :exec
 UPDATE submissions SET required_reply_id = @outbox_id
 WHERE id = @submission_id AND kind = 'message'
@@ -168,7 +188,7 @@ WHERE id = @submission_id AND kind = 'message'
 UPDATE outbox_messages SET skipped_part = 1 WHERE id = ?;
 
 -- name: GetChannelReactionReceipt :one
-SELECT s.status, s.reason, s.exit_action, s.required_reply_id,
+SELECT s.status, s.stop_requested, s.reason, s.exit_action, s.required_reply_id,
        coalesce(o.status, '') AS reply_status, coalesce(o.skipped_part, 0) AS skipped_part
 FROM submissions s LEFT JOIN outbox_messages o ON o.id = s.required_reply_id
 WHERE s.id = ?;

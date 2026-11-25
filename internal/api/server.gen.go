@@ -441,6 +441,21 @@ func (e MonitorState) Valid() bool {
 	}
 }
 
+// Defines values for NotificationsEventType.
+const (
+	Notifications NotificationsEventType = "notifications"
+)
+
+// Valid indicates whether the value is a known member of the NotificationsEventType enum.
+func (e NotificationsEventType) Valid() bool {
+	switch e {
+	case Notifications:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OkStatus.
 const (
 	OkStatusOk OkStatus = "ok"
@@ -1286,8 +1301,10 @@ type HeldEventReason string
 
 // HistoryPage defines model for HistoryPage.
 type HistoryPage struct {
-	Items      []Item `json:"items"`
-	NextBefore *int64 `json:"nextBefore,omitempty"`
+	Items                  []Item                  `json:"items"`
+	NextBefore             *int64                  `json:"nextBefore,omitempty"`
+	NextBeforeNotification *string                 `json:"nextBeforeNotification,omitempty"`
+	Notifications          *[]TimelineNotification `json:"notifications,omitempty"`
 }
 
 // InboxItem defines model for InboxItem.
@@ -1425,6 +1442,20 @@ type NewSession struct {
 
 // NotificationTargets defines model for NotificationTargets.
 type NotificationTargets = agent.NotificationTargets
+
+// NotificationsEvent defines model for NotificationsEvent.
+type NotificationsEvent struct {
+	// Initial True for the first notification page of a connection.
+	Initial                bool    `json:"initial"`
+	NextBeforeNotification *string `json:"nextBeforeNotification,omitempty"`
+
+	// Notifications Newest first. Merge by Outbox ID.
+	Notifications []TimelineNotification `json:"notifications"`
+	Type          NotificationsEventType `json:"type"`
+}
+
+// NotificationsEventType defines model for NotificationsEvent.Type.
+type NotificationsEventType string
 
 // Ok defines model for Ok.
 type Ok struct {
@@ -1838,6 +1869,16 @@ type ThinkingItemKind string
 // ThinkingLevel pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
 type ThinkingLevel string
 
+// TimelineNotification A Web-origin notification read from the Outbox. It is not a delivery receipt.
+type TimelineNotification struct {
+	// At Creation time in milliseconds.
+	At int64 `json:"at"`
+
+	// Id Outbox ID.
+	Id   string `json:"id"`
+	Text string `json:"text"`
+}
+
 // ToolItem defines model for ToolItem.
 type ToolItem struct {
 	Args       map[string]interface{} `json:"args"`
@@ -2070,8 +2111,9 @@ type ForkChatJSONBody struct {
 
 // GetChatHistoryParams defines parameters for GetChatHistory.
 type GetChatHistoryParams struct {
-	Before int64 `form:"before" json:"before"`
-	Limit  *int  `form:"limit,omitempty" json:"limit,omitempty"`
+	Before             *int64  `form:"before,omitempty" json:"before,omitempty"`
+	BeforeNotification *string `form:"beforeNotification,omitempty" json:"beforeNotification,omitempty"`
+	Limit              *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetChatItemParams defines parameters for GetChatItem.
@@ -2472,6 +2514,40 @@ func (t *ChatEvent) MergeChildEvent(v ChildEvent) error {
 	return err
 }
 
+// AsNotificationsEvent returns the union data inside the ChatEvent as a NotificationsEvent
+func (t ChatEvent) AsNotificationsEvent() (NotificationsEvent, error) {
+	var body NotificationsEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromNotificationsEvent overwrites any union data inside the ChatEvent as the provided NotificationsEvent
+func (t *ChatEvent) FromNotificationsEvent(v NotificationsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
+	t.union = b
+	return err
+}
+
+// MergeNotificationsEvent performs a merge with any union data inside the ChatEvent, using the provided NotificationsEvent
+func (t *ChatEvent) MergeNotificationsEvent(v NotificationsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t ChatEvent) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -2492,6 +2568,8 @@ func (t ChatEvent) ValueByDiscriminator() (interface{}, error) {
 		return t.AsChildEvent()
 	case "item":
 		return t.AsItemEvent()
+	case "notifications":
+		return t.AsNotificationsEvent()
 	case "run":
 		return t.AsRunEvent()
 	case "snapshot":
@@ -4525,15 +4603,28 @@ func (siw *ServerInterfaceWrapper) GetChatHistory(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetChatHistoryParams
 
-	// ------------- Required query parameter "before" -------------
+	// ------------- Optional query parameter "before" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "beforeNotification" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "beforeNotification", r.URL.Query(), &params.BeforeNotification, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "beforeNotification"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "beforeNotification", Err: err})
 		}
 		return
 	}

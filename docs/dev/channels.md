@@ -303,8 +303,24 @@ input and confirmation of every part of its required reply, if any. A skipped
 part is not confirmation. Failure and cancellation use distinct reactions.
 Access is checked again before any reaction. A short-lived observer serializes
 changes for its message; slow, rejected, and unknown reaction requests never
-control intake or the reply sender's retries. Commands and Telegram edits do not reset a message's status. Dex can drop reactions under
-load, after a timeout, or when the bot stops. It does not retry or replay them.
+control intake or the reply sender's retries. Commands and Telegram edits do not
+reset a message's status. Dex can drop reactions under load or when the bot stops.
+Only Telegram private-chat queued acknowledgements retry. Telegram must return a
+429 that confirms rejection. Dex makes at most 3 attempts, with backoff of 1 s
+and 2 s. Telegram's `retry_after` can extend either delay. No retry starts after
+30 s or after the input leaves the native inbox. Each retry checks current
+sender authorization and the private reaction setting. If a request has an
+unknown outcome, Dex stops sending reactions for that input. Dex does not replay
+reactions after restart.
+
+To inspect an acknowledgement, join `submissions.id` to
+`telegram_queue_acknowledgements.submission_id` in `control.sqlite`. Find the
+submission by its `source_key`. A missing acknowledgement row means no attempt
+was recorded. Dex saves `unknown` before each request, including retries. A
+crash at that boundary cannot leave the outcome of an earlier attempt in place.
+`failed` records a definite rejection. `accepted` means Telegram confirmed the
+request. It does not prove the user saw the reaction. `updated_at` is Unix time
+in milliseconds.
 
 ### Promised follow-ups
 
@@ -330,6 +346,42 @@ Channel revocation stays on the original input even if its reply was already
 delivered. It also applies to existing and future child results, with or without
 a follow-up commitment. Restoring the channel grant allows new inputs but does
 not authorize delivery from the old result.
+
+## Owner channel tools
+
+`channel_status`, `channel_pairing`, and `channel_notification_targets` read
+one active bot at a time. The current bot is the default. The owner can use a
+bot ID to select another active bot. The tools return runtime states, pairing
+flags, and authorized notification destinations. They omit runtime error text,
+credentials, pairing codes, and login details. The transcript omits raw tool
+arguments. Argument errors do not echo rejected values.
+
+Each call checks the stored source of the live run. Only a web message in a
+top-level Main or Chat session can use these tools. A run that mixes web and
+channel input does not qualify. A paired sender, group, child session, or
+background input cannot make a call as the web owner.
+
+`channel_request_change` can request a Telegram or Feishu pairing revocation,
+a disconnect, or a change to the primary notification destination. WeChat
+pairing ends when the owner disconnects the channel. Use Channels settings to
+enter credentials, get a pairing link or code, or scan a login QR code.
+
+The change tool has no apply operation. It returns a link to a server-rendered
+review page. The page shows the stored operation, bot, and target. A same-origin
+POST from the owner surface applies that request. When dex requires sign-in,
+the review page requires the web session cookie. A chat message or a tool call
+cannot approve a request. The request belongs to its originating session and
+expires after 10 minutes. Control consumes it once and checks that the session,
+bots, and target are still valid. A notification destination must still map to
+the peer shown on the page. Changed credentials or pairing make an earlier
+request invalid. A restart clears requests that are still pending.
+
+Control uses the same channel settings service as the web UI. It logs the
+outcome of applied and denied mutations with the verified bot and operation
+when available. It omits credentials, raw arguments, remote peer IDs, and
+approval links. The approval link is a bearer capability given to the model.
+The link does not isolate the owner on a no-token install or from code that
+runs as the dex OS user.
 
 ## Feishu and Lark
 

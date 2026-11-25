@@ -31,6 +31,56 @@ describe("chat", () => {
     await expect(screen.getByText(`echo: ${prompt}`, { exact: true })).toBeVisible();
   });
 
+  test("shows the child conclusion as one notification in the originating Chat", async ({
+    app,
+    screen,
+    browser,
+  }) => {
+    const base = new URL(await browser.url()).origin + "/api/agents/default/chats";
+    const created = await fetch(base, { method: "POST" });
+
+    expect(created.status).toBe(201);
+    const { id } = await created.json();
+
+    const settings = await fetch(`${base}/${id}/settings`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider: "faux", modelId: "spawn-notify", thinkingLevel: "off" }),
+    });
+
+    expect(settings.ok).toBe(true);
+
+    const environment = await fetch(`${base}/${id}/environment`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ environmentId: "local" }),
+    });
+
+    expect(environment.ok).toBe(true);
+
+    const path = `/a/default/c/${id}`;
+    await app.open(path);
+    await screen.getByRole("textbox", "Message Dex").fill(
+      JSON.stringify({
+        title: "Web notification fixture",
+        provider: "faux",
+        modelId: "echo",
+        message: "Raw child data",
+      }),
+    );
+    await screen.getByRole("button", "Send message").tap();
+
+    const notice = screen.getByRole("article", "Notification");
+    await expect(notice.getByText("Reviewed child conclusion", { exact: true })).toBeVisible();
+    await expect(notice.getByText("Raw child data")).toHaveCount(0);
+
+    await app.open("/a/default");
+    await expect(notice).toHaveCount(0);
+    await app.open(path);
+    await expect(notice.getByText("Reviewed child conclusion", { exact: true })).toBeVisible();
+    await expect(notice).toHaveCount(1);
+  });
+
   test("sends from idle Main while its child is working", async ({ app, screen, browser }) => {
     const baseUrl = new URL(await browser.url()).origin;
     const settings = `${baseUrl}/api/agents/default`;

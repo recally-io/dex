@@ -170,10 +170,33 @@ func (s *Service) PairFeishu(ctx context.Context, agentID string, owner, code st
 	return rows == 1, err
 }
 
+// revokeFeishuPairing keeps the app credentials. A new code must come from Settings.
+func (s *Service) revokeFeishuPairing(ctx context.Context, agentID string) error {
+	saved, err := s.FeishuConfig(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	if saved == nil {
+		return ErrChannelApproval
+	}
+	cfg := *saved
+	cfg.OwnerID = ""
+	s.onFeishu(agentID, nil)
+	if err := s.saveFeishu(ctx, agentID, cfg, ""); err != nil {
+		s.onFeishu(agentID, saved)
+		return err
+	}
+	return nil
+}
+
 // DeleteFeishu removes credentials and cancels a pending registration.
 func (s *Service) DeleteFeishu(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.deleteFeishu(ctx, agentID)
+}
+
+func (s *Service) deleteFeishu(ctx context.Context, agentID string) error {
 	saved, err := s.FeishuConfig(ctx, agentID)
 	if err != nil {
 		return err

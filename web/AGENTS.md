@@ -85,9 +85,18 @@ Main shows Stop only for its own native run target on a connected stream. A
 retry sends the original target. A child can be active while Main sends an
 ordinary input. Non-Main Stop keeps its legacy behavior.
 
-The chat activity panel lists the session's Monitors and Outbox entries. It
-shows the Monitor mode, attempt limit, and latest outcome. The user can cancel
-an active Monitor here. Monitor creation uses the session tool, not this panel.
+The chat activity panel lists the session's Monitors and 30 recent Outbox
+entries. Read-only transcripts, including Routine runs, show the panel above
+the transcript. The panel shows channel delivery status, not Web read status.
+The panel shows the Monitor mode, attempt limit, and latest outcome. The user
+can cancel an active Monitor in a writable session. Monitor creation uses the
+session tool, not this panel.
+
+Main and Chat display explicit Web-origin Outbox notifications in their
+transcripts. The client merges the live notification pages and older pages by
+Outbox ID. The native transcript and notifications have separate cursors;
+**Show earlier messages** loads both. Channel and Routine delivery records stay
+in the Outbox panel.
 
 The About page (`/settings/about`) manages server operations through `/api/system/*`: switching the persisted update channel (`stable` or `prerelease`), checking releases, running an in-place upgrade with automatic `control.sqlite` backup, restarting the server gracefully (with wait-until-idle, cancel, and force-now controls), taking manual hot backups, and reading recent entries from the in-memory log ring buffer. When a restart or upgrade begins, it polls `GET /api/system/status`. A change in `startedAt` confirms the restart and refreshes health data.
 

@@ -1,8 +1,11 @@
 package execenv_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -162,6 +165,62 @@ func TestUserMachineReconnectKeepsTheBotLease(t *testing.T) {
 	}
 	if f.stamp() != before || h.Stamp() != before {
 		t.Fatal("a reconnect changed the stamp")
+	}
+}
+
+func TestUserMachineReconnectLogsRejectedWorkspace(t *testing.T) {
+	// Given a Bot lease on the original workspace.
+	f := newMachineFixture(t)
+	drop := f.connect()
+	h, err := f.mgr.Open(t.Context(), "coder", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := f.work
+
+	// When the same machine reconnects with a different workspace.
+	drop()
+	f.waitStatus("offline")
+	f.work = t.TempDir()
+	f.connect()
+	var logs bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	_, err = run(t.Context(), h, "private-command")
+	slog.SetDefault(old)
+	if !errors.Is(err, execenv.ErrUnavailable) {
+		t.Fatalf("call after workspace changed: %v", err)
+	}
+
+	// Then the trace reports a correlated failure without a send or private data.
+	raw := logs.String()
+	if strings.Contains(raw, original) || strings.Contains(raw, f.work) || strings.Contains(raw, "private-command") {
+		t.Fatal("Runner trace contains private data")
+	}
+	var waitID string
+	finished := false
+	for line := range strings.SplitSeq(strings.TrimSpace(raw), "\n") {
+		var record map[string]any
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatal(err)
+		}
+		if record["msg"] != "runner RPC" || record["environment"] != "laptop" || record["method"] != runner.MethodExec {
+			continue
+		}
+		switch record["phase"] {
+		case "connection_wait":
+			waitID, _ = record["call_id"].(string)
+		case "finished":
+			if waitID == "" || record["call_id"] != waitID || record["result"] != "failed" || record["reason"] != "workspace_mismatch" || record["elapsed"] == nil || record["sent"] != false {
+				t.Fatalf("invalid terminal event: %v", record)
+			}
+			finished = true
+		case "sent", "remote_started":
+			t.Fatalf("rejected call reached dispatch: %v", record)
+		}
+	}
+	if !finished {
+		t.Fatal("missing terminal event for rejected workspace")
 	}
 }
 

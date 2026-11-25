@@ -472,6 +472,12 @@ type TelegramManager struct {
 	CredentialRef string `json:"credential_ref"`
 }
 
+type TelegramQueueAcknowledgement struct {
+	SubmissionID string `json:"submission_id"`
+	Outcome      string `json:"outcome"`
+	UpdatedAt    int64  `json:"updated_at"`
+}
+
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`
