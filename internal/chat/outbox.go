@@ -532,7 +532,7 @@ func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, conv
 	failure := routineFailure(run)
 	if failure {
 		// Only the immediately preceding finished run can suppress a failure alert. Do not
-		// use or update report_check's business duplicate flag for this decision.
+		// use or update automation_report's business duplicate flag for this decision.
 		prior, err := q.GetPreviousFinishedAutomationRun(ctx, runID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err

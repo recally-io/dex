@@ -73,7 +73,7 @@ func TestUserInboxCollectsOnlyActionableResultsAcrossBots(t *testing.T) {
 	for _, agent := range []string{"default", bot.ID} {
 		for _, outcome := range []string{"changed", "failed", "unchanged"} {
 			var a automationInfo
-			d.must(t, http.MethodPost, "/api/agents/"+agent+"/automations", map[string]any{"name": outcome + " check", "prompt": fmt.Sprintf(`report_check {"outcome":%q,"summary":"check result","changeKey":"same"}`, outcome), "schedule": map[string]string{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true}, &a, http.StatusCreated)
+			d.must(t, http.MethodPost, "/api/agents/"+agent+"/automations", map[string]any{"name": outcome + " check", "prompt": fmt.Sprintf(`automation_report {"outcome":%q,"summary":"check result","changeKey":"same"}`, outcome), "schedule": map[string]string{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true}, &a, http.StatusCreated)
 			for range 2 {
 				var r runInfo
 				d.must(t, http.MethodPost, "/api/agents/"+agent+"/automations/"+a.ID+"/run", nil, &r, http.StatusAccepted)
