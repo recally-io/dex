@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, MessagesSquare } from "lucide-react";
 import type { TaskItem, ToolItem } from "../../api/generated/types.gen";
@@ -59,17 +59,8 @@ function ThreadOpen({
 
 /** Cards consume only the parent's content-free execution stream. */
 function useThreadData(call: ThreadCall) {
-  const current = useAgentId();
   const context = useContext(ThreadContext);
-
-  const found = useQuery({
-    ...getTurnChatOptions({ path: { agentId: current, turnId: call.turn ?? "" } }),
-    enabled: !!call.turn,
-  });
-
-  const thread =
-    call.thread ??
-    (found.data ? { chatId: found.data.id, agentId: sessionAgentId(found.data, current) } : undefined);
+  const thread = call.thread;
 
   return {
     thread,

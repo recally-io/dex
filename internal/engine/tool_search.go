@@ -9,7 +9,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/toolsearch"
 )
 
-func toolSearchExtension(hidden func(string) bool) *durable.Extension {
+func toolSearchExtension() *durable.Extension {
 	extension := toolsearch.CreateExtension()
 	tool := extension.Tools[0]
 	tool.Description = "Search tools available to this conversation, including built-in tools and MCP tools. Matching deferred tools become available on the next model call."
@@ -27,9 +27,6 @@ func toolSearchExtension(hidden func(string) bool) *durable.Extension {
 		candidates := make([]*durable.ToolRegistration, 0, len(agent.Deferred)+len(agent.Tools))
 		catalog := make(map[string]*durable.ToolRegistration, cap(candidates))
 		for _, entry := range agent.Tools {
-			if hidden != nil && hidden(entry.Name) {
-				continue
-			}
 			offered[entry.Name] = true
 			catalog[entry.Name] = entry
 			candidates = append(candidates, entry)

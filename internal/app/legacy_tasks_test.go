@@ -71,6 +71,15 @@ func legacyTasks(t *testing.T, dir string) []legacyTask {
 	return tasks
 }
 
+func TestUserCannotCallRetiredSpawnTask(t *testing.T) {
+	t.Parallel()
+	d := startDex(t, t.TempDir(), "")
+	chat := newParent(t, d)
+	if got := callSessionTool(t, d, chat, "spawn_task", map[string]any{"title": "Old task", "goal": "Run a check"}); !strings.Contains(got, "Tool spawn_task is not available") {
+		t.Fatalf("retired tool: %s", got)
+	}
+}
+
 func TestUserOpensLegacyTaskData(t *testing.T) {
 	t.Parallel()
 	// Given the data of a dex version with background tasks: two finished tasks and one running.

@@ -430,7 +430,7 @@ func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agen
 	}
 	registry := harness.CreateRegistry()
 	builtins := []*Extension{
-		sessionTraceExtension(agentID), compactionExtension(), toolSearchExtension(a.config.HideToolFromSearch),
+		sessionTraceExtension(agentID), compactionExtension(), toolSearchExtension(),
 		codingTools(session, a.config.BashTimeout, loaded.Vault), vaultExtension(agentID, loaded.Vault),
 		a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
 			return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})

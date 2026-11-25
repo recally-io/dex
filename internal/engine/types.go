@@ -132,6 +132,4 @@ type Config struct {
 	InputExtensions func(Input) ExtensionEdit
 	// HideToolArguments omits sensitive arguments from history and live events.
 	HideToolArguments func(string) bool
-	// HideToolFromSearch excludes compatibility tools from the active tool catalog.
-	HideToolFromSearch func(string) bool
 }

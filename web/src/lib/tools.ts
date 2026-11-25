@@ -49,9 +49,8 @@ export const arg = (tool: ToolItem, key: string) => {
   return typeof value === "string" ? value : "";
 };
 
-/** Reports use session_report. Old transcripts use report_parent. */
 export function isParentReport(tool: ToolItem) {
-  return tool.name === "session_report" || tool.name === "report_parent";
+  return tool.name === "session_report";
 }
 
 // The memory folder is <data dir>/memory. Without the data dir, no call counts as a memory call.

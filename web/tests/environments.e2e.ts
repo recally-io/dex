@@ -1,11 +1,7 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 
-test("adds a dex runner environment and copies its command in the same dialog", async ({
-  app,
-  browser,
-  screen,
-}) => {
+test("adds a Remote runner and copies its command in the same dialog", async ({ app, browser, screen }) => {
   await app.open("/settings/environment");
 
   // The data directory survives a run, so start from an empty list.
@@ -22,7 +18,7 @@ test("adds a dex runner environment and copies its command in the same dialog", 
   await app.open("/settings/environment");
   await screen.getByRole("button", "Add environment").tap();
   await screen.getByRole("radio", "Another machine").tap();
-  await screen.getByRole("radio", "dex runner").tap();
+  await screen.getByRole("radio", "Remote").tap();
 
   const name = `VM ${Date.now()}`;
   const dialog = screen.getByRole("dialog");

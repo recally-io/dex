@@ -50,7 +50,7 @@ func childRef(item engine.Item, agentID string) (int64, string) {
 		return 0, ""
 	}
 	switch item.Name {
-	case "session_new", "session_fork", "session_send", "spawn_task":
+	case "session_new", "session_fork", "session_send":
 	default:
 		return 0, ""
 	}

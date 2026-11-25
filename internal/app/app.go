@@ -244,9 +244,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				Optional: optional,
 			}
 		},
-		InputExtensions:    inputExtensions,
-		HideToolArguments:  agent.IsChannelTool,
-		HideToolFromSearch: hideToolFromSearch,
+		InputExtensions:   inputExtensions,
+		HideToolArguments: agent.IsChannelTool,
 		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
 			row, err := q.GetAgent(ctx, agentID)
 			if err != nil {

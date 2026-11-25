@@ -224,10 +224,10 @@ test("thread state is current state, and disconnect makes it unknown", () => {
   expect(threadState()).toBe("unavailable");
 });
 
-test("a legacy task call names its first input", () => {
+test("a retired task tool call does not create a thread card", () => {
   const legacy = session("l", "spawn_task", { title: "Old", goal: "Goal" }, '{"id":"task-9"}');
 
-  expect(threadCall(legacy)).toMatchObject({ kind: "card", title: "Old", turn: "task-9" });
+  expect(threadCall(legacy)).toBeUndefined();
   expect(threadCall(bash("x"))).toBeUndefined();
 });
 
@@ -336,11 +336,9 @@ test("user sees a child report to its parent as a step, never as a thread line",
   // A streaming call without arguments yet is still the report of a child.
   expect(await transcript(report("pending", {}, "running"))).not.toContain("Sent to");
 
-  // A legacy report_parent call keeps its label in any chat.
+  // A retired tool in history does not render as a session_report.
   const legacy = await transcript({ ...report("old", { content: "Legacy" }), name: "report_parent" });
-
-  expect(legacy).toContain("Reported to parent");
-  expect(legacy).not.toContain("Internal trace (silent)");
+  expect(legacy).not.toContain("Reported to parent");
 
   // A session_send stays a thread line, even if its arguments are invalid.
   const dispatch = session(
