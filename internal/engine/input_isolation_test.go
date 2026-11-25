@@ -177,8 +177,8 @@ func TestUserCanonicalReviewsDoNotShareCurrentOrQueuedMainWork(t *testing.T) {
 	if _, err := a.Submit(t.Context(), ref, bypass); !errors.Is(err, ErrReviewBarrier) || errors.Is(err, ErrBusy) {
 		t.Fatalf("a bypass cannot start an idle run: %v", err)
 	}
-	if err := a.StopRun(t.Context(), ref, runTargetPrefix(ref)+fmt.Sprint(current.TaskId)); err != nil {
-		t.Fatal(err)
+	if err := a.StopTask(t.Context(), ref, runTargetPrefix(ref)+fmt.Sprint(current.TaskId)); !errors.Is(err, ErrStaleRunTarget) {
+		t.Fatalf("replay of an already aborted task: %v", err)
 	}
 	coreFile(t, steerStarted)
 	busy(review)

@@ -123,7 +123,7 @@ func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = r.service.ReleaseMaintenance(context.Background()) })
-	err = r.service.Stop(t.Context(), "bot", parent)
+	err = r.service.CancelSession(t.Context(), "bot", parent)
 	if !errors.Is(err, engine.ErrMaintenance) {
 		t.Fatalf("expected an explicit maintenance error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.Stop(t.Context(), "bot", parent); err != nil {
+	if err := r.service.CancelSession(t.Context(), "bot", parent); err != nil {
 		t.Fatal(err)
 	}
 	if got := receipt(t, r, turnID(call.Key)); got.Reason.String != "stopped" {
@@ -168,7 +168,7 @@ func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
 		}
 	}
 	stopDone := make(chan error, 1)
-	go func() { stopDone <- r.service.Stop(t.Context(), "bot", parent) }()
+	go func() { stopDone <- r.service.CancelSession(t.Context(), "bot", parent) }()
 	<-snapshot
 	c, err := r.q.GetConversation(t.Context(), childID)
 	if err != nil {

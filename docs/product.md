@@ -52,7 +52,7 @@ to read in an afternoon.
   the command is carried into the new context. Earlier messages stay readable
   with Show earlier messages. A clear keeps long-term memory. `/compact`
   summarizes older messages, also during a run. A summary made during a run
-  joins the context at the run's next step; Stop drops it, and the transcript
+  joins the context at the run's next step. Session cancellation drops it, and the transcript
   says to run `/compact` again. After a summary, Show earlier
   messages can load the earlier transcript. A clear and a summary show a
   divider. The window has a sidebar and a page.
@@ -101,7 +101,7 @@ to read in an afternoon.
   long commands whose output would flood the context, and independent review.
   Each execution has one input and fixed model settings. The main agent
   handles implementation, review findings, tests, and the final answer.
-  Each child session starts as soon as it is created. There is no limit on the number of child sessions, and sessions in one directory run at the same time. Stop on a parent follows the child Stop rules below. A tool may still complete actions. A child session cannot delegate more work. The main agent handles failures and decides the
+  Each child session starts as soon as it is created. There is no limit on the number of child sessions, and sessions in one directory run at the same time. Session cancellation on a parent follows the child rules below. A tool may still complete actions. A child session cannot delegate more work. The main agent handles failures and decides the
   next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
@@ -125,8 +125,8 @@ to read in an afternoon.
   sends no channel reply. Each input gets its own answer, in admission order.
   `/clear` clears main's context when main is idle. `/new` is an alias. A
   repeated command cannot clear again. A busy refusal leaves the context unchanged.
-  `/stop` stops main's current answer, pending input and background work from
-  every main entry. Chat and automation sessions stay outside that scope.
+  `/stop` cancels the Main session, including pending input and background work
+  from every Main entry. Unrelated Chat and automation sessions stay outside that scope.
   `/help` lists commands.
   Disconnecting a channel cancels its pending deliveries. Reconnecting the
   same account does not send old replies. They remain available on the web.
@@ -335,26 +335,27 @@ A message that already started cannot be withdrawn, and the web says so.
 Main and Chat sessions have the `ask_user` tool. The agent asks one question
 with 2 to 4 options and the turn ends. The web shows a question card above the
 composer. The user picks an option or writes another answer. A plain message
-does not answer the question, and the question stays open. Stop, Clear and
+does not answer the question, and the question stays open. Session cancellation, Clear and
 archive dismiss it. A Telegram or Feishu user sees the question as a message and
 answers it by quoting that message. A plain message does not answer it. WeChat
 cannot quote, so a WeChat user answers in the web. Tasks, automations and dreams
 cannot ask. The web shows an answer as the question in muted text above the answer.
 
-Web Stop stays in the composer for queued input, an active answer, and active
-background work. Stop covers the selected writable session. On a parent, it
-also covers each child where it can stop work that the parent sent. The session
-list marks those children (`stoppedWithParent`), and the parent page shows Stop
-for them. A child that also has pending user input keeps its run, and
-Stop withdraws only parent input that is still queued or not admitted. A run that the user
-started in a child is not covered: the parent page shows no Stop for it, and the
-user stops it in the child. Stop on a child
-ends all pending input of that child. Automation transcripts are read-only.
-Stop needs no model.
-Stop withdraws pending input and results, records cancellation, and requests
-SDK cancellation once. The reply confirms the request. It does not confirm
-process exit. Processes and remote work can continue. Prior actions are not
-undone.
+On Main, Web Stop cancels only the foreground task shown in the composer.
+If the task ends or hands off to a new task, the old target cannot stop its
+successor. Queued input stays in order and can continue after a restart.
+Child sessions, background commands, and Monitors stay active. Remove a queued
+message, stop a child session, or cancel a Monitor as a separate action.
+
+On other writable sessions, Web Stop requests session cancellation. This can
+withdraw pending input and results and stop eligible child work. The session
+list marks children in scope (`stoppedWithParent`). If a child has pending user
+input, it keeps running. Only parent input that is still queued or not yet
+admitted can be withdrawn. To stop user work in a child, open the child and
+stop it there. Automation transcripts are read-only.
+
+Stop does not need a model. Its reply does not confirm process exit. Processes
+and remote work can continue. Cancellation does not undo prior actions.
 
 Normal completion and execution failure return a report to the main agent.
 A completed run that holds parent input returns its answer once. A failed run

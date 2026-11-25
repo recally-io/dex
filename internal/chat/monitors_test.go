@@ -138,7 +138,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.Stop(t.Context(), "bot", conv); err != nil {
+	if err := r.service.CancelSession(t.Context(), "bot", conv); err != nil {
 		t.Fatal(err)
 	}
 	if row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(stopMonitor.ID, "schedule-")); err != nil || row.State != "cancelled" {

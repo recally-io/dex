@@ -108,7 +108,7 @@ error and no question. The answer is a normal message with `answersQuestionId`.
 The receipt, the new `answered` status and the content wrapper `Answer to:
 <question>` commit in one transaction. A message without that field never closes
 a question. Withdrawing the answer reopens the question. The answered input's
-settlement consumes it. Legacy Stop, Clear and archive dismiss open and answered
+settlement consumes it. Session cancellation, Clear and archive dismiss open and answered
 questions in their own writer transaction. Settlement of the asking input adds
 the question to the reply, so a channel receives it through the reply outbox.
 `Bot.Send` returns the remote message ID. After each confirmed part, the sender
@@ -310,17 +310,22 @@ and child states.
 A child is writable on the web at any time. A user message goes to the child
 like to any Chat and sends no result. On Main, the web composer uses Main's
 live run state. It can send while a child runs. Web Main Stop requires the
-exact foreground task target from the connected snapshot or run event. The
-engine checks ownership and the current generation. PiG does not reuse task
-IDs on handoff, reset, or restart, so replay cannot stop a successor.
-Main keeps queued and awaiting inputs, children, background commands and
-Monitors. PiG 0.7 task abort keeps the Inbox but does not start its next input.
-Dex records the Stop intent and takes a native Continue boundary if the target
-aborted, the Session is idle, and input is queued. Recovery can finish this step
-after a restart.
+native foreground task target from the connected snapshot or run event. The
+engine checks the task's Session and cancels only that task ID. If it has
+ended, Stop reports that it had no effect. A handoff can replace the task ID
+within one run. Stop does not follow the handoff or cancel a successor.
 
-Web Stop on other sessions and channel `/stop` record a durable request to
-withdraw pending inputs and stop eligible work. This includes background commands,
+Task Stop keeps queued and awaiting inputs, children, background commands and
+Monitors. PiG 0.7 task abort keeps the Inbox but does not start its next input.
+Dex records the intent before abort. If the Session is idle, the failure still
+belongs to the aborted task, and input is queued, Dex submits a native Continue
+with a stable ID. Recovery can finish this step after a restart.
+
+The engine has one Stop entry point with two explicit scopes: task and Session.
+An invalid task target cannot select Session cancellation. The separate
+`session_stop` tool cancels a child Session. Channel `/stop` and a Web Stop
+without a target on a writable session other than Main also request Session
+cancellation. This action withdraws pending inputs and stops eligible work. This includes background commands,
 Monitors and child work the parent started. A child with pending user input
 keeps its run. Its parent inputs can be withdrawn only if they are still queued
 or not yet admitted when the target processes the request. For a child in another
@@ -329,9 +334,9 @@ queue. A queued parent input can enter execution in this interval. If it does,
 Stop leaves it running. `/clear` does not cancel children.
 
 Admission, Clear, Withdraw and reconciliation use a delivery gate for each
-Session. Legacy Stop requests stay in business storage until the target processes
-them. Admission on that target reconciles the requests before later input. Cold
-recovery and legacy full Stop save passive display entries for withdrawn native
+Session. Stop intents stay in business storage until the target processes them.
+Admission reconciles them before later input. Cold recovery and Session
+cancellation save passive display entries for withdrawn native
 inputs without adding model context. The shared SQLite writer runs short
 transactions. The global receipt gate orders maintenance confirmation, as
 described in [Service and updates](architecture.md#service-and-updates).
@@ -371,12 +376,12 @@ or remote actions.
    `session execution` / `shell_timeout` event reports a typed shell deadline
    at the execution boundary. Match its agent and native conversation ID.
    It does not label an untyped model or tool error as a timeout.
-4. For exact Web Main Stop, match `stop_recorded` to `stop_attempt` by native
+4. For task Stop, match `stop_recorded` to `stop_attempt` by native
    conversation and task. The last component of the validated `target` is the
    task ID. `stop_attempt_ended` with `deadline` describes the
-   local wait. `abort_observed` reports whether PiG's exact task abort was seen.
+   local wait. `abort_observed` reports whether this Stop attempt confirmed cancellation.
    A durable intent can still retry. `stop_rejected` does not cancel a successor.
-   Legacy Stop can settle pending receipts in bulk; inspect the durable status.
+   Session cancellation can settle pending receipts in bulk. Inspect the durable status.
 
 The receipt timestamps survive restart. On the control host this query opens
 SQLite read-only and emits recent receipt metadata, with the same hash as the

@@ -13,8 +13,8 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
-// ErrStaleRunTarget means the selected run is not the current foreground run.
-var ErrStaleRunTarget = errors.New("the selected run is no longer active in this session")
+// ErrStaleRunTarget means Stop did not cancel the selected foreground task.
+var ErrStaleRunTarget = errors.New("the selected task is no longer active in this session")
 
 func runTargetPrefix(ref Ref) string {
 	return ref.AgentID + "/" + strconv.FormatInt(ref.ID, 10) + "/"
@@ -75,32 +75,38 @@ func (a *Agents) ValidateRunTarget(ctx context.Context, ref Ref, target string) 
 	return nil
 }
 
-// StopRun applies an exact, previously validated stop intent. PiG mints task IDs in durable
-// storage. A handoff, reset or next run uses another ID, not a new invocation of this ID.
-func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr error) {
+// StopSession cancels the session and withdraws its queued input.
+func (a *Agents) StopSession(ctx context.Context, ref Ref) error {
+	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
+		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
+	}
+	if err := a.beginSessionStop(ref); err != nil {
+		return err
+	}
+	defer a.end(ref.AgentID)
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	c, err := a.conversation(ctx, ref)
+	if err != nil {
+		return err
+	}
+	return a.stopSession(ctx, ref, c)
+}
+
+// StopTask cancels only the named native foreground task without withdrawing queued input.
+func (a *Agents) StopTask(ctx context.Context, ref Ref, target string) (resultErr error) {
+	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
+		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
+	}
 	id, err := runTargetID(ref, target)
 	if err != nil {
 		return err
 	}
-	trace := slog.With("agent", ref.AgentID, "native_conversation_id", ref.ID, "native_task_id", id)
-	started := time.Now()
-	aborted := false
-	trace.InfoContext(ctx, "session stop", "phase", "stop_attempt")
-	defer func() {
-		result := "no_abort_observed"
-		switch {
-		case errors.Is(resultErr, context.DeadlineExceeded):
-			result = "deadline"
-		case errors.Is(resultErr, context.Canceled):
-			result = "canceled"
-		case resultErr != nil:
-			result = "unknown"
-		case aborted:
-			result = "aborted"
-		}
-		trace.InfoContext(ctx, "session stop", "phase", "stop_attempt_ended", "reason", result,
-			"abort_observed", aborted, "elapsed_ms", time.Since(started).Milliseconds())
-	}()
+	finish := traceTaskStop(ctx, ref, id)
+	defer func() { finish(resultErr) }()
 	if err := a.begin(ref.AgentID); err != nil {
 		return err
 	}
@@ -114,6 +120,31 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr
 	if err != nil {
 		return err
 	}
+	return a.stopTask(ctx, ref, c, id)
+}
+
+func traceTaskStop(ctx context.Context, ref Ref, id durable.TaskId) func(error) {
+	trace := slog.With("agent", ref.AgentID, "native_conversation_id", ref.ID, "native_task_id", id)
+	started := time.Now()
+	trace.InfoContext(ctx, "session stop", "phase", "stop_attempt")
+	return func(resultErr error) {
+		result := "aborted"
+		switch {
+		case errors.Is(resultErr, context.DeadlineExceeded):
+			result = "deadline"
+		case errors.Is(resultErr, context.Canceled):
+			result = "canceled"
+		case errors.Is(resultErr, ErrStaleRunTarget):
+			result = "stale_target"
+		case resultErr != nil:
+			result = "unknown"
+		}
+		trace.InfoContext(ctx, "session stop", "phase", "stop_attempt_ended", "reason", result,
+			"abort_observed", resultErr == nil, "elapsed_ms", time.Since(started).Milliseconds())
+	}
+}
+
+func (a *Agents) stopTask(ctx context.Context, ref Ref, c harness.Conversation, id durable.TaskId) error {
 	h, err := a.harness(ctx, ref.AgentID)
 	if err != nil {
 		return err
@@ -122,19 +153,26 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr
 	if err != nil {
 		return err
 	}
+	marked := false
 	if current {
-		// PiG creates a successor owned by the conversation, not by this task.
-		// After handoff the old task is terminal or completing. Neither can run its
-		// abort handler. AbortTask cannot reach the successor or drain this Inbox.
-		if _, err := h.AbortTask(ctx, id); err != nil {
+		// Handoff can replace the task after validation. PiG can mark only this ID.
+		result, err := h.AbortTask(ctx, id)
+		if err != nil {
 			return err
 		}
+		marked = result == "marked"
 	}
 	task, err := h.GetTask(ctx, id)
-	if err != nil || task == nil || task.ConversationId != c.Id() {
+	if err != nil {
 		return err
 	}
+	if task == nil || task.ConversationId != c.Id() {
+		return ErrStaleRunTarget
+	}
 	if task.State.Status != durable.TaskTerminal {
+		if !marked && !task.AbortRequested {
+			return ErrStaleRunTarget
+		}
 		settled, err := h.WaitForTask(ctx, id)
 		if err != nil {
 			return err
@@ -142,17 +180,24 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr
 		task = &settled
 	}
 	if task.State.Outcome == nil || task.State.Outcome.Status != durable.OutcomeAborted {
-		return nil
+		return ErrStaleRunTarget
 	}
-	aborted = true
 
 	// PiG 0.7 ends the generation on task abort without taking a final Inbox boundary.
 	// Continue admits that boundary, without another user entry. Check idle + queued in
 	// the same transaction, so retry after a crash cannot start a second run.
 	_, err = c.Commit(ctx, func(tx durable.Tx) (any, error) {
 		live, err := liveState(tx, c.Id())
-		if err != nil || live.Run != nil || (live.RunFailure != nil && live.RunFailure.TaskId != id) {
+		if err != nil || live.Run != nil {
 			return nil, err
+		}
+		if live.RunFailure == nil {
+			slog.WarnContext(ctx, "session stop skipped inbox resume: run failure missing after abort",
+				"agent", ref.AgentID, "native_conversation_id", ref.ID, "native_task_id", id)
+			return nil, nil
+		}
+		if live.RunFailure.TaskId != id {
+			return nil, nil
 		}
 		doc, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, c.Id())
 		if err != nil {
@@ -171,5 +216,11 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr
 		}
 		return nil, nil
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	if !marked {
+		return ErrStaleRunTarget
+	}
+	return nil
 }

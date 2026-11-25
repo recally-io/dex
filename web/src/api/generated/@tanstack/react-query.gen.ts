@@ -1692,7 +1692,7 @@ export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseM
 };
 
 /**
- * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary. Legacy Stop drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or chat return 409. 409 when the session never ran. Automation and channel sessions return 403.
+ * Summarizes the older context of this writable session. It also works while the session runs; the summary joins the context at the next boundary. Session cancellation drops a summary that still waits. The timeline shows a pending, then a queued compaction boundary, then the summary, "nothing to compact", or the failure. Without an id each call starts a new compaction. A retry with the same id starts at most one compaction. Different instructions or chat return 409. 409 when the session never ran. Automation and channel sessions return 403.
  *
  */
 export const compactChatMutation = (options?: Partial<Options<CompactChatData>>): UseMutationOptions<unknown, CompactChatError, Options<CompactChatData>> => {
@@ -1808,7 +1808,7 @@ export const getChatItemOptions = (options: Options<GetChatItemData>) => queryOp
 });
 
 /**
- * Main stops only the current run identified by runTarget. It keeps queued input, child sessions, background commands and Monitors. Other writable sessions use legacy Stop, which withdraws pending input and can stop child work. Earlier actions are not undone. Processes and remote work may continue. Automation and channel sessions return 403.
+ * On Main, Stop cancels only the native foreground task identified by runTarget. An ended or foreign target returns 409. Stop cannot cancel a successor task. It keeps queued input, child sessions, background commands and Monitors. On other writable sessions, omit runTarget to cancel the session. Session cancellation withdraws pending input and can stop child work. Processes and remote work may continue. Cancellation does not undo prior actions. Automation and channel sessions return 403.
  *
  */
 export const abortChatMutation = (options?: Partial<Options<AbortChatData>>): UseMutationOptions<AbortChatResponse, AbortChatError, Options<AbortChatData>> => {

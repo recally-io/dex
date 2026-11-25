@@ -309,7 +309,7 @@ func TestUserCancellationFailureDoesNotBlockOtherConversations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = r.service.Stop(t.Context(), "bot", id); err == nil {
+	if err = r.service.CancelSession(t.Context(), "bot", id); err == nil {
 		t.Fatal("expected cancellation acknowledgement failure")
 	}
 	// When users send to another conversation and another agent, both can run.
@@ -377,7 +377,7 @@ func TestUserStoppingMissingExecutionCompletesCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the user stops it, absence already satisfies cancellation.
-	if err = r.service.Stop(t.Context(), "bot", c.ID); err != nil {
+	if err = r.service.CancelSession(t.Context(), "bot", c.ID); err != nil {
 		t.Fatalf("missing execution cancellation: %v", err)
 	}
 	saved, err := r.q.GetConversation(t.Context(), c.ID)

@@ -75,10 +75,10 @@ func TestUserSessionDiagnosticsSeparateQueuedStartAndStop(t *testing.T) {
 	watch.Close()
 	deadline, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 	defer cancel()
-	if err := r.agents.StopRun(deadline, ref, target); !errors.Is(err, context.DeadlineExceeded) {
+	if err := r.agents.StopTask(deadline, ref, target); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expired stop: %v", err)
 	}
-	if err := r.service.StopWeb(t.Context(), "bot", id, target); err != nil {
+	if err := r.service.Stop(t.Context(), "bot", id, &target); err != nil {
 		t.Fatal(err)
 	}
 

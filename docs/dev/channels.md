@@ -355,9 +355,9 @@ A crash after reset admission but before command completion reuses that reset.
 A busy refusal is saved in the command receipt; replay cannot clear it later.
 The command sends one short notice. Reset submissions have no model reply.
 An incomplete command with an old peer channel key gets a notice with no action.
-`/stop` records stop intent for main and
-withdraws queued input and pending results. A channel Stop saves its answer
-in the same transaction as the withdrawal. If command completion fails,
+`/stop` requests Session cancellation on Main. It withdraws queued input and
+pending results. The command saves its answer in the same transaction as the
+withdrawal. For the distinction from task Stop, see [Sessions](sessions.md). If command completion fails,
 replay uses that answer without another withdrawal or native abort. The reply
 confirms the cancellation request and states that processes and remote
 work can continue. A stop error does not block later messages or other replies.
@@ -377,7 +377,7 @@ no feedback store, model input, or GitHub write. The reply remains on the
 messaging platform like any other message.
 
 Each platform has one durable sender. Settlement wakes the sender for the
-saved route. Legacy Stop wakes senders for withdrawn input. At start and after
+saved route. Session cancellation wakes senders for withdrawn input. At start and after
 an unsuccessful send, the sender reads pending Outbox entries and command
 replies in submission admission order. It records each confirmed part and marks the reply
 delivered after its last part. A permanent rejection skips that part and does
@@ -437,7 +437,7 @@ busy.
 
 The control store records the commitment separately from delivery. A `notified`
 commitment means an explicit conclusion entered the Outbox, not that the channel
-accepted it. Legacy Stop and Clear cancel outstanding commitments and revoke
+accepted it. Session cancellation and Clear cancel outstanding commitments and revoke
 their pending Outbox entries in the same transaction. Precise Main Web Stop
 only stops the observed turn. If an already-started send succeeds, Dex still
 records its platform receipt.

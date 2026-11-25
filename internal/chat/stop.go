@@ -14,7 +14,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// Stop withdraws this conversation's input and requests cancellation of its runs. Each child session
+// CancelSession withdraws this conversation's input and requests cancellation of its runs. Each child session
 // that holds input that the parent started is stopped as a whole, or not at all:
 //
 //   - A child without pending user input is stopped like the conversation: its input is withdrawn
@@ -22,15 +22,15 @@ import (
 //   - A child with pending user input, running or queued, keeps its run, because native abort cannot
 //     spare queued input. Stop withdraws only the parent input that is still queued. A run that the
 //     parent started continues, and its result can start a new parent turn after Stop.
-func (s *Service) Stop(ctx context.Context, agentID string, id int64) error {
-	_, err := s.stop(ctx, agentID, id, nil, nil)
+func (s *Service) CancelSession(ctx context.Context, agentID string, id int64) error {
+	_, err := s.cancelSession(ctx, agentID, id, nil, nil)
 	return err
 }
 
 // StopChannelCommand saves the answer in the withdrawal transaction.
 // A repeated channel command can finish its receipt without stopping later work.
 func (s *Service) StopChannelCommand(ctx context.Context, agentID string, id int64, sourceKey, answer string) error {
-	_, err := s.stop(ctx, agentID, id, &sqlc.SaveChannelCommandAnswerParams{SourceKey: sourceKey, Answer: answer}, nil)
+	_, err := s.cancelSession(ctx, agentID, id, &sqlc.SaveChannelCommandAnswerParams{SourceKey: sourceKey, Answer: answer}, nil)
 	return err
 }
 
@@ -46,8 +46,8 @@ type stopCall struct {
 // replay-safe tool receipts. The table has no routine-only column.
 const toolStopAction = "session_stop"
 
-// stop returns the stored result of a replayed tool call, and an empty string otherwise.
-func (s *Service) stop(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (string, error) {
+// cancelSession returns the stored result of a replayed tool call, and an empty string otherwise.
+func (s *Service) cancelSession(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (string, error) {
 	if _, err := s.Get(ctx, agentID, id); err != nil {
 		return "", err
 	}
@@ -154,7 +154,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			}
 		}
 		if c.AgentID == agentID && c.ChannelKey == MainKey {
-			// Legacy Stop owns the entire Inbox and supersedes an unfinished turn stop.
+			// Session cancellation withdraws the Inbox, so no task Stop needs to resume it.
 			if err := q.SupersedeMainTurnStops(ctx, c.ID); err != nil {
 				return withdrawal{}, err
 			}
@@ -221,7 +221,7 @@ func (s *Service) reconcileStop(ctx context.Context, id int64) error {
 		defer cancel()
 		s.stopBackground(callCtx, []int64{id})
 		if c.ExecutionID.Valid {
-			if err := s.engine.Abort(callCtx, ref); err != nil && !errors.Is(err, engine.ErrNotFound) {
+			if err := s.engine.StopSession(callCtx, ref); err != nil && !errors.Is(err, engine.ErrNotFound) {
 				if errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
 					return errStopPending
 				}
