@@ -125,11 +125,18 @@ func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 		       ('next-wake', 1, 'task_wake', '', 'pending', 62, NULL)`); err != nil {
 		t.Fatal(err)
 	}
-	// When Goose rolls back Phase 1, the old schema can read the same history.
+	// When Goose rolls back Phase 2, it removes the dependency schema and keeps existing Tasks.
 	provider, err := goose.NewProvider(goose.DialectSQLite3, conn, migrationFS(t, func(string) bool { return true }))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := provider.DownTo(ctx, 20261125152756); err != nil {
+		t.Fatalf("roll back Phase 2: %v", err)
+	}
+	assertTaskBoardRows(t, conn, `SELECT name FROM sqlite_schema WHERE name IN ('task_dependencies', 'task_dependencies_upstream', 'work_tasks_parent')`)
+	assertBoard(conn)
+
+	// When Goose rolls back Phase 1, the old schema can read the same history.
 	down, err := provider.DownTo(ctx, legacyVersion)
 	if err != nil || len(down) != 2 {
 		t.Fatalf("roll back Phase 1: applied %d down migrations: %v", len(down), err)

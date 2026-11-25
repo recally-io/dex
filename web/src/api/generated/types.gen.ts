@@ -123,8 +123,32 @@ export type BoardReview = {
     note?: string;
 };
 
+export type BoardTaskSplit = {
+    title: string;
+    assigneeBotId?: string;
+    note?: string;
+    status?: 'backlog' | 'ready' | 'in_progress';
+    reviewer?: 'none' | 'owner' | 'creator';
+    dependsOn?: Array<string>;
+};
+
+export type BoardDependencyCreate = {
+    dependsOn: string;
+};
+
+export type BoardTaskRef = {
+    key: string;
+    title: string;
+    status: BoardStatus;
+    assigneeBotId: string;
+};
+
 export type BoardTaskDetail = {
     task: BoardTaskSummary;
+    canSplit: boolean;
+    parentTask?: BoardTaskRef;
+    subtasks: Array<BoardTaskRef>;
+    dependencies: Array<BoardTaskRef>;
     entries: Array<BoardTaskEntry>;
     sessions: Array<BoardTaskSession>;
     blockers: Array<BoardTaskBlocker>;
@@ -148,7 +172,8 @@ export type BoardTaskEntry = {
 };
 
 export type BoardTaskBlocker = {
-    kind: 'wait' | 'question';
+    kind: 'wait' | 'question' | 'dependency';
+    taskKey?: string;
     waitId?: number;
     namespace?: string;
     objectType?: string;
@@ -621,6 +646,7 @@ export type Automation = AutomationInput & {
 };
 
 export type Work = {
+    taskReviews: Array<BoardTaskRef>;
     sessions: Array<WorkSession>;
     automations: Array<WorkAutomation>;
     inbox: Array<InboxItem>;
@@ -2136,7 +2162,7 @@ export type GetBoardTaskError = GetBoardTaskErrors[keyof GetBoardTaskErrors];
 
 export type GetBoardTaskResponses = {
     /**
-     * Task and its timeline.
+     * Task, related Tasks, and timeline.
      */
     200: BoardTaskDetail;
 };
@@ -2186,6 +2212,143 @@ export type UpdateBoardTaskResponses = {
 };
 
 export type UpdateBoardTaskResponse = UpdateBoardTaskResponses[keyof UpdateBoardTaskResponses];
+
+export type SplitBoardTaskData = {
+    body: BoardTaskSplit;
+    headers?: {
+        /**
+         * The expected Task revision as a decimal integer.
+         */
+        'If-Match'?: number;
+    };
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}/split';
+};
+
+export type SplitBoardTaskErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    403: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    412: Error;
+};
+
+export type SplitBoardTaskError = SplitBoardTaskErrors[keyof SplitBoardTaskErrors];
+
+export type SplitBoardTaskResponses = {
+    /**
+     * Created subtask.
+     */
+    201: BoardTaskSummary;
+};
+
+export type SplitBoardTaskResponse = SplitBoardTaskResponses[keyof SplitBoardTaskResponses];
+
+export type AddBoardDependencyData = {
+    body: BoardDependencyCreate;
+    headers?: {
+        /**
+         * The expected Task revision as a decimal integer.
+         */
+        'If-Match'?: number;
+    };
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}/dependencies';
+};
+
+export type AddBoardDependencyErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    412: Error;
+};
+
+export type AddBoardDependencyError = AddBoardDependencyErrors[keyof AddBoardDependencyErrors];
+
+export type AddBoardDependencyResponses = {
+    /**
+     * The sibling dependency exists.
+     */
+    204: void;
+};
+
+export type AddBoardDependencyResponse = AddBoardDependencyResponses[keyof AddBoardDependencyResponses];
+
+export type RemoveBoardDependencyData = {
+    body?: never;
+    headers?: {
+        /**
+         * The expected Task revision as a decimal integer.
+         */
+        'If-Match'?: number;
+    };
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+        depKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}/dependencies/{depKey}';
+};
+
+export type RemoveBoardDependencyErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    412: Error;
+};
+
+export type RemoveBoardDependencyError = RemoveBoardDependencyErrors[keyof RemoveBoardDependencyErrors];
+
+export type RemoveBoardDependencyResponses = {
+    /**
+     * The sibling dependency does not exist.
+     */
+    204: void;
+};
+
+export type RemoveBoardDependencyResponse = RemoveBoardDependencyResponses[keyof RemoveBoardDependencyResponses];
 
 export type CreateBoardEntryData = {
     body: BoardEntryCreate;

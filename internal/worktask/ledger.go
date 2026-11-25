@@ -74,6 +74,13 @@ func (l *Ledger) CreateTask(ctx context.Context, actor Actor, origin Origin, p C
 	if err := authorize(ctx, l.q, actor, origin, sqlc.WorkTask{}, ActionCreateTopLevel); err != nil {
 		return sqlc.WorkTask{}, err
 	}
+	if p.ReviewerKind == "" && p.ReviewerID == "" && actor.isBot() && actor.botID != p.AssigneeBotID {
+		p.ReviewerKind, p.ReviewerID = ActorBot, actor.botID
+	}
+	return l.createTask(ctx, actor, p, sqlc.WorkTask{}, now)
+}
+
+func (l *Ledger) createTask(ctx context.Context, actor Actor, p CreateTaskParams, parent sqlc.WorkTask, now int64) (sqlc.WorkTask, error) {
 	var err error
 	if p.Title, err = Title(p.Title); err != nil {
 		return sqlc.WorkTask{}, err
@@ -90,17 +97,19 @@ func (l *Ledger) CreateTask(ctx context.Context, actor Actor, origin Origin, p C
 	default:
 		return sqlc.WorkTask{}, ErrInvalid
 	}
-	if p.ReviewerKind == "" && p.ReviewerID == "" && actor.isBot() && actor.botID != p.AssigneeBotID {
-		p.ReviewerKind, p.ReviewerID = ActorBot, actor.botID
-	}
-	if !validReviewer(p.ReviewerKind, p.ReviewerID) {
-		return sqlc.WorkTask{}, ErrInvalid
+	if err := checkBoardReviewer(ctx, l.q, p.ReviewerKind, p.ReviewerID); err != nil {
+		return sqlc.WorkTask{}, err
 	}
 	id := uuid.NewV7().String()
+	root := sql.NullString{String: id, Valid: true}
+	if parent.ID != "" {
+		root = parent.AuthorizedByRootID
+	}
 	task, err := l.createProjection(ctx, sqlc.CreateWorkTaskParams{
 		ID: id, AgentID: p.AssigneeBotID, Title: p.Title, At: now, Status: p.Status,
-		CreatorKind: actor.kind, CreatorID: actor.botID, AuthorizedByRootID: sql.NullString{String: id, Valid: true},
+		CreatorKind: actor.kind, CreatorID: actor.botID, AuthorizedByRootID: root,
 		ReviewerKind: p.ReviewerKind, ReviewerID: p.ReviewerID,
+		ParentTaskID: sql.NullString{String: parent.ID, Valid: parent.ID != ""},
 	})
 	if err != nil {
 		return sqlc.WorkTask{}, err
@@ -178,6 +187,9 @@ func (l *Ledger) changeStatus(ctx context.Context, actor Actor, task sqlc.WorkTa
 	}
 	updated, _, err := l.append(ctx, actor, task, status, task.Title, reviewSeq,
 		sqlc.InsertWorkTaskEntryParams{Kind: KindStatus, MetaJson: statusMeta(status), CreatedAt: now})
+	if err == nil {
+		err = l.notifyDependents(ctx, task, updated, now)
+	}
 	return updated, err
 }
 

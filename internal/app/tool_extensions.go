@@ -22,10 +22,16 @@ func inputExtensions(input engine.Input) engine.ExtensionEdit {
 	switch {
 	case input.Child:
 		// Repeat this edit for a child that still has extensions from an older release.
-		return engine.ExtensionEdit{
-			Remove: []string{"sessions", "work-loop", "front-desk", "routines", "outbox"},
+		edit = engine.ExtensionEdit{
+			Remove: []string{"sessions", "work-loop", "front-desk", "routines", "outbox", "work-tasks"},
 			Add:    []string{"child-rules", "child-outbox"},
 		}
+		if input.ChildHasWorkTask {
+			edit.Add = append(edit.Add, "child-work-tasks")
+		} else {
+			edit.Remove = append(edit.Remove, "child-work-tasks")
+		}
+		return edit
 	case dream:
 		return engine.ExtensionEdit{
 			Remove: []string{"sessions", "session-reading", "monitors", "work-loop", "routines", "artifact-delivery"},

@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	WakeAssigned         = "assigned"
-	WakeReviewRequested  = "review_requested"
-	WakeChangesRequested = "changes_requested"
-	WakeGateUnblocked    = "gate_unblocked"
-	WakeExecutionFailed  = "execution_failed"
-	WakeExecutionStale   = "execution_stale"
-	WakeQuestionAnswered = "question_answered"
+	WakeAssigned          = "assigned"
+	WakeReviewRequested   = "review_requested"
+	WakeChangesRequested  = "changes_requested"
+	WakeGateUnblocked     = "gate_unblocked"
+	WakeDependencyChanged = "dependency_changed"
+	WakeExecutionFailed   = "execution_failed"
+	WakeExecutionStale    = "execution_stale"
+	WakeQuestionAnswered  = "question_answered"
 )
 
 type TaskWakeItem struct {

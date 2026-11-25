@@ -60,6 +60,7 @@ test("Inbox shows open questions, unhandled failures and changes, and missing mo
   } satisfies Chat;
 
   const work: Work = {
+    taskReviews: [],
     sessions: [
       { agentId: "a", chat: { ...chat, id: 1, question: openQ } },
       { agentId: "a", chat: { ...chat, id: 2, question: answeredQ } },

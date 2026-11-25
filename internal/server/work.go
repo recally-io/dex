@@ -10,7 +10,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 )
 
-// GetWork returns a read-only view of sessions and automation activity across bots.
+// GetWork returns sessions, Automation activity, and Tasks awaiting Owner review.
 func (h *handler) GetWork(ctx context.Context, _ api.GetWorkRequestObject) (api.GetWorkResponseObject, error) {
 	agents, err := h.Agents.ListAgents(ctx)
 	if err != nil {
@@ -20,7 +20,11 @@ func (h *handler) GetWork(ctx context.Context, _ api.GetWorkRequestObject) (api.
 	if err != nil {
 		return nil, err
 	}
-	out := api.Work{Inbox: inbox, Sessions: []api.WorkSession{}, Automations: []api.WorkAutomation{}}
+	reviews, err := h.WorkTasks.ListOwnerReviews(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := api.Work{Inbox: inbox, Sessions: []api.WorkSession{}, Automations: []api.WorkAutomation{}, TaskReviews: boardTaskRefs(reviews)}
 	for _, agent := range agents {
 		main, err := h.Chats.ExistingMain(ctx, agent.ID)
 		if err != nil {

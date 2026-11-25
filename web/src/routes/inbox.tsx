@@ -18,7 +18,7 @@ const actionClass = buttonVariants({ variant: "secondary", size: "sm" });
 export function InboxPage() {
   const work = useQuery(workOptions());
   const agents = useQuery(listAgentsOptions());
-  const { questions, results, setup } = attentionItems(work.data);
+  const { questions, results, setup, taskReviews } = attentionItems(work.data);
 
   const botName = (agentId: string) =>
     agents.data?.agents.find((agent) => agent.id === agentId)?.name ?? agentId;
@@ -54,6 +54,20 @@ export function InboxPage() {
                     Open question
                   </Link>
                 )}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {taskReviews.length > 0 ? (
+        <Section title="Tasks awaiting review">
+          <ul className="divide-y divide-border">
+            {taskReviews.map((task) => (
+              <li key={task.key} className="py-3">
+                <Link className="font-medium underline" to="/board/$taskKey" params={{ taskKey: task.key }}>
+                  <span className="font-mono text-muted-foreground">{task.key}</span> {task.title}
+                </Link>
+                <p className="text-sm text-muted-foreground">{botName(task.assigneeBotId)}</p>
               </li>
             ))}
           </ul>
@@ -95,8 +109,10 @@ export function InboxPage() {
           </ul>
         </Section>
       ) : null}
-      {work.isSuccess && !questions.length && !results.length && !setup.length ? (
-        <Empty title="No bot items need attention">New questions and automation items appear here.</Empty>
+      {work.isSuccess && !questions.length && !results.length && !setup.length && !taskReviews.length ? (
+        <Empty title="No bot items need attention">
+          New questions, Task reviews, and Automation items appear here.
+        </Empty>
       ) : null}
       <HeldEvents />
     </FramedPage>

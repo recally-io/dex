@@ -39,7 +39,7 @@ func (s *Service) ConfigureWorkTasks(tasks *worktask.Service) {
 
 // Handlers binds the engine tools to this service. links are the tools of the enabled plugins.
 func (s *Service) Handlers(links []worktask.LinkTool) WorkTaskTools {
-	tools := WorkTaskTools{List: s.List, Read: s.Read, New: s.New, Update: s.Update, Post: s.Post, Review: s.Review}
+	tools := WorkTaskTools{List: s.List, Read: s.Read, New: s.New, Update: s.Update, Post: s.Post, Review: s.Review, Split: s.Split, Assign: s.Assign, Workload: s.MyWorkload}
 	for _, link := range links {
 		tools.Links = append(tools.Links, WorkTaskLinkTool{
 			Name: link.Name, Description: link.Description, Rules: link.Rules, Properties: link.Properties, Required: link.Required,
@@ -59,7 +59,7 @@ func invalid(format string, args ...any) error {
 	return fmt.Errorf("%w: "+format, append([]any{ErrInvalid}, args...)...)
 }
 
-// caller returns the conversation and the input of the run. Only Main and writable Chats have the tools.
+// caller returns the writable conversation and its authenticated source input.
 func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
 	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
@@ -84,7 +84,7 @@ func taskOrigin(source sqlc.Submission) worktask.Origin {
 		return worktask.OriginUser
 	case source.Kind == "task_wake":
 		return worktask.OriginTaskWake
-	case source.Kind == "task_result" && source.Producer == chat.ProducerSubSession:
+	case source.Producer == chat.ProducerSubSession && (source.Kind == "task_result" || source.Kind == "message" && source.ParentRequestID.Valid):
 		return worktask.OriginTaskResult
 	default:
 		return worktask.OriginOther
@@ -256,7 +256,7 @@ func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID s
 		if err != nil {
 			return WorkTaskInfo{}, err
 		}
-		allowed, err := worktask.CanWrite(ctx, q, actor, origin, task, worktask.ActionPost)
+		allowed, err := worktask.CanWrite(ctx, q, actor, origin, task, worktask.ActionLinkObject)
 		if err != nil {
 			return WorkTaskInfo{}, err
 		}

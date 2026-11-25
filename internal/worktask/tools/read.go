@@ -82,7 +82,7 @@ func (s *Service) Read(ctx context.Context, c engine.TaskContext, a WorkTaskRead
 		info.Sessions = []WorkTaskSession{}
 	}
 	detail := WorkTaskDetail{WorkTaskInfo: info, Blockers: blockers, NextCursor: afterSeq}
-	if err := readTimeline(ctx, q, task.ID, a, &detail); err != nil {
+	if err := readTimeline(ctx, q, task.ID, a, &detail, false, new(bootstrapBudget-2)); err != nil {
 		return WorkTaskDetail{}, err
 	}
 	questions, err := q.ListWorkTaskQuestions(ctx, task.ID)
@@ -109,10 +109,60 @@ func (s *Service) Read(ctx context.Context, c engine.TaskContext, a WorkTaskRead
 		}
 		detail.Links = append(detail.Links, link)
 	}
+	if a.IncludeUpstream {
+		if err := readUpstream(ctx, q, task, &detail); err != nil {
+			return WorkTaskDetail{}, err
+		}
+	}
 	return detail, tx.Commit()
 }
 
-func readTimeline(ctx context.Context, q *sqlc.Queries, taskID string, a WorkTaskReadArgs, detail *WorkTaskDetail) error {
+func readUpstream(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask, detail *WorkTaskDetail) error {
+	parent, dependencies, err := worktask.UpstreamTasks(ctx, q, task)
+	if err != nil || parent == nil {
+		return err
+	}
+	remaining := bootstrapBudget - 2
+	add := func(related sqlc.WorkTask, relation string) error {
+		title, err := worktask.ModelTitle(ctx, q, related)
+		if err != nil {
+			return err
+		}
+		item := UpstreamContext{Key: worktask.FormatKey(related.Number), Title: title, Status: related.Status, Relation: relation}
+		header, err := json.Marshal(item)
+		if err != nil {
+			return err
+		}
+		remaining -= len(header) + len(",\"entries\":[],")
+		if remaining < 0 {
+			detail.UpstreamHasMore = true
+			return nil
+		}
+		var timeline WorkTaskDetail
+		if err := readTimeline(ctx, q, related.ID, WorkTaskReadArgs{}, &timeline, true, &remaining); err != nil {
+			return err
+		}
+		item.Entries = timeline.Entries
+		detail.Upstream = append(detail.Upstream, item)
+		detail.UpstreamHasMore = detail.UpstreamHasMore || timeline.HasMore
+		return nil
+	}
+	if err := add(*parent, "parent"); err != nil {
+		return err
+	}
+	for _, dependency := range dependencies {
+		if remaining <= 0 {
+			detail.UpstreamHasMore = true
+			break
+		}
+		if err := add(dependency, "dependency"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readTimeline(ctx context.Context, q *sqlc.Queries, taskID string, a WorkTaskReadArgs, detail *WorkTaskDetail, trustedOnly bool, remaining *int) error {
 	limit := min(cmp.Or(a.Limit, 20), 100)
 	bootstrap := a.AfterSeq == nil && len(a.Tags) == 0
 	tags, err := json.Marshal(a.Tags)
@@ -120,6 +170,9 @@ func readTimeline(ctx context.Context, q *sqlc.Queries, taskID string, a WorkTas
 		return err
 	}
 	params := sqlc.ListWorkTaskTimelineParams{TaskID: taskID, AfterSeq: detail.NextCursor, Tags: string(tags), MaxRows: limit + 1}
+	if trustedOnly {
+		params.TrustedOnly = 1
+	}
 	if bootstrap {
 		params.Bootstrap = 1
 	}
@@ -127,7 +180,6 @@ func readTimeline(ctx context.Context, q *sqlc.Queries, taskID string, a WorkTas
 	if err != nil {
 		return err
 	}
-	remaining := bootstrapBudget - 2 // JSON array brackets
 	for _, row := range entries[:min(int(limit), len(entries))] {
 		entry := entryInfo(row)
 		if bootstrap {
@@ -136,10 +188,10 @@ func readTimeline(ctx context.Context, q *sqlc.Queries, taskID string, a WorkTas
 				return err
 			}
 			size := len(encoded) + 1 // Include space for a separator.
-			if size > remaining {
+			if size > *remaining {
 				continue
 			}
-			remaining -= size
+			*remaining -= size
 		}
 		detail.NextCursor = max(detail.NextCursor, entry.Seq)
 		detail.Entries = append(detail.Entries, entry)

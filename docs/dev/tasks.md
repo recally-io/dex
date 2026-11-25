@@ -25,7 +25,7 @@ Task mutations update the Task projection and append a ledger entry in the
 same write transaction. Each Task has a stable number, a revision, and entry
 sequences. A tombstone retracts an entry without deleting it. The legacy
 Timeline shows notes, artifacts, and external events that are not retracted.
-The service derives blockers from unresolved waits and open Task questions.
+The service derives blockers from incomplete sibling dependencies, unresolved waits, and open Task questions.
 A closed Task has no blockers. The Main queue position includes open
 questions that do not belong to a Task. The service does not store `Blocked`
 as a status. The optional entry hook runs only after commit. Consumers must
@@ -37,11 +37,19 @@ state can change without a ledger write. Such changes can send
 `board_refresh` without advancing the cursor. Board refreshes its reads on
 these events. The legacy held-events API is unchanged.
 
-Phase 1 returns all matching Tasks and the full Owner timeline for each Task.
+Board returns all matching Tasks and the full Owner timeline for each Task.
 Add cursor pages when large Boards or timelines make these reads too slow.
 
-Inbox shows items that need owner
-action, including held events and Automation results. The owner can send a
+The Owner can create a subtask from an open, user-authorized Task.
+A subtask inherits the root authorization and keeps its own Assignee and
+status. It can depend on another subtask with the same parent. Dex checks
+for cycles inside the write transaction. The Owner can add and remove
+dependencies in Task detail. Completion wakes open downstream Tasks that
+have no remaining blockers. Cancellation and reopening wake open downstream
+Tasks with a notice and keep or restore the blocker. Their status is unchanged.
+
+Inbox shows items that need Owner action, including Tasks awaiting Owner
+review, held events, and Automation results. Task reviews link to Board detail. The owner can send a
 message from a Task to its Assignee Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
@@ -87,12 +95,21 @@ that Task and Main belongs to the Assignee Bot.
 A quiet wait, a record-only event, an unmatched event, and a link conflict do
 not wake Main. Events on closed Tasks do not wake Main.
 
-Main and writable Chats have `task_list`, `task_read`, `task_new`,
-`task_update`, `task_post`, and `task_review`. Tools accept a UUID or a key
-such as `T-42`. `task_list` defaults to open Tasks and returns up to 50 Tasks
-for the Assignee or Reviewer. A child Session can only see its linked Tasks.
-It cannot create, update, or review a Task. The link does not give the child's
-Main access to the Task.
+Tools accept a UUID or a key such as `T-42`. Main and writable top-level
+Chats have `task_list`, `task_read`, `task_new`, `task_update`, `task_post`, and
+`task_review`. They also have `task_my_workload`, which lists open Tasks for
+the Assignee or Reviewer and puts pending reviews first. `task_list` defaults
+to open Tasks and returns up to 50 results. A writable, linked child Session
+has only `task_read` and `task_post`, scoped to its exact Session links. The
+link does not give the child's Main access to the Task.
+
+On user turns and Task wakes, the parent Assignee's Main can use
+`task_split` to create a subtask. It can use `task_assign` to delegate a
+subtask, and the current Assignee's Main can hand off an open Task. Delegating
+to another Bot defaults to review by the delegating Bot if no Reviewer is
+set. Self-assigned subtasks and Owner-created subtasks have no Reviewer by
+default. Only the Owner can replace an existing Reviewer. Reassignment does
+not change any Session's parent.
 
 `task_new` needs a user turn on Main or in a top-level Chat. On a user turn or
 Task wake, the Assignee's Main can change status or submit work for review.
@@ -113,7 +130,7 @@ Reads do not change shared state. Owner entry bodies are plain text. Bot and
 external agent bodies are enclosed in `<task-entry>` with escaped text.
 External entries have metadata only. The model sees a key-based title for a
 Task created by a Source until an authorized rename. The Owner can still see
-the source title. Retracted entries are omitted.
+the source title. Retracted entries are omitted. Set `includeUpstream` for a separate 16 KiB selection from the direct parent and direct dependencies. This selection excludes all external entries. It does not grant direct access to those Tasks.
 
 `task_read` and `GET /api/board/tasks/{taskKey}` list every
 linked object as `links`: its namespace, type, and key, with the waits on that

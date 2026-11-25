@@ -47,8 +47,11 @@ export function Shell() {
   const agents = useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
   const work = useQuery(workOptions());
   const held = useQuery(heldEventsOptions());
-  const { questions, results, setup } = attentionItems(work.data);
-  const attentionCount = questions.length + results.length + setup.length + (held.data?.events.length ?? 0);
+  const { questions, results, setup, taskReviews } = attentionItems(work.data);
+
+  const attentionCount =
+    questions.length + results.length + setup.length + taskReviews.length + (held.data?.events.length ?? 0);
+
   const attention = attentionCount > 0;
 
   const statuses = new Map(

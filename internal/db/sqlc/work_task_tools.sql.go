@@ -283,6 +283,55 @@ func (q *Queries) ListBotWorkTasks(ctx context.Context, arg ListBotWorkTasksPara
 	return items, nil
 }
 
+const listBotWorkload = `-- name: ListBotWorkload :many
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+CROSS JOIN (SELECT CAST(?1 AS TEXT) AS id) AS caller
+WHERE a.archived_at IS NULL AND t.status NOT IN ('done', 'cancelled')
+AND (t.assignee_bot_id = caller.id OR (t.reviewer_kind = 'bot' AND t.reviewer_id = caller.id))
+ORDER BY (t.status = 'in_review' AND t.reviewer_kind = 'bot' AND t.reviewer_id = caller.id) DESC,
+  t.updated_at DESC, t.number DESC
+`
+
+func (q *Queries) ListBotWorkload(ctx context.Context, botID string) ([]WorkTask, error) {
+	rows, err := q.db.QueryContext(ctx, listBotWorkload, botID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkTask{}
+	for rows.Next() {
+		var i WorkTask
+		if err := rows.Scan(
+			&i.ID,
+			&i.AssigneeBotID,
+			&i.Title,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Number,
+			&i.Status,
+			&i.ParentTaskID,
+			&i.AuthorizedByRootID,
+			&i.CreatorKind,
+			&i.CreatorID,
+			&i.ReviewerKind,
+			&i.ReviewerID,
+			&i.ReviewSeq,
+			&i.NextEntrySeq,
+			&i.Revision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkTaskSessions = `-- name: ListWorkTaskSessions :many
 SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
 FROM task_executions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.bot_id
@@ -342,19 +391,21 @@ SELECT en.id, en.seq, en.kind, en.tag, en.actor_kind, en.actor_bot_id, en.actor_
   CAST(CASE WHEN CAST(?1 AS INTEGER) = 1 THEN -en.seq ELSE en.seq END AS INTEGER) AS sort_seq
 FROM work_task_entries en LEFT JOIN work_source_events ev ON ev.id = en.event_id
 WHERE en.task_id = ?2 AND en.seq > ?3 AND en.kind <> 'tombstone'
-AND (json_array_length(CAST(?4 AS TEXT)) = 0 OR en.tag IN (SELECT value FROM json_each(?4)))
+AND (NOT CAST(?4 AS INTEGER) OR en.trust <> 'external')
+AND (json_array_length(CAST(?5 AS TEXT)) = 0 OR en.tag IN (SELECT value FROM json_each(?5)))
 AND NOT EXISTS (SELECT 1 FROM work_task_entries r WHERE r.task_id = en.task_id AND r.kind = 'tombstone'
   AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = en.seq)
 ORDER BY priority, sort_seq
-LIMIT ?5
+LIMIT ?6
 `
 
 type ListWorkTaskTimelineParams struct {
-	Bootstrap int64  `json:"bootstrap"`
-	TaskID    string `json:"task_id"`
-	AfterSeq  int64  `json:"after_seq"`
-	Tags      string `json:"tags"`
-	MaxRows   int64  `json:"max_rows"`
+	Bootstrap   int64  `json:"bootstrap"`
+	TaskID      string `json:"task_id"`
+	AfterSeq    int64  `json:"after_seq"`
+	TrustedOnly int64  `json:"trusted_only"`
+	Tags        string `json:"tags"`
+	MaxRows     int64  `json:"max_rows"`
 }
 
 type ListWorkTaskTimelineRow struct {
@@ -380,6 +431,7 @@ func (q *Queries) ListWorkTaskTimeline(ctx context.Context, arg ListWorkTaskTime
 		arg.Bootstrap,
 		arg.TaskID,
 		arg.AfterSeq,
+		arg.TrustedOnly,
 		arg.Tags,
 		arg.MaxRows,
 	)

@@ -229,6 +229,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				},
 			})...)
 			optional = append(optional, worktasktools.WorkTaskExtension(id, taskTools), chat.ChildExtension(),
+				worktasktools.ChildWorkTaskExtension(id, taskTools),
 				chat.DreamMessageExtension(id, chats.ToolReadDreamMessage), chat.RoutineCheckInstructions())
 			return engine.ExtensionSet{
 				Before: map[string][]*engine.Extension{

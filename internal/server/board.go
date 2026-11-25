@@ -52,6 +52,12 @@ func (h *handler) GetBoardTask(ctx context.Context, req api.GetBoardTaskRequestO
 		Questions: make([]api.BoardTaskQuestion, len(detail.Questions)),
 		Blockers:  make([]api.BoardTaskBlocker, len(detail.Blockers)), Links: taskLinks(detail),
 	}
+	if detail.ParentTask != nil {
+		out.ParentTask = new(boardTaskRef(*detail.ParentTask))
+	}
+	out.CanSplit = detail.Task.AuthorizedByRootID.Valid && worktask.IsOpenStatus(detail.Task.Status)
+	out.Subtasks = boardTaskRefs(detail.Subtasks)
+	out.Dependencies = boardTaskRefs(detail.Dependencies)
 	for i, e := range detail.Entries {
 		entry, err := boardEntry(e)
 		if err != nil {
@@ -66,7 +72,7 @@ func (h *handler) GetBoardTask(ctx context.Context, req api.GetBoardTaskRequestO
 		out.Blockers[i] = api.BoardTaskBlocker{
 			Kind: api.BoardTaskBlockerKind(b.Kind), Namespace: optional(b.Namespace), ObjectType: optional(b.ObjectType),
 			ObjectKey: optional(b.ObjectKey), EventType: optional(b.EventType), QuestionId: optional(b.QuestionID),
-			Question: optional(b.Question), WaitId: nonzero(b.WaitID), QueuePosition: nonzero(b.QueuePosition),
+			TaskKey: optional(b.TaskKey), Question: optional(b.Question), WaitId: nonzero(b.WaitID), QueuePosition: nonzero(b.QueuePosition),
 		}
 	}
 	for i, q := range detail.Questions {
@@ -97,6 +103,59 @@ func (h *handler) UpdateBoardTask(ctx context.Context, req api.UpdateBoardTaskRe
 		return nil, workTaskError(err)
 	}
 	return api.UpdateBoardTask200JSONResponse(boardSummary(row)), nil
+}
+
+func (h *handler) SplitBoardTask(ctx context.Context, req api.SplitBoardTaskRequestObject) (api.SplitBoardTaskResponseObject, error) {
+	b, rev := req.Body, req.Params.IfMatch
+	if b == nil || rev != nil && *rev < 0 {
+		return nil, errInvalid
+	}
+	var dependencies []string
+	if b.DependsOn != nil {
+		dependencies = *b.DependsOn
+	}
+	row, err := h.WorkTasks.SplitTask(ctx, worktask.Owner, worktask.OriginUser, req.TaskKey, worktask.SplitTaskParams{
+		Title: b.Title, AssigneeBotID: deref(b.AssigneeBotId), Note: deref(b.Note),
+		Status: stringValue(b.Status), Reviewer: stringValue(b.Reviewer), DependsOn: dependencies,
+	}, rev)
+	if err != nil {
+		return nil, workTaskError(err)
+	}
+	return api.SplitBoardTask201JSONResponse(boardSummary(row)), nil
+}
+
+func (h *handler) AddBoardDependency(ctx context.Context, req api.AddBoardDependencyRequestObject) (api.AddBoardDependencyResponseObject, error) {
+	b, rev := req.Body, req.Params.IfMatch
+	if b == nil || rev != nil && *rev < 0 {
+		return nil, errInvalid
+	}
+	if err := h.WorkTasks.SetBoardDependency(ctx, req.TaskKey, b.DependsOn, true, rev); err != nil {
+		return nil, workTaskError(err)
+	}
+	return api.AddBoardDependency204Response{}, nil
+}
+
+func (h *handler) RemoveBoardDependency(ctx context.Context, req api.RemoveBoardDependencyRequestObject) (api.RemoveBoardDependencyResponseObject, error) {
+	rev := req.Params.IfMatch
+	if rev != nil && *rev < 0 {
+		return nil, errInvalid
+	}
+	if err := h.WorkTasks.SetBoardDependency(ctx, req.TaskKey, req.DepKey, false, rev); err != nil {
+		return nil, workTaskError(err)
+	}
+	return api.RemoveBoardDependency204Response{}, nil
+}
+
+func boardTaskRef(task sqlc.WorkTask) api.BoardTaskRef {
+	return api.BoardTaskRef{Key: worktask.FormatKey(task.Number), Title: task.Title, Status: api.BoardStatus(task.Status), AssigneeBotId: task.AssigneeBotID}
+}
+
+func boardTaskRefs(tasks []sqlc.WorkTask) []api.BoardTaskRef {
+	out := make([]api.BoardTaskRef, len(tasks))
+	for i, task := range tasks {
+		out[i] = boardTaskRef(task)
+	}
+	return out
 }
 
 func (h *handler) CreateBoardEntry(ctx context.Context, req api.CreateBoardEntryRequestObject) (api.CreateBoardEntryResponseObject, error) {

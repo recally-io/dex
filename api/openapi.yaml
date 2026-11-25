@@ -313,7 +313,7 @@ paths:
       operationId: getBoardTask
       responses:
         "200":
-          description: Task and its timeline.
+          description: Task, related Tasks, and timeline.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BoardTaskDetail" }
@@ -333,6 +333,66 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BoardTaskSummary" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+
+  /api/board/tasks/{taskKey}/split:
+    parameters:
+      - $ref: "#/components/parameters/BoardTaskKey"
+    post:
+      operationId: splitBoardTask
+      parameters:
+        - $ref: "#/components/parameters/BoardRevision"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardTaskSplit" }
+      responses:
+        "201":
+          description: Created subtask.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskSummary" }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+
+  /api/board/tasks/{taskKey}/dependencies:
+    parameters:
+      - $ref: "#/components/parameters/BoardTaskKey"
+    post:
+      operationId: addBoardDependency
+      parameters:
+        - $ref: "#/components/parameters/BoardRevision"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardDependencyCreate" }
+      responses:
+        "204":
+          description: The sibling dependency exists.
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+
+  /api/board/tasks/{taskKey}/dependencies/{depKey}:
+    parameters:
+      - $ref: "#/components/parameters/BoardTaskKey"
+      - in: path
+        name: depKey
+        required: true
+        schema: { type: string }
+    delete:
+      operationId: removeBoardDependency
+      parameters:
+        - $ref: "#/components/parameters/BoardRevision"
+      responses:
+        "204":
+          description: The sibling dependency does not exist.
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "412": { $ref: "#/components/responses/Error" }
@@ -2979,11 +3039,52 @@ components:
         decision: { type: string, enum: [approve, request_changes] }
         reviewSeq: { type: integer, format: int64 }
         note: { type: string, maxLength: 32000 }
+    BoardTaskSplit:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        assigneeBotId: { type: string }
+        note: { type: string, maxLength: 32000 }
+        status: { type: string, enum: [backlog, ready, in_progress] }
+        reviewer: { type: string, enum: [none, owner, creator] }
+        dependsOn: { type: array, items: { type: string } }
+    BoardDependencyCreate:
+      type: object
+      required: [dependsOn]
+      properties:
+        dependsOn: { type: string, minLength: 1 }
+    BoardTaskRef:
+      type: object
+      required: [key, title, status, assigneeBotId]
+      properties:
+        key: { type: string }
+        title: { type: string }
+        status: { $ref: "#/components/schemas/BoardStatus" }
+        assigneeBotId: { type: string }
     BoardTaskDetail:
       type: object
-      required: [task, entries, sessions, blockers, questions, links]
+      required: [
+        task,
+        entries,
+        sessions,
+        blockers,
+        questions,
+        links,
+        canSplit,
+        subtasks,
+        dependencies,
+      ]
       properties:
         task: { $ref: "#/components/schemas/BoardTaskSummary" }
+        canSplit: { type: boolean }
+        parentTask: { $ref: "#/components/schemas/BoardTaskRef" }
+        subtasks:
+          type: array
+          items: { $ref: "#/components/schemas/BoardTaskRef" }
+        dependencies:
+          type: array
+          items: { $ref: "#/components/schemas/BoardTaskRef" }
         entries: {
           type: array,
           items: { $ref: "#/components/schemas/BoardTaskEntry" },
@@ -3037,7 +3138,8 @@ components:
       type: object
       required: [kind]
       properties:
-        kind: { type: string, enum: [wait, question] }
+        kind: { type: string, enum: [wait, question, dependency] }
+        taskKey: { type: string }
         waitId: { type: integer, format: int64 }
         namespace: { type: string }
         objectType: { type: string }
@@ -3653,8 +3755,11 @@ components:
 
     Work:
       type: object
-      required: [sessions, automations, inbox]
+      required: [sessions, automations, inbox, taskReviews]
       properties:
+        taskReviews:
+          type: array
+          items: { $ref: "#/components/schemas/BoardTaskRef" }
         sessions:
           type: array
           items: { $ref: "#/components/schemas/WorkSession" }

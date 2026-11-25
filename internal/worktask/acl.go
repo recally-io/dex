@@ -67,10 +67,12 @@ type Action string
 
 const (
 	ActionPost           Action = "post"
+	ActionLinkObject     Action = "link_object"
 	ActionTransition     Action = "transition"
 	ActionSubmitReview   Action = "submit_review"
 	ActionReview         Action = "review"
 	ActionSplit          Action = "split"
+	ActionAssign         Action = "assign"
 	ActionCreateTopLevel Action = "create_top_level"
 	ActionOwnerLifecycle Action = "owner_lifecycle"
 	ActionTombstone      Action = "tombstone"
@@ -120,7 +122,10 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 	// A top-level Chat can rename a Task or link its own child on user turns.
 	assigneeUserChat := chat && user && actor.isAssignee(task)
 	switch action {
-	case ActionPost:
+	case ActionPost, ActionLinkObject:
+		if action == ActionLinkObject && !main && !chat {
+			return owner && user, nil
+		}
 		if owner {
 			return user, nil
 		}
@@ -139,6 +144,15 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		return owner && user || interactive && main && actor.isReviewer(task), nil
 	case ActionSplit:
 		return interactive && (owner || assigneeMain) && task.AuthorizedByRootID.Valid, nil
+	case ActionAssign:
+		if owner && user || interactive && assigneeMain {
+			return true, nil
+		}
+		if !main || !interactive || !task.ParentTaskID.Valid || !task.AuthorizedByRootID.Valid {
+			return false, nil
+		}
+		parent, err := q.GetRelatedWorkTask(ctx, task.ParentTaskID.String)
+		return actor.isAssignee(parent), err
 	case ActionCreateTopLevel:
 		return user && (owner || main || chat), nil
 	case ActionOwnerLifecycle, ActionTombstone:
