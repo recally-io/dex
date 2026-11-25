@@ -236,10 +236,6 @@ func (m *Manager) reactionAllowed(ctx context.Context, platform string, watch *r
 			watch.source.SenderID == cfg.OwnerID && watch.source.AccountID == cfg.AppID &&
 			(!cfg.Reactions.Valid || cfg.Reactions.Int64 == 1)
 	}
-	if strings.HasPrefix(watch.peer, "telegram:-") {
-		allowed, err := m.chats.GroupReplyAllowed(ctx, m.agentID, watch.id)
-		return err == nil && allowed
-	}
 	enabled, err := m.q.TelegramPrivateReactionsEnabled(ctx, m.agentID)
 	if err != nil || !enabled {
 		return false

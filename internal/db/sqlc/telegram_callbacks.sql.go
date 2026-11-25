@@ -47,7 +47,7 @@ func (q *Queries) ConsumeTelegramCallback(ctx context.Context, arg ConsumeTelegr
 const createTelegramCallback = `-- name: CreateTelegramCallback :exec
 INSERT INTO telegram_callbacks (id, agent_id, source_id, part, ordinal, peer, channel_context,
     conversation_id, execution_scope, execution_id, context_revision, label, object_id, action, expires_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source_id, part, ordinal) DO NOTHING
 `
 
@@ -60,7 +60,6 @@ type CreateTelegramCallbackParams struct {
 	Peer            string `json:"peer"`
 	ChannelContext  string `json:"channel_context"`
 	ConversationID  int64  `json:"conversation_id"`
-	ExecutionScope  string `json:"execution_scope"`
 	ExecutionID     int64  `json:"execution_id"`
 	ContextRevision string `json:"context_revision"`
 	Label           string `json:"label"`
@@ -79,7 +78,6 @@ func (q *Queries) CreateTelegramCallback(ctx context.Context, arg CreateTelegram
 		arg.Peer,
 		arg.ChannelContext,
 		arg.ConversationID,
-		arg.ExecutionScope,
 		arg.ExecutionID,
 		arg.ContextRevision,
 		arg.Label,
@@ -150,7 +148,7 @@ func (q *Queries) GetChildWorkflowSource(ctx context.Context, childID int64) (Su
 }
 
 const getTelegramCallback = `-- name: GetTelegramCallback :one
-SELECT id, agent_id, source_id, part, ordinal, peer, channel_context, conversation_id, execution_scope, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE id = ?
+SELECT id, agent_id, source_id, part, ordinal, peer, channel_context, conversation_id, execution_scope, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE id = ? AND execution_scope = ''
 `
 
 func (q *Queries) GetTelegramCallback(ctx context.Context, id string) (TelegramCallback, error) {
@@ -179,7 +177,7 @@ func (q *Queries) GetTelegramCallback(ctx context.Context, id string) (TelegramC
 }
 
 const getTelegramCallbackSlot = `-- name: GetTelegramCallbackSlot :one
-SELECT id, agent_id, source_id, part, ordinal, peer, channel_context, conversation_id, execution_scope, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE source_id = ? AND part = ? AND ordinal = ?
+SELECT id, agent_id, source_id, part, ordinal, peer, channel_context, conversation_id, execution_scope, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE source_id = ? AND part = ? AND ordinal = ? AND execution_scope = ''
 `
 
 type GetTelegramCallbackSlotParams struct {

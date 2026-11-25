@@ -229,7 +229,7 @@ func (m *Manager) replyParts(ctx context.Context, bot channel.Bot, r sqlc.ListPe
 			}
 			target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Peer, identity)
 			if err != nil {
-				if errors.Is(err, chat.ErrGroupUnauthorized) {
+				if errors.Is(err, chat.ErrTelegramUnauthorized) {
 					return parts, nil
 				}
 				return nil, err
@@ -305,10 +305,7 @@ func (m *Manager) authorizedReply(ctx context.Context, platform, peer, channelCo
 		return true, nil
 	}
 	if strings.HasPrefix(peer, "telegram:-") {
-		if sourceSubmissionID == "" {
-			return false, nil
-		}
-		return m.chats.GroupReplyAllowed(ctx, m.agentID, sourceSubmissionID)
+		return false, nil
 	}
 	cfg, err := m.q.GetTelegramSettings(ctx, m.agentID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -424,12 +421,7 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 	if caller.AgentID != m.agentID || caller.Key == "" {
 		return false, errors.New("invalid file delivery caller")
 	}
-	if caller.Scope != "" {
-		if err := m.chats.AuthorizeGroup(ctx, caller); err != nil {
-			return false, err
-		}
-	}
-	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conv, err := m.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
 		return false, err
 	}
@@ -458,7 +450,7 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 	}
 	n, err := m.q.QueueOutboxFile(ctx, sqlc.QueueOutboxFileParams{
 		ID: uuid.NewV7().String(), OperationKey: caller.Key, SubmissionID: source.ID,
-		AgentID: m.agentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
+		AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
 		Name: name, MimeType: http.DetectContentType(body), Body: body,
 	})
 	if err != nil {

@@ -2,8 +2,6 @@ package engine
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"log/slog"
 	"sync"
@@ -14,17 +12,8 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
-// TraceNamespace distinguishes native stores without logging channel routing IDs.
-func TraceNamespace(scope string) string {
-	if scope == "" {
-		return "private"
-	}
-	digest := sha256.Sum256([]byte(scope))
-	return hex.EncodeToString(digest[:16])
-}
-
-func sessionTraceExtension(agent, scope string) *durable.Extension {
-	namespace := TraceNamespace(scope)
+func sessionTraceExtension(agent string) *durable.Extension {
+	namespace := "private"
 	// Native generation hooks run again on retries and tool rounds. Keep a bounded
 	// cache of the last observed input list per conversation; misses only repeat
 	// a diagnostic and do not affect execution.

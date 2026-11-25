@@ -41,7 +41,7 @@ func TestUserUpgradeDeliversAnAdmittedChildReportOnce(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{AgentID: agentID, ChannelKey: "child:fixture", Title: "Child", ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, ScopeContext: "{}"})
+			child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{AgentID: agentID, ChannelKey: "child:fixture", Title: "Child", ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -62,14 +62,14 @@ func (s *Service) ref(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation)
 }
 
 // childOf returns the child of parent that the model named. The ownership rule is the parent
-// link for private callers. Group callers also require the same bot and audience.
+// link.
 func (s *Service) childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id string) (sqlc.Conversation, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return sqlc.Conversation{}, ErrSessionNotFound
 	}
 	c, err := q.GetConversation(ctx, n)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!c.ParentID.Valid || c.ParentID.Int64 != parent.ID || parent.ExecutionScope != "" && (c.AgentID != parent.AgentID || c.ExecutionScope != parent.ExecutionScope || c.ScopeContext != parent.ScopeContext))) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!c.ParentID.Valid || c.ParentID.Int64 != parent.ID)) {
 		return c, ErrSessionNotFound
 	}
 	return c, err
@@ -136,7 +136,7 @@ func repeatedTurn(ctx context.Context, q *sqlc.Queries, turn string, parent sqlc
 	if err != nil {
 		return c, false, err
 	}
-	if c.ParentID.Int64 != parent.ID || parent.ExecutionScope != "" && (c.AgentID != parent.AgentID || c.ExecutionScope != parent.ExecutionScope || c.ScopeContext != parent.ScopeContext) {
+	if c.ParentID.Int64 != parent.ID {
 		return c, false, ErrSessionNotFound
 	}
 	return c, true, nil
@@ -150,16 +150,6 @@ func checkMessage(message string) error {
 }
 
 func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
-	return s.newSession(ctx, r, a)
-}
-
-func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-	if r.Scope != "" && (a.Bot != "" || a.Cwd != "" || a.Environment != "" || a.Provider != "" || a.ModelID != "" || a.ThinkingLevel != "" || !strings.HasPrefix(r.Key, r.AgentID+"/"+r.Scope+"/")) {
-		return engine.SessionRef{}, errSessionInvalid
-	}
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -241,7 +231,7 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 		}
 		return s.ref(ctx, q, c)
 	}
-	source, err := sessionSource(ctx, q, r)
+	source, err := liveSource(ctx, q, r)
 	if err != nil {
 		return engine.SessionRef{}, err
 	}
@@ -249,7 +239,7 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{
 		AgentID: target.ID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: a.Title,
 		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd, EnvironmentID: environment,
-		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now, ExecutionScope: parent.ExecutionScope, ScopeContext: parent.ScopeContext,
+		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now,
 	})
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -280,13 +270,6 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 }
 
 func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
-	return s.sendSession(ctx, r, a)
-}
-
-func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -323,7 +306,7 @@ func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engin
 		}
 		return s.ref(ctx, q, child)
 	}
-	source, err := sessionSource(ctx, q, r)
+	source, err := liveSource(ctx, q, r)
 	if err != nil {
 		return engine.SessionRef{}, err
 	}
@@ -349,13 +332,6 @@ func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engin
 }
 
 func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id string) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
-	return s.stopSession(ctx, r, id)
-}
-
-func (s *Service) stopSession(ctx context.Context, r engine.TaskContext, id string) (engine.SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -376,9 +352,6 @@ func (s *Service) stopSession(ctx context.Context, r engine.TaskContext, id stri
 }
 
 func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a engine.SessionForkArgs) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
 		return engine.SessionRef{}, err
@@ -403,7 +376,7 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a e
 		}
 	}
 	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.EnvironmentID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
-		if _, err := sessionSource(ctx, q, r); err != nil {
+		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
 		}
 		created, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()})
@@ -501,7 +474,7 @@ func (s *Service) readSession(ctx context.Context, conv sqlc.Conversation, a eng
 	if ref.State == "running" {
 		page.Activity = &engine.SessionActivity{}
 		if conv.ExecutionID.Valid {
-			key := engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}
+			key := engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}
 			if activity, ok := s.engine.Activity([]engine.Ref{key})[key]; ok {
 				page.Activity.Available = true
 				page.Activity.LastObservedAt = activity.LastActivityAt

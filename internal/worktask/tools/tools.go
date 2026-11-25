@@ -63,9 +63,6 @@ func invalid(format string, args ...any) error {
 
 // caller returns the conversation and the input of the run. Only Main and writable Chats have the tools.
 func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
-	if c.Scope != "" {
-		return sqlc.Conversation{}, sqlc.Submission{}, invalid("Tasks are not available in a group")
-	}
 	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err

@@ -1,6 +1,8 @@
 package telegram
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,21 +22,31 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	return renderRich(text)
 }
 
-func parsePeer(key string) (int64, int64, error) {
+// peerID accepts only positive private Telegram destinations.
+func peerID(key string) (int64, error) {
 	remote, ok := strings.CutPrefix(key, channelPrefix)
-	chat, topic, thread := strings.Cut(remote, ":")
-	chatID, err := strconv.ParseInt(chat, 10, 64)
-	if !ok || err != nil || chatID == 0 || strconv.FormatInt(chatID, 10) != chat {
-		return 0, 0, fmt.Errorf("%w: invalid Telegram destination", channel.ErrPermanent)
+	id, err := strconv.ParseInt(remote, 10, 64)
+	if !ok || err != nil || id <= 0 || strconv.FormatInt(id, 10) != remote {
+		return 0, fmt.Errorf("%w: invalid private Telegram peer", channel.ErrPermanent)
 	}
-	var topicID int64
-	if thread {
-		topicID, err = strconv.ParseInt(topic, 10, 64)
-		if chatID > 0 || err != nil || topicID <= 0 || strconv.FormatInt(topicID, 10) != topic {
-			return 0, 0, fmt.Errorf("%w: invalid Telegram topic", channel.ErrPermanent)
-		}
-	}
-	return chatID, topicID, nil
+	return id, nil
 }
 
-func peerID(key string) (int64, error) { chatID, _, err := parsePeer(key); return chatID, err }
+func (b *Bot) controlPeerReply(ctx context.Context, peer, text string) error {
+	chatID, err := peerID(peer)
+	if err != nil {
+		return err
+	}
+	for _, part := range renderRich(text) {
+		params := map[string]any{"chat_id": chatID, "rich_message": richContent(part.Rich)}
+		b.presentation(params, "sendRichMessage")
+		err := b.call(ctx, "sendRichMessage", params, nil)
+		if api, ok := errors.AsType[*apiError](err); ok && (api.Code == 400 || api.Code == 403) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

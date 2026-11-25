@@ -26,15 +26,8 @@ func (m *Manager) CommandReceived(ctx context.Context, source string) (bool, err
 
 // Receive stores one update or executes a shared command. A repeated source has no effect.
 func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Message) error {
-	group := strings.HasPrefix(peer, "telegram:-")
-	if group || msg.ChannelContext.ChatID != 0 || msg.ChannelContext.TopicID != 0 || msg.ChannelContext.TopicShared {
-		allowed, err := m.TelegramInputAllowed(ctx, peer, msg.ChannelContext)
-		if err != nil {
-			return err
-		}
-		if !allowed {
-			return chat.ErrGroupUnauthorized
-		}
+	if chat.NonPrivateTelegramInput(peer, msg.ChannelContext) {
+		return chat.ErrTelegramUnauthorized
 	}
 	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" {
 		return errors.New("invalid channel peer or source")
@@ -47,17 +40,8 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	} else if received {
 		return nil
 	}
-	command, err := m.q.GetChannelCommand(ctx, source)
+	_, err := m.q.GetChannelCommand(ctx, source)
 	if err == nil {
-		if group {
-			identity, encodeErr := json.Marshal(msg.ChannelContext)
-			if encodeErr != nil {
-				return encodeErr
-			}
-			if command.Peer != peer || command.ChannelContext != string(identity) {
-				return chat.ErrGroupUnauthorized
-			}
-		}
 		return m.complete(ctx, source)
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -65,10 +49,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	}
 	cmd := strings.TrimSpace(msg.Content)
 	if channel.IsFeedbackCommand(cmd) && msg.AlbumSource == "" && len(msg.Attachments) == 0 {
-		answer := "Use /feedback in a private chat with this bot."
-		if !group {
-			answer = feedbackReply(cmd)
-		}
+		answer := feedbackReply(cmd)
 		identity, err := json.Marshal(msg.ChannelContext)
 		if err != nil {
 			return err
@@ -83,19 +64,11 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	if !channel.IsCommand(cmd) || !strings.HasPrefix(peer, "telegram:") && !basicCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.chats.AcceptMessage(ctx, m.agentID, peer, source, msg)
 	}
-	key := chat.MainKey
-	if group {
-		target, err := m.chats.GroupConversation(ctx, m.agentID, peer, msg.ChannelContext)
-		if err != nil {
-			return err
-		}
-		key = target.ChannelKey
-	}
 	identity, err := json.Marshal(msg.ChannelContext)
 	if err != nil {
 		return err
 	}
-	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: key, Command: cmd, ChannelContext: string(identity)}); err != nil {
+	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
 		return err
 	}
 	return m.complete(ctx, source)
@@ -158,36 +131,28 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	if c.AgentID != m.agentID || c.Completed != 0 {
 		return nil
 	}
-	group := strings.HasPrefix(c.Peer, "telegram:-")
-	var identity chat.ChannelContext
 	var target chat.Chat
 	if strings.HasPrefix(c.Peer, "telegram:") {
 		var done bool
 		var err error
-		target, identity, done, err = m.completeTelegram(ctx, c)
+		target, done, err = m.completeTelegram(ctx, c)
 		if err != nil || done {
 			return err
 		}
 	}
 	answer := "/clear clears the main timeline's context. It takes no text. /new does the same. /stop stops the main answer and its background work. /feedback prepares a public GitHub issue draft. /help shows these commands."
-	if group {
-		answer = "/clear and /new clear only this group sender session or this topic. /stop stops only its work. Private bot management, files and routines are not available."
-	}
 	switch c.Command {
 	// Rows saved before /clear existed hold /new.
 	case "/clear", "/new":
-		var err error
-		if group {
-			err = m.chats.ClearGroup(ctx, m.agentID, target.ID, "channel:"+c.SourceKey, c.Peer, identity)
-		} else {
-			main, loadErr := m.chats.Main(ctx, m.agentID)
-			if loadErr != nil {
-				return loadErr
+		if target.ID == 0 {
+			target, err = m.chats.Main(ctx, m.agentID)
+			if err != nil {
+				return err
 			}
-			err = m.chats.Clear(ctx, m.agentID, main.ID, "channel:"+c.SourceKey, c.Peer, "")
 		}
+		err := m.chats.Clear(ctx, m.agentID, target.ID, "channel:"+c.SourceKey, c.Peer, "")
 		switch {
-		case errors.Is(err, chat.ErrGroupUnauthorized):
+		case errors.Is(err, chat.ErrTelegramUnauthorized):
 			answer = ""
 		case errors.Is(err, chat.ErrConversationBusy):
 			answer = "Context not cleared. The main timeline is busy. Wait for the reply or stop it, then send /clear again."
@@ -199,7 +164,7 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	case "/stop":
 		answer = c.Answer
 		if answer == "" {
-			if !group {
+			if target.ID == 0 {
 				var err error
 				target, err = m.chats.Main(ctx, m.agentID)
 				if err != nil {
@@ -208,7 +173,7 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 			}
 			answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
 			if err := m.chats.StopChannelCommand(ctx, m.agentID, target.ID, c.SourceKey, answer); err != nil {
-				if errors.Is(err, chat.ErrGroupUnauthorized) {
+				if errors.Is(err, chat.ErrTelegramUnauthorized) {
 					return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
 				}
 				return err

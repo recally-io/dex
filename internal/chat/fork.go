@@ -38,10 +38,6 @@ func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int6
 	if err != nil {
 		return Chat{}, err
 	}
-	// A scoped (group) session always uses the environment of its bot.
-	if environmentID != "" && conv.ExecutionScope != "" {
-		return Chat{}, ErrProjectForbidden
-	}
 	target := cmp.Or(environmentID, conv.EnvironmentID)
 	if requestID != "" {
 		if receipt, err := s.q.GetForkReceipt(ctx, requestID); err == nil {
@@ -132,7 +128,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 		text, err := s.moveNotice(ctx, ran, to)
 		return engine.Move{From: ran, Text: text}, err
 	}
-	ref, copied, err := s.engine.Fork(ctx, engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, entryID, before, move)
+	ref, copied, err := s.engine.Fork(ctx, engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}, entryID, before, move)
 	if err != nil {
 		return sqlc.Conversation{}, err
 	}
@@ -158,7 +154,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 		return sqlc.Conversation{}, fmt.Errorf("%w: the environment of the bot changed during the fork; fork again", engine.ErrBusy)
 	}
 	fork, err := q.CreateFork(ctx, sqlc.CreateForkParams{
-		AgentID: conv.AgentID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: title, ExecutionScope: conv.ExecutionScope, ScopeContext: conv.ScopeContext,
+		AgentID: conv.AgentID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: title,
 		ModelProvider: conv.ModelProvider, ModelID: conv.ModelID, ThinkingLevel: conv.ThinkingLevel, Cwd: cwd, EnvironmentID: environmentID,
 		ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: copied}, ForkedFrom: sql.NullInt64{Int64: conv.ID, Valid: true}, ParentID: conv.ParentID,
 		CreatedAt: s.now().UnixMilli(),

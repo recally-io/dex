@@ -213,7 +213,7 @@ func (s *Service) ConfirmChannelChange(ctx context.Context, id string) (err erro
 		return ErrChannelApproval
 	}
 	conv, err := s.q.GetConversation(ctx, p.session)
-	if err != nil || conv.AgentID != p.caller || conv.ArchivedAt.Valid || conv.ParentID.Valid || conv.ExecutionScope != "" || !chat.Writable(conv.ChannelKey) {
+	if err != nil || conv.AgentID != p.caller || conv.ArchivedAt.Valid || conv.ParentID.Valid || !chat.Writable(conv.ChannelKey) {
 		return ErrChannelApproval
 	}
 	if db.RequireActive(ctx, s.q, p.caller) != nil || db.RequireActive(ctx, s.q, p.BotID) != nil {

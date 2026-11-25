@@ -16,7 +16,7 @@ const followUpPrompt = "You committed to report on this delegation. Plain final 
 func followUpFinalKey(delegationID string) string { return "follow-up-final:" + delegationID }
 
 func createChannelFollowUp(ctx context.Context, q *sqlc.Queries, parent, child sqlc.Conversation, source sqlc.Submission, turn string) error {
-	if source.Kind != "message" || !isUserOrigin(source.Origin) || peerFromOrigin(source.Origin) == "" || !source.SourceKey.Valid || source.ChannelRevoked != 0 || parent.ExecutionScope != "" {
+	if source.Kind != "message" || !isUserOrigin(source.Origin) || peerFromOrigin(source.Origin) == "" || !source.SourceKey.Valid || source.ChannelRevoked != 0 {
 		return errChannelFollowUp
 	}
 	return q.CreateChannelFollowUp(ctx, sqlc.CreateChannelFollowUpParams{

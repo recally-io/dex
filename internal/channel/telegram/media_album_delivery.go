@@ -54,7 +54,7 @@ func (b *Bot) GroupParts(parts []channel.Part) []channel.Part {
 }
 
 func (b *Bot) sendGroup(ctx context.Context, peer string, files []channel.File) (channel.Receipt, error) {
-	chatID, topicID, err := parsePeer(peer)
+	chatID, err := peerID(peer)
 	if err != nil {
 		return channel.Receipt{}, err
 	}
@@ -62,11 +62,6 @@ func (b *Bot) sendGroup(ctx context.Context, peer string, files []channel.File) 
 	form := multipart.NewWriter(&body)
 	if err := form.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
 		return channel.Receipt{}, err
-	}
-	if topicID > 0 {
-		if err := form.WriteField("message_thread_id", strconv.FormatInt(topicID, 10)); err != nil {
-			return channel.Receipt{}, err
-		}
 	}
 	if b.cfg.Options.Silent {
 		if err := form.WriteField("disable_notification", "true"); err != nil {

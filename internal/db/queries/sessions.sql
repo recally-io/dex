@@ -1,7 +1,7 @@
 -- name: CreateChildConversation :one
 -- A child session is a Chat with a parent. Its first turn is stored in the same transaction.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: CreateParentTurn :execrows
@@ -30,7 +30,7 @@ SELECT
     CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM conversations c
 JOIN agents a ON a.id = c.agent_id
-WHERE c.channel_key NOT LIKE 'dream:%'
+WHERE c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
     AND (c.parent_id = @parent_id OR (
         CAST(@all_sessions AS INTEGER) = 1
         AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
@@ -71,7 +71,7 @@ SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.con
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
-WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%'
+WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
     AND s.id <> @excluded_turn_id
     AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
     AND (CAST(@session_id AS INTEGER) = 0 OR c.id = @session_id)
@@ -107,17 +107,17 @@ ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 -- name: ListRecoveryChildren :many
 -- The child sessions with a pending parent turn. Recovery reads the native state of each pending
 -- input, because the admission receipt and the native admission are not one transaction.
-SELECT DISTINCT c.id, c.agent_id, c.execution_id, c.execution_scope
+SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
-    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL
+    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.execution_scope = ''
 ORDER BY c.id;
 
--- name: ListAudienceChildren :many
+-- name: ListChannelChildren :many
 SELECT * FROM conversations
 WHERE parent_id = @parent_id AND agent_id = @agent_id
-    AND execution_scope = @execution_scope AND scope_context = @scope_context
+    AND execution_scope = ''
 ORDER BY id DESC
 LIMIT 50;
 
@@ -136,9 +136,9 @@ SELECT DISTINCT conversation_id FROM submissions WHERE stop_requested = 1 AND st
 UNION SELECT conversation_id FROM main_turn_stops;
 
 -- name: ListRecoveryParentInputStops :many
-SELECT s.id, c.agent_id, c.execution_id, c.execution_scope
+SELECT s.id, c.agent_id, c.execution_id
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL;
+WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.execution_scope = '';
 
 -- name: ListParentInputStops :many
 SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid;

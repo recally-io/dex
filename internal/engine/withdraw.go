@@ -27,10 +27,10 @@ func (a *Agents) PeekWithdrawal(ctx context.Context, ref Ref, requestID string) 
 	if requestID == "" {
 		return "", fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return "", err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return "", err
@@ -58,10 +58,10 @@ func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withd
 	if requestID == "" {
 		return "", fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return "", err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return "", err
@@ -71,7 +71,7 @@ func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withd
 	if err != nil {
 		return "", err
 	}
-	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+	h, err := a.harness(ctx, ref.AgentID)
 	if err != nil {
 		return "", err
 	}

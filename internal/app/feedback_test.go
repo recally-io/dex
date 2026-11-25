@@ -44,43 +44,6 @@ func TestUserPreviewsFeedbackInPairedPrivateChannelsWithoutModel(t *testing.T) {
 	}
 }
 
-func TestUserTelegramGroupFeedbackOnlyPromptsEligibleSenderAndIgnoresReplay(t *testing.T) {
-	t.Parallel()
-	// Given Telegram's native command menu and a topic with an eligible sender.
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, t.TempDir(), 42)
-	menu := f.nextEvent(t, "setMyCommands")
-	// When a stranger and then the paired sender try feedback; Telegram repeats the latter update.
-	f.groupText(1, 43, -100, 7, "/feedback NOT_PAIRED")
-	f.groupText(2, 42, -100, 7, "/feedback@dex_test_bot GROUP_SECRET\nGROUP_DESCRIPTION")
-	// Then the only send is a private-chat redirect in that topic, with no added text or controls.
-	if !strings.Contains(menu.Text, "/feedback ") {
-		t.Fatalf("feedback missing from native command list: %s", menu.Text)
-	}
-	got := f.next(t)
-	if got.ChatID != -100 || got.TopicID != 7 || !strings.Contains(got.Text, "private chat") || strings.Contains(got.Text, "GROUP_") || strings.Contains(got.Text, feedbackURL) {
-		t.Fatalf("unexpected group reply: %+v", got)
-	}
-	f.groupText(3, 42, -100, 7, "/feedback@another_bot IGNORE_ME")
-	f.groupText(4, 42, -100, 7, "/feedback\nANOTHER_TITLE\nANOTHER_DESCRIPTION")
-	f.groupText(4, 42, -100, 7, "/feedback\nANOTHER_TITLE\nANOTHER_DESCRIPTION")
-	f.groupText(5, 42, -100, 7, "/feedback")
-	for range 2 {
-		if got := f.next(t); !strings.Contains(got.Text, "private chat") || got.TopicID != 7 {
-			t.Fatalf("unexpected redirect: %+v", got)
-		}
-	}
-	eventually(t, "Telegram acknowledged all updates", func() (bool, any) { offset := f.pollOffset.Load(); return offset >= 6, offset })
-	if n := f.sendCount.Load(); n != 3 {
-		t.Fatalf("group sends = %d, want 3", n)
-	}
-	assertNoStoredInput(t, d)
-	var receipts int
-	if err := sessionDB(t, d).QueryRowContext(t.Context(), `SELECT count(*) FROM channel_commands WHERE command = '/feedback'`).Scan(&receipts); err != nil || receipts != 3 {
-		t.Fatalf("group receipts=%d, err=%v", receipts, err)
-	}
-}
-
 func TestUserTelegramPrivateFeedbackRetryDoesNotCreateASecondDraft(t *testing.T) {
 	t.Parallel()
 	// Given a paired Telegram chat and a temporarily unavailable reply transport.

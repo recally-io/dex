@@ -164,10 +164,6 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			if err := q.DiscardPrivateTelegramAlbums(ctx, agentID); err != nil {
 				return withdrawal{}, err
 			}
-		} else if c.ExecutionScope != "" && !c.ParentID.Valid {
-			if err := discardGroupAlbums(ctx, q, c); err != nil {
-				return withdrawal{}, err
-			}
 		}
 		if !c.ParentID.Valid {
 			if err := q.InsertStoppedOutboxForConversation(ctx, sqlc.InsertStoppedOutboxForConversationParams{AgentID: c.AgentID, ChatID: c.ID, Now: now.Int64}); err != nil {
@@ -219,7 +215,7 @@ func (s *Service) reconcileStop(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope}
+	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}
 	if c.AbortPending != 0 {
 		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 		defer cancel()

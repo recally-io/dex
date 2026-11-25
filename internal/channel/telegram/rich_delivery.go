@@ -24,7 +24,7 @@ func (b *Bot) sendRich(ctx context.Context, peer, deliveryID string, index int, 
 	if part.Rich.Version != 1 {
 		return "", fmt.Errorf("%w: unsupported frozen rich version", channel.ErrPermanent)
 	}
-	chatID, topicID, err := parsePeer(peer)
+	chatID, err := peerID(peer)
 	if err != nil {
 		return "", err
 	}
@@ -34,9 +34,6 @@ func (b *Bot) sendRich(ctx context.Context, peer, deliveryID string, index int, 
 	}
 	method := "sendRichMessage"
 	params := map[string]any{"chat_id": chatID, "rich_message": richContent(part.Rich)}
-	if topicID > 0 {
-		params["message_thread_id"] = topicID
-	}
 	if len(part.Buttons) > 0 {
 		params["reply_markup"] = b.keyboard(part.Buttons)
 	}

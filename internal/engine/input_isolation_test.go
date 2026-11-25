@@ -162,7 +162,7 @@ func TestUserCanonicalReviewsDoNotShareCurrentOrQueuedMainWork(t *testing.T) {
 	// When precise Stop has aborted its foreground task but not yet applied its Inbox boundary,
 	// a protected review must *still* wait. Native SubmitIn on this idle Inbox would otherwise
 	// start a generation containing the pending steer and the review together.
-	h, err := a.harness(t.Context(), ref.AgentID, ref.Scope)
+	h, err := a.harness(t.Context(), ref.AgentID)
 	if err != nil {
 		t.Fatal(err)
 	}

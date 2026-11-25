@@ -28,10 +28,10 @@ func (w *Watch) Close() { w.cancel(); <-w.done }
 
 // Watch captures the snapshot and subscription at the same native revision.
 func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return nil, err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ func projectView(view harness.ConversationView, ref Ref) (Event, error) {
 		p.inbox = inbox.Items
 	}
 	event := p.event()
-	if ref.ID != 0 && ref.Scope == "" && p.live.Run != nil {
+	if ref.ID != 0 && p.live.Run != nil {
 		event.RunTarget = runTargetPrefix(ref) + strconv.FormatInt(int64(p.live.Run.TaskId), 10)
 	}
 	return event, nil

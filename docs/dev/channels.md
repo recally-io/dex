@@ -2,103 +2,15 @@
 
 This document describes the channel adapters and how they share delivery.
 
-## Isolated Telegram resource runtime
-
-`engine.Ref.Scope` selects native resource ownership in addition to the real bot
-and native conversation ID. Empty scope keeps private execution. A canonical
-Telegram bot/chat/topic scope selects separate execution storage under
-`agents/<id>/telegram-groups/<scope>/state.sqlite`. Its `resources/` directory
-holds explicitly published group files and operation-owned notes. Native IDs
-are local to each store. Forks, cancellation, recovery and activity keys retain scope.
-
-The group constructor bypasses private memory, profile/instructions, AGENTS,
-project files, skills, environment capture and MCP loading. Its registry contains
-only narrow group resource, note and file-delivery tools. A before-tool hook enforces a fixed
-execution allowlist for direct, nested, deferred and task-owned-child calls.
-Filesystem handlers use a scope-rooted handle and reject traversal and symlinks.
-Group input configuration cannot add private extensions or a project; settlement
-does not commit private memory. Group attachment text contains relative resource
-paths, not the host's private directory path.
-
-Control persists the execution scope and immutable bot/chat/topic/session-sender
-binding on the business conversation. Each source stores its actual sender. Ordinary
-groups separate sender sessions inside one audience; topics share their own session.
-Native lookup, cancellation, recovery, live snapshots and history retain the stored
-scope. A group source cannot acquire private owner authority through an equal native
-ID. Private session/bot/Routine handlers and bot-wide artifact sharing deny scoped callers.
-
-A resource scope is not an actor grant. Admission and every group provider request
-and tool execution check the current Telegram account and sender allowlist against
-the persisted source. Revocation also blocks public delivery. PiG reports ordinary
-generation hook errors and continues, so a denied request uses its native task abort
-mark to cancel that invocation before provider dispatch. Group inputs stay outside
-private dream consolidation.
-
-Group `requireMention` defaults to false, as the selected Hermes trigger default.
-A current paired sender can trigger work without a mention. The channel settings can
-require a mention or reply; that trigger switch never grants identity or resource access.
-Only a current paired sender can trigger work or downloads. Ordinary groups separate sender sessions;
-topics share their topic session, including forum General without a thread ID.
-`/stop`, `/clear` and `/new` use the parsed session. Saved commands bind the actual
-actor and peer, and cannot acquire Main's scope after restore.
-
-Group uploads live in their audience's `resources/uploads/`, not the private workspace.
-Album collection and cleanup retain that ownership. Scope-local stop/clear discards only
-its pending albums; private Main cannot discard group albums. `group_resource` reads
-published UTF-8 text up to 64 KiB or common image bytes up to 20 MiB. `group_deliver`
-queues only a rooted audience file in the existing outbox. It never copies to bot-wide
-artifacts. Topic replies, files and media groups set the exact message thread.
-
-`group_session` starts, lists, reads, sends to or stops only the current conversation's
-direct children in the same bot and resource audience. A child retains the persisted
-scope and exact initiating source. Current personal authorization follows that source
-through native admission, provider requests, tools and restore. Children cannot delegate,
-select another bot, choose a project or override the model. Private session handlers stay
-unavailable. Children return published resource paths; the parent queues Telegram delivery.
-
-`group_question` asks one public question with two to four options and ends the turn.
-Only the initiating paired sender can answer in the same conversation. It cannot approve
-owner actions. Children report decisions to their parent instead of asking directly.
-Private `ask_user` and owner-action Question handlers stay unavailable in groups.
-
-Telegram `/menu`, `/status`, `/settings`, `/sessions`, `/question` and `/workflows` use the
-current parsed conversation. Session lists contain only its direct same-audience children.
-Saved workflow controls reuse those children and their stored first prompt. `/run <child ID>
-[message]` queues another parent-owned child turn. It retains the original Telegram source,
-current personal grant and resource scope. It does not invoke private Routines or route
-group work through Main. Only the initiating Telegram sender can resume the child.
-
-Inline buttons carry a 96-bit HMAC reference signed with the current bot token. An immutable
-server row binds the actor, account, chat, topic, confirmed message, conversation, execution
-scope, native ID, context-reset receipt, object, action and a 15-minute expiry. The claim
-transaction checks current authority and consumes the nonce with its durable command intent.
-Command processing and effect transactions use one read-only validity check
-(`chat.ValidateTelegramControl`); effects repeat it under the SQLite writer. It covers the
-current grant, expiry, actor, message, object and context revision. A definite 400 or 403
-rejection of the final `answerCallbackQuery` does not hold the polling offset; network, 5xx
-and 429 errors retry the same update, and the consumed nonce cannot queue a second intent.
-Clear does not change the native conversation ID, so callbacks also bind the latest
-`context_reset` receipt. Replays cannot queue another action. A matching actor's rejected grant cancels its
-button permanently. Command parts and button labels stay frozen across delivery retries.
-Message delivery stays at least once; only the bound confirmed remote message accepts its
-buttons. A stale Question button cannot become ordinary model input.
-
-Group speech does not borrow private consent or provider settings. Original audio
-stays attached. Group drafts/previews stay off. This code and its local fake-platform tests
-do not authorize a real group deployment.
-
 ## Telegram
 
 [`telegram.Bot`](../../internal/channel/telegram/telegram.go) is on when the settings
 have a bot token. By default, it reads messages with `getUpdates` long polling,
 so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-webhooks).
 
-- Private input still enters Main. Group and supergroup input uses an isolated
-  audience for a current paired sender. `requireMention` is off by default; when on,
-  group input must mention this bot or reply to it.
-  The transport ignores other users, bot/anonymous senders and untriggered group text.
-  It checks the current control allowlist before any file download. Group senders
-  receive no private owner tools. A saved token without allowed users waits for pairing.
+- Paired private chats share Main. The adapter ignores all non-private messages,
+  edits, and callbacks before it handles commands or downloads files. A saved
+  token without allowed users waits for pairing.
 - The Telegram channel page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite
@@ -164,8 +76,7 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   Saved `options.preview` can select drafts, message edits, or no previews and
   no typing. `options.silent` applies to new text, media, and copied or forwarded
   messages. `options.reactions` is on by default for private chats. An explicit
-  `false` stays off. `options.groupReactions` is a separate opt-in and does not
-  change sender or topic authorization.
+  `false` stays off.
 - Incoming rich messages keep bounded text from paragraphs, inline formatting,
   tables and nested blocks. The iterative reader caps text at 65536 characters,
   work at 20000 steps and JSON nesting at 64; a limit adds an explicit note.
@@ -209,6 +120,37 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   so later updates can proceed. Transient failures leave the update for retry.
   A failed input attempt removes its new uploads when no stored receipt owns
   them. An uncertain receipt lookup keeps the files.
+
+### Private controls
+
+Telegram `/menu`, `/status`, `/settings`, `/sessions`, `/question` and
+`/workflows` use Main. The session list shows the bot's direct child sessions.
+`/run <child ID> [message]` queues another parent-owned turn in a saved child.
+Only the Telegram sender who started the child can resume it.
+
+Inline buttons carry a 96-bit HMAC reference signed with the current bot token. An immutable
+server row binds the actor, account, private chat, confirmed message, conversation,
+native ID, context-reset receipt, object, action and a 15-minute expiry. The claim
+transaction checks current authority and consumes the nonce with its durable command intent.
+Command processing and effect transactions use one read-only validity check
+(`chat.ValidateTelegramControl`); effects repeat it under the SQLite writer. It covers the
+current grant, expiry, actor, message, object and context revision. A definite 400 or 403
+rejection of the final `answerCallbackQuery` does not hold the polling offset; network, 5xx
+and 429 errors retry the same update, and the consumed nonce cannot queue a second intent.
+Clear does not change the native conversation ID, so callbacks also bind the latest
+`context_reset` receipt. Replays cannot queue another action. A matching actor's rejected grant cancels its
+button permanently. Command parts and button labels stay frozen across delivery retries.
+Message delivery stays at least once; only the bound confirmed remote message accepts its
+buttons. A stale Question button cannot become ordinary model input.
+
+### Upgrade from group support
+
+Startup seals old group and topic conversations in `control.sqlite`. It ends
+pending group inputs and revokes pending group deliveries. It also closes old
+commands and discards unfinished group albums. The server does not open the old
+`agents/<id>/telegram-groups/` stores or move their files or history into Main.
+Older group sessions in the agent store are isolated before that store resumes.
+Back up the agent stores, group directories, and `control.sqlite` to keep the archive.
 
 ## Inbound webhooks
 
@@ -422,9 +364,7 @@ work can continue. A stop error does not block later messages or other replies.
 chat, send `/feedback Title` on the first line and the description on the lines
 below. The reply shows only those fields and gives a clean link to the public
 `recally-io/dex` new-issue page. The user copies the draft and submits it in
-GitHub. Telegram groups and topics apply their usual sender and mention gates
-and receive only a private-chat prompt. Dex does not save their command text
-or download any media attached to that command. Drafts with Markdown code fences
+GitHub. Drafts with Markdown code fences
 or drafts too large for one reply can use the Web form instead.
 
 Feedback uses the existing command receipt to deduplicate incoming updates
@@ -476,8 +416,7 @@ in milliseconds.
 
 On a direct channel request, the parent can set `follow_up: true` on
 `session_new` or `session_send`. The commitment belongs to that delegation,
-request, session, and channel authorization. It does not change group tool
-permissions or turn an acknowledgment or progress update into a conclusion.
+request, session, and channel authorization. An acknowledgment or progress update does not complete the commitment.
 
 The canonical child result starts an independent review turn for the
 same parent. Its reminder tells the parent to use `notify_user` for a reviewed
@@ -534,7 +473,7 @@ arguments. Argument errors do not echo rejected values.
 
 Each call checks the stored source of the live run. Only a web message in a
 top-level Main or Chat session can use these tools. A run that mixes web and
-channel input does not qualify. A paired sender, group, child session, or
+channel input does not qualify. A paired sender, child session, or
 background input cannot make a call as the web owner.
 
 `channel_request_change` can request a Telegram or Feishu pairing revocation,

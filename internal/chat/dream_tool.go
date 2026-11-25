@@ -17,7 +17,7 @@ func (s *Service) ToolReadDreamMessage(ctx context.Context, caller engine.TaskCo
 	if args.Offset < 0 || (args.Field != "user" && args.Field != "answer") {
 		return engine.DreamMessagePage{}, denied
 	}
-	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: caller.AgentID, ExecutionScope: caller.Scope, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: caller.AgentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil || !strings.HasPrefix(conv.ChannelKey, dream.Channel) {
 		return engine.DreamMessagePage{}, denied
 	}

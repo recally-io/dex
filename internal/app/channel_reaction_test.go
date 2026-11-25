@@ -223,28 +223,15 @@ func TestUserFeishuStatusReplacesReactionByReturnedIDOnStop(t *testing.T) {
 	gate.expect(t, "om_running", "MinusOne")
 }
 
-func TestUserTelegramStatusRespectsPrivateOffAndGroupOptIn(t *testing.T) {
+func TestUserTelegramStatusRespectsPrivateOff(t *testing.T) {
 	t.Parallel()
-	// Given a Telegram bot that did not opt its groups in.
-	gate := &reactionGate{calls: make(chan reactionCall, 12)}
 	f := newFakeTelegram(t)
-	f.reactGate = gate
 	data := t.TempDir()
 	d := startTelegram(t, f, data, 42)
-	f.groupText(1, 42, -100, 7, "default group")
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false}}, nil)
+	f.message(1, 42, 42, "private off")
 	_ = f.next(t)
-	// When the owner opts in for groups but turns off the private setting.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false, "groupReactions": true}}, nil)
-	f.message(2, 42, 42, "private off")
-	_ = f.next(t)
-	f.groupText(3, 99, -100, 7, "unauthorized")
-	f.groupText(4, 42, -100, 7, "authorized group opt-in")
-	// Then only the authorized, opted-in group input can cause a reaction.
-	gate.expect(t, "4", "👀")
-	_ = f.next(t)
-	conn := controlWriteDB(t, data)
-	waitTelegramQueueAck(t, conn, 2, "not_attempted")
-	waitTelegramQueueAck(t, conn, 4, "not_attempted")
+	waitTelegramQueueAck(t, controlWriteDB(t, data), 1, "not_attempted")
 }
 
 func TestUserFeishuStatusPreservesExplicitOffAcrossSettingsReload(t *testing.T) {

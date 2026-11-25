@@ -122,7 +122,7 @@ func (q *Queries) ArchiveAgent(ctx context.Context, arg ArchiveAgentParams) (int
 
 const archiveChat = `-- name: ArchiveChat :exec
 UPDATE conversations SET archived_at = coalesce(archived_at, ?1)
-WHERE id = ?2 AND agent_id = ?3 AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
+WHERE id = ?2 AND agent_id = ?3 AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
 `
 
 type ArchiveChatParams struct {
@@ -376,26 +376,24 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createFork = `-- name: CreateFork :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
 `
 
 type CreateForkParams struct {
-	AgentID        string        `json:"agent_id"`
-	ChannelKey     string        `json:"channel_key"`
-	Title          string        `json:"title"`
-	ModelProvider  string        `json:"model_provider"`
-	ModelID        string        `json:"model_id"`
-	ThinkingLevel  string        `json:"thinking_level"`
-	Cwd            string        `json:"cwd"`
-	EnvironmentID  string        `json:"environment_id"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
-	ForkedFrom     sql.NullInt64 `json:"forked_from"`
-	ParentID       sql.NullInt64 `json:"parent_id"`
-	CreatedAt      int64         `json:"created_at"`
-	ExecutionScope string        `json:"execution_scope"`
-	ScopeContext   string        `json:"scope_context"`
+	AgentID       string        `json:"agent_id"`
+	ChannelKey    string        `json:"channel_key"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	Cwd           string        `json:"cwd"`
+	EnvironmentID string        `json:"environment_id"`
+	ExecutionID   sql.NullInt64 `json:"execution_id"`
+	ForkedFrom    sql.NullInt64 `json:"forked_from"`
+	ParentID      sql.NullInt64 `json:"parent_id"`
+	CreatedAt     int64         `json:"created_at"`
 }
 
 // A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
@@ -414,8 +412,6 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		arg.ForkedFrom,
 		arg.ParentID,
 		arg.CreatedAt,
-		arg.ExecutionScope,
-		arg.ScopeContext,
 	)
 	var i Conversation
 	err := row.Scan(
@@ -546,22 +542,21 @@ func (q *Queries) DreamBoundary(ctx context.Context, agentID string) (DreamBound
 }
 
 const ensureConversation = `-- name: EnsureConversation :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, coalesce(nullif(CAST(? AS TEXT), ''), '{}'))
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+    WHERE conversations.execution_scope = ''
 RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
 `
 
 type EnsureConversationParams struct {
-	AgentID        string `json:"agent_id"`
-	ChannelKey     string `json:"channel_key"`
-	Title          string `json:"title"`
-	ModelProvider  string `json:"model_provider"`
-	ModelID        string `json:"model_id"`
-	ThinkingLevel  string `json:"thinking_level"`
-	CreatedAt      int64  `json:"created_at"`
-	ExecutionScope string `json:"execution_scope"`
-	ScopeContext   string `json:"scope_context"`
+	AgentID       string `json:"agent_id"`
+	ChannelKey    string `json:"channel_key"`
+	Title         string `json:"title"`
+	ModelProvider string `json:"model_provider"`
+	ModelID       string `json:"model_id"`
+	ThinkingLevel string `json:"thinking_level"`
+	CreatedAt     int64  `json:"created_at"`
 }
 
 // The title and the settings are set only when the conversation is created.
@@ -574,8 +569,6 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.CreatedAt,
-		arg.ExecutionScope,
-		arg.ScopeContext,
 	)
 	var i Conversation
 	err := row.Scan(
@@ -803,7 +796,6 @@ SELECT
     c.archived_at,
     c.parent_id,
     c.execution_id,
-    c.execution_scope,
     c.forked_from,
     f.title AS forked_from_title,
     f.channel_key AS forked_from_key,
@@ -818,7 +810,7 @@ LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.execution_scope = '' AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
 
@@ -842,7 +834,6 @@ type GetChatRow struct {
 	ArchivedAt      sql.NullInt64  `json:"archived_at"`
 	ParentID        sql.NullInt64  `json:"parent_id"`
 	ExecutionID     sql.NullInt64  `json:"execution_id"`
-	ExecutionScope  string         `json:"execution_scope"`
 	ForkedFrom      sql.NullInt64  `json:"forked_from"`
 	ForkedFromTitle sql.NullString `json:"forked_from_title"`
 	ForkedFromKey   sql.NullString `json:"forked_from_key"`
@@ -868,7 +859,6 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 		&i.ArchivedAt,
 		&i.ParentID,
 		&i.ExecutionID,
-		&i.ExecutionScope,
 		&i.ForkedFrom,
 		&i.ForkedFromTitle,
 		&i.ForkedFromKey,
@@ -879,7 +869,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE id = ? AND execution_scope = ''
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -908,7 +898,7 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND channel_key = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND channel_key = ? AND execution_scope = ''
 `
 
 type GetConversationByKeyParams struct {
@@ -1404,7 +1394,7 @@ JOIN agents a ON a.id = c.agent_id
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE (c.agent_id = ?1 OR p.agent_id = ?1)
+WHERE (c.agent_id = ?1 OR p.agent_id = ?1) AND c.execution_scope = ''
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
@@ -1603,16 +1593,23 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 }
 
 const listPendingExecutionAborts = `-- name: ListPendingExecutionAborts :many
-SELECT id, agent_id, execution_id, execution_scope FROM conversations WHERE abort_pending = 1
+SELECT c.id, c.agent_id, c.execution_id FROM conversations c
+WHERE (c.abort_pending = 1 AND c.execution_scope = '')
+    OR (c.execution_scope = 'retired-telegram-legacy' AND c.execution_id IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM conversations active WHERE active.agent_id = c.agent_id
+                AND active.execution_scope = '' AND active.execution_id = c.execution_id
+        ))
 `
 
 type ListPendingExecutionAbortsRow struct {
-	ID             int64         `json:"id"`
-	AgentID        string        `json:"agent_id"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
-	ExecutionScope string        `json:"execution_scope"`
+	ID          int64         `json:"id"`
+	AgentID     string        `json:"agent_id"`
+	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
+// Retired peer-keyed groups used the agent store. Isolate them before it resumes.
+// Do not pass IDs from the separate group stores to the agent Harness.
 func (q *Queries) ListPendingExecutionAborts(ctx context.Context) ([]ListPendingExecutionAbortsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingExecutionAborts)
 	if err != nil {
@@ -1622,12 +1619,7 @@ func (q *Queries) ListPendingExecutionAborts(ctx context.Context) ([]ListPending
 	items := []ListPendingExecutionAbortsRow{}
 	for rows.Next() {
 		var i ListPendingExecutionAbortsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.AgentID,
-			&i.ExecutionID,
-			&i.ExecutionScope,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1656,7 +1648,7 @@ SELECT
     c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND (CAST(?1 AS INTEGER) = 0 OR s.conversation_id = ?1)
+WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(?1 AS INTEGER) = 0 OR s.conversation_id = ?1)
 ORDER BY s.rowid
 `
 
@@ -1786,7 +1778,7 @@ func (q *Queries) ListRecentProjects(ctx context.Context, agentID string) ([]str
 }
 
 const listRoutineTargetCandidates = `-- name: ListRoutineTargetCandidates :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? ORDER BY created_at DESC, id DESC
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListRoutineTargetCandidates(ctx context.Context, agentID string) ([]Conversation, error) {
@@ -2118,7 +2110,7 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 
 const unarchiveChat = `-- name: UnarchiveChat :exec
 UPDATE conversations SET archived_at = NULL
-WHERE id = ?1 AND agent_id = ?2 AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
+WHERE id = ?1 AND agent_id = ?2 AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
 `
 
 type UnarchiveChatParams struct {

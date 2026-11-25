@@ -175,7 +175,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 		if latest.ExecutionID == 0 {
 			return nil
 		}
-		watch, err = h.agents.Watch(ctx, engine.Ref{AgentID: agentID, ID: latest.ExecutionID, Scope: latest.ExecutionScope})
+		watch, err = h.agents.Watch(ctx, engine.Ref{AgentID: agentID, ID: latest.ExecutionID})
 		if err != nil {
 			return err
 		}
@@ -196,7 +196,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 	}
 	var noticePosition int64
 	notifications := func(initial bool) error {
-		if !web || !chat.Writable(c.ChannelKey) || c.ParentID != 0 || c.ExecutionScope != "" {
+		if !web || !chat.Writable(c.ChannelKey) || c.ParentID != 0 {
 			return nil
 		}
 		limit := -1
@@ -305,7 +305,7 @@ func (h *Hub) Detail(ctx context.Context, agentID string, chatID, entryID int64,
 	if c.ExecutionID == 0 {
 		return engine.Item{}, engine.ErrItemNotFound
 	}
-	return h.agents.Detail(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}, entryID, itemID)
+	return h.agents.Detail(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, entryID, itemID)
 }
 
 func (h *Hub) History(ctx context.Context, agentID string, chatID, before int64, limit int) (engine.History, error) {
@@ -316,5 +316,5 @@ func (h *Hub) History(ctx context.Context, agentID string, chatID, before int64,
 	if c.ExecutionID == 0 {
 		return engine.History{Items: []engine.Item{}}, nil
 	}
-	return h.agents.History(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}, before, limit)
+	return h.agents.History(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, before, limit)
 }

@@ -125,9 +125,6 @@ func (s *Service) botArchived(agentID string) {
 // Main, a Chat, or an automation session. Changing a bot also needs a person's input in the conversation: a task result, an
 // automation run, or a dream cannot change a bot, as with routine tools.
 func (s *Service) ToolBotCaller(ctx context.Context, r engine.TaskContext, change bool) error {
-	if r.Scope != "" {
-		return errBotCaller
-	}
 	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return err

@@ -266,9 +266,9 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 
 func (s *Service) ToolRecentOutbox(ctx context.Context, ref engine.Ref) ([]engine.OutboxSummary, error) {
 	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{
-		AgentID:        ref.AgentID,
-		ExecutionScope: ref.Scope,
-		ExecutionID:    sql.NullInt64{Int64: ref.ID, Valid: true},
+		AgentID: ref.AgentID,
+
+		ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true},
 	})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
