@@ -53,8 +53,9 @@ type Service struct {
 	onFeishu             func(string, *feishu.Config)
 	// One lock orders credential checks, saves, runtime changes, and setup sessions
 	// across agents. Model checks take the settings lock; settings never takes this lock.
-	mu       sync.Mutex
-	sessions map[string]*channelSession
+	mu               sync.Mutex
+	sessions         map[string]*channelSession
+	channelApprovals map[string]channelApproval
 }
 
 // New connects model validation and Telegram runtime changes.
@@ -309,6 +310,10 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64, options *telegram.Options) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.setTelegram(ctx, agentID, token, allowedUsers, options)
+}
+
+func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowedUsers []int64, options *telegram.Options) error {
 	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
 		return err
 	}
@@ -366,6 +371,10 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.deleteTelegram(ctx, agentID)
+}
+
+func (s *Service) deleteTelegram(ctx context.Context, agentID string) error {
 	saved, err := s.TelegramConfig(ctx, agentID)
 	if err != nil {
 		return err

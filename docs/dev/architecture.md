@@ -237,7 +237,9 @@ Telegram bot without allowed users. WeChat captures the owner ID from QR
 confirmation and rejects a login without that ID. Other WeChat senders never
 reach the agent. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
-cannot send messages or change settings.
+cannot send messages or change settings. [Channel approval pages](channels.md#owner-channel-tools)
+use the same cross-origin check. When dex requires sign-in, channel approval
+pages require a web session cookie.
 
 `control.sqlite` holds provider keys, channel tokens, WeChat context tokens,
 plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain text. WeChat logs exclude credentials and remote error text. The

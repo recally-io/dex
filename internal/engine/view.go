@@ -425,7 +425,10 @@ func assistantItems(m ai.AssistantMessage, key string, results map[string]ai.Too
 			item.Kind = "tool"
 			item.ID = b.ID
 			item.Name = b.Name
-			item.Args = b.Arguments
+			// The review page has validated data. Model-supplied settings arguments can contain secrets.
+			if !isChannelTool(b.Name) {
+				item.Args = b.Arguments
+			}
 			item.Status = "error"
 			slot, hasSlot := tools[b.ID]
 			if slot.Output != nil {

@@ -143,6 +143,8 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
+	mux.HandleFunc("GET "+agent.ChannelApprovalPath+"{id}", h.channelApproval)
+	mux.HandleFunc("POST "+agent.ChannelApprovalPath+"{id}", h.channelApproval)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	for _, p := range cfg.Plugins {
@@ -171,7 +173,14 @@ func New(cfg Config) http.Handler {
 			small.ServeHTTP(w, r)
 		}
 	})
-	return http.NewCrossOriginProtection().Handler(requireToken(cfg.Token, limited))
+	origins := http.NewCrossOriginProtection()
+	origins.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, agent.ChannelApprovalPath) {
+			auditDeniedChannelApproval()
+		}
+		http.Error(w, origins.Check(r).Error(), http.StatusForbidden)
+	}))
+	return origins.Handler(requireToken(cfg.Token, limited))
 }
 
 type responseWriter struct {
