@@ -1296,6 +1296,8 @@ export type WechatLogin = {
 export type Telegram = {
     enabled: boolean;
     botId?: string;
+    transport?: 'polling' | 'webhook';
+    webhookUrl?: string;
     status: ChannelStatus;
     allowedUsers: Array<number>;
     options?: TelegramOptions;
@@ -1313,6 +1315,18 @@ export type TelegramInput = {
     token: string;
     allowedUsers: Array<number>;
     options?: TelegramOptions;
+    /**
+     * Omission keeps the transport for the same bot. New bots default to polling.
+     */
+    transport?: 'polling' | 'webhook';
+    webhook?: TelegramWebhookInput;
+};
+
+export type TelegramWebhookInput = {
+    /**
+     * Public HTTPS callback URL.
+     */
+    url: string;
 };
 
 export type TelegramOptions = {
@@ -1368,6 +1382,7 @@ export type Feishu = {
     appId: string;
     brand: string;
     paired: boolean;
+    transport?: 'websocket' | 'webhook';
     /**
      * Private chat status reactions. On when unset; false explicitly disables them.
      */
@@ -1396,6 +1411,21 @@ export type FeishuInput = {
      * Omission preserves the saved preference. False disables private chat status reactions.
      */
     reactions?: boolean;
+    /**
+     * Omission keeps the transport for the same app. New apps default to WebSocket.
+     */
+    transport?: 'websocket' | 'webhook';
+};
+
+export type FeishuWebhookInput = {
+    /**
+     * The Feishu or Lark verification token.
+     */
+    verificationToken: string;
+    /**
+     * Set this to require encrypted and signed events. Omit it for token verification only.
+     */
+    encryptKey?: string;
 };
 
 export type FeishuBrand = {
@@ -1470,6 +1500,49 @@ export type AgentWritable = {
      * Empty means the built-in local host environment.
      */
     environmentId: string;
+};
+
+export type TelegramInputWritable = {
+    /**
+     * Write-only. Empty keeps the saved token.
+     */
+    token: string;
+    allowedUsers: Array<number>;
+    options?: TelegramOptions;
+    /**
+     * Omission keeps the transport for the same bot. New bots default to polling.
+     */
+    transport?: 'polling' | 'webhook';
+    webhook?: TelegramWebhookInputWritable;
+};
+
+export type TelegramWebhookInputWritable = {
+    /**
+     * Public HTTPS callback URL.
+     */
+    url: string;
+    /**
+     * Random secret of 1 to 256 characters using A-Z, a-z, 0-9, hyphen, or underscore.
+     */
+    secretToken: string;
+};
+
+export type FeishuInputWritable = {
+    appId: string;
+    /**
+     * Write-only. Empty keeps the secret for the same App ID and brand.
+     */
+    appSecret: string;
+    brand: string;
+    /**
+     * Omission preserves the saved preference. False disables private chat status reactions.
+     */
+    reactions?: boolean;
+    /**
+     * Omission keeps the transport for the same app. New apps default to WebSocket.
+     */
+    transport?: 'websocket' | 'webhook';
+    webhook?: FeishuWebhookInput;
 };
 
 export type AgentId = string;
@@ -3304,7 +3377,7 @@ export type DeleteTelegramResponses = {
 export type DeleteTelegramResponse = DeleteTelegramResponses[keyof DeleteTelegramResponses];
 
 export type SetTelegramData = {
-    body: TelegramInput;
+    body: TelegramInputWritable;
     path: {
         agentId: string;
     };
@@ -3389,7 +3462,7 @@ export type GetFeishuResponses = {
 export type GetFeishuResponse = GetFeishuResponses[keyof GetFeishuResponses];
 
 export type SetFeishuData = {
-    body: FeishuInput;
+    body: FeishuInputWritable;
     path: {
         agentId: string;
     };

@@ -4212,6 +4212,8 @@ components:
       properties:
         enabled: { type: boolean }
         botId: { type: string }
+        transport: { type: string, enum: [polling, webhook] }
+        webhookUrl: { type: string }
         status: { $ref: "#/components/schemas/ChannelStatus" }
         allowedUsers:
           type: array
@@ -4241,6 +4243,27 @@ components:
         options:
           $ref: "#/components/schemas/TelegramOptions"
           description: Omission preserves saved options. Speech stays off until explicitly enabled with data-sending consent.
+        transport:
+          type: string
+          enum: [polling, webhook]
+          description: Omission keeps the transport for the same bot. New bots default to polling.
+        webhook: { $ref: "#/components/schemas/TelegramWebhookInput" }
+
+    TelegramWebhookInput:
+      x-go-type: telegram.WebhookConfig
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/channel/telegram
+      type: object
+      required: [url, secretToken]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Public HTTPS callback URL.
+        secretToken:
+          type: string
+          writeOnly: true
+          description: Random secret of 1 to 256 characters using A-Z, a-z, 0-9, hyphen, or underscore.
 
     TelegramOptions:
       x-go-type: telegram.Options
@@ -4313,6 +4336,7 @@ components:
         appId: { type: string }
         brand: { type: string }
         paired: { type: boolean }
+        transport: { type: string, enum: [websocket, webhook] }
         reactions:
           type: boolean
           description: Private chat status reactions. On when unset; false explicitly disables them.
@@ -4345,6 +4369,27 @@ components:
         reactions:
           type: boolean
           description: Omission preserves the saved preference. False disables private chat status reactions.
+        transport:
+          type: string
+          enum: [websocket, webhook]
+          description: Omission keeps the transport for the same app. New apps default to WebSocket.
+        webhook: { $ref: "#/components/schemas/FeishuWebhookInput" }
+
+    FeishuWebhookInput:
+      x-go-type: feishu.WebhookConfig
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/channel/feishu
+      type: object
+      required: [verificationToken]
+      properties:
+        verificationToken:
+          type: string
+          writeOnly: true
+          description: The Feishu or Lark verification token.
+        encryptKey:
+          type: string
+          writeOnly: true
+          description: Set this to require encrypted and signed events. Omit it for token verification only.
 
     FeishuBrand:
       type: object

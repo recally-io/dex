@@ -82,7 +82,14 @@ func TestUserKeepsPluginRowsFromBeforePluginMigrations(t *testing.T) {
 	}
 	tables := func() []string {
 		t.Helper()
-		rows, err := conn.QueryContext(t.Context(), "SELECT name FROM sqlite_master WHERE type = 'table' AND (name LIKE '%github%' OR name LIKE '%webhook%' OR name LIKE '%email%') ORDER BY name")
+		// Legacy names come from the fixture. Other core tables do not belong to plugins.
+		rows, err := conn.QueryContext(t.Context(), `
+SELECT name FROM sqlite_master
+WHERE type = 'table' AND (
+    name GLOB 'plugin_github_*' OR name GLOB 'plugin_webhook_*' OR name GLOB 'plugin_email_*'
+    OR name IN ('github_webhook_settings', 'github_review_pulls', 'webhook_sources', 'email_sources', 'email_imap_pulls')
+)
+ORDER BY name`)
 		if err != nil {
 			t.Fatal(err)
 		}

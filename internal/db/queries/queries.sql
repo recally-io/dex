@@ -276,9 +276,10 @@ DELETE FROM providers WHERE id = ?;
 SELECT * FROM telegram_settings WHERE agent_id = ?;
 
 -- name: SetTelegramSettings :one
-INSERT INTO telegram_settings (agent_id, token, allowed_users, options)
-VALUES (?, ?, ?, ?)
+INSERT INTO telegram_settings (agent_id, token, allowed_users, options, webhook_url, webhook_secret)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, options = excluded.options, pairing_code = '', pairing_expires = 0,
+webhook_url = excluded.webhook_url, webhook_secret = excluded.webhook_secret,
 retry_at = CASE WHEN substr(token, 1, instr(token, ':') - 1) = substr(excluded.token, 1, instr(excluded.token, ':') - 1) THEN retry_at ELSE 0 END
 RETURNING retry_at;
 

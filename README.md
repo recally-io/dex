@@ -97,6 +97,12 @@ Other operating systems are not supported.
 For a dedicated Linux machine that cannot accept SSH, see
 [Connect a remote machine](docs/remote-machines.md).
 
+### Channel webhooks
+
+Telegram uses long polling by default. Feishu and Lark use a WebSocket by
+default. Neither needs a public endpoint. To opt in to webhooks, see the
+[HTTPS, provider setup, and rollback guide](docs/dev/channels.md#inbound-webhooks).
+
 ## Skills and MCP servers
 
 dex reads skills from these directories:

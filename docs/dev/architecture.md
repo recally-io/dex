@@ -23,8 +23,11 @@ for the web UI; the installed service needs neither runtime.
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
-`internal/channel/delivery` owns commands and
-durable reply delivery. The engine does not import dex business packages.
+`internal/channel/delivery` owns commands, the durable webhook inbox, and
+reply delivery. Telegram and Feishu keep their existing default transports.
+Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
+acknowledging them and use the same platform receive functions. The engine does
+not import dex business packages.
 
 Tools and stdio MCP servers can start child processes. Bash has a default
 120-second timeout. An omitted or null `timeout` uses the default. An explicit
@@ -93,7 +96,7 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, the channel outbox, Tasks, and plugin tables. Core migrations own
+receipts, the channel webhook inbox and reply outbox, Tasks, and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
 start ([plugins](plugins.md#plugin-migrations)). Each agent has
 `agents/<id>/state.sqlite`, which holds native admission, runs, transcripts,

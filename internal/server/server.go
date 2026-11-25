@@ -67,6 +67,9 @@ type Config struct {
 	// migration.
 	PluginErrors map[string]string
 
+	// ChannelWebhooks authenticates provider callbacks independently of the admin token.
+	ChannelWebhooks http.Handler
+
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
 }
@@ -156,6 +159,9 @@ func New(cfg Config) http.Handler {
 			mux.Handle("/api/plugins/"+p.Name+"/", p.API)
 		}
 	}
+	if cfg.ChannelWebhooks != nil {
+		mux.Handle("POST /hooks/channels/{platform}/{agentId}", http.MaxBytesHandler(cfg.ChannelWebhooks, 4<<20))
+	}
 	mux.HandleFunc("/hooks/", http.NotFound)
 	mux.Handle("/", web.Handler())
 	// The longest message is 32000 characters of up to 4 bytes. An upload has room for its
@@ -166,7 +172,7 @@ func New(cfg Config) http.Handler {
 		parts := strings.Split(r.URL.Path, "/")
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/hooks/"):
-			// Each plugin limits the body of its own hooks.
+			// Each hook sets its own body limit.
 			mux.ServeHTTP(w, r)
 		case len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads":
 			uploads.ServeHTTP(w, r)
@@ -934,7 +940,11 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options); err != nil {
+	var transport string
+	if req.Body.Transport != nil {
+		transport = string(*req.Body.Transport)
+	}
+	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options, transport, req.Body.Webhook); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
