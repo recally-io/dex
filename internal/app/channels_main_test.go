@@ -306,7 +306,7 @@ func TestUserChannelMainBusyInputsKeepAdmissionOrder(t *testing.T) {
 	t.Logf("artifact: admission order=%q", rows)
 }
 
-func TestUserChannelMainFeishuPreviewStopsBeforeQueuedWebInput(t *testing.T) {
+func TestUserChannelMainFeishuReplyDoesNotIncludeQueuedWebInput(t *testing.T) {
 	t.Parallel()
 	// Given a channel answer that streams while a web input waits in main.
 	f := newFakeFeishu(t)
@@ -319,7 +319,6 @@ func TestUserChannelMainFeishuPreviewStopsBeforeQueuedWebInput(t *testing.T) {
 	text := strings.TrimSpace(strings.Repeat("channel-answer ", 400))
 	f.text(t, "channel-preview", "owner", "p2p", gate+"; printf '%s' '"+text+"'")
 	waitTaskFile(t, filepath.Join(dir, "feishu-preview.pid"))
-	f.waitReply(t, "Thinking")
 	web := d.send(t, main, "printf web-private")
 	d.watch(t, main).until(t, "queued web input", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == web && it.Queued })
@@ -381,7 +380,7 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 	}
 	// A control restart between reset commit and command completion must reuse the reset.
 	d.stop()
-	if _, err := conn.ExecContext(t.Context(), "UPDATE channel_commands SET completed=0, delivered_at=NULL WHERE source_key='telegram:123:2'"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "DELETE FROM outbox_messages WHERE id='telegram:123:2'; UPDATE channel_commands SET completed=0, delivered_at=NULL WHERE source_key='telegram:123:2'"); err != nil {
 		t.Fatal(err)
 	}
 	startDex(t, dir, f.srv.URL)
@@ -482,8 +481,8 @@ func TestUserRevokedChannelStopDoesNotReplyOrAffectLaterWork(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
-	if n := count(t, conn, `SELECT count(*) FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id
-WHERE c.source_key = 'telegram:123:1' AND b.revoked_at IS NOT NULL AND c.delivered_at IS NOT NULL`); n != 1 {
+	if n := count(t, conn, `SELECT count(*) FROM channel_commands c
+WHERE c.source_key = 'telegram:123:1' AND c.delivered_at IS NOT NULL`); n != 1 {
 		t.Fatal("the old acknowledgment did not close with its binding")
 	}
 	if got := resultSubmission(t, conn, later); got.status != "pending" {

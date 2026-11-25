@@ -275,12 +275,11 @@ func (m *Manager) reactionState(ctx context.Context, watch *reactionWatch, last 
 		return channel.ReactionSucceeded
 	}
 	switch r.ReplyStatus {
-	case "delivered":
-		if r.SkippedPart != 0 {
-			return channel.ReactionFailed
-		}
+	case "sent":
 		return channel.ReactionSucceeded
-	case "revoked", "superseded":
+	case "failed":
+		return channel.ReactionFailed
+	case "superseded":
 		return channel.ReactionCancelled
 	default:
 		return last

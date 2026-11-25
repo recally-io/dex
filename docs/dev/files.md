@@ -36,15 +36,9 @@ original recipient. The tool caller supplies the native execution, source receip
 and operation key. A Web, child, or other channel call keeps URL-only delivery.
 The channel path does not accept a model-supplied peer or bot identity.
 
-The shared sender uses typed text and file parts. It freezes rendered parts before
-the first send and stores confirmed remote message IDs with the part cursor in one
-transaction. A restart skips confirmed parts. Delivery remains at least once: a
-crash after Telegram accepts a request but before its receipt commits can repeat it.
+Each file has its own Outbox row and one platform receipt. A restart does not send a confirmed file again. A crash after Telegram accepts the file but before the receipt commits can repeat the file.
 
-`channel_reply_files` holds temporary byte snapshots for pending deliveries, with
-at most ten files per input and 20 MiB per file. This table is not an artifact
-index. It has no role in artifact listing, naming, rename, delete, or conflict checks.
-A queued snapshot does not change when an artifact is renamed, deleted, or replaced.
+`outbox_files` holds the temporary byte snapshots, with at most ten files per input and 20 MiB per file. A snapshot does not change when an artifact is renamed, deleted, or replaced.
 SQLite removes the payload in the same transaction that completes, cancels, or
 revokes its delivery. A missing payload records a permanent failure; the sender
 never reopens an artifact with the same name.
@@ -54,12 +48,7 @@ at most 10 MiB, width plus height at most 10,000, and aspect ratio at most 20.
 Other files use documents. A definitive photo rejection can fall back to a document
 with the same bytes. Network failures are retried without an immediate fallback.
 
-Each Telegram input stores its authenticated sender and public bot account ID.
-Child results copy that context with the original origin. The sender checks current
-account ownership and the positive-integer allowlist before each final part.
-Revocation discards pending payloads and remains in effect for those receipts if
-the sender is later authorized again. Flood-control responses persist both the
-account cooldown and reply retry time. API waits are cancellable and survive restart.
+Each Telegram input stores the sender and public bot account ID. Unpairing fails pending deliveries and removes their byte snapshots. A later pairing does not revive the failed deliveries. Flood control keeps the account cooldown and Outbox retry time across restart.
 
 Telegram also accepts voice, audio, video, video notes, animations and stickers.
 The adapter keeps the original upload bytes and records the media type. Video notes
@@ -82,9 +71,7 @@ container routing does not prove that a real Telegram service can decode the fil
 The existing Goldmark version parses GFM. Telegram rendering maps task checkboxes,
 strikeout, numbered lists, blockquotes and code languages to supported text or HTML.
 Tables use plain cell text in a preformatted block. Image links keep their label and
-safe URL without fetching the image. Raw HTML remains escaped. The UTF-16 splitter
-keeps valid tags across parts. An old partially delivered reply without a frozen
-payload uses the original parser and rendering rules, so its cursor does not change.
+safe URL without fetching the image. Raw HTML remains escaped. The renderer sends an extract if the full text does not fit a single message.
 
 Album members commit their upload references to `telegram_album_members` before
 polling ACK. Collection closes after 800 ms without a new member, at three seconds,
@@ -103,27 +90,6 @@ batch is still sealed. Stop, Clear, authorization revocation and bot archive can
 discard unsubmitted batches without deleting files owned by an existing input.
 An interrupted cleanup retries from the retained references. Rejected files use
 the existing attachment error reply and do not enter the native album.
-
-Consecutive compatible file results use one `sendMediaGroup` request with two to
-ten members. Photos and videos can share a group. Audio and documents each use
-their own group type. Voice and animation keep their single-file methods.
-Membership and order freeze with the rendered reply. Existing frozen replies and
-older partially delivered replies keep their original part boundaries.
-
-A successful group confirms every remote message ID and the outer part cursor in
-one transaction. A definitive API 400 rejection first commits fallback mode.
-Fallback then uses native single-file methods and confirms each member in a
-transaction. A restart skips confirmed members and cannot regroup the rejected
-batch. The last member advances the outer cursor in the same transaction.
-The sender checks current authorization before each fallback member.
-
-Lost responses, invalid or incomplete message IDs, and service 5xx responses leave
-the whole group unconfirmed. HTTP 5xx takes precedence over a contradictory error
-code in the body. These outcomes never trigger fallback or confirm a prefix.
-Retries use the same snapshots. Telegram has no delivery idempotency key here,
-so remote acceptance before a failed response or local receipt can repeat an
-unconfirmed group or member. Flood waits keep the existing durable account and
-reply cooldowns. This is at-least-once delivery, not exactly-once delivery.
 
 Presentation preferences and configured speech services remain open layer-2 work.
 Group routing and isolated resources belong to layer 3; the adapter still rejects

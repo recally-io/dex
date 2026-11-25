@@ -130,7 +130,7 @@ to read in an afternoon.
   `/help` lists commands.
   Disconnecting a channel cancels its pending deliveries. Reconnecting the
   same account does not send old replies. They remain available on the web.
-  Reply delivery resumes after a restart and skips confirmed parts. A crash after remote success can duplicate one part. Bot settings
+  Channels send final replies without drafts. Long replies send an extract and refer to Web for the full text. Pending deliveries resume after restart. A crash before the sender saves a Telegram receipt can duplicate one message. Bot settings
   show each channel's runtime status and setup.
 - Agents can deliver files from main, Chat, Routine runs, and child sessions.
   Dex stores each delivery as an immutable snapshot of at most 20 MiB. The user

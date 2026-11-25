@@ -14,17 +14,15 @@ import (
 	"github.com/recally-io/dex/internal/channel"
 )
 
-// Send confirms one frozen text or media part through the shared durable sender.
-func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part channel.Part) (channel.Receipt, error) {
+// Send confirms one frozen text or media message through the shared durable sender.
+func (b *Bot) Send(ctx context.Context, peer, _ string, part channel.Part) (channel.Receipt, error) {
 	var id string
 	var err error
 	receipt := channel.Receipt{}
 	switch {
 	case part.Rich != nil:
-		id, err = b.sendRich(ctx, peer, deliveryID, index, part)
+		id, err = b.sendRich(ctx, peer, part)
 		receipt.Kind = "rich-v1"
-	case len(part.Group) > 0:
-		receipt, err = b.sendGroup(ctx, peer, part.Group)
 	case part.File != nil:
 		id, err = b.sendFile(ctx, peer, part.File)
 	default:
@@ -34,13 +32,13 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 		if part.File != nil {
 			receipt.Kind = "media"
 		}
-		receipt.MessageIDs = []string{id}
+		receipt.MessageID = id
 	}
 	if api, ok := errors.AsType[*apiError](err); ok {
 		if api.Code == 429 && api.RetryAfter > 0 {
 			return receipt, &channel.RetryError{After: time.Duration(api.RetryAfter) * time.Second, Err: err}
 		}
-		if (api.Code == 400 || api.Code == 403) && !errors.Is(err, channel.ErrPermanent) && !errors.Is(err, channel.ErrGroupRejected) {
+		if (api.Code == 400 || api.Code == 403) && !errors.Is(err, channel.ErrPermanent) {
 			err = fmt.Errorf("%w: %w", channel.ErrPermanent, err)
 		}
 	}

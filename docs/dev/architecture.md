@@ -100,7 +100,7 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, channel bindings, the channel webhook inbox and reply outbox, Tasks,
+receipts, channel pairings, the channel webhook inbox and Outbox, Tasks,
 and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
 start ([plugins](plugins.md#plugin-migrations)). Each agent has
@@ -142,17 +142,18 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    typed transcript events through `live.Hub`. Queued input comes from the
    native Inbox, not from a second control transcript.
 5. The chat service waits on the native handle and stores the outcome in the
-   business receipt. In the same transaction it records any channel reply with
-   the input's saved `binding_id`. The sender checks that binding and records
-   confirmed reply parts. A restart reacquires native outcomes by request ID;
-   it does not restart a second execution loop in control.
+   business receipt. The same transaction queues eligible final replies for the
+   channel input's destination. Each Outbox row delivers one platform message.
+   `notify_user` and pure Routine alerts queue messages without waiting for a
+   model outcome. A restart reacquires native outcomes by request ID; it does
+   not restart a second execution loop in control.
    Telegram and Feishu/Lark status reactions observe these facts independently
    of the outbox. See [Channels](channels.md#shared-channels).
 
 HTTP requests and paired channels authenticate at their entry points. Both
 represent the same Owner. Disconnecting a channel ends its reply route. It
 does not remove the authority of an input that Dex already accepted. See
-[Binding lifetime](channels.md#binding-lifetime).
+[Pairing and pending deliveries](channels.md#pairing-and-pending-deliveries).
 
 A fork request can carry a UUID. Control commits its receipt with the new Chat.
 A retry with the same source and boundary returns that Chat; a mismatch returns
@@ -223,15 +224,13 @@ Each subsystem has its own document. This overview gives only the boundaries.
   missed time when it is at most 1 h old; otherwise it records that time as
   skipped. It ignores the older missed times.
 - **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
-  first update that it did not store. A failed reply part stays undelivered.
-  The channel sender retries it with a delay from 5 s to 60 s and after a
-  restart. Confirmed parts are skipped. Telegram errors 400 and 403 skip the
-  rejected part, so an unreachable peer does not block other peers. A crash
-  after remote success but before the local commit can duplicate one part.
+  first update that it did not store. The Outbox retries temporary send errors
+  with backoff and resumes after restart. A permanent error marks the delivery
+  failed and does not block other peers. Telegram does not provide an idempotency
+  key, so a crash before the local receipt commit can duplicate the message.
 - **WeChat API error.** A temporary receive or runtime read error retries after
-  5 s without a settings change or cursor advance. Failed reply parts stay in
-  durable delivery storage.
-  A permanent destination rejection skips the part. Either `ret == -14` or
+  5 s without a settings change or cursor advance. A permanent destination
+  rejection marks the delivery failed. Either `ret == -14` or
   `errcode == -14` pauses API calls for 1 h and sets status to `needs_login`.
   A fresh QR login clears the pause and wakes the sender. Pending replies
   remain available for delivery.
@@ -337,7 +336,7 @@ it is not the source of execution state.
 Keep one transcript projection in the engine. History, snapshots, and live
 events use durable entries and the native Inbox. The live hub owns transport
 and empty-chat attachment, with no second transcript or execution model.
-The Web client also displays a separate [Outbox projection](sessions.md#web-notifications)
+The Web client also displays [explicit Web notifications](sessions.md#web-notifications)
 for explicit Web notifications. That projection does not write native entries.
 
 The tests cover separate behavior and failure cases. Keep restart, duplicate

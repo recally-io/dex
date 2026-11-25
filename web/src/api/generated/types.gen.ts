@@ -1341,7 +1341,7 @@ export type TelegramWebhookInput = {
 
 export type TelegramOptions = {
     silent?: boolean;
-    preview?: '' | 'auto' | 'edit' | 'draft' | 'off';
+    typing?: boolean;
     /**
      * Private chat status reactions. On when unset; false explicitly disables them.
      */
@@ -1465,12 +1465,12 @@ export type MonitorList = {
 
 export type OutboxMessage = {
     id: string;
-    kind: 'reply' | 'proactive' | 'question' | 'routine' | 'system_error';
+    kind: 'reply' | 'proactive' | 'question' | 'routine' | 'system_error' | 'file' | 'control' | 'feedback';
     peer: string;
     topicKey: string;
     body: string;
     reason: string;
-    status: 'pending' | 'delivered' | 'superseded' | 'revoked' | 'failed';
+    status: 'pending' | 'sent' | 'superseded' | 'failed';
     error: string;
     retryAt: number;
     createdAt: number;

@@ -136,8 +136,8 @@ UPDATE conversations SET execution_id = ? WHERE id = ?;
 -- name: CreateSubmission :execrows
 -- A message whose ID or source key exists already is not stored again. An empty when_busy
 -- keeps the column default, so only callers that choose a mode name one.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context, binding_id)
-VALUES (@id, @conversation_id, @content, @attachments, @source_key, @origin, @kind, coalesce(nullif(CAST(@when_busy AS TEXT), ''), 'followUp'), 'pending', @created_at, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'), sqlc.narg(binding_id))
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context)
+VALUES (@id, @conversation_id, @content, @attachments, @source_key, @origin, @kind, coalesce(nullif(CAST(@when_busy AS TEXT), ''), 'followUp'), 'pending', @created_at, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING;
 
 -- name: GetSubmission :one

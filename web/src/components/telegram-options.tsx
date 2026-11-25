@@ -12,7 +12,7 @@ export function TelegramOptionsFields({
   return (
     <>
       <details>
-        <summary className="cursor-pointer text-[13px] text-muted-foreground">Delivery and previews</summary>
+        <summary className="cursor-pointer text-[13px] text-muted-foreground">Delivery and status</summary>
         <div className="mt-3 flex flex-col gap-4">
           <Field label="Silent delivery" hint="Send new bot messages without notification sound.">
             {({ id }) => (
@@ -26,20 +26,15 @@ export function TelegramOptionsFields({
               </Select>
             )}
           </Field>
-          <Field label="Answer preview">
+          <Field label="Typing status" hint="Show typing while a reply is pending.">
             {({ id }) => (
               <Select
                 id={id}
-                value={value.preview || "auto"}
-                onChange={(e) => {
-                  // SAFETY: This select contains only the preview values in the API contract.
-                  onChange({ ...value, preview: e.target.value as TelegramOptions["preview"] });
-                }}
+                value={value.typing === false ? "off" : "on"}
+                onChange={(e) => onChange({ ...value, typing: e.target.value === "on" })}
               >
-                <option value="auto">Draft, with edit fallback</option>
-                <option value="draft">Prefer drafts, with edit fallback</option>
-                <option value="edit">Edit one preview message</option>
-                <option value="off">Off, including typing</option>
+                <option value="off">Off</option>
+                <option value="on">On</option>
               </Select>
             )}
           </Field>

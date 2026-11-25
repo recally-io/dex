@@ -1,8 +1,6 @@
 package telegram
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -30,23 +28,4 @@ func peerID(key string) (int64, error) {
 		return 0, fmt.Errorf("%w: invalid private Telegram peer", channel.ErrPermanent)
 	}
 	return id, nil
-}
-
-func (b *Bot) controlPeerReply(ctx context.Context, peer, text string) error {
-	chatID, err := peerID(peer)
-	if err != nil {
-		return err
-	}
-	for _, part := range renderRich(text) {
-		params := map[string]any{"chat_id": chatID, "rich_message": richContent(part.Rich)}
-		b.presentation(params, "sendRichMessage")
-		err := b.call(ctx, "sendRichMessage", params, nil)
-		if api, ok := errors.AsType[*apiError](err); ok && (api.Code == 400 || api.Code == 403) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }

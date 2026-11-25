@@ -443,51 +443,6 @@ func TestUserReceivesFeishuFileAndReplyAfterRestart(t *testing.T) {
 	f.waitReply(t, "echo: owner survived restart")
 }
 
-func TestUserSeesFeishuThinkingCardBecomeFinalAnswer(t *testing.T) {
-	t.Parallel()
-	// Given a real worker whose tool waits for a local HTTP boundary.
-	f := newFakeFeishu(t)
-	d := startFeishu(t, f, t.TempDir())
-	pairFeishu(t, d, f)
-	d.setModel(t, "bash")
-	release := make(chan struct{})
-	toolServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-release:
-			_, _ = w.Write([]byte("streamed answer"))
-		case <-r.Context().Done():
-		}
-	}))
-	defer toolServer.Close()
-	var once sync.Once
-	defer once.Do(func() { close(release) })
-	// When the run waits, then dex sends a thinking card.
-	f.text(t, "stream", "owner", "p2p", "curl -fsS "+toolServer.URL)
-	f.waitReply(t, "Thinking")
-	// When the final patch fails temporarily, then a later patch restores runtime status.
-	f.mu.Lock()
-	f.fail = true
-	f.mu.Unlock()
-	once.Do(func() { close(release) })
-	waitFeishuStatus(t, d, "error")
-	f.mu.Lock()
-	f.fail = false
-	f.mu.Unlock()
-	f.waitReply(t, "bash: streamed answer")
-	waitFeishuStatus(t, d, "running")
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	found := false
-	for _, method := range f.methods {
-		if method == http.MethodPatch {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("final answer did not patch the preview: %v", f.methods)
-	}
-}
-
 func TestUserGetsPlainTextWhenFeishuRejectsCards(t *testing.T) {
 	t.Parallel()
 	// Given a paired app whose platform rejects interactive cards.
@@ -568,8 +523,10 @@ func TestUserStopsFeishuAnswer(t *testing.T) {
 	pairFeishu(t, d, f)
 	d.setModel(t, "bash")
 	release := make(chan struct{})
+	started := make(chan struct{}, 1)
 	var once sync.Once
 	toolServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started <- struct{}{}
 		select {
 		case <-release:
 			_, _ = w.Write([]byte("released"))
@@ -579,7 +536,11 @@ func TestUserStopsFeishuAnswer(t *testing.T) {
 	defer toolServer.Close()
 	defer once.Do(func() { close(release) })
 	f.text(t, "wait", "owner", "p2p", "curl -fsS "+toolServer.URL)
-	f.waitReply(t, "Thinking")
+	select {
+	case <-started:
+	case <-time.After(15 * time.Second):
+		t.Fatal("tool did not start")
+	}
 	// When the owner types /stop, then the run gets a final unanswered card.
 	f.text(t, "stop", "owner", "p2p", "/stop")
 	f.waitReply(t, "No answer:")
@@ -627,56 +588,6 @@ func TestUserDoesNotGetTextFallbackForTemporaryFeishuFailure(t *testing.T) {
 	if f.textAttempts != before {
 		t.Fatalf("temporary failure sent text fallback: %d", f.textAttempts-before)
 	}
-}
-
-func waitFeishuStatus(t *testing.T, d *dex, want string) {
-	t.Helper()
-	deadline := time.NewTimer(15 * time.Second)
-	defer deadline.Stop()
-	tick := time.NewTicker(20 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		var result struct {
-			Status string `json:"status"`
-		}
-		d.must(t, http.MethodGet, "/api/agents/default/channels/feishu", nil, &result)
-		if result.Status == want {
-			return
-		}
-		select {
-		case <-tick.C:
-		case <-deadline.C:
-			t.Fatalf("status=%s want=%s", result.Status, want)
-		}
-	}
-}
-
-func TestUserSeesFeishuPreviewAfterReconnect(t *testing.T) {
-	t.Parallel()
-	// Given a real tool that waits while its input socket disconnects.
-	f := newFakeFeishu(t)
-	d := startFeishu(t, f, t.TempDir())
-	pairFeishu(t, d, f)
-	d.setModel(t, "bash")
-	release := make(chan struct{})
-	var once sync.Once
-	tool := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-release:
-			_, _ = w.Write([]byte("after reconnect"))
-		case <-r.Context().Done():
-		}
-	}))
-	defer tool.Close()
-	defer once.Do(func() { close(release) })
-	f.mu.Lock()
-	f.disconnectAfterEvent = true
-	f.mu.Unlock()
-	// When the input connection closes before the preview tick, then the preview still appears.
-	f.text(t, "preview-reconnect", "owner", "p2p", "curl -fsS "+tool.URL)
-	f.waitReply(t, "Thinking")
-	once.Do(func() { close(release) })
-	f.waitReply(t, "bash: after reconnect")
 }
 
 func TestUserInvalidFeishuMessageDoesNotBlockLaterInput(t *testing.T) {

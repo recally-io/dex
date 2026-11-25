@@ -178,10 +178,8 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 				close(release)
 				awaitReceipt(t, r, turn)
 			case "revoked":
-				for _, users := range []string{"99", "42"} {
-					if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: users, Options: "{}"}); err != nil {
-						t.Fatal(err)
-					}
+				if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "99", Options: "{}"}); err != nil {
+					t.Fatal(err)
 				}
 				checkReport(r.service, replay, ReportStaged)
 				close(release)

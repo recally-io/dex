@@ -218,7 +218,7 @@ func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
 			t.Fatal(err)
 		}
 		var n int
-		if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE dedup_key = ?`, "routine:"+tc.id).Scan(&n); err != nil {
+		if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE id = ?`, "routine:"+tc.id).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n != tc.wantRows {

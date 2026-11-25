@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -90,11 +91,19 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 		if err != nil {
 			return 0, err
 		}
-		active, err := q.ChannelBindingActive(ctx, original.BindingID)
+		var actor ChannelContext
+		if err := json.Unmarshal([]byte(original.ChannelContext), &actor); err != nil {
+			return 0, err
+		}
+		owner := original.Origin
+		if strings.HasPrefix(owner, "telegram:") {
+			owner = "telegram:" + actor.SenderID
+		}
+		paired, err := q.ChannelPaired(ctx, sqlc.ChannelPairedParams{AgentID: child.AgentID, Peer: owner, AccountID: actor.AccountID})
 		if err != nil {
 			return 0, err
 		}
-		revoke = f.State == "cancelled" || !active || original.ChannelRevoked != 0
+		revoke = f.State == "cancelled" || !paired || original.ChannelRevoked != 0
 		if f.State == "open" && !revoke {
 			guidance = followUpPrompt
 			consume = outcome == "done" && f.StagedReport.Valid && event.ActivationID != 0 && f.NativeActivationID.Int64 == event.ActivationID

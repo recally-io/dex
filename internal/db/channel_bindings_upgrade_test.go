@@ -47,8 +47,8 @@ VALUES ('fixture', 'telegram', '42', 'evt-1', CAST('{"update_id":1}' AS BLOB), 1
 	}
 	t.Cleanup(func() { _ = upgraded.Close() })
 	var status string
-	if err := upgraded.QueryRowContext(ctx, `SELECT status FROM outbox_messages WHERE id = 'old'`).Scan(&status); err != nil || status != "revoked" {
-		t.Fatalf("legacy delivery status = %q, error = %v; want revoked", status, err)
+	if err := upgraded.QueryRowContext(ctx, `SELECT status FROM outbox_messages WHERE id = 'old'`).Scan(&status); err != nil || status != "failed" {
+		t.Fatalf("legacy delivery status = %q, error = %v; want failed", status, err)
 	}
 	var payload []byte
 	if err := upgraded.QueryRowContext(ctx, `SELECT payload FROM channel_webhook_inbox WHERE event_id = 'evt-1'`).Scan(&payload); err != nil || string(payload) != `{"update_id":1}` {

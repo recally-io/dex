@@ -148,8 +148,8 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (i
 }
 
 const createMonitorSubmission = `-- name: CreateMonitorSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context, when_busy, binding_id)
-SELECT ?1, t.conversation_id, ?2, 'null', ?1, root.origin, 'task_result', 'pending', ?3, root.channel_context, 'followUp', root.binding_id
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context, when_busy)
+SELECT ?1, t.conversation_id, ?2, 'null', ?1, root.origin, 'task_result', 'pending', ?3, root.channel_context, 'followUp'
 FROM monitors t JOIN submissions root ON root.id = t.root_request_id
 WHERE t.id = ?4
 ON CONFLICT DO NOTHING

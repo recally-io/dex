@@ -24,12 +24,12 @@ func (b *revokeBeforeSendBot) Parts(reply channel.Reply) []channel.Part {
 	}
 	return []channel.Part{{Text: reply.Answer}}
 }
-func (b *revokeBeforeSendBot) Send(context.Context, string, string, int, channel.Part) (channel.Receipt, error) {
+func (b *revokeBeforeSendBot) Send(context.Context, string, string, channel.Part) (channel.Receipt, error) {
 	b.sends++
 	if b.beforeReceipt != nil {
 		b.beforeReceipt()
 	}
-	return channel.Receipt{MessageIDs: []string{"synthetic-receipt"}}, nil
+	return channel.Receipt{MessageID: "synthetic-receipt"}, nil
 }
 
 func pendingTelegramConclusion(t *testing.T) (*Manager, *sql.DB) {
@@ -55,9 +55,8 @@ INSERT INTO submissions (id,conversation_id,content,status,source_key,origin,kin
 UPDATE submissions SET parent_request_id='original' WHERE id='child-turn';
 INSERT INTO channel_follow_ups (delegation_id,result_id,conversation_id,child_id,parent_request_id,parent_source_key,state)
 VALUES ('child-turn','result:child-turn',1,2,'original','original-key','notified');
-INSERT INTO outbox_messages (id,dedup_key,agent_id,conversation_id,source_submission_id,kind,peer,channel_context,body,created_at,binding_id)
-SELECT 'final','follow-up-final:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4,id
-FROM channel_bindings WHERE agent_id = 'fixture-bot' AND peer = 'telegram:42';`); err != nil {
+INSERT INTO outbox_messages (id,event_id,agent_id,conversation_id,source_submission_id,kind,peer,channel_context,body,created_at)
+VALUES ('final','follow-up-final:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4);`); err != nil {
 		t.Fatal(err)
 	}
 	return manager, conn
@@ -137,11 +136,7 @@ func TestUserRevokedOutboxSnapshotIsNotSentOrConfirmed(t *testing.T) {
 	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "fixture-bot", BotID: "fixture-bot", Owner: "fixture-peer"}); err != nil {
 		t.Fatal(err)
 	}
-	binding, err := q.GetActiveChannelBinding(ctx, sqlc.GetActiveChannelBindingParams{AgentID: "fixture-bot", AccountID: "fixture-bot", Peer: "wechat:fixture-peer", OwnerPeer: "wechat:fixture-peer"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{ID: id, DedupKey: id, BindingID: sql.NullInt64{Int64: binding.ID, Valid: true}, AgentID: "fixture-bot", ConversationID: conv.ID, SourceSubmissionID: source, Kind: "proactive", Peer: "wechat:fixture-peer", Body: "Reviewed conclusion", Status: "pending"}); err != nil {
+	if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{ID: id, EventID: id, ChannelContext: `{"accountId":"fixture-bot"}`, AgentID: "fixture-bot", ConversationID: conv.ID, SourceSubmissionID: source, Kind: "proactive", Peer: "wechat:fixture-peer", Body: "Reviewed conclusion", Status: "pending"}); err != nil {
 		t.Fatal(err)
 	}
 	// Stop revokes the row after the sender loads it but before any platform call.
@@ -154,7 +149,7 @@ func TestUserRevokedOutboxSnapshotIsNotSentOrConfirmed(t *testing.T) {
 		t.Fatal(err)
 	}
 	row, err := q.GetOutboxMessage(ctx, id)
-	if err != nil || bot.sends != 0 || row.Status != "revoked" || row.DeliveredAt.Valid || row.DeliveredParts != 0 || row.RemoteIds != "[]" {
-		t.Fatalf("unsent row was treated as a delivery: sends=%d status=%s deliveredAt=%v parts=%d remote=%s err=%v", bot.sends, row.Status, row.DeliveredAt, row.DeliveredParts, row.RemoteIds, err)
+	if err != nil || bot.sends != 0 || row.Status != "failed" || row.DeliveredAt.Valid || row.RemoteIds != "[]" {
+		t.Fatalf("unsent row was treated as a delivery: sends=%d status=%s deliveredAt=%v remote=%s err=%v", bot.sends, row.Status, row.DeliveredAt, row.RemoteIds, err)
 	}
 }

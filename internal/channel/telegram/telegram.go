@@ -42,8 +42,6 @@ type Config struct {
 	// Pair consumes a code and returns the new allowlist, or nil for an invalid code.
 	Pair    func(context.Context, string, int64) ([]int64, error)
 	Uploads *upload.Store
-	// Watch opens a chat's native preview stream.
-	Watch   func(context.Context, int64) (io.ReadCloser, error)
 	RetryAt int64
 }
 
@@ -76,6 +74,7 @@ func (c Config) botID() string {
 type inbound interface {
 	channel.WebhookInbox
 	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	QueueChannelNotice(ctx context.Context, peer, source string, identity chat.ChannelContext, body string) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
 	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
 	Report(name string, status channel.Status)
@@ -97,8 +96,7 @@ type Bot struct {
 	cfg       Config
 	chats     inbound
 	client    *http.Client
-	previewMu sync.Mutex
-	previews  map[string]*preview
+	typing    sync.WaitGroup
 	rateMu    sync.Mutex
 	retryAt   time.Time
 	albumWake chan struct{}
@@ -118,7 +116,6 @@ func New(cfg Config, chats inbound) *Bot {
 		cfg:       cfg,
 		chats:     chats,
 		client:    client,
-		previews:  map[string]*preview{},
 		retryAt:   time.UnixMilli(cfg.RetryAt),
 		albumWake: make(chan struct{}, 1),
 	}
@@ -145,7 +142,7 @@ func (b *Bot) installCommands(ctx context.Context) {
 func (b *Bot) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	var workers sync.WaitGroup
-	defer func() { cancel(); workers.Wait(); b.closePreviews(ctx) }()
+	defer func() { cancel(); workers.Wait(); b.typing.Wait() }()
 	webhook := b.cfg.Webhook.URL != ""
 	if webhook {
 		// Restart can replay committed events even when registration is unavailable.
@@ -214,27 +211,23 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 	if m.Chat.Type != "private" {
 		return nil
 	}
+	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
+	identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
 	if code, ok := strings.CutPrefix(m.Text, "/start "); ok && b.cfg.Pair != nil {
 		if slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
-			return b.controlReply(ctx, m.Chat.ID, "Telegram is already paired. Send a message to talk to dex.")
+			return b.chats.QueueChannelNotice(ctx, peer, source, identity, "Telegram is already paired. Send a message to talk to dex.")
 		}
 		users, err := b.cfg.Pair(ctx, strings.TrimSpace(code), m.From.ID)
-		if err != nil {
+		if err != nil || users == nil {
 			return err
 		}
-		response := "This pairing code is invalid or expired. Create a new link in dex."
-		if users != nil {
-			b.cfg.AllowedUsers = users
-			response = "Telegram is paired. Send a message to talk to dex. /help lists commands."
-		}
-		return b.controlReply(ctx, m.Chat.ID, response)
+		b.cfg.AllowedUsers = users
+		return b.chats.QueueChannelNotice(ctx, peer, source, identity, "Telegram is paired. Send a message to talk to dex. /help lists commands.")
 	}
 	if !slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
 		slog.Warn("telegram: ignored a message from a user who is not allowed", "user", m.From.ID)
 		return nil
 	}
-	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
 	allowed, err := b.chats.TelegramInputAllowed(ctx, peer, identity)
 	if err != nil {
 		return err
@@ -285,7 +278,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		attachments, err = b.downloadTo(ctx, m, b.cfg.Uploads)
 	}
 	if err != nil {
-		return b.rejectAttachment(ctx, peer, err)
+		return b.rejectAttachment(ctx, peer, source, identity, err)
 	}
 	incoming := m.inbound(m.body(), edited, attachments, identity)
 	content := incoming.Content
@@ -327,7 +320,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return err
 	}
 	if !channel.IsCommand(content) && m.MediaGroupID == "" {
-		b.startPreview(ctx, source, m.Chat.ID)
+		b.showTyping(ctx, source, m.Chat.ID)
 	}
 	return nil
 }
@@ -339,11 +332,6 @@ type apiError struct {
 }
 
 func (e *apiError) Error() string { return fmt.Sprintf("Telegram API %d: %s", e.Code, e.Description) }
-
-// controlReply allows polling to pass a permanently rejected acknowledgement.
-func (b *Bot) controlReply(ctx context.Context, chatID int64, text string) error {
-	return b.controlPeerReply(ctx, channelPrefix+strconv.FormatInt(chatID, 10), text)
-}
 
 func (b *Bot) call(ctx context.Context, method string, params, result any) error {
 	body, err := json.Marshal(params)

@@ -77,11 +77,11 @@ INSERT INTO telegram_album_members (source_key, agent_id, account_id, sender_id,
 			t.Fatalf("sealed input %s = %q, %q, err = %v", id, status, content, err)
 		}
 	}
-	outgoing, err := q.ListPendingOutboxMessages(ctx, sqlc.ListPendingOutboxMessagesParams{AgentID: "default", OriginStart: "telegram:", OriginEnd: "telegram;"})
+	outgoing, err := q.ListPendingOutboxMessages(ctx, sqlc.ListPendingOutboxMessagesParams{AgentID: "default", Channel: sql.NullString{String: "telegram", Valid: true}})
 	if err != nil || len(outgoing) != 0 {
 		t.Fatalf("pending Telegram deliveries = %v, err = %v", outgoing, err)
 	}
-	for id, want := range map[string]string{"private": "revoked", "public": "revoked", "child": "revoked", "negative-peer": "revoked"} {
+	for id, want := range map[string]string{"private": "failed", "public": "failed", "child": "failed", "negative-peer": "failed"} {
 		var status string
 		err := upgraded.QueryRowContext(ctx, `SELECT status FROM outbox_messages WHERE id = ?`, id).Scan(&status)
 		if err != nil || status != want {

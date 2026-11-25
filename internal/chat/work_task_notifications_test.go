@@ -8,7 +8,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserReceivesTaskQuestionsAtPrimaryTarget(t *testing.T) {
+func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	convID, _ := taskParent(t, r)
@@ -34,12 +34,12 @@ func TestUserReceivesTaskQuestionsAtPrimaryTarget(t *testing.T) {
 		id, kind, origin, exit, want string
 		linked                       bool
 	}{
-		{"task-web", "message", "web", "ask_user", "telegram:42", true},
+		{"task-web", "message", "web", "ask_user", "", true},
 		{"task-channel", "message", "telegram:17", "ask_user", "telegram:17", true},
 		{"ordinary-question", "message", "web", "ask_user", "", false},
 		{"ordinary-reply", "message", "web", "", "", true},
-		// A Task alert is a Main system input with the web origin. Its question goes to the primary target.
-		{"task-alert", "task_result", "web", "ask_user", "telegram:42", true},
+		// A Task alert is a Main system input with the web origin. Its question stays in Web.
+		{"task-alert", "task_result", "web", "ask_user", "", true},
 	}
 	for _, tc := range cases {
 		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: tc.id, ConversationID: conv.ID, Kind: tc.kind, Origin: tc.origin, Content: "input", Attachments: "null", CreatedAt: 1})

@@ -6,16 +6,14 @@ WHERE m.source_key = @source_key
 LIMIT 1;
 
 -- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, binding_id)
-VALUES (@agent_id, @source_key, @peer, @channel_key, @command, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'),
-    (SELECT id FROM channel_bindings b WHERE b.id = sqlc.narg(binding_id) AND b.revoked_at IS NULL))
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context)
+VALUES (@agent_id, @source_key, @peer, @channel_key, @command, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING;
 
 -- name: CreateFeedbackCommand :exec
 -- The existing command receipt is the outbox. Store the reply atomically with its source key.
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer, binding_id)
-VALUES (@agent_id, @source_key, @peer, 'main', '/feedback', @channel_context, 1, @answer,
-    (SELECT id FROM channel_bindings b WHERE b.id = sqlc.narg(binding_id) AND b.revoked_at IS NULL))
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer)
+VALUES (@agent_id, @source_key, @peer, 'main', '/feedback', @channel_context, 1, @answer)
 ON CONFLICT DO NOTHING;
 
 -- name: GetChannelCommand :one
@@ -28,8 +26,7 @@ UPDATE channel_commands SET completed = 1, answer = ? WHERE source_key = ?;
 UPDATE channel_commands SET answer = ? WHERE source_key = ?;
 
 -- name: ListChannelCommands :many
-SELECT c.* FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id AND b.revoked_at IS NULL
-WHERE c.agent_id = ? AND c.completed = 0;
+SELECT * FROM channel_commands WHERE agent_id = ? AND completed = 0 AND delivered_at IS NULL;
 
 -- name: ListChannelReplies :many
 -- A reply waits for every earlier unrevoked pending message of the same agent and origin, so a
@@ -56,9 +53,11 @@ UPDATE submissions SET channel_revoked = 1 WHERE id = ?;
 UPDATE submissions SET delivered_at = ? WHERE id = ?;
 
 -- name: ListChannelCommandReplies :many
-SELECT c.* FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id AND b.revoked_at IS NULL
+SELECT c.* FROM channel_commands c
 WHERE c.completed = 1 AND c.delivered_at IS NULL
-AND c.agent_id = @agent_id AND b.peer LIKE @prefix || '%' ORDER BY c.rowid;
+AND c.agent_id = @agent_id AND c.peer LIKE @prefix || '%'
+AND NOT EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = c.source_key)
+ORDER BY c.rowid;
 
 -- name: MarkChannelCommandDelivered :exec
 UPDATE channel_commands SET delivered_at = @delivered_at,
@@ -68,18 +67,6 @@ WHERE source_key = @source_key;
 -- name: CountChannelPending :one
 SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND c.agent_id = @agent_id AND s.origin = @peer;
-
--- name: AdvanceChannelReply :exec
-UPDATE submissions SET delivered_parts = delivered_parts + 1, channel_remote_ids = @remote_ids,
-    channel_retry_at = 0, channel_group_fallback = 0, channel_group_cursor = 0 WHERE id = @id;
-
--- name: StartChannelGroupFallback :exec
-UPDATE submissions SET channel_group_fallback = 1
-WHERE id = @id AND delivered_parts = @part AND channel_group_cursor = 0;
-
--- name: AdvanceChannelGroupMember :exec
-UPDATE submissions SET channel_group_cursor = channel_group_cursor + 1,
-    channel_remote_ids = @remote_ids, channel_retry_at = 0 WHERE id = @id;
 
 -- name: TelegramCredentialOwner :one
 SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id

@@ -50,24 +50,12 @@ func TestUserSeesWebChildAndMonitorNotificationsInTheirOrigin(t *testing.T) {
 	child := waitTimelineNotice(t, chatWatch, "Reviewed child conclusion", false)
 	d.waitSettled(t, chatID)
 	conn := sessionDB(t, d)
-	// Model delivery bookkeeping on a notice that also had a channel target.
-	if _, err := conn.ExecContext(t.Context(), `UPDATE outbox_messages
-		SET status = 'superseded', topic_key = 'review', peer = 'telegram:42', delivered_at = NULL WHERE id = ?`, child.Id); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := conn.ExecContext(t.Context(), `UPDATE submissions SET channel_revoked = 1
-		WHERE id = (SELECT source_submission_id FROM outbox_messages WHERE id = ?)`, child.Id); err != nil {
-		t.Fatal(err)
-	}
 	reloaded := d.watch(t, chatID)
-	reloaded.until(t, "initial notification page after delivery changes", func(tr *transcript) bool { return len(tr.noticeEvents) > 0 })
-	if page := reloaded.tr.noticeEvents[0]; !page.Initial || !slices.Equal(page.Notifications, []api.TimelineNotification{child}) {
-		t.Fatalf("delivery changes must not hide the Web notice: %+v", page)
-	}
+	waitTimelineNotice(t, reloaded, child.Text, true)
 	var outbox api.OutboxMessageList
 	d.must(t, http.MethodGet, chatPath(chatID, "outbox"), nil, &outbox)
-	if !slices.ContainsFunc(outbox.Messages, func(m api.OutboxMessage) bool { return m.Id == child.Id && m.Body == child.Text }) {
-		t.Fatalf("notice does not reference its durable Outbox row: %+v", outbox)
+	if len(outbox.Messages) != 0 {
+		t.Fatalf("Web-only notice entered the channel Outbox: %+v", outbox)
 	}
 
 	// A Web-started Monitor posts its own notice to Main, not to the Chat.
@@ -91,9 +79,9 @@ func TestUserSeesWebChildAndMonitorNotificationsInTheirOrigin(t *testing.T) {
 
 	// Given more notices than fit in the snapshot, the earliest real child conclusion is paged.
 	if _, err := conn.ExecContext(t.Context(), `WITH RECURSIVE fixture(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM fixture WHERE n < 31)
-		INSERT INTO outbox_messages (id, dedup_key, agent_id, conversation_id, source_submission_id, kind, body, status, created_at)
-		SELECT 'fixture-'||n, 'tool:fixture-'||n, agent_id, conversation_id, source_submission_id, kind, 'Fixture notice', status, created_at+n
-		FROM outbox_messages CROSS JOIN fixture WHERE id = ?`, child.Id); err != nil {
+		INSERT INTO web_notifications (id, event_id, agent_id, conversation_id, source_submission_id, body, created_at)
+		SELECT 'fixture-'||n, 'tool:fixture-'||n, agent_id, conversation_id, source_submission_id, 'Fixture notice', created_at+n
+		FROM web_notifications CROSS JOIN fixture WHERE id = ?`, child.Id); err != nil {
 		t.Fatal(err)
 	}
 	w := d.watch(t, chatID)
@@ -111,7 +99,7 @@ func TestUserSeesWebChildAndMonitorNotificationsInTheirOrigin(t *testing.T) {
 	page = api.HistoryPage{}
 	d.must(t, http.MethodGet, chatPath(chatID, "history?limit=1&beforeNotification="+url.QueryEscape(cursor)), nil, &page)
 	if page.Notifications == nil || !slices.Equal(*page.Notifications, []api.TimelineNotification{child}) || page.NextBeforeNotification != nil {
-		t.Fatalf("oldest page did not contain the original Outbox entry: %+v", page)
+		t.Fatalf("oldest page did not contain the original Web notice: %+v", page)
 	}
 }
 

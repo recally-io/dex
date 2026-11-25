@@ -20,11 +20,11 @@ func TestUserFeishuPostAcceptLostResponseReusesSameUUID(t *testing.T) {
 	f.lostAccepts = 1
 	f.mu.Unlock()
 
-	// Use a >4000B payload so part 1 is always sent via POST with deliveryUUID(id, 1) (not preview PATCH).
+	// The final summary must use the same UUID on every attempt.
 	long := strings.Repeat("lost-resp ", 500) + "TAIL_MARKER"
 	f.text(t, "lost-resp-1", "owner", "p2p", long)
 	eventually(t, "feishu outbox delivered after lost response retry", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE status='delivered' AND peer='feishu:owner'")
+		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE status='sent' AND peer='feishu:owner' AND kind='reply'")
 		return n == 1, n
 	})
 
@@ -100,13 +100,9 @@ func TestUserFeishuCredentialRotationRevokesPendingOutbox(t *testing.T) {
 	// When Feishu credentials are deleted (or rotated to a new app), the pending outbox row is revoked atomically.
 	d.must(t, http.MethodDelete, "/api/agents/default/channels/feishu", nil, nil)
 	eventually(t, "revoked feishu outbox row", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE status='revoked' AND peer='feishu:owner'")
+		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE status='failed' AND peer='feishu:owner'")
 		return n == 1, n
 	})
-	if n := count(t, conn, `SELECT count(*) FROM submissions s JOIN channel_bindings b ON b.id = s.binding_id
-WHERE s.origin = 'feishu:owner' AND b.revoked_at IS NOT NULL`); n != 1 {
-		t.Fatalf("expected one submission with an inactive binding, got %d", n)
-	}
 
 	// And even after re-enabling sends, the revoked message is never delivered.
 	f.mu.Lock()

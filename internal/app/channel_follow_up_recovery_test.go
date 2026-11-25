@@ -246,7 +246,7 @@ func TestUserPendingFollowUpRecoversOrIsRevokedBeforeTelegram(t *testing.T) {
 			conn := sessionDB(t, d)
 			// Given a final Outbox write committed behind a durable dispatch gate. No
 			// request has reached the platform; this is not an uncertain send.
-			execSQL(t, conn, `CREATE TRIGGER hold_follow_up_dispatch AFTER INSERT ON outbox_messages WHEN NEW.dedup_key LIKE 'follow-up-final:%'
+			execSQL(t, conn, `CREATE TRIGGER hold_follow_up_dispatch AFTER INSERT ON outbox_messages WHEN NEW.event_id LIKE 'follow-up-final:%'
 BEGIN UPDATE outbox_messages SET retry_at=9000000000000 WHERE id=NEW.id; END`)
 			const title = "Held conclusion"
 			f.message(1, 42, 42, childJSON(t, map[string]any{"title": title, "message": "private result", "provider": "faux", "modelId": "echo", "follow_up": true}))
@@ -269,7 +269,7 @@ BEGIN UPDATE outbox_messages SET retry_at=9000000000000 WHERE id=NEW.id; END`)
 				assertDeliveryDisposition(t, conn, work.ResultID, "revoked_or_skipped_unconfirmed")
 			}
 			d.stop()
-			execSQL(t, conn, `DROP TRIGGER hold_follow_up_dispatch; UPDATE outbox_messages SET retry_at=0 WHERE dedup_key LIKE 'follow-up-final:%'`)
+			execSQL(t, conn, `DROP TRIGGER hold_follow_up_dispatch; UPDATE outbox_messages SET retry_at=0 WHERE event_id LIKE 'follow-up-final:%'`)
 			d = startDex(t, dir, f.srv.URL)
 			if cancel == "recover" {
 				assertFollowUpTelegramReceipt(t, conn, work.ResultID, followUpTelegramSend(t, f, "Reviewed channel conclusion"))
@@ -286,14 +286,14 @@ BEGIN UPDATE outbox_messages SET retry_at=9000000000000 WHERE id=NEW.id; END`)
 			if got := entries.Load(); got != want {
 				t.Fatalf("follow-up platform entries after replay: got %d want %d", got, want)
 			}
-			if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id=? AND dedup_key LIKE 'follow-up-final:%'`, work.ResultID); n != 1 {
+			if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id=? AND event_id LIKE 'follow-up-final:%'`, work.ResultID); n != 1 {
 				t.Fatalf("follow-up Outbox entries after replay: %d", n)
 			}
 		})
 	}
 }
 
-func TestUserOutboxDiagnosticDistinguishesInAppOnly(t *testing.T) {
+func TestUserWebOnlyNoticeDoesNotEnterTheOutbox(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
@@ -301,8 +301,10 @@ func TestUserOutboxDiagnosticDistinguishesInAppOnly(t *testing.T) {
 	conn := sessionDB(t, d)
 	id := d.send(t, main, `notify_user {"content":"In-app only"}`)
 	waitResultSubmission(t, conn, id, "done")
-	assertDeliveryDisposition(t, conn, id, "in_app_only")
-	if n := count(t, conn, `SELECT count(*) FROM outbox_delivery_diagnostics WHERE source_submission_id=? AND peer='' AND remote_ids='[]'`, id); n != 1 {
-		t.Fatalf("in-app notification has platform routing or a remote receipt: %d", n)
+	if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ?`, id); n != 0 {
+		t.Fatalf("Web-only notice has an Outbox delivery: %d", n)
+	}
+	if n := count(t, conn, `SELECT count(*) FROM web_notifications WHERE source_submission_id = ?`, id); n != 1 {
+		t.Fatalf("Web-only notice is missing: %d", n)
 	}
 }

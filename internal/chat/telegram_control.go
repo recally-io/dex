@@ -80,14 +80,7 @@ func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agent
 	if actor.AccountID != original.AccountID || actor.SenderID != original.SenderID || actor.ChatID != original.ChatID || actor.TopicID != original.TopicID || actor.TopicShared != original.TopicShared || actor.MessageID != row.MessageID {
 		return ErrTelegramUnauthorized
 	}
-	allowed, err := q.ChannelBindingActive(ctx, command.BindingID)
-	if err != nil {
-		return err
-	}
-	if !allowed {
-		return ErrTelegramUnauthorized
-	}
-	return nil
+	return authorizeTelegramActor(ctx, q, agentID, actor.AccountID, actor.SenderID)
 }
 
 // NonPrivateTelegramInput rejects legacy group routes and actor metadata.
