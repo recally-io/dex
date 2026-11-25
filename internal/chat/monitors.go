@@ -44,10 +44,10 @@ func monitorInfo(row sqlc.Monitor) MonitorInfo {
 
 func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a MonitorSetArgs) (MonitorInfo, error) {
 	if strings.TrimSpace(a.Prompt) == "" {
-		return MonitorInfo{}, errors.New("monitor_set_schedule requires non-empty prompt")
+		return MonitorInfo{}, errors.New("monitor_set requires non-empty prompt")
 	}
 	if (a.At == "" && a.DelaySeconds <= 0) || (a.At != "" && a.DelaySeconds > 0) {
-		return MonitorInfo{}, errors.New("monitor_set_schedule requires exactly one of at or delaySeconds")
+		return MonitorInfo{}, errors.New("monitor_set requires exactly one of at or delaySeconds")
 	}
 	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
@@ -200,24 +200,7 @@ func (s *Service) ToolMonitorList(ctx context.Context, r engine.TaskContext) ([]
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListMonitorsByConversation(ctx, conv.ID)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]MonitorInfo, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, monitorInfo(row))
-	}
-	if s.background != nil {
-		commands, err := s.background.List(ctx, conv.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range commands {
-			out = append(out, backgroundInfo(row))
-		}
-	}
-	return out, nil
+	return s.listMonitors(ctx, conv.ID)
 }
 
 func (s *Service) ToolMonitorCancel(ctx context.Context, r engine.TaskContext, id string) (MonitorInfo, error) {
@@ -225,15 +208,7 @@ func (s *Service) ToolMonitorCancel(ctx context.Context, r engine.TaskContext, i
 	if err != nil {
 		return MonitorInfo{}, err
 	}
-	kind, rawID, _ := strings.Cut(id, "-")
-	switch kind {
-	case "command":
-		return s.cancelCommandMonitor(ctx, conv.ID, rawID)
-	case "schedule":
-		return s.cancelMonitor(ctx, conv.AgentID, conv.ID, rawID)
-	default:
-		return MonitorInfo{}, ErrNotFound
-	}
+	return s.cancelMonitor(ctx, conv.AgentID, conv.ID, strings.TrimPrefix(id, "schedule-"))
 }
 
 // ListMonitors returns active and recent follow-up monitors of a chat.
@@ -241,6 +216,10 @@ func (s *Service) ListMonitors(ctx context.Context, agentID string, chatID int64
 	if _, err := s.Get(ctx, agentID, chatID); err != nil {
 		return nil, err
 	}
+	return s.listMonitors(ctx, chatID)
+}
+
+func (s *Service) listMonitors(ctx context.Context, chatID int64) ([]MonitorInfo, error) {
 	rows, err := s.q.ListMonitorsByConversation(ctx, chatID)
 	if err != nil {
 		return nil, err
@@ -397,7 +376,7 @@ func checkMonitorCapacity(ctx context.Context, q *sqlc.Queries, conversationID i
 		return err
 	}
 	if scheduled+int64(len(commands)) >= maxActiveMonitors {
-		return fmt.Errorf("session already has %d active Monitors", maxActiveMonitors)
+		return fmt.Errorf("session already has %d active Monitors and Processes combined", maxActiveMonitors)
 	}
 	return nil
 }
@@ -443,7 +422,7 @@ func monitorChain(ctx context.Context, q *sqlc.Queries, source sqlc.Submission) 
 			return source.ID, depth, nil
 		}
 	}
-	return "", 0, fmt.Errorf("follow-up monitor chain depth limit (%d) reached; wait for user input before setting another Monitor", maxMonitorChainDepth)
+	return "", 0, fmt.Errorf("wake chain depth limit (%d) reached; wait for user input before setting a Monitor or starting a Process", maxMonitorChainDepth)
 }
 
 func monitorForEvent(ctx context.Context, q *sqlc.Queries, eventID string) (sqlc.Monitor, error) {

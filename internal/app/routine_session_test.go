@@ -110,7 +110,7 @@ func TestUserBoundRoutineCanReportItsOwnResult(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
 	id := d.newSession(t).ID
-	const report = `report_check {"outcome":"unchanged","summary":"bound check completed"}`
+	const report = `automation_report {"outcome":"unchanged","summary":"bound check completed"}`
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(id, report), &routine, http.StatusCreated)
 
@@ -122,8 +122,8 @@ func TestUserBoundRoutineCanReportItsOwnResult(t *testing.T) {
 	if got.Outcome != "unchanged" || got.Summary != "bound check completed" || got.ChatID != id {
 		t.Fatalf("run did not store its report: %+v", got)
 	}
-	d.send(t, id, `report_check {"outcome":"changed","summary":"not a routine"}`)
-	d.watch(t, id).until(t, "ordinary input is denied at the reporting boundary", answeredWith("report_check is only available during a Routine run"))
+	d.send(t, id, `automation_report {"outcome":"changed","summary":"not a routine"}`)
+	d.watch(t, id).until(t, "ordinary input is denied at the reporting boundary", answeredWith("automation_report is only available during a Routine run"))
 	if runs := d.runs(t, routine.ID); len(runs) != 1 {
 		t.Fatalf("ordinary input created a Routine run: %+v", runs)
 	}
@@ -319,7 +319,7 @@ func TestUserFailedBoundRoutineDoesNotWakeTheChildsParent(t *testing.T) {
 	got := settledRoutine(t, d, routine.ID, run.ID)
 
 	// Then the run owns that failure; no automatic child error result wakes the parent.
-	if got.Outcome != "failed" || got.Status != "failed" || got.ChatID != child || got.Reason == "run ended without report_check" {
+	if got.Outcome != "failed" || got.Status != "failed" || got.ChatID != child || got.Reason == "run ended without automation_report" {
 		t.Fatalf("run = %+v", got)
 	}
 	if rows := resultRows(t, conn, parent); slices.ContainsFunc(rows, func(row resultRow) bool { return row.id == "err:"+run.ID }) {
@@ -396,12 +396,12 @@ func TestUserBoundRoutineKeepsReportingWhenAnOrdinaryTurnQueues(t *testing.T) {
 		}
 		offered := false
 		for _, tool := range request.Tools {
-			offered = offered || tool.Function.Name == "report_check"
+			offered = offered || tool.Function.Name == "automation_report"
 		}
 		instructed := false
 		for _, message := range slices.Backward(request.Messages) {
 			if message.Role == "user" {
-				instructed = strings.Contains(fmt.Sprint(message.Content), "Before this automation run ends, call report_check once")
+				instructed = strings.Contains(fmt.Sprint(message.Content), "Before this automation run ends, call automation_report once")
 				break
 			}
 		}
@@ -413,7 +413,7 @@ func TestUserBoundRoutineKeepsReportingWhenAnOrdinaryTurnQueues(t *testing.T) {
 			case <-r.Context().Done():
 				return
 			}
-			_, _ = fmt.Fprintln(w, `data: {"id":"fixture-tool","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"report_check","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"fixture checked\"}"}}]},"finish_reason":null}]}`)
+			_, _ = fmt.Fprintln(w, `data: {"id":"fixture-tool","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"automation_report","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"fixture checked\"}"}}]},"finish_reason":null}]}`)
 			_, _ = fmt.Fprint(w, "\n"+`data: {"id":"fixture-tool","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n\n")
 			return
 		}
@@ -455,7 +455,7 @@ func TestUserBoundRoutineKeepsReportingWhenAnOrdinaryTurnQueues(t *testing.T) {
 		select {
 		case got := <-offers:
 			if got != want {
-				t.Fatalf("report_check request = %+v, want %+v", got, want)
+				t.Fatalf("automation_report request = %+v, want %+v", got, want)
 			}
 		default:
 			t.Fatal("missing fixture model request")

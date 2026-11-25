@@ -18,7 +18,7 @@ title dex: always-on agent inbox, run exit modes, outbox, and monitors
 top to bottom direction
 
 rectangle "User inputs\nWeb / Telegram / Feishu / WeChat" as user_in
-rectangle "Internal producers\nChild results + command Monitor wakes + Routines" as sys_in
+rectangle "Internal producers\nChild results + Process wakes + Routines" as sys_in
 database "monitors\nPrompt or script; bounded runs and lifetime" as monitors
 rectangle "Scheduler\nCheck target and claim due work" as sched
 
@@ -44,12 +44,12 @@ inbox --> sys_turn : System events only
 user_turn --> outbox : Final reply to a channel input
 sys_turn --> tools : Optional call
 tools --> outbox : notify_user
-tools --> monitors : monitor_set_schedule (bounded)
+tools --> monitors : monitor_set (bounded)
 
 sched --> outbox : Pure Routine alerts
 outbox --> dispatch : Deliver one platform message
 note right of sys_turn
-  Command Monitors with wake="none" send no wake-up.
+  Processes with wake="none" send no wake-up.
   Silent System Turns emit 0 channel messages.
 end note
 @enduml

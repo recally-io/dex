@@ -3,8 +3,8 @@
 This document describes Routines, schedules, and their results.
 
 Main and writable Chat conversations have five routine tools:
-`list_routines`, `get_routine`, `create_routine`, `update_routine`, and
-`run_routine`. Typed engine callbacks call the automation service. The model
+`automation_list`, `automation_get`, `automation_create`, `automation_update`, and
+`automation_run`. Typed engine callbacks call the automation service. The model
 cannot select another bot. Business validation checks the calling execution
 and input before it exposes routine data or changes. Automation, task, and
 dream conversations cannot use these tools.
@@ -21,6 +21,11 @@ operation key. The control database commits its operation receipt with the
 routine change or run input. Replay returns the saved result. It does not
 repeat the write or advance the schedule. A new mutation requires an active
 user input; a saved receipt can still be read after that input settles.
+
+After an upgrade, PiG cannot resume a pending call under a retired tool name.
+A committed change stays saved even if PiG did not save the tool result.
+Check the saved automation or run before you retry. Update saved prompts that
+refer to retired tool names.
 
 An automation runs a prompt on a schedule.
 [`automation.Service`](../../internal/automation/automation.go) stores
@@ -42,7 +47,7 @@ counts as overlap. Stop and Clear work on the session as usual.
 
 A routine selects its execution environment with `environmentId`: empty follows
 the bot, and `local` or an SSH environment pins the routine. E2B and runner
-environments are not available as explicit Routine selections. `create_routine` takes the
+environments are not available as explicit Routine selections. `automation_create` takes the
 environment and the cwd of the chat that calls it. A run never falls back to
 another machine. Before a run, outside any transaction, `Preflight` resolves the
 effective environment and checks it: a removed target skips the run, and an SSH
@@ -51,7 +56,7 @@ the run. E2B and runner targets are not opened, because that starts the work.
 The input transaction resolves the environment again under the writer lock and
 stores the run or the skip only when it is still the checked one and the routine
 row did not change, also for a manual run; otherwise a manual run fails with 409
-and can run again, and a scheduled run is checked again next minute. `run_routine` uses the same preflight
+and can run again, and a scheduled run is checked again next minute. `automation_run` uses the same preflight
 before its tool transaction. The skip reason names the environment. A change of
 the environment without a new cwd clears the cwd. A change of the bot's
 environment clears the cwd of the routines that follow the bot.
@@ -105,7 +110,7 @@ An automation can store a project `cwd`. The API uses the Chat path validator.
 In `new` and `reuse` mode, each run sets or clears its chat's cwd before it stores the input. Project
 skills therefore follow the run directory, including when a chat is reused.
 
-Only a Routine input can write a report with `report_check`, including a run
+Only a Routine input can write a report with `automation_report`, including a run
 bound to an existing session. The tool is visible in unscoped sessions, but
 checks the current input's source receipt before it writes a result. Bound
 Routine inputs include reporting instructions. A failed Routine run in a child

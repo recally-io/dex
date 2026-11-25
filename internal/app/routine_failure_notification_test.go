@@ -98,7 +98,7 @@ func assertRoutineOutbox(t *testing.T, conn *sql.DB, runID string, want bool) {
 
 func TestUserRoutineFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing.T) {
 	t.Parallel()
-	// Given a routine using an explicit authorized target and the faux report_check model.
+	// Given a routine using an explicit authorized target and the faux automation_report model.
 	f := newFakeTelegram(t)
 	f.failSend.Store(true)
 	d := startTelegram(t, f, t.TempDir(), 42)
@@ -120,10 +120,10 @@ func TestUserRoutineFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing.T)
 		{"failed", "Timed out", "one", true, true},
 	} {
 		// When the model reports each result in order.
-		body["prompt"] = fmt.Sprintf(`report_check {"outcome":%q,"summary":%q,"changeKey":%q}`, step.outcome, step.summary, step.key)
+		body["prompt"] = fmt.Sprintf(`automation_report {"outcome":%q,"summary":%q,"changeKey":%q}`, step.outcome, step.summary, step.key)
 		d.must(t, http.MethodPut, "/api/agents/default/automations/"+id, body, nil)
 		run := settledRoutine(t, d, id, d.runNow(t, id).ID)
-		// Then the alert decision is independent of report_check business deduplication.
+		// Then the alert decision is independent of automation_report business deduplication.
 		if run.Outcome != step.outcome || run.Summary != step.summary || run.Duplicate != step.businessDuplicate {
 			t.Fatalf("result: %+v, want %+v", run, step)
 		}

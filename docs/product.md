@@ -393,14 +393,14 @@ sandbox** in Bot settings. The SDK
 requests cancellation of local commands and MCP calls. It does not guarantee
 that detached processes or remote jobs stop. A completed MCP call can return
 its report. CLI tools must be logged in and run without user input. Long work
-runs as a command Monitor (`monitor_set_command`): dex tracks it, wakes the
+runs as a Process (`process_start`): dex tracks it, wakes the
 session when it ends, and ends it when the session stops or dex shuts
 down. A crash of dex can leave the process; the command then shows as unknown.
 A turn can supervise another process it started, such as a worker in a terminal
 tab, but must stop it before the final answer.
 
 Status: the web UI, Telegram, WeChat, Feishu / Lark, durable messages,
-schedule and command Monitors, skills, and MCP servers are available.
+Monitors, Processes, skills, and MCP servers are available.
 The API, web UI, and channels support several agents. One bot credential can
 belong to only one agent. A conflict names the agent that already uses it. Project bindings, task routing between agents, group chats,
 and task-specific automation result routing are later work. Other chat channels are not available.
@@ -465,7 +465,7 @@ project. Project skills come from
 
 The system prompt always includes a guide to these files, even with no
 skills. It explains paths, file formats, environment use, and Reload. It
-contains no vault secret names or values. `vault_list` returns secret names
+contains no vault secret names or values. `secret_list` returns secret names
 and metadata only.
 
 Tools start from the user's login shell environment, so a value that the

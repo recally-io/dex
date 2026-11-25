@@ -235,7 +235,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 						}),
 						chat.SessionExtension(id, sessions), chat.SessionReadExtension(id, sessions),
 						chat.MonitorExtension(rt, chat.MonitorTools{
-							Command: chats.ToolMonitorCommand, Set: chats.ToolMonitorSet, List: chats.ToolMonitorList, Cancel: chats.ToolMonitorCancel,
+							StartProcess: chats.ToolProcessStart, ListProcesses: chats.ToolProcessList, StopProcess: chats.ToolProcessStop,
+							Set: chats.ToolMonitorSet, List: chats.ToolMonitorList, Cancel: chats.ToolMonitorCancel,
 						}),
 					},
 					"memory": {chat.WorkLoopExtension(), artifact.Extension(rt, deliverArtifact)},

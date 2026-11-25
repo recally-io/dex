@@ -19,7 +19,7 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
 	chatID := d.newSession(t).ID
-	d.send(t, chatID, `monitor_set_schedule {"delaySeconds":300,"prompt":"check build status"}`)
+	d.send(t, chatID, `monitor_set {"delaySeconds":300,"prompt":"check build status"}`)
 	d.waitSettled(t, chatID)
 
 	// When the user queries monitors and outbox for the chat.

@@ -60,7 +60,7 @@ func TestUserSeesWebChildAndMonitorNotificationsInTheirOrigin(t *testing.T) {
 
 	// A Web-started Monitor posts its own notice to Main, not to the Chat.
 	d.setModel(t, "tool")
-	d.send(t, mainID, `monitor_set_schedule {"delaySeconds":60,"prompt":"notify_user {\"content\":\"Monitor conclusion\"}"}`)
+	d.send(t, mainID, `monitor_set {"delaySeconds":60,"prompt":"notify_user {\"content\":\"Monitor conclusion\"}"}`)
 	d.waitSettled(t, mainID)
 	if _, err := conn.ExecContext(t.Context(), `UPDATE monitors SET due_at = ? WHERE conversation_id = ?`, time.Now().UnixMilli(), mainID); err != nil {
 		t.Fatal(err)

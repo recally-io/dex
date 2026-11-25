@@ -27,7 +27,7 @@ func TestUserRoutineDeliversToPairedWechatOwner(t *testing.T) {
 	if len(targets.Targets) != 1 {
 		t.Fatalf("targets=%+v", targets)
 	}
-	body := map[string]any{"name": "WeChat check", "prompt": `report_check {"outcome":"changed","summary":"wechat notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
+	body := map[string]any{"name": "WeChat check", "prompt": `automation_report {"outcome":"changed","summary":"wechat notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
 	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
 	// When the routine settles, the owner receives the summary with its context.
@@ -55,7 +55,7 @@ func TestUserRoutineDeliversToPairedFeishuOwner(t *testing.T) {
 	if len(targets.Targets) != 1 {
 		t.Fatalf("targets=%+v", targets)
 	}
-	body := map[string]any{"name": "Feishu check", "prompt": `report_check {"outcome":"changed","summary":"feishu notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
+	body := map[string]any{"name": "Feishu check", "prompt": `automation_report {"outcome":"changed","summary":"feishu notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
 	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
 	// When the routine settles, the platform receives its summary.
@@ -78,7 +78,7 @@ func TestUserRoutineNotificationRetriesAfterRestart(t *testing.T) {
 		} `json:"targets"`
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/notification-targets", nil, &targets)
-	body := map[string]any{"name": "Retry", "prompt": `report_check {"outcome":"changed","summary":"retry result"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
+	body := map[string]any{"name": "Retry", "prompt": `automation_report {"outcome":"changed","summary":"retry result"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
 	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
 	run := d.runNow(t, routine["id"].(string))
@@ -114,7 +114,7 @@ func TestUserRoutineDeliversToAuthorizedTelegramOwner(t *testing.T) {
 	if len(targets.Targets) != 1 {
 		t.Fatalf("targets: %+v", targets)
 	}
-	body := map[string]any{"name": "Check", "prompt": `report_check {"outcome":"changed","summary":"fixture notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
+	body := map[string]any{"name": "Check", "prompt": `automation_report {"outcome":"changed","summary":"fixture notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
 	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
 	// When the routine finishes.
