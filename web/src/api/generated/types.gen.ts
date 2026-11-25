@@ -143,6 +143,67 @@ export type BoardTaskRef = {
     assigneeBotId: string;
 };
 
+export type BoardExecutionAttach = {
+    harness?: 'claude-code' | 'codex' | 'opencode' | 'custom';
+    machineId?: string;
+    hostMeta?: BoardExecutionHost;
+    workspacePath?: string;
+    gitBranch?: string;
+    externalSessionId?: string;
+    leaseSeconds?: number;
+};
+
+export type BoardExecutionHost = {
+    hostname?: string;
+};
+
+export type BoardExecutionHeartbeat = {
+    gitBranch?: string;
+    externalSessionId?: string;
+    leaseSeconds?: number;
+};
+
+export type BoardExecutionFinish = {
+    outcome: 'completed' | 'failed';
+    summary?: string;
+};
+
+export type BoardExecution = {
+    id: string;
+    taskKey?: string;
+    botId: string;
+    kind: 'dex_session' | 'external_agent';
+    state: 'dispatched' | 'running' | 'idle' | 'completed' | 'failed' | 'stale' | 'cancelled';
+    harness?: string;
+    machineId?: string;
+    runnerName?: string;
+    hostname?: string;
+    workspacePath?: string;
+    gitBranch?: string;
+    externalSessionId?: string;
+    dispatchId?: string;
+    leaseEpoch: number;
+    leaseExpiresAt?: number;
+    lastHeartbeatAt?: number;
+    startedAt: number;
+    endedAt?: number;
+};
+
+export type BoardTokenIssue = {
+    execution: BoardExecution;
+    boardToken: string;
+};
+
+export type BoardExecutionList = {
+    executions: Array<BoardExecution>;
+};
+
+export type BoardExternalTask = {
+    task: BoardTaskRef;
+    entries: Array<BoardTaskEntry>;
+    nextAfterSeq: number;
+};
+
 export type BoardTaskDetail = {
     task: BoardTaskSummary;
     canSplit: boolean;
@@ -2431,6 +2492,264 @@ export type ReviewBoardTaskResponses = {
 };
 
 export type ReviewBoardTaskResponse = ReviewBoardTaskResponses[keyof ReviewBoardTaskResponses];
+
+export type AttachBoardExecutionData = {
+    body: BoardExecutionAttach;
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}/executions/attach';
+};
+
+export type AttachBoardExecutionErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+};
+
+export type AttachBoardExecutionError = AttachBoardExecutionErrors[keyof AttachBoardExecutionErrors];
+
+export type AttachBoardExecutionResponses = {
+    /**
+     * Execution and one-time Board Token.
+     */
+    201: BoardTokenIssue;
+};
+
+export type AttachBoardExecutionResponse = AttachBoardExecutionResponses[keyof AttachBoardExecutionResponses];
+
+export type ResumeBoardExecutionData = {
+    body: BoardExecutionAttach;
+    path: {
+        executionId: string;
+    };
+    query?: never;
+    url: '/api/board/executions/{executionId}/resume';
+};
+
+export type ResumeBoardExecutionErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+};
+
+export type ResumeBoardExecutionError = ResumeBoardExecutionErrors[keyof ResumeBoardExecutionErrors];
+
+export type ResumeBoardExecutionResponses = {
+    /**
+     * Execution and one-time Board Token.
+     */
+    200: BoardTokenIssue;
+};
+
+export type ResumeBoardExecutionResponse = ResumeBoardExecutionResponses[keyof ResumeBoardExecutionResponses];
+
+export type ListBoardExecutionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        taskKey?: string;
+        machineId?: string;
+        kind?: string;
+        state?: string;
+    };
+    url: '/api/board/executions';
+};
+
+export type ListBoardExecutionsErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+};
+
+export type ListBoardExecutionsError = ListBoardExecutionsErrors[keyof ListBoardExecutionsErrors];
+
+export type ListBoardExecutionsResponses = {
+    /**
+     * Request succeeded.
+     */
+    200: BoardExecutionList;
+};
+
+export type ListBoardExecutionsResponse = ListBoardExecutionsResponses[keyof ListBoardExecutionsResponses];
+
+export type ReadBoardExternalTaskData = {
+    body?: never;
+    path?: never;
+    query?: {
+        afterSeq?: number;
+        limit?: number;
+    };
+    url: '/api/board/external/task';
+};
+
+export type ReadBoardExternalTaskErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The execution lease has expired or the claim is no longer current. Error is claim_lost.
+     */
+    409: Error;
+};
+
+export type ReadBoardExternalTaskError = ReadBoardExternalTaskErrors[keyof ReadBoardExternalTaskErrors];
+
+export type ReadBoardExternalTaskResponses = {
+    /**
+     * Request succeeded.
+     */
+    200: BoardExternalTask;
+};
+
+export type ReadBoardExternalTaskResponse = ReadBoardExternalTaskResponses[keyof ReadBoardExternalTaskResponses];
+
+export type PostBoardExternalEntryData = {
+    body: BoardEntryCreate;
+    path?: never;
+    query?: never;
+    url: '/api/board/external/entries';
+};
+
+export type PostBoardExternalEntryErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The execution lease has expired or the claim is no longer current. Error is claim_lost.
+     */
+    409: Error;
+};
+
+export type PostBoardExternalEntryError = PostBoardExternalEntryErrors[keyof PostBoardExternalEntryErrors];
+
+export type PostBoardExternalEntryResponses = {
+    /**
+     * Request succeeded.
+     */
+    201: BoardTaskEntry;
+};
+
+export type PostBoardExternalEntryResponse = PostBoardExternalEntryResponses[keyof PostBoardExternalEntryResponses];
+
+export type HeartbeatBoardExecutionData = {
+    body: BoardExecutionHeartbeat;
+    path?: never;
+    query?: never;
+    url: '/api/board/external/heartbeat';
+};
+
+export type HeartbeatBoardExecutionErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The execution lease has expired or the claim is no longer current. Error is claim_lost.
+     */
+    409: Error;
+};
+
+export type HeartbeatBoardExecutionError = HeartbeatBoardExecutionErrors[keyof HeartbeatBoardExecutionErrors];
+
+export type HeartbeatBoardExecutionResponses = {
+    /**
+     * Request succeeded.
+     */
+    200: BoardExecution;
+};
+
+export type HeartbeatBoardExecutionResponse = HeartbeatBoardExecutionResponses[keyof HeartbeatBoardExecutionResponses];
+
+export type FinishBoardExecutionData = {
+    body: BoardExecutionFinish;
+    path?: never;
+    query?: never;
+    url: '/api/board/external/finish';
+};
+
+export type FinishBoardExecutionErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+    /**
+     * The execution lease has expired or the claim is no longer current. Error is claim_lost.
+     */
+    409: Error;
+};
+
+export type FinishBoardExecutionError = FinishBoardExecutionErrors[keyof FinishBoardExecutionErrors];
+
+export type FinishBoardExecutionResponses = {
+    /**
+     * Request succeeded.
+     */
+    200: BoardExecution;
+};
+
+export type FinishBoardExecutionResponse = FinishBoardExecutionResponses[keyof FinishBoardExecutionResponses];
 
 export type WatchBoardData = {
     body?: never;

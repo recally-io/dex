@@ -439,6 +439,178 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
 
+  /api/board/tasks/{taskKey}/executions/attach:
+    parameters:
+      - $ref: "#/components/parameters/BoardTaskKey"
+    post:
+      operationId: attachBoardExecution
+      description: Attach an external agent. The harness field is required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardExecutionAttach" }
+      responses:
+        "201":
+          description: Execution and one-time Board Token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTokenIssue" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/board/executions/{executionId}/resume:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: resumeBoardExecution
+      description: Replace the claim. Supplied binding fields must match the current execution.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardExecutionAttach" }
+      responses:
+        "200":
+          description: Execution and one-time Board Token.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTokenIssue" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/board/executions:
+    get:
+      operationId: listBoardExecutions
+      parameters:
+        - name: taskKey
+          in: query
+          schema: { type: string }
+        - name: machineId
+          in: query
+          schema: { type: string }
+        - name: kind
+          in: query
+          schema: { type: string }
+        - name: state
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Request succeeded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardExecutionList" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/board/external/task:
+    get:
+      operationId: readBoardExternalTask
+      security:
+        - BoardToken: []
+      parameters:
+        - name: afterSeq
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: limit
+          in: query
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Request succeeded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardExternalTask" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The execution lease has expired or the claim is no longer current. Error is claim_lost.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/board/external/entries:
+    post:
+      operationId: postBoardExternalEntry
+      security:
+        - BoardToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardEntryCreate" }
+      responses:
+        "201":
+          description: Request succeeded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskEntry" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The execution lease has expired or the claim is no longer current. Error is claim_lost.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/board/external/heartbeat:
+    post:
+      operationId: heartbeatBoardExecution
+      security:
+        - BoardToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardExecutionHeartbeat" }
+      responses:
+        "200":
+          description: Request succeeded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardExecution" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The execution lease has expired or the claim is no longer current. Error is claim_lost.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/board/external/finish:
+    post:
+      operationId: finishBoardExecution
+      security:
+        - BoardToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardExecutionFinish" }
+      responses:
+        "200":
+          description: Request succeeded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardExecution" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The execution lease has expired or the claim is no longer current. Error is claim_lost.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/board/events:
     get:
       operationId: watchBoard
@@ -2861,6 +3033,9 @@ components:
       schema: { type: string }
 
   securitySchemes:
+    BoardToken:
+      type: http
+      scheme: bearer
     bearer: { type: http, scheme: bearer }
     session: { type: apiKey, in: cookie, name: dex_session }
 
@@ -3062,6 +3237,99 @@ components:
         title: { type: string }
         status: { $ref: "#/components/schemas/BoardStatus" }
         assigneeBotId: { type: string }
+    BoardExecutionAttach:
+      type: object
+      properties:
+        harness: { type: string, enum: [claude-code, codex, opencode, custom] }
+        machineId: { type: string }
+        hostMeta: { $ref: "#/components/schemas/BoardExecutionHost" }
+        workspacePath: { type: string }
+        gitBranch: { type: string }
+        externalSessionId: { type: string }
+        leaseSeconds: {
+          type: integer,
+          format: int64,
+          minimum: 1,
+          maximum: 3600,
+        }
+    BoardExecutionHost:
+      type: object
+      properties:
+        hostname: { type: string }
+    BoardExecutionHeartbeat:
+      type: object
+      properties:
+        gitBranch: { type: string }
+        externalSessionId: { type: string }
+        leaseSeconds: {
+          type: integer,
+          format: int64,
+          minimum: 1,
+          maximum: 3600,
+        }
+    BoardExecutionFinish:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: { type: string, enum: [completed, failed] }
+        summary: { type: string, maxLength: 32000 }
+    BoardExecution:
+      type: object
+      required: [id, botId, kind, state, leaseEpoch, startedAt]
+      properties:
+        id: { type: string }
+        taskKey: { type: string }
+        botId: { type: string }
+        kind: { type: string, enum: [dex_session, external_agent] }
+        state: {
+          type: string,
+          enum: [
+            dispatched,
+            running,
+            idle,
+            completed,
+            failed,
+            stale,
+            cancelled,
+          ],
+        }
+        harness: { type: string }
+        machineId: { type: string }
+        runnerName: { type: string }
+        hostname: { type: string }
+        workspacePath: { type: string }
+        gitBranch: { type: string }
+        externalSessionId: { type: string }
+        dispatchId: { type: string }
+        leaseEpoch: { type: integer, format: int64 }
+        leaseExpiresAt: { type: integer, format: int64 }
+        lastHeartbeatAt: { type: integer, format: int64 }
+        startedAt: { type: integer, format: int64 }
+        endedAt: { type: integer, format: int64 }
+    BoardTokenIssue:
+      type: object
+      required: [execution, boardToken]
+      properties:
+        execution: { $ref: "#/components/schemas/BoardExecution" }
+        boardToken: { type: string }
+    BoardExecutionList:
+      type: object
+      required: [executions]
+      properties:
+        executions: {
+          type: array,
+          items: { $ref: "#/components/schemas/BoardExecution" },
+        }
+    BoardExternalTask:
+      type: object
+      required: [task, entries, nextAfterSeq]
+      properties:
+        task: { $ref: "#/components/schemas/BoardTaskRef" }
+        entries: {
+          type: array,
+          items: { $ref: "#/components/schemas/BoardTaskEntry" },
+        }
+        nextAfterSeq: { type: integer, format: int64 }
     BoardTaskDetail:
       type: object
       required: [

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 const sessionCookie = "dex_session"
@@ -16,12 +17,22 @@ const signIn = "sign in with the access token; run `dex token` on the dex host t
 // requireToken lets a request reach the API only with the token, as a Bearer token or as the
 // session cookie. The web UI files stay public, so the browser can show the sign-in form.
 func requireToken(token string, next http.Handler) http.Handler {
-	if token == "" {
-		return next
-	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bearer, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if boardExternalPath(r) {
+			w.Header().Set("Cache-Control", "no-store")
+			if !strings.HasPrefix(bearer, worktask.BoardTokenPrefix) {
+				writeError(w, http.StatusUnauthorized, worktask.ErrBoardToken.Error())
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), boardBearerKey{}, bearer)))
+			return
+		}
+		if boardTokenResponse(r) {
+			w.Header().Set("Cache-Control", "no-store")
+		}
 		public := !strings.HasPrefix(r.URL.Path, "/api/") || r.Method == http.MethodPost && r.URL.Path == "/api/session"
-		if !public && !authorized(r, token) {
+		if !public && (strings.HasPrefix(bearer, worktask.BoardTokenPrefix) || token != "" && !authorized(r, token)) {
 			writeError(w, http.StatusUnauthorized, signIn)
 			return
 		}

@@ -1,6 +1,6 @@
 # Task Board Architecture
 
-This document describes the Bot-centric, append-only Task Board (tracked in [#291](https://github.com/vaayne/dex/issues/291)). Phases 1 and 2 are implemented. See [Tasks](tasks.md) for current behavior and the [Glossary](glossary.md) for terms. Phase 3 is planned.
+This document describes the Bot-centric, append-only Task Board (tracked in [#291](https://github.com/vaayne/dex/issues/291)). All three phases are implemented. See [Tasks](tasks.md) for current behavior and the [Glossary](glossary.md) for terms.
 
 ![Task Board architecture and boundaries](../assets/task-board.png)
 
@@ -125,15 +125,16 @@ Main is a front desk ([Sessions](sessions.md)): queuing one submission per Task 
 
 External coding agents (Claude Code, Codex, OpenCode, or custom scripts) run under an Assignee Bot through two tracks:
 
-1. **Attached mode (CLI / MCP, first priority).**
-   - Each external run receives a scoped Board Token bound to `(task_id, execution_id, lease_epoch)`, stored only as a SHA-256 digest and injected via environment variable or `vault:NAME` (never passed in tool arguments that enter transcripts).
-   - The token allows reading non-`external` entries of that Task, posting `note`/`artifact`, sending heartbeats, and marking its own execution `completed` or `failed`. It cannot read other Tasks or change Task status.
-   - Every write validates current `lease_epoch`, execution state, and server time in the same SQLite write condition, returning `409 claim_lost` immediately when expired or superseded.
-   - **Startup grace and recovery.** On dex startup after downtime, active external leases extend to `max(lease_expires_at, start + TTL)` before the watchdog runs to prevent false stale storms. Transiently disconnected workers recover via `dex board attach --resume <execution_id>`, which bumps `lease_epoch` and returns `stale` to `running`.
-   - **Workspace isolation.** Lease epochs block stale Board writes but cannot stop a detached OS process from editing a shared checkout. Parallel writers must use separate worktrees or directories. UI labels distinguish registered Runner identities from self-reported `hostname`/`cwd`.
-2. **Managed Push via Processes.**
-   - Rather than adding harness-specific verbs to `dex-agent` Runner RPC, Managed Push reuses session **Processes** (`process_start` in `internal/background`, running `claude -p ... --resume <id>` or equivalent) with a durable `dispatch_id` and strict `(machine_enrollment, harness, workspace, external_session_id)` binding checks before resuming.
-   - Before enabling Managed Push, verify that long-running background Processes on a remote Runner do not hold the Runner's single-operation socket and block concurrent tool calls from other Bots on the same machine.
+1. **Attached mode.** `dex board attach --task T-42 --harness codex` creates an external run. Attach and resume use Owner authorization (`DEX_TOKEN`, if required) and return JSON with a one-time `boardToken`. Use `DEX_BOARD_SERVER` or `--server` to select the server. Use HTTPS for a remote server. Send the Board Token through `DEX_BOARD_TOKEN`, never as a command argument or tool input.
+   - `task_execution_tokens` stores only the SHA-256 digest. It binds the token to one Task, execution, and lease epoch. `dex board read` reads that Task and its non-external Timeline entries. Use `--after-seq` and `--limit` to page the Timeline.
+   - `dex board post --content <text>` adds a note. Use `--kind artifact` for an artifact. `dex board heartbeat` extends the lease and can update the branch or external session ID. The default lease is 120 seconds. Send heartbeats before it expires.
+   - `dex board finish --outcome completed` ends only the run. A failed run sends `execution_failed` to the Assignee's Main. Neither outcome changes Task status.
+   - Each scoped write checks the state, epoch, and expiry in SQLite. An expired or replaced claim returns HTTP `409` with `claim_lost`. Unknown tokens return `401`. `dex board attach --resume <execution_id>` replaces the token, increments the epoch, and restarts a running or stale lease.
+   - On startup, dex extends active leases to at least startup time plus 120 seconds. After this extension, the watchdog checks every 5 seconds. It marks expired runs stale, records the change in the Timeline, and queues `execution_stale` for the Assignee's Main.
+2. **Managed Push via Processes.** On a user turn or Task wake, the Assignee's Main can call `task_dispatch_external` on its selected Outbound Runner. The tool uses the same Session Process path as `process_start`. It does not add harness commands to the Runner protocol.
+   - Supply the Task key, harness, absolute workspace path, server URL that the Runner can reach, and command. dex injects `DEX_BOARD_TOKEN`, `DEX_BOARD_SERVER`, and `DEX_BOARD_EXTERNAL_SESSION_ID` into that Process only. It discards command output to keep the token out of logs. Use Board entries for progress and results. The command must send heartbeats and report the outcome. A Process that exits without reporting leaves the lease to the watchdog.
+   - On resume, supply the execution ID and the exact external session ID. dex checks the Task, current Runner enrollment, harness, workspace, and stored external session ID. The command must use that session ID, for example `claude -p --resume "$DEX_BOARD_EXTERNAL_SESSION_ID" "Continue the Task"`. A durable dispatch ID prevents a replay from launching a second Process. If dex stops after recording a dispatch but before starting the Process, inspect the run and make a new call to resume. dex does not retry that launch.
+   - A lease prevents stale Board writes. It cannot stop a separate OS process from editing a checkout. Stop the previous worker before reusing its workspace. Use separate worktrees or directories for parallel writers.
 
 ## Web UI information architecture
 
@@ -142,9 +143,11 @@ The Web UI follows [web/AGENTS.md](../../web/AGENTS.md) (stock shadcn components
 - **Board (`/board`)**: Bot filter (`/board?bot=<id>`), `In Review` and `Blocked` filters, Source filter, and a **Kanban (`Backlog | Ready | In Progress | In Review | Done`) / List** view toggle. Legacy `/work` redirects to `/board`.
 - **Inbox (`/inbox`)**: Continues to house all Owner attention items—active `ask_user` questions, unhandled failed or changed Automation results, Automations missing a model, held external events, and Tasks awaiting Owner review.
 - **Bot workspace**: Keeps `Sessions | Automations | Settings` (`General`, `Skills`, `Integrations`, `Secrets`) without adding a separate Bot Tasks tab; Bot-scoped Task views open `/board?bot=<id>`.
-- **Task detail (`/board/$taskKey`)**: Stable key (`T-42`), `In Review` action bar (`Approve` / `Request Changes`), filterable `#01..#N` Timeline, linked `Sessions` (plus external runs and Runner info in Phase 3), parent and subtasks, sibling dependencies, `Blocked` reasons and external links (`TaskLinks` + `GitHubPullForm`), and a unified note / Send to Main composer. Legacy `/a/$agentId/inbox/$taskId` links redirect cleanly.
+- **Task detail (`/board/$taskKey`)**: Stable key (`T-42`), `In Review` action bar (`Approve` / `Request Changes`), filterable `#01..#N` Timeline, linked `Sessions`, external runs with lease state and heartbeat age, parent and subtasks, sibling dependencies, `Blocked` reasons and external links (`TaskLinks` + `GitHubPullForm`), and a unified note / Send to Main composer. Legacy `/a/$agentId/inbox/$taskId` links redirect cleanly.
 
-New Board endpoints use `/api/board/*`. The post-commit broker sends bounded wake hints. It does not order entries or keep replay history. The SSE handler reads SQLite by entry ID in bounded batches. Browser reconnects resume at the last received ID. The Owner UI reads only the current projection after a hint.
+Runner settings list active external Task runs by current enrollment. The Task detail shows the registered Runner separately from the reported host and workspace. Runner registration does not verify attached agent reports.
+
+Board endpoints use `/api/board/*`. The post-commit broker sends bounded wake hints. It does not order entries or keep replay history. The SSE handler reads SQLite by entry ID in bounded batches. Browser reconnects resume at the last received ID. The Owner UI reads only the current projection after a hint.
 
 ## Phased rollout
 
@@ -152,7 +155,7 @@ New Board endpoints use `/api/board/*`. The post-commit broker sends bounded wak
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Phase 1** | Central `canRead`/`canWrite`; `AUTOINCREMENT` append-only ledger (`seq`, 8 kinds + `tag`, 3-tier `trust`, `tombstone`); global key `T-42`; 6 stored statuses + derived `Blocked`; `in_review` + `review_seq`; `task_executions` upgraded from `work_task_sessions`; B1 authorization matrix; B3 coalesced `task_wake`; side-effect-free `task_read(afterSeq)`; OpenAPI + global SSE (`/api/board/events`); Kanban/List `/board` and `/board/$taskKey`. |
 | **Phase 2** | `parent_task_id` decomposition (`task_split`); cross-Bot `task_assign`; Owner reviews in `/inbox`; sibling `depends_on` (same-tx cycle check, `cancelled`/`reopen` semantics); scoped child session `task_read`/`task_post`; `task_my_workload`.                                                                                                                                                                                                       |
-| **Phase 3** | Attached CLI/MCP + scoped SHA-256 Board Tokens + Lease Watchdog (startup grace, write-time epoch check, `--resume`); Runners external run visibility; Managed Push via Processes (`process_start`) after Runner socket concurrency verification.                                                                                                                                                                                                       |
+| **Phase 3** | Attached CLI + scoped SHA-256 Board Tokens + Lease Watchdog (startup grace, write-time epoch check, `--resume`); Runners external run visibility; Managed Push via Processes (`process_start`) after Runner socket concurrency verification.                                                                                                                                                                                                           |
 
 ## Verification criteria
 

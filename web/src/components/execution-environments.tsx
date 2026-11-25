@@ -1,6 +1,13 @@
 import { useState, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Agent, Environment, EnvironmentTestResult, SshHostEntry } from "../api/generated/types.gen";
+import type {
+  Agent,
+  BoardExecution,
+  Environment,
+  EnvironmentTestResult,
+  SshHostEntry,
+} from "../api/generated/types.gen";
 import {
   deleteEnvironmentMutation,
   discoverSshConfigOptions,
@@ -8,6 +15,7 @@ import {
   getHealthOptions,
   revokeRunnerMutation,
   listAgentsOptions,
+  listBoardExecutionsOptions,
   listEnvironmentsOptions,
   testEnvironmentMutation,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -45,6 +53,13 @@ export function ExecutionEnvironments() {
   const healthQuery = useQuery(getHealthOptions());
   const agentsQuery = useQuery(listAgentsOptions());
   const sshConfigQuery = useQuery(discoverSshConfigOptions());
+
+  const externalRuns = useQuery({
+    ...listBoardExecutionsOptions({ query: { kind: "external_agent", state: "running" } }),
+    enabled: query.data?.environments.some((env) => env.kind === "runner") ?? false,
+    refetchInterval: 5000,
+  });
+
   const [dialog, setDialog] = useState<Environment | "new" | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<Environment | null>(null);
@@ -113,6 +128,8 @@ export function ExecutionEnvironments() {
               env={env}
               serverVersion={serverVersion}
               users={usersByEnv.get(env.id) ?? []}
+              externalRuns={externalRuns.data?.executions.filter((run) => run.machineId === env.id) ?? []}
+              externalRunsUnavailable={externalRuns.isError}
               sshHosts={sshHosts}
               onEdit={() => setDialog(env)}
               onRemove={() => setRemoveTarget(env)}
@@ -186,6 +203,8 @@ function EnvironmentCard({
   env,
   serverVersion,
   users,
+  externalRuns,
+  externalRunsUnavailable,
   sshHosts,
   onEdit,
   onRemove,
@@ -193,6 +212,8 @@ function EnvironmentCard({
   env: Environment;
   serverVersion?: string;
   users: Agent[];
+  externalRuns: BoardExecution[];
+  externalRunsUnavailable: boolean;
   sshHosts: SshHostEntry[];
   onEdit: () => void;
   onRemove: () => void;
@@ -259,6 +280,28 @@ function EnvironmentCard({
     rows.push([
       "Connection",
       online ? (runner?.os && runner.arch ? `Online (${runner.os}/${runner.arch})` : "Online") : "Offline",
+    ]);
+
+    rows.push([
+      "Active external runs",
+      externalRunsUnavailable ? (
+        "Could not load runs"
+      ) : externalRuns.length === 0 ? (
+        "None"
+      ) : (
+        <ul key="external-runs" className="flex flex-col gap-1">
+          {externalRuns.map((run) =>
+            run.taskKey ? (
+              <li key={run.id}>
+                <Link to="/board/$taskKey" params={{ taskKey: run.taskKey }} className="underline">
+                  {run.taskKey}
+                </Link>
+                {run.harness ? ` · ${run.harness}` : null}
+              </li>
+            ) : null,
+          )}
+        </ul>
+      ),
     ]);
 
     if (runner?.online) {

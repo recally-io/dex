@@ -153,6 +153,14 @@ The Phase 1 upgrade copies each link with its original Bot, primary flag,
 and timestamp. Downgrading restores these Session links. The old schema
 cannot store Board status detail, review versions, or non-Session executions.
 
+An external agent run uses an `external_agent` execution. A scoped Board Token
+can read only that Task and its non-external Timeline entries. The token can
+write a note or artifact and update its own run. It cannot change Task status.
+Dex records stale and failed runs in the Timeline and wakes the current
+Assignee's Main. Completing a run does not request or approve review. See
+[external agents and Runners](task-board.md#external-agents-and-runners-phase-3)
+for attach, resume, and dispatch.
+
 `task_link_github_pull` from the GitHub plugin links a PR and can add a review
 wait that starts at the call time. Set `alertMain` to `true` to send a Task
 alert when the review arrives.

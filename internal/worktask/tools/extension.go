@@ -24,6 +24,7 @@ type WorkTaskTools struct {
 	Assign   func(context.Context, engine.TaskContext, WorkTaskAssignArgs) (WorkTaskInfo, error)
 	Workload func(context.Context, engine.TaskContext, struct{}) ([]WorkloadItem, error)
 	Review   func(context.Context, engine.TaskContext, WorkTaskReviewArgs) (WorkTaskInfo, error)
+	Dispatch func(context.Context, engine.TaskContext, DispatchArgs) (DispatchResult, error)
 	Links    []WorkTaskLinkTool
 }
 
@@ -207,6 +208,11 @@ func taskExtension(agentID string, handlers WorkTaskTools, child bool) *durable.
 	}
 	reviewer := enum("none", "owner", "creator")
 	tools = append(tools,
+		engine.JSONTool(agentID, "task_dispatch_external", "Start an external agent as a Process on this Session's Outbound Runner. The command receives DEX_BOARD_TOKEN and DEX_BOARD_SERVER in its environment. Use dex board heartbeat, post, and finish. On resume, pass the existing execution ID and exact external session ID; the command must resume DEX_BOARD_EXTERNAL_SESSION_ID. Process output is discarded.",
+			engine.ObjectSchema([]string{"id", "harness", "workspace", "command", "server"}, map[string]any{
+				"id": id, "harness": enum("claude-code", "codex", "opencode", "custom"), "workspace": str,
+				"command": str, "server": str, "resume": str, "externalSessionId": str,
+			}), handlers.Dispatch != nil, handlers.Dispatch),
 		engine.JSONTool(agentID, "task_split", "Create a subtask of a user-authorized Task from its Assignee's Main. Dependencies must be siblings. Delegation to another Bot defaults to review by this Bot.",
 			engine.ObjectSchema([]string{"parentId", "title"}, map[string]any{
 				"parentId": id, "title": str, "assigneeBotId": str, "note": str, "status": enum(statuses[:3]...),

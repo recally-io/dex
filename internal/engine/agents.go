@@ -1295,6 +1295,9 @@ func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string
 		if err != nil {
 			return nil, "", "", nil, err
 		}
+		if err := runner.CheckEnrollment(ctx, s.Handle); err != nil {
+			return nil, "", "", nil, err
+		}
 		env, err := s.Handle.Env(ctx, cwd, extraEnv)
 		if err != nil {
 			return nil, "", "", nil, err
@@ -1303,6 +1306,10 @@ func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string
 	}
 	h, err := a.config.ExecEnv.Open(ctx, agentID, environmentID)
 	if err != nil {
+		return nil, "", "", nil, err
+	}
+	if err := runner.CheckEnrollment(ctx, h); err != nil {
+		_ = h.Close(context.WithoutCancel(ctx))
 		return nil, "", "", nil, err
 	}
 	env, err := h.Env(ctx, cwd, extraEnv)

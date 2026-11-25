@@ -63,6 +63,13 @@ The Bot filter uses `/board?bot=<id>`. Task detail opens at
 `/board/$taskKey` with a stable key such as `T-42`. Detail links to the parent, subtasks, and sibling dependencies. The Owner can create a subtask or change its dependencies there. Inbox review items link to the same detail route. The legacy
 `/a/{agentId}/inbox/{taskId}` URL redirects to that key.
 
+Task detail lists external runs next to Sessions. It shows the registered
+Runner separately from the reported host and workspace. It also shows the
+harness, branch, lease state, and heartbeat age. `/settings/runners` lists
+active external Task runs by Runner. Both views read
+`/api/board/executions`. Active runs refresh every five seconds because
+heartbeats do not add Timeline entries.
+
 `src/lib/board-stream.ts` uses EventSource to resume with `Last-Event-ID`.
 It invalidates Task list and detail queries on Board events. Board does not
 poll. Task edits keep the revision from the start of the edit. A conflict

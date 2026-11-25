@@ -6,6 +6,7 @@ export async function invalidateBoard(client: QueryClient) {
   await Promise.all([
     client.invalidateQueries({ queryKey: [{ _id: "listBoardTasks" }] }),
     client.invalidateQueries({ queryKey: [{ _id: "getBoardTask" }] }),
+    client.invalidateQueries({ queryKey: [{ _id: "listBoardExecutions" }] }),
   ]);
 }
 

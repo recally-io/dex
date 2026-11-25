@@ -66,18 +66,19 @@ const (
 type Action string
 
 const (
-	ActionPost           Action = "post"
-	ActionLinkObject     Action = "link_object"
-	ActionTransition     Action = "transition"
-	ActionSubmitReview   Action = "submit_review"
-	ActionReview         Action = "review"
-	ActionSplit          Action = "split"
-	ActionAssign         Action = "assign"
-	ActionCreateTopLevel Action = "create_top_level"
-	ActionOwnerLifecycle Action = "owner_lifecycle"
-	ActionTombstone      Action = "tombstone"
-	ActionLinkSession    Action = "link_session"
-	ActionRename         Action = "rename"
+	ActionPost             Action = "post"
+	ActionDispatchExternal Action = "dispatch_external"
+	ActionLinkObject       Action = "link_object"
+	ActionTransition       Action = "transition"
+	ActionSubmitReview     Action = "submit_review"
+	ActionReview           Action = "review"
+	ActionSplit            Action = "split"
+	ActionAssign           Action = "assign"
+	ActionCreateTopLevel   Action = "create_top_level"
+	ActionOwnerLifecycle   Action = "owner_lifecycle"
+	ActionTombstone        Action = "tombstone"
+	ActionLinkSession      Action = "link_session"
+	ActionRename           Action = "rename"
 )
 
 func (a Actor) isBot() bool { return a.kind == ActorBot && a.botID != "" }
@@ -138,7 +139,7 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		return actor.bound(ctx, q, task.ID)
 	case ActionRename, ActionLinkSession:
 		return interactive && (owner || assigneeMain) || assigneeUserChat, nil
-	case ActionTransition, ActionSubmitReview:
+	case ActionDispatchExternal, ActionTransition, ActionSubmitReview:
 		return interactive && (owner || assigneeMain), nil
 	case ActionReview:
 		return owner && user || interactive && main && actor.isReviewer(task), nil
