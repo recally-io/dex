@@ -79,6 +79,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 	if err != nil {
 		return "", err
 	}
+	writeWeb := a.Channel == "" && (source.Origin == "web" || source.Producer != ProducerUser)
 	if peer != "" {
 		if a.TopicKey != "" {
 			if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
@@ -95,10 +96,10 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 		}); err != nil {
 			return "", err
 		}
-	} else if source.Origin != "web" {
+	} else if !writeWeb {
 		return "", errors.New("no default notification channel is configured")
 	}
-	if source.Origin == "web" {
+	if writeWeb {
 		if err := q.InsertWebNotification(ctx, sqlc.InsertWebNotificationParams{
 			ID: outboxID, EventID: eventID, AgentID: conv.AgentID, ConversationID: conv.ID,
 			SourceSubmissionID: source.ID, Body: a.Content, CreatedAt: now,

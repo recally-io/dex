@@ -157,7 +157,7 @@ JOIN agents a ON a.id = c.agent_id
 WHERE o.conversation_id = @conversation_id AND o.agent_id = @agent_id
   AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
   AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
-  AND s.origin = 'web'
+  AND (s.origin = 'web' OR s.producer <> 'user')
   AND o.rowid > CAST(@after_position AS INTEGER)
   AND (CAST(@before_id AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM web_notifications prior
       WHERE prior.id = @before_id AND prior.conversation_id = @conversation_id AND prior.agent_id = @agent_id))

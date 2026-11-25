@@ -547,7 +547,7 @@ JOIN agents a ON a.id = c.agent_id
 WHERE o.conversation_id = ?1 AND o.agent_id = ?2
   AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
   AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
-  AND s.origin = 'web'
+  AND (s.origin = 'web' OR s.producer <> 'user')
   AND o.rowid > CAST(?3 AS INTEGER)
   AND (CAST(?4 AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM web_notifications prior
       WHERE prior.id = ?4 AND prior.conversation_id = ?1 AND prior.agent_id = ?2))
