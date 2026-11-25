@@ -75,26 +75,12 @@ func (a *Agents) ValidateRunTarget(ctx context.Context, ref Ref, target string) 
 	return nil
 }
 
-// Stop applies a cancellation intent. A nil target explicitly cancels the session and
-// withdraws its queued input. A non-nil target can cancel only that native foreground task.
-func (a *Agents) Stop(ctx context.Context, ref Ref, target *string) (resultErr error) {
+// StopSession cancels the session and withdraws its queued input.
+func (a *Agents) StopSession(ctx context.Context, ref Ref) error {
 	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
 		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
 	}
-	var id durable.TaskId
-	var err error
-	if target == nil {
-		err = a.beginSessionStop(ref)
-	} else {
-		id, err = runTargetID(ref, *target)
-		if err != nil {
-			return err
-		}
-		finish := traceTaskStop(ctx, ref, id)
-		defer func() { finish(resultErr) }()
-		err = a.begin(ref.AgentID)
-	}
-	if err != nil {
+	if err := a.beginSessionStop(ref); err != nil {
 		return err
 	}
 	defer a.end(ref.AgentID)
@@ -107,8 +93,32 @@ func (a *Agents) Stop(ctx context.Context, ref Ref, target *string) (resultErr e
 	if err != nil {
 		return err
 	}
-	if target == nil {
-		return a.stopSession(ctx, ref, c)
+	return a.stopSession(ctx, ref, c)
+}
+
+// StopTask cancels only the named native foreground task without withdrawing queued input.
+func (a *Agents) StopTask(ctx context.Context, ref Ref, target string) (resultErr error) {
+	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
+		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
+	}
+	id, err := runTargetID(ref, target)
+	if err != nil {
+		return err
+	}
+	finish := traceTaskStop(ctx, ref, id)
+	defer func() { finish(resultErr) }()
+	if err := a.begin(ref.AgentID); err != nil {
+		return err
+	}
+	defer a.end(ref.AgentID)
+	unlock, err := a.lock(ctx, ref)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	c, err := a.conversation(ctx, ref)
+	if err != nil {
+		return err
 	}
 	return a.stopTask(ctx, ref, c, id)
 }
@@ -178,8 +188,16 @@ func (a *Agents) stopTask(ctx context.Context, ref Ref, c harness.Conversation, 
 	// the same transaction, so retry after a crash cannot start a second run.
 	_, err = c.Commit(ctx, func(tx durable.Tx) (any, error) {
 		live, err := liveState(tx, c.Id())
-		if err != nil || live.Run != nil || live.RunFailure == nil || live.RunFailure.TaskId != id {
+		if err != nil || live.Run != nil {
 			return nil, err
+		}
+		if live.RunFailure == nil {
+			slog.WarnContext(ctx, "session stop skipped inbox resume: run failure missing after abort",
+				"agent", ref.AgentID, "native_conversation_id", ref.ID, "native_task_id", id)
+			return nil, nil
+		}
+		if live.RunFailure.TaskId != id {
+			return nil, nil
 		}
 		doc, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, c.Id())
 		if err != nil {

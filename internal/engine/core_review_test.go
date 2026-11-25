@@ -21,7 +21,7 @@ func TestUserCanStopOpenConversationDuringMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the caller requests cancellation without admitting new work.
-	if err := agents.Stop(t.Context(), ref, nil); err != nil {
+	if err := agents.StopSession(t.Context(), ref); err != nil {
 		t.Fatalf("maintenance blocked Stop: %v", err)
 	}
 	// Then cancellation completes and admission remains paused.
@@ -35,7 +35,7 @@ func TestUserCanStopOpenConversationDuringMaintenance(t *testing.T) {
 	if err := agents.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := agents.Stop(t.Context(), ref, nil); !errors.Is(err, ErrClosed) {
+	if err := agents.StopSession(t.Context(), ref); !errors.Is(err, ErrClosed) {
 		t.Fatalf("Stop after close: %v", err)
 	}
 }
@@ -81,7 +81,7 @@ func TestUserStopDuringMaintenanceDoesNotResumeUnopenedExecution(t *testing.T) {
 	if err := reopened.Quiesce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := reopened.Stop(t.Context(), ref, nil); !errors.Is(err, ErrMaintenance) {
+	if err := reopened.StopSession(t.Context(), ref); !errors.Is(err, ErrMaintenance) {
 		t.Fatalf("unopened Stop must defer native cancellation: %v", err)
 	}
 	// Then Stop has not opened or resumed the persisted execution.
@@ -99,7 +99,7 @@ func TestUserStopDuringMaintenanceDoesNotResumeUnopenedExecution(t *testing.T) {
 		t.Fatal("Stop must isolate stored work before opening can resume")
 	}
 	reopened.Resume()
-	if err := reopened.Stop(t.Context(), ref, nil); err != nil {
+	if err := reopened.StopSession(t.Context(), ref); err != nil {
 		t.Fatalf("Stop after maintenance: %v", err)
 	}
 	if err := reopened.CheckIdle(t.Context(), ref); err != nil {

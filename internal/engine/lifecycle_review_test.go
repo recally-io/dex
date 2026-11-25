@@ -69,7 +69,7 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 					watch.Close()
 				}
 				for range 2 {
-					if err := agents.Stop(t.Context(), ref, nil); err != nil {
+					if err := agents.StopSession(t.Context(), ref); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -89,7 +89,7 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 					t.Fatal(err)
 				}
 				agents = coreEngine(t, config)
-				if err := agents.Stop(t.Context(), ref, nil); err != nil {
+				if err := agents.StopSession(t.Context(), ref); err != nil {
 					t.Fatal(err)
 				}
 				watch, err := agents.Watch(t.Context(), ref)

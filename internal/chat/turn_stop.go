@@ -94,7 +94,7 @@ func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, t
 	defer cancel()
 	result := engine.ErrStaleRunTarget
 	if ref.ID > 0 {
-		result = s.engine.Stop(callCtx, ref, &target)
+		result = s.engine.StopTask(callCtx, ref, target)
 		if errors.Is(result, engine.ErrNotFound) {
 			result = engine.ErrStaleRunTarget
 		}

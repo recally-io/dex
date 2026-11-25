@@ -221,7 +221,7 @@ func (s *Service) reconcileStop(ctx context.Context, id int64) error {
 		defer cancel()
 		s.stopBackground(callCtx, []int64{id})
 		if c.ExecutionID.Valid {
-			if err := s.engine.Stop(callCtx, ref, nil); err != nil && !errors.Is(err, engine.ErrNotFound) {
+			if err := s.engine.StopSession(callCtx, ref); err != nil && !errors.Is(err, engine.ErrNotFound) {
 				if errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
 					return errStopPending
 				}

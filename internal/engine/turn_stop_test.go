@@ -35,7 +35,7 @@ func TestUserLateTaskStopLeavesSuccessorRunning(t *testing.T) {
 	coreFile(t, nextStarted)
 
 	// When the exact Stop arrives after the target has ended, it reports no effect.
-	if err := a.Stop(t.Context(), ref, &target); !errors.Is(err, ErrStaleRunTarget) {
+	if err := a.StopTask(t.Context(), ref, target); !errors.Is(err, ErrStaleRunTarget) {
 		t.Errorf("late Stop: got %v, want %v", err, ErrStaleRunTarget)
 	}
 
@@ -97,7 +97,7 @@ func TestUserMainStopResumesNativeInboxAfterRestart(t *testing.T) {
 	// Then replay of the durable stop intent starts the queued input once, with the same native ID.
 	a = coreEngine(t, config)
 	for range 2 {
-		if err := a.Stop(ctx, ref, &target); !errors.Is(err, ErrStaleRunTarget) {
+		if err := a.StopTask(ctx, ref, target); !errors.Is(err, ErrStaleRunTarget) {
 			t.Fatalf("replay of an already aborted task: %v", err)
 		}
 	}
