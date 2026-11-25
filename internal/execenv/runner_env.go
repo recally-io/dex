@@ -103,6 +103,7 @@ func SkillConnection(ctx context.Context, h Handle) (*runner.Client, error) {
 // do never repeats it.
 func (h *runnerHandle) do(ctx context.Context, method string, fn func(context.Context, *runner.Client) error) error {
 	callCtx, waitDone := runner.TraceConnectionWait(ctx, h.id, method)
+	started := time.Now()
 	for attempt := 0; ; attempt++ {
 		waitStart := time.Now()
 		client, err := h.runners.wait(callCtx, h.id, h.digest)
@@ -112,6 +113,7 @@ func (h *runnerHandle) do(ctx context.Context, method string, fn func(context.Co
 		}
 		if info := client.Info(); info.Workspace != h.ready.Workspace || info.Home != h.ready.Home {
 			// The machine runs from another state directory now, so the paths of the lease are wrong.
+			runner.TraceWorkspaceMismatch(callCtx, started)
 			return fmt.Errorf("%w: the machine workspace changed; reload the bot", ErrUnavailable)
 		}
 		err = fn(callCtx, client)

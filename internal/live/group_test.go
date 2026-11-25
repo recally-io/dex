@@ -90,6 +90,26 @@ func TestUserGroupHistoryAndLiveReadTheirOwnNativeStore(t *testing.T) {
 	if private.ExecutionID != group.ExecutionID || group.ExecutionScope == "" || group.Writable {
 		t.Fatalf("scope precondition: private=%+v group=%+v", private, group)
 	}
+	// A legacy or malformed Web-marked row must not cross the native group scope.
+	groupNotice := sqlc.InsertOutboxMessageParams{
+		ID: "group-notice", DedupKey: "tool:group-notice", AgentID: "bot", ConversationID: group.ID,
+		SourceSubmissionID: sql.NullString{String: source.ID, Valid: true}, Kind: "proactive", Body: "GROUP_NOTICE_CANARY", Status: "delivered",
+	}
+	if _, err := conn.ExecContext(ctx, `UPDATE submissions SET origin = 'web' WHERE id = ?`, source.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.InsertOutboxMessage(ctx, groupNotice); err != nil {
+		t.Fatal(err)
+	}
+	groupNotice.ID, groupNotice.DedupKey = "group-cursor", "tool:group-cursor"
+	if _, err := q.InsertOutboxMessage(ctx, groupNotice); err != nil {
+		t.Fatal(err)
+	}
+	page, err := service.TimelineNotifications(ctx, "bot", group.ID, groupNotice.ID, 0, 10)
+	if err != nil || len(page.Notifications) != 0 {
+		t.Fatalf("isolated group had Web notices in history: %+v, %v", page, err)
+	}
+
 	hub := live.New(service, agents)
 	// When history and SSE reconstruct a reference from the business chat, both must retain scope.
 	history, err := hub.History(ctx, "bot", group.ID, 1<<62, 100)
@@ -108,22 +128,28 @@ func TestUserGroupHistoryAndLiveReadTheirOwnNativeStore(t *testing.T) {
 	if !found {
 		t.Fatalf("group history missing: %+v", history)
 	}
-	stream, err := hub.Open(ctx, "bot", group.ID)
+	stream, err := hub.OpenWeb(ctx, "bot", group.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stream.Close()
 	reader := bufio.NewReader(stream)
 	found = false
-	for !found {
+	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(line, "PRIVATE_LIVE_HISTORY_CANARY") {
-			t.Fatalf("private live snapshot leaked: %s", line)
+		if strings.Contains(line, "PRIVATE_LIVE_HISTORY_CANARY") || strings.Contains(line, "GROUP_NOTICE_CANARY") {
+			t.Fatalf("Web group stream leaked: %s", line)
 		}
-		found = strings.Contains(line, "PUBLIC_LIVE_HISTORY_CANARY")
+		found = found || strings.Contains(line, "PUBLIC_LIVE_HISTORY_CANARY")
+		if strings.Contains(line, `"type":"child"`) {
+			break
+		}
+	}
+	if !found {
+		t.Fatal("group snapshot was not visible")
 	}
 	// Then generic private input cannot reopen the group conversation in Main's resource scope.
 	if _, err := service.Send(ctx, "bot", group.ChannelKey, chat.Message{ID: "private-route-injection", Content: "must not run"}); err == nil {

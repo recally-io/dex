@@ -74,6 +74,9 @@ func fakeProvider() *ai.ModelsProvider {
 					text = body
 				}
 			}
+			if strings.HasPrefix(text, "[Monitor due: ") || strings.HasPrefix(text, "[Monitor terminal check: ") {
+				_, text, _ = strings.Cut(text, "\n")
+			}
 			name, argsText, hasArgs := strings.Cut(text, " ")
 			if result, ok := last.(ai.ToolResultMessage); ok && result.ToolName == name {
 				if m.ID == "tool-report-fail" && name == "session_report" {
@@ -147,6 +150,12 @@ func fakeProvider() *ai.ModelsProvider {
 						return fakeCall("tool_search", map[string]any{"query": "notify_user"}), nil
 					}
 					return fakeCall("notify_user", map[string]any{"content": "Reviewed channel conclusion"}), nil
+				}
+				if result, ok := result.(map[string]any); m.ID == "spawn-notify" && ok && result["title"] == "Web notification fixture" {
+					if !fakeExposed(t, "notify_user") {
+						return fakeCall("tool_search", map[string]any{"query": "notify_user"}), nil
+					}
+					return fakeCall("notify_user", map[string]any{"content": "Reviewed child conclusion"}), nil
 				}
 				data, err := json.Marshal(result, json.Deterministic(true))
 				return fakeText("task-result: " + string(data)), err

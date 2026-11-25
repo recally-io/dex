@@ -393,7 +393,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     return () => observer.disconnect();
   }, []);
 
-  const blank = !items.length && state.historyBefore === undefined && connection === "ready";
+  const blank =
+    !items.length &&
+    !state.notifications?.entries.length &&
+    state.historyBefore === undefined &&
+    connection === "ready";
 
   const agents = useQuery(listAgentsOptions());
 
@@ -734,11 +738,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         <LoadEarlierButton
           chatId={chatId}
           before={state.historyBefore}
-          onPage={(page) => setState((previous) => mergeHistory(previous, page))}
+          beforeNotification={state.notifications?.before}
+          onPage={(page, beforeNotification) =>
+            setState((previous) => mergeHistory(previous, page, beforeNotification))
+          }
         />
         <Transcript
           chatId={chatId}
           items={items}
+          notifications={state.notifications?.entries}
           running={running}
           retry={retryText}
           canRetry={!readOnly && !reason && !pending}
@@ -770,6 +778,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      {readOnly && chat.data ? (
+        <div className="flex shrink-0 justify-end border-b border-border px-3 py-1">
+          <ChatActivity chatId={chat.data.id} writable={false} />
+        </div>
+      ) : null}
       <ThreadContext.Provider value={threads}>
         <div className="relative flex min-h-0 flex-1">
           <div className="relative flex min-w-0 flex-1 flex-col">

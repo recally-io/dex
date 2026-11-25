@@ -2,6 +2,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
@@ -23,6 +24,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/vault"
 )
 
 // ErrInvalid means that a requested agent or channel change is invalid.
@@ -48,13 +50,16 @@ type Service struct {
 	OnEnvironmentChanged func(ctx context.Context, agentID, oldEnvID, oldSandboxID string)
 	apiURL               string
 	onTelegram           func(string, *telegram.Config)
+	telegramVault        *vault.Store
+	manager              *telegramManager
 	feishuAPIURL         string
 	feishuRegistrar      feishu.Registrar
 	onFeishu             func(string, *feishu.Config)
 	// One lock orders credential checks, saves, runtime changes, and setup sessions
 	// across agents. Model checks take the settings lock; settings never takes this lock.
-	mu       sync.Mutex
-	sessions map[string]*channelSession
+	mu               sync.Mutex
+	sessions         map[string]*channelSession
+	channelApprovals map[string]channelApproval
 }
 
 // New connects model validation and Telegram runtime changes.
@@ -88,11 +93,15 @@ type Agent struct {
 
 // Telegram describes the bot without its token.
 type Telegram struct {
-	Status       channel.Status   `json:"status"`
-	Enabled      bool             `json:"enabled"`
-	BotID        string           `json:"botId,omitempty"`
-	AllowedUsers []int64          `json:"allowedUsers"`
-	Options      telegram.Options `json:"options"`
+	Status                   channel.Status   `json:"status"`
+	Enabled                  bool             `json:"enabled"`
+	BotID                    string           `json:"botId,omitempty"`
+	AllowedUsers             []int64          `json:"allowedUsers"`
+	Options                  telegram.Options `json:"options"`
+	ManagerConfigured        bool             `json:"managerConfigured,omitzero"`
+	ManagedCreationAvailable bool             `json:"managedCreationAvailable,omitzero"`
+	Transport                string           `json:"transport"`
+	WebhookURL               string           `json:"webhookUrl,omitempty"`
 }
 
 // Agent reads one agent.
@@ -301,14 +310,30 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 	if err := json.Unmarshal([]byte(row.Options), &options); err != nil {
 		return nil, err
 	}
-	return &telegram.Config{Options: options, Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token), RetryAt: row.RetryAt}, nil
+	cfg := &telegram.Config{Options: options, Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token), RetryAt: row.RetryAt,
+		Webhook: telegram.WebhookConfig{URL: row.WebhookUrl, SecretToken: row.WebhookSecret}}
+	if strings.Contains(row.Token, telegramVaultMarker) {
+		cfg.CredentialRef = row.Token
+		cfg.Token, err = s.telegramVault.Credential(row.Token)
+		if err != nil {
+			return nil, err
+		}
+		if cfg.Token == "" {
+			return nil, errors.New("the saved managed Telegram credential is missing")
+		}
+	}
+	return cfg, nil
 }
 
 // SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
 // token.
-func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64, options *telegram.Options) error {
+func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.setTelegram(ctx, agentID, token, allowedUsers, options, transport, webhook)
+}
+
+func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
 	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
 		return err
 	}
@@ -317,13 +342,6 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 	if err != nil {
 		return err
 	}
-	s.onTelegram(agentID, nil)
-	committed := false
-	defer func() {
-		if !committed && saved != nil {
-			s.onTelegram(agentID, saved)
-		}
-	}()
 	if token == "" {
 		if saved != nil {
 			token = saved.Token
@@ -332,11 +350,40 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 	cfg := telegram.Config{Token: strings.TrimSpace(token), AllowedUsers: allowedUsers, APIURL: s.apiURL}
 	if saved != nil {
 		cfg.Options = saved.Options
+		if cfg.Token == saved.Token {
+			cfg.CredentialRef = saved.CredentialRef
+		}
 	}
 	if options != nil {
 		cfg.Options = *options
 	}
-	cfg.Pair = s.pairTelegram(agentID, cfg.Token)
+	if strings.Contains(cfg.Token, telegramVaultMarker) {
+		return fmt.Errorf("%w: enter a bot token from BotFather", ErrInvalid)
+	}
+	if s.manager != nil && strings.HasPrefix(cfg.Token, strconv.FormatInt(s.manager.id, 10)+":") {
+		return fmt.Errorf("%w: the manager bot must be separate from the channel bot", ErrInvalid)
+	}
+	key := cmp.Or(cfg.CredentialRef, cfg.Token)
+	cfg.Pair = s.pairTelegram(agentID, key)
+	account, _, _ := strings.Cut(cfg.Token, ":")
+	sameBot := saved != nil && strings.HasPrefix(saved.Token, account+":")
+	if sameBot {
+		cfg.Webhook = saved.Webhook
+	}
+	switch {
+	case transport == "polling" && webhook == nil:
+		cfg.Webhook = telegram.WebhookConfig{}
+	case transport == "webhook":
+		if webhook != nil {
+			cfg.Webhook = *webhook
+		}
+		if cfg.Webhook.URL == "" {
+			return fmt.Errorf("%w: enter the Telegram webhook URL and secret", ErrInvalid)
+		}
+	case transport == "" && webhook == nil:
+	default:
+		return fmt.Errorf("%w: choose webhook transport to set Telegram webhook credentials", ErrInvalid)
+	}
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -351,14 +398,34 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 	if err != nil {
 		return err
 	}
+	s.onTelegram(agentID, nil)
+	committed := false
+	defer func() {
+		if !committed && saved != nil {
+			s.onTelegram(agentID, saved)
+		}
+	}()
+	if saved != nil && saved.Webhook.URL != "" && (!sameBot || cfg.Webhook.URL == "") {
+		teardown := *saved
+		if sameBot {
+			teardown.Token = cfg.Token
+		}
+		if err := telegram.DeleteWebhook(ctx, teardown); err != nil {
+			return err
+		}
+	}
 	cfg.RetryAt, err = s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
-		Token: cfg.Token, AllowedUsers: strings.Join(users, ","), Options: string(encoded),
+		Token: key, AllowedUsers: strings.Join(users, ","), Options: string(encoded),
+		WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
 	})
 	if err != nil {
 		return err
 	}
 	committed = true
 	s.onTelegram(agentID, &cfg)
+	if saved != nil && saved.CredentialRef != cfg.CredentialRef {
+		s.forgetTelegramCredential(saved.CredentialRef)
+	}
 	return nil
 }
 
@@ -366,11 +433,21 @@ func (s *Service) SetTelegram(ctx context.Context, agentID string, token string,
 func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.deleteTelegram(ctx, agentID)
+}
+
+func (s *Service) deleteTelegram(ctx context.Context, agentID string) error {
 	saved, err := s.TelegramConfig(ctx, agentID)
 	if err != nil {
 		return err
 	}
 	s.onTelegram(agentID, nil)
+	if saved != nil && saved.Webhook.URL != "" {
+		if err := telegram.DeleteWebhook(ctx, *saved); err != nil {
+			s.onTelegram(agentID, saved)
+			return err
+		}
+	}
 	if err := s.q.DeleteTelegramSettings(ctx, agentID); err != nil {
 		if saved != nil {
 			s.onTelegram(agentID, saved)
@@ -378,6 +455,9 @@ func (s *Service) DeleteTelegram(ctx context.Context, agentID string) error {
 		return err
 	}
 	s.onTelegram(agentID, nil)
+	if saved != nil {
+		s.forgetTelegramCredential(saved.CredentialRef)
+	}
 	return nil
 }
 

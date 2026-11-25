@@ -18,6 +18,7 @@ import (
 )
 
 type inbound interface {
+	channel.WebhookInbox
 	Receive(ctx context.Context, peer, source string, msg chat.Message) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
 	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
@@ -48,22 +49,33 @@ func New(cfg Config, manager inbound, watch func(context.Context, int64) (io.Rea
 // Run receives events until the manager cancels it.
 func (b *Bot) Run(ctx context.Context) error {
 	defer b.wg.Wait()
+	webhook := b.cfg.Webhook.VerificationToken != ""
+	if webhook {
+		b.reportConnection(nil)
+	}
+	if err := b.manager.DrainWebhookInbox(ctx, "feishu", b.cfg.AppID, webhook, func(ctx context.Context, data []byte) error {
+		return b.receive(ctx, ctx, data)
+	}); err != nil || webhook {
+		return err
+	}
 	return b.client.Listen(ctx, func(session context.Context, data []byte) error {
 		return b.receive(session, ctx, data)
-	}, func(err error) {
-		state, reason := "running", ""
-		b.mu.Lock()
-		owner := b.cfg.OwnerID
-		b.mu.Unlock()
-		if owner == "" {
-			state = "needs_login"
-		}
-		if err != nil {
-			state = "error"
-			reason = err.Error()
-		}
-		b.manager.Report("feishu", channel.Status{State: state, Reason: reason})
-	})
+	}, b.reportConnection)
+}
+
+func (b *Bot) reportConnection(err error) {
+	state, reason := "running", ""
+	b.mu.Lock()
+	owner := b.cfg.OwnerID
+	b.mu.Unlock()
+	if owner == "" {
+		state = "needs_login"
+	}
+	if err != nil {
+		state = "error"
+		reason = err.Error()
+	}
+	b.manager.Report("feishu", channel.Status{State: state, Reason: reason})
 }
 
 func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
@@ -74,6 +86,11 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	}
 	if m.ID == "" {
 		return nil
+	}
+	if b.cfg.Webhook.VerificationToken == "" && m.EventID != "" {
+		if handled, err := b.manager.HandledWebhook(sessionCtx, "feishu", b.cfg.AppID, m.EventID); err != nil || handled {
+			return err
+		}
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()

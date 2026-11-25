@@ -90,8 +90,8 @@ do not authorize a real group deployment.
 ## Telegram
 
 [`telegram.Bot`](../../internal/channel/telegram/telegram.go) is on when the settings
-have a bot token. It reads messages with `getUpdates` long polling,
-so dex needs no public URL.
+have a bot token. By default, it reads messages with `getUpdates` long polling,
+so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-webhooks).
 
 - Private input still enters Main. Group and supergroup input uses an isolated
   audience for a current paired sender. `requireMention` is off by default; when on,
@@ -107,6 +107,28 @@ so dex needs no public URL.
   change cancels the previous code. Manual user-ID entry remains available.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
+- Managed setup uses one dedicated manager bot per Dex server. The owner sets
+  its token on the Telegram channel page. The manager cannot also be a channel
+  bot and must have no other poller or webhook. SQLite stores its credential
+  reference. Dex checks `getMe.can_manage_bots` before it offers setup and again
+  when setup starts. It polls for `message` and `managed_bot` updates. A change
+  to the manager cancels pending setups without changing saved channels.
+- A managed setup lasts 10 minutes. The owner taps Start in the manager's
+  private chat through a one-time link. Dex records that sender as the owner
+  and then shows the official `t.me/newbot` link. Telegram sends no setup ID
+  in `managed_bot`, so Dex matches `user.id` and the exact random bot username.
+  The owner can change the display name. A different username does not connect.
+- SQLite binds the new `bot.id` to one setup. Dex calls `getManagedBotToken` and
+  checks the returned token with `getMe`. It writes the token to the private
+  vault before it commits the channel and setup state together. Duplicate
+  updates for a finished setup do not fetch the token again. The replacement
+  keeps the saved transport and webhook settings. Before reusing a webhook URL
+  and secret, Dex stops the old receiver and removes its registration. If removal
+  or the local commit fails, Dex restarts the saved receiver. Cancellation,
+  expiry, failure, or a manual channel save leaves the saved settings unchanged
+  by that setup. Only a confirmed setup starts the channel with the new bot and
+  its verified owner as sole sender.
+  A crash before the SQLite commit can leave an unused encrypted credential.
 - The bot registers `/menu`, `/status`, `/settings`, `/sessions`, `/workflows`,
   `/question`, `/clear`, `/stop`, `/feedback`, and `/help` with `setMyCommands`.
   The channel manager owns command execution and deduplication.
@@ -188,6 +210,153 @@ so dex needs no public URL.
   A failed input attempt removes its new uploads when no stored receipt owns
   them. An uncertain receipt lookup keeps the files.
 
+## Inbound webhooks
+
+Webhooks are optional for Telegram and Feishu/Lark. Existing installations do
+not need a public listener. Set the transport separately for each bot's channel
+through its authenticated settings API. If a request omits `transport`, dex
+keeps the saved transport for the same platform account. The Channels page can
+still update the other settings without changing the transport.
+
+### HTTPS and reverse proxy
+
+Keep dex on its private address (default `127.0.0.1:8787`). Use a public DNS
+name and a TLS reverse proxy with a trusted certificate. Expose only the
+needed callback paths. For example, for the `default` agent, a Caddy site can
+use these rules:
+
+```caddyfile
+hooks.example.net {
+    @channelHooks path /hooks/channels/telegram/default /hooks/channels/feishu/default
+    handle @channelHooks {
+        reverse_proxy 127.0.0.1:8787
+    }
+    handle {
+        respond 404
+    }
+}
+```
+
+Replace `default` with the target agent ID. Remove paths for channels you do
+not use. Forward the POST body and provider headers without changes. Do not
+require the dex access token on callback paths. Dex authenticates those requests
+with the platform credentials. Do not log callback bodies, security headers,
+or settings requests. Allow callback bodies up to 4 MiB, the dex limit. Feishu
+allows 3 seconds for the response. Do not add a proxy authentication redirect
+or wait for an agent result.
+
+### Telegram setup and rollback
+
+1. Configure the public HTTPS route. Use port 443 with a trusted certificate.
+   Telegram also lists ports 80, 88, and 8443 for webhooks. Dex does not upload
+   a self-signed certificate.
+2. Send `PUT /api/agents/{agentId}/channels/telegram` with the following fields.
+   Keep the current `allowedUsers` list. An empty `token` keeps the saved bot
+   token. Generate a random `secretToken` that meets the
+   [Bot API requirements](https://core.telegram.org/bots/api#setwebhook).
+
+   ```json
+   {
+     "token": "",
+     "allowedUsers": [123456789],
+     "transport": "webhook",
+     "webhook": {
+       "url": "https://hooks.example.net/hooks/channels/telegram/default",
+       "secretToken": "REPLACE_WITH_A_RANDOM_SECRET"
+     }
+   }
+   ```
+
+3. Check the Telegram runtime status and send a message from an allowed user.
+   Dex stops polling before it registers the callback with `setWebhook`. The
+   settings response confirms the saved configuration. The runtime retries
+   registration on failure and registers again on restart. It checks
+   `X-Telegram-Bot-Api-Secret-Token` on each POST.
+
+To roll back, send the same settings request with `"transport": "polling"`
+and omit `webhook`. Dex stops the HTTP receiver and calls `deleteWebhook`
+before it saves the change and starts polling. If Telegram does not confirm
+teardown, the request fails and dex restores the webhook receiver. If the
+outcome is uncertain, check `getWebhookInfo` and retry the settings change.
+When you remove a webhook-enabled Telegram integration, dex also deregisters
+it. A normal process stop leaves the registration in place for restart.
+
+Both registration and teardown use `drop_pending_updates: false`. Dex requests
+one callback connection to limit concurrent delivery. Retries can still arrive
+out of order. Telegram
+keeps undelivered updates for at most 24 hours and limits webhook delivery
+attempts. A switch does not replay updates that Telegram already confirmed or
+expired. If another client registered the bot before dex owned it, remove that
+registration without dropping updates before you start dex in polling mode.
+
+### Feishu and Lark setup and rollback
+
+1. In the platform's developer console, open **Events & Callbacks** for the
+   app. Copy its Verification Token. If you set an Encrypt Key, copy that key
+   as well. Use the same security settings on both sides. Prefer encryption
+   because the token is in the body of unencrypted events.
+2. Send `PUT /api/agents/{agentId}/channels/feishu`. Keep the app ID and
+   brand (`feishu` or `lark`). An empty `appSecret` keeps the secret for the
+   same app. Use `"transport": "webhook"` and
+   `"webhook": {"verificationToken": "REPLACE_WITH_PLATFORM_TOKEN"}`.
+   Include `encryptKey` in `webhook` only if the platform uses one. Dex stops
+   the WebSocket when it applies this configuration.
+3. In **Event Subscriptions**, select the option that sends events to your
+   server. Use `https://hooks.example.net/hooks/channels/feishu/default` as
+   the Request URL. Keep the `im.message.receive_v1` subscription. Save the
+   settings and release the app version if the console requires it. Dex
+   answers the platform's `challenge` only after it verifies the token. With
+   an Encrypt Key, the challenge must also be encrypted. Event requests in
+   this mode must have a valid `X-Lark-Signature`. Dex uses the Lark SDK for
+   signature calculation and decryption.
+
+To roll back, send the settings request with `"transport": "websocket"`
+and omit `webhook`. Dex closes the HTTP receiver and starts the WebSocket
+receiver after it drains accepted events. In the developer console, switch
+**Event Subscriptions** to persistent connection and remove the developer
+server URL. Save and release the change as required. Dex does not change the
+Feishu or Lark console on your behalf. If you remove the integration, also
+remove its webhook in the console.
+
+Schedule the switch during low traffic. Feishu retries a failed event up to
+four times, at intervals of 15 seconds, 5 minutes, 1 hour, and 6 hours. The
+platform does not promise to replay those events across subscription mode
+changes. Check the platform's event logs after a switch. See the
+[Feishu event overview](https://open.feishu.cn/document/server-docs/event-subscription-guide/overview).
+
+### Intake and recovery
+
+Dex commits each authenticated event to the channel webhook inbox in
+`control.sqlite` before it returns HTTP 200. A failed commit gets HTTP 503.
+The ACK does not wait for message processing, downloads, or agent execution.
+Telegram uses the bot ID and update ID. Feishu uses the app ID and
+`header.event_id`. The unique key also includes the platform. Valid retries
+within the deduplication window get HTTP 200 without adding another item, even
+after a restart. A URL verification challenge does not enter the inbox.
+
+One worker per integration processes committed events in intake order. The
+worker calls the same receive function as polling or WebSocket. The current
+sender grants, pairing, and routing rules still apply. A transient failure can
+delay later events. On success, dex clears the payload. A background job runs at
+startup and every hour. It prunes handled IDs more than 7 days and 5 minutes
+after intake. This covers both platforms' retry windows and Feishu's clock skew.
+The job never prunes pending events.
+
+Feishu webhook events can be at most 7 days old or 5 minutes ahead of the
+host clock. Dex checks the signed request timestamp in encrypted mode and also
+checks `header.create_time` when present. Token-only mode requires
+`header.create_time`. For Telegram, the secret header is the security boundary. Dex cannot use the update timestamp to reject replays
+once the deduplication record expires. Keep the secret private and rotate it
+if exposed.
+
+The inbox, not platform replay, recovers accepted events
+after restart. The default transport drains an existing inbox before it starts
+receiving from the platform. It skips events already processed from the inbox
+when the platform sends the same event ID again. Pending payloads stay bound to the agent that
+accepted them and are not transferred when credentials move to another agent.
+Back up and restrict access to `control.sqlite`: it can contain pending
+message bodies and channel credentials.
+
 ## Shared channels
 
 The app owns a registry with one Manager per agent. Startup restores all agents' bots.
@@ -196,8 +365,8 @@ Uploads and live previews use the bot's agent directory and stream. Chat notific
 wake all Managers; each Manager reads only its agent's replies and commands. This fan-out
 is a limit: route notifications by agent if wakeups become costly.
 
-Channel settings use `agent_id` as their primary key. Telegram tokens, WeChat bot IDs,
-and Feishu app IDs are unique across agents. A duplicate returns 409 and names the
+Channel settings use `agent_id` as their primary key. Telegram bot IDs, WeChat bot IDs,
+and Feishu app IDs cannot be assigned to multiple agents. A duplicate returns 409 and names the
 agent that owns the credential. QR login and registration sessions are also per agent.
 Migration maps old settings, peers, and commands to `default`. Rollback keeps only
 that agent's channel data. WeChat runtime remains keyed by bot ID and owner.
@@ -284,8 +453,24 @@ input and confirmation of every part of its required reply, if any. A skipped
 part is not confirmation. Failure and cancellation use distinct reactions.
 Access is checked again before any reaction. A short-lived observer serializes
 changes for its message; slow, rejected, and unknown reaction requests never
-control intake or the reply sender's retries. Commands and Telegram edits do not reset a message's status. Dex can drop reactions under
-load, after a timeout, or when the bot stops. It does not retry or replay them.
+control intake or the reply sender's retries. Commands and Telegram edits do not
+reset a message's status. Dex can drop reactions under load or when the bot stops.
+Only Telegram private-chat queued acknowledgements retry. Telegram must return a
+429 that confirms rejection. Dex makes at most 3 attempts, with backoff of 1 s
+and 2 s. Telegram's `retry_after` can extend either delay. No retry starts after
+30 s or after the input leaves the native inbox. Each retry checks current
+sender authorization and the private reaction setting. If a request has an
+unknown outcome, Dex stops sending reactions for that input. Dex does not replay
+reactions after restart.
+
+To inspect an acknowledgement, join `submissions.id` to
+`telegram_queue_acknowledgements.submission_id` in `control.sqlite`. Find the
+submission by its `source_key`. A missing acknowledgement row means no attempt
+was recorded. Dex saves `unknown` before each request, including retries. A
+crash at that boundary cannot leave the outcome of an earlier attempt in place.
+`failed` records a definite rejection. `accepted` means Telegram confirmed the
+request. It does not prove the user saw the reaction. `updated_at` is Unix time
+in milliseconds.
 
 ### Promised follow-ups
 
@@ -331,10 +516,47 @@ delivered. It also applies to existing and future child results, with or without
 a follow-up commitment. Restoring the channel grant allows new inputs but does
 not authorize delivery from the old result.
 
+## Owner channel tools
+
+`channel_status`, `channel_pairing`, and `channel_notification_targets` read
+one active bot at a time. The current bot is the default. The owner can use a
+bot ID to select another active bot. The tools return runtime states, pairing
+flags, and authorized notification destinations. They omit runtime error text,
+credentials, pairing codes, and login details. The transcript omits raw tool
+arguments. Argument errors do not echo rejected values.
+
+Each call checks the stored source of the live run. Only a web message in a
+top-level Main or Chat session can use these tools. A run that mixes web and
+channel input does not qualify. A paired sender, group, child session, or
+background input cannot make a call as the web owner.
+
+`channel_request_change` can request a Telegram or Feishu pairing revocation,
+a disconnect, or a change to the primary notification destination. WeChat
+pairing ends when the owner disconnects the channel. Use Channels settings to
+enter credentials, get a pairing link or code, or scan a login QR code.
+
+The change tool has no apply operation. It returns a link to a server-rendered
+review page. The page shows the stored operation, bot, and target. A same-origin
+POST from the owner surface applies that request. When dex requires sign-in,
+the review page requires the web session cookie. A chat message or a tool call
+cannot approve a request. The request belongs to its originating session and
+expires after 10 minutes. Control consumes it once and checks that the session,
+bots, and target are still valid. A notification destination must still map to
+the peer shown on the page. Changed credentials or pairing make an earlier
+request invalid. A restart clears requests that are still pending.
+
+Control uses the same channel settings service as the web UI. It logs the
+outcome of applied and denied mutations with the verified bot and operation
+when available. It omits credentials, raw arguments, remote peer IDs, and
+approval links. The approval link is a bearer capability given to the model.
+The link does not isolate the owner on a no-token install or from code that
+runs as the dex OS user.
+
 ## Feishu and Lark
 
 [`feishu.Bot`](../../internal/channel/feishu/bot.go) receives private messages through
-one WebSocket long connection. It needs no public callback URL. The REST
+one WebSocket long connection by default. It needs no public callback URL unless
+you select [webhooks](#inbound-webhooks). The REST
 client uses the official Lark Go SDK for token requests, message creation,
 card edits, and reactions. Dex owns the token cache for each client, response
 limits, and retries. It passes an explicit token to the SDK so that the SDK
@@ -378,7 +600,7 @@ The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language
 in Markdown fences. Repeated `/pair` messages never reach the agent.
 Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
-The shared channel manager handles `/clear`, `/new`, `/stop`, `/help`, and `/feedback`. A source key contains `feishu:<app ID>:<message ID>`. The bot acknowledges valid agent
+The shared channel manager handles `/clear`, `/new`, `/stop`, `/help`, and `/feedback`. A source key contains `feishu:<app ID>:<message ID>`. The WebSocket receiver acknowledges valid agent
 input after durable admission succeeds. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.
@@ -401,7 +623,8 @@ Network failures, server errors and rate limits get at most
 token refresh. A token rejection can therefore cause up to 6 API attempts,
 plus token requests. Downloads wait at most 30 seconds for response headers;
 each complete download has a 5-minute deadline, including error body reads.
-Downloads use the socket session context.
+WebSocket downloads use the socket session context. Webhook downloads use the
+bot context.
 Durable admission uses the bot lifetime, so a disconnect cannot cancel a stored
 message while it waits for queue space. JSON responses remain
 bounded to 4 MB and download error responses to 1 MB. Retry delays are

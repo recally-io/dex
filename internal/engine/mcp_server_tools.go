@@ -37,6 +37,10 @@ func (a *Agents) mcpServerTools(agentID string, loaded *loadedExtensions) []*dur
 				"type": map[string]any{"type": "string", "description": "Use http or stdio. Empty defaults to stdio."}, "command": str,
 				"args": map[string]any{"type": "array", "items": str}, "cwd": str, "url": str,
 				"env": strMap, "headers": strMap, "disabled": map[string]any{"type": "boolean"},
+				"oauth": map[string]any{"type": "object", "additionalProperties": false, "properties": map[string]any{
+					"clientId": str, "clientSecret": map[string]any{"type": "string", "pattern": mcpOAuthSecret.String(), "description": "Use vault:NAME at this level. Never pass a secret value."}, "scope": str,
+					"tokenEndpointAuthMethod": map[string]any{"type": "string", "enum": []string{"client_secret_basic", "client_secret_post"}},
+				}},
 			}}
 			required = append(required, "config")
 		}

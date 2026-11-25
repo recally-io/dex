@@ -28,6 +28,8 @@ type runtime struct {
 	cancel          context.CancelFunc
 	done            chan struct{}
 	wake            chan struct{}
+	inboundWake     chan struct{}
+	webhook         *channel.Webhook
 	status          channel.Status
 	reactions       map[string]*reactionWatch // guarded by Manager.mu
 	reactionWorkers sync.WaitGroup
@@ -41,6 +43,7 @@ type Manager struct {
 	chats    *chat.Service
 	agentID  string
 	setMu    sync.Mutex
+	intakeMu sync.Mutex // Orders callback commits with runtime removal.
 	mu       sync.Mutex
 	commands map[string]chan struct{} // source key to active command owner
 	bots     map[string]*runtime
@@ -56,10 +59,12 @@ func New(ctx context.Context, db *sql.DB, chats *chat.Service, agentID string) *
 func (m *Manager) Set(name string, bot channel.Bot) {
 	m.setMu.Lock()
 	defer m.setMu.Unlock()
+	m.intakeMu.Lock()
 	m.mu.Lock()
 	old := m.bots[name]
 	delete(m.bots, name)
 	m.mu.Unlock()
+	m.intakeMu.Unlock()
 	if old != nil {
 		old.cancel()
 		<-old.done
@@ -68,7 +73,10 @@ func (m *Manager) Set(name string, bot channel.Bot) {
 		return
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), reactions: make(map[string]*reactionWatch), status: channel.Status{State: "running"}}
+	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), inboundWake: make(chan struct{}, 1), reactions: make(map[string]*reactionWatch), status: channel.Status{State: "running"}}
+	if receiver, ok := bot.(interface{ InboundWebhook() *channel.Webhook }); ok {
+		r.webhook = receiver.InboundWebhook()
+	}
 	m.mu.Lock()
 	m.bots[name] = r
 	m.mu.Unlock()

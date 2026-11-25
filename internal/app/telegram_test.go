@@ -39,6 +39,7 @@ type fakeTelegram struct {
 	failAfter      atomic.Int64
 	sendCount      atomic.Int64
 	pollOffset     atomic.Int64
+	webhookPolls   atomic.Int64
 	lastCallback   atomic.Int64
 	failSend       atomic.Bool
 	failMedia      atomic.Bool
@@ -54,16 +55,26 @@ type fakeTelegram struct {
 	srv            *httptest.Server
 	sent           chan sentMessage
 
-	mu          sync.Mutex
-	updates     []map[string]any
-	rejectDraft bool
-	failures    map[string][]platformFailure
-	files       map[string]string
-	events      chan platformEvent
-	nextID      int64
-	deliveries  []channelSend
-	requests    []platformEvent
-	keyboards   map[int64][][]telegramButton
+	mu           sync.Mutex
+	webhook      telegramRegistration
+	registerGate <-chan struct{}
+	updates      []map[string]any
+	rejectDraft  bool
+	failures     map[string][]platformFailure
+	files        map[string]string
+	events       chan platformEvent
+	nextID       int64
+	deliveries   []channelSend
+	requests     []platformEvent
+	keyboards    map[int64][][]telegramButton
+}
+
+type telegramRegistration struct {
+	URL     string   `json:"url"`
+	Secret  string   `json:"secret_token"`
+	Drop    bool     `json:"drop_pending_updates"`
+	Updates []string `json:"allowed_updates"`
+	Max     int      `json:"max_connections"`
 }
 
 type telegramButton struct {
@@ -249,7 +260,40 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	switch method {
 	case "getMe":
 		result = map[string]any{"id": 123, "username": "dex_test_bot"}
+	case "setWebhook", "deleteWebhook":
+		var registration telegramRegistration
+		if err := json.UnmarshalRead(r.Body, &registration); err != nil {
+			http.Error(w, "invalid registration", http.StatusBadRequest)
+			return
+		}
+		f.mu.Lock()
+		gate := f.registerGate
+		f.mu.Unlock()
+		if method == "setWebhook" && gate != nil {
+			f.events <- platformEvent{Method: "registerWaiting"}
+			select {
+			case <-gate:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		f.mu.Lock()
+		f.webhook = registration
+		if registration.Drop {
+			f.updates = nil
+		}
+		f.mu.Unlock()
+		f.events <- platformEvent{Method: method}
+		result = true
 	case "getUpdates":
+		f.mu.Lock()
+		registered := f.webhook.URL != ""
+		f.mu.Unlock()
+		if registered {
+			f.webhookPolls.Add(1)
+			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 409, "description": "webhook is active"})
+			return
+		}
 		var params struct {
 			Offset int64 `json:"offset"`
 		}
@@ -337,9 +381,32 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 				m.Text += reaction.Emoji
 			}
 		}
-		if method == "setMessageReaction" && f.reactGate != nil && !f.reactGate.handle(r, fmt.Sprint(m.MessageID), m.Text) {
-			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": 60}})
-			return
+		if method == "setMessageReaction" && f.reactGate != nil {
+			gate := f.reactGate
+			limited := m.Text == "👀" && gate.limitNextQueued.Swap(false)
+			if m.Text == "👀" && gate.queuedTimes != nil {
+				gate.queuedTimes <- time.Now()
+			}
+			if !gate.handle(r, fmt.Sprint(m.MessageID), m.Text) || limited {
+				if gate.unknownOutcome {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				after := 60
+				if limited {
+					after = gate.retryAfter
+				}
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": after}})
+				return
+			}
+			if m.Text == "👀" && gate.holdQueuedRetry != nil {
+				select {
+				case <-gate.holdQueuedRetry:
+				case <-r.Context().Done():
+					return
+				}
+			}
 		}
 		if method == "setMyCommands" {
 			for _, command := range m.Commands {

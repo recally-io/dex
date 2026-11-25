@@ -58,6 +58,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 		return "", errors.New("notify_user source belongs to another conversation")
 	}
 	now := s.now().UnixMilli()
+	// Keep the tool: prefix in sync with ListTimelineNotifications in internal/db/queries/outbox.sql.
 	dedupKey := "tool:" + r.Key
 	outboxID := uuid.NewV7().String()
 	final := boolPtrOrTrue(a.Final)
@@ -89,6 +90,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 			return "", errChannelFollowUp
 		}
 		if final {
+			// A channel conclusion keeps one key per delegation and stays out of the Web timeline.
 			dedupKey = followUpFinalKey(f.DelegationID)
 			a.TopicKey = "" // Progress cannot supersede the committed conclusion.
 		}

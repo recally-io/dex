@@ -141,6 +141,16 @@ type ChannelReplyFile struct {
 	Body         []byte `json:"body"`
 }
 
+type ChannelWebhookInbox struct {
+	ID         int64  `json:"id"`
+	Platform   string `json:"platform"`
+	Account    string `json:"account"`
+	EventID    string `json:"event_id"`
+	AgentID    string `json:"agent_id"`
+	ReceivedAt int64  `json:"received_at"`
+	Payload    []byte `json:"payload"`
+}
+
 type CompactReceipt struct {
 	ID             string `json:"id"`
 	ConversationID int64  `json:"conversation_id"`
@@ -191,14 +201,16 @@ type ExecutionEnvironment struct {
 }
 
 type FeishuSetting struct {
-	AgentID          string        `json:"agent_id"`
-	AppID            string        `json:"app_id"`
-	AppSecret        string        `json:"app_secret"`
-	Brand            string        `json:"brand"`
-	OwnerID          string        `json:"owner_id"`
-	PairingCode      string        `json:"pairing_code"`
-	PairingExpiresAt int64         `json:"pairing_expires_at"`
-	Reactions        sql.NullInt64 `json:"reactions"`
+	AgentID           string        `json:"agent_id"`
+	AppID             string        `json:"app_id"`
+	AppSecret         string        `json:"app_secret"`
+	Brand             string        `json:"brand"`
+	OwnerID           string        `json:"owner_id"`
+	PairingCode       string        `json:"pairing_code"`
+	PairingExpiresAt  int64         `json:"pairing_expires_at"`
+	Reactions         sql.NullInt64 `json:"reactions"`
+	VerificationToken string        `json:"verification_token"`
+	EncryptKey        string        `json:"encrypt_key"`
 }
 
 type ForkReceipt struct {
@@ -469,6 +481,28 @@ type TelegramEffect struct {
 	CreatedAt    int64  `json:"created_at"`
 }
 
+type TelegramManagedSetup struct {
+	ID        string        `json:"id"`
+	AgentID   string        `json:"agent_id"`
+	ManagerID int64         `json:"manager_id"`
+	Username  string        `json:"username"`
+	ExpiresAt int64         `json:"expires_at"`
+	OwnerID   int64         `json:"owner_id"`
+	BotID     sql.NullInt64 `json:"bot_id"`
+	State     string        `json:"state"`
+}
+
+type TelegramManager struct {
+	ID            int64  `json:"id"`
+	CredentialRef string `json:"credential_ref"`
+}
+
+type TelegramQueueAcknowledgement struct {
+	SubmissionID string `json:"submission_id"`
+	Outcome      string `json:"outcome"`
+	UpdatedAt    int64  `json:"updated_at"`
+}
+
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`
@@ -477,6 +511,8 @@ type TelegramSetting struct {
 	PairingExpires int64  `json:"pairing_expires"`
 	RetryAt        int64  `json:"retry_at"`
 	Options        string `json:"options"`
+	WebhookUrl     string `json:"webhook_url"`
+	WebhookSecret  string `json:"webhook_secret"`
 }
 
 type WechatRuntime struct {

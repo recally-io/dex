@@ -582,6 +582,23 @@ export type AutomationRunList = {
 export type HistoryPage = {
     items: Array<Item>;
     nextBefore?: number;
+    notifications?: Array<TimelineNotification>;
+    nextBeforeNotification?: string;
+};
+
+/**
+ * A Web-origin notification read from the Outbox. It is not a delivery receipt.
+ */
+export type TimelineNotification = {
+    /**
+     * Outbox ID.
+     */
+    id: string;
+    text: string;
+    /**
+     * Creation time in milliseconds.
+     */
+    at: number;
 };
 
 export type BoundaryItem = {
@@ -768,7 +785,22 @@ export type ChatEvent = ({
     type: 'run';
 } & RunEvent) | ({
     type: 'child';
-} & ChildEvent);
+} & ChildEvent) | ({
+    type: 'notifications';
+} & NotificationsEvent);
+
+export type NotificationsEvent = {
+    type: 'notifications';
+    /**
+     * Newest first. Merge by Outbox ID.
+     */
+    notifications: Array<TimelineNotification>;
+    /**
+     * True for the first notification page of a connection.
+     */
+    initial: boolean;
+    nextBeforeNotification?: string;
+};
 
 /**
  * Current state of this chat or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
@@ -1231,6 +1263,10 @@ export type McpServer = {
      * The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
      */
     tools: Array<string>;
+    /**
+     * The action or status of an OAuth connection. Absent for other connections.
+     */
+    oauth?: 'authorize' | 'reauthorize' | 'authorized';
     vaultReferences?: {
         env?: {
             [key: string]: string;
@@ -1257,12 +1293,24 @@ export type WechatLogin = {
     reason?: string;
 };
 
+export type TelegramManagedSetup = {
+    id: string;
+    state: 'verify_owner' | 'create_bot' | 'connected' | 'expired' | 'failed' | 'canceled';
+    expiresAt: number;
+    url?: string;
+    username?: string;
+};
+
 export type Telegram = {
     enabled: boolean;
     botId?: string;
+    transport?: 'polling' | 'webhook';
+    webhookUrl?: string;
     status: ChannelStatus;
     allowedUsers: Array<number>;
     options?: TelegramOptions;
+    managerConfigured?: boolean;
+    managedCreationAvailable?: boolean;
 };
 
 export type ChannelStatus = {
@@ -1277,6 +1325,18 @@ export type TelegramInput = {
     token: string;
     allowedUsers: Array<number>;
     options?: TelegramOptions;
+    /**
+     * Omission keeps the transport for the same bot. New bots default to polling.
+     */
+    transport?: 'polling' | 'webhook';
+    webhook?: TelegramWebhookInput;
+};
+
+export type TelegramWebhookInput = {
+    /**
+     * Public HTTPS callback URL.
+     */
+    url: string;
 };
 
 export type TelegramOptions = {
@@ -1332,6 +1392,7 @@ export type Feishu = {
     appId: string;
     brand: string;
     paired: boolean;
+    transport?: 'websocket' | 'webhook';
     /**
      * Private chat status reactions. On when unset; false explicitly disables them.
      */
@@ -1360,6 +1421,21 @@ export type FeishuInput = {
      * Omission preserves the saved preference. False disables private chat status reactions.
      */
     reactions?: boolean;
+    /**
+     * Omission keeps the transport for the same app. New apps default to WebSocket.
+     */
+    transport?: 'websocket' | 'webhook';
+};
+
+export type FeishuWebhookInput = {
+    /**
+     * The Feishu or Lark verification token.
+     */
+    verificationToken: string;
+    /**
+     * Set this to require encrypted and signed events. Omit it for token verification only.
+     */
+    encryptKey?: string;
 };
 
 export type FeishuBrand = {
@@ -1434,6 +1510,49 @@ export type AgentWritable = {
      * Empty means the built-in local host environment.
      */
     environmentId: string;
+};
+
+export type TelegramInputWritable = {
+    /**
+     * Write-only. Empty keeps the saved token.
+     */
+    token: string;
+    allowedUsers: Array<number>;
+    options?: TelegramOptions;
+    /**
+     * Omission keeps the transport for the same bot. New bots default to polling.
+     */
+    transport?: 'polling' | 'webhook';
+    webhook?: TelegramWebhookInputWritable;
+};
+
+export type TelegramWebhookInputWritable = {
+    /**
+     * Public HTTPS callback URL.
+     */
+    url: string;
+    /**
+     * Random secret of 1 to 256 characters using A-Z, a-z, 0-9, hyphen, or underscore.
+     */
+    secretToken: string;
+};
+
+export type FeishuInputWritable = {
+    appId: string;
+    /**
+     * Write-only. Empty keeps the secret for the same App ID and brand.
+     */
+    appSecret: string;
+    brand: string;
+    /**
+     * Omission preserves the saved preference. False disables private chat status reactions.
+     */
+    reactions?: boolean;
+    /**
+     * Omission keeps the transport for the same app. New apps default to WebSocket.
+     */
+    transport?: 'websocket' | 'webhook';
+    webhook?: FeishuWebhookInput;
 };
 
 export type AgentId = string;
@@ -3122,6 +3241,116 @@ export type SetPrimaryNotificationTargetResponses = {
 
 export type SetPrimaryNotificationTargetResponse = SetPrimaryNotificationTargetResponses[keyof SetPrimaryNotificationTargetResponses];
 
+export type SetTelegramManagerData = {
+    body: {
+        token: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/telegram/manager';
+};
+
+export type SetTelegramManagerErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetTelegramManagerError = SetTelegramManagerErrors[keyof SetTelegramManagerErrors];
+
+export type SetTelegramManagerResponses = {
+    /**
+     * Manager setting saved.
+     */
+    200: Ok;
+};
+
+export type SetTelegramManagerResponse = SetTelegramManagerResponses[keyof SetTelegramManagerResponses];
+
+export type BeginTelegramManagedSetupData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels/telegram/managed';
+};
+
+export type BeginTelegramManagedSetupErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type BeginTelegramManagedSetupError = BeginTelegramManagedSetupErrors[keyof BeginTelegramManagedSetupErrors];
+
+export type BeginTelegramManagedSetupResponses = {
+    /**
+     * Setup started.
+     */
+    200: TelegramManagedSetup;
+};
+
+export type BeginTelegramManagedSetupResponse = BeginTelegramManagedSetupResponses[keyof BeginTelegramManagedSetupResponses];
+
+export type CancelTelegramManagedSetupData = {
+    body?: never;
+    path: {
+        agentId: string;
+        setupId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}';
+};
+
+export type CancelTelegramManagedSetupErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CancelTelegramManagedSetupError = CancelTelegramManagedSetupErrors[keyof CancelTelegramManagedSetupErrors];
+
+export type CancelTelegramManagedSetupResponses = {
+    /**
+     * Setup canceled or already closed.
+     */
+    200: Ok;
+};
+
+export type CancelTelegramManagedSetupResponse = CancelTelegramManagedSetupResponses[keyof CancelTelegramManagedSetupResponses];
+
+export type GetTelegramManagedSetupData = {
+    body?: never;
+    path: {
+        agentId: string;
+        setupId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}';
+};
+
+export type GetTelegramManagedSetupErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetTelegramManagedSetupError = GetTelegramManagedSetupErrors[keyof GetTelegramManagedSetupErrors];
+
+export type GetTelegramManagedSetupResponses = {
+    /**
+     * Setup state and the current Telegram link, if any.
+     */
+    200: TelegramManagedSetup;
+};
+
+export type GetTelegramManagedSetupResponse = GetTelegramManagedSetupResponses[keyof GetTelegramManagedSetupResponses];
+
 export type CreateTelegramPairingData = {
     body?: never;
     path: {
@@ -3268,7 +3497,7 @@ export type DeleteTelegramResponses = {
 export type DeleteTelegramResponse = DeleteTelegramResponses[keyof DeleteTelegramResponses];
 
 export type SetTelegramData = {
-    body: TelegramInput;
+    body: TelegramInputWritable;
     path: {
         agentId: string;
     };
@@ -3353,7 +3582,7 @@ export type GetFeishuResponses = {
 export type GetFeishuResponse = GetFeishuResponses[keyof GetFeishuResponses];
 
 export type SetFeishuData = {
-    body: FeishuInput;
+    body: FeishuInputWritable;
     path: {
         agentId: string;
     };
@@ -4454,8 +4683,9 @@ export type GetChatHistoryData = {
         agentId: string;
         chatId: number;
     };
-    query: {
-        before: number;
+    query?: {
+        before?: number;
+        beforeNotification?: string;
         limit?: number;
     };
     url: '/api/agents/{agentId}/chats/{chatId}/history';
@@ -4480,7 +4710,7 @@ export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryError
 
 export type GetChatHistoryResponses = {
     /**
-     * A history page. No nextBefore means the start was reached.
+     * A history page. An absent cursor means that source has no more entries.
      */
     200: HistoryPage;
 };
@@ -4945,6 +5175,38 @@ export type GetExtensionsResponses = {
 };
 
 export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
+
+export type StartMcpOAuthData = {
+    body: {
+        scope: ExtensionScope;
+    };
+    path: {
+        agentId: string;
+        name: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions/mcp/{name}/oauth';
+};
+
+export type StartMcpOAuthErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type StartMcpOAuthError = StartMcpOAuthErrors[keyof StartMcpOAuthErrors];
+
+export type StartMcpOAuthResponses = {
+    /**
+     * The authorization URL and a browser binding cookie.
+     */
+    200: {
+        authorizationUrl: string;
+    };
+};
+
+export type StartMcpOAuthResponse = StartMcpOAuthResponses[keyof StartMcpOAuthResponses];
 
 export type DeleteVaultData = {
     body?: never;

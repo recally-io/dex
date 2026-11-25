@@ -34,6 +34,12 @@ func (s *Submission) Running(ctx context.Context) (bool, error) {
 	return record.Status == durable.SubmissionPlaced, err
 }
 
+// Queued reports whether native execution still holds this input in its inbox.
+func (s *Submission) Queued(ctx context.Context) (bool, error) {
+	record, err := s.native.Status(ctx)
+	return record.Status == durable.SubmissionQueued, err
+}
+
 func (s *Submission) Wait(ctx context.Context) (Outcome, error) {
 	select {
 	case <-ctx.Done():
@@ -135,11 +141,14 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			case input.Main:
 				add := []*durable.Extension{frontDeskExtension()}
 				if asksUser {
+					add = append(add, channelExtensions(ref.AgentID, a.config.Channels)...)
 					add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
 				}
 				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
 			case asksUser:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: []*durable.Extension{askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks)}}})
+				add := channelExtensions(ref.AgentID, a.config.Channels)
+				add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: add}})
 			}
 			switch {
 			case input.Child:

@@ -80,8 +80,20 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 		ExecEnv: provider,
 	})
 
-	ref := coreCreate(t, a, "a", coreOptions("echo"))
+	// Given a healthy default workspace with a project skill.
 	remoteWS := filepath.Join(remoteRoot, "agents", "a", "workspace")
+	workspaceSkill := filepath.Join(remoteWS, ".agents", "skills", "workspace-notes", "SKILL.md")
+	extensionFile(t, workspaceSkill, "---\ndescription: Default workspace notes\n---\n")
+	ref := coreCreate(t, a, "a", coreOptions("section"))
+
+	// Opening the Harness without a turn must not hide default workspace skills from Info.
+	info, err := a.Extensions(t.Context(), "a")
+	if err != nil || !slices.ContainsFunc(info.Skills, func(skill SkillInfo) bool { return skill.Name == "workspace-notes" }) {
+		t.Fatalf("cold workspace skills: %+v, %v", info.Skills, err)
+	}
+	if answer := coreWait(t, coreSubmit(t, a, ref, "req-default-skills", "skills", "section")).Answer; !strings.Contains(answer, "Default workspace notes") {
+		t.Fatalf("first turn lacks default workspace skill: %q", answer)
+	}
 
 	// When a bash command runs remotely, it inherits remote daemon environment only.
 	bashOut := coreWait(t, coreSubmit(t, a, ref, "req-bash", `printf "%s|%s|%s|%s|%s|%s" "$REMOTE_DAEMON_VAR" "$EXPLICIT_DOTENV" "$AGENT_DOTENV" "${LOGIN_HOST_SECRET:-}" "${BASE_HOST_VAR:-}" "${HOST_PROCESS_SECRET:-}"`, "bash")).Answer

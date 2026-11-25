@@ -19,6 +19,7 @@ import (
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/background"
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
@@ -36,6 +37,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/upload"
+	"github.com/recally-io/dex/internal/vault"
 	"github.com/recally-io/dex/internal/worktask"
 	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 )
@@ -269,8 +271,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return routineTools.Run(ctx, c, id)
 		},
 	}
-	// Bot tools need the services that exist only after the engine, so handlers bind to the pointer.
+	// These tools bind to services that exist only after the engine.
 	botTools := &agent.BotTools{}
+	var channelTools engine.ChannelTools
 	envs := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    cfg.DataDir,
 		SSHHome:    cfg.Home,
@@ -297,6 +300,14 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Tasks:     tools,
 		Routines:  routines,
 		Bots:      botTools.Handlers(),
+		Channels: engine.ChannelTools{
+			Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
+				return channelTools.Read(ctx, c, view, bot)
+			},
+			Request: func(ctx context.Context, c engine.TaskContext, bot, op, target string) (any, error) {
+				return channelTools.Request(ctx, c, bot, op, target)
+			},
+		},
 		WorkTasks: worktasktools.New(conn).Handlers(pluginTools(plugins)),
 		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
 			row, err := q.GetAgent(ctx, agentID)
@@ -366,6 +377,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
+	if err := agentsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
+		slog.Warn("telegram: could not open the manager credential")
+	}
 	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseAgent(changeCtx, agentID)
 		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
@@ -373,6 +387,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 	}
 	*botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
+	channelTools = agentsService.ChannelToolHandlers(chats)
 	// An approved archive commits in a chat receipt; the channels stop right after it.
 	chats.OnBotArchived = func(id string) {
 		if err := bg.StopAgent(runCtx, id); err != nil {
@@ -466,8 +481,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		chats.RetryNow()
 	})
 	a.handler = server.New(server.Config{
-		WorkTasks: workTasks,
-		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
+		ChannelWebhooks: http.HandlerFunc(bots.webhook),
+		WorkTasks:       workTasks,
+		Plugins:         plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine: native,
 		Envs:   envs,
 		EnvironmentChanged: func(ctx context.Context, id string) {
@@ -505,6 +521,14 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}); err != nil {
 		return nil, err
 	}
+	if err := jobs.Every("channel-webhook-prune", time.Hour, func(ctx context.Context) {
+		cutoff := time.Now().Add(-(channel.WebhookRetention + channel.WebhookFutureSkew)).UnixMilli()
+		if err := q.PruneHandledChannelWebhooks(ctx, cutoff); err != nil && ctx.Err() == nil {
+			slog.Warn("prune handled channel webhooks", "err", err)
+		}
+	}); err != nil {
+		return nil, err
+	}
 	for _, p := range plugins {
 		for _, job := range p.Jobs {
 			if err := jobs.Every(p.Name+"/"+job.Name, job.Every, job.Run); err != nil {
@@ -512,7 +536,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 		}
 	}
-	jobs.Start(runCtx)
+	if err := jobs.Every("telegram-manager", time.Second, agentsService.TelegramManagerPoll()); err != nil {
+		return nil, err
+	}
 	for _, agent := range agents {
 		tg, err := agentsService.TelegramConfig(ctx, agent.ID)
 		if err != nil {
@@ -530,6 +556,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		setFeishu(agent.ID, fs)
 		setWechat(agent.ID, wx)
 	}
+	jobs.Start(runCtx)
 	return a, nil
 }
 

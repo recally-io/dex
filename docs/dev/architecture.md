@@ -23,8 +23,11 @@ for the web UI; the installed service needs neither runtime.
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
-`internal/channel/delivery` owns commands and
-durable reply delivery. The engine does not import dex business packages.
+`internal/channel/delivery` owns commands, the durable webhook inbox, and
+reply delivery. Telegram and Feishu keep their existing default transports.
+Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
+acknowledging them and use the same platform receive functions. The engine does
+not import dex business packages.
 
 Tools and stdio MCP servers can start child processes. Bash has a default
 120-second timeout. An omitted or null `timeout` uses the default. An explicit
@@ -93,7 +96,7 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, the channel outbox, Tasks, and plugin tables. Core migrations own
+receipts, the channel webhook inbox and reply outbox, Tasks, and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
 start ([plugins](plugins.md#plugin-migrations)). Each agent has
 `agents/<id>/state.sqlite`, which holds native admission, runs, transcripts,
@@ -122,10 +125,11 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    must not suppress that retry. Each Session has an independent delivery gate
    and retry delay. SQLite receipt insertion order defines FIFO in that Session.
    A blocked input does not hold the delivery gate of another Session of the same Bot.
-   Cold Harness initialization and recovery share the execution store and registry.
-   Cold open waits for startup model discovery without holding a delivery gate of
-   another Session. Sessions on the same environment can share its lease. The
-   engine does not hold its lease registry lock during remote preparation.
+   Cold Harness initialization still waits for shared model discovery, extension
+   and MCP loading, and recovery. It publishes the Harness without opening the
+   default execution environment. A Session opens the lease it needs after that
+   shared barrier. Sessions that select the same environment can share its lease.
+   The engine does not hold its lease registry lock during remote preparation.
    Receipt creation and native admission have distinct timestamps. Structured
    logs correlate Session waits, native start, and settlement without logging
    message content or remote errors. See the [slow input procedure](sessions.md#diagnose-a-slow-session-input).
@@ -236,12 +240,15 @@ Telegram bot without allowed users. WeChat captures the owner ID from QR
 confirmation and rejects a login without that ID. Other WeChat senders never
 reach the agent. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
-cannot send messages or change settings.
+cannot send messages or change settings. [Channel approval pages](channels.md#owner-channel-tools)
+use the same cross-origin check. When dex requires sign-in, channel approval
+pages require a web session cookie.
 
-`control.sqlite` holds provider keys, channel tokens, WeChat context tokens,
-plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain text. WeChat logs exclude credentials and remote error text. The
-data directory is created with mode 0700. The API never returns a key or a
-token.
+`control.sqlite` holds provider keys, manual channel tokens, WeChat context
+tokens, plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain
+text. Telegram manager and managed bot tokens stay in the private [vault](extensions.md#secret-vault).
+WeChat logs exclude credentials and remote error text. Dex creates the data
+directory with mode 0700. The API never returns a key or a token.
 
 Uploads: a file name with a path, a control character, or more than 255
 bytes is refused. An upload ID must be a UUID in its normal form, so it
@@ -259,7 +266,10 @@ in `env` and `headers`. The Extensions API and `mcp_server_list` show status,
 tool names, and the unresolved references. `mcp_server_get` hides plain
 environment and header values and URL queries. A failed server shows a safe
 error, such as an HTTP status or the name of a missing secret. To see the full
-error, run the server by hand.
+error, run the server by hand. Remote HTTP MCP connections can use
+[browser OAuth](extensions.md#mcp-browser-authorization). Dex stores those
+grants in private vault files and sends bearer tokens only to the authorized
+MCP endpoint.
 
 Every chat reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to
@@ -316,6 +326,8 @@ it is not the source of execution state.
 Keep one transcript projection in the engine. History, snapshots, and live
 events use durable entries and the native Inbox. The live hub owns transport
 and empty-chat attachment, with no second transcript or execution model.
+The Web client also displays a separate [Outbox projection](sessions.md#web-notifications)
+for explicit Web notifications. That projection does not write native entries.
 
 The tests cover separate behavior and failure cases. Keep restart, duplicate
 message, multiple browser streams, model errors, tool results, and DST cases.

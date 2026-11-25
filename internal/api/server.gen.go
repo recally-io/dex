@@ -21,6 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/channel"
+	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
 	"github.com/recally-io/dex/internal/chat"
@@ -270,6 +271,24 @@ func (e ExtensionScope) Valid() bool {
 	}
 }
 
+// Defines values for FeishuInputTransport.
+const (
+	FeishuInputTransportWebhook   FeishuInputTransport = "webhook"
+	FeishuInputTransportWebsocket FeishuInputTransport = "websocket"
+)
+
+// Valid indicates whether the value is a known member of the FeishuInputTransport enum.
+func (e FeishuInputTransport) Valid() bool {
+	switch e {
+	case FeishuInputTransportWebhook:
+		return true
+	case FeishuInputTransportWebsocket:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -312,6 +331,27 @@ const (
 func (e ItemEventType) Valid() bool {
 	switch e {
 	case ItemEventTypeItem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for McpServerOauth.
+const (
+	Authorize   McpServerOauth = "authorize"
+	Authorized  McpServerOauth = "authorized"
+	Reauthorize McpServerOauth = "reauthorize"
+)
+
+// Valid indicates whether the value is a known member of the McpServerOauth enum.
+func (e McpServerOauth) Valid() bool {
+	switch e {
+	case Authorize:
+		return true
+	case Authorized:
+		return true
+	case Reauthorize:
 		return true
 	default:
 		return false
@@ -435,6 +475,21 @@ func (e MonitorState) Valid() bool {
 	case MonitorStateFired:
 		return true
 	case MonitorStateScheduled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for NotificationsEventType.
+const (
+	Notifications NotificationsEventType = "notifications"
+)
+
+// Valid indicates whether the value is a known member of the NotificationsEventType enum.
+func (e NotificationsEventType) Valid() bool {
+	switch e {
+	case Notifications:
 		return true
 	default:
 		return false
@@ -657,6 +712,42 @@ const (
 func (e TaskItemKind) Valid() bool {
 	switch e {
 	case Task:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TelegramTransport.
+const (
+	TelegramTransportPolling TelegramTransport = "polling"
+	TelegramTransportWebhook TelegramTransport = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the TelegramTransport enum.
+func (e TelegramTransport) Valid() bool {
+	switch e {
+	case TelegramTransportPolling:
+		return true
+	case TelegramTransportWebhook:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TelegramInputTransport.
+const (
+	TelegramInputTransportPolling TelegramInputTransport = "polling"
+	TelegramInputTransportWebhook TelegramInputTransport = "webhook"
+)
+
+// Valid indicates whether the value is a known member of the TelegramInputTransport enum.
+func (e TelegramInputTransport) Valid() bool {
+	switch e {
+	case TelegramInputTransportPolling:
+		return true
+	case TelegramInputTransportWebhook:
 		return true
 	default:
 		return false
@@ -1234,7 +1325,14 @@ type FeishuInput struct {
 
 	// Reactions Omission preserves the saved preference. False disables private chat status reactions.
 	Reactions *bool `json:"reactions,omitempty"`
+
+	// Transport Omission keeps the transport for the same app. New apps default to WebSocket.
+	Transport *FeishuInputTransport `json:"transport,omitempty"`
+	Webhook   *FeishuWebhookInput   `json:"webhook,omitempty"`
 }
+
+// FeishuInputTransport Omission keeps the transport for the same app. New apps default to WebSocket.
+type FeishuInputTransport string
 
 // FeishuPoll defines model for FeishuPoll.
 type FeishuPoll struct {
@@ -1243,6 +1341,9 @@ type FeishuPoll struct {
 
 // FeishuSetup defines model for FeishuSetup.
 type FeishuSetup = agent.FeishuSetup
+
+// FeishuWebhookInput defines model for FeishuWebhookInput.
+type FeishuWebhookInput = feishu.WebhookConfig
 
 // Health defines model for Health.
 type Health struct {
@@ -1286,8 +1387,10 @@ type HeldEventReason string
 
 // HistoryPage defines model for HistoryPage.
 type HistoryPage struct {
-	Items      []Item `json:"items"`
-	NextBefore *int64 `json:"nextBefore,omitempty"`
+	Items                  []Item                  `json:"items"`
+	NextBefore             *int64                  `json:"nextBefore,omitempty"`
+	NextBeforeNotification *string                 `json:"nextBeforeNotification,omitempty"`
+	Notifications          *[]TimelineNotification `json:"notifications,omitempty"`
 }
 
 // InboxItem defines model for InboxItem.
@@ -1312,6 +1415,9 @@ type McpServer struct {
 	Error *string `json:"error,omitempty"`
 	Name  string  `json:"name"`
 
+	// Oauth The action or status of an OAuth connection. Absent for other connections.
+	Oauth *McpServerOauth `json:"oauth,omitempty"`
+
 	// Overrides The server replaces a wider server with the same name.
 	Overrides bool `json:"overrides"`
 
@@ -1331,6 +1437,9 @@ type McpServer struct {
 		Headers *map[string]string `json:"headers,omitempty"`
 	} `json:"vaultReferences,omitempty"`
 }
+
+// McpServerOauth The action or status of an OAuth connection. Absent for other connections.
+type McpServerOauth string
 
 // McpServerState idle means that the agent has not started, so dex has not connected.
 type McpServerState string
@@ -1425,6 +1534,20 @@ type NewSession struct {
 
 // NotificationTargets defines model for NotificationTargets.
 type NotificationTargets = agent.NotificationTargets
+
+// NotificationsEvent defines model for NotificationsEvent.
+type NotificationsEvent struct {
+	// Initial True for the first notification page of a connection.
+	Initial                bool    `json:"initial"`
+	NextBeforeNotification *string `json:"nextBeforeNotification,omitempty"`
+
+	// Notifications Newest first. Merge by Outbox ID.
+	Notifications []TimelineNotification `json:"notifications"`
+	Type          NotificationsEventType `json:"type"`
+}
+
+// NotificationsEventType defines model for NotificationsEvent.Type.
+type NotificationsEventType string
 
 // Ok defines model for Ok.
 type Ok struct {
@@ -1768,12 +1891,19 @@ type TaskItemKind string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
-	AllowedUsers []int64          `json:"allowedUsers"`
-	BotId        *string          `json:"botId,omitempty"`
-	Enabled      bool             `json:"enabled"`
-	Options      *TelegramOptions `json:"options,omitempty"`
-	Status       ChannelStatus    `json:"status"`
+	AllowedUsers             []int64            `json:"allowedUsers"`
+	BotId                    *string            `json:"botId,omitempty"`
+	Enabled                  bool               `json:"enabled"`
+	ManagedCreationAvailable *bool              `json:"managedCreationAvailable,omitempty"`
+	ManagerConfigured        *bool              `json:"managerConfigured,omitempty"`
+	Options                  *TelegramOptions   `json:"options,omitempty"`
+	Status                   ChannelStatus      `json:"status"`
+	Transport                *TelegramTransport `json:"transport,omitempty"`
+	WebhookUrl               *string            `json:"webhookUrl,omitempty"`
 }
+
+// TelegramTransport defines model for Telegram.Transport.
+type TelegramTransport string
 
 // TelegramInput defines model for TelegramInput.
 type TelegramInput struct {
@@ -1782,7 +1912,17 @@ type TelegramInput struct {
 
 	// Token Write-only. Empty keeps the saved token.
 	Token string `json:"token"`
+
+	// Transport Omission keeps the transport for the same bot. New bots default to polling.
+	Transport *TelegramInputTransport `json:"transport,omitempty"`
+	Webhook   *TelegramWebhookInput   `json:"webhook,omitempty"`
 }
+
+// TelegramInputTransport Omission keeps the transport for the same bot. New bots default to polling.
+type TelegramInputTransport string
+
+// TelegramManagedSetup defines model for TelegramManagedSetup.
+type TelegramManagedSetup = agent.TelegramManagedSetup
 
 // TelegramOptions defines model for TelegramOptions.
 type TelegramOptions = telegram.Options
@@ -1814,6 +1954,9 @@ type TelegramSpeechOptions struct {
 // TelegramSpeechOptionsFormat defines model for TelegramSpeechOptions.Format.
 type TelegramSpeechOptionsFormat string
 
+// TelegramWebhookInput defines model for TelegramWebhookInput.
+type TelegramWebhookInput = telegram.WebhookConfig
+
 // ThinkingItem defines model for ThinkingItem.
 type ThinkingItem struct {
 	EntryId *int64           `json:"entryId,omitempty"`
@@ -1832,6 +1975,16 @@ type ThinkingItemKind string
 
 // ThinkingLevel pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
 type ThinkingLevel string
+
+// TimelineNotification A Web-origin notification read from the Outbox. It is not a delivery receipt.
+type TimelineNotification struct {
+	// At Creation time in milliseconds.
+	At int64 `json:"at"`
+
+	// Id Outbox ID.
+	Id   string `json:"id"`
+	Text string `json:"text"`
+}
 
 // ToolItem defines model for ToolItem.
 type ToolItem struct {
@@ -2065,8 +2218,9 @@ type ForkChatJSONBody struct {
 
 // GetChatHistoryParams defines parameters for GetChatHistory.
 type GetChatHistoryParams struct {
-	Before int64 `form:"before" json:"before"`
-	Limit  *int  `form:"limit,omitempty" json:"limit,omitempty"`
+	Before             *int64  `form:"before,omitempty" json:"before,omitempty"`
+	BeforeNotification *string `form:"beforeNotification,omitempty" json:"beforeNotification,omitempty"`
+	Limit              *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetChatItemParams defines parameters for GetChatItem.
@@ -2078,6 +2232,12 @@ type GetChatItemParams struct {
 // SetChatProjectJSONBody defines parameters for SetChatProject.
 type SetChatProjectJSONBody struct {
 	Cwd string `json:"cwd"`
+}
+
+// StartMcpOAuthJSONBody defines parameters for StartMcpOAuth.
+type StartMcpOAuthJSONBody struct {
+	// Scope Shared across dex or scoped to one agent.
+	Scope ExtensionScope `json:"scope"`
 }
 
 // CreateWorkTaskJSONBody defines parameters for CreateWorkTask.
@@ -2178,6 +2338,11 @@ type UpgradeSystemJSONBody struct {
 	Version *string `json:"version,omitempty"`
 }
 
+// SetTelegramManagerJSONBody defines parameters for SetTelegramManager.
+type SetTelegramManagerJSONBody struct {
+	Token *string `json:"token,omitempty"`
+}
+
 // CreateAgentJSONRequestBody defines body for CreateAgent for application/json ContentType.
 type CreateAgentJSONRequestBody = CreateAgentInput
 
@@ -2231,6 +2396,9 @@ type SetChatProjectJSONRequestBody SetChatProjectJSONBody
 
 // SetChatSettingsJSONRequestBody defines body for SetChatSettings for application/json ContentType.
 type SetChatSettingsJSONRequestBody = ChatSettings
+
+// StartMcpOAuthJSONRequestBody defines body for StartMcpOAuth for application/json ContentType.
+type StartMcpOAuthJSONRequestBody StartMcpOAuthJSONBody
 
 // CreateWorkTaskJSONRequestBody defines body for CreateWorkTask for application/json ContentType.
 type CreateWorkTaskJSONRequestBody CreateWorkTaskJSONBody
@@ -2288,6 +2456,9 @@ type UpdateSystemSettingsJSONRequestBody UpdateSystemSettingsJSONBody
 
 // UpgradeSystemJSONRequestBody defines body for UpgradeSystem for application/json ContentType.
 type UpgradeSystemJSONRequestBody UpgradeSystemJSONBody
+
+// SetTelegramManagerJSONRequestBody defines body for SetTelegramManager for application/json ContentType.
+type SetTelegramManagerJSONRequestBody SetTelegramManagerJSONBody
 
 // AsSnapshotEvent returns the union data inside the ChatEvent as a SnapshotEvent
 func (t ChatEvent) AsSnapshotEvent() (SnapshotEvent, error) {
@@ -2459,6 +2630,40 @@ func (t *ChatEvent) MergeChildEvent(v ChildEvent) error {
 	return err
 }
 
+// AsNotificationsEvent returns the union data inside the ChatEvent as a NotificationsEvent
+func (t ChatEvent) AsNotificationsEvent() (NotificationsEvent, error) {
+	var body NotificationsEvent
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromNotificationsEvent overwrites any union data inside the ChatEvent as the provided NotificationsEvent
+func (t *ChatEvent) FromNotificationsEvent(v NotificationsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
+	t.union = b
+	return err
+}
+
+// MergeNotificationsEvent performs a merge with any union data inside the ChatEvent, using the provided NotificationsEvent
+func (t *ChatEvent) MergeNotificationsEvent(v NotificationsEvent) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"type":"notifications"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t ChatEvent) Discriminator() (string, error) {
 	var discriminator struct {
 		Discriminator string `json:"type"`
@@ -2479,6 +2684,8 @@ func (t ChatEvent) ValueByDiscriminator() (interface{}, error) {
 		return t.AsChildEvent()
 	case "item":
 		return t.AsItemEvent()
+	case "notifications":
+		return t.AsNotificationsEvent()
 	case "run":
 		return t.AsRunEvent()
 	case "snapshot":
@@ -2857,6 +3064,15 @@ type ServerInterface interface {
 	// (PUT /api/agents/{agentId}/channels/telegram)
 	SetTelegram(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
+	// (POST /api/agents/{agentId}/channels/telegram/managed)
+	BeginTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId)
+
+	// (DELETE /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	CancelTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string)
+
+	// (GET /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	GetTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string)
+
 	// (POST /api/agents/{agentId}/channels/telegram/pairing)
 	CreateTelegramPairing(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
@@ -2943,6 +3159,9 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(w http.ResponseWriter, r *http.Request, agentId string)
+
+	// (POST /api/agents/{agentId}/extensions/mcp/{name}/oauth)
+	StartMcpOAuth(w http.ResponseWriter, r *http.Request, agentId string, name string)
 
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3108,6 +3327,9 @@ type ServerInterface interface {
 
 	// (POST /api/system/upgrade)
 	UpgradeSystem(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/telegram/manager)
+	SetTelegramManager(w http.ResponseWriter, r *http.Request)
 
 	// (GET /api/work)
 	GetWork(w http.ResponseWriter, r *http.Request)
@@ -3820,6 +4042,102 @@ func (siw *ServerInterfaceWrapper) SetTelegram(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// BeginTelegramManagedSetup operation middleware
+func (siw *ServerInterfaceWrapper) BeginTelegramManagedSetup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BeginTelegramManagedSetup(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelTelegramManagedSetup operation middleware
+func (siw *ServerInterfaceWrapper) CancelTelegramManagedSetup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "setupId" -------------
+	var setupId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setupId", r.PathValue("setupId"), &setupId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setupId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelTelegramManagedSetup(w, r, agentId, setupId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTelegramManagedSetup operation middleware
+func (siw *ServerInterfaceWrapper) GetTelegramManagedSetup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId AgentId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "setupId" -------------
+	var setupId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "setupId", r.PathValue("setupId"), &setupId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "setupId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTelegramManagedSetup(w, r, agentId, setupId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CreateTelegramPairing operation middleware
 func (siw *ServerInterfaceWrapper) CreateTelegramPairing(w http.ResponseWriter, r *http.Request) {
 
@@ -4404,15 +4722,28 @@ func (siw *ServerInterfaceWrapper) GetChatHistory(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetChatHistoryParams
 
-	// ------------- Required query parameter "before" -------------
+	// ------------- Optional query parameter "before" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
 		var requiredError *runtime.RequiredParameterError
 		if errors.As(err, &requiredError) {
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "beforeNotification" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "beforeNotification", r.URL.Query(), &params.BeforeNotification, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "beforeNotification"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "beforeNotification", Err: err})
 		}
 		return
 	}
@@ -4833,6 +5164,41 @@ func (siw *ServerInterfaceWrapper) GetExtensions(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetExtensions(w, r, agentId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartMcpOAuth operation middleware
+func (siw *ServerInterfaceWrapper) StartMcpOAuth(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentId" -------------
+	var agentId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "name" -------------
+	var name string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "name", r.PathValue("name"), &name, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartMcpOAuth(w, r, agentId, name)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6128,6 +6494,20 @@ func (siw *ServerInterfaceWrapper) UpgradeSystem(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// SetTelegramManager operation middleware
+func (siw *ServerInterfaceWrapper) SetTelegramManager(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTelegramManager(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWork operation middleware
 func (siw *ServerInterfaceWrapper) GetWork(w http.ResponseWriter, r *http.Request) {
 
@@ -6308,6 +6688,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels", wrapper.GetChannels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/notification-targets", wrapper.GetNotificationTargets)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/notification-targets", wrapper.SetPrimaryNotificationTarget)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/telegram/manager", wrapper.SetTelegramManager)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/managed", wrapper.BeginTelegramManagedSetup)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/managed/{setupId}", wrapper.CancelTelegramManagedSetup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/managed/{setupId}", wrapper.GetTelegramManagedSetup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/telegram/pairing", wrapper.CreateTelegramPairing)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login", wrapper.BeginWechatLogin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/channels/wechat/login/{loginId}/poll", wrapper.PollWechatLogin)
@@ -6360,6 +6744,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/artifacts/{artifactName}", wrapper.GetArtifact)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/agents/{agentId}/artifacts/{artifactName}", wrapper.RenameArtifact)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/extensions", wrapper.GetExtensions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/extensions/mcp/{name}/oauth", wrapper.StartMcpOAuth)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.DeleteVault)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.ListVault)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/agents/{agentId}/vault", wrapper.PutVault)
@@ -7645,6 +8030,125 @@ type SetTelegramdefaultJSONResponse struct {
 }
 
 func (response SetTelegramdefaultJSONResponse) VisitSetTelegramResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginTelegramManagedSetupRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+}
+
+type BeginTelegramManagedSetupResponseObject interface {
+	VisitBeginTelegramManagedSetupResponse(w http.ResponseWriter) error
+}
+
+type BeginTelegramManagedSetup200JSONResponse TelegramManagedSetup
+
+func (response BeginTelegramManagedSetup200JSONResponse) VisitBeginTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BeginTelegramManagedSetupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response BeginTelegramManagedSetupdefaultJSONResponse) VisitBeginTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTelegramManagedSetupRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	SetupId string  `json:"setupId"`
+}
+
+type CancelTelegramManagedSetupResponseObject interface {
+	VisitCancelTelegramManagedSetupResponse(w http.ResponseWriter) error
+}
+
+type CancelTelegramManagedSetup200JSONResponse Ok
+
+func (response CancelTelegramManagedSetup200JSONResponse) VisitCancelTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelTelegramManagedSetupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response CancelTelegramManagedSetupdefaultJSONResponse) VisitCancelTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramManagedSetupRequestObject struct {
+	AgentId AgentId `json:"agentId"`
+	SetupId string  `json:"setupId"`
+}
+
+type GetTelegramManagedSetupResponseObject interface {
+	VisitGetTelegramManagedSetupResponse(w http.ResponseWriter) error
+}
+
+type GetTelegramManagedSetup200JSONResponse TelegramManagedSetup
+
+func (response GetTelegramManagedSetup200JSONResponse) VisitGetTelegramManagedSetupResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTelegramManagedSetupdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response GetTelegramManagedSetupdefaultJSONResponse) VisitGetTelegramManagedSetupResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -9650,6 +10154,59 @@ type GetExtensionsdefaultJSONResponse struct {
 }
 
 func (response GetExtensionsdefaultJSONResponse) VisitGetExtensionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartMcpOAuthRequestObject struct {
+	AgentId string `json:"agentId"`
+	Name    string `json:"name"`
+	Body    *StartMcpOAuthJSONRequestBody
+}
+
+type StartMcpOAuthResponseObject interface {
+	VisitStartMcpOAuthResponse(w http.ResponseWriter) error
+}
+
+type StartMcpOAuth200ResponseHeaders struct {
+	SetCookie *string
+}
+
+type StartMcpOAuth200JSONResponse struct {
+	Body struct {
+		AuthorizationUrl string `json:"authorizationUrl"`
+	}
+	Headers StartMcpOAuth200ResponseHeaders
+}
+
+func (response StartMcpOAuth200JSONResponse) VisitStartMcpOAuthResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.SetCookie != nil {
+		w.Header().Set("Set-Cookie", fmt.Sprint(*response.Headers.SetCookie))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartMcpOAuthdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response StartMcpOAuthdefaultJSONResponse) VisitStartMcpOAuthResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12348,6 +12905,45 @@ func (response UpgradeSystemdefaultJSONResponse) VisitUpgradeSystemResponse(w ht
 	return err
 }
 
+type SetTelegramManagerRequestObject struct {
+	Body *SetTelegramManagerJSONRequestBody
+}
+
+type SetTelegramManagerResponseObject interface {
+	VisitSetTelegramManagerResponse(w http.ResponseWriter) error
+}
+
+type SetTelegramManager200JSONResponse Ok
+
+func (response SetTelegramManager200JSONResponse) VisitSetTelegramManagerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetTelegramManagerdefaultJSONResponse struct {
+	Body       Error
+	StatusCode int
+}
+
+func (response SetTelegramManagerdefaultJSONResponse) VisitSetTelegramManagerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetWorkRequestObject struct {
 }
 
@@ -12464,6 +13060,15 @@ type StrictServerInterface interface {
 	// (PUT /api/agents/{agentId}/channels/telegram)
 	SetTelegram(ctx context.Context, request SetTelegramRequestObject) (SetTelegramResponseObject, error)
 
+	// (POST /api/agents/{agentId}/channels/telegram/managed)
+	BeginTelegramManagedSetup(ctx context.Context, request BeginTelegramManagedSetupRequestObject) (BeginTelegramManagedSetupResponseObject, error)
+
+	// (DELETE /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	CancelTelegramManagedSetup(ctx context.Context, request CancelTelegramManagedSetupRequestObject) (CancelTelegramManagedSetupResponseObject, error)
+
+	// (GET /api/agents/{agentId}/channels/telegram/managed/{setupId})
+	GetTelegramManagedSetup(ctx context.Context, request GetTelegramManagedSetupRequestObject) (GetTelegramManagedSetupResponseObject, error)
+
 	// (POST /api/agents/{agentId}/channels/telegram/pairing)
 	CreateTelegramPairing(ctx context.Context, request CreateTelegramPairingRequestObject) (CreateTelegramPairingResponseObject, error)
 
@@ -12550,6 +13155,9 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/extensions)
 	GetExtensions(ctx context.Context, request GetExtensionsRequestObject) (GetExtensionsResponseObject, error)
+
+	// (POST /api/agents/{agentId}/extensions/mcp/{name}/oauth)
+	StartMcpOAuth(ctx context.Context, request StartMcpOAuthRequestObject) (StartMcpOAuthResponseObject, error)
 
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
@@ -12715,6 +13323,9 @@ type StrictServerInterface interface {
 
 	// (POST /api/system/upgrade)
 	UpgradeSystem(ctx context.Context, request UpgradeSystemRequestObject) (UpgradeSystemResponseObject, error)
+
+	// (PUT /api/telegram/manager)
+	SetTelegramManager(ctx context.Context, request SetTelegramManagerRequestObject) (SetTelegramManagerResponseObject, error)
 
 	// (GET /api/work)
 	GetWork(ctx context.Context, request GetWorkRequestObject) (GetWorkResponseObject, error)
@@ -13469,6 +14080,86 @@ func (sh *strictHandler) SetTelegram(w http.ResponseWriter, r *http.Request, age
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetTelegramResponseObject); ok {
 		if err := validResponse.VisitSetTelegramResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BeginTelegramManagedSetup operation middleware
+func (sh *strictHandler) BeginTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId) {
+	var request BeginTelegramManagedSetupRequestObject
+
+	request.AgentId = agentId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BeginTelegramManagedSetup(ctx, request.(BeginTelegramManagedSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BeginTelegramManagedSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BeginTelegramManagedSetupResponseObject); ok {
+		if err := validResponse.VisitBeginTelegramManagedSetupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelTelegramManagedSetup operation middleware
+func (sh *strictHandler) CancelTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string) {
+	var request CancelTelegramManagedSetupRequestObject
+
+	request.AgentId = agentId
+	request.SetupId = setupId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelTelegramManagedSetup(ctx, request.(CancelTelegramManagedSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelTelegramManagedSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelTelegramManagedSetupResponseObject); ok {
+		if err := validResponse.VisitCancelTelegramManagedSetupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTelegramManagedSetup operation middleware
+func (sh *strictHandler) GetTelegramManagedSetup(w http.ResponseWriter, r *http.Request, agentId AgentId, setupId string) {
+	var request GetTelegramManagedSetupRequestObject
+
+	request.AgentId = agentId
+	request.SetupId = setupId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTelegramManagedSetup(ctx, request.(GetTelegramManagedSetupRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTelegramManagedSetup")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTelegramManagedSetupResponseObject); ok {
+		if err := validResponse.VisitGetTelegramManagedSetupResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -14318,6 +15009,40 @@ func (sh *strictHandler) GetExtensions(w http.ResponseWriter, r *http.Request, a
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetExtensionsResponseObject); ok {
 		if err := validResponse.VisitGetExtensionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartMcpOAuth operation middleware
+func (sh *strictHandler) StartMcpOAuth(w http.ResponseWriter, r *http.Request, agentId string, name string) {
+	var request StartMcpOAuthRequestObject
+
+	request.AgentId = agentId
+	request.Name = name
+
+	var body StartMcpOAuthJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartMcpOAuth(ctx, request.(StartMcpOAuthRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartMcpOAuth")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartMcpOAuthResponseObject); ok {
+		if err := validResponse.VisitStartMcpOAuthResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -15846,6 +16571,37 @@ func (sh *strictHandler) UpgradeSystem(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpgradeSystemResponseObject); ok {
 		if err := validResponse.VisitUpgradeSystemResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetTelegramManager operation middleware
+func (sh *strictHandler) SetTelegramManager(w http.ResponseWriter, r *http.Request) {
+	var request SetTelegramManagerRequestObject
+
+	var body SetTelegramManagerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetTelegramManager(ctx, request.(SetTelegramManagerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetTelegramManager")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetTelegramManagerResponseObject); ok {
+		if err := validResponse.VisitSetTelegramManagerResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
