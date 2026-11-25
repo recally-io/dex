@@ -122,10 +122,11 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    must not suppress that retry. Each Session has an independent delivery gate
    and retry delay. SQLite receipt insertion order defines FIFO in that Session.
    A blocked input does not hold the delivery gate of another Session of the same Bot.
-   Cold Harness initialization and recovery share the execution store and registry.
-   Cold open waits for startup model discovery without holding a delivery gate of
-   another Session. Sessions on the same environment can share its lease. The
-   engine does not hold its lease registry lock during remote preparation.
+   Cold Harness initialization still waits for shared model discovery, extension
+   and MCP loading, and recovery. It publishes the Harness without opening the
+   default execution environment. A Session opens the lease it needs after that
+   shared barrier. Sessions that select the same environment can share its lease.
+   The engine does not hold its lease registry lock during remote preparation.
    Receipt creation and native admission have distinct timestamps. Structured
    logs correlate Session waits, native start, and settlement without logging
    message content or remote errors. See the [slow input procedure](sessions.md#diagnose-a-slow-session-input).
@@ -236,7 +237,9 @@ Telegram bot without allowed users. WeChat captures the owner ID from QR
 confirmation and rejects a login without that ID. Other WeChat senders never
 reach the agent. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
-cannot send messages or change settings.
+cannot send messages or change settings. [Channel approval pages](channels.md#owner-channel-tools)
+use the same cross-origin check. When dex requires sign-in, channel approval
+pages require a web session cookie.
 
 `control.sqlite` holds provider keys, channel tokens, WeChat context tokens,
 plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain text. WeChat logs exclude credentials and remote error text. The
@@ -319,6 +322,8 @@ it is not the source of execution state.
 Keep one transcript projection in the engine. History, snapshots, and live
 events use durable entries and the native Inbox. The live hub owns transport
 and empty-chat attachment, with no second transcript or execution model.
+The Web client also displays a separate [Outbox projection](sessions.md#web-notifications)
+for explicit Web notifications. That projection does not write native entries.
 
 The tests cover separate behavior and failure cases. Keep restart, duplicate
 message, multiple browser streams, model errors, tool results, and DST cases.

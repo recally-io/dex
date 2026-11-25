@@ -133,6 +133,11 @@ existing conversation of the same bot only as its owner. It does not start a
 turn in that conversation. If no target resolves, the run list shows
 `not delivered: no notification target`.
 
+The owner can inspect recent delivery records in the Outbox panel of a
+read-only Routine transcript. A pre-start skip has no transcript. Its record
+stays in the Outbox of the conversation that owns the row. Routine records do
+not add notification entries to the Main timeline.
+
 `automation_runs.read_at` and `dismissed_at` hold Inbox state. A separate table
 would add a one-to-one record with no independent lifecycle. `GET /api/inbox`
 uses one query across all agents. It joins runs, routines, agents, and inputs.

@@ -269,8 +269,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			return routineTools.Run(ctx, c, id)
 		},
 	}
-	// Bot tools need the services that exist only after the engine, so handlers bind to the pointer.
+	// These tools bind to services that exist only after the engine.
 	botTools := &agent.BotTools{}
+	var channelTools engine.ChannelTools
 	envs := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    cfg.DataDir,
 		SSHHome:    cfg.Home,
@@ -297,6 +298,14 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Tasks:     tools,
 		Routines:  routines,
 		Bots:      botTools.Handlers(),
+		Channels: engine.ChannelTools{
+			Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
+				return channelTools.Read(ctx, c, view, bot)
+			},
+			Request: func(ctx context.Context, c engine.TaskContext, bot, op, target string) (any, error) {
+				return channelTools.Request(ctx, c, bot, op, target)
+			},
+		},
 		WorkTasks: worktasktools.New(conn).Handlers(pluginTools(plugins)),
 		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
 			row, err := q.GetAgent(ctx, agentID)
@@ -373,6 +382,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 	}
 	*botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
+	channelTools = agentsService.ChannelToolHandlers(chats)
 	// An approved archive commits in a chat receipt; the channels stop right after it.
 	chats.OnBotArchived = func(id string) {
 		if err := bg.StopAgent(runCtx, id); err != nil {

@@ -75,24 +75,26 @@ export function useClearContext(chatId: number, running: boolean, onCleared: () 
 export function LoadEarlierButton({
   chatId,
   before,
+  beforeNotification,
   onPage,
 }: {
   chatId: number;
   before?: number;
-  onPage: (page: HistoryPage) => void;
+  beforeNotification?: string;
+  onPage: (page: HistoryPage, beforeNotification?: string) => void;
 }) {
   const agentId = useAgentId();
   const anchor = useRef<HTMLDivElement>(null);
 
   const history = useMutation({
-    mutationFn: (cursor: number) =>
-      queryClient.fetchQuery(getChatHistoryOptions({ path: { agentId, chatId }, query: { before: cursor } })),
-    onSuccess: (page) => {
+    mutationFn: (query: { before?: number; beforeNotification?: string }) =>
+      queryClient.fetchQuery(getChatHistoryOptions({ path: { agentId, chatId }, query })),
+    onSuccess: (page, query) => {
       // The page goes above the first item. Without this, a scroller at the top stays at the top,
       // keeps the button in view, and loads every page.
       const first = anchor.current?.nextElementSibling;
       const top = first?.getBoundingClientRect().top ?? 0;
-      flushSync(() => onPage(page));
+      flushSync(() => onPage(page, query.beforeNotification));
 
       const box = first?.isConnected ? scrollParent(first) : undefined;
 
@@ -108,18 +110,18 @@ export function LoadEarlierButton({
   useEffect(() => {
     const node = anchor.current;
 
-    if (before === undefined || !node) return;
+    if ((before === undefined && beforeNotification === undefined) || !node) return;
 
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry?.isIntersecting) mutate(before);
+      if (entry?.isIntersecting) mutate({ before, beforeNotification });
     });
 
     observer.observe(node);
 
     return () => observer.disconnect();
-  }, [before, mutate]);
+  }, [before, beforeNotification, mutate]);
 
-  if (before === undefined) return null;
+  if (before === undefined && beforeNotification === undefined) return null;
 
   return (
     <div ref={anchor} className="flex flex-col items-center justify-center gap-2">
@@ -127,7 +129,7 @@ export function LoadEarlierButton({
         size="xs"
         variant="secondary"
         disabled={history.isPending}
-        onClick={() => history.mutate(before)}
+        onClick={() => history.mutate({ before, beforeNotification })}
       >
         {history.isPending ? "Loading…" : "Show earlier messages"}
       </Button>

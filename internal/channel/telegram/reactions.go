@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/recally-io/dex/internal/channel"
 )
@@ -39,6 +41,10 @@ func (b *Bot) React(ctx context.Context, peer, messageID, _ string, status chann
 	// Status reactions must not share or persist the reply/polling FloodWait window.
 	err = b.requestAPI(ctx, "setMessageReaction", bytes.NewReader(payload), "application/json", &done, false)
 	if api, ok := errors.AsType[*apiError](err); ok && api.Code >= 400 && api.Code < 500 {
+		if api.Code == 429 {
+			seconds := min(int64(api.RetryAfter), math.MaxInt64/int64(time.Second))
+			return "", &channel.RetryError{After: time.Duration(seconds) * time.Second, Err: err}
+		}
 		return "", err
 	}
 	if err != nil || !done {

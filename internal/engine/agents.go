@@ -23,6 +23,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	storage "github.com/MichaelKinsy/PiG/durable/storage/sqlite/node"
 	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/execenv/runner"
 	"github.com/recally-io/dex/internal/vault"
 )
 
@@ -299,7 +300,7 @@ func (a *Agents) harness(ctx context.Context, agentID, scope string) (harness.Ha
 		opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
 		a.opening[agentID] = opening
 		a.mu.Unlock()
-		h, err := a.openAndPublish(openCtx, agentID, opening)
+		h, err := a.openAndPublish(openCtx, agentID, opening, false)
 		return h, a.closedDuring(ctx, err)
 	}
 }
@@ -320,9 +321,9 @@ func (a *Agents) closedDuring(ctx context.Context, err error) error {
 }
 
 // The opening slot owns the target until recovery finishes and Resume is safe.
-func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *agentOpening) (_ harness.Harness, resultErr error) {
+func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *agentOpening, reload bool) (_ harness.Harness, resultErr error) {
 	defer a.finishOpening(agentID, opening)
-	resource, err := a.open(ctx, agentID)
+	resource, err := a.open(ctx, agentID, reload)
 	if err != nil {
 		return nil, err
 	}
@@ -369,6 +370,10 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 			a.resources[agentID] = resource
 			resource.harness.Resume()
 			a.mu.Unlock()
+			// A machine can reconnect before the cold Harness is visible to OnOnline.
+			if !reload && resource.envs != nil && resource.envs.restoreDefault {
+				a.MarkRestorable(ctx, agentID)
+			}
 			return resource.harness, nil
 		}
 		a.mu.Unlock()
@@ -379,7 +384,7 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 	}
 }
 
-func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, resultErr error) {
+func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agentResources, resultErr error) {
 	if owner, scope, group := strings.Cut(agentID, "/"); group {
 		return a.openGroup(ctx, Ref{AgentID: owner, Scope: scope})
 	}
@@ -393,21 +398,29 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	execHandle, ownErr := a.config.ExecEnv.Open(ctx, agentID, "")
+	var execHandle execenv.Handle
+	var ownErr error
+	// Reload refreshes the default workspace. A cold Harness leaves that work to its Sessions.
+	if reload {
+		execHandle, ownErr = a.config.ExecEnv.Open(ctx, agentID, "")
+	}
 	var execStamp string
-	if ownErr == nil {
+	if execHandle != nil {
 		execStamp = execHandle.Stamp()
 	} else {
-		// Keep the Harness available to sessions that select a different environment.
-		// Remember the stamp so a reconnect can reload the default and its MCP tools.
 		execStamp, _ = a.config.ExecEnv.Stamp(ctx, agentID, "")
 	}
 	files := a.files(agentID, execHandle)
-	files.defaultUnavailable = ownErr != nil
+	files.defaultUnavailable = execHandle == nil
 	envs := &environments{
 		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
 		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
 	}
+	// Status does not dial the environment. Keep the reconnect signal without opening a lease.
+	if !reload && envs.status(ctx, "") == "offline" {
+		envs.ownErr = runner.ErrOffline
+	}
+	envs.restoreDefault = envs.ownErr != nil
 	defer func() {
 		if resultErr != nil {
 			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
@@ -421,6 +434,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return envs.session(ctx, int64(id))
 	}
 	files.sessionPrompts = true
+	// MCP tools are shared by all Sessions. Register them before recovery can resume.
 	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -465,6 +479,11 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	}
 	if err := errors.Join(registry.Install(botReadExtension(agentID, a.config.Bots)), registry.Install(botManageExtension(agentID, a.config.Bots))); err != nil {
 		return nil, err
+	}
+	for _, extension := range channelExtensions(agentID, a.config.Channels) {
+		if err := registry.Install(extension); err != nil {
+			return nil, err
+		}
 	}
 	if err := registry.Install(workTaskExtension(agentID, a.config.WorkTasks)); err != nil {
 		return nil, err
@@ -1399,6 +1418,12 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 			// Show the stored configuration, not project skills from a stale handle.
 			files = a.files(agentID, nil)
 			files.defaultUnavailable = true
+		} else if files.defaultUnavailable && !resource.envs.restoreDefault {
+			// Info needs the default workspace even if no turn has used it yet.
+			// Use the same lease as a Session. If it cannot open, show the stored configuration.
+			if target, openErr := resource.envs.byID(ctx, ""); openErr == nil {
+				files = target.Files
+			}
 		}
 		info, err = files.Info(ctx)
 	} else {
@@ -1510,7 +1535,7 @@ func (a *Agents) reload(ctx context.Context, agentID string, automatic bool) (re
 			return err
 		}
 	}
-	_, err := a.openAndPublish(openCtx, agentID, opening)
+	_, err := a.openAndPublish(openCtx, agentID, opening, true)
 	return a.closedDuring(ctx, err)
 }
 

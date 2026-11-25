@@ -1950,17 +1950,21 @@ paths:
         Reads committed items before an entry ID, oldest first. Pages can
         overlap the live snapshot. Merge by item ID. The entry limit extends
         to an assistant or input boundary to keep tool results with their call.
+        Notifications use a separate cursor and are newest first. Supply at
+        least one cursor.
       parameters:
         - in: query
           name: before
-          required: true
           schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: beforeNotification
+          schema: { type: string, minLength: 1 }
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
       responses:
         "200":
-          description: A history page. No nextBefore means the start was reached.
+          description: A history page. An absent cursor means that source has no more entries.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HistoryPage" }
@@ -2105,8 +2109,10 @@ paths:
       operationId: watchChat
       description: >
         Server-sent events. Each event has `event: <type>` and one `data:` line
-        with a ChatEvent as JSON. The first event is a snapshot; a later
-        snapshot replaces all state. A comment line comes every 15 s. The
+        with a ChatEvent as JSON. The first event is a native snapshot. An
+        eligible Web conversation also gets an initial notifications page and
+        later notification updates. Merge notifications by Outbox ID; a native
+        snapshot does not replace them. A comment line comes every 15 s. The
         server closes the stream when the agent reloads, the engine closes, or
         the client is too slow. The client reconnects and gets a new snapshot.
       responses:
@@ -3346,6 +3352,23 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Item" }
         nextBefore: { type: integer, format: int64 }
+        notifications:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineNotification" }
+        nextBeforeNotification: { type: string }
+
+    TimelineNotification:
+      type: object
+      description: A Web-origin notification read from the Outbox. It is not a delivery receipt.
+      required: [id, text, at]
+      properties:
+        id: { type: string, description: Outbox ID. }
+        text: { type: string }
+        at: {
+          type: integer,
+          format: int64,
+          description: Creation time in milliseconds.,
+        }
 
     BoundaryItem:
       type: object
@@ -3545,6 +3568,7 @@ components:
         - $ref: "#/components/schemas/AppendEvent"
         - $ref: "#/components/schemas/RunEvent"
         - $ref: "#/components/schemas/ChildEvent"
+        - $ref: "#/components/schemas/NotificationsEvent"
       discriminator:
         propertyName: type
         mapping:
@@ -3553,6 +3577,22 @@ components:
           append: "#/components/schemas/AppendEvent"
           run: "#/components/schemas/RunEvent"
           child: "#/components/schemas/ChildEvent"
+          notifications: "#/components/schemas/NotificationsEvent"
+
+    NotificationsEvent:
+      type: object
+      required: [type, notifications, initial]
+      properties:
+        type: { type: string, enum: [notifications] }
+        notifications:
+          type: array
+          description: Newest first. Merge by Outbox ID.
+          items: { $ref: "#/components/schemas/TimelineNotification" }
+        initial: {
+          type: boolean,
+          description: True for the first notification page of a connection.,
+        }
+        nextBeforeNotification: { type: string }
 
     ChildEvent:
       type: object
