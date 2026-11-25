@@ -19,7 +19,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/MichaelKinsy/PiG/mcp"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/vault"
 	"go.yaml.in/yaml/v3"
 )
@@ -70,7 +70,7 @@ type agentExtensions struct {
 	// home only expands ~/ in AGENTS.md imports; it is not an extension level.
 	home            string
 	env             *toolEnv
-	execHandle      execenv.Handle
+	execHandle      runner.Handle
 	stores          map[string]*skillStore
 	onSkillChange   func(scope string)
 	skillsMu        sync.Mutex
@@ -142,7 +142,7 @@ var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 var toolName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 var headerVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, env *toolEnv) *agentExtensions {
+func newAgentExtensions(home, dataDir, agentID string, handle runner.Handle, env *toolEnv) *agentExtensions {
 	agentDir := filepath.Join(dataDir, "agents", agentID)
 	workspace := filepath.Join(agentDir, "workspace")
 	if handle != nil {
@@ -157,16 +157,16 @@ func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, en
 	return a
 }
 
-func (a *agentExtensions) forHandle(h execenv.Handle) *agentExtensions {
+func (a *agentExtensions) forHandle(h runner.Handle) *agentExtensions {
 	return &agentExtensions{levels: a.levels, agentID: a.agentID, agentDir: a.agentDir, mcp: a.mcp, vault: a.vault, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h, stores: a.stores}
 }
 
 func (a *agentExtensions) isRemote() bool {
-	return a.execHandle != nil && a.execHandle.Kind() != execenv.KindLocal
+	return a.execHandle != nil && a.execHandle.Kind() != runner.KindLocal
 }
 
 func (a *agentExtensions) remoteSkillsRoot() string {
-	return execenv.JoinTargetPath(a.workspace, ".dex", "skills")
+	return runner.JoinTargetPath(a.workspace, ".dex", "skills")
 }
 func canonicalExtensionPath(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
@@ -199,7 +199,7 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 	}
 	projectDir := canonicalExtensionPath(filepath.Join(cwd, ".agents"))
 	if a.isRemote() {
-		projectDir = execenv.JoinTargetPath(cwd, ".agents")
+		projectDir = runner.JoinTargetPath(cwd, ".agents")
 		if remoteEnv != nil {
 			if canon, err := remoteEnv.CanonicalPath(ctx, projectDir); err == nil {
 				projectDir = canon
@@ -228,8 +228,8 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 					continue
 				}
 			}
-			dir = execenv.JoinTargetPath(l.Dir, "skills")
-			info, err := execenv.StatFollow(ctx, env, dir)
+			dir = runner.JoinTargetPath(l.Dir, "skills")
+			info, err := runner.StatFollow(ctx, env, dir)
 			if err != nil {
 				if fe, ok := errors.AsType[*durableenv.FileError](err); !ok || fe.Code != durableenv.FileErrorNotFound {
 					*errs = append(*errs, dir+": cannot read skills")
@@ -275,8 +275,8 @@ func findSkillsRemote(ctx context.Context, env durableenv.ExecutionEnv, dir stri
 		return nil
 	}
 	seen[resolved] = true
-	skillPath := execenv.JoinTargetPath(dir, "SKILL.md")
-	if info, err := execenv.StatFollow(ctx, env, skillPath); err == nil && info.Kind == durableenv.FileKindFile {
+	skillPath := runner.JoinTargetPath(dir, "SKILL.md")
+	if info, err := runner.StatFollow(ctx, env, skillPath); err == nil && info.Kind == durableenv.FileKindFile {
 		name := filepath.Base(dir)
 		if strings.HasPrefix(dir, "/") {
 			name = path.Base(dir)
@@ -302,7 +302,7 @@ func findSkillsRemote(ctx context.Context, env durableenv.ExecutionEnv, dir stri
 		}
 		isDir := entry.Kind == durableenv.FileKindDirectory
 		if entry.Kind == durableenv.FileKindSymlink {
-			target, statErr := execenv.StatFollow(ctx, env, entry.Path)
+			target, statErr := runner.StatFollow(ctx, env, entry.Path)
 			isDir = statErr == nil && target.Kind == durableenv.FileKindDirectory
 		}
 		if isDir {

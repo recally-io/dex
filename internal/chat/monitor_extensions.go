@@ -7,7 +7,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 
 	"github.com/MichaelKinsy/PiG/durable"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // MonitorSetArgs is the input of the monitor_set tool.
@@ -74,7 +74,7 @@ type ProcessStartArgs struct {
 	// InheritEnv reports whether non-local OS environment variables remain visible to the command.
 	InheritEnv bool `json:"-"`
 	// EnvKind selects local vs remote background execution.
-	EnvKind execenv.Kind `json:"-"`
+	EnvKind runner.Kind `json:"-"`
 	// OutputDir holds the output files of the agent.
 	OutputDir string `json:"-"`
 	// Workspace is the working directory when the conversation has no project.
@@ -140,7 +140,7 @@ func MonitorExtension(runtime engine.ExtensionRuntime, tools MonitorTools) *engi
 					args.Workspace = settings.Handle.Workspace()
 					args.OutputDir = filepath.Join(runtime.AgentDir, "background")
 					if settings.Inherit {
-						args.OutputDir = execenv.JoinTargetPath(args.Workspace, ".dex", "background")
+						args.OutputDir = runner.JoinTargetPath(args.Workspace, ".dex", "background")
 					}
 					return tools.StartProcess(ctx, source, args)
 				}),

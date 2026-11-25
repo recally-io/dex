@@ -10,7 +10,7 @@ import (
 	"time"
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 const (
@@ -38,14 +38,14 @@ func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string,
 	}
 	target, err := envs.session(ctx, ref.ID)
 	if err != nil {
-		return "", false, execenv.ErrUnavailable
+		return "", false, runner.ErrUnavailable
 	}
-	if execenv.LeaseExpired(target.Handle) {
-		return "", false, execenv.ErrUnavailable
+	if runner.LeaseExpired(target.Handle) {
+		return "", false, runner.ErrUnavailable
 	}
 	exec, err := target.executionEnv(ctx, cwd)
 	if err != nil {
-		return "", false, execenv.ErrUnavailable
+		return "", false, runner.ErrUnavailable
 	}
 	if err := verify(ctx); err != nil {
 		return "", false, err

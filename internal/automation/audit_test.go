@@ -14,7 +14,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 type routineFixture struct {
@@ -222,7 +222,7 @@ func TestUserRoutineEditDuringRunNowCheckStartsNoRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.routines.ConfigureProbe(func(ctx context.Context, agentID, _ string) error {
-		in.EnvironmentID = execenv.LocalID
+		in.EnvironmentID = runner.LocalID
 		_, err := f.routines.Update(ctx, agentID, a.ID, in)
 		return err
 	})

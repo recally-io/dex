@@ -8,7 +8,7 @@ import (
 
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/tools"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/vault"
 )
 
@@ -49,7 +49,7 @@ func codingTools(session func(context.Context, durable.ConversationId) (sessionE
 				execution.InheritEnv = s.Inherit
 				execution.Env = make(map[string]string, len(s.Vars)+1)
 				maps.Copy(execution.Env, s.Vars)
-				execution.Env["DEX_SKILL_CACHE"] = execenv.JoinTargetPath(s.Handle.Workspace(), ".dex", "cache", "skills")
+				execution.Env["DEX_SKILL_CACHE"] = runner.JoinTargetPath(s.Handle.Workspace(), ".dex", "cache", "skills")
 				extra, _ := ctx.Value(bashEnvKey{}).(map[string]string)
 				maps.Copy(execution.Env, extra)
 				return nil

@@ -10,7 +10,7 @@ import (
 
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/coder/websocket"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 )
 
 func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
@@ -65,7 +65,7 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	dialCtx, cancelDial := context.WithTimeout(t.Context(), 45*time.Second)
 	defer cancelDial()
 	url := strings.Replace(d.srv.URL, "http://", "ws://", 1) + "/machine/" + machine.ID + "/connect"
-	ws, res, err := websocket.Dial(dialCtx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + enrolled.Token}}, Subprotocols: []string{runner.Version}})
+	ws, res, err := websocket.Dial(dialCtx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + enrolled.Token}}, Subprotocols: []string{outbound.Version}})
 	if res != nil && res.Body != nil {
 		_ = res.Body.Close()
 	}
@@ -75,7 +75,7 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	cancelDial()
 	local := node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: t.TempDir()})
 	runnerDone := make(chan error, 1)
-	go func() { runnerDone <- runner.Serve(t.Context(), ws, local) }()
+	go func() { runnerDone <- outbound.Serve(t.Context(), ws, local) }()
 	defer func() {
 		_ = ws.CloseNow()
 		if err := <-runnerDone; err != nil {

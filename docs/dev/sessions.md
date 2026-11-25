@@ -429,7 +429,7 @@ execution. An aborted MCP call ends the local wait and requests remote
 cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
-Tools run through [`internal/execenv`](../../internal/execenv) using the
+Tools run through [`internal/runner`](../../internal/runner) using the
 built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
 sandbox endpoint, or a machine service connection. The
 [remote machine](../remote-machines.md) opens an outbound WebSocket to Dex
@@ -475,11 +475,11 @@ the earlier one at once, so a half-open socket does not block the reconnect.
 Each new session wakes the chats that wait, so their input runs without a new
 message. A revoke or a new enrollment changes the identity, so a lease fails at
 once and the bot reloads.
-`execenv.Manager` dispatches each kind to one backend and owns the environment
+`runner.Manager` dispatches each kind to one backend and owns the environment
 lifecycle (`Normalize`, `Probe`, `Changed`, `ForgetHostKey`) and the agent
 lifecycle (`CanResetAgent`, `ResetAgent`, `ReleaseAgent`). This keeps
 `internal/settings` independent of backend config schemas and SSH `known_hosts`
-storage. `execenv.Runners` owns machine enrollment for the HTTP routes. SSH environments default `loginShell` to
+storage. `runner.Runners` owns machine enrollment for the HTTP routes. SSH environments default `loginShell` to
 `true`: they start the daemon via `$SHELL -lc` and capture interactive login
 shell exports via `$SHELL -l -i -c '... env -0'` on open.
 At startup, a runner uses a bounded interactive login shell probe on its own

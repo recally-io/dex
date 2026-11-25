@@ -14,7 +14,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 var (
@@ -29,7 +29,7 @@ type Environment struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	Description string         `json:"desc,omitempty"`
-	Kind        execenv.Kind   `json:"kind"`
+	Kind        runner.Kind    `json:"kind"`
 	Config      jsontext.Value `json:"config"`
 	SecretSet   bool           `json:"secretSet"`
 	CreatedAt   int64          `json:"createdAt"`
@@ -140,7 +140,7 @@ func (s *Service) UpdateEnvironment(ctx context.Context, id string, in Environme
 		return Environment{}, false, err
 	}
 	if runtimeChanged {
-		_ = s.envs.Changed(ctx, execenv.SpecFromRow(saved), new(execenv.SpecFromRow(row)))
+		_ = s.envs.Changed(ctx, runner.SpecFromRow(saved), new(runner.SpecFromRow(row)))
 	}
 	view, err := environmentView(row)
 	return view, runtimeChanged, err
@@ -175,63 +175,63 @@ func (s *Service) DeleteEnvironment(ctx context.Context, id string) error {
 		return fmt.Errorf("%w: execution environment %q is used by %d active bot(s)", ErrConflict, saved.Name, max(1, len(users)))
 	}
 	if s.envs != nil {
-		_ = s.envs.Changed(ctx, execenv.SpecFromRow(saved), nil)
+		_ = s.envs.Changed(ctx, runner.SpecFromRow(saved), nil)
 	}
 	return nil
 }
 
 // TestEnvironment probes connectivity and platform metadata for environment id.
-func (s *Service) TestEnvironment(ctx context.Context, id string) (execenv.TestResult, error) {
+func (s *Service) TestEnvironment(ctx context.Context, id string) (runner.TestResult, error) {
 	if strings.TrimSpace(id) == "" {
-		return execenv.TestResult{}, ErrNotFound
+		return runner.TestResult{}, ErrNotFound
 	}
 	row, err := s.q.GetEnvironment(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return execenv.TestResult{}, ErrNotFound
+		return runner.TestResult{}, ErrNotFound
 	}
 	if err != nil {
-		return execenv.TestResult{}, err
+		return runner.TestResult{}, err
 	}
 	if s.envs == nil {
-		return execenv.TestResult{}, errors.New("execution environment manager is not configured")
+		return runner.TestResult{}, errors.New("execution environment manager is not configured")
 	}
-	spec := execenv.SpecFromRow(row)
+	spec := runner.SpecFromRow(row)
 	res, err := s.envs.Probe(ctx, &spec, spec)
 	return res, wrapInvalidConfig(err)
 }
 
 // DiscoverSSHConfig discovers concrete host aliases and candidate identity files from the control host's ~/.ssh.
-func (s *Service) DiscoverSSHConfig(_ context.Context) (execenv.SSHConfigDiscovery, error) {
+func (s *Service) DiscoverSSHConfig(_ context.Context) (runner.SSHConfigDiscovery, error) {
 	if s.envs == nil {
-		return execenv.SSHConfigDiscovery{Hosts: []execenv.SSHHostEntry{}, IdentityFiles: []string{}}, nil
+		return runner.SSHConfigDiscovery{Hosts: []runner.SSHHostEntry{}, IdentityFiles: []string{}}, nil
 	}
 	return s.envs.DiscoverSSHConfig()
 }
 
 // ProbeEnvironment tests connectivity for an unsaved or edited environment input without persisting changes.
-func (s *Service) ProbeEnvironment(ctx context.Context, existingID string, in EnvironmentInput) (execenv.TestResult, error) {
+func (s *Service) ProbeEnvironment(ctx context.Context, existingID string, in EnvironmentInput) (runner.TestResult, error) {
 	if s.envs == nil {
-		return execenv.TestResult{}, errors.New("execution environment manager is not configured")
+		return runner.TestResult{}, errors.New("execution environment manager is not configured")
 	}
 	id := strings.TrimSpace(existingID)
-	kind := execenv.Kind(strings.TrimSpace(in.Kind))
+	kind := runner.Kind(strings.TrimSpace(in.Kind))
 	secret := strings.TrimSpace(in.Secret)
-	var savedSpec *execenv.EnvironmentSpec
+	var savedSpec *runner.EnvironmentSpec
 	if id != "" {
 		saved, err := s.q.GetEnvironment(ctx, id)
 		if errors.Is(err, sql.ErrNoRows) {
-			return execenv.TestResult{}, ErrNotFound
+			return runner.TestResult{}, ErrNotFound
 		}
 		if err != nil {
-			return execenv.TestResult{}, err
+			return runner.TestResult{}, err
 		}
-		spec := execenv.SpecFromRow(saved)
+		spec := runner.SpecFromRow(saved)
 		savedSpec = &spec
 		if secret == "" && spec.Kind == kind {
 			secret = spec.Secret
 		}
 	}
-	res, err := s.envs.Probe(ctx, savedSpec, execenv.EnvironmentSpec{
+	res, err := s.envs.Probe(ctx, savedSpec, runner.EnvironmentSpec{
 		ID:     id,
 		Kind:   kind,
 		Config: normalizeRawJSON(in.Config),
@@ -258,10 +258,10 @@ func (s *Service) ForgetEnvironmentHostKey(ctx context.Context, id string) error
 	if s.envs == nil {
 		return errors.New("execution environment manager is not configured")
 	}
-	return wrapInvalidConfig(s.envs.ForgetHostKey(execenv.SpecFromRow(saved)))
+	return wrapInvalidConfig(s.envs.ForgetHostKey(runner.SpecFromRow(saved)))
 }
 
-func (s *Service) prepareEnvironmentInput(envID string, in EnvironmentInput, secret string) (string, execenv.Kind, string, error) {
+func (s *Service) prepareEnvironmentInput(envID string, in EnvironmentInput, secret string) (string, runner.Kind, string, error) {
 	name := strings.TrimSpace(in.Name)
 	if n := utf8.RuneCountInString(name); n < 1 || n > 60 {
 		return "", "", "", fmt.Errorf("%w: name must be 1 to 60 characters", ErrInvalid)
@@ -269,8 +269,8 @@ func (s *Service) prepareEnvironmentInput(envID string, in EnvironmentInput, sec
 	if s.envs == nil {
 		return "", "", "", errors.New("execution environment manager is not configured")
 	}
-	kind := execenv.Kind(strings.TrimSpace(in.Kind))
-	normalizedCfg, err := s.envs.Normalize(execenv.EnvironmentSpec{
+	kind := runner.Kind(strings.TrimSpace(in.Kind))
+	normalizedCfg, err := s.envs.Normalize(runner.EnvironmentSpec{
 		ID:     envID,
 		Kind:   kind,
 		Config: normalizeRawJSON(in.Config),
@@ -305,7 +305,7 @@ func normalizeRawJSON(raw []byte) string {
 }
 
 func wrapInvalidConfig(err error) error {
-	if errors.Is(err, execenv.ErrInvalidConfig) {
+	if errors.Is(err, runner.ErrInvalidConfig) {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	return err
@@ -324,7 +324,7 @@ func environmentView(row sqlc.ExecutionEnvironment) (Environment, error) {
 		ID:          row.ID,
 		Name:        row.Name,
 		Description: row.Description,
-		Kind:        execenv.Kind(row.Kind),
+		Kind:        runner.Kind(row.Kind),
 		Config:      cfg,
 		SecretSet:   row.Secret != "",
 		CreatedAt:   row.CreatedAt,
@@ -344,17 +344,17 @@ func (s *Service) SessionEnvironments(ctx context.Context, agentID string) ([]en
 	if err != nil {
 		return nil, err
 	}
-	own := engine.EnvironmentInfo{ID: execenv.LocalID, Name: execenv.LocalID, Kind: string(execenv.KindLocal), Default: true, Status: s.envs.Status(ctx, agentID, "")}
+	own := engine.EnvironmentInfo{ID: runner.LocalID, Name: runner.LocalID, Kind: string(runner.KindLocal), Default: true, Status: s.envs.Status(ctx, agentID, "")}
 	out := []engine.EnvironmentInfo{own}
 	if agent.EnvironmentID != "" {
-		out = append(out, engine.EnvironmentInfo{ID: execenv.LocalID, Name: execenv.LocalID, Kind: string(execenv.KindLocal), Status: "available"})
+		out = append(out, engine.EnvironmentInfo{ID: runner.LocalID, Name: runner.LocalID, Kind: string(runner.KindLocal), Status: "available"})
 	}
 	for _, r := range rows {
 		if r.ID == agent.EnvironmentID {
 			out[0].ID, out[0].Name, out[0].Kind, out[0].Description = r.ID, r.Name, r.Kind, r.Description
 			continue
 		}
-		if execenv.IsRegisteredKind(execenv.Kind(r.Kind)) {
+		if runner.IsRegisteredKind(runner.Kind(r.Kind)) {
 			out = append(out, engine.EnvironmentInfo{ID: r.ID, Name: r.Name, Description: r.Description, Kind: r.Kind, Status: s.envs.Status(ctx, agentID, r.ID)})
 		}
 	}

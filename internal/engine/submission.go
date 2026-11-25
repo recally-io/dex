@@ -12,8 +12,8 @@ import (
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
-	"github.com/recally-io/dex/internal/execenv"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 )
 
 // Submission joins one durable input and the memory commit that follows its settlement.
@@ -103,7 +103,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		// without waiting: the input stays in business storage until the machine is back.
 		if waits := target.ID == "" || len(input.Attachments) > 0 || input.RequireEnvironment; waits {
 			if envErr == nil && envs.status(ctx, target.ID) == "offline" {
-				envErr = fmt.Errorf("%w: %w", execenv.ErrUnavailable, runner.ErrOffline)
+				envErr = fmt.Errorf("%w: %w", runner.ErrUnavailable, outbound.ErrOffline)
 			}
 			if envErr != nil {
 				return nil, envErr
@@ -135,14 +135,14 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		inputDirectory := ""
 		if h := target.Handle; h != nil {
 			inputDirectory = h.Workspace()
-			if h.Kind() != execenv.KindLocal && len(input.Attachments) > 0 {
+			if h.Kind() != runner.KindLocal && len(input.Attachments) > 0 {
 				remoteEnv, envErr := h.Env(ctx, inputDirectory, nil)
 				if envErr != nil {
 					return nil, envErr
 				}
 				localWorkspace := filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace")
 				for _, attachment := range input.Attachments {
-					if stageErr := execenv.StageUpload(ctx, remoteEnv, localWorkspace, inputDirectory, attachment.Path); stageErr != nil {
+					if stageErr := runner.StageUpload(ctx, remoteEnv, localWorkspace, inputDirectory, attachment.Path); stageErr != nil {
 						return nil, stageErr
 					}
 				}
@@ -292,7 +292,7 @@ func inputText(input Input, workspace string) string {
 		text.WriteString("\n- ")
 		// Uploads stay in the workspace. An absolute path keeps working after set_project changes
 		// the cwd, also later in the same run.
-		text.WriteString(execenv.JoinTargetPath(workspace, filepath.ToSlash(attachment.Path)))
+		text.WriteString(runner.JoinTargetPath(workspace, filepath.ToSlash(attachment.Path)))
 	}
 	return text.String()
 }

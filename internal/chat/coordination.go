@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 )
 
 // The gate orders native operations for one Session. SQLite orders receipt insertion.
@@ -169,7 +169,7 @@ func admissionRetryReason(err error) string {
 		return "deadline"
 	case errors.Is(err, context.Canceled):
 		return "canceled"
-	case errors.Is(err, runner.ErrOffline):
+	case errors.Is(err, outbound.ErrOffline):
 		return "environment_offline"
 	case errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrOriginBusy):
 		return "session_busy"

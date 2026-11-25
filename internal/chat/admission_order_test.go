@@ -14,7 +14,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 type nativeTest struct {
@@ -26,12 +26,12 @@ type nativeTest struct {
 	close   func()
 }
 
-func startNative(t *testing.T, model string, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
+func startNative(t *testing.T, model string, wrap ...func(runner.Provider) runner.Provider) *nativeTest {
 	t.Helper()
 	return openNativeTest(t, t.TempDir(), model, wrap...)
 }
 
-func openNativeTest(t *testing.T, dir, model string, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
+func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provider) runner.Provider) *nativeTest {
 	t.Helper()
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
 	if err != nil {
@@ -45,7 +45,7 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(execenv.Provid
 		t.Fatal(err)
 	}
 	var service *Service
-	var provider execenv.Provider = execenv.NewManager(execenv.ManagerConfig{DataDir: dir, Queries: q})
+	var provider runner.Provider = runner.NewManager(runner.ManagerConfig{DataDir: dir, Queries: q})
 	for _, f := range wrap {
 		provider = f(provider)
 	}

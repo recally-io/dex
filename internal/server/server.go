@@ -28,9 +28,9 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/plugin"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/upload"
@@ -52,11 +52,11 @@ type Config struct {
 	ReleaseBase string
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
-	Envs   *execenv.Manager
+	Envs   *runner.Manager
 	// EnvironmentChanged requests a reload after a saved environment change.
 	EnvironmentChanged func(context.Context, string)
 	// Runners enrolls remote machines and serves their sessions.
-	Runners *execenv.Runners
+	Runners *runner.Runners
 	// System owns server upgrades, restarts, backups, and recent logs.
 	System *sysops.Manager
 

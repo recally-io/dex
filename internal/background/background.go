@@ -32,7 +32,7 @@ import (
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // Wake modes.
@@ -141,14 +141,14 @@ type StartParams struct {
 	Env           map[string]string
 	MaskOutput    func(string) string
 	InheritEnv    bool
-	EnvKind       execenv.Kind
+	EnvKind       runner.Kind
 	// OutputDir holds the output file.
 	OutputDir string
 }
 
 // ExecEnvOpener acquires an execution environment for a non-local background command. An empty
 // environmentID selects the environment of the agent.
-type ExecEnvOpener func(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error)
+type ExecEnvOpener func(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error)
 
 // outputHooks receive live command output and events from an executor.
 type outputHooks struct {
@@ -255,8 +255,8 @@ type proc struct {
 	windowN      int
 }
 
-func (m *Manager) executorFor(kind execenv.Kind, opener ExecEnvOpener) (executor, error) {
-	if kind == "" || kind == execenv.KindLocal {
+func (m *Manager) executorFor(kind runner.Kind, opener ExecEnvOpener) (executor, error) {
+	if kind == "" || kind == runner.KindLocal {
 		return &localExecutor{limits: m.limits, wg: &m.wg}, nil
 	}
 	if opener == nil {
@@ -288,8 +288,8 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		p.Timeout = cmp.Or(p.Timeout, m.limits.ExitTimeout)
 	}
 	cwd := p.Cwd
-	if !execenv.IsAbsPath(cwd) {
-		cwd = execenv.JoinTargetPath(p.DefaultCwd, cwd)
+	if !runner.IsAbsPath(cwd) {
+		cwd = runner.JoinTargetPath(p.DefaultCwd, cwd)
 	}
 
 	m.mu.Lock()
@@ -961,7 +961,7 @@ func (r *envExecutor) ValidateDir(ctx context.Context, p StartParams, cwd string
 	if release != nil {
 		defer release()
 	}
-	info, err := execenv.StatFollow(ctx, execEnv, cwd)
+	info, err := runner.StatFollow(ctx, execEnv, cwd)
 	if err != nil || info.Kind != durableenv.FileKindDirectory {
 		return fmt.Errorf("%w: %s is not a directory", ErrInvalid, cwd)
 	}
@@ -976,11 +976,11 @@ func (r *envExecutor) PrepareOutput(ctx context.Context, p StartParams, id strin
 	if release != nil {
 		defer release()
 	}
-	outDir := cmp.Or(p.OutputDir, execenv.JoinTargetPath(workspace, ".dex", "background"))
+	outDir := cmp.Or(p.OutputDir, runner.JoinTargetPath(workspace, ".dex", "background"))
 	if err := execEnv.CreateDir(ctx, outDir, &durableenv.CreateDirOptions{Recursive: new(true)}); err != nil {
 		return "", err
 	}
-	outputPath := execenv.JoinTargetPath(outDir, id+".log")
+	outputPath := runner.JoinTargetPath(outDir, id+".log")
 	if err := execEnv.WriteFile(ctx, outputPath, ""); err != nil {
 		return "", err
 	}

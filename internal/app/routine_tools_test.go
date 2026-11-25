@@ -18,7 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 func routineToolJSON(t *testing.T, d *dex, chatID int64, name string, args any, out any) {
@@ -338,7 +338,7 @@ func TestUserRoutineOtherBotCannotReadOrChangeRoutine(t *testing.T) {
 func TestUserRoutineToolDoesNotRunInASessionSelectedDuringPreflight(t *testing.T) {
 	t.Parallel()
 	// Given a Routine and two eligible sessions on the same synthetic SSH environment.
-	ssh := execenvtest.NewFakeSSH(t)
+	ssh := runnertest.NewFakeSSH(t)
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), SSHProgram: ssh.SSHProgram})
 	d.setModel(t, "bash")
 	main := d.mainChat(t)

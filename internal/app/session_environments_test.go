@@ -11,7 +11,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 type apiSessionEnvironment struct {
@@ -31,8 +31,8 @@ type apiChatEnvironment struct {
 // command and file tools run only in the selected environment.
 func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 	const apiKey = "e2b_session_secret"
-	sshFix := execenvtest.NewFakeSSH(t)
-	fake := execenvtest.NewFakeE2B(t, apiKey)
+	sshFix := runnertest.NewFakeSSH(t)
+	fake := runnertest.NewFakeE2B(t, apiKey)
 	cfg := app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()}
 	d := startDexWith(t, cfg)
 	writeFile(t, filepath.Join(cfg.DataDir, "agents", "default", "workspace", ".agents", "skills", "local-only", "SKILL.md"), "---\nname: local-only\ndescription: Local project skill\n---\n")
@@ -156,8 +156,8 @@ func TestUserRunsSessionsInSelectedEnvironments(t *testing.T) {
 // Given a local chat with a project, when the owner forks it to an SSH environment, then the fork
 // keeps the history, starts in the SSH workspace, and tells the user and the bot that it moved.
 func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
-	sshFix := execenvtest.NewFakeSSH(t)
-	fake := execenvtest.NewFakeE2B(t, "e2b_fork_secret")
+	sshFix := runnertest.NewFakeSSH(t)
+	fake := runnertest.NewFakeE2B(t, "e2b_fork_secret")
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
 	var remoteEnv, sandbox apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
@@ -326,7 +326,7 @@ func TestUserForksSessionToAnotherEnvironment(t *testing.T) {
 // then running background work blocks the change, and after it the sessions drop the old cwd.
 // A chat that selects local explicitly stays local.
 func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
-	fake := execenvtest.NewFakeE2B(t, "e2b_change_secret")
+	fake := runnertest.NewFakeE2B(t, "e2b_change_secret")
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
 	var created apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
@@ -358,7 +358,11 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 	pinned := d.newSession(t).ID
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", pinned), map[string]any{"environmentId": "local"}, nil)
 
-	callSessionTool(t, d, chatID, "monitor_cancel", map[string]any{"id": bg.ID})
+	var stopped bgInfo
+	toolJSON(t, callSessionTool(t, d, chatID, "process_stop", map[string]any{"id": bg.ID}), &stopped)
+	if stopped.State != "stopped" {
+		t.Fatalf("process_stop returned %+v", stopped)
+	}
 
 	// When PiG has accepted input that has not started, then the change fails too.
 	d.setModel(t, "bash")
@@ -402,7 +406,7 @@ func TestUserChangesBotEnvironmentForFollowingSessions(t *testing.T) {
 // Given a bot whose default SSH host is down, when the host comes back, then a
 // following chat can use it without a settings change or a manual reload.
 func TestUserRecoversBotDefaultEnvironmentAfterDialFailure(t *testing.T) {
-	ssh := execenvtest.NewFakeSSH(t)
+	ssh := runnertest.NewFakeSSH(t)
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), SSHProgram: ssh.SSHProgram})
 	const host = "recovery.internal"
 	var saved apiEnvironment
@@ -435,7 +439,7 @@ func TestUserRecoversBotDefaultEnvironmentAfterDialFailure(t *testing.T) {
 // Given a non-default E2B sandbox, when it serves short commands and then
 // expires, then commands renew the lease and later work opens a fresh sandbox.
 func TestUserRecoversAnExpiredSandboxOverride(t *testing.T) {
-	fake := execenvtest.NewFakeE2B(t, "test-e2b-lease-secret")
+	fake := runnertest.NewFakeE2B(t, "test-e2b-lease-secret")
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
 	var saved apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{

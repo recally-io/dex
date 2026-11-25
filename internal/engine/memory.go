@@ -20,7 +20,7 @@ import (
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	envnode "github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/MichaelKinsy/PiG/durable/tools"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 type memoryRepo struct {
@@ -284,7 +284,7 @@ func resolveMemoryRelPath(agentID, raw string, allowRoot bool) (string, error) {
 		}
 		return "", errors.New("memory path is required")
 	}
-	if strings.HasPrefix(trimmed, "/") || filepath.IsAbs(trimmed) || execenv.IsAbsPath(trimmed) {
+	if strings.HasPrefix(trimmed, "/") || filepath.IsAbs(trimmed) || runner.IsAbsPath(trimmed) {
 		return "", errors.New("memory path must be relative to the memory directory")
 	}
 	clean := path.Clean(filepath.ToSlash(trimmed))

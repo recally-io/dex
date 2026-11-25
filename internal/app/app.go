@@ -28,9 +28,9 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/plugin"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
 	"github.com/recally-io/dex/internal/settings"
@@ -71,7 +71,7 @@ type Config struct {
 	// Background sets the limits of background commands; a zero field takes its default.
 	Background background.Limits
 	// ExecEnv overrides the agent execution environment backend; nil uses the multi-driver manager.
-	ExecEnv execenv.Provider
+	ExecEnv runner.Provider
 	// SSHProgram replaces the ssh executable used by pi-env in tests.
 	SSHProgram string
 	// E2BAPIURL and E2BEnvdURL replace the E2B Cloud and sandbox envd endpoints in tests.
@@ -98,7 +98,7 @@ type Config struct {
 type App struct {
 	db         *sql.DB
 	engine     *engine.Agents
-	envs       *execenv.Manager
+	envs       *runner.Manager
 	sysops     *sysops.Manager
 	handler    http.Handler
 	bots       *channelRegistry
@@ -174,7 +174,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		return result, err
 	}
-	envs := execenv.NewManager(execenv.ManagerConfig{
+	envs := runner.NewManager(runner.ManagerConfig{
 		DataDir:    cfg.DataDir,
 		SSHHome:    cfg.Home,
 		Queries:    q,

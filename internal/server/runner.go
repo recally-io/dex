@@ -16,8 +16,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/execenv"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 	"github.com/recally-io/dex/internal/update"
 	"golang.org/x/mod/semver"
 )
@@ -27,7 +27,7 @@ func (h *handler) IssueRunnerCode(ctx context.Context, req api.IssueRunnerCodeRe
 		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusServiceUnavailable, Body: api.Error{Error: "Remote machines are unavailable in this build."}}, nil
 	}
 	code, err := h.Runners.IssueCode(ctx, req.EnvironmentId)
-	if errors.Is(err, execenv.ErrRunnerConflict) {
+	if errors.Is(err, runner.ErrRunnerConflict) {
 		return api.IssueRunnerCodedefaultJSONResponse{StatusCode: http.StatusConflict, Body: api.Error{Error: err.Error()}}, nil
 	}
 	if err != nil {
@@ -61,7 +61,7 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := h.Runners.Enroll(r.Context(), r.PathValue("id"), code)
 	switch {
-	case errors.Is(err, execenv.ErrRunnerCredential):
+	case errors.Is(err, runner.ErrRunnerCredential):
 		writeError(w, http.StatusUnauthorized, "the enrollment code is invalid or expired")
 		return
 	case err != nil:
@@ -71,7 +71,7 @@ func (h *handler) machinePair(w http.ResponseWriter, r *http.Request) {
 	h.environmentChanged(r.Context(), r.PathValue("id"))
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "protocol": runner.Version})
+	_ = json.NewEncoder(w).Encode(map[string]string{"token": token, "protocol": outbound.Version})
 }
 
 // machineConnect serves the session of one machine. The machine sends its token in the
@@ -85,11 +85,11 @@ func (h *handler) machineConnect(w http.ResponseWriter, r *http.Request) {
 	if h.Version != "" {
 		w.Header().Set("X-Dex-Version", h.Version)
 	}
-	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), runner.Version) {
+	if !slices.Contains(strings.FieldsFunc(r.Header.Get("Sec-WebSocket-Protocol"), func(r rune) bool { return r == ',' || r == ' ' || r == '\t' }), outbound.Version) {
 		writeError(w, http.StatusUpgradeRequired, "the machine protocol is incompatible")
 		return
 	}
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{runner.Version}})
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{Subprotocols: []string{outbound.Version}})
 	if err != nil {
 		return
 	}

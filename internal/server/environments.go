@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/settings"
 )
 
@@ -171,7 +171,7 @@ func encodeEnvironmentConfig(cfg *api.EnvironmentConfig) ([]byte, error) {
 	return json.Marshal(cfg)
 }
 
-func environmentTestResultView(res execenv.TestResult) api.EnvironmentTestResult {
+func environmentTestResultView(res runner.TestResult) api.EnvironmentTestResult {
 	var warnings *[]string
 	if len(res.Warnings) > 0 {
 		copied := slices.Clone(res.Warnings)
@@ -223,7 +223,7 @@ func (h *handler) environmentView(env settings.Environment) (api.Environment, er
 		CreatedAt:   env.CreatedAt,
 		UpdatedAt:   env.UpdatedAt,
 	}
-	if env.Kind == execenv.KindRunner && h.Runners != nil {
+	if env.Kind == runner.KindRunner && h.Runners != nil {
 		st := h.Runners.Status(env.ID)
 		runnerStatus := api.RunnerStatus{
 			Online:           st.Online,
