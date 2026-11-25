@@ -42,7 +42,7 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
   const repositoryId = randomInt(1_000_000, 1_000_000_000);
   const secret = "local browser test webhook secret only";
 
-  const settings = await fetch(`${origin}/api/settings/github-webhooks/${repositoryId}`, {
+  const settings = await fetch(`${origin}/api/plugins/github/webhooks/${repositoryId}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ secret, issueAgentId: "default" }),
