@@ -3,6 +3,7 @@ package vault
 
 import (
 	"cmp"
+	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -90,6 +91,46 @@ func (s *Store) Edit(agentID, scope, name string, value *string) error {
 	} else {
 		entries[name] = entry{Value: *value, UpdatedAt: time.Now().UTC()}
 	}
+	return s.write(path, entries)
+}
+
+// MCPGrant stores credentials apart from the user vault and its reference resolver.
+func (s *Store) MCPGrant(key [32]byte) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := s.read(s.mcpPath(key))
+	return entries["grant"].Value, err
+}
+
+func (s *Store) SaveMCPGrant(key [32]byte, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.write(s.mcpPath(key), map[string]entry{"grant": {Value: value, UpdatedAt: time.Now().UTC()}})
+}
+
+func (s *Store) mcpPath(key [32]byte) string {
+	return filepath.Join(s.dir, "mcp-"+hex.EncodeToString(key[:])+".age")
+}
+
+// Exact reads a secret at one level. Agent entries cannot change shared clients.
+func (s *Store) Exact(agentID, name string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path := s.Paths(agentID)[0]
+	if agentID != "" {
+		path = s.Paths(agentID)[1]
+	}
+	entries, err := s.read(path)
+	if err != nil {
+		return "", err
+	}
+	if e, ok := entries[name]; ok && e.Value != "" {
+		return e.Value, nil
+	}
+	return "", &MissingError{Name: name}
+}
+
+func (s *Store) write(path string, entries map[string]entry) error {
 	identity, err := s.identity(true)
 	if err != nil {
 		return err

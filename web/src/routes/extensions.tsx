@@ -1,11 +1,12 @@
 import { useAgentId } from "../lib/agent-scope";
 import type { ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Extensions, McpServer, Skill } from "../api/generated/types.gen";
-import { getExtensionsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { getExtensionsOptions, startMcpOAuthMutation } from "../api/generated/@tanstack/react-query.gen";
 import { Failure, Loading } from "../components/feedback";
 import { Facts, FramedPage, Mono, Note, Panel, Section } from "../components/page";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { BotSettingsSwitcher } from "../components/settings-switcher";
 import { Vault } from "../components/vault";
 
@@ -185,7 +186,14 @@ const STATE: Record<McpServer["state"], { tone: "green" | "red" | "neutral"; lab
 };
 
 function ServerRow({ server: s }: { server: McpServer }) {
-  const state = STATE[s.state];
+  const state = s.oauth === "reauthorize" ? { tone: "red", label: "Authorization required" } : STATE[s.state];
+  const agentId = useAgentId();
+
+  const authorize = useMutation({
+    ...startMcpOAuthMutation(),
+    gcTime: 0,
+    onSuccess: (data) => window.location.assign(data.authorizationUrl),
+  });
 
   return (
     <li className="px-4 py-3 [overflow-wrap:anywhere]">
@@ -198,7 +206,21 @@ function ServerRow({ server: s }: { server: McpServer }) {
         >
           {state.label}
         </Badge>
+        {s.oauth && s.state !== "disabled" ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={authorize.isPending}
+            onClick={() => authorize.mutate({ path: { agentId, name: s.name }, body: { scope: s.scope } })}
+          >
+            {authorize.isPending ? "Starting…" : s.oauth === "authorize" ? "Authorize" : "Reauthorize"}
+          </Button>
+        ) : null}
       </div>
+      {authorize.isError ? <Failure error={authorize.error} title="Could not start authorization" /> : null}
+      {s.oauth === "reauthorize" ? (
+        <p className="mt-1 text-[12.5px] text-red">This connection needs a new grant.</p>
+      ) : null}
       {s.tools.length ? (
         <p className="mt-1 font-mono text-[11.5px] text-muted-foreground">{s.tools.join(", ")}</p>
       ) : null}

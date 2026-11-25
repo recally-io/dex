@@ -107,6 +107,9 @@ it when set. The description is separate from Runner enrollment.
 The Environment page also edits shared vault secrets. A bot's Tools page
 edits that bot's secrets. The vault API returns metadata only. The editor
 clears the secret value after submit and does not store it in the browser.
+On Tools, an OAuth MCP row starts provider authorization with an authenticated
+POST. The browser follows the returned URL in the same tab. The server
+callback returns to Tools. The browser does not receive provider tokens.
 
 The old `/settings/<section>` addresses redirect to the new pages.
 

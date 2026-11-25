@@ -55,6 +55,7 @@ type serverInfo struct {
 	Overrides bool     `json:"overrides"`
 	Transport string   `json:"transport"`
 	State     string   `json:"state"`
+	OAuth     string   `json:"oauth"`
 	Tools     []string `json:"tools"`
 	Error     string   `json:"error"`
 }

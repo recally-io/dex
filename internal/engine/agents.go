@@ -1437,7 +1437,17 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 		return info, err
 	}
 	if resource != nil {
+		current := info.Servers
 		info.Servers = resource.loaded.serverInfo()
+		for i := range info.Servers {
+			s := &info.Servers[i]
+			for _, entry := range current {
+				if entry.Name == s.Name && entry.Scope == s.Scope {
+					s.OAuth = entry.OAuth
+					break
+				}
+			}
+		}
 		pending = pending || restoreMCP || a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
 	}
 	info.ReloadPending = pending

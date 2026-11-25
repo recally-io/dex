@@ -1263,6 +1263,10 @@ export type McpServer = {
      * The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
      */
     tools: Array<string>;
+    /**
+     * The action or status of an OAuth connection. Absent for other connections.
+     */
+    oauth?: 'authorize' | 'reauthorize' | 'authorized';
     vaultReferences?: {
         env?: {
             [key: string]: string;
@@ -5051,6 +5055,38 @@ export type GetExtensionsResponses = {
 };
 
 export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
+
+export type StartMcpOAuthData = {
+    body: {
+        scope: ExtensionScope;
+    };
+    path: {
+        agentId: string;
+        name: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/extensions/mcp/{name}/oauth';
+};
+
+export type StartMcpOAuthErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type StartMcpOAuthError = StartMcpOAuthErrors[keyof StartMcpOAuthErrors];
+
+export type StartMcpOAuthResponses = {
+    /**
+     * The authorization URL and a browser binding cookie.
+     */
+    200: {
+        authorizationUrl: string;
+    };
+};
+
+export type StartMcpOAuthResponse = StartMcpOAuthResponses[keyof StartMcpOAuthResponses];
 
 export type DeleteVaultData = {
     body?: never;
