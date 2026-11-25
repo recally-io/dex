@@ -1,7 +1,7 @@
 import { describe, test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import { createClient } from "../src/api/generated/client";
-import { createAgent, createAutomation, runAutomation, updateAgent } from "../src/api/generated/sdk.gen";
+import { createAgent, createAutomation, runAutomation } from "../src/api/generated/sdk.gen";
 
 describe("Routine run history", () => {
   test("offers the Outbox on a read-only Routine transcript", async ({ app, browser, screen }) => {
@@ -54,17 +54,10 @@ describe("Routine run history", () => {
 
     const client = createClient({ baseUrl: origin.origin });
 
+    // Empty fields prevent the fixture from inheriting a model or a runner.
     const { data: agent } = await createAgent({
       client,
-      body: { name: "Routine fixture" },
-      throwOnError: true,
-    });
-
-    // Bot creation can copy the default model set by another browser test.
-    await updateAgent({
-      client,
-      path: { agentId: agent.id },
-      body: { ...agent, provider: "faux", modelId: "" },
+      body: { name: "Routine fixture", provider: "", modelId: "", environmentId: "local" },
       throwOnError: true,
     });
 
@@ -83,11 +76,13 @@ describe("Routine run history", () => {
       throwOnError: true,
     });
 
-    await runAutomation({
+    const { data: run } = await runAutomation({
       client,
       path: { agentId: agent.id, automationId: routine.id },
       throwOnError: true,
     });
+    expect(run.status).toBe("skipped");
+    expect(run.reason).toBe("the bot has no model");
 
     await app.open(`/a/${agent.id}/automations/${routine.id}`);
 
