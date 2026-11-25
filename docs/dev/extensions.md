@@ -100,8 +100,8 @@ and the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
 request a reload. Environment settings changes request a reload for agents
-that use the environment. A machine reconnect requests a reload for agents
-that could not load that machine as their default. Each open agent reloads
+that use the environment. A machine reconnect requests a reload if the default
+machine was offline at cold open or the last reload could not open it. Each open agent reloads
 when it is idle. If validation fails, dex keeps the current resources and
 does not try the same configuration again automatically.
 
@@ -110,8 +110,11 @@ the next reload from another change, after an explicit reload, or when dex
 restarts. dex does not poll for changes or watch these files.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
-servers before it resumes the agent Harness. It installs prompt sections for
-the extension guide and current skills. MCP tools use the names
+servers before it resumes the agent Harness. This is a shared wait for all
+Sessions of a Bot, including Sessions that use another environment. MCP servers
+use control-host configuration and do not need a lease on the default environment.
+The loader installs prompt sections for the extension guide and current skills.
+MCP tools use the names
 `mcp__<server>__<tool>`. In owner sessions, `tool_search` searches the built-in
 and MCP tools available to the current model. It adds only matching deferred
 tools to the next model call. It does not expand the session's permissions.
@@ -179,7 +182,10 @@ literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
-The Web Extensions page uses the same server status as `mcp_server_list`.
+For an open Harness, the request uses the default environment's lease to inspect
+workspace skills. If the lease has not opened, this request can open it without
+blocking admission in other environments. The Web Extensions page uses the same
+server status as `mcp_server_list`.
 Before the agent opens, the API shows declarations that are not disabled as
 `idle`.
 
