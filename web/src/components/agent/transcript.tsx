@@ -461,9 +461,7 @@ function ForkAction({ actions, entryId }: { actions: MessageActions; entryId: nu
         <GitBranch size={14} aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuItem onClick={() => actions.fork(entryId, false)}>
-          Fork in this environment
-        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => actions.fork(entryId, false)}>Fork on this Runner</DropdownMenuItem>
         {targets.map((env) => (
           <DropdownMenuItem
             key={env.id}
@@ -630,7 +628,7 @@ function BoundaryItem({ item }: { item: Extract<Item, { kind: "boundary" }> }) {
   if (item.boundary === "environment")
     return (
       <div className="flex flex-col gap-1">
-        <Divider label="Environment changed" />
+        <Divider label="Runner changed" />
         <p className="mx-auto max-w-[560px] rounded-md bg-muted px-3 py-2 text-[12.5px] text-foreground [overflow-wrap:anywhere]">
           {item.text}
         </p>
@@ -795,7 +793,7 @@ function TranscriptItem({
                   {item.text ? <CopyText text={item.text} label="Copy message" /> : null}
                   {actions ? (
                     <MessageAction
-                      label="Edit in new chat"
+                      label="Edit in new session"
                       disabled={actions.pending}
                       onClick={() => actions.fork(item.entryId!, true, item.text)}
                     >

@@ -118,11 +118,11 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
             variant="ghost"
             size="sm"
             className="gap-1.5 px-1.5 text-muted-foreground hover:text-foreground"
-            aria-label="Monitors and outbox"
-            title="Follow-up monitors and outbound deliveries"
+            aria-label="Session activity"
+            title="Scheduled Monitors and Outbox delivery"
           >
             <Clock className="size-3.5 shrink-0" />
-            <span>Outbox</span>
+            <span>Activity</span>
             {scheduledCount > 0 ? (
               <span className="text-[12px] font-medium text-foreground tabular-nums">{scheduledCount}</span>
             ) : null}
@@ -146,17 +146,20 @@ export function ChatActivity({ chatId, writable }: { chatId: number; writable: b
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-[12px] font-medium text-foreground">
                 <Clock className="size-3.5 text-muted-foreground" />
-                Follow-up monitors
+                Monitors
               </span>
               <span className="text-[11px] text-muted-foreground tabular-nums">{scheduledCount} active</span>
             </div>
+            <p className="mb-2 text-[12px] text-muted-foreground">
+              Scheduled prompts and checks. Use session tools to manage background Processes.
+            </p>
             {cancel.isError ? (
               <p className="mb-2 text-[12px] text-destructive">{errorText(cancel.error)}</p>
             ) : null}
             {monitors.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground">No follow-up monitors in this session.</p>
+              <p className="text-[12px] text-muted-foreground">No Monitors in this session.</p>
             ) : (
-              <ul aria-label="Follow-up monitors" className="space-y-2">
+              <ul aria-label="Monitors" className="space-y-2">
                 {monitors.slice(0, 10).map((t) => (
                   <li
                     key={t.id}

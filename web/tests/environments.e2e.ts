@@ -102,7 +102,7 @@ test("a new chat can select a sandbox and shows a disconnected runner", async ({
   const { id: chatId }: { id: number } = await chat.json();
   const { id: sandboxId }: { id: string } = await sandbox.json();
   await app.open(`/a/default/c/${chatId}`);
-  const picker = screen.getByLabel("Environment", { exact: true });
+  const picker = screen.getByLabel("Runner", { exact: true });
   await picker.selectOption({ value: sandboxId });
 
   await expect(picker).toHaveValue(sandboxId);

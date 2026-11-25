@@ -25,7 +25,7 @@ func (s *Service) ToolReportCheck(ctx context.Context, caller engine.TaskContext
 		return err
 	}
 	if source.Origin != "automation" || source.Kind != "message" {
-		return errors.New("automation_report is only available during a Routine run")
+		return errors.New("automation_report is only available during an Automation run")
 	}
 	report.Summary = strings.TrimSpace(report.Summary)
 	report.ChangeKey = strings.TrimSpace(report.ChangeKey)

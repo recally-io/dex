@@ -28,7 +28,7 @@ func (runnerBackend) normalize(spec EnvironmentSpec) (string, error) {
 func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
 	session := b.runners.online(spec.ID)
 	if session == nil {
-		return TestResult{Error: "Remote runner is offline"}, nil
+		return TestResult{Error: "Outbound Machine is offline"}, nil
 	}
 	meta := session.Info()
 	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil

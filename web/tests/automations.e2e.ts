@@ -3,7 +3,7 @@ import { expect } from "e2e";
 import { createClient } from "../src/api/generated/client";
 import { createAgent, createAutomation, runAutomation } from "../src/api/generated/sdk.gen";
 
-describe("Routine run history", () => {
+describe("Automation run history", () => {
   test("offers the Outbox on a read-only Routine transcript", async ({ app, browser, screen }) => {
     await app.open("/");
     const origin = new URL(await browser.url());
@@ -41,7 +41,7 @@ describe("Routine run history", () => {
 
     expect(run.chatId).toBeDefined();
     await app.open(`/a/${agent.id}/c/${run.chatId}`);
-    await screen.getByRole("button", "Monitors and outbox").tap();
+    await screen.getByRole("button", "Session activity").tap();
     await expect(screen.getByText("No outbound messages yet.")).toBeVisible();
     await expect(screen.getByRole("textbox", "Message Dex")).toHaveCount(0);
   });

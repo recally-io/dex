@@ -114,7 +114,7 @@ func TestUserBoundRoutineCanReportItsOwnResult(t *testing.T) {
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(id, report), &routine, http.StatusCreated)
 
-	// When the Routine runs.
+	// When the Automation runs.
 	run := d.runNow(t, routine.ID)
 	got := settledRoutine(t, d, routine.ID, run.ID)
 
@@ -123,9 +123,9 @@ func TestUserBoundRoutineCanReportItsOwnResult(t *testing.T) {
 		t.Fatalf("run did not store its report: %+v", got)
 	}
 	d.send(t, id, `automation_report {"outcome":"changed","summary":"not a routine"}`)
-	d.watch(t, id).until(t, "ordinary input is denied at the reporting boundary", answeredWith("automation_report is only available during a Routine run"))
+	d.watch(t, id).until(t, "ordinary input is denied at the reporting boundary", answeredWith("automation_report is only available during an Automation run"))
 	if runs := d.runs(t, routine.ID); len(runs) != 1 {
-		t.Fatalf("ordinary input created a Routine run: %+v", runs)
+		t.Fatalf("ordinary input created an Automation run: %+v", runs)
 	}
 	after := settledRoutine(t, d, routine.ID, run.ID)
 	if after.Outcome != got.Outcome || after.Summary != got.Summary {
@@ -146,7 +146,7 @@ func TestUserBoundRoutineWaitsBehindAnOrdinaryTurn(t *testing.T) {
 	prompt := fmt.Sprintf(`if ! test -f %q; then exit 1; fi; printf 'once\n' >> %q; echo bound-follow-up`, filepath.Join(work, "ordinary.gate"), marker)
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(id, prompt), &routine, http.StatusCreated)
 
-	// When the Routine runs twice while the ordinary turn is still active.
+	// When the Automation runs twice while the ordinary turn is still active.
 	run := d.runNow(t, routine.ID)
 	overlap := d.runNow(t, routine.ID)
 
@@ -271,7 +271,7 @@ func TestUserBoundRoutineUsesTheSessionEnvironmentAndProject(t *testing.T) {
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, body, &routine, http.StatusCreated)
 
-	// When the Routine runs, its own stale settings and the bot default cannot override the target.
+	// When the Automation runs, its own stale settings and the bot default cannot override the target.
 	run := d.runNow(t, routine.ID)
 	if run.Status != "running" || run.ChatID != id {
 		t.Fatalf("run = %+v", run)

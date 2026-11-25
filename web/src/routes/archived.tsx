@@ -15,7 +15,7 @@ export function ArchivedPage() {
       eyebrow="Settings for this computer"
       title="Archived bots"
       toolbar={<GlobalSettingsSwitcher page="/settings/archived" />}
-      description="An archived bot is hidden. Its channels are stopped and its routines are paused. Its chats, memory and settings stay. Restore a bot to use it again."
+      description="An archived bot is hidden. Its channels are stopped and its automations are paused. Its sessions, memory and settings stay. Restore a bot to use it again."
     >
       {archived.data ? (
         <Section title="Bots" caption={`${archived.data.agents.length} archived`}>

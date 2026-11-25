@@ -32,7 +32,7 @@ describe("Routine session binding", () => {
 
     const overrides =
       (await dialog.getByLabel("Project directory").count()) +
-      (await dialog.getByLabel("Environment", { exact: true }).count());
+      (await dialog.getByLabel("Runner", { exact: true }).count());
 
     await dialog.getByRole("button", "Save automation").tap();
     await screen.getByRole("link", /Routine browser check/).waitFor();

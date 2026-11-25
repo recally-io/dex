@@ -180,7 +180,7 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 						t.Errorf("child was offered %s", name)
 					}
 				}
-				if d := tools["session_report"].Description; !strings.Contains(d, "direct parent") || !strings.Contains(d, "Routine") || !strings.Contains(d, "not a user notification") {
+				if d := tools["session_report"].Description; !strings.Contains(d, "direct parent") || !strings.Contains(d, "Automation session") || !strings.Contains(d, "not a user notification") {
 					t.Errorf("child session_report description lacks routing guidance: %q", d)
 				}
 				return calls(call("session_report", map[string]any{"content": "Half of the checks pass.", "final": false}))

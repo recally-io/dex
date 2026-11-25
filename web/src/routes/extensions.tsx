@@ -57,6 +57,17 @@ export function ExtensionCatalog({ section }: { section: "skills" | "integration
 
   if (!query.data) return <Loading />;
 
+  const reloadAction = (
+    <Button
+      variant="secondary"
+      size="sm"
+      disabled={reload.isPending}
+      onClick={() => reload.mutate({ path: { agentId } })}
+    >
+      {reload.isPending ? "Reloading…" : "Reload"}
+    </Button>
+  );
+
   return (
     <>
       {query.data.reloadPending && !query.data.errors.length ? (
@@ -64,32 +75,18 @@ export function ExtensionCatalog({ section }: { section: "skills" | "integration
       ) : null}
       <Configuration extensions={query.data} />
       {section === "skills" ? (
-        <>
-          <Skills
-            extensions={query.data}
-            reload={() => reload.mutate({ path: { agentId } })}
-            pending={reload.isPending}
-          />
-          {reload.isError ? (
-            <Failure title="Could not reload skills and MCP servers" error={reload.error} />
-          ) : null}
-        </>
+        <Skills extensions={query.data} reloadAction={reloadAction} />
       ) : (
-        <McpServers servers={query.data.servers} />
+        <McpServers servers={query.data.servers} reloadAction={reloadAction} />
       )}
+      {reload.isError ? (
+        <Failure title="Could not reload tools and MCP servers" error={reload.error} />
+      ) : null}
     </>
   );
 }
 
-function Skills({
-  extensions: e,
-  reload,
-  pending,
-}: {
-  extensions: Extensions;
-  reload: () => void;
-  pending: boolean;
-}) {
+function Skills({ extensions: e, reloadAction }: { extensions: Extensions; reloadAction: ReactNode }) {
   return (
     <>
       <Section title="File levels" caption="Each holds skills/.">
@@ -107,11 +104,7 @@ function Skills({
       <Section
         title="Available skills"
         caption="Skill edits apply to the next request. Reload refreshes the bot's tools and MCP connections when all bots are idle."
-        action={
-          <Button variant="secondary" size="sm" disabled={pending} onClick={reload}>
-            {pending ? "Reloading…" : "Reload"}
-          </Button>
-        }
+        action={reloadAction}
       >
         <List
           items={e.skills.map((skill) => (
@@ -153,11 +146,12 @@ function Configuration({ extensions: e }: { extensions: Extensions }) {
   );
 }
 
-function McpServers({ servers }: { servers: McpServer[] }) {
+function McpServers({ servers, reloadAction }: { servers: McpServer[]; reloadAction: ReactNode }) {
   return (
     <Section
       title="MCP servers"
-      caption="Manage declarations with mcp_server tools in an owner session. Changes apply when the agent is idle."
+      caption="Manage declarations with mcp_server tools in an owner session. Reload refreshes this bot's MCP connections when all bots are idle."
+      action={reloadAction}
     >
       <List
         items={servers.map((server) => (

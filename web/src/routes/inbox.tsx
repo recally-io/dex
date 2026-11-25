@@ -209,7 +209,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
             <div className="mt-6 flex flex-wrap gap-2">
               {item.chatId ? (
                 <Button onClick={() => next.mutate(item)} disabled={next.isPending || done.isPending}>
-                  Continue in chat
+                  Continue in a session
                 </Button>
               ) : null}
               <Button
@@ -228,7 +228,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
               />
             ) : null}
             {done.isError ? <Failure title="Could not dismiss result" error={done.error} /> : null}
-            {next.isError ? <Failure title="Could not continue in chat" error={next.error} /> : null}
+            {next.isError ? <Failure title="Could not continue in a session" error={next.error} /> : null}
           </>
         )}
       </Section>

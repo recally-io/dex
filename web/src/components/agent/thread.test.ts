@@ -89,9 +89,9 @@ test("user sees one card with native execution status and no copied child text",
     createElement(Steps, { steps: [bash("a"), created("s1", 7, "Check logs"), bash("b")] }),
   );
 
-  expect(html.match(/Session thread: Check logs/g)).toHaveLength(1);
-  expect(html.indexOf("Ran a command")).toBeLessThan(html.indexOf("Session thread"));
-  expect(html.indexOf("Session thread")).toBeLessThan(html.lastIndexOf("Ran a command"));
+  expect(html.match(/Child session: Check logs/g)).toHaveLength(1);
+  expect(html.indexOf("Ran a command")).toBeLessThan(html.indexOf("Child session"));
+  expect(html.indexOf("Child session")).toBeLessThan(html.lastIndexOf("Ran a command"));
   expect(html).toContain('data-state="running"');
   expect(html).not.toContain("First line");
   expect(html).not.toContain("Third line");
@@ -111,7 +111,7 @@ test("user sees the bot of a child in another bot, and one card for each fork", 
 
   const html = await render(createElement(Steps, { steps: [created("s1", 7, "Check logs"), other] }));
 
-  expect(html.match(/Session thread:/g)).toHaveLength(2);
+  expect(html.match(/Child session:/g)).toHaveLength(2);
   expect(html).toContain("Ops");
   expect(html).toContain('href="/a/ops/c/9"');
   expect(html.match(/>Default</g) ?? []).toHaveLength(0);
@@ -128,7 +128,7 @@ test("user sees a send as one compact line that opens the same thread", async ()
   const html = await render(createElement(Steps, { steps: [send] }));
 
   expect(html).toContain("Sent to Check logs");
-  expect(html).not.toContain("Session thread");
+  expect(html).not.toContain("Child session");
   expect(html).toContain('href="/a/default/c/7"');
 
   // With a panel on the page, the line is a button instead of a link.
@@ -166,7 +166,7 @@ test("user sees a result as one line without the answer", async () => {
 
   expect(html).toContain("Check logs</span> replied");
   expect(html).toContain("Build</span> failed: model down");
-  expect(html.match(/View thread/g)).toHaveLength(2);
+  expect(html.match(/View session/g)).toHaveLength(2);
   expect(html).toContain('href="/a/default/tasks/t1"');
   expect(html).not.toContain("<details");
   expect(html).toContain("Main reply");
@@ -179,7 +179,7 @@ test("user sees a result as one line without the answer", async () => {
     ),
   );
 
-  expect(line).toMatch(/<button type="button"[^>]*>View thread<\/button>/);
+  expect(line).toMatch(/<button type="button"[^>]*>View session<\/button>/);
 });
 
 test("user sees the child transcript in the panel, with its title, bot and state", async () => {
@@ -206,13 +206,13 @@ test("user sees the child transcript in the panel, with its title, bot and state
     client,
   );
 
-  expect(html).toContain('aria-label="Session thread"');
+  expect(html).toContain('aria-label="Child session"');
   expect(html).toContain("Check logs");
   expect(html).toContain("Check the logs");
   expect(html).toContain("Third line");
   expect(html).toContain('data-state="idle"');
   expect(html).not.toContain('data-state="done"');
-  expect(html).toContain('aria-label="Close thread"');
+  expect(html).toContain('aria-label="Close child session"');
   expect(html).toContain('href="/a/default/c/7"');
 });
 

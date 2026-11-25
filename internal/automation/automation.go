@@ -570,7 +570,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	result, err := s.enqueue(ctx, input)
 	if !due.Valid && errors.Is(err, chat.ErrAutomationChanged) {
 		// A scheduled run checks again next minute; a manual run tells the caller.
-		err = fmt.Errorf("%w: the routine changed during its check; run it again", engine.ErrBusy)
+		err = fmt.Errorf("%w: the automation changed during its check; run it again", engine.ErrBusy)
 	}
 	switch {
 	case result.Created && result.ConversationID == 0:

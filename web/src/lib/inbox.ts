@@ -44,15 +44,15 @@ export function continuationEnvironment(ranIn: string, environments: AgentEnviro
 
   if (env?.kind === "runner" && env.status === "offline") {
     throw new Error(
-      `This result ran on ${env.name}, which is offline. Try again when the runner reconnects.`,
+      `This result ran on ${env.name}, which is offline. Try again when the Outbound Machine reconnects.`,
     );
   }
 
   const where = ranIn
     ? `ran in ${env?.name ?? ranIn}, which cannot continue this run`
-    : "has no recorded environment";
+    : "has no recorded Runner";
 
-  throw new Error(`This result ${where}. Start a chat and select an environment.`);
+  throw new Error(`This result ${where}. Start a session and select a Runner.`);
 }
 
 // A retry after a partial failure reuses the chat and the message ID, so the quote is sent once.

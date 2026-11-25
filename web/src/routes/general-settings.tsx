@@ -227,7 +227,7 @@ export function GeneralSettingsPage() {
                     {currentEnv
                       ? `${environmentOptionLabel(currentEnv)}.`
                       : missingEnv
-                        ? `Configured environment (${defaults.environmentId}) is missing.`
+                        ? `Configured Runner (${defaults.environmentId}) is missing.`
                         : "Runs tools and workspaces on this computer."}{" "}
                     <Link className="font-medium text-primary underline" to="/settings/runners">
                       Manage Runners
@@ -266,7 +266,7 @@ export function GeneralSettingsPage() {
               </div>
               {environments.isError ? (
                 <div className="mt-3">
-                  <Failure title="Could not load environments" error={environments.error} />
+                  <Failure title="Could not load Runners" error={environments.error} />
                 </div>
               ) : null}
               {save.isError ? (

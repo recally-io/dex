@@ -98,7 +98,7 @@ export function Steps({ children }: { children: ReactNode }) {
   );
 }
 
-/** Lets this channel's owner receive routine results. */
+/** Lets this channel's owner receive automation results. */
 export function Notifications({ channel }: { channel: ChannelId }) {
   const agentId = useAgentId();
 

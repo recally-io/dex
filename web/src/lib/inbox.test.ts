@@ -39,11 +39,11 @@ test("a continuation chat pins the environment where the result ran", () => {
     continuationEnvironment("offline", [
       { id: "offline", name: "Runner A", kind: "runner", status: "offline", default: false },
     ]),
-  ).toThrow("Try again when the runner reconnects.");
+  ).toThrow("Try again when the Outbound Machine reconnects.");
   expect(continuationEnvironment("runner", environments)).toBe("runner");
   expect(continuationEnvironment("box", environments)).toBe("box");
   expect(continuationEnvironment("local", environments)).toBe("local");
-  expect(() => continuationEnvironment("", environments)).toThrow("has no recorded environment");
+  expect(() => continuationEnvironment("", environments)).toThrow("has no recorded Runner");
   expect(() => continuationEnvironment("gone", environments)).toThrow("This result ran in gone");
   expect(() =>
     continuationEnvironment("sandbox", [

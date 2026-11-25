@@ -1,15 +1,16 @@
 # Tasks
 
-This document describes the Task Inbox, the Task event store, holds, Task
+This document describes Board, the Task event store, holds, Task
 alerts, and the Task tools. Optional sources that send Task events are in
 [Plugins](plugins.md).
 
-## Inbox and event store
+## Board and event store
 
-The Task Inbox reads `work_tasks` and `work_task_entries` from `control.sqlite`.
-Each Task belongs to an agent. Its lifecycle and notes do not change the state
-of a Session. The Inbox hides closed Tasks by default and keeps Routine results
-in a separate section. An owner can send a message from a Task to Main. The
+Board reads `work_tasks` and `work_task_entries` from `control.sqlite`. Each
+Task belongs to a bot. Its lifecycle and notes do not change the state of a
+Session. Board hides closed Tasks by default. Inbox shows items that need owner
+action, including held events and Automation results. The owner can send a
+message from a Task to Main. The
 Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
