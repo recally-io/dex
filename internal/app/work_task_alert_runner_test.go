@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,38 +62,51 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	}
 
 	// And the runner connects.
-	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
-	defer cancel()
+	dialCtx, cancelDial := context.WithTimeout(t.Context(), 45*time.Second)
+	defer cancelDial()
 	url := strings.Replace(d.srv.URL, "http://", "ws://", 1) + "/machine/" + machine.ID + "/connect"
-	ws, res, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + enrolled.Token}}, Subprotocols: []string{runner.Version}})
+	ws, res, err := websocket.Dial(dialCtx, url, &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": []string{"Bearer " + enrolled.Token}}, Subprotocols: []string{runner.Version}})
 	if res != nil && res.Body != nil {
 		_ = res.Body.Close()
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = ws.CloseNow() }()
-	go func() {
-		_ = runner.Serve(ctx, ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: t.TempDir()}))
+	cancelDial()
+	local := node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: t.TempDir()})
+	runnerDone := make(chan error, 1)
+	go func() { runnerDone <- runner.Serve(t.Context(), ws, local) }()
+	defer func() {
+		_ = ws.CloseNow()
+		if err := <-runnerDone; err != nil {
+			t.Errorf("runner: %v", err)
+		}
 	}()
 
-	// Then Main runs the Task alert exactly once.
+	// Then Main settles the saved alert. Open the transcript after settlement so
+	// this test does not depend on live events during the cold start.
 	var main chatInfo
 	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
-	w := d.watch(t, main.ID)
-	answers := func(tr *transcript) int {
-		return len(slices.DeleteFunc(slices.Clone(tr.items), func(it item) bool {
-			return !strings.HasPrefix(it.Text, "context: ") || !strings.Contains(it.Text, "[Task event: issue.opened]")
-		}))
+	conn := sessionDB(t, d)
+	var alertID string
+	if err := conn.QueryRowContext(t.Context(), `SELECT submission_id FROM work_task_inputs WHERE submission_id LIKE 'task-alert:%'`).Scan(&alertID); err != nil {
+		t.Fatal(err)
 	}
-	w.until(t, "the answer to the Task alert", func(tr *transcript) bool { return answers(tr) > 0 && !tr.running })
+	waitResultSubmission(t, conn, alertID, "done")
 	deliverGitHub(t, d, secret, "issue-1-again", "issues", issue)
-	d.awaitIdle(t, main.ID)
+	if got := count(t, conn, `SELECT count(*) FROM work_task_inputs WHERE submission_id LIKE 'task-alert:%'`); got != 1 {
+		t.Fatalf("Main has %d Task alerts, want one", got)
+	}
+	w := d.watch(t, main.ID)
+	w.until(t, "the settled transcript snapshot", func(tr *transcript) bool { return tr.snapshots > 0 })
+	answers := 0
+	for _, it := range w.tr.items {
+		if it.Kind == "assistant" && strings.HasPrefix(it.Text, "context: ") && strings.Contains(it.Text, "[Task event: issue.opened]") {
+			answers++
+		}
+	}
+	if answers != 1 {
+		t.Fatalf("Main answered the Task alert %d times, want one: %+v", answers, w.tr.items)
+	}
 	t.Logf("artifact: Main items=%+v", w.tr.items)
-	if n := answers(&w.tr); n != 1 {
-		t.Fatalf("Main must answer the Task alert once, got %d", n)
-	}
-	if got := pendingTaskAlerts(t, dir); len(got) != 0 {
-		t.Fatalf("a Task alert stays pending after the runner returned: %q", got)
-	}
 }
