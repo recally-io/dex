@@ -106,9 +106,8 @@ to read in an afternoon.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
   10 minutes. A paired bot cannot create another pairing link. Manual user-ID
-  entry is an advanced option. The bot ignores other users and group chats.
-  Earlier versions accepted group messages from allowed users. The bot now
-  ignores all non-private chats, including messages from allowed users.
+  entry is an advanced option. The bot accepts only private chats with allowed
+  users. It ignores groups, supergroups, and channels.
 - If a dedicated Telegram manager has Bot Management Mode, the owner can
   also create a bot from Channels. The owner verifies their account in Telegram,
   then confirms bot creation there. Dex connects the new bot without showing

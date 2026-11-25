@@ -32,15 +32,9 @@ func (m *Manager) CleanupTelegramAlbums(ctx context.Context, store *upload.Store
 		return err
 	}
 	for _, item := range pending {
-		if item.Context.ChatID < 0 {
-			if err := m.chats.RemoveGroupUploads(m.agentID, item.Context, item.Attachments); err != nil {
+		for _, file := range item.Attachments {
+			if err := store.Remove(file.ID); err != nil && !errors.Is(err, upload.ErrNotFound) {
 				return err
-			}
-		} else {
-			for _, file := range item.Attachments {
-				if err := store.Remove(file.ID); err != nil && !errors.Is(err, upload.ErrNotFound) {
-					return err
-				}
 			}
 		}
 		if err := m.chats.ClearDiscardedTelegramUpload(ctx, m.agentID, item.Source); err != nil {

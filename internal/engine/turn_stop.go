@@ -23,7 +23,7 @@ func runTargetPrefix(ref Ref) string {
 func runTargetID(ref Ref, target string) (durable.TaskId, error) {
 	raw, ok := strings.CutPrefix(target, runTargetPrefix(ref))
 	id, err := strconv.ParseInt(raw, 10, 64)
-	if ref.Scope != "" || !ok || err != nil || id <= 0 || strconv.FormatInt(id, 10) != raw {
+	if !ok || err != nil || id <= 0 || strconv.FormatInt(id, 10) != raw {
 		return 0, ErrStaleRunTarget
 	}
 	return durable.TaskId(id), nil
@@ -57,10 +57,10 @@ func (a *Agents) ValidateRunTarget(ctx context.Context, ref Ref, target string) 
 	if err != nil {
 		return err
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	c, err := a.conversation(ctx, ref)
 	if err != nil {
 		return err
@@ -101,10 +101,10 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr
 		trace.InfoContext(ctx, "session stop", "phase", "stop_attempt_ended", "reason", result,
 			"abort_observed", aborted, "elapsed_ms", time.Since(started).Milliseconds())
 	}()
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -114,7 +114,7 @@ func (a *Agents) StopRun(ctx context.Context, ref Ref, target string) (resultErr
 	if err != nil {
 		return err
 	}
-	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+	h, err := a.harness(ctx, ref.AgentID)
 	if err != nil {
 		return err
 	}

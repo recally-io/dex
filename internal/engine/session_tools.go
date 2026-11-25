@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
@@ -14,7 +13,6 @@ import (
 
 // TaskContext binds a tool invocation to its persisted initiating input.
 type TaskContext struct {
-	Scope           string
 	AgentID         string
 	ConversationID  int64
 	SourceRequestID string
@@ -33,10 +31,6 @@ type ArtifactInfo struct {
 
 // TaskTools connects foreground tools to the application services.
 type TaskTools struct {
-	AuthorizeGroup   func(context.Context, TaskContext) error
-	GroupQuestion    func(context.Context, TaskContext, AskUserArgs) (QuestionInfo, error)
-	GroupSession     func(context.Context, TaskContext, GroupSessionArgs) (GroupSessionResult, error)
-	DeliverGroupFile func(context.Context, TaskContext, string, io.Reader) error
 	ReadDreamMessage func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)
 	DeliverArtifact  func(context.Context, TaskContext, string) (ArtifactInfo, error)
 	ReportCheck      func(context.Context, TaskContext, CheckReport) error
@@ -92,7 +86,6 @@ type SessionNewArgs struct {
 }
 
 type SessionListArgs struct {
-	// Scope is "children" (the default) or "all".
 	Scope string `json:"scope,omitempty"`
 	// Bot is empty (the bot of the caller), "all", or a bot ID or name.
 	Bot string `json:"bot,omitempty"`

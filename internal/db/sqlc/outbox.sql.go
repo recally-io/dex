@@ -423,8 +423,9 @@ SELECT o.id, o.dedup_key, o.agent_id, o.conversation_id, o.source_submission_id,
        o.rendered_parts, o.delivered_parts, o.group_fallback, o.group_cursor, o.remote_ids,
        o.status, o.retry_at, o.error, o.created_at
 FROM outbox_messages o
+JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
-WHERE o.status = 'pending'
+WHERE o.status = 'pending' AND c.execution_scope = ''
   AND o.agent_id = ?1
   AND o.peer >= ?2 AND o.peer < ?3
   AND (
@@ -667,22 +668,21 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = ?6 AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = ?7 AND c.execution_scope = ?8 AND c.execution_id = ?9
+  AND c.agent_id = ?7 AND c.execution_scope = '' AND c.execution_id = ?8
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
 ON CONFLICT DO NOTHING
 `
 
 type QueueOutboxFileParams struct {
-	ID             string        `json:"id"`
-	OperationKey   string        `json:"operation_key"`
-	Name           string        `json:"name"`
-	MimeType       string        `json:"mime_type"`
-	Body           []byte        `json:"body"`
-	SubmissionID   string        `json:"submission_id"`
-	AgentID        string        `json:"agent_id"`
-	ExecutionScope string        `json:"execution_scope"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	ID           string        `json:"id"`
+	OperationKey string        `json:"operation_key"`
+	Name         string        `json:"name"`
+	MimeType     string        `json:"mime_type"`
+	Body         []byte        `json:"body"`
+	SubmissionID string        `json:"submission_id"`
+	AgentID      string        `json:"agent_id"`
+	ExecutionID  sql.NullInt64 `json:"execution_id"`
 }
 
 func (q *Queries) QueueOutboxFile(ctx context.Context, arg QueueOutboxFileParams) (int64, error) {
@@ -694,7 +694,6 @@ func (q *Queries) QueueOutboxFile(ctx context.Context, arg QueueOutboxFileParams
 		arg.Body,
 		arg.SubmissionID,
 		arg.AgentID,
-		arg.ExecutionScope,
 		arg.ExecutionID,
 	)
 	if err != nil {

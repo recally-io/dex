@@ -48,7 +48,7 @@ WHERE agent_id = ? AND batch_source = ? AND state = 'sealed';
 
 -- name: ListDiscardedTelegramAlbumMembers :many
 SELECT * FROM telegram_album_members
-WHERE agent_id = ? AND state = 'discarded' AND input_json <> '{}';
+WHERE agent_id = ? AND state = 'discarded' AND peer NOT LIKE 'telegram:-%' AND input_json <> '{}';
 
 -- name: ClearDiscardedTelegramAlbumMember :exec
 UPDATE telegram_album_members SET input_json = '{}'
@@ -65,13 +65,6 @@ SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE agent_id = ? AND group_
 -- name: DiscardPrivateTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'
 WHERE agent_id = ? AND peer NOT LIKE 'telegram:-%' AND state IN ('collecting', 'sealed');
-
--- name: DiscardGroupTelegramAlbums :exec
-UPDATE telegram_album_members SET state = 'discarded'
-WHERE agent_id = @agent_id AND account_id = @account_id AND peer = @peer
-  AND (CAST(@sender_id AS TEXT) = '' OR sender_id = @sender_id)
-  AND (CAST(@topic_id AS INTEGER) > 0 OR coalesce(json_extract(input_json, '$.ChannelContext.topicShared'), 0) = CAST(@topic_shared AS INTEGER))
-  AND state IN ('collecting', 'sealed');
 
 -- name: DiscardUnauthorizedTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'

@@ -51,8 +51,7 @@ type Chat struct {
 	// asked for.
 	ParentAgentID, ParentAgentName string
 	// ExecutionID is zero until native execution creates the conversation.
-	ExecutionID    int64
-	ExecutionScope string
+	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
 	Question *Question
 	// ForkedFrom is the source of a fork. Get sets it; list rows leave it nil.
@@ -69,6 +68,7 @@ type Settings struct {
 
 // ChannelContext records the platform identity that authorized channel input.
 type ChannelContext struct {
+	// These fields identify non-private Telegram records from older releases.
 	ChatID      int64  `json:"chatId,omitzero"`
 	TopicID     int64  `json:"topicId,omitzero"`
 	TopicShared bool   `json:"topicShared,omitzero"`
@@ -322,14 +322,10 @@ func (s *Service) AcceptMessage(ctx context.Context, agentID, peer, sourceKey st
 }
 
 func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message, deferAdmission bool) error {
-	channelKey := MainKey
-	if groupPeer(peer) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
-		key, _, _, err := groupTarget(peer, m.ChannelContext)
-		if err != nil {
-			return err
-		}
-		channelKey = key
-	} else if _, err := s.Main(ctx, agentID); err != nil {
+	if NonPrivateTelegramInput(peer, m.ChannelContext) {
+		return ErrTelegramUnauthorized
+	}
+	if _, err := s.Main(ctx, agentID); err != nil {
 		return err
 	}
 	m.ID = uuid.NewV7().String()
@@ -351,27 +347,19 @@ func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey st
 	if m.AnswersQuestion == "" {
 		addContext()
 	}
-	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m, deferAdmission)
+	_, err := s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m, deferAdmission)
 	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" && !m.QuestionOnly {
 		// The question closed while the user wrote. The words still reach the agent as a plain message.
 		m.AnswersQuestion = ""
 		addContext()
-		_, err = s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m, deferAdmission)
+		_, err = s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m, deferAdmission)
 	}
 	return err
 }
 
 func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message, deferAdmission bool) (int64, error) {
-	scope, binding := "", "{}"
-	if groupPeer(origin) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
-		key, audience, identity, err := groupTarget(origin, m.ChannelContext)
-		if err != nil || key != channelKey {
-			return 0, ErrGroupUnauthorized
-		}
-		if m.SpeechSource != "" {
-			return 0, ErrGroupUnauthorized
-		}
-		scope, binding = audience, identity
+	if NonPrivateTelegramInput(origin, m.ChannelContext) {
+		return 0, ErrTelegramUnauthorized
 	}
 	complete, archived := false, ""
 	createdReceipt := false
@@ -395,7 +383,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			chatTitle = title(m.Attachments[0].Name)
 		}
 		conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
-			AgentID: agentID, ChannelKey: channelKey, Title: chatTitle, ExecutionScope: scope, ScopeContext: binding,
+			AgentID: agentID, ChannelKey: channelKey, Title: chatTitle,
 			ModelProvider: m.Settings.Provider, ModelID: m.Settings.ModelID, ThinkingLevel: m.Settings.ThinkingLevel,
 			CreatedAt: createdAt,
 		})
@@ -405,20 +393,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err := checkTelegramControl(ctx, q, sourceKey, agentID, conv.ID); err != nil {
 			return 0, err
 		}
-		if conv.ExecutionScope != scope || scope != "" && conv.ScopeContext != binding {
-			return 0, ErrGroupUnauthorized
-		}
-		if scope == "" && privateTelegramSource(origin, m.ChannelContext) {
+		if privateTelegramSource(origin, m.ChannelContext) {
 			if err := authorizeTelegramActor(ctx, q, agentID, m.ChannelContext.AccountID, m.ChannelContext.SenderID); err != nil {
-				return 0, err
-			}
-		}
-		if scope != "" {
-			identity, err := json.Marshal(m.ChannelContext)
-			if err != nil {
-				return 0, err
-			}
-			if err := authorizeGroupSource(ctx, q, conv, sqlc.Submission{ConversationID: conv.ID, Origin: origin, ChannelContext: string(identity)}); err != nil {
 				return 0, err
 			}
 		}
@@ -458,7 +434,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			// A retry of an answer that is stored already must not bind or wrap it again.
 			switch _, err := q.GetSubmission(ctx, m.ID); {
 			case errors.Is(err, sql.ErrNoRows):
-				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin, m.ChannelContext); err != nil {
+				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
 					return 0, err
 				}
 				content = decision.Content
@@ -506,23 +482,6 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") {
 					return 0, ErrMessageID
 				}
-			}
-		}
-		if created == 0 && scope != "" {
-			originalID := m.ID
-			if sourceKey != "" {
-				var err error
-				originalID, err = q.GetSubmissionBySource(ctx, sql.NullString{String: sourceKey, Valid: true})
-				if err != nil {
-					return 0, err
-				}
-			}
-			prior, err := q.GetSubmission(ctx, originalID)
-			if err != nil {
-				return 0, err
-			}
-			if prior.ConversationID != conv.ID || prior.ChannelContext != string(channelContext) {
-				return 0, ErrMessageID
 			}
 		}
 		if answers && created > 0 {
@@ -746,7 +705,7 @@ func (s *Service) childStoppedByParent(ctx context.Context, id int64) (bool, err
 		if !p.FromParent {
 			continue
 		}
-		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope}, p.ID)
+		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
 		if errors.Is(err, engine.ErrNotFound) || errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
 			return true, nil
 		}
@@ -776,7 +735,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	c := Chat{
 		Cwd: r.Cwd, EnvironmentID: r.EnvironmentID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, ExecutionScope: r.ExecutionScope, Question: question,
+		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, Question: question,
 		ForkedFrom: forkOrigin(r),
 	}
 	c.ParentAgentID, c.ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
@@ -811,10 +770,7 @@ func (s *Service) admitInput(ctx context.Context, p sqlc.ListPendingSubmissionsR
 	var admissionErr error
 	if p.Kind == "message" {
 		environment := effectiveEnvironment(agent, conv.EnvironmentID)
-		if conv.ExecutionScope != "" {
-			environment = "local"
-		}
-		trace = receiptTrace(p.ConversationID, p.ID).With("agent", p.AgentID, "native_namespace", engine.TraceNamespace(conv.ExecutionScope), "environment", environment)
+		trace = receiptTrace(p.ConversationID, p.ID).With("agent", p.AgentID, "native_namespace", "private", "environment", environment)
 		reason := "unknown"
 		switch {
 		case p.AdmittedAt.Valid:
@@ -831,15 +787,6 @@ func (s *Service) admitInput(ctx context.Context, p sqlc.ListPendingSubmissionsR
 	}
 	if conv.AbortPending != 0 {
 		return errStopPending
-	}
-	if conv.ExecutionScope != "" {
-		source, err := s.q.GetSubmission(ctx, p.ID)
-		if err != nil {
-			return err
-		}
-		if err := authorizeGroupSource(ctx, s.q, conv, source); err != nil {
-			return s.channelAdmissionError(ctx, p.ID, err)
-		}
 	}
 	options := chatOptions(agent, conv)
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
@@ -920,7 +867,7 @@ func (s *Service) admitInput(ctx context.Context, p sqlc.ListPendingSubmissionsR
 		if errors.Is(err, errInputSettled) {
 			return nil
 		}
-		if errors.Is(err, ErrGroupUnauthorized) {
+		if errors.Is(err, ErrTelegramUnauthorized) {
 			return s.channelAdmissionError(ctx, p.ID, err)
 		}
 		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
@@ -983,9 +930,6 @@ func (s *Service) checkAdmission(ctx context.Context, conv sqlc.Conversation, id
 	if source.StopRequested != 0 {
 		return errStopPending
 	}
-	if conv.ExecutionScope != "" {
-		return authorizeGroupSource(ctx, s.q, conv, source)
-	}
 	if source.Kind != "message" || !strings.HasPrefix(source.Origin, "telegram:") {
 		return nil
 	}
@@ -997,24 +941,24 @@ func (s *Service) checkAdmission(ctx context.Context, conv sqlc.Conversation, id
 		return nil // Old receipts without platform identity keep their existing behavior.
 	}
 	if source.ChannelRevoked != 0 {
-		return ErrGroupUnauthorized
+		return ErrTelegramUnauthorized
 	}
 	return authorizeTelegramActor(ctx, s.q, conv.AgentID, actor.AccountID, actor.SenderID)
 }
 
 func (s *Service) channelAdmissionError(ctx context.Context, id string, err error) error {
-	if !errors.Is(err, ErrGroupUnauthorized) {
+	if !errors.Is(err, ErrTelegramUnauthorized) {
 		return err
 	}
 	if err := s.q.RevokeChannelSubmission(ctx, id); err != nil {
 		return err
 	}
-	return s.settle(ctx, id, engine.Outcome{Status: "unanswered", Reason: ErrGroupUnauthorized.Error()})
+	return s.settle(ctx, id, engine.Outcome{Status: "unanswered", Reason: ErrTelegramUnauthorized.Error()})
 }
 
 // chatOptions are the run settings of a chat: its own model and thinking level, else the agent's.
 func chatOptions(agent sqlc.Agent, conv sqlc.Conversation) engine.Options {
-	options := engine.Options{Scope: conv.ExecutionScope, Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
+	options := engine.Options{Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
 	if conv.ModelID != "" {
 		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
 	}
@@ -1130,9 +1074,8 @@ func (s *Service) execution(ctx context.Context, id int64, agentID string, optio
 	if conv.AgentID != agentID {
 		return engine.Ref{}, errSessionInvalid
 	}
-	options.Scope = conv.ExecutionScope
 	if conv.ExecutionID.Valid {
-		return engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, nil
+		return engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, nil
 	}
 	ref, err := s.engine.Create(ctx, agentID, options)
 	if err != nil {

@@ -45,7 +45,7 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	if conv.AbortPending != 0 {
 		return engine.ErrStaleRunTarget
 	}
-	ref := engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}
+	ref := engine.Ref{AgentID: agentID, ID: c.ExecutionID}
 	trace := slog.With("session", id, "agent", agentID, "native_conversation_id", ref.ID)
 	if err := s.engine.ValidateRunTarget(ctx, ref, target); err != nil {
 		trace.InfoContext(ctx, "session stop", "phase", "stop_rejected", "reason", admissionRetryReason(err))

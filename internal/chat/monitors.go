@@ -290,7 +290,7 @@ func (s *Service) cancelMonitor(ctx context.Context, agentID string, chatID int6
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	ref := engine.Ref{AgentID: agentID, ID: cmp.Or(row.TargetExecutionID, conv.ExecutionID.Int64), Scope: conv.ExecutionScope}
+	ref := engine.Ref{AgentID: agentID, ID: cmp.Or(row.TargetExecutionID, conv.ExecutionID.Int64)}
 	var withdrawn []string
 	for _, id := range events {
 		if ref.ID != 0 {
@@ -347,7 +347,7 @@ func parseMonitorTimestamp(raw string, loc *time.Location) (time.Time, error) {
 var errMonitorTarget = errors.New("monitor target or authority is no longer valid")
 
 func activeMonitorTarget(c sqlc.Conversation) bool {
-	return c.ExecutionScope == "" && c.ExecutionID.Valid && !c.ArchivedAt.Valid && c.AbortPending == 0
+	return c.ExecutionID.Valid && !c.ArchivedAt.Valid && c.AbortPending == 0
 }
 
 func monitorEnvironment(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation) (string, int64, error) {

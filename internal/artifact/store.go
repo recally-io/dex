@@ -227,9 +227,6 @@ func (s *Service) Delete(agentID, name string) error {
 
 // Deliver copies a workspace file under its actual name. Existing names are conflicts.
 func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
-	if caller.Scope != "" {
-		return engine.ArtifactInfo{}, errors.New("group files require an audience-scoped delivery path")
-	}
 	if !filepath.IsLocal(path) || path == "." {
 		return engine.ArtifactInfo{}, ErrInvalidName
 	}

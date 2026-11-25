@@ -4358,18 +4358,11 @@ components:
         path: github.com/recally-io/dex/internal/channel/telegram
       type: object
       properties:
-        requireMention:
-          type: boolean
-          default: false
-          description: Require a mention or reply to this bot for group input. Off by default for individually authorized senders. This does not grant access to private resources.
         silent: { type: boolean, default: false }
         preview: { type: string, enum: ["", auto, edit, draft, "off"] }
         reactions:
           type: boolean
           description: Private chat status reactions. On when unset; false explicitly disables them.
-        groupReactions:
-          type: boolean
-          description: Opt in to status reactions for authorized group inputs. Off when unset.
         stt: { $ref: "#/components/schemas/TelegramSpeechOptions" }
         tts: { $ref: "#/components/schemas/TelegramSpeechOptions" }
 

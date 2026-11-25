@@ -53,7 +53,7 @@ type AutomationInput struct {
 
 // AutomationTargetEligible applies the same rule to saves, admission, and the session picker.
 func AutomationTargetEligible(conv sqlc.Conversation, agentID string) bool {
-	return conv.AgentID == agentID && !conv.ArchivedAt.Valid && conv.ExecutionScope == "" && acceptsInput(conv.ChannelKey, conv.ParentID)
+	return conv.AgentID == agentID && !conv.ArchivedAt.Valid && acceptsInput(conv.ChannelKey, conv.ParentID)
 }
 
 // ErrAutomationTarget identifies a binding that cannot accept a Routine input.

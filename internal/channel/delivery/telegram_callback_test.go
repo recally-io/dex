@@ -43,8 +43,8 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()
 	defer func() { cancel(); <-done }()
-	identity := chat.ChannelContext{AccountID: "123", SenderID: "42", ChatID: -100, TopicID: 7, TopicShared: true, MessageID: "10"}
-	target, err := service.GroupConversation(ctx, "bot", "telegram:-100:7", identity)
+	identity := chat.ChannelContext{AccountID: "123", SenderID: "42", MessageID: "10"}
+	target, err := service.Main(ctx, "bot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	}
 	create := func(id string) {
 		t.Helper()
-		if err := q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, AgentID: "bot", SourceID: id, Peer: "telegram:-100:7", ChannelContext: string(encoded), ConversationID: target.ID, ExecutionScope: target.ExecutionScope, ExecutionID: target.ExecutionID, ObjectID: strconv.FormatInt(target.ID, 10), Action: "/status", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
+		if err := q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, AgentID: "bot", SourceID: id, Peer: "telegram:42", ChannelContext: string(encoded), ConversationID: target.ID, ExecutionID: target.ExecutionID, ObjectID: strconv.FormatInt(target.ID, 10), Action: "/status", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
 			t.Fatal(err)
 		}
 		if err := q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: id, MessageID: "10"}); err != nil {
@@ -76,7 +76,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, manager := range managers {
 		wg.Go(func() {
-			ok, err := manager.ClaimTelegramCallback(ctx, "concurrent-button", "telegram:-100:7", "10", identity)
+			ok, err := manager.ClaimTelegramCallback(ctx, "concurrent-button", "telegram:42", "10", identity)
 			results <- result{ok, err}
 		})
 	}
@@ -103,7 +103,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	if _, err := conn.ExecContext(ctx, `CREATE TRIGGER fail_callback_intent BEFORE INSERT ON channel_commands WHEN NEW.source_key='telegram-callback:rollback-button' BEGIN SELECT RAISE(ABORT,'intent boundary failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := managers[0].ClaimTelegramCallback(ctx, "rollback-button", "telegram:-100:7", "10", identity); err == nil || ok {
+	if ok, err := managers[0].ClaimTelegramCallback(ctx, "rollback-button", "telegram:42", "10", identity); err == nil || ok {
 		t.Fatalf("failed durable intent claimed button: accepted=%t err=%v", ok, err)
 	}
 	stored, err := q.GetTelegramCallback(ctx, "rollback-button")
@@ -118,13 +118,13 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	if _, err := q.ConsumeTelegramCallback(ctx, sqlc.ConsumeTelegramCallbackParams{ID: "queued-revoked-stop", Now: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: "bot", SourceKey: "telegram-callback:queued-revoked-stop", Peer: "telegram:-100:7", ChannelKey: target.ChannelKey, Command: "/stop", ChannelContext: string(encoded)}); err != nil {
+	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: "bot", SourceKey: "telegram-callback:queued-revoked-stop", Peer: "telegram:42", ChannelKey: target.ChannelKey, Command: "/stop", ChannelContext: string(encoded)}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:synthetic", AllowedUsers: "43"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.StopChannelCommand(ctx, "bot", target.ID, "telegram-callback:queued-revoked-stop", "stop must not execute"); !errors.Is(err, chat.ErrGroupUnauthorized) {
+	if err := service.StopChannelCommand(ctx, "bot", target.ID, "telegram-callback:queued-revoked-stop", "stop must not execute"); !errors.Is(err, chat.ErrTelegramUnauthorized) {
 		t.Fatalf("restored Stop bypassed current actor at its effect writer: %v", err)
 	}
 }

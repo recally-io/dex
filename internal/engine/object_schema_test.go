@@ -23,8 +23,6 @@ func TestObjectSchemaWithoutRequiredEncodesEmptyArray(t *testing.T) {
 
 // Providers reject the whole request when one tool schema is invalid, so check every built-in tool.
 func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
-	a := &Agents{}
-	ref := Ref{AgentID: "bot"}
 	link := WorkTaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
 	extensions := []*durable.Extension{
 		checkExtension("bot", nil), toolSearchExtension(), codingTools(nil, 0, vault.Snapshot{}), routineExtension("bot", RoutineTools{}),
@@ -33,8 +31,7 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 		outboxExtension("bot", OutboxTools{}), childOutboxExtension("bot", OutboxTools{}), monitorExtension("bot", MonitorTools{}, nil, vault.Snapshot{}),
 		askUserExtension("bot", nil), botReadExtension("bot", BotTools{}), botManageExtension("bot", BotTools{}),
 		workTaskExtension("bot", WorkTaskTools{Links: []WorkTaskLinkTool{link}}), childExtension(), dreamMessageExtension("bot", nil),
-		routineCheckInstructions(), groupExtension(nil),
-		{Name: "group-tools", Tools: []*durable.ToolRegistration{a.groupQuestionTool(ref), a.groupSessionTool(ref), a.groupDeliveryTool(ref, nil)}},
+		routineCheckInstructions(),
 	}
 	extensions = append(extensions, channelExtensions("bot", ChannelTools{})...)
 	count := 0

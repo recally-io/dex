@@ -25,9 +25,6 @@ type TelegramAlbum struct {
 
 func telegramAlbumKey(peer string, identity ChannelContext) (string, error) {
 	parts := []string{peer, identity.SenderID, identity.MediaGroup}
-	if identity.TopicShared && identity.TopicID == 0 {
-		parts = append(parts, "topic")
-	}
 	key, err := json.Marshal(parts)
 	return "telegram:" + identity.AccountID + ":album:" + base64.RawURLEncoding.EncodeToString(key), err
 }
@@ -43,7 +40,7 @@ func (s *Service) KnownTelegramAlbum(ctx context.Context, agentID, peer string, 
 // StoreTelegramAlbum commits upload ownership before the transport may ACK the member.
 func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source string, msg Message) error {
 	actor, err := strconv.ParseInt(msg.ChannelContext.SenderID, 10, 64)
-	if err != nil || actor <= 0 || msg.ChannelContext.AccountID == "" || msg.ChannelContext.MediaGroup == "" || len(msg.Attachments) != 1 {
+	if NonPrivateTelegramInput(peer, msg.ChannelContext) || err != nil || actor <= 0 || msg.ChannelContext.AccountID == "" || msg.ChannelContext.MediaGroup == "" || len(msg.Attachments) != 1 {
 		return fmt.Errorf("%w: invalid Telegram album member", errSessionInvalid)
 	}
 	group, err := telegramAlbumKey(peer, msg.ChannelContext)
@@ -61,19 +58,6 @@ func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source 
 	defer func() { _ = tx.Rollback() }()
 	if err := db.RequireActive(ctx, q, agentID); err != nil {
 		return err
-	}
-	if groupPeer(peer) {
-		key, scope, binding, err := groupTarget(peer, msg.ChannelContext)
-		if err != nil {
-			return err
-		}
-		identity, err := json.Marshal(msg.ChannelContext)
-		if err != nil {
-			return err
-		}
-		if err := authorizeGroupSource(ctx, q, sqlc.Conversation{AgentID: agentID, ChannelKey: key, ExecutionScope: scope, ScopeContext: binding}, sqlc.Submission{Origin: peer, ChannelContext: string(identity)}); err != nil {
-			return err
-		}
 	}
 	// A native receipt or a member receipt owns this global source, even after a credential move.
 	if _, err := q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true}); err == nil {
@@ -207,7 +191,6 @@ func (s *Service) FinishTelegramAlbum(ctx context.Context, agentID, source strin
 
 // DiscardedTelegramUpload identifies files that no native input owns.
 type DiscardedTelegramUpload struct {
-	Context     ChannelContext
 	Source      string
 	Attachments []engine.Attachment
 }
@@ -238,7 +221,7 @@ func (s *Service) DiscardedTelegramUploads(ctx context.Context, agentID string) 
 			return nil, err
 		}
 		attachments = msg.Attachments
-		out = append(out, DiscardedTelegramUpload{Source: member.SourceKey, Attachments: attachments, Context: msg.ChannelContext})
+		out = append(out, DiscardedTelegramUpload{Source: member.SourceKey, Attachments: attachments})
 	}
 	return out, nil
 }

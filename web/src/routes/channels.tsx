@@ -132,7 +132,7 @@ export function ChannelsPage() {
   return (
     <FramedPage
       title="Channels"
-      description="Private channel chats share Main. Telegram groups and topics use isolated resources."
+      description="Private channel chats share Main."
       toolbar={<BotSettingsSwitcher segment="channels" />}
     >
       <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
@@ -304,7 +304,7 @@ function Telegram({ settings }: { settings: Settings }) {
       <TelegramManagerSettings telegram={telegram} />
       <HowToUse channel="telegram">
         <li>Send text, images or files in a private chat with the bot.</li>
-        <li>Paired senders can use isolated Telegram groups and topics without a mention by default.</li>
+        <li>Dex ignores Telegram messages outside private chats.</li>
         <li>Require group mention limits triggers. It does not grant private owner tools or files.</li>
         <li>
           Use /menu for current-conversation controls, /question for choices and /workflows for saved

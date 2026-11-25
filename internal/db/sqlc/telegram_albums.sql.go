@@ -24,35 +24,6 @@ func (q *Queries) ClearDiscardedTelegramAlbumMember(ctx context.Context, arg Cle
 	return err
 }
 
-const discardGroupTelegramAlbums = `-- name: DiscardGroupTelegramAlbums :exec
-UPDATE telegram_album_members SET state = 'discarded'
-WHERE agent_id = ?1 AND account_id = ?2 AND peer = ?3
-  AND (CAST(?4 AS TEXT) = '' OR sender_id = ?4)
-  AND (CAST(?5 AS INTEGER) > 0 OR coalesce(json_extract(input_json, '$.ChannelContext.topicShared'), 0) = CAST(?6 AS INTEGER))
-  AND state IN ('collecting', 'sealed')
-`
-
-type DiscardGroupTelegramAlbumsParams struct {
-	AgentID     string `json:"agent_id"`
-	AccountID   string `json:"account_id"`
-	Peer        string `json:"peer"`
-	SenderID    string `json:"sender_id"`
-	TopicID     int64  `json:"topic_id"`
-	TopicShared int64  `json:"topic_shared"`
-}
-
-func (q *Queries) DiscardGroupTelegramAlbums(ctx context.Context, arg DiscardGroupTelegramAlbumsParams) error {
-	_, err := q.db.ExecContext(ctx, discardGroupTelegramAlbums,
-		arg.AgentID,
-		arg.AccountID,
-		arg.Peer,
-		arg.SenderID,
-		arg.TopicID,
-		arg.TopicShared,
-	)
-	return err
-}
-
 const discardPrivateTelegramAlbums = `-- name: DiscardPrivateTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'
 WHERE agent_id = ? AND peer NOT LIKE 'telegram:-%' AND state IN ('collecting', 'sealed')
@@ -206,7 +177,7 @@ func (q *Queries) ListCollectingTelegramAlbums(ctx context.Context, agentID stri
 
 const listDiscardedTelegramAlbumMembers = `-- name: ListDiscardedTelegramAlbumMembers :many
 SELECT source_key, agent_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members
-WHERE agent_id = ? AND state = 'discarded' AND input_json <> '{}'
+WHERE agent_id = ? AND state = 'discarded' AND peer NOT LIKE 'telegram:-%' AND input_json <> '{}'
 `
 
 func (q *Queries) ListDiscardedTelegramAlbumMembers(ctx context.Context, agentID string) ([]TelegramAlbumMember, error) {

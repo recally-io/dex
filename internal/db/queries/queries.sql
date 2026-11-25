@@ -77,9 +77,10 @@ RETURNING *;
 
 -- name: EnsureConversation :one
 -- The title and the settings are set only when the conversation is created.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, @execution_scope, coalesce(nullif(CAST(@scope_context AS TEXT), ''), '{}'))
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+    WHERE conversations.execution_scope = ''
 RETURNING *;
 
 -- name: EnsureEmptyChat :one
@@ -102,28 +103,28 @@ RETURNING *;
 -- name: CreateFork :one
 -- A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
 -- the fork starts empty, so the first message creates the native conversation.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
 -- Keeps the first archive time when the chat is archived already. A child session from before
 -- child sessions has a task: key, and it archives too.
 UPDATE conversations SET archived_at = coalesce(archived_at, @archived_at)
-WHERE id = @id AND agent_id = @agent_id AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND agent_id = @agent_id AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: UnarchiveChat :exec
 UPDATE conversations SET archived_at = NULL
-WHERE id = @id AND agent_id = @agent_id AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND agent_id = @agent_id AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: SetFirstChatTitle :exec
 UPDATE conversations SET title = ? WHERE id = ? AND title = '';
 
 -- name: GetConversation :one
-SELECT * FROM conversations WHERE id = ?;
+SELECT * FROM conversations WHERE id = ? AND execution_scope = '';
 
 -- name: GetConversationByKey :one
-SELECT * FROM conversations WHERE agent_id = ? AND channel_key = ?;
+SELECT * FROM conversations WHERE agent_id = ? AND channel_key = ? AND execution_scope = '';
 
 -- name: SetConversationSettings :exec
 UPDATE conversations SET model_provider = ?, model_id = ?, thinking_level = ?
@@ -179,7 +180,7 @@ SELECT
     c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND (CAST(@conversation_id AS INTEGER) = 0 OR s.conversation_id = @conversation_id)
+WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(@conversation_id AS INTEGER) = 0 OR s.conversation_id = @conversation_id)
 ORDER BY s.rowid;
 
 -- name: ListChats :many
@@ -211,7 +212,7 @@ JOIN agents a ON a.id = c.agent_id
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id)
+WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id) AND c.execution_scope = ''
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
@@ -235,7 +236,6 @@ SELECT
     c.archived_at,
     c.parent_id,
     c.execution_id,
-    c.execution_scope,
     c.forked_from,
     f.title AS forked_from_title,
     f.channel_key AS forked_from_key,
@@ -250,7 +250,7 @@ LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.execution_scope = '' AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 
 -- name: ListProviders :many
@@ -413,7 +413,7 @@ WHERE
         OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');
 
 -- name: ListRoutineTargetCandidates :many
-SELECT * FROM conversations WHERE agent_id = ? ORDER BY created_at DESC, id DESC;
+SELECT * FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC;
 
 -- name: CountBoundAutomationPending :one
 SELECT count(*) FROM automation_runs r
@@ -444,7 +444,15 @@ UPDATE conversations SET abort_pending = 1 WHERE id = ?;
 UPDATE conversations SET abort_pending = 0 WHERE id = ?;
 
 -- name: ListPendingExecutionAborts :many
-SELECT id, agent_id, execution_id, execution_scope FROM conversations WHERE abort_pending = 1;
+-- Retired peer-keyed groups used the agent store. Isolate them before it resumes.
+-- Do not pass IDs from the separate group stores to the agent Harness.
+SELECT c.id, c.agent_id, c.execution_id FROM conversations c
+WHERE (c.abort_pending = 1 AND c.execution_scope = '')
+    OR (c.execution_scope = 'retired-telegram-legacy' AND c.execution_id IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM conversations active WHERE active.agent_id = c.agent_id
+                AND active.execution_scope = '' AND active.execution_id = c.execution_id
+        ));
 
 -- name: SetConversationCwd :exec
 UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?;

@@ -156,23 +156,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	tools := engine.TaskTools{
-		AuthorizeGroup: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeGroup(ctx, c) },
-		GroupQuestion: func(ctx context.Context, c engine.TaskContext, args engine.AskUserArgs) (engine.QuestionInfo, error) {
-			return chats.ToolGroupQuestion(ctx, c, args)
-		},
-		GroupSession: func(ctx context.Context, c engine.TaskContext, args engine.GroupSessionArgs) (engine.GroupSessionResult, error) {
-			return chats.ToolGroupSession(ctx, c, args)
-		},
-		DeliverGroupFile: func(ctx context.Context, caller engine.TaskContext, name string, reader io.Reader) error {
-			queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, name, reader)
-			if err != nil {
-				return err
-			}
-			if !queued {
-				return errors.New("group file delivery needs its active top-level Telegram source")
-			}
-			return nil
-		},
 		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
 			return chats.ToolReadDreamMessage(ctx, c, request)
 		},

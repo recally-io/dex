@@ -70,7 +70,7 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 		return WithdrawnMessage{}, err
 	}
 	if conv.ExecutionID.Valid {
-		outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, id)
+		outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, id)
 		if err != nil {
 			return WithdrawnMessage{}, err
 		}

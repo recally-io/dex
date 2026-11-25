@@ -1340,20 +1340,12 @@ export type TelegramWebhookInput = {
 };
 
 export type TelegramOptions = {
-    /**
-     * Require a mention or reply to this bot for group input. Off by default for individually authorized senders. This does not grant access to private resources.
-     */
-    requireMention?: boolean;
     silent?: boolean;
     preview?: '' | 'auto' | 'edit' | 'draft' | 'off';
     /**
      * Private chat status reactions. On when unset; false explicitly disables them.
      */
     reactions?: boolean;
-    /**
-     * Opt in to status reactions for authorized group inputs. Off when unset.
-     */
-    groupReactions?: boolean;
     stt?: TelegramSpeechOptions;
     tts?: TelegramSpeechOptions;
 };

@@ -70,7 +70,7 @@ func (e *environments) vars(h execenv.Handle) (map[string]string, bool) {
 	return e.loaded.ExplicitEnv, true
 }
 
-// session returns the environment of the unscoped session conversationID. A session that selects
+// session returns the environment of the session conversationID. A session that selects
 // an environment fails with execenv.ErrUnavailable when that environment was removed or is not
 // allowed: it never runs in the environment of the agent instead.
 func (e *environments) session(ctx context.Context, conversationID int64) (sessionEnv, error) {
@@ -309,7 +309,7 @@ func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID str
 		if _, err := a.config.ExecEnv.Stamp(ctx, agentID, environmentID); err != nil {
 			return err
 		}
-		if _, err := a.harness(ctx, agentID, ""); err != nil {
+		if _, err := a.harness(ctx, agentID); err != nil {
 			return err
 		}
 	}
@@ -339,7 +339,7 @@ func (a *Agents) environments(agentID string) *environments {
 
 // sessionEnvironmentID returns the explicit environment of a session, or empty when it follows its agent.
 func (a *Agents) sessionEnvironmentID(ctx context.Context, ref Ref) (string, error) {
-	if ref.Scope != "" || ref.ID <= 0 || a.config.SessionEnvironment == nil {
+	if ref.ID <= 0 || a.config.SessionEnvironment == nil {
 		return "", nil
 	}
 	id, err := a.config.SessionEnvironment(ctx, ref)

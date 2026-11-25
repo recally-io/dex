@@ -80,7 +80,6 @@ type inbound interface {
 	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
 	Report(name string, status channel.Status)
 	TelegramInputAllowed(ctx context.Context, peer string, source chat.ChannelContext) (bool, error)
-	GroupUploads(ctx context.Context, peer string, source chat.ChannelContext) (*upload.Store, error)
 	ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity chat.ChannelContext) (bool, error)
 	SetTelegramRetryAt(ctx context.Context, token string, until int64) error
 	SpeechInput(ctx context.Context, source string) (*chat.Message, bool, error)
@@ -212,9 +211,6 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return nil
 	}
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
-	if m.Chat.Type == "group" || m.Chat.Type == "supergroup" {
-		return b.receiveGroup(ctx, source, m, edited)
-	}
 	if m.Chat.Type != "private" {
 		return nil
 	}
@@ -443,21 +439,18 @@ type user struct {
 }
 
 type remoteChat struct {
-	ID      int64  `json:"id"`
-	Type    string `json:"type"`
-	Title   string `json:"title"`
-	IsForum bool   `json:"is_forum"`
+	ID    int64  `json:"id"`
+	Type  string `json:"type"`
+	Title string `json:"title"`
 }
 
 type message struct {
-	Rich     jsontext.Value `json:"rich_message,omitempty"`
-	ThreadID int64          `json:"message_thread_id"`
-	IsTopic  bool           `json:"is_topic_message"`
-	ID       int64          `json:"message_id"`
-	From     *user          `json:"from"`
-	Chat     remoteChat     `json:"chat"`
-	ReplyTo  *message       `json:"reply_to_message"`
-	Quote    *struct {
+	Rich    jsontext.Value `json:"rich_message,omitempty"`
+	ID      int64          `json:"message_id"`
+	From    *user          `json:"from"`
+	Chat    remoteChat     `json:"chat"`
+	ReplyTo *message       `json:"reply_to_message"`
+	Quote   *struct {
 		Text string `json:"text"`
 	} `json:"quote"`
 	ForwardOrigin *struct {
@@ -493,4 +486,15 @@ type message struct {
 			Votes int    `json:"voter_count"`
 		} `json:"options"`
 	} `json:"poll"`
+}
+
+func (b *Bot) botUsername(ctx context.Context) (string, error) {
+	if b.username == "" {
+		var me user
+		if err := b.call(ctx, "getMe", map[string]any{}, &me); err != nil {
+			return "", err
+		}
+		b.username = me.Username
+	}
+	return b.username, nil
 }

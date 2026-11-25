@@ -24,7 +24,7 @@ var (
 // stored session follows its bot: chat stores the execution ID before the first input, so no
 // tool of a session runs before its row exists.
 func (s *Service) SessionEnvironment(ctx context.Context, ref engine.Ref) (string, error) {
-	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: ref.AgentID, ExecutionScope: ref.Scope, ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true}})
+	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: ref.AgentID, ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true}})
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -75,7 +75,7 @@ func (s *Service) SetEnvironment(ctx context.Context, agentID string, id int64, 
 	if err != nil {
 		return Chat{}, err
 	}
-	if conv.ExecutionScope != "" || !acceptsInput(conv.ChannelKey, conv.ParentID) {
+	if !acceptsInput(conv.ChannelKey, conv.ParentID) {
 		return Chat{}, ErrProjectForbidden
 	}
 	if environmentID != "" {

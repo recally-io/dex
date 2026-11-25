@@ -44,10 +44,7 @@ func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Co
 }
 
 func toolCallerIn(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Conversation, error) {
-	if r.Scope != "" {
-		return sqlc.Conversation{}, errSessionInvalid
-	}
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, err
 	}
@@ -63,13 +60,10 @@ func toolCallerIn(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (s
 
 // liveSource returns the input that started the run of the caller, and fails when that run is over.
 func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
-	if r.Scope != "" {
-		return sqlc.Submission{}, errSessionInvalid
-	}
 	if err := db.RequireActive(ctx, q, r.AgentID); err != nil {
 		return sqlc.Submission{}, err
 	}
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return sqlc.Submission{}, err
 	}
@@ -83,24 +77,10 @@ func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sql
 	return source, nil
 }
 
-func sessionSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
-	if r.Scope == "" {
-		return liveSource(ctx, q, r)
-	}
-	_, source, err := groupCaller(ctx, q, r)
-	return source, err
-}
-
 // sessionParent returns the conversation of a caller that may manage child sessions. A child and
 // a dream cannot, whatever tools they have.
 func (s *Service) sessionParent(ctx context.Context, r engine.TaskContext) (sqlc.Conversation, error) {
-	var conv sqlc.Conversation
-	var err error
-	if r.Scope != "" {
-		conv, _, err = groupCaller(ctx, s.q, r)
-	} else {
-		conv, err = s.toolCaller(ctx, r)
-	}
+	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return conv, err
 	}

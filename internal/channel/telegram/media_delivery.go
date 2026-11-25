@@ -48,7 +48,7 @@ func (b *Bot) Send(ctx context.Context, peer, deliveryID string, index int, part
 }
 
 func (b *Bot) sendFile(ctx context.Context, peer string, file *channel.File) (string, error) {
-	chatID, topicID, err := parsePeer(peer)
+	chatID, err := peerID(peer)
 	if err != nil {
 		return "", err
 	}
@@ -58,11 +58,6 @@ func (b *Bot) sendFile(ctx context.Context, peer string, file *channel.File) (st
 		form := multipart.NewWriter(&body)
 		if err := form.WriteField("chat_id", strconv.FormatInt(chatID, 10)); err != nil {
 			return "", err
-		}
-		if topicID > 0 {
-			if err := form.WriteField("message_thread_id", strconv.FormatInt(topicID, 10)); err != nil {
-				return "", err
-			}
 		}
 		if b.cfg.Options.Silent {
 			if err := form.WriteField("disable_notification", "true"); err != nil {

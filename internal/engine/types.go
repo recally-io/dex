@@ -22,8 +22,6 @@ var (
 )
 
 type Ref struct {
-	// Scope is the trusted resource audience. Empty selects the private bot runtime.
-	Scope   string
 	AgentID string
 	ID      int64
 }
@@ -42,8 +40,6 @@ type ModelRef struct {
 	ModelID  string `json:"modelId"`
 }
 type Options struct {
-	// Scope is selected by trusted routing, never by model arguments or message text.
-	Scope         string
 	Cwd           string
 	Model         ModelRef
 	ThinkingLevel string
@@ -91,7 +87,6 @@ type Input struct {
 	ReviewBypass bool
 }
 type inputMetadata struct {
-	Scope        string         `json:"scope,omitempty"`
 	RequestID    string         `json:"requestId"`
 	Content      string         `json:"content"`
 	HasWorkTask  bool           `json:"hasWorkTask,omitzero"`
@@ -121,7 +116,7 @@ type Config struct {
 	LoginEnv func(ctx context.Context, base map[string]string) (map[string]string, error)
 	// ExecEnv configures agent workspace and execution backends. Nil defaults to a host-local provider.
 	ExecEnv execenv.Provider
-	// SessionEnvironment returns the explicit execution environment of an unscoped session, or
+	// SessionEnvironment returns the explicit execution environment of a session, or
 	// empty when the session follows its agent. Nil makes every session follow its agent.
 	SessionEnvironment func(ctx context.Context, ref Ref) (string, error)
 	// FallbackModel returns the current fallback model for an agent, or an empty ModelRef.

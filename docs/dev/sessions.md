@@ -514,11 +514,11 @@ external actions occurred once.
 
 ## Session environments
 
-Each unscoped session runs its command and file tools in one execution
+Each session runs its command and file tools in one execution
 environment. `conversations.environment_id` in `control.sqlite` is the source
 of truth. Empty means that the session follows the bot's environment
 (`agents.environment_id`). `local` or an environment ID is an explicit
-selection, which does not change when the bot's environment changes. An unscoped
+selection, which does not change when the bot's environment changes. A
 session can select local or any registered SSH, runner, or E2B environment in the
 same Dex instance. Bots that use the same runner share its connection, not their
 workspaces. Calls on one Runner can overlap, including calls to the same files.
@@ -558,7 +558,6 @@ diff; local sessions use the stores directly. Project skills stay in the
 selected environment and use the normal file tools. See [Skills](extensions.md#skills).
 MCP servers keep their bot-level configuration and transport;
 selecting an environment does not move them or grant access to new MCP tools.
-Scoped group sessions use their separate runtime and cannot select environments.
 
 An E2B default keeps its existing persisted per-bot sandbox and auto-pause
 setting. An explicit selection of that same default uses the same lease.

@@ -179,7 +179,7 @@ export function HowToUse({ channel, children }: { channel: ChannelId; children?:
             </li>
             <li>
               {channel === "telegram"
-                ? "Private Telegram chats share Main. Groups and topics keep isolated resources."
+                ? "Paired private Telegram chats share Main."
                 : `${name} and the web share the main timeline.`}{" "}
               dex replies where the input came from. The web shows all main input and tool calls.
             </li>

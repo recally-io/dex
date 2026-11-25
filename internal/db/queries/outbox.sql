@@ -38,7 +38,7 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = @submission_id AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = @agent_id AND c.execution_scope = @execution_scope AND c.execution_id = @execution_id
+  AND c.agent_id = @agent_id AND c.execution_scope = '' AND c.execution_id = @execution_id
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
 ON CONFLICT DO NOTHING;
@@ -59,8 +59,9 @@ SELECT o.id, o.dedup_key, o.agent_id, o.conversation_id, o.source_submission_id,
        o.rendered_parts, o.delivered_parts, o.group_fallback, o.group_cursor, o.remote_ids,
        o.status, o.retry_at, o.error, o.created_at
 FROM outbox_messages o
+JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
-WHERE o.status = 'pending'
+WHERE o.status = 'pending' AND c.execution_scope = ''
   AND o.agent_id = @agent_id
   AND o.peer >= @origin_start AND o.peer < @origin_end
   AND (

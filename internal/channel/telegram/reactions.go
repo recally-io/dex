@@ -7,15 +7,14 @@ import (
 	"errors"
 	"math"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/recally-io/dex/internal/channel"
 )
 
 func (b *Bot) ReactionsEnabled(peer string) bool {
-	if strings.HasPrefix(peer, "telegram:-") {
-		return b.cfg.Options.GroupReactions
+	if _, err := peerID(peer); err != nil {
+		return false
 	}
 	return b.cfg.Options.Reactions == nil || *b.cfg.Options.Reactions
 }

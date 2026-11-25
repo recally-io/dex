@@ -56,10 +56,10 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	if input.Kind != "" && input.Kind != "message" && input.Kind != "task_result" {
 		return nil, fmt.Errorf("%w: input kind", ErrInvalidInput)
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return nil, err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	}
 	var native durable.Submission
 	if record := existing; record != nil {
-		h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+		h, err := a.harness(ctx, ref.AgentID)
 		if err != nil {
 			return nil, err
 		}
@@ -91,26 +91,24 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 	} else {
 		var target sessionEnv
-		if ref.Scope == "" {
-			envs := a.environments(ref.AgentID)
-			if envs == nil {
-				return nil, ErrClosed
+		envs := a.environments(ref.AgentID)
+		if envs == nil {
+			return nil, ErrClosed
+		}
+		var envErr error
+		target, envErr = envs.session(ctx, ref.ID)
+		// Preserve the default's admission order: wait for it before checking
+		// the model. This keeps pending Main alerts across restarts too.
+		// An explicit selection may report unavailability through its tools,
+		// but attachments must wait until they can be staged there.
+		// A lease stays valid while its machine is offline, so check the machine here
+		// without waiting: the input stays in business storage until the machine is back.
+		if waits := target.ID == "" || len(input.Attachments) > 0 || (input.Kind == "task_result" && IsMonitorEvent(input.RequestID)); waits {
+			if envErr == nil && envs.status(ctx, target.ID) == "offline" {
+				envErr = fmt.Errorf("%w: %w", execenv.ErrUnavailable, runner.ErrOffline)
 			}
-			var envErr error
-			target, envErr = envs.session(ctx, ref.ID)
-			// Preserve the default's admission order: wait for it before checking
-			// the model. This keeps pending Main alerts across restarts too.
-			// An explicit selection may report unavailability through its tools,
-			// but attachments must wait until they can be staged there.
-			// A lease stays valid while its machine is offline, so check the machine here
-			// without waiting: the input stays in business storage until the machine is back.
-			if waits := target.ID == "" || len(input.Attachments) > 0 || (input.Kind == "task_result" && IsMonitorEvent(input.RequestID)); waits {
-				if envErr == nil && envs.status(ctx, target.ID) == "offline" {
-					envErr = fmt.Errorf("%w: %w", execenv.ErrUnavailable, runner.ErrOffline)
-				}
-				if envErr != nil {
-					return nil, envErr
-				}
+			if envErr != nil {
+				return nil, envErr
 			}
 		}
 		if input.Model.ModelID == "" {
@@ -119,48 +117,38 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if err := a.Catalog.ModelReady(input.Model.Provider); err != nil {
 			return nil, err
 		}
-		var change harness.AgentChange
-		if ref.Scope != "" {
-			change = a.changeFor(ctx, ref, input.Options)
-		} else {
-			options := input.Options
-			if target.Files != nil {
-				options.Instructions = target.Files.instructionsContext(ctx, options.Cwd, options.Instructions)
-			}
-			change = agentChange(options)
+		options := input.Options
+		if target.Files != nil {
+			options.Instructions = target.Files.instructionsContext(ctx, options.Cwd, options.Instructions)
 		}
-		if ref.Scope == "" {
-			if input.Automation {
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{routineCheckInstructions(), botReadExtension(ref.AgentID, a.config.Bots)}}})
-			}
-			// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
-			// so a child, an automation or a dream never gets the tool and needs no removal.
-			dream := input.Origin == "dream" || strings.Contains(input.Source, "/dream/")
-			asksUser := !input.Automation && !input.Child && !dream
-			switch {
-			case input.Main:
-				add := []*durable.Extension{frontDeskExtension()}
-				if asksUser {
-					add = append(add, channelExtensions(ref.AgentID, a.config.Channels)...)
-					add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
-				}
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
-			case asksUser:
-				add := channelExtensions(ref.AgentID, a.config.Channels)
+		change := agentChange(options)
+		if input.Automation {
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{routineCheckInstructions(), botReadExtension(ref.AgentID, a.config.Bots)}}})
+		}
+		// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
+		// so a child, an automation or a dream never gets the tool and needs no removal.
+		dream := input.Origin == "dream" || strings.Contains(input.Source, "/dream/")
+		asksUser := !input.Automation && !input.Child && !dream
+		switch {
+		case input.Main:
+			add := []*durable.Extension{frontDeskExtension()}
+			if asksUser {
+				add = append(add, channelExtensions(ref.AgentID, a.config.Channels)...)
 				add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: add}})
 			}
-			switch {
-			case input.Child:
-				// Every input of a child repeats this edit, so a user message in a child that was a task
-				// before the upgrade loses the same extensions.
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines), outboxExtension(ref.AgentID, a.config.Tasks.Outbox)}, Add: []*durable.Extension{childExtension(), childOutboxExtension(ref.AgentID, a.config.Tasks.Outbox)}}})
-			case dream:
-				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), monitorExtension(ref.AgentID, a.config.Tasks.Monitors, nil, vault.Snapshot{}), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
-			}
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
+		case asksUser:
+			add := channelExtensions(ref.AgentID, a.config.Channels)
+			add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: add}})
 		}
-		if err := a.groupAttachments(ref, input.Attachments); err != nil {
-			return nil, err
+		switch {
+		case input.Child:
+			// Every input of a child repeats this edit, so a user message in a child that was a task
+			// before the upgrade loses the same extensions.
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines), outboxExtension(ref.AgentID, a.config.Tasks.Outbox)}, Add: []*durable.Extension{childExtension(), childOutboxExtension(ref.AgentID, a.config.Tasks.Outbox)}}})
+		case dream:
+			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), monitorExtension(ref.AgentID, a.config.Tasks.Monitors, nil, vault.Snapshot{}), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 		}
 		if err := conversation.Configure(ctx, change); err != nil {
 			return nil, err
@@ -216,12 +204,12 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				}
 			}
 			if input.Kind == "task_result" && IsMonitorEvent(input.RequestID) && a.config.Tasks.AuthorizeMonitor != nil {
-				c := TaskContext{AgentID: ref.AgentID, Scope: ref.Scope, ConversationID: ref.ID, SourceRequestID: input.RequestID}
+				c := TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: input.RequestID}
 				if err := a.config.Tasks.AuthorizeMonitor(ctx, c); err != nil {
 					return nil, fmt.Errorf("%w: monitor target or authority is no longer valid", ErrInvalidInput)
 				}
 			}
-			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Isolation: input.Isolation, ReviewBypass: input.ReviewBypass}
+			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Isolation: input.Isolation, ReviewBypass: input.ReviewBypass}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
@@ -242,7 +230,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			}
 			return nil, err
 		}
-		h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+		h, err := a.harness(ctx, ref.AgentID)
 		if err != nil {
 			return nil, err
 		}
@@ -283,7 +271,7 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 		}
 	}
 	settlementCtx := context.WithoutCancel(ctx)
-	a.settle(resourceKey(ref), func() {
+	a.settle(ref.AgentID, func() {
 		defer close(result.done)
 		if stopActivity != nil {
 			defer stopActivity()
@@ -317,13 +305,11 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 			}
 		}
 		// A failed or aborted execution may have changed host files too.
-		if ref.Scope == "" {
-			if _, err := a.memory.Commit(settlementCtx, "Update memory from "+input.Source); err != nil {
-				slog.Error("commit agent memory", "agent", ref.AgentID, "error", err)
-			}
-			if err := a.commitSkills(settlementCtx, ref.AgentID, input.Source); err != nil {
-				slog.Error("commit agent skills", "agent", ref.AgentID, "error", err)
-			}
+		if _, err := a.memory.Commit(settlementCtx, "Update memory from "+input.Source); err != nil {
+			slog.Error("commit agent memory", "agent", ref.AgentID, "error", err)
+		}
+		if err := a.commitSkills(settlementCtx, ref.AgentID, input.Source); err != nil {
+			slog.Error("commit agent skills", "agent", ref.AgentID, "error", err)
 		}
 	})
 	return result
@@ -332,7 +318,7 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 func inputText(input Input, workspace string) string {
 	content := input.Content
 	// Keep the owner transcript and durable source identity separate from model guidance.
-	if input.Scope == "" && input.Origin == "automation" && input.Kind == "message" && !input.Automation {
+	if input.Origin == "automation" && input.Kind == "message" && !input.Automation {
 		content += boundRoutineCheckSuffix
 	}
 	if input.WorkTaskContext != "" {
@@ -350,7 +336,7 @@ func inputText(input Input, workspace string) string {
 	for _, attachment := range input.Attachments {
 		text.WriteString("\n- ")
 		// Uploads stay in the workspace. An absolute path keeps working after set_project changes
-		// the cwd, also later in the same run. Group inputs use relative resource paths instead.
+		// the cwd, also later in the same run.
 		text.WriteString(execenv.JoinTargetPath(workspace, filepath.ToSlash(attachment.Path)))
 	}
 	return text.String()

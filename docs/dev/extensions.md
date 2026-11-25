@@ -166,8 +166,7 @@ warning for each file at startup. It does not import the files.
 
 All owner sessions can use `mcp_server_list`, `mcp_server_get`,
 `mcp_server_set`, and `mcp_server_remove` from any execution environment.
-This includes tasks, dreams, and child sessions. Isolated Telegram group
-sessions keep their existing tool allowlist and cannot use these tools.
+This includes tasks, dreams, and child sessions.
 `mcp_server_set` replaces one declaration. A stdio server runs on the control
 host. Relative `cwd` values use the agent's control-host workspace.
 `mcp_server_remove` deletes one level's declaration and can uncover a wider
