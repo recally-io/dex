@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -603,12 +604,7 @@ func TestUserCrashBeforeControlSettlePreservesWebSteerRoutingAfterSIGKILL(t *tes
 		t.Fatalf("expected helper to terminate via SIGKILL, exited 0:\n%s", out)
 	}
 	var exitErr *exec.ExitError
-	if ok := err != nil; ok {
-		if ee, isExit := err.(*exec.ExitError); isExit {
-			exitErr = ee
-		}
-	}
-	if exitErr == nil {
+	if !errors.As(err, &exitErr) {
 		t.Fatalf("unexpected helper error %v:\n%s", err, out)
 	}
 	if status, ok := exitErr.Sys().(syscall.WaitStatus); !ok || status.Signal() != syscall.SIGKILL {
