@@ -20,7 +20,7 @@ func TestUserRetiredTelegramGroupsStaySealedAfterUpgrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = old.Close() })
-	migration := "20261125031350_retire_telegram_groups.sql"
+	migration := "20261125080000_simplified_single_owner_architecture.sql"
 	provider, err := goose.NewProvider(goose.DialectSQLite3, old, migrationFS(t, func(name string) bool { return name < migration }))
 	if err != nil {
 		t.Fatal(err)

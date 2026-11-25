@@ -20,7 +20,7 @@ func TestUserLegacySubmissionsBackfillProducerAndReplyAddressOnUpgrade(t *testin
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = raw.Close() })
-	migration := "20261125070022_unify_inbox_contract.sql"
+	migration := "20261125080000_simplified_single_owner_architecture.sql"
 	provider, err := goose.NewProvider(goose.DialectSQLite3, raw, migrationFS(t, func(name string) bool { return name < migration }))
 	if err != nil {
 		t.Fatal(err)
