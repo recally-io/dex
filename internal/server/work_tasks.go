@@ -68,9 +68,14 @@ func (h *handler) GetWorkTask(ctx context.Context, req api.GetWorkTaskRequestObj
 		}
 		questions = append(questions, api.WorkTaskQuestion{Id: question.ID, Text: question.Text, Options: options, Queued: question.Queued != 0})
 	}
-	out := api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions, Links: taskLinks(detail)}
-	if s := detail.Session; s.ID != 0 {
-		out.Session = &api.WorkTaskSession{Id: s.ID, AgentId: s.AgentID, Title: s.Title}
+	out := api.GetWorkTask200JSONResponse{Task: workTask(detail.Task), Entries: entries, Questions: questions, Links: taskLinks(detail), Sessions: make([]api.WorkTaskSessionLink, 0, len(detail.Sessions))}
+	for _, s := range detail.Sessions {
+		out.Sessions = append(out.Sessions, api.WorkTaskSessionLink{
+			ConversationId: s.ConversationID, AgentId: s.AgentID, AgentName: s.AgentName, Title: s.Title, IsPrimary: s.IsPrimary == 1, LinkedAt: s.LinkedAt,
+		})
+		if s.IsPrimary == 1 {
+			out.Session = &api.WorkTaskSession{Id: s.ConversationID, AgentId: s.AgentID, Title: s.Title}
+		}
 	}
 	return out, nil
 }

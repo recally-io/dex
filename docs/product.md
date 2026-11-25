@@ -274,21 +274,21 @@ or channel. The sidebar shows the number of Inbox items.
 
 Board (`/board`) lists Tasks across bots. A Task tracks one piece of work. It has a title,
 notes, and a status. Creating a Task or adding a note does not start a Session.
-Send to Main starts a Main turn with the selected Task title and ID. A reply to
+Each Task has one Owner Bot. Send to Main starts a turn in that Bot's Main with the selected Task title and ID. A reply to
 a linked question keeps the Task of that question. Task detail shows questions
 that need an answer, including queued questions. The owner can answer any of
 these questions from its Task. Channels send one Main question at a time.
 The owner can complete, cancel, or reopen a Task. The default list hides closed Tasks.
 In Main or a writable Chat, the agent can list, read, create, and update the
-bot's Tasks, add timeline entries, and link the primary Session. When the
+Bot's Tasks, add timeline entries, and link its child Sessions, including children that run in another Bot. When the
 GitHub plugin is on, the agent can also link a GitHub PR. GitHub, like other
 optional sources, is a plugin. The owner turns plugins on or off in General
 settings, and the change applies after dex restarts. GitHub starts on. The agent creates a Task only when the owner asks for one or agrees to it,
 and only the owner's request completes, cancels, or reopens a Task. Each
 timeline entry shows its author: Owner, Agent, External event, or Source not
 recorded. The agent reads external entries only as event type, author class,
-and link. Task detail links the primary Session.
-Main gets a Task alert when a source rule creates a Task, or when a review
+and link. Task detail shows all linked Sessions with their Bot names and marks the primary Session.
+The Owner Bot's Main gets a Task alert when a source rule creates a Task, or when a review
 arrives for a wait that asks for an alert. The alert shows the Task title,
 the event type, the author class, and the link, but not the event text.
 Each event sends at most one alert.

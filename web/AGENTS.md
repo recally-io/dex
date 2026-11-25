@@ -64,8 +64,9 @@ a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
 components in `src/plugins/<name>/`, and a page renders them only when the
 plugin is on.
 An optional commit SHA sets a wait for a review submitted after the form is
-submitted. The Task shows its primary Session link, then its links and
-wait states, above the timeline. A link shows its type, key, and namespace as
+submitted. The Task shows all linked Sessions above its external links, wait
+states, and timeline. Each Session link uses the Session's Bot ID in its URL,
+shows the Bot name, and marks the primary Session. A link shows its type, key, and namespace as
 stored, for example `pull_request 7` in `github.com/repository/10`. Each timeline entry shows its author.
 Automation history links to run transcripts and saved results.
 The automation dialog can bind to a writable, unarchived session of the same bot.

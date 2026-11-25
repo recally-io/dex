@@ -605,6 +605,9 @@ type WorkTaskObject struct {
 type WorkTaskSession struct {
 	TaskID         string `json:"task_id"`
 	ConversationID int64  `json:"conversation_id"`
+	AgentID        string `json:"agent_id"`
+	IsPrimary      int64  `json:"is_primary"`
+	LinkedAt       int64  `json:"linked_at"`
 }
 
 type WorkTaskToolOperation struct {

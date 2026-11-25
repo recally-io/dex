@@ -5,7 +5,9 @@ import { createClient } from "../src/api/generated/client";
 import {
   createAgent,
   createAutomation,
+  createWorkTask,
   getMainChat,
+  getWorkTask,
   runAutomation,
   sendMessage,
   updateAgent,
@@ -35,6 +37,66 @@ test("keeps Tasks on Board and redirects the old Work and Needs you routes", asy
   await expect(screen.getByRole("heading", "Inbox", { exact: true })).toBeVisible();
   await expect(screen.getByRole("textbox", "Task title")).toHaveCount(0);
   await expect(screen.getByRole("link", /Fix the sign-in flow/)).toHaveCount(0);
+});
+
+test("opens a collaborator Session from a Board Task", async ({ app, browser, screen }) => {
+  await app.open("/board");
+
+  const origin = new URL(await browser.url());
+
+  if (origin.hostname !== "127.0.0.1") throw new Error("Use the local test server");
+
+  const client = createClient({ baseUrl: origin.origin });
+
+  const { data: owner } = await createAgent({
+    client,
+    body: { name: "Board owner fixture", provider: "faux", modelId: "tool" },
+    throwOnError: true,
+  });
+
+  const { data: collaborator } = await createAgent({
+    client,
+    body: { name: "Board reviewer fixture", provider: "faux", modelId: "echo" },
+    throwOnError: true,
+  });
+
+  const { data: main } = await getMainChat({ client, path: { agentId: owner.id }, throwOnError: true });
+
+  const { data: task } = await createWorkTask({
+    client,
+    path: { agentId: owner.id },
+    body: { title: "Ship a shared Task" },
+    throwOnError: true,
+  });
+
+  const path = { agentId: owner.id, taskId: task.id };
+  await app.open(`/a/${owner.id}/inbox/${task.id}`);
+
+  async function startChild(title: string, bot?: string) {
+    await sendMessage({
+      client,
+      path: { agentId: owner.id, chatId: main.id },
+      body: {
+        id: randomUUID(),
+        workTaskId: task.id,
+        text: `session_new ${JSON.stringify({ title, bot, message: "Check the change", provider: "faux", modelId: "echo" })}`,
+      },
+      throwOnError: true,
+    });
+    await expect(screen.getByRole("link", title, { exact: true })).toBeVisible();
+  }
+
+  await startChild("Implement the change");
+  await startChild("Review the change", collaborator.id);
+  const sessions = screen.getByRole("region", "Sessions", { exact: true });
+  await expect(sessions.getByText(collaborator.name, { exact: true })).toBeVisible();
+  await expect(sessions.getByText("Primary", { exact: true })).toHaveCount(1);
+  const { data: detail } = await getWorkTask({ client, path, throwOnError: true });
+  const review = detail.sessions.find((session) => session.agentId === collaborator.id);
+
+  if (!review) throw new Error("Missing the collaborator Session");
+  await screen.getByRole("link", "Review the change", { exact: true }).tap();
+  expect(new URL(await browser.url()).pathname).toBe(`/a/${collaborator.id}/c/${review.conversationId}`);
 });
 
 test("opens questions and resolves changed results from the global Inbox", async ({

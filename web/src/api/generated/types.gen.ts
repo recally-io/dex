@@ -57,6 +57,18 @@ export type WorkTaskSession = {
     title: string;
 };
 
+export type WorkTaskSessionLink = {
+    conversationId: number;
+    agentId: string;
+    agentName: string;
+    title: string;
+    isPrimary: boolean;
+    /**
+     * Unix time in milliseconds.
+     */
+    linkedAt: number;
+};
+
 export type HeldEvent = {
     id: string;
     namespace: string;
@@ -1996,6 +2008,10 @@ export type GetWorkTaskResponses = {
     200: {
         task: WorkTask;
         session?: WorkTaskSession;
+        /**
+         * Linked Sessions across Bots. The primary Session comes first when present.
+         */
+        sessions: Array<WorkTaskSessionLink>;
         entries: Array<WorkTaskEntry>;
         questions: Array<WorkTaskQuestion>;
         links: Array<WorkTaskLink>;

@@ -60,8 +60,7 @@ type Detail struct {
 	Questions []sqlc.Question
 	Objects   []sqlc.WorkTaskObject
 	Waits     []sqlc.WorkTaskWait
-	// Session is the primary work Session. Its ID is zero when no Session is linked.
-	Session sqlc.GetWorkTaskSessionRow
+	Sessions  []sqlc.ListWorkTaskSessionsRow
 }
 
 // Create starts tracking work without starting a session.
@@ -106,11 +105,11 @@ func (s *Service) Detail(ctx context.Context, agentID, id string) (Detail, error
 	if err != nil {
 		return Detail{}, err
 	}
-	session, err := q.GetWorkTaskSession(ctx, task.ID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	sessions, err := q.ListWorkTaskSessions(ctx, task.ID)
+	if err != nil {
 		return Detail{}, err
 	}
-	return Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits, Session: session}, tx.Commit()
+	return Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits, Sessions: sessions}, tx.Commit()
 }
 
 // SetLifecycle applies an explicit owner decision without changing run state.

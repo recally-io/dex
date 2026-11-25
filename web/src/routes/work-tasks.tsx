@@ -18,6 +18,7 @@ import type { WorkTaskEntry, WorkTaskLifecycle } from "../api/generated/types.ge
 import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
 import { Empty, FramedPage, Section } from "../components/page";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
@@ -243,15 +244,26 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
               {answer.error ? <Failure title="Could not answer question" error={answer.error} /> : null}
             </Section>
           ) : null}
-          {detail.data.session ? (
-            <Section title="Session">
-              <Link
-                to="/a/$agentId/c/$chatId"
-                params={{ agentId: detail.data.session.agentId, chatId: String(detail.data.session.id) }}
-                className="font-medium text-foreground underline"
-              >
-                {detail.data.session.title || "Untitled session"}
-              </Link>
+          {detail.data.sessions.length ? (
+            <Section title="Sessions">
+              <ul className="divide-y divide-border">
+                {detail.data.sessions.map((session) => (
+                  <li
+                    key={session.conversationId}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2"
+                  >
+                    <Link
+                      to="/a/$agentId/c/$chatId"
+                      params={{ agentId: session.agentId, chatId: String(session.conversationId) }}
+                      className="font-medium text-foreground underline"
+                    >
+                      {session.title || "Untitled session"}
+                    </Link>
+                    <span className="text-sm text-muted-foreground">{session.agentName}</span>
+                    {session.isPrimary ? <Badge variant="secondary">Primary</Badge> : null}
+                  </li>
+                ))}
+              </ul>
             </Section>
           ) : null}
           <TaskLinks links={detail.data.links} open={detail.data.task.lifecycle === "open"}>
