@@ -228,7 +228,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 			return AutomationInputResult{}, err
 		}
 	}
-	inserted, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: in.Run.ID, ConversationID: conv.ID, Content: in.Content, Attachments: "[]", Origin: "automation", Kind: "message", CreatedAt: in.Run.CreatedAt})
+	inserted, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: in.Run.ID, ConversationID: conv.ID, Content: in.Content, Attachments: "[]", Origin: "automation", Producer: ProducerScheduler, Kind: "message", CreatedAt: in.Run.CreatedAt})
 	if err != nil {
 		return AutomationInputResult{}, err
 	}

@@ -21,7 +21,7 @@ func taskParent(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: c.ID, Content: "delegate", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1})
+	_, err = r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: c.ID, Content: "delegate", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "other-source", ConversationID: other.ID, Content: "go", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "other-source", ConversationID: other.ID, Content: "go", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	foreign := engine.TaskContext{AgentID: "other", ConversationID: otherRef.ID, SourceRequestID: "other-source", Key: "other/send"}

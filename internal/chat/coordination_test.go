@@ -381,7 +381,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: parent.ID, Content: "delegate", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: parent.ID, Content: "delegate", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	marker, taskRelease := filepath.Join(r.dir, "task-started"), filepath.Join(r.dir, "task-release")
@@ -404,7 +404,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "cold", ConversationID: cold.ID, Content: "cold", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 2}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "cold", ConversationID: cold.ID, Content: "cold", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 2}); err != nil {
 		t.Fatal(err)
 	}
 	entered, release := holdAgentMCP(t, r)

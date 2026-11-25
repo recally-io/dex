@@ -19,7 +19,7 @@ func followUpSource(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42", Options: "{}"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, ConversationID: parent, Content: "Please report back", Attachments: "null", SourceKey: sql.NullString{String: "telegram:123:1", Valid: true}, Origin: "telegram:42", Kind: "message", ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
+	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, ConversationID: parent, Content: "Please report back", Attachments: "null", SourceKey: sql.NullString{String: "telegram:123:1", Valid: true}, Origin: "telegram:42", Producer: ProducerUser, ReplyChannel: "telegram", ReplyPeer: "42", Kind: "message", ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
 		t.Fatal(err)
 	}
 	return parent, call

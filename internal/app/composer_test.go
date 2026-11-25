@@ -395,7 +395,7 @@ func TestPendingMessageWithAttachmentsIsReplayedAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	pendingID := uuid.NewV7().String()
-	_, err = sqlc.New(conn).CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{Kind: "message", Origin: "web",
+	_, err = sqlc.New(conn).CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{Kind: "message", Origin: "web", Producer: "user",
 		ID: pendingID, ConversationID: chatID, Content: "read it", Attachments: string(attachments),
 		CreatedAt: time.Now().UnixMilli(),
 	})

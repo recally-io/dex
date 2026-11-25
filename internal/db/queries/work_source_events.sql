@@ -61,8 +61,8 @@ ON CONFLICT (agent_id, channel_key) DO NOTHING;
 
 -- name: CreateWorkTaskAlert :one
 -- A Task alert is a system input of Main. Its ID comes from the event, so one event alerts once.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context)
-SELECT @id, c.id, @content, 'null', @id, 'web', 'task_result', 'pending', @created_at, '{}'
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
+SELECT @id, c.id, @content, 'null', @id, 'web', 'plugin', '', '', 'task_result', 'pending', @created_at, '{}'
 FROM conversations c WHERE c.agent_id = @agent_id AND c.channel_key = 'main' AND c.archived_at IS NULL
 ON CONFLICT DO NOTHING
 RETURNING conversation_id;

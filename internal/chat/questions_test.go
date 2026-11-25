@@ -87,7 +87,7 @@ func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer", ConversationID: chatID, Content: "Answer to: Which one?\nfirst", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 2}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer", ConversationID: chatID, Content: "Answer to: Which one?\nfirst", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE questions SET status='answered', answer_submission_id='answer'"); err != nil {
@@ -110,7 +110,7 @@ func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
 	}
 
 	// When a later answer runs and ends with a reply, then the question is consumed.
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer-2", ConversationID: chatID, Content: "Answer to: Which one?\nsecond", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 3}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer-2", ConversationID: chatID, Content: "Answer to: Which one?\nsecond", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 3}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE questions SET status='answered', answer_submission_id='answer-2'"); err != nil {

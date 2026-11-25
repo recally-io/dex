@@ -62,8 +62,8 @@ SET state = 'cancelled', outcome = 'session stopped or cleared', running = 0, up
 WHERE conversation_id = @conversation_id AND state = 'scheduled';
 
 -- name: CreateMonitorSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context, when_busy)
-SELECT @id, t.conversation_id, @content, 'null', @id, root.origin, 'task_result', 'pending', @created_at, root.channel_context, 'followUp'
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context, when_busy)
+SELECT @id, t.conversation_id, @content, 'null', @id, root.origin, 'scheduler', '', '', 'task_result', 'pending', @created_at, root.channel_context, 'followUp'
 FROM monitors t JOIN submissions root ON root.id = t.root_request_id
 WHERE t.id = @monitor_id
 ON CONFLICT DO NOTHING;

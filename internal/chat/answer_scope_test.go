@@ -26,7 +26,7 @@ func TestUserAnswerDedupIsScopedToChild(t *testing.T) {
 			t.Fatal(err)
 		}
 		source := agent + "-source"
-		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: source, ConversationID: parent.ID, Content: "delegate", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: source, ConversationID: parent.ID, Content: "delegate", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 			t.Fatal(err)
 		}
 		call := engine.TaskContext{AgentID: agent, ConversationID: ref.ID, SourceRequestID: source, Key: agent + "/scope"}

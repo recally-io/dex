@@ -59,9 +59,14 @@ skip `[inert]` subtrees. Instructions drafts live above the routes in a map by
 agent ID. Saving one agent cannot change another agent's draft or query data.
 A browser reload discards these drafts.
 
-Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
+Every enqueue writes `submissions.origin` together with explicit inbox metadata:
+`submissions.producer` (`user`, `sub_session`, `scheduler`, or `plugin`) and
+optional `reply_channel` / `reply_peer` (populated only for direct channel `user`
+inputs; Web and background inputs leave them empty). Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
 Automation, parent turns to a child session, and dream input use `automation`, `task`, and `dream`.
+Retrying the same request ID with a different conversation, kind, content,
+attachments, mode, producer, or reply address is rejected as a conflict.
 A channel input also saves the account and peer that received it. Pairing is
 checked at intake. A child result can retain the origin for attribution or an
 explicit follow-up; its normal output does not enter the Outbox. An ordinary

@@ -147,7 +147,7 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 		t.Helper()
 		provider.SetResponses(steps)
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: id, ConversationID: childID, Content: "Local check finished.", Attachments: "null", Origin: "telegram:42", Kind: "task_result", CreatedAt: 1,
+			ID: id, ConversationID: childID, Content: "Local check finished.", Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
 		}); err != nil {
 			t.Fatal(err)
 		}

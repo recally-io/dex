@@ -45,7 +45,7 @@ func TestUserUpgradeDeliversAnAdmittedChildReportOnce(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: request, ConversationID: child.ID, Kind: "message", Origin: "web", Attachments: "null"}); err != nil {
+			if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: request, ConversationID: child.ID, Kind: "message", Origin: "web", Producer: "user", Attachments: "null"}); err != nil {
 				t.Fatal(err)
 			}
 			var service *chat.Service

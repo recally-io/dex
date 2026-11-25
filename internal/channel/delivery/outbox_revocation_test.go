@@ -130,7 +130,7 @@ func TestUserRevokedOutboxSnapshotIsNotSentOrConfirmed(t *testing.T) {
 	}
 	const id = "fixture-result"
 	source := sql.NullString{String: id, Valid: true}
-	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: "Result", Attachments: "null", Origin: "wechat:fixture-peer", Kind: "task_result"}); err != nil {
+	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: "Result", Attachments: "null", Origin: "wechat:fixture-peer", Producer: "plugin", Kind: "task_result"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "fixture-bot", BotID: "fixture-bot", Owner: "fixture-peer"}); err != nil {
