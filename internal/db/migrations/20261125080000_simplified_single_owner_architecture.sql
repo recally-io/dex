@@ -37,6 +37,9 @@ WHERE status = 'pending' AND (
     )
 );
 
+UPDATE outbox_messages SET status = 'revoked', error = 'delivery predates channel binding'
+WHERE status = 'pending' AND peer <> '';
+
 UPDATE channel_commands SET completed = 1, delivered_at = unixepoch() * 1000,
     answer = CASE WHEN command = '/feedback' THEN '' ELSE answer END
 WHERE delivered_at IS NULL;
@@ -45,6 +48,10 @@ UPDATE telegram_album_members SET state = 'discarded'
 WHERE peer LIKE 'telegram:-%' AND state IN ('collecting', 'sealed');
 
 DELETE FROM telegram_callbacks WHERE consumed_at IS NULL;
+
+DELETE FROM outbox_files WHERE outbox_id IS NULL AND submission_id IN (
+    SELECT id FROM submissions WHERE origin LIKE 'telegram:%'
+);
 
 DELETE FROM main_turn_stops
 WHERE conversation_id IN (SELECT id FROM conversations WHERE execution_scope <> '');
@@ -137,27 +144,6 @@ SELECT rowid, id, CASE WHEN dedup_key LIKE 'tool:%' THEN 'notify:' || substr(ded
     remote_ids,
     CASE
         WHEN status = 'delivered' AND skipped_part = 0 THEN 'sent'
-        WHEN status = 'pending' AND delivered_parts = 1 AND group_cursor = 0
-          AND json_array_length(nullif(rendered_parts, '')) = 1 AND skipped_part = 0
-          AND json_array_length(remote_ids) = 1 THEN 'sent'
-        WHEN status = 'pending' AND peer <> '' AND delivered_parts = 0 AND group_cursor = 0 AND group_fallback = 0
-          AND skipped_part = 0 AND (rendered_parts = '' OR (json_array_length(rendered_parts) = 1 AND
-            json_type(rendered_parts, '$[0].group') IS NULL))
-          AND (kind NOT IN ('reply', 'question') OR EXISTS (
-              SELECT 1 FROM submissions s WHERE s.id = o.source_submission_id AND s.kind = 'message'
-          ))
-          AND kind <> 'system_error'
-          AND NOT EXISTS (SELECT 1 FROM legacy_outbox_files f WHERE f.outbox_id = o.id)
-          AND EXISTS (
-              SELECT 1 FROM configured_channel_addresses a
-              WHERE a.agent_id = o.agent_id
-                AND a.platform = substr(o.peer, 1, instr(o.peer, ':') - 1)
-                AND a.account_id = o.channel_context ->> 'accountId'
-                AND a.peer = CASE WHEN substr(o.peer, 1, instr(o.peer, ':') - 1) = 'telegram'
-                    THEN coalesce('telegram:' || nullif(o.channel_context ->> 'senderId', ''), o.peer)
-                    ELSE o.peer END
-          )
-          THEN 'pending'
         WHEN status = 'superseded' THEN 'superseded'
         ELSE 'failed'
     END,
