@@ -99,6 +99,18 @@ func TestUserChannelFollowUpQueuesOneExplicitConclusion(t *testing.T) {
 	}
 }
 
+func TestUserLegacyChannelFollowUpWithoutParentCannotNotify(t *testing.T) {
+	r := startNative(t, "echo")
+	ctx := t.Context()
+	_, call := followUpResult(t, r)
+	if _, err := r.conn.ExecContext(ctx, `UPDATE channel_follow_ups SET parent_request_id=NULL, parent_source_key=NULL WHERE result_id=?`, call.SourceRequestID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "No authorized parent"}); !errors.Is(err, errChannelFollowUp) {
+		t.Fatalf("legacy follow-up error = %v, want %v", err, errChannelFollowUp)
+	}
+}
+
 func TestUserChannelFollowUpQuestionIsNotAConclusion(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()

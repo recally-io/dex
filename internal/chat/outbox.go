@@ -81,11 +81,17 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 			(f.State != "open" || source.Status != "pending") && (!final || f.State != "notified") {
 			return "", errChannelFollowUp
 		}
+		if !f.ParentRequestID.Valid || !f.ParentSourceKey.Valid {
+			return "", errChannelFollowUp
+		}
 		original, err := q.GetSubmission(ctx, f.ParentRequestID.String)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", errChannelFollowUp
+		}
 		if err != nil {
 			return "", err
 		}
-		if original.ConversationID != conv.ID || !f.ParentSourceKey.Valid || original.SourceKey != f.ParentSourceKey || original.ChannelRevoked != 0 ||
+		if original.ConversationID != conv.ID || original.SourceKey != f.ParentSourceKey || original.ChannelRevoked != 0 ||
 			original.Origin != source.Origin || original.ChannelContext != source.ChannelContext {
 			return "", errChannelFollowUp
 		}
