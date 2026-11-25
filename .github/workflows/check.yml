@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jdx/mise-action@v5.2.10
+      - uses: jdx/mise-action@v5.3.0
         with:
           install: true
           cache: true
@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jdx/mise-action@v5.2.10
+      - uses: jdx/mise-action@v5.3.0
         with:
           install: true
           cache: true
@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jdx/mise-action@v5.2.10
+      - uses: jdx/mise-action@v5.3.0
         with:
           install: true
           cache: true
@@ -103,7 +103,7 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jdx/mise-action@v5.2.10
+      - uses: jdx/mise-action@v5.3.0
         with:
           install: true
           cache: true
@@ -140,7 +140,7 @@ jobs:
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jdx/mise-action@v5.2.10
+      - uses: jdx/mise-action@v5.3.0
         with:
           install: true
           cache: true
@@ -172,7 +172,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: jdx/mise-action@v5.2.10
+      - uses: jdx/mise-action@v5.3.0
         with:
           install: true
           cache: true
