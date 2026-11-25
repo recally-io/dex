@@ -241,6 +241,7 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 		Content:        string(content),
 		Attachments:    "null",
 		Origin:         cmp.Or(source.Origin, "web"),
+		Producer:       ProducerSubSession,
 		Kind:           "task_result",
 		CreatedAt:      now,
 	}); err != nil {

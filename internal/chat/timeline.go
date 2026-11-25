@@ -175,8 +175,9 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 		if pending != 0 {
 			return ErrConversationBusy
 		}
+		producer, replyChannel, replyPeer := inboxIdentity(origin)
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
-			ID: requestID, ConversationID: chatID, Content: handoff, Attachments: "null", Origin: origin, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
+			ID: requestID, ConversationID: chatID, Content: handoff, Attachments: "null", Origin: origin, Producer: producer, ReplyChannel: replyChannel, ReplyPeer: replyPeer, Kind: "context_reset", CreatedAt: s.now().UnixMilli(),
 		})
 		if err != nil {
 			return err

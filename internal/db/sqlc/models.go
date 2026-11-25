@@ -432,6 +432,9 @@ type Submission struct {
 	ExitAction           string         `json:"exit_action"`
 	RequiredReplyID      string         `json:"required_reply_id"`
 	StopRequested        int64          `json:"stop_requested"`
+	Producer             string         `json:"producer"`
+	ReplyChannel         string         `json:"reply_channel"`
+	ReplyPeer            string         `json:"reply_peer"`
 }
 
 type SystemSetting struct {

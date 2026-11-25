@@ -7,8 +7,8 @@ RETURNING *;
 -- name: CreateParentTurn :execrows
 -- A turn that the parent session sends. The origin task keeps the turn out of user channels
 -- and routine creation. A turn whose ID exists already is not stored again.
-INSERT INTO submissions (id, conversation_id, content, attachments, origin, kind, when_busy, parent_request_id, status, created_at)
-VALUES (@id, @conversation_id, @content, 'null', 'task', 'message', @when_busy, @parent_request_id, 'pending', @created_at)
+INSERT INTO submissions (id, conversation_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
+VALUES (@id, @conversation_id, @content, 'null', 'task', 'sub_session', '', '', 'message', @when_busy, @parent_request_id, 'pending', @created_at)
 ON CONFLICT DO NOTHING;
 
 -- name: ListSessions :many
@@ -96,8 +96,8 @@ WHERE s.id = ? AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL;
 -- name: CreateTurnResult :execrows
 -- The result of a parent turn goes to the parent session with the origin of the parent request.
 -- The ID follows the turn, so a replay does not store a second result.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
-SELECT @id, c.parent_id, @content, 'null', @id, source.origin, 'task_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id), source.channel_context, max(source.channel_revoked, CAST(@revoke_route AS INTEGER))
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
+SELECT @id, c.parent_id, @content, 'null', @id, source.origin, 'sub_session', '', '', 'task_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id), source.channel_context, max(source.channel_revoked, CAST(@revoke_route AS INTEGER))
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
 JOIN submissions source ON source.id = turn.parent_request_id

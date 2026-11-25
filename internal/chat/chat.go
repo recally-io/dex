@@ -452,6 +452,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err != nil {
 			return 0, err
 		}
+		producer, replyChannel, replyPeer := inboxIdentity(origin)
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 			ChannelContext: string(channelContext),
 			ID:             m.ID,
@@ -460,6 +461,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			Attachments:    string(attachments),
 			SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
 			Origin:         origin,
+			Producer:       producer,
+			ReplyChannel:   replyChannel,
+			ReplyPeer:      replyPeer,
 			Kind:           "message",
 			WhenBusy:       m.WhenBusy,
 			CreatedAt:      submittedAt,
@@ -484,7 +488,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				if err != nil {
 					return 0, err
 				}
-				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") {
+				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") || prior.Producer != producer || prior.ReplyChannel != replyChannel || prior.ReplyPeer != replyPeer {
 					return 0, ErrMessageID
 				}
 			}

@@ -157,6 +157,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 				Content:        string(encoded),
 				Attachments:    "null",
 				Origin:         cmp.Or(sub.Origin, "web"),
+				Producer:       ProducerSubSession,
 				Kind:           "task_result",
 				CreatedAt:      s.now().UnixMilli(),
 			}); cerr != nil {

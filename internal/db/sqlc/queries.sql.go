@@ -437,8 +437,23 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 }
 
 const createSubmission = `-- name: CreateSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), 'followUp'), 'pending', ?9, coalesce(nullif(CAST(?10 AS TEXT), ''), '{}'))
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, when_busy, status, created_at, channel_context)
+VALUES (
+    ?1,
+    ?2,
+    ?3,
+    ?4,
+    ?5,
+    ?6,
+    coalesce(nullif(CAST(?7 AS TEXT), ''), 'user'),
+    coalesce(CAST(?8 AS TEXT), ''),
+    coalesce(CAST(?9 AS TEXT), ''),
+    ?10,
+    coalesce(nullif(CAST(?11 AS TEXT), ''), 'followUp'),
+    'pending',
+    ?12,
+    coalesce(nullif(CAST(?13 AS TEXT), ''), '{}')
+)
 ON CONFLICT DO NOTHING
 `
 
@@ -449,6 +464,9 @@ type CreateSubmissionParams struct {
 	Attachments    string         `json:"attachments"`
 	SourceKey      sql.NullString `json:"source_key"`
 	Origin         string         `json:"origin"`
+	Producer       string         `json:"producer"`
+	ReplyChannel   string         `json:"reply_channel"`
+	ReplyPeer      string         `json:"reply_peer"`
 	Kind           string         `json:"kind"`
 	WhenBusy       string         `json:"when_busy"`
 	CreatedAt      int64          `json:"created_at"`
@@ -465,6 +483,9 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		arg.Attachments,
 		arg.SourceKey,
 		arg.Origin,
+		arg.Producer,
+		arg.ReplyChannel,
+		arg.ReplyPeer,
 		arg.Kind,
 		arg.WhenBusy,
 		arg.CreatedAt,
@@ -1018,7 +1039,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested, producer, reply_channel, reply_peer FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -1055,6 +1076,9 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.ExitAction,
 		&i.RequiredReplyID,
 		&i.StopRequested,
+		&i.Producer,
+		&i.ReplyChannel,
+		&i.ReplyPeer,
 	)
 	return i, err
 }
@@ -1640,6 +1664,9 @@ SELECT
     s.attachments,
     s.kind,
     s.origin,
+    s.producer,
+    s.reply_channel,
+    s.reply_peer,
     s.created_at,
     s.admitted_at,
     s.when_busy,
@@ -1658,6 +1685,9 @@ type ListPendingSubmissionsRow struct {
 	Attachments    string        `json:"attachments"`
 	Kind           string        `json:"kind"`
 	Origin         string        `json:"origin"`
+	Producer       string        `json:"producer"`
+	ReplyChannel   string        `json:"reply_channel"`
+	ReplyPeer      string        `json:"reply_peer"`
 	CreatedAt      int64         `json:"created_at"`
 	AdmittedAt     sql.NullInt64 `json:"admitted_at"`
 	WhenBusy       string        `json:"when_busy"`
@@ -1682,6 +1712,9 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context, conversationID int
 			&i.Attachments,
 			&i.Kind,
 			&i.Origin,
+			&i.Producer,
+			&i.ReplyChannel,
+			&i.ReplyPeer,
 			&i.CreatedAt,
 			&i.AdmittedAt,
 			&i.WhenBusy,

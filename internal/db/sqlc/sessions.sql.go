@@ -67,8 +67,8 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 }
 
 const createParentTurn = `-- name: CreateParentTurn :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, origin, kind, when_busy, parent_request_id, status, created_at)
-VALUES (?1, ?2, ?3, 'null', 'task', 'message', ?4, ?5, 'pending', ?6)
+INSERT INTO submissions (id, conversation_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
+VALUES (?1, ?2, ?3, 'null', 'task', 'sub_session', '', '', 'message', ?4, ?5, 'pending', ?6)
 ON CONFLICT DO NOTHING
 `
 
@@ -99,8 +99,8 @@ func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnPara
 }
 
 const createTurnResult = `-- name: CreateTurnResult :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
-SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'task_result', 'pending', ?3, c.id, ?4, source.channel_context, max(source.channel_revoked, CAST(?5 AS INTEGER))
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
+SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'sub_session', '', '', 'task_result', 'pending', ?3, c.id, ?4, source.channel_context, max(source.channel_revoked, CAST(?5 AS INTEGER))
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
 JOIN submissions source ON source.id = turn.parent_request_id
