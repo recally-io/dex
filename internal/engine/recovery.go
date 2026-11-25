@@ -100,15 +100,6 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 			runInputs = nil
 		}
 		outcome.RunInputIDs = runInputs
-		if record.Entry != nil {
-			start, err := store.Entry(readCtx, *record.Entry)
-			if err != nil {
-				return Recovered{}, err
-			}
-			if start != nil {
-				outcome.ActivationID = activationOf(*record, &start.Entry)
-			}
-		}
 	}
 	return Recovered{State: RecoverySettled, Outcome: outcome}, nil
 }

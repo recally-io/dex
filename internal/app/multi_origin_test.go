@@ -70,7 +70,7 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT id, origin, kind FROM submissions WHERE conversation_id=? AND kind='task_result'", main).Scan(&resultID, &origin, &kind); err != nil {
 		t.Fatal(err)
 	}
-	if origin != "web" || kind != "task_result" {
+	if origin != "task" || kind != "task_result" {
 		t.Fatalf("child result = %s %s", origin, kind)
 	}
 	steer := uuid.NewV7().String()

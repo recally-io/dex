@@ -151,9 +151,7 @@ writing child separate files or directories. The tools are:
   or a name) the child belongs to another bot. See "Cross-bot sessions" below.
 - `session_send` sends a message. An idle child starts a run. For a busy child,
   mode `steer` joins the current run after its current tool step, and mode
-  `queue` (the default) runs after it. A delegation with `follow_up: true`
-  must use `queue`. A steer that would join an opted-in child activation
-  waits as ordinary queued input instead.
+  `queue` (the default) runs after it.
 - `session_stop` withdraws queued input and stops the run. It is the same as
   user Stop and has no result.
 - `session_fork` branches a child up to a finished answer, with the same parent.
@@ -263,7 +261,7 @@ channel. A completed run with a parent input sends one `task_result`, including
 when a user started an ordinary shared run. A pure user run sends none.
 Control uses the child conversation and native Answer entry as a unique key.
 In an ordinary shared run, the first parent input to settle owns
-`result:<turn ID>`. An opted-in delegation runs by itself and owns its result. A done native input without an Answer is an
+`result:<turn ID>`. A done native input without an Answer is an
 error. Each failed or interrupted parent input sends its own result; user inputs
 send none. A stopped, aborted or withdrawn input sends none. Result insertion
 and receipt settlement share a control transaction. Only an Answer key conflict
@@ -274,12 +272,8 @@ final answer cut at 4,000 characters, or the failure reason. A restart adds
 the number of queued inputs it withdrew. Child results enter the parent as
 `producer = 'sub_session'` with no channel reply destination; pure background
 runs never auto-send to channels, and Main decides whether to call `notify_user`.
-An ordinary result can enter the parent's follow-up Inbox while the parent
-is busy. A result with a usable channel commitment waits in control until it
-can start a native review with no other inputs. The guard checks the live run
-and native Inbox in the admission transaction, and prevents steers from
-joining the review. Ordinary shared runs do not change. Control never changes
-a settled submission back to pending. The parent reads the child's
+An ordinary result enters the parent's follow-up Inbox while the parent is busy.
+Control never changes a settled submission back to pending. The parent reads the child's
 final answer from the result and can call `session_read` for a cut text.
 
 Control passes a trusted input kind, the turn ID and the child title to the

@@ -106,19 +106,6 @@ func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenR
 			}
 			continue
 		}
-		if in.outcome.ActivationID != 0 && in.outcome.Status == "done" {
-			// Native admission and even completion can commit before control records
-			// admission. Repair that receipt with the original native binding.
-			n, err := bindChannelFollowUp(ctx, q, in.id, in.outcome.ActivationID)
-			if err != nil {
-				return err
-			}
-			if n == 1 {
-				if err := s.recordAdmission(ctx, q, in.id); err != nil {
-					return err
-				}
-			}
-		}
 		// Only an interrupted turn names the withdrawn inputs: they waited behind it.
 		count := 0
 		if in.outcome.Reason == "interrupted" {

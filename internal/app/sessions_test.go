@@ -178,7 +178,7 @@ func TestUserChildResultReturnsToItsChatSession(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT conversation_id, origin FROM submissions WHERE id=?", child.ResultID).Scan(&parent, &origin); err != nil {
 		t.Fatal(err)
 	}
-	if parent != side || origin != "web" || !slices.ContainsFunc(w.tr.items, func(it item) bool {
+	if parent != side || origin != "task" || !slices.ContainsFunc(w.tr.items, func(it item) bool {
 		return it.Kind == "task" && it.TaskID == child.Turn && it.Title == "Chat report" && it.Text == "" && it.Status == "done"
 	}) {
 		t.Fatalf("Chat result routing: parent=%d origin=%s transcript=%+v", parent, origin, w.tr.items)

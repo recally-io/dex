@@ -247,11 +247,6 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now}); err != nil {
 		return SessionRef{}, err
 	}
-	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, child, source, turn); err != nil {
-			return SessionRef{}, err
-		}
-	}
 	// Work for a Task starts here, so the first child of a Task input becomes its primary Session.
 	if taskID, err := workTaskForInput(ctx, q, source.ID); err != nil {
 		return SessionRef{}, err
@@ -281,9 +276,6 @@ func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a S
 	switch a.Mode {
 	case "", "queue":
 	case "steer":
-		if a.FollowUp {
-			return SessionRef{}, fmt.Errorf("%w: follow_up requires independent mode: queue", errSessionInvalid)
-		}
 		whenBusy = "steer"
 	default:
 		return SessionRef{}, fmt.Errorf("%w: mode is queue or steer", errSessionInvalid)
@@ -306,17 +298,11 @@ func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a S
 		}
 		return s.ref(ctx, q, child)
 	}
-	source, err := liveSource(ctx, q, r)
-	if err != nil {
+	if _, err := liveSource(ctx, q, r); err != nil {
 		return SessionRef{}, err
 	}
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: whenBusy, ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()}); err != nil {
 		return SessionRef{}, err
-	}
-	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, child, source, turn); err != nil {
-			return SessionRef{}, err
-		}
 	}
 	bot, err := q.GetAgent(ctx, child.AgentID)
 	if err != nil {

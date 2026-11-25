@@ -38,7 +38,6 @@ type SessionNewArgs struct {
 	// Bot is a bot ID or name. Empty means the bot of the caller.
 	Bot           string `json:"bot,omitempty"`
 	Title         string `json:"title"`
-	FollowUp      bool   `json:"follow_up,omitzero"`
 	Message       string `json:"message"`
 	Cwd           string `json:"cwd,omitempty"`
 	Provider      string `json:"provider,omitempty"`
@@ -56,9 +55,8 @@ type SessionListArgs struct {
 }
 
 type SessionSendArgs struct {
-	FollowUp bool   `json:"follow_up,omitzero"`
-	ID       string `json:"id"`
-	Message  string `json:"message"`
+	ID      string `json:"id"`
+	Message string `json:"message"`
 	// Mode is "queue" (the default) or "steer".
 	Mode string `json:"mode,omitempty"`
 }
@@ -164,11 +162,9 @@ type SessionMatch struct {
 func SessionExtension(agentID string, handlers SessionHandlers) *engine.Extension {
 	sessions := handlers.Sessions
 	idProperty := map[string]any{"type": "string", "minLength": 1, "description": "The ID of a child session of this conversation. The child can belong to another bot."}
-	followUpProperty := map[string]any{"type": "boolean", "description": "True only on a direct channel request when you commit to send a reviewed follow-up after this delegation."}
 	tools := []*durable.ToolRegistration{
 		engine.JSONTool(agentID, "session_new", "Create a child session and send it its first message. The child has its own context and runs at once. Its result arrives later as a separate input. There is no limit on the number of children. Children in one directory run at the same time: give each child that writes files its own files or directories. With bot, the child belongs to that bot and runs with its instructions, model, memory, skills, MCP servers, environment, and workspace: use it to give work to the bot that has the right skills or credentials. Without bot, the child belongs to this bot, and an empty setting uses the value of this conversation. With bot, an empty setting uses the value of that bot.",
 			engine.ObjectSchema([]string{"title", "message"}, map[string]any{
-				"follow_up":     followUpProperty,
 				"bot":           map[string]any{"type": "string", "description": "A bot ID or name. Choose the bot that has the right skills or credentials. Omit it for this bot."},
 				"title":         map[string]any{"type": "string", "minLength": 1, "description": "A short name for this work in the user's language."},
 				"message":       map[string]any{"type": "string", "minLength": 1, "description": "The goal, the constraints, and the completion criteria. The child cannot see this conversation."},
@@ -182,10 +178,9 @@ func SessionExtension(agentID string, handlers SessionHandlers) *engine.Extensio
 			}),
 		engine.JSONTool(agentID, "session_send", "Send a message to a child session to continue its work: it keeps its context and does not read the repository again. The system does not retry a failed turn or the delivery of its result: inspect the answer and the files before you send again. An idle child starts a run. For a busy child, mode steer adds the message to the current run after its current tool step. Mode queue (the default) runs it after the current run.",
 			engine.ObjectSchema([]string{"id", "message"}, map[string]any{
-				"follow_up": followUpProperty,
-				"id":        idProperty,
-				"message":   map[string]any{"type": "string", "minLength": 1},
-				"mode":      map[string]any{"type": "string", "enum": []string{"queue", "steer"}},
+				"id":      idProperty,
+				"message": map[string]any{"type": "string", "minLength": 1},
+				"mode":    map[string]any{"type": "string", "enum": []string{"queue", "steer"}},
 			}), sessions.Send != nil, func(ctx context.Context, source engine.TaskContext, args SessionSendArgs) (SessionRef, error) {
 				return sessions.Send(ctx, source, args)
 			}),

@@ -167,9 +167,6 @@ func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 		var call engine.TaskContext
 		if final {
 			call, err = invocation.TurnEnding(ctx, "session_report")
-			if err == nil {
-				err = invocation.RecordActivation(ctx, &call)
-			}
 		} else {
 			call, err = invocation.Context(ctx)
 		}
@@ -194,7 +191,7 @@ func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 	}
 	report := &durable.ToolRegistration{
 		Name:        "session_report",
-		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. For an opted-in delegation, the final report is staged for the canonical completion and does not send a separate update. Set final=false to send a milestone and continue.",
+		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
 		Parameters: map[string]any{
 			"type": "object", "additionalProperties": false, "required": []string{"content"},
 			"properties": map[string]any{

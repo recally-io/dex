@@ -171,7 +171,7 @@ func admissionRetryReason(err error) string {
 		return "canceled"
 	case errors.Is(err, runner.ErrOffline):
 		return "environment_offline"
-	case errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrOriginBusy), errors.Is(err, engine.ErrReviewBarrier):
+	case errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrOriginBusy):
 		return "session_busy"
 	case errors.Is(err, engine.ErrStaleRunTarget):
 		return "stale_target"
