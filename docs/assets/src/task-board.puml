@@ -51,17 +51,17 @@ skinparam stereotypeIBorderColor #5b6b8c
 skinparam BackgroundColor #ffffff
 title dex Task Board: Bot-centric append-only coordination
 top to bottom direction
-rectangle "Web UI\nTeam Board / Bot Tasks / Triage" as ui
+rectangle "Web UI\nBoard (/board) / Inbox (/inbox)" as ui
 rectangle "Bot Tools\nMain, Chat, scoped Child" as tools
-rectangle "Source Plugins\nGitHub / Email / Webhook" as plugins
-rectangle "External Agents\nAttached CLI / Command Monitor" as ext
+rectangle "Sources (Plugins)\nGitHub / Email / Webhook" as plugins
+rectangle "External Agents (Phase 3)\nAttached CLI / Process" as ext
 package "dex control plane" as ctrl {
-  rectangle "SSE Event Stream\nGlobal cursor / Last-Event-ID" as sse
-  rectangle "internal/worktask\nCentral ACL + Auth Matrix\n6 states + derived Gates + Review" as core
+  rectangle "SSE Event Stream\n/api/board/events (Last-Event-ID)" as sse
+  rectangle "internal/worktask\nCentral ACL + Auth Matrix\n6 states + derived Blocked + Review" as core
   rectangle "Coalesced Wakeup Router\n<=1 unadmitted task_wake / Main\n+ External Lease Watchdog" as wake
-  rectangle "internal/chat + internal/engine\nPer-bot delivery gate + PiG Harness" as runtime
+  rectangle "internal/chat + internal/engine\nPer-session delivery gate + PiG Harness" as runtime
 }
-database "control.sqlite\ntask_spaces, work_tasks (T-N)\nwork_task_entries (AUTOINCREMENT)\ntask_executions, watchers, deps" as cdb
+database "control.sqlite\nwork_tasks (T-N)\nwork_task_entries (AUTOINCREMENT)\ntask_executions, task_dependencies" as cdb
 database "agents/<id>/state.sqlite\nNative PiG runs & transcripts" as adb
 ui --> core : HTTP API + If-Match
 ui <-- sse : Live board updates
