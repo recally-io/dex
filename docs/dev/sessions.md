@@ -151,9 +151,7 @@ writing child separate files or directories. The tools are:
   or a name) the child belongs to another bot. See "Cross-bot sessions" below.
 - `session_send` sends a message. An idle child starts a run. For a busy child,
   mode `steer` joins the current run after its current tool step, and mode
-  `queue` (the default) runs after it. A delegation with `follow_up: true`
-  must use `queue`. A steer that would join an opted-in child activation
-  waits as ordinary queued input instead.
+  `queue` (the default) runs after it.
 - `session_stop` withdraws queued input and stops the run. It is the same as
   user Stop and has no result.
 - `session_fork` branches a child up to a finished answer, with the same parent.

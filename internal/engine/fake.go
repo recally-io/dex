@@ -145,12 +145,6 @@ func fakeProvider(inputSuffix string) *ai.ModelsProvider {
 				return ai.AssistantMessage{}, fmt.Errorf("faux/spawn requires a JSON object")
 			}
 			if result, ok := args["task-result"]; ok {
-				if m.ID == "spawn-notify" && args["channel-follow-up"] != nil {
-					if !fakeExposed(t, "notify_user") {
-						return fakeCall("tool_search", map[string]any{"query": "notify_user"}), nil
-					}
-					return fakeCall("notify_user", map[string]any{"content": "Reviewed channel conclusion"}), nil
-				}
 				if result, ok := result.(map[string]any); m.ID == "spawn-notify" && ok && result["title"] == "Web notification fixture" {
 					if !fakeExposed(t, "notify_user") {
 						return fakeCall("tool_search", map[string]any{"query": "notify_user"}), nil
