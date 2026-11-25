@@ -31,6 +31,8 @@ INSERT INTO conversations (id, agent_id, channel_key, created_at) VALUES (101, '
 INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('fixture', '42:fixture', '7');
 INSERT INTO outbox_messages (id, dedup_key, agent_id, conversation_id, kind, peer, channel_context, created_at)
 VALUES ('old', 'old', 'fixture', 101, 'proactive', 'telegram:7', '{"accountId":"42","senderId":"7"}', 1);
+INSERT INTO channel_webhook_inbox (agent_id, platform, account, event_id, payload, received_at)
+VALUES ('fixture', 'telegram', '42', 'evt-1', CAST('{"update_id":1}' AS BLOB), 1);
 `); err != nil {
 		t.Fatal(err)
 	}
@@ -47,5 +49,9 @@ VALUES ('old', 'old', 'fixture', 101, 'proactive', 'telegram:7', '{"accountId":"
 	var status string
 	if err := upgraded.QueryRowContext(ctx, `SELECT status FROM outbox_messages WHERE id = 'old'`).Scan(&status); err != nil || status != "revoked" {
 		t.Fatalf("legacy delivery status = %q, error = %v; want revoked", status, err)
+	}
+	var payload []byte
+	if err := upgraded.QueryRowContext(ctx, `SELECT payload FROM channel_webhook_inbox WHERE event_id = 'evt-1'`).Scan(&payload); err != nil || string(payload) != `{"update_id":1}` {
+		t.Fatalf("pending webhook payload = %q, error = %v; want preserved payload", payload, err)
 	}
 }

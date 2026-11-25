@@ -22,11 +22,10 @@ WHERE status = 'pending' AND peer <> '';
 UPDATE channel_commands SET completed = 1, delivered_at = unixepoch() * 1000,
     answer = CASE WHEN command = '/feedback' THEN '' ELSE answer END
 WHERE delivered_at IS NULL;
-DELETE FROM telegram_callbacks;
+DELETE FROM telegram_callbacks WHERE consumed_at IS NULL;
 DELETE FROM outbox_files WHERE outbox_id IS NULL AND submission_id IN (
     SELECT id FROM submissions WHERE origin LIKE 'telegram:%'
 );
-UPDATE channel_webhook_inbox SET payload = NULL WHERE payload IS NOT NULL;
 
 DROP TRIGGER revoke_deleted_telegram_outbox;
 DROP TRIGGER revoke_deleted_telegram_replies;
