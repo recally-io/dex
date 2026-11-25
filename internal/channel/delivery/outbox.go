@@ -20,6 +20,8 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
+const maxOutboxAttempts = 20
+
 func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error {
 	commands, err := m.q.ListChannelCommands(ctx, m.agentID)
 	if err != nil {
@@ -87,7 +89,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 				err = errors.New("feedback reply delivery failed")
 			}
 		}
-		if errors.Is(err, channel.ErrPermanent) {
+		if errors.Is(err, channel.ErrPermanent) || r.Attempts+1 >= maxOutboxAttempts {
 			if err := m.q.FailOutboxMessage(ctx, sqlc.FailOutboxMessageParams{ID: r.ID, Reason: err.Error()}); err != nil {
 				return err
 			}
@@ -177,12 +179,32 @@ func finalMessage(bot channel.Bot, body, reason string) []channel.Part {
 	}
 	runes := []rune(body)
 	for size := min(len(runes), 900); size > 0; size /= 2 {
-		text := strings.TrimSpace(string(runes[:size])) + "\n\nFull answer in Web."
+		text := closeUnclosedCodeFence(strings.TrimSpace(string(runes[:size]))) + "\n\nFull answer in Web."
 		if parts := bot.Parts(channel.Reply{Status: "done", Answer: text}); len(parts) == 1 {
 			return parts
 		}
 	}
 	return bot.Parts(channel.Reply{Status: "done", Answer: "Full answer in Web."})
+}
+
+func closeUnclosedCodeFence(s string) string {
+	var openFence string
+	for line := range strings.SplitSeq(s, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		if openFence == "" {
+			if strings.HasPrefix(trimmed, "```") {
+				openFence = "```"
+			} else if strings.HasPrefix(trimmed, "~~~") {
+				openFence = "~~~"
+			}
+		} else if strings.HasPrefix(trimmed, openFence) {
+			openFence = ""
+		}
+	}
+	if openFence != "" {
+		return s + "\n" + openFence
+	}
+	return s
 }
 
 func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.OutboxMessage, part channel.Part, receipt channel.Receipt) error {

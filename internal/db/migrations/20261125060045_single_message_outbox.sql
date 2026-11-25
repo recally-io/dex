@@ -119,9 +119,7 @@ DROP TABLE legacy_outbox_files;
 DROP TABLE legacy_outbox_messages;
 DROP TABLE channel_bindings;
 
-UPDATE telegram_settings
-SET options = json_remove(CASE WHEN options ->> 'preview' = 'off'
-    THEN json_set(options, '$.typing', json('false')) ELSE options END, '$.preview');
+UPDATE telegram_settings SET options = json_remove(options, '$.preview');
 
 CREATE INDEX outbox_messages_pending ON outbox_messages (agent_id, channel, peer) WHERE status = 'pending';
 CREATE INDEX outbox_messages_source ON outbox_messages (source_submission_id) WHERE source_submission_id IS NOT NULL;
@@ -255,4 +253,11 @@ BEGIN INSERT INTO cancel_unpaired_channel_work VALUES (OLD.agent_id, 'wechat'); 
 
 -- +goose Down
 -- Delivery state cannot be converted back to a multipart cursor safely.
-SELECT abs(-9223372036854775808);
+CREATE TEMP VIEW _single_message_outbox_no_downgrade AS SELECT 1 AS v;
+-- +goose StatementBegin
+CREATE TEMP TRIGGER _single_message_outbox_no_downgrade_trg INSTEAD OF INSERT ON _single_message_outbox_no_downgrade
+BEGIN
+    SELECT RAISE(ABORT, 'single-message outbox cannot be downgraded');
+END;
+-- +goose StatementEnd
+INSERT INTO _single_message_outbox_no_downgrade VALUES (1);

@@ -56,11 +56,12 @@ WHERE agent_id = 'fixture';`); err != nil {
 			t.Fatalf("%s = %s, want %s: %v", id, got, want, err)
 		}
 	}
-	var bindingTables, typing int
+	var bindingTables int
+	var options string
 	if err := upgraded.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE name = 'channel_bindings'`).Scan(&bindingTables); err != nil || bindingTables != 0 {
 		t.Fatalf("binding tables = %d: %v", bindingTables, err)
 	}
-	if err := upgraded.QueryRowContext(ctx, `SELECT options ->> 'typing' FROM telegram_settings WHERE agent_id = 'fixture'`).Scan(&typing); err != nil || typing != 0 {
-		t.Fatalf("typing = %d: %v", typing, err)
+	if err := upgraded.QueryRowContext(ctx, `SELECT options FROM telegram_settings WHERE agent_id = 'fixture'`).Scan(&options); err != nil || options != "{}" {
+		t.Fatalf("options = %q, want {}: %v", options, err)
 	}
 }
