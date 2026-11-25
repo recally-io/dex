@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -331,6 +332,24 @@ func TestUserBackToBackTelegramMessagesKeepFilesAndQuestionButtonsAndWebSteerCle
 	}
 	waitSubSettled(t, r, a1Receipt.ID)
 	waitSubSettled(t, r, a2Receipt.ID)
+
+	// Prove A1 and A2 actually merged into one QueueAll Run (both share the single answer "bash: a2",
+	// and A2 did not write a separate Outbox row).
+	a1Sub, err := r.q.GetSubmission(ctx, a1Receipt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a2Sub, err := r.q.GetSubmission(ctx, a2Receipt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(a1Sub.Answer.String, "bash: a2") || a2Sub.Answer.String != "bash: a2" {
+		t.Fatalf("expected A1 and A2 to share one QueueAll Run answer (bash: a2), got A1=%q A2=%q", a1Sub.Answer.String, a2Sub.Answer.String)
+	}
+	var a2Outbox int
+	if err := r.conn.QueryRowContext(ctx, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ?`, a2Receipt.ID).Scan(&a2Outbox); err != nil || a2Outbox != 0 {
+		t.Fatalf("A2 outbox rows = %d, err = %v; want 0 (A1 owns the shared Run outbox)", a2Outbox, err)
+	}
 
 	// Then A1 owns the Outbox row as kind=question, and the queued file is bound as pending.
 	var kind, status string
