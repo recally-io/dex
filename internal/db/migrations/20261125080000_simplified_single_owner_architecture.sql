@@ -1,26 +1,91 @@
 -- +goose Up
-DROP TRIGGER bind_telegram_insert;
-DROP TRIGGER bind_telegram_update;
-DROP TRIGGER bind_telegram_delete;
-DROP TRIGGER bind_feishu_insert;
-DROP TRIGGER bind_feishu_update;
-DROP TRIGGER bind_feishu_delete;
-DROP TRIGGER bind_wechat_insert;
-DROP TRIGGER bind_wechat_update;
-DROP TRIGGER bind_wechat_delete;
-DROP TRIGGER sync_channel_binding_addresses;
-DROP TRIGGER revoke_binding_deliveries;
-DROP TRIGGER seal_unbound_outbox;
-DROP VIEW sync_channel_bindings;
-DROP INDEX outbox_pending_binding;
-DROP INDEX submissions_channel_binding;
-ALTER TABLE submissions DROP COLUMN binding_id;
-ALTER TABLE channel_commands DROP COLUMN binding_id;
+-- Consolidated single-owner architecture migration (post v0.20.0-rc.6):
+-- 1. Retire Telegram group chats and seal their pending work.
+-- 2. Replace legacy per-platform revocation triggers with configured_channel_addresses pairing checks.
+-- 3. Rebuild outbox_messages as a strict single-message ledger and split out web_notifications.
+-- 4. Unify Inbound Inbox routing metadata (producer, reply_channel, reply_peer) on submissions.
+-- 5. Drop the retired channel_follow_ups state machine.
 
-DROP VIEW outbox_delivery_diagnostics;
-DROP TRIGGER release_outbox_files;
-DROP TRIGGER release_unanswered_outbox_files;
-DROP TRIGGER revoke_outbox_on_channel_result_revocation;
+-- 1. Retire Telegram group chats.
+-- Before group scopes, each group had a peer-keyed conversation in the agent store.
+-- Keep its native ID only so startup can isolate it before the Harness resumes.
+UPDATE conversations SET execution_scope = 'retired-telegram-legacy'
+WHERE execution_scope = '' AND channel_key LIKE 'telegram:-%';
+
+-- Keep the old routing key and native namespace as archive metadata. Native IDs
+-- are local to each store, so clearing the namespace would alias private IDs.
+UPDATE conversations
+SET archived_at = coalesce(archived_at, unixepoch() * 1000), abort_pending = 0
+WHERE execution_scope <> '';
+
+UPDATE submissions
+SET status = CASE WHEN status = 'pending' THEN 'unanswered' ELSE status END,
+    reason = CASE WHEN status = 'pending' THEN 'Telegram group retired' ELSE reason END,
+    settled_at = CASE WHEN status = 'pending' THEN unixepoch() * 1000 ELSE settled_at END,
+    delivered_at = coalesce(delivered_at, unixepoch() * 1000),
+    stop_requested = 0, channel_revoked = 1
+WHERE origin LIKE 'telegram:-%'
+   OR conversation_id IN (SELECT id FROM conversations WHERE execution_scope <> '');
+
+UPDATE outbox_messages SET status = 'revoked', error = 'Telegram group retired'
+WHERE status = 'pending' AND (
+    peer LIKE 'telegram:-%'
+    OR conversation_id IN (SELECT id FROM conversations WHERE execution_scope <> '')
+    OR source_submission_id IN (
+        SELECT id FROM submissions WHERE origin LIKE 'telegram:-%'
+           OR conversation_id IN (SELECT id FROM conversations WHERE execution_scope <> '')
+    )
+);
+
+UPDATE outbox_messages SET status = 'revoked', error = 'delivery predates channel binding'
+WHERE status = 'pending' AND peer <> '';
+
+UPDATE channel_commands SET completed = 1, delivered_at = unixepoch() * 1000,
+    answer = CASE WHEN command = '/feedback' THEN '' ELSE answer END
+WHERE delivered_at IS NULL;
+
+UPDATE telegram_album_members SET state = 'discarded'
+WHERE peer LIKE 'telegram:-%' AND state IN ('collecting', 'sealed');
+
+DELETE FROM telegram_callbacks WHERE consumed_at IS NULL;
+
+DELETE FROM outbox_files WHERE outbox_id IS NULL AND submission_id IN (
+    SELECT id FROM submissions WHERE origin LIKE 'telegram:%'
+);
+
+DELETE FROM main_turn_stops
+WHERE conversation_id IN (SELECT id FROM conversations WHERE execution_scope <> '');
+
+-- 2. Replace legacy revocation triggers with configured_channel_addresses.
+DROP TRIGGER IF EXISTS revoke_deleted_telegram_outbox;
+DROP TRIGGER IF EXISTS revoke_deleted_telegram_replies;
+DROP TRIGGER IF EXISTS revoke_changed_telegram_replies;
+DROP TRIGGER IF EXISTS revoke_deleted_feishu_outbox;
+DROP TRIGGER IF EXISTS revoke_changed_feishu_outbox;
+DROP TRIGGER IF EXISTS revoke_deleted_wechat_replies;
+DROP TRIGGER IF EXISTS revoke_changed_wechat_replies;
+DROP TRIGGER IF EXISTS revoke_deleted_telegram_targets;
+DROP TRIGGER IF EXISTS revoke_changed_telegram_targets;
+DROP TRIGGER IF EXISTS revoke_deleted_feishu_targets;
+DROP TRIGGER IF EXISTS revoke_changed_feishu_targets;
+DROP TRIGGER IF EXISTS revoke_deleted_wechat_targets;
+DROP TRIGGER IF EXISTS revoke_changed_wechat_targets;
+
+CREATE VIEW configured_channel_addresses AS
+SELECT s.agent_id, 'telegram' AS platform, substr(s.token, 1, instr(s.token, ':') - 1) AS account_id,
+       'telegram:' || CAST(u.value AS INTEGER) AS peer
+FROM telegram_settings s, json_each('[' || replace(json_quote(replace(s.allowed_users, ' ', '')), ',', '","') || ']') u
+WHERE CAST(u.value AS INTEGER) > 0 AND CAST(CAST(u.value AS INTEGER) AS TEXT) = u.value
+UNION ALL
+SELECT agent_id, 'feishu', app_id, 'feishu:' || owner_id FROM feishu_settings WHERE owner_id <> ''
+UNION ALL
+SELECT agent_id, 'wechat', bot_id, 'wechat:' || owner FROM wechat_settings WHERE owner <> '';
+
+-- 3. Single-message Outbox + web_notifications.
+DROP VIEW IF EXISTS outbox_delivery_diagnostics;
+DROP TRIGGER IF EXISTS release_outbox_files;
+DROP TRIGGER IF EXISTS release_unanswered_outbox_files;
+DROP TRIGGER IF EXISTS revoke_outbox_on_channel_result_revocation;
 ALTER TABLE outbox_files RENAME TO legacy_outbox_files;
 ALTER TABLE outbox_messages RENAME TO legacy_outbox_messages;
 
@@ -79,19 +144,6 @@ SELECT rowid, id, CASE WHEN dedup_key LIKE 'tool:%' THEN 'notify:' || substr(ded
     remote_ids,
     CASE
         WHEN status = 'delivered' AND skipped_part = 0 THEN 'sent'
-        WHEN status = 'pending' AND delivered_parts = 1 AND group_cursor = 0
-          AND json_array_length(nullif(rendered_parts, '')) = 1 AND skipped_part = 0
-          AND json_array_length(remote_ids) = 1 THEN 'sent'
-        WHEN status = 'pending' AND peer <> '' AND delivered_parts = 0 AND group_cursor = 0 AND group_fallback = 0
-          AND skipped_part = 0 AND (rendered_parts = '' OR (json_array_length(rendered_parts) = 1 AND
-            json_type(rendered_parts, '$[0].group') IS NULL))
-          AND (kind NOT IN ('reply', 'question') OR EXISTS (
-              SELECT 1 FROM submissions s WHERE s.id = o.source_submission_id AND s.kind = 'message'
-          ))
-          AND kind <> 'system_error'
-          AND NOT EXISTS (SELECT 1 FROM legacy_outbox_files f WHERE f.outbox_id = o.id)
-          AND EXISTS (SELECT 1 FROM channel_bindings b WHERE b.id = o.binding_id AND b.revoked_at IS NULL)
-          THEN 'pending'
         WHEN status = 'superseded' THEN 'superseded'
         ELSE 'failed'
     END,
@@ -117,7 +169,6 @@ CREATE TABLE outbox_files (
 INSERT INTO outbox_files SELECT * FROM legacy_outbox_files WHERE outbox_id IS NULL;
 DROP TABLE legacy_outbox_files;
 DROP TABLE legacy_outbox_messages;
-DROP TABLE channel_bindings;
 
 UPDATE telegram_settings SET options = json_remove(options, '$.preview');
 
@@ -251,13 +302,49 @@ CREATE TRIGGER cancel_wechat_outbox_on_delete AFTER DELETE ON wechat_settings
 BEGIN INSERT INTO cancel_unpaired_channel_work VALUES (OLD.agent_id, 'wechat'); END;
 -- +goose StatementEnd
 
+-- 4. Unify Inbound Inbox contract on submissions.
+ALTER TABLE submissions ADD COLUMN producer TEXT NOT NULL DEFAULT 'user' CHECK (producer IN ('user', 'sub_session', 'scheduler', 'plugin'));
+ALTER TABLE submissions ADD COLUMN reply_channel TEXT NOT NULL DEFAULT '';
+ALTER TABLE submissions ADD COLUMN reply_peer TEXT NOT NULL DEFAULT '';
+
+UPDATE submissions SET producer = CASE
+    WHEN kind = 'message' AND origin = 'task' THEN 'sub_session'
+    WHEN kind = 'message' AND origin IN ('automation', 'dream') THEN 'scheduler'
+    WHEN kind = 'task_result' AND (
+        result_child_id IS NOT NULL
+        OR id LIKE 'result:%'
+        OR id LIKE 'report:%'
+        OR id LIKE 'err:%'
+        OR id LIKE 'task:%:result'
+    ) THEN 'sub_session'
+    WHEN kind = 'task_result' AND (
+        id LIKE 'monitor:%'
+        OR id LIKE 'timer:%'
+        OR id LIKE 'background:%'
+        OR id LIKE 'routine:%'
+    ) THEN 'scheduler'
+    WHEN kind = 'task_result' AND id LIKE 'task-alert:%' THEN 'plugin'
+    WHEN kind = 'task_result' THEN 'plugin'
+    ELSE 'user'
+END;
+
+UPDATE submissions
+SET reply_channel = substr(origin, 1, instr(origin, ':') - 1),
+    reply_peer = substr(origin, instr(origin, ':') + 1)
+WHERE producer = 'user'
+    AND instr(origin, ':') > 1
+    AND instr(origin, ':') < length(origin);
+
+-- 5. Drop retired channel_follow_ups state machine.
+DROP TABLE IF EXISTS channel_follow_ups;
+
 -- +goose Down
--- Delivery state cannot be converted back to a multipart cursor safely.
-CREATE TEMP VIEW _single_message_outbox_no_downgrade AS SELECT 1 AS v;
+-- Single-message outbox and retired group state cannot be safely downgraded.
+CREATE TEMP VIEW _simplified_arch_no_downgrade AS SELECT 1 AS v;
 -- +goose StatementBegin
-CREATE TEMP TRIGGER _single_message_outbox_no_downgrade_trg INSTEAD OF INSERT ON _single_message_outbox_no_downgrade
+CREATE TEMP TRIGGER _simplified_arch_no_downgrade_trg INSTEAD OF INSERT ON _simplified_arch_no_downgrade
 BEGIN
-    SELECT RAISE(ABORT, 'single-message outbox cannot be downgraded');
+    SELECT RAISE(ABORT, 'simplified single-owner architecture migration cannot be downgraded');
 END;
 -- +goose StatementEnd
-INSERT INTO _single_message_outbox_no_downgrade VALUES (1);
+INSERT INTO _simplified_arch_no_downgrade VALUES (1);
