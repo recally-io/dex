@@ -261,7 +261,7 @@ channel. A completed run with a parent input sends one `task_result`, including
 when a user started an ordinary shared run. A pure user run sends none.
 Control uses the child conversation and native Answer entry as a unique key.
 In an ordinary shared run, the first parent input to settle owns
-`result:<turn ID>`. An opted-in delegation runs by itself and owns its result. A done native input without an Answer is an
+`result:<turn ID>`. A done native input without an Answer is an
 error. Each failed or interrupted parent input sends its own result; user inputs
 send none. A stopped, aborted or withdrawn input sends none. Result insertion
 and receipt settlement share a control transaction. Only an Answer key conflict

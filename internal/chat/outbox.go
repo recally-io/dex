@@ -136,8 +136,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 	return outboxID, nil
 }
 
-// ToolReportParent stages an opted-in final for settlement. Progress and ordinary
-// final reports still write a wake for the direct parent.
+// ToolReportParent writes a report wake for the direct parent session.
 func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a ReportParentArgs) (string, error) {
 	if strings.TrimSpace(a.Content) == "" {
 		return "", errors.New("session_report requires non-empty content")
