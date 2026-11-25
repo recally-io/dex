@@ -35,6 +35,7 @@ import {
   type ChannelId,
 } from "../components/channel-kit";
 import { FeishuChannel } from "./feishu";
+import { ExtensionCatalog } from "./extensions";
 import { TelegramOptionsFields } from "../components/telegram-options";
 import { TelegramManagedCreation, TelegramManagerSettings } from "../components/telegram-managed";
 
@@ -76,7 +77,7 @@ function ChannelsSection({ settings }: { settings: Settings }) {
   });
 
   return (
-    <Section title="Connections" caption="Each channel talks to the same bot.">
+    <Section title="Channels" caption="Each channel talks to the same bot.">
       <Panel>
         <div className="divide-y divide-border">
           <ChannelRow
@@ -98,7 +99,7 @@ function ChannelsSection({ settings }: { settings: Settings }) {
         <div className="border-t border-border p-4">
           <Field
             label="Primary notification channel"
-            hint="Routines can follow this default or choose another authorized recipient."
+            hint="Automations can follow this default or choose another authorized recipient."
           >
             {({ id, describedBy }) => (
               <Select
@@ -128,14 +129,15 @@ function ChannelsSection({ settings }: { settings: Settings }) {
   );
 }
 
-export function ChannelsPage() {
+export function BotIntegrationsPage() {
   return (
     <FramedPage
-      title="Channels"
-      description="Private channel chats share Main."
-      toolbar={<BotSettingsSwitcher segment="channels" />}
+      title="Integrations"
+      description="Connect this bot to private channels and MCP servers. Channel chats share Main."
+      toolbar={<BotSettingsSwitcher segment="integrations" />}
     >
       <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
+      <ExtensionCatalog section="integrations" />
     </FramedPage>
   );
 }

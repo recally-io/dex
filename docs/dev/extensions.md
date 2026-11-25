@@ -121,7 +121,7 @@ tools to the next model call. It does not expand the session's permissions.
 
 ### Secret vault
 
-Use Settings → Environment to set shared values. Use a bot's Tools page to
+Use Settings → Secrets to set shared values. Use a bot's Secrets page to
 set values for that bot. An agent entry overrides a shared entry with the same
 name. `GET /api/agents/{agentId}/vault` returns names, scopes, and last change
 times. `PUT` sets a value and `DELETE` removes it. Neither returns a value.
@@ -205,7 +205,7 @@ pre-registered client. Dex does not serve Client ID Metadata Documents.
 
 Register `<dex origin>/mcp/oauth/callback` with the provider. Open dex over
 HTTPS or on loopback HTTP. Select **Authorize** or **Reauthorize** on the
-connection in Tools. Dex probes the MCP endpoint without credentials. Dex
+connection in the bot's Integrations page. Dex probes the MCP endpoint without credentials. Dex
 uses the protected resource metadata and then discovers the issuer with
 RFC 8414 or OIDC. Dex uses a challenged scope when present. Otherwise dex
 uses `oauth.scope` or the scopes in the protected resource metadata, in that
@@ -228,10 +228,10 @@ or URL cannot use the old grant. The server reads the current pre-registered
 secret from its vault entry at exchange and refresh. To preserve grants,
 back up the private vault files with the other vault files.
 
-A successful callback returns to Tools and marks the affected connections for
+A successful callback returns to the bot's Integrations page through the old `/extensions` URL. It marks the affected connections for
 idle reload. Dex refreshes an expired token when a refresh token is available.
 On HTTP 401, dex attempts at most one refresh and retry. If the grant no longer
-works, Tools shows **Reauthorize**. Dex does not fall back to static headers.
+works, Integrations shows **Reauthorize**. Dex does not fall back to static headers.
 
 ### Reload
 

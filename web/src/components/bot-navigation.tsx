@@ -14,7 +14,7 @@ import { ChatProject } from "./chat-project";
 import { Button, buttonVariants } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
-const settingsSegments = ["agent", "instructions", "channels", "extensions"];
+const settingsSegments = ["agent", "skills", "integrations", "secrets", "channels"];
 
 /** Opens a session with the current project. The server reuses the newest empty session. */
 function useNewChat(cwd: string, created: (chat: Chat) => void) {
@@ -49,7 +49,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
   const routines = activity?.enabledAutomations ?? 0;
   const failed = activity?.routineFailed ?? false;
 
-  const routineLabel = ["Routines", routines ? `${routines} on` : "", failed ? "latest run failed" : ""]
+  const routineLabel = ["Automations", routines ? `${routines} on` : "", failed ? "latest run failed" : ""]
     .filter(Boolean)
     .join(", ");
 
@@ -72,7 +72,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
         render={<Link to="/a/$agentId/automations" params={{ agentId }} />}
         aria-label={routineLabel}
       >
-        <CalendarClock size={15} /> Routines
+        <CalendarClock size={15} /> Automations
         {routines ? <span className="text-xs tabular-nums">{routines}</span> : null}
         {failed ? (
           <span role="img" aria-label="Latest routine run failed" className="size-1.5 rounded-full bg-red" />
@@ -82,7 +82,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
         render={<Link to="/a/$agentId/agent" params={{ agentId }} />}
         aria-label={settingsLabel}
       >
-        <Settings size={15} /> Bot settings
+        <Settings size={15} /> Settings
         {dirty ? (
           <span aria-label="Unsaved instructions draft" className="text-orange">
             Draft

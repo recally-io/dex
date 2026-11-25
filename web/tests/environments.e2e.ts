@@ -1,24 +1,18 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 
-test("adds a Remote runner and copies its command in the same dialog", async ({ app, browser, screen }) => {
-  await app.open("/settings/environment");
+test("adds an Outbound Machine and copies its command in the same dialog", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await app.open("/settings/runners");
 
-  // The data directory survives a run, so start from an empty list.
-  const baseUrl = new URL(await browser.url()).origin;
-  const res = await fetch(`${baseUrl}/api/settings/environments`);
-  const body: { environments: { id: string }[] } = await res.json();
+  if (new URL(await browser.url()).hostname !== "127.0.0.1") throw new Error("Use the local test server");
 
-  await Promise.all(
-    body.environments.map((env) =>
-      fetch(`${baseUrl}/api/settings/environments/${env.id}`, { method: "DELETE" }),
-    ),
-  );
-
-  await app.open("/settings/environment");
-  await screen.getByRole("button", "Add environment").tap();
-  await screen.getByRole("radio", "Another machine").tap();
-  await screen.getByRole("radio", "Remote").tap();
+  await screen.getByRole("button", "Add Runner").tap();
+  await screen.getByRole("radio", "Machine").tap();
+  await screen.getByRole("radio", "Outbound").tap();
 
   const name = `VM ${Date.now()}`;
   const dialog = screen.getByRole("dialog");
@@ -29,7 +23,7 @@ test("adds a Remote runner and copies its command in the same dialog", async ({ 
 
   // The test server is plain HTTP on loopback, so Dex refuses to hand out a command that a
   // machine could not use, and it names the fix instead. The dialog stays as it was.
-  await expect(screen.getByRole("heading", { name: "Add execution environment" })).toBeVisible();
+  await expect(screen.getByRole("heading", { name: "Add Runner" })).toBeVisible();
   await expect(dialog.getByLabel("Name")).toBeDisabled();
   await expect(dialog.getByText(/Open Dex at the HTTPS address/)).toBeVisible();
   await expect(dialog.getByRole("button", "Get install command")).toBeDisabled();
@@ -44,7 +38,7 @@ for (const [action, desc] of [
   ["clears", ""],
 ] as const) {
   test(`${action} a Runner description in Settings`, async ({ app, browser, screen }) => {
-    const path = "/settings/environment";
+    const path = "/settings/runners";
     await app.open(path);
 
     const api = new URL("/api/settings/environments", await browser.url());

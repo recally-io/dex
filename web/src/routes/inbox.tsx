@@ -155,7 +155,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
 
   return (
     <FramedPage
-      headerTitle="Routine result"
+      headerTitle="Automation result"
       title={item?.automationName ?? "Result"}
       description={item ? `${item.agentName} · ${new Date(item.createdAt).toLocaleString()}` : undefined}
     >
@@ -168,7 +168,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
               params={{ agentId: item.agentId }}
               className="text-sm underline"
             >
-              Routines
+              Automations
             </Link>
           ) : null
         }
@@ -194,7 +194,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
                 params={{ agentId: item.agentId, automationId: item.automationId }}
                 className={buttonVariants({ variant: "secondary" })}
               >
-                Open routine
+                Open automation
               </Link>
               {item.chatId ? (
                 <Link

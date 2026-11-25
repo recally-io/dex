@@ -72,17 +72,17 @@ export function ChannelFrame({
     <FramedPage
       eyebrow={
         <Link
-          to="/a/$agentId/channels"
+          to="/a/$agentId/integrations"
           params={{ agentId }}
           className="hover:text-foreground hover:underline"
         >
-          Channels
+          Integrations
         </Link>
       }
       title={channelInfo[channel].name}
       badge={state ? <ChannelState channel={channel} state={state} /> : null}
       description={description}
-      toolbar={<BotSettingsSwitcher segment="channels" />}
+      toolbar={<BotSettingsSwitcher segment="integrations" />}
     >
       {children}
     </FramedPage>
@@ -115,7 +115,7 @@ export function Notifications({ channel }: { channel: ChannelId }) {
   const own = targets.data?.targets.filter((target) => target.platform === channel) ?? [];
 
   return (
-    <Section title="Notifications" caption="Routines send results to the primary channel.">
+    <Section title="Notifications" caption="Automations send results to the primary channel.">
       <Panel>
         {own.length ? (
           <ul className="divide-y divide-border">

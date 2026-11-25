@@ -39,11 +39,13 @@ export function detectSandboxPreset(cfg: EnvironmentConfig): SandboxPreset {
 // environmentKindBadge names how Dex reaches the environment. It never shows the stored
 // kind, because a kind names our transport and the user thinks in machines.
 export function environmentKindBadge(env: Pick<Environment, "kind" | "config">): string {
-  if (env.kind === "pi-env") return "SSH";
+  if (env.kind === "pi-env") return "Machine · SSH";
 
-  if (env.kind === "runner") return "Remote";
+  if (env.kind === "runner") return "Machine · Outbound";
 
-  return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "E2B sandbox";
+  const preset = detectSandboxPreset(env.config);
+
+  return `Sandbox · ${{ cloud: "E2B", local: "Local Docker / VM", custom: "Custom" }[preset]}`;
 }
 
 export function environmentOptionLabel(env: Pick<Environment, "name" | "kind" | "config">): string {

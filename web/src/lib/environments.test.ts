@@ -8,8 +8,9 @@ import {
   machineInstallCommand,
 } from "./environments";
 
-test("environment labels avoid internal pi-env jargon and distinguish local sandboxes", () => {
+test("Runner labels name the type and connection without exposing the stored kind", () => {
   const ssh = { name: "MacMini", kind: "pi-env" as const, config: { host: "macmini", user: "ops" } };
+  const outbound = { name: "Build host", kind: "runner" as const, config: {} };
   const cloud = { name: "Cloud", kind: "e2b" as const, config: { template: "base" } };
 
   const localDocker = {
@@ -24,13 +25,14 @@ test("environment labels avoid internal pi-env jargon and distinguish local sand
     config: { apiUrl: "https://sandbox.internal:8443" },
   };
 
-  expect(environmentKindBadge(ssh)).toBe("SSH");
-  expect(environmentKindBadge(cloud)).toBe("E2B sandbox");
-  expect(environmentKindBadge(localDocker)).toBe("Local sandbox");
-  expect(environmentKindBadge(remoteCustom)).toBe("E2B sandbox");
+  expect(environmentKindBadge(ssh)).toBe("Machine · SSH");
+  expect(environmentKindBadge(outbound)).toBe("Machine · Outbound");
+  expect(environmentKindBadge(cloud)).toBe("Sandbox · E2B");
+  expect(environmentKindBadge(localDocker)).toBe("Sandbox · Local Docker / VM");
+  expect(environmentKindBadge(remoteCustom)).toBe("Sandbox · Custom");
 
-  expect(environmentOptionLabel(ssh)).toBe("MacMini (SSH)");
-  expect(environmentOptionLabel(localDocker)).toBe("Docker Gateway (Local sandbox)");
+  expect(environmentOptionLabel(ssh)).toBe("MacMini (Machine · SSH)");
+  expect(environmentOptionLabel(localDocker)).toBe("Docker Gateway (Sandbox · Local Docker / VM)");
   expect(environmentBotHint(ssh)).toBe("Runs tools on MacMini over SSH (ops@macmini).");
 
   expect(detectSandboxPreset(cloud.config)).toBe("cloud");

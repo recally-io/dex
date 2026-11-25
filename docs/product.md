@@ -19,17 +19,15 @@ to read in an afternoon.
   starts at login. Optional daily updates wait until agent work is idle.
   Loopback access needs no token by default. Other listening addresses require
   an access token. See [network access](../README.md#access-from-other-devices).
-- Bot settings in the web UI: name, model, thinking level, instructions,
-  channels, and routines with their runs. The name has 1 to 40 characters
-  after spaces are trimmed. Providers, Environment, and About are global pages.
-  Global pages under `/settings/general`, `/settings/providers`,
-  `/settings/environment`, `/settings/archived`, and `/settings/about` show no
-  bot (redirects keep `/settings`, `/providers`, `/environment`, `/archived`,
-  `/about`, and `/secrets` working). `/settings/general` sets the primary model,
-  thinking level, fallback model, and execution environment of the `default`
-  bot, which new bots copy. A bot page changes only that bot.
-  Tool keys can be set for one bot in its Tools tab, or for all bots on the
-  Environment page.
+- Bot settings have four pages: General, Skills, Integrations, and Secrets.
+  General sets the bot's name, models, thinking level, default Runner, and
+  instructions. The name has 1 to 40 characters after spaces are trimmed.
+  Integrations holds channels and MCP servers. A bot page changes only that bot.
+  Global Settings has General, Providers, Runners, Secrets, Integrations,
+  Archived, and About. General sets the primary model, thinking level, fallback
+  model, and Runner of the `default` bot, which new bots copy. Global
+  Integrations manages external sources. Global Secrets holds shared Vault
+  entries and 1Password. Old settings URLs still work.
   The CLI manages the service address, data directory, and update policy.
 - Several agents for one owner, each with a name, primary model, thinking
   level, optional fallback model, instructions, conversations, automations, and
@@ -61,8 +59,8 @@ to read in an afternoon.
   for Inbox items and blue for active sessions. Orange takes priority. New bot comes after the bots.
   The sidebar footer opens global Settings and About. A red dot marks provider
   errors. The page header names the bot and the open page. On desktop, its right
-  side shows New session, Sessions, Routines, and Bot settings as direct controls.
-  Routines keeps its enabled count and failure mark. Bot settings keeps its
+  side shows New session, Sessions, Automations, and Bot settings as direct controls.
+  Automations keeps its enabled count and failure mark. Bot settings keeps its
   instructions draft mark. On a phone, a Menu button holds these same actions.
   Main has no session settings button; Bot settings edits its default model and
   thinking level. If Main has saved overrides from an older version, Bot settings
@@ -85,7 +83,7 @@ to read in an afternoon.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
   URLs still work. `/needs-you` opens Inbox and `/work` opens Board.
-  `/automations` opens the default bot's Routines page.
+  `/automations` opens the default bot's Automations page.
   An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
@@ -171,7 +169,7 @@ to read in an afternoon.
   session's Bash access and queues a prompt when its check output changes.
   The user can list and cancel Monitors in the chat activity panel. Old
   scheduled Timers appear as one-run Monitors after an upgrade.
-- Routines: long-lived automation. In Main or a writable Chat, the
+- Automations: long-lived automation. In Main or a writable Chat, the
   owner can ask the agent to list, create, inspect, update, pause, resume, or
   run a routine. The agent can read the 10 most recent run results and their
   transcript references. These tools use the current bot; they cannot manage another bot's
@@ -263,7 +261,7 @@ the run, like in any Chat. The user can change its model and project. Its result
 in the parent stays unchanged. Automation transcripts stay read-only.
 Main stays the default view. The header of a Chat session or a child session
 names Main before its title. The header of an automation transcript names
-Routines before its title.
+Automations before its title.
 
 Inbox (`/inbox`) shows items the owner can act on across bots. It lists the
 active unanswered question of each session, unhandled failed or changed
@@ -316,7 +314,7 @@ Result details show the outcome, routine, bot, time, summary, and run transcript
 Continue in chat opens a writable Chat for that bot, sets the routine's current
 project directory, and sends a first message that quotes the stored result
 and exact run reference. Routine history shows outcome dots, summaries,
-duplicate marks, and links to saved results. The Routines
+duplicate marks, and links to saved results. The Automations
 entry in the header shows a red dot when an enabled routine's latest run failed.
 
 When the main agent starts background work, it continues independent local
@@ -378,10 +376,10 @@ After a dex restart, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first
 time. Cancelled execution stays cancelled. A dex restart does not prove that old
 tool processes ended. Before another execution, the main agent must check prior
-artifacts and side effects. In the built-in **This computer** (`local`) environment, tools run on
-the host without a sandbox. The Environment page configures remote **SSH Machine**
-(`pi-env`) and **Sandbox** (`e2b`) targets without showing internal driver names
-in the UI. Remote bots execute file, shell, and background tools remotely with
+artifacts and side effects. In the built-in **Local** Runner, tools run on the
+host without a sandbox. Settings → Runners manages **Machine** Runners with
+**SSH** or **Outbound** connections and **Sandbox** Runners. Outbound uses
+`dex-agent`. Stored kinds and API paths stay the same. Remote bots execute file, shell, and background tools remotely with
 the remote environment plus the variables that a call needs. Vault references
 resolve on the control host. The `memory_*` tools stay on `<data dir>/memory`
 on that host. SSH machines use the
@@ -472,20 +470,20 @@ contains no vault secret names or values. `secret_list` returns secret names
 and metadata only.
 
 Tools start from the user's login shell environment, so a value that the
-shell exports reaches every bot. The Environment page can also store
+shell exports reaches every bot. Global Secrets can also store
 1Password credentials for the `op` CLI: a service account token, or a
 Connect host and token. When `op` is installed, bots read secrets with
 `op read` when a command needs them. dex does not read the secrets.
 
-The Tools tab lets the user set and delete vault secrets for one bot. The
-Environment page lets the user set and delete shared secrets. A bot secret with
+A bot's Secrets page lets the owner set or delete its vault entries. Global
+Secrets holds shared entries. A bot secret with
 the same name wins. Values are write-only and encrypted. A bot can pass
 `vault:NAME` in the `env` of Bash, a Monitor, or an MCP declaration. Changes
 apply when the affected agent reloads. dex ignores old `.env` files. The old
-`/secrets` address opens the Environment page.
+`/secrets` address opens global Secrets.
 
-The Tools tab also shows the level directories, skills, MCP servers, and
-configuration warnings. The automatic reload
+Bot Settings → Skills shows file levels and skills. Bot Settings → Integrations
+shows MCP servers. Both show configuration warnings. The automatic reload
 requires all agents to be idle before it replaces the selected agent's execution
 resources and MCP connections. After that idle check succeeds, other agents
 can start work while Reload continues. Invalid configuration for the selected

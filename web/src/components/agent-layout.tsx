@@ -18,11 +18,12 @@ import { cn } from "../lib/utils";
 
 /** The name of each page under a bot that is not a chat. */
 const pageNames = new Map([
-  ["automations", "Routines"],
+  ["automations", "Automations"],
   ["agent", "Settings"],
-  ["instructions", "Settings"],
+  ["skills", "Settings"],
+  ["integrations", "Settings"],
+  ["secrets", "Settings"],
   ["channels", "Settings"],
-  ["extensions", "Settings"],
   ["sessions", "Sessions"],
 ]);
 
