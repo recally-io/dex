@@ -101,7 +101,7 @@ func (q *Queries) GetWorkTaskToolOperation(ctx context.Context, key string) (Wor
 
 const hasWorkTaskBotExecution = `-- name: HasWorkTaskBotExecution :one
 SELECT EXISTS (SELECT 1 FROM task_executions WHERE task_id = ?1 AND bot_id = ?2
-  AND (CAST(?3 AS INTEGER) = 0 OR (kind = 'dex_session' AND conversation_id = ?3)))
+  AND kind = 'dex_session' AND conversation_id = CAST(?3 AS INTEGER))
 `
 
 type HasWorkTaskBotExecutionParams struct {
@@ -180,12 +180,17 @@ SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t
 FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
 LEFT JOIN task_executions s ON s.task_id = t.id AND s.kind = 'dex_session' AND s.is_primary = 1
 WHERE t.assignee_bot_id = ?1 AND a.archived_at IS NULL AND (t.status NOT IN ('done', 'cancelled') OR ?2)
+AND (CAST(?3 AS INTEGER) = 0 OR EXISTS (
+  SELECT 1 FROM task_executions e WHERE e.task_id = t.id AND e.bot_id = t.assignee_bot_id
+    AND e.kind = 'dex_session' AND e.conversation_id = ?3
+))
 ORDER BY t.updated_at DESC, t.id DESC LIMIT 50
 `
 
 type ListAgentWorkTasksParams struct {
-	AgentID       string      `json:"agent_id"`
-	IncludeClosed interface{} `json:"include_closed"`
+	AgentID             string      `json:"agent_id"`
+	IncludeClosed       interface{} `json:"include_closed"`
+	ChildConversationID int64       `json:"child_conversation_id"`
 }
 
 type ListAgentWorkTasksRow struct {
@@ -209,7 +214,7 @@ type ListAgentWorkTasksRow struct {
 }
 
 func (q *Queries) ListAgentWorkTasks(ctx context.Context, arg ListAgentWorkTasksParams) ([]ListAgentWorkTasksRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAgentWorkTasks, arg.AgentID, arg.IncludeClosed)
+	rows, err := q.db.QueryContext(ctx, listAgentWorkTasks, arg.AgentID, arg.IncludeClosed, arg.ChildConversationID)
 	if err != nil {
 		return nil, err
 	}

@@ -73,8 +73,7 @@ WHERE q.id = @question_id AND q.conversation_id = @conversation_id;
 
 -- name: ListWorkTaskQuestionBlockers :many
 SELECT q.id, q.text, CAST(CASE WHEN c.agent_id = @assignee_bot_id AND c.channel_key = 'main' THEN 1 + (
-  SELECT count(*) FROM questions prior JOIN work_task_inputs pi ON pi.submission_id = prior.source_submission_id
-  JOIN submissions ps ON ps.id = prior.source_submission_id
+  SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id
   WHERE prior.status = 'open' AND ps.status = 'done' AND prior.conversation_id = q.conversation_id
     AND (prior.queued, prior.rowid) < (q.queued, q.rowid)
 ) ELSE 0 END AS INTEGER) AS queue_position

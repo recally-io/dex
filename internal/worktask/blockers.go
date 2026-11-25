@@ -23,6 +23,9 @@ type Blocker struct {
 // ComputeBlockers derives the current blockers without changing the Task.
 // Pass snapshot queries when reading the Task and blockers together.
 func ComputeBlockers(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) ([]Blocker, error) {
+	if !IsOpenStatus(task.Status) {
+		return nil, nil
+	}
 	waits, err := q.ListUnresolvedWorkTaskWaits(ctx, task.ID)
 	if err != nil {
 		return nil, err

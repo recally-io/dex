@@ -55,6 +55,16 @@ func TestUserAloneChangesTaskLifecycle(t *testing.T) {
 	if _, err := s.Update(ctx, call("alert", "2b"), WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "cancelled"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a Task alert cancelled the Task: %v", err)
 	}
+	if _, err := s.Update(ctx, call("alert", "rename"), WorkTaskUpdateArgs{ID: task.ID, Title: "From an alert"}); !errors.Is(err, worktask.ErrForbidden) {
+		t.Fatalf("a Task alert rename error = %v, want ErrForbidden", err)
+	}
+	if _, err := conn.ExecContext(ctx, `INSERT INTO conversations (id, agent_id, channel_key, created_at, parent_id)
+		VALUES (2, 'default', 'chat:child', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(ctx, call("alert", "link"), WorkTaskUpdateArgs{ID: task.ID, Session: "2"}); !errors.Is(err, worktask.ErrForbidden) {
+		t.Fatalf("a Task alert link error = %v, want ErrForbidden", err)
+	}
 	var notified []int64
 	tasks.SetOnEntry(func(id int64) { notified = append(notified, id) })
 	if _, err := s.Append(ctx, call("alert", "2c"), WorkTaskAppendArgs{ID: task.ID, Content: "Note from a source alert"}); !errors.Is(err, worktask.ErrForbidden) {
@@ -84,5 +94,34 @@ func TestUserAloneChangesTaskLifecycle(t *testing.T) {
 	done, err := s.Update(ctx, call("owner", "6"), WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "completed"})
 	if err != nil || done.Lifecycle != "completed" {
 		t.Fatalf("the owner could not complete the Task: %+v, %v", done, err)
+	}
+
+	// A user can create a Task from a top-level Chat, but a child cannot act as that Chat.
+	if _, err := conn.ExecContext(ctx, `INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at, parent_id)
+		VALUES (3, 'default', 'chat:standalone', 8, 1, NULL), (4, 'default', 'chat:nested', 9, 1, 3)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, content, status, created_at, kind, origin, producer)
+		VALUES ('chat', 3, 'x', 'pending', 1, 'message', 'web', 'user'), ('child', 4, 'x', 'pending', 1, 'message', 'web', 'user')`); err != nil {
+		t.Fatal(err)
+	}
+	standalone, child := call("chat", "chat"), call("child", "child")
+	standalone.ConversationID, child.ConversationID = 8, 9
+	created, err := s.New(ctx, standalone, WorkTaskNewArgs{Title: "From a Chat"})
+	if err != nil {
+		t.Fatalf("top-level Chat could not create a Task: %v", err)
+	}
+	if _, err := s.New(ctx, child, WorkTaskNewArgs{Title: "From a child"}); !errors.Is(err, worktask.ErrForbidden) {
+		t.Fatalf("child create error = %v, want ErrForbidden", err)
+	}
+	if list, err := s.List(ctx, child, WorkTaskListArgs{}); err != nil || len(list) != 0 {
+		t.Fatalf("unlinked child list = %+v, %v; want no Tasks", list, err)
+	}
+	standalone.Key += "/link"
+	if _, err := s.Update(ctx, standalone, WorkTaskUpdateArgs{ID: created.ID, Session: "4"}); err != nil {
+		t.Fatalf("top-level Chat could not link its child: %v", err)
+	}
+	if list, err := s.List(ctx, child, WorkTaskListArgs{}); err != nil || len(list) != 1 || list[0].ID != created.ID {
+		t.Fatalf("linked child list = %+v, %v; want only %s", list, err, created.ID)
 	}
 }

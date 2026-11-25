@@ -91,13 +91,6 @@ func fromUser(source sqlc.Submission) bool {
 	return source.Kind == "message" && chat.UserOrigin(source.Origin)
 }
 
-func taskActor(conv sqlc.Conversation) worktask.Actor {
-	if conv.ParentID.Valid {
-		return worktask.SessionBot(conv.AgentID, conv.ID)
-	}
-	return worktask.Bot(conv.AgentID)
-}
-
 func taskOrigin(source sqlc.Submission) worktask.Origin {
 	switch {
 	case fromUser(source):
@@ -115,10 +108,15 @@ func (s *Service) List(ctx context.Context, c engine.TaskContext, a WorkTaskList
 	if a.Lifecycle != "" && a.Lifecycle != "open" && a.Lifecycle != "all" {
 		return nil, invalid("lifecycle is open or all")
 	}
-	if _, _, err := caller(ctx, s.q, c); err != nil {
+	conv, _, err := caller(ctx, s.q, c)
+	if err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListAgentWorkTasks(ctx, sqlc.ListAgentWorkTasksParams{AgentID: c.AgentID, IncludeClosed: a.Lifecycle == "all"})
+	params := sqlc.ListAgentWorkTasksParams{AgentID: c.AgentID, IncludeClosed: a.Lifecycle == "all"}
+	if conv.ParentID.Valid {
+		params.ChildConversationID = conv.ID
+	}
+	rows, err := s.q.ListAgentWorkTasks(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +228,7 @@ func readableTask(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, 
 	if err != nil {
 		return task, notFound(err)
 	}
-	allowed, err := worktask.CanRead(ctx, q, taskActor(conv), task)
+	allowed, err := worktask.CanRead(ctx, q, worktask.BotInConversation(conv), task)
 	if err == nil && !allowed {
 		err = notFound(sql.ErrNoRows)
 	}
@@ -302,7 +300,7 @@ func (s *Service) New(ctx context.Context, c engine.TaskContext, a WorkTaskNewAr
 		if !fromUser(source) {
 			return WorkTaskInfo{}, invalid("create a Task only for a user request; this run started from %s", source.Kind)
 		}
-		task, err := l.CreateTask(ctx, taskActor(conv), taskOrigin(source), worktask.CreateTaskParams{
+		task, err := l.CreateTask(ctx, worktask.BotInConversation(conv), taskOrigin(source), worktask.CreateTaskParams{
 			AssigneeBotID: conv.AgentID, Title: title, Note: note,
 		}, now)
 		if err != nil {
@@ -322,7 +320,7 @@ func (s *Service) Append(ctx context.Context, c engine.TaskContext, a WorkTaskAp
 		if err != nil {
 			return WorkTaskEntryInfo{}, err
 		}
-		entry, err := l.PostEntry(ctx, taskActor(conv), taskOrigin(source), task, worktask.PostEntryParams{Kind: worktask.KindNote, Content: content}, now)
+		entry, err := l.PostEntry(ctx, worktask.BotInConversation(conv), taskOrigin(source), task, worktask.PostEntryParams{Kind: worktask.KindNote, Content: content}, now)
 		if err != nil {
 			return WorkTaskEntryInfo{}, err
 		}
@@ -350,29 +348,44 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a WorkTaskUp
 		return WorkTaskInfo{}, invalid("give at least one field to change")
 	}
 	return mutate(ctx, s, c, "update", func(q *sqlc.Queries, l *worktask.Ledger, conv sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskInfo, error) {
-		task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: a.ID, AgentID: c.AgentID})
+		task, err := readableTask(ctx, q, conv, a.ID)
 		if err != nil {
-			return WorkTaskInfo{}, notFound(err)
+			return WorkTaskInfo{}, err
 		}
-		if a.Lifecycle != "" && a.Lifecycle != worktask.LegacyLifecycle(task.Status) {
-			if !fromUser(source) {
-				return WorkTaskInfo{}, invalid("only the user can complete, cancel, or reopen a Task; this run started from %s", source.Kind)
+		actor, origin := worktask.BotInConversation(conv), taskOrigin(source)
+		changeLifecycle := a.Lifecycle != "" && a.Lifecycle != worktask.LegacyLifecycle(task.Status)
+		rename := title != "" && title != task.Title
+		if changeLifecycle && !fromUser(source) {
+			return WorkTaskInfo{}, invalid("only the user can complete, cancel, or reopen a Task; this run started from %s", source.Kind)
+		}
+		if changeLifecycle || rename {
+			allowed, err := worktask.CanWrite(ctx, q, actor, origin, task, worktask.ActionTransition)
+			if err != nil {
+				return WorkTaskInfo{}, err
 			}
+			if !allowed {
+				return WorkTaskInfo{}, worktask.ErrForbidden
+			}
+		}
+		if changeLifecycle {
 			if task, err = l.SetLegacyLifecycle(ctx, task, a.Lifecycle, now); err != nil {
 				return WorkTaskInfo{}, err
 			}
 		}
-		if title != "" && title != task.Title {
-			if task, err = l.Rename(ctx, taskActor(conv), task, title, now); err != nil {
+		if rename {
+			if task, err = l.Rename(ctx, actor, task, title, now); err != nil {
 				return WorkTaskInfo{}, err
 			}
 		}
 		if a.Session != "" {
-			child, err := childOf(ctx, q, conv, a.Session)
+			childID, err := strconv.ParseInt(a.Session, 10, 64)
 			if err != nil {
+				return WorkTaskInfo{}, invalid("session is the ID of a child session of this conversation")
+			}
+			if err := worktask.AuthorizeSessionLink(ctx, q, actor, origin, task, childID); err != nil {
 				return WorkTaskInfo{}, err
 			}
-			if err := l.LinkSession(ctx, taskActor(conv), task, child.ID, a.Primary, now); err != nil {
+			if err := l.LinkSession(ctx, actor, task, childID, a.Primary, now); err != nil {
 				return WorkTaskInfo{}, err
 			}
 			if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {
@@ -383,25 +396,12 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a WorkTaskUp
 	})
 }
 
-// childOf accepts only a child session of the caller, as session_send does.
-func childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id string) (sqlc.Conversation, error) {
-	n, err := strconv.ParseInt(id, 10, 64)
-	if err != nil {
-		return sqlc.Conversation{}, invalid("session is the ID of a child session of this conversation")
-	}
-	child, err := q.GetConversation(ctx, n)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (!child.ParentID.Valid || child.ParentID.Int64 != parent.ID) {
-		return child, invalid("session %s is not a child session of this conversation", id)
-	}
-	return child, err
-}
-
 // Link writes the link of one plugin tool call with its replay record. A wait starts at the call time.
 func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID string, l worktask.Link) (WorkTaskInfo, error) {
 	return mutate(ctx, s, c, tool, func(q *sqlc.Queries, ledger *worktask.Ledger, conv sqlc.Conversation, _ sqlc.Submission, now int64) (WorkTaskInfo, error) {
-		task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: c.AgentID})
+		task, err := readableTask(ctx, q, conv, taskID)
 		if err != nil {
-			return WorkTaskInfo{}, notFound(err)
+			return WorkTaskInfo{}, err
 		}
 		n, err := q.LinkWorkTaskObject(ctx, sqlc.LinkWorkTaskObjectParams{AgentID: c.AgentID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key})
 		if err != nil {
@@ -422,7 +422,7 @@ func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID s
 				return WorkTaskInfo{}, err
 			}
 		}
-		if err := ledger.RecordAssociation(ctx, taskActor(conv), task, "Linked "+l.Name, now); err != nil {
+		if err := ledger.RecordAssociation(ctx, worktask.BotInConversation(conv), task, "Linked "+l.Name, now); err != nil {
 			return WorkTaskInfo{}, err
 		}
 		if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {

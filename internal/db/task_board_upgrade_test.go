@@ -118,6 +118,12 @@ func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 	assertBoard(conn)
 	assertTaskBoardNewWrites(t, conn)
 
+	// Keep wake receipts through downgrade without treating them as channel replies.
+	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, kind, content, status, created_at, delivered_at)
+		VALUES ('undelivered-wake', 1, 'task_wake', '', 'done', 60, NULL),
+		       ('delivered-wake', 2, 'task_wake', '', 'done', 60, 61)`); err != nil {
+		t.Fatal(err)
+	}
 	// When Goose rolls back Phase 1, the old schema can read the same history.
 	provider, err := goose.NewProvider(goose.DialectSQLite3, conn, migrationFS(t, func(string) bool { return true }))
 	if err != nil {
@@ -135,6 +141,10 @@ func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 	assertTaskBoardRows(t, conn, `SELECT json_array(task_id, conversation_id, agent_id, is_primary, linked_at)
 		FROM work_task_sessions ORDER BY conversation_id`, `["a",3,"alpha",0,12]`, `["a",4,"beta",1,11]`)
 	assertLinks(conn)
+	assertTaskBoardRows(t, conn, `SELECT json_array(id, kind, delivered_at IS NOT NULL) FROM submissions
+		WHERE id IN ('undelivered-wake', 'delivered-wake') ORDER BY id`,
+		`["delivered-wake","task_result",1]`, `["undelivered-wake","task_result",1]`)
+	assertTaskBoardRows(t, conn, `SELECT CAST(delivered_at AS TEXT) FROM submissions WHERE id = 'delivered-wake'`, "61")
 	_, err = conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, kind, content, status, created_at)
 		VALUES ('wake', 1, 'task_wake', '', 'pending', 60)`)
 	assertTaskBoardSQLiteError(t, err, sqlite3.SQLITE_CONSTRAINT_CHECK)

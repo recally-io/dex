@@ -318,17 +318,8 @@ func (s *Service) changeSessionLink(ctx context.Context, actor Actor, origin Ori
 		if err != nil {
 			return err
 		}
-		if err := authorize(ctx, l.q, actor, origin, task, actionLinkSession); err != nil {
+		if err := AuthorizeSessionLink(ctx, l.q, actor, origin, task, conversationID); err != nil {
 			return err
-		}
-		if actor.isBot() {
-			conv, err := l.q.GetConversation(ctx, conversationID)
-			if err != nil {
-				return err
-			}
-			if conv.AgentID != actor.botID {
-				return ErrForbidden
-			}
 		}
 		if promote {
 			if _, err := l.q.GetWorkTaskSession(ctx, sqlc.GetWorkTaskSessionParams{TaskID: task.ID, ConversationID: sql.NullInt64{Int64: conversationID, Valid: true}}); err != nil {

@@ -29,6 +29,14 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 	unrelated := createBoardTestTask(t, svc, "Unrelated task", "ready", "")
 	boardExec(t, conn, `UPDATE work_tasks SET creator_kind = 'source', authorized_by_root_id = NULL WHERE id = ?`, unrelated.ID)
 	unrelated = boardTask(t, q, unrelated.ID)
+	actorAt := func(id int64) worktask.Actor {
+		t.Helper()
+		conv, err := q.GetConversation(t.Context(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return worktask.BotInConversation(conv)
+	}
 
 	// Each permission string lists all allowed actions for that actor and origin.
 	actions := []struct {
@@ -38,6 +46,7 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 	}{
 		{"post", 'p', worktask.ActionPost},
 		{"transition", 't', worktask.ActionTransition},
+		{"link-session", 'k', worktask.ActionLinkSession},
 		{"submit-review", 's', worktask.ActionSubmitReview},
 		{"review", 'r', worktask.ActionReview},
 		{"split", 'd', worktask.ActionSplit},
@@ -60,13 +69,16 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 		read                      bool
 		user, wake, result, other string
 	}{
-		{"owner", worktask.Owner, true, "ptsrdclx", "tsd", "", ""},
-		{"assignee-main", worktask.Bot("assignee"), true, "ptsdc", "ptsd", "p", ""},
+		{"owner", worktask.Owner, true, "ptksrdclx", "tksd", "", ""},
+		{"assignee-main", actorAt(1), true, "ptksdc", "ptksd", "p", ""},
 		{"reviewer-main", worktask.Bot("reviewer"), true, "prc", "pr", "p", ""},
-		{"unrelated-main", worktask.Bot("other"), false, "c", "", "", ""},
-		{"linked-main", worktask.Bot("linked"), true, "c", "", "", ""},
-		{"linked-session", worktask.SessionBot("linked", 4), true, "p", "p", "p", ""},
-		{"unlinked-session-same-bot", worktask.SessionBot("linked", 5), false, "", "", "", ""},
+		{"unrelated-main", actorAt(2), false, "c", "", "", ""},
+		{"linked-main", actorAt(7), false, "c", "", "", ""},
+		{"assignee-chat", actorAt(6), true, "ptkc", "p", "p", ""},
+		{"linked-bot-chat", actorAt(8), false, "c", "", "", ""},
+		{"unlinked-assignee-child", actorAt(3), false, "", "", "", ""},
+		{"linked-session", actorAt(4), true, "p", "p", "p", ""},
+		{"unlinked-session-same-bot", actorAt(5), false, "", "", "", ""},
 		{"unrelated-bot-linked-session-id", worktask.SessionBot("other", 4), false, "", "", "", ""},
 		{"external-run", worktask.ExternalAgent("external-run"), true, "p", "p", "p", ""},
 		{"session-run-as-external-run", worktask.ExternalAgent("session-run"), false, "", "", "", ""},
@@ -112,6 +124,42 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 	}
 }
 
+func TestUserTaskBoardLinksOnlyDirectChildrenAcrossBots(t *testing.T) {
+	_, q, svc := openBoardTest(t)
+	ctx := t.Context()
+	task := createBoardTestTask(t, svc, "Session links", "ready", "")
+	assignee := worktask.Bot("assignee")
+
+	if err := svc.LinkSession(ctx, assignee, worktask.OriginUser, task.ID, 4); err != nil {
+		t.Fatalf("link direct child from another Bot: %v", err)
+	}
+	if err := svc.LinkSession(ctx, assignee, worktask.OriginUser, task.ID, 6); !errors.Is(err, worktask.ErrForbidden) {
+		t.Fatalf("link standalone Chat of the assignee: %v; want ErrForbidden", err)
+	}
+	if err := svc.LinkSession(ctx, assignee, worktask.OriginUser, task.ID, 5); !errors.Is(err, worktask.ErrForbidden) {
+		t.Fatalf("link child of another parent: %v; want ErrForbidden", err)
+	}
+	if err := svc.LinkSession(ctx, worktask.Owner, worktask.OriginUser, task.ID, 5); err != nil {
+		t.Fatalf("Owner link: %v", err)
+	}
+	if err := svc.PromotePrimarySession(ctx, assignee, worktask.OriginUser, task.ID, 5); !errors.Is(err, worktask.ErrForbidden) {
+		t.Fatalf("promote child of another parent: %v; want ErrForbidden", err)
+	}
+	if err := svc.LinkSession(ctx, assignee, worktask.OriginUser, task.ID, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.PromotePrimarySession(ctx, worktask.Owner, worktask.OriginUser, task.ID, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.PromotePrimarySession(ctx, assignee, worktask.OriginUser, task.ID, 4); err != nil {
+		t.Fatalf("promote direct child from another Bot: %v", err)
+	}
+	links, err := q.ListWorkTaskSessions(ctx, task.ID)
+	if err != nil || len(links) != 3 || links[0].ConversationID != 4 || links[0].IsPrimary != 1 {
+		t.Fatalf("links = %+v, %v; want direct child 4 primary of three links", links, err)
+	}
+}
+
 func TestUserTaskBoardLedgerCommitsBeforeNotification(t *testing.T) {
 	conn, q, svc := openBoardTest(t)
 	ctx := t.Context()
@@ -142,7 +190,7 @@ func TestUserTaskBoardLedgerCommitsBeforeNotification(t *testing.T) {
 		t.Fatalf("Task numbers = %d, %d; initial entry IDs = %d, %d; want increasing global numbers and IDs", first.Number, second.Number, firstEntry.ID, secondEntry.ID)
 	}
 	if first.NextEntrySeq != 2 || second.NextEntrySeq != 2 || firstEntry.Kind != "note" ||
-		firstEntry.Content != "Task brief" || firstEntry.ActorKind != "owner" || firstEntry.Trust != "owner" {
+		firstEntry.Content != "Task brief" || firstEntry.MetaJson != "{}" || firstEntry.ActorKind != "owner" || firstEntry.Trust != "owner" {
 		t.Fatalf("initial ledger: Tasks %+v, %+v; entries %+v, %+v", first, second, firstEntry, secondEntry)
 	}
 
@@ -385,11 +433,22 @@ func TestUserTaskBoardDerivesBlockersAndMainQueuePosition(t *testing.T) {
 			}
 		}
 	}
-	assertBlockers(10, map[string]int64{"second-in-queue": 2, "child-question": 0})
+	assertBlockers(10, map[string]int64{"second-in-queue": 3, "child-question": 0})
 
+	closed, err := svc.TransitionStatus(ctx, worktask.Owner, worktask.OriginUser, task.ID, worktask.StatusDone, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blockers, err := worktask.ComputeBlockers(ctx, q, closed); err != nil || blockers != nil {
+		t.Fatalf("closed Task blockers = %+v, %v; want nil, nil", blockers, err)
+	}
+	task, err = svc.TransitionStatus(ctx, worktask.Owner, worktask.OriginUser, task.ID, worktask.StatusInProgress, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	boardExec(t, conn, `UPDATE work_task_waits SET resolved_by = 'merged' WHERE id = 10`)
 	boardExec(t, conn, `UPDATE questions SET status = 'answered' WHERE id = 'first-in-queue'`)
-	assertBlockers(0, map[string]int64{"second-in-queue": 1, "child-question": 0})
+	assertBlockers(0, map[string]int64{"second-in-queue": 2, "child-question": 0})
 	boardExec(t, conn, `UPDATE questions SET status = 'answered' WHERE id IN ('second-in-queue', 'child-question')`)
 	assertBlockers(0, nil)
 	assertBoardUnchanged(t, q, task)
@@ -407,7 +466,9 @@ func openBoardTest(t *testing.T) (*sql.DB, *sqlc.Queries, *worktask.Service) {
 		('linked', 'Linked', 'faux', 'echo', 1), ('other', 'Other', 'faux', 'echo', 1)`)
 	boardExec(t, conn, `INSERT INTO conversations (id, agent_id, channel_key, created_at, parent_id) VALUES
 		(1, 'assignee', 'main', 1, NULL), (2, 'other', 'main', 1, NULL), (3, 'assignee', 'chat:child', 1, 1),
-		(4, 'linked', 'chat:linked', 1, NULL), (5, 'linked', 'chat:other', 1, NULL)`)
+		(4, 'linked', 'chat:linked', 1, 1), (5, 'linked', 'chat:other-child', 1, 2),
+		(6, 'assignee', 'chat:standalone', 1, NULL), (7, 'linked', 'main', 1, NULL),
+		(8, 'linked', 'chat:standalone', 1, NULL)`)
 	return conn, sqlc.New(conn), worktask.New(conn, nil)
 }
 

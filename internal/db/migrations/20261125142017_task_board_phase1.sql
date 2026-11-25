@@ -132,8 +132,10 @@ DROP TRIGGER revoke_outbox_on_channel_result_revocation;
 ALTER TABLE submissions RENAME COLUMN kind TO previous_kind;
 ALTER TABLE submissions ADD COLUMN kind TEXT NOT NULL DEFAULT 'message'
   CHECK (kind IN ('message', 'task_result', 'context_reset'));
--- Keep submission IDs and their dependent rows on downgrade.
-UPDATE submissions SET kind = CASE previous_kind WHEN 'task_wake' THEN 'task_result' ELSE previous_kind END;
+-- Keep wake receipts without making them eligible for channel replies.
+UPDATE submissions SET kind = 'task_result', delivered_at = coalesce(delivered_at, unixepoch() * 1000)
+WHERE previous_kind = 'task_wake';
+UPDATE submissions SET kind = previous_kind WHERE previous_kind <> 'task_wake';
 ALTER TABLE submissions DROP COLUMN previous_kind;
 CREATE INDEX submissions_conversation_kind ON submissions (conversation_id, kind);
 CREATE INDEX submissions_channel_replies ON submissions (conversation_id, origin)

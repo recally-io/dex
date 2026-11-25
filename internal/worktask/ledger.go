@@ -106,7 +106,7 @@ func (l *Ledger) CreateTask(ctx context.Context, actor Actor, origin Origin, p C
 	}
 	entry := sqlc.InsertWorkTaskEntryParams{Kind: KindStatus, MetaJson: statusMeta(task.Status), CreatedAt: now}
 	if p.Note != "" {
-		entry.Kind, entry.Content = KindNote, p.Note
+		entry.Kind, entry.Content, entry.MetaJson = KindNote, p.Note, "{}"
 	}
 	updated, _, err := l.append(ctx, actor, task, task.Status, task.Title, task.ReviewSeq, entry)
 	return updated, err

@@ -3,6 +3,10 @@ SELECT t.*, CAST(coalesce(s.conversation_id, 0) AS INTEGER) AS session_id
 FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
 LEFT JOIN task_executions s ON s.task_id = t.id AND s.kind = 'dex_session' AND s.is_primary = 1
 WHERE t.assignee_bot_id = @agent_id AND a.archived_at IS NULL AND (t.status NOT IN ('done', 'cancelled') OR sqlc.arg(include_closed))
+AND (CAST(@child_conversation_id AS INTEGER) = 0 OR EXISTS (
+  SELECT 1 FROM task_executions e WHERE e.task_id = t.id AND e.bot_id = t.assignee_bot_id
+    AND e.kind = 'dex_session' AND e.conversation_id = @child_conversation_id
+))
 ORDER BY t.updated_at DESC, t.id DESC LIMIT 50;
 
 -- name: ListWorkTaskSessions :many
@@ -29,7 +33,7 @@ UPDATE task_executions SET is_primary = 1 WHERE id = ?;
 
 -- name: HasWorkTaskBotExecution :one
 SELECT EXISTS (SELECT 1 FROM task_executions WHERE task_id = @task_id AND bot_id = @bot_id
-  AND (CAST(@conversation_id AS INTEGER) = 0 OR (kind = 'dex_session' AND conversation_id = @conversation_id)));
+  AND kind = 'dex_session' AND conversation_id = CAST(@conversation_id AS INTEGER));
 
 -- name: HasWorkTaskExternalExecution :one
 SELECT EXISTS (SELECT 1 FROM task_executions WHERE task_id = @task_id AND id = @id AND kind = 'external_agent');
