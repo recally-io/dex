@@ -58,7 +58,7 @@ to read in an afternoon.
   divider. The window has a sidebar and a page.
   The user talks to a bot, and the bot manages its sessions. The sidebar lists
   the bots without row menus. Each bot row shows at most one status dot: orange
-  for Needs you, blue for Working. Needs you wins. New bot comes after the bots.
+  for Inbox items and blue for active sessions. Orange takes priority. New bot comes after the bots.
   The sidebar footer opens global Settings and About. A red dot marks provider
   errors. The page header names the bot and the open page. On desktop, its right
   side shows New session, Sessions, Routines, and Bot settings as direct controls.
@@ -79,13 +79,13 @@ to read in an afternoon.
   messages, records and files; a child session's result still returns to the chat.
   New session does not reuse an archived empty chat. The button at the top left of
   the sidebar hides it. The first button of the page header then shows it
-  again, with an orange dot when a bot needs the user, and the header shows the
-  bot's avatar. On a phone, the menu button opens the sidebar as a drawer. The
-  menu button shows an orange dot when another bot needs the user.
+  again, with an orange dot when Inbox has items. The header shows the bot's
+  avatar. On a phone, the menu button opens the sidebar as a drawer. It shows
+  the same orange dot.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
   attachments, and instructions draft when the user switches agents. Old page
-  URLs open the default agent. `/needs-you` and `/work` open the default bot.
-  `/automations` opens its Routines page. `/inbox` opens the Inbox across bots.
+  URLs still work. `/needs-you` opens Inbox and `/work` opens Board.
+  `/automations` opens the default bot's Routines page.
   An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
@@ -265,12 +265,15 @@ Main stays the default view. The header of a Chat session or a child session
 names Main before its title. The header of an automation transcript names
 Routines before its title.
 
-A bot needs the user when it has an open question, an unhandled failed or
-failed routine run that is not handled, or a routine that needs a model. The
-Needs you button in the desktop header lists each item and opens the place to
-act on it. On a phone, these items appear in the bot menu. A failed child session goes to its parent, which tells the user; it
-is not a Needs you item. Mark handled applies to a failed routine run only.
-The Inbox lists Tasks across bots. A Task tracks one piece of work. It has a title,
+Inbox (`/inbox`) shows items the owner can act on across bots. It lists the
+active unanswered question of each session, unhandled failed or changed
+automation results, enabled automations without an available model, and held
+external events. Open a question to answer it. Open a result to mark it done
+or continue in a chat. Configure a model in bot settings. Attach a held event
+to an open Task or dismiss it. One-way notifications stay in the transcript
+or channel. The sidebar shows the number of Inbox items.
+
+Board (`/board`) lists Tasks across bots. A Task tracks one piece of work. It has a title,
 notes, and a status. Creating a Task or adding a note does not start a Session.
 Send to Main starts a Main turn with the selected Task title and ID. A reply to
 a linked question keeps the Task of that question. Task detail shows questions

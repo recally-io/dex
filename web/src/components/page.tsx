@@ -5,7 +5,7 @@ import { cn } from "../lib/utils";
 export const ShellContext = createContext<{
   openDrawer: () => void;
   attention: boolean;
-  /** The desktop sidebar. Attention tells that a bot needs you while it is hidden. */
+  /** The desktop sidebar. Attention shows that Inbox has items while the sidebar is hidden. */
   sidebar?: { open: boolean; toggle: () => void; attention: boolean };
 }>({ openDrawer: () => {}, attention: false });
 
@@ -28,7 +28,7 @@ function PageHeader({ title }: { title: ReactNode }) {
  */
 export function MenuButton() {
   const { openDrawer, attention, sidebar } = useContext(ShellContext);
-  const sidebarLabel = sidebar?.attention ? "Show sidebar, a bot needs you" : "Show sidebar";
+  const sidebarLabel = sidebar?.attention ? "Show sidebar, Inbox needs attention" : "Show sidebar";
 
   return (
     <>
@@ -51,7 +51,7 @@ export function MenuButton() {
       ) : null}
       <button
         type="button"
-        aria-label={attention ? "Open navigation, another bot needs you" : "Open navigation"}
+        aria-label={attention ? "Open navigation, Inbox needs attention" : "Open navigation"}
         onClick={openDrawer}
         className="relative -ml-1 flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
       >

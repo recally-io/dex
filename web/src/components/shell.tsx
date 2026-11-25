@@ -1,5 +1,6 @@
 import { AgentContext } from "../lib/agent-scope";
-import { botStatus, workOptions } from "../lib/work";
+import { attentionItems, botStatus, workOptions } from "../lib/work";
+import { heldEventsOptions } from "../lib/inbox";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -42,18 +43,18 @@ function useSidebarOpen() {
   return [open, toggle] as const;
 }
 
-/** The status of each bot. The Shell polls it, so the drawer button can show it while the drawer is closed. */
-function useBotStatuses() {
+export function Shell() {
   const agents = useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
   const work = useQuery(workOptions());
+  const held = useQuery(heldEventsOptions());
+  const { questions, results, setup } = attentionItems(work.data);
+  const attentionCount = questions.length + results.length + setup.length + (held.data?.events.length ?? 0);
+  const attention = attentionCount > 0;
 
-  return new Map(
+  const statuses = new Map(
     (agents.data?.agents ?? []).map((agent) => [agent.id!, botStatus(agent.id!, work.data, agent.activity)]),
   );
-}
 
-export function Shell() {
-  const statuses = useBotStatuses();
   const [menu, setMenu] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
@@ -70,19 +71,14 @@ export function Shell() {
   const [menuPath, setMenuPath] = useState(path);
   const [lastAgent, setLastAgent] = useState("default");
   const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
-  const current = routeAgent ?? lastAgent;
-  // The drawer button shows when another bot needs you. The current bot shows its own on its page.
-  const attention = [...statuses].some(([id, status]) => id !== current && status === "needs");
-  // A hidden sidebar hides every bot, so its button shows when any bot needs you.
-  const anyNeeds = [...statuses.values()].includes("needs");
 
   const shell = useMemo(
     () => ({
       openDrawer: () => setMenu(true),
       attention,
-      sidebar: { open: sidebarOpen, toggle: toggleSidebar, attention: anyNeeds },
+      sidebar: { open: sidebarOpen, toggle: toggleSidebar, attention },
     }),
-    [attention, anyNeeds, sidebarOpen, toggleSidebar],
+    [attention, sidebarOpen, toggleSidebar],
   );
 
   useSystemTheme();
@@ -150,6 +146,7 @@ export function Shell() {
           <Sidebar
             path={path}
             statuses={statuses}
+            attentionCount={attentionCount}
             className="hidden lg:flex"
             onSearch={() => changeSearch(true)}
             lead={
@@ -180,6 +177,7 @@ export function Shell() {
           <Sidebar
             path={path}
             statuses={statuses}
+            attentionCount={attentionCount}
             className="max-w-[85vw]"
             onSearch={() => changeSearch(true)}
             lead={

@@ -3,12 +3,105 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { InboxItem } from "../api/generated/types.gen";
 import { readInboxItem, dismissInboxItem } from "../api/generated/sdk.gen";
+import { listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { refreshWork } from "../lib/queries";
+import { attentionItems, workOptions } from "../lib/work";
 import { type Continuation, continueResult, inboxOptions, resultQuote } from "../lib/inbox";
 import { Empty, FramedPage, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
 import { Button, buttonVariants } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
+import { HeldEvents } from "../components/held-events";
+
+const actionClass = buttonVariants({ variant: "secondary", size: "sm" });
+
+export function InboxPage() {
+  const work = useQuery(workOptions());
+  const agents = useQuery(listAgentsOptions());
+  const { questions, results, setup } = attentionItems(work.data);
+
+  const botName = (agentId: string) =>
+    agents.data?.agents.find((agent) => agent.id === agentId)?.name ?? agentId;
+
+  return (
+    <FramedPage title="Inbox" description="Review items that need your attention.">
+      {work.isPending ? <Loading /> : null}
+      {work.isError ? <Failure title="Could not load bot attention items" error={work.error} /> : null}
+      {questions.length > 0 ? (
+        <Section title="Questions">
+          <ul className="divide-y divide-border">
+            {questions.map(({ agentId, chat, question }) => (
+              <li
+                key={`${agentId}:${chat.id}:${question.id}`}
+                className="flex flex-wrap items-start justify-between gap-2 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="break-words font-medium">{question.text}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {botName(agentId)} · {chat.main ? "Main" : chat.title || "Untitled session"}
+                  </p>
+                </div>
+                {chat.main ? (
+                  <Link className={actionClass} to="/a/$agentId" params={{ agentId }}>
+                    Open question
+                  </Link>
+                ) : (
+                  <Link
+                    className={actionClass}
+                    to="/a/$agentId/c/$chatId"
+                    params={{ agentId, chatId: String(chat.id) }}
+                  >
+                    Open question
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {results.length > 0 ? (
+        <Section title="Automation results">
+          <ul className="divide-y divide-border">
+            {results.map((item) => (
+              <li key={item.runId} className="py-3">
+                <Link className="font-medium underline" to="/inbox/$runId" params={{ runId: item.runId }}>
+                  {item.automationName}
+                </Link>
+                <p className="text-sm text-muted-foreground">
+                  {item.agentName} · {item.outcome === "failed" ? "Failed" : "Changed"}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {setup.length > 0 ? (
+        <Section title="Automations without an available model">
+          <ul className="divide-y divide-border">
+            {setup.map(({ agentId, automation }) => (
+              <li
+                key={`${agentId}:${automation.id}`}
+                className="flex flex-wrap items-start justify-between gap-2 py-3"
+              >
+                <div className="min-w-0">
+                  <p className="break-words font-medium">{automation.name}</p>
+                  <p className="text-sm text-muted-foreground">{botName(agentId)}</p>
+                </div>
+                <Link className={actionClass} to="/a/$agentId/agent" params={{ agentId }}>
+                  Configure model
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+      {work.isSuccess && !questions.length && !results.length && !setup.length ? (
+        <Empty title="No bot items need attention">New questions and automation items appear here.</Empty>
+      ) : null}
+      <HeldEvents />
+    </FramedPage>
+  );
+}
 
 export function InboxResultPage({ runId }: { runId: string }) {
   const inbox = useQuery({ ...inboxOptions(), refetchInterval: 10_000 });
@@ -47,7 +140,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
     mutationFn: async (result: InboxItem) => {
       await dismissInboxItem({ path: { runId: result.runId }, throwOnError: true });
       await refreshWork();
-      await navigate({ to: "/a/$agentId/automations", params: { agentId: result.agentId } });
+      await navigate({ to: "/inbox" });
     },
   });
 

@@ -6,6 +6,10 @@ function openQuestion(chat: Pick<Chat, "question">) {
   return chat.question?.status === "open" ? chat.question : undefined;
 }
 
+function needsReview(item: Pick<InboxItem, "dismissed" | "outcome">) {
+  return !item.dismissed && (item.outcome === "failed" || item.outcome === "changed");
+}
+
 export type BotStatus = "needs" | "working" | undefined;
 
 /** The fields of the Work response that a bot status reads. */
@@ -16,10 +20,8 @@ type WorkState = {
 };
 
 /**
- * The one status a bot row shows. "needs" wins over "working": an open question, a failed routine
- * run that is not done, or a routine that needs setup. The bot page shows each of these again:
- * questions and routines in the header menu. A failed child session is not
- * here: its parent session tells the user.
+ * Actionable Inbox items for this bot take priority over its current activity.
+ * Held events do not belong to a bot until the owner attaches them.
  */
 export function botStatus(
   agentId: string,
@@ -30,7 +32,7 @@ export function botStatus(
 
   if (
     sessions.some((item) => openQuestion(item.chat)) ||
-    work?.inbox.some((item) => item.agentId === agentId && item.outcome === "failed" && !item.dismissed) ||
+    work?.inbox.some((item) => item.agentId === agentId && needsReview(item)) ||
     work?.automations.some((item) => item.agentId === agentId && item.setup)
   )
     return "needs";
@@ -45,17 +47,15 @@ export const workOptions = () => ({
   refetchInterval: 10_000,
 });
 
-/** The bot header lists these items so that each orange dot has an action. */
-export function needsItems(agentId: string, work: Work | undefined) {
+/** Project only the work items that have an owner action. */
+export function attentionItems(work: Work | undefined) {
   return {
-    questions: (work?.sessions ?? [])
-      .filter((item) => item.agentId === agentId && openQuestion(item.chat))
-      .map((item) => item.chat),
-    results: (work?.inbox ?? []).filter(
-      (item) => item.agentId === agentId && item.outcome === "failed" && !item.dismissed,
-    ),
-    setup: (work?.automations ?? [])
-      .filter((item) => item.agentId === agentId && item.setup)
-      .map((item) => item.automation),
+    questions: (work?.sessions ?? []).flatMap(({ agentId, chat }) => {
+      const question = openQuestion(chat);
+
+      return question ? [{ agentId, chat, question }] : [];
+    }),
+    results: (work?.inbox ?? []).filter(needsReview),
+    setup: (work?.automations ?? []).filter((item) => item.setup),
   };
 }
