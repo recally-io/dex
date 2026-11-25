@@ -98,7 +98,8 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, the channel webhook inbox and reply outbox, Tasks, and plugin tables. Core migrations own
+receipts, channel bindings, the channel webhook inbox and reply outbox, Tasks,
+and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
 start ([plugins](plugins.md#plugin-migrations)). Each agent has
 `agents/<id>/state.sqlite`, which holds native admission, runs, transcripts,
@@ -139,11 +140,17 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    typed transcript events through `live.Hub`. Queued input comes from the
    native Inbox, not from a second control transcript.
 5. The chat service waits on the native handle and stores the outcome in the
-   business receipt. The channel outbox reads settled receipts and records
+   business receipt. In the same transaction it records any channel reply with
+   the input's saved `binding_id`. The sender checks that binding and records
    confirmed reply parts. A restart reacquires native outcomes by request ID;
    it does not restart a second execution loop in control.
    Telegram and Feishu/Lark status reactions observe these facts independently
    of the outbox. See [Channels](channels.md#shared-channels).
+
+HTTP requests and paired channels authenticate at their entry points. Both
+represent the same Owner. Disconnecting a channel ends its reply route. It
+does not remove the authority of an input that Dex already accepted. See
+[Binding lifetime](channels.md#binding-lifetime).
 
 A fork request can carry a UUID. Control commits its receipt with the new Chat.
 A retry with the same source and boundary returns that Chat; a mismatch returns

@@ -145,7 +145,7 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 			s.onFeishu(agentID, saved)
 		}
 	}()
-	if err := s.saveFeishu(ctx, agentID, cfg, pairing); err != nil {
+	if err := s.saveFeishu(ctx, agentID, cfg, pairing, false); err != nil {
 		return FeishuSetup{}, err
 	}
 	savedNew = true
@@ -154,7 +154,7 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 	return FeishuSetup{Status: "saved", PairingCode: pairing, ExpiresIn: 600}, nil
 }
 
-func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Config, pairing string) error {
+func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Config, pairing string, newBinding bool) error {
 	// A registration poll started before an archive can reach here; an archived bot starts no channel.
 	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
 		return err
@@ -169,7 +169,21 @@ func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Con
 			reactions.Int64 = 1
 		}
 	}
-	if err := s.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{Reactions: reactions, AgentID: agentID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli(), VerificationToken: cfg.Webhook.VerificationToken, EncryptKey: cfg.Webhook.EncryptKey}); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	if newBinding {
+		if err := q.RevokeChannelBindings(ctx, sqlc.RevokeChannelBindingsParams{AgentID: agentID, Platform: "feishu"}); err != nil {
+			return err
+		}
+	}
+	if err := q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{Reactions: reactions, AgentID: agentID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli(), VerificationToken: cfg.Webhook.VerificationToken, EncryptKey: cfg.Webhook.EncryptKey}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	s.onFeishu(agentID, &cfg)
@@ -203,7 +217,7 @@ func (s *Service) revokeFeishuPairing(ctx context.Context, agentID string) error
 	cfg := *saved
 	cfg.OwnerID = ""
 	s.onFeishu(agentID, nil)
-	if err := s.saveFeishu(ctx, agentID, cfg, ""); err != nil {
+	if err := s.saveFeishu(ctx, agentID, cfg, "", false); err != nil {
 		s.onFeishu(agentID, saved)
 		return err
 	}
@@ -299,7 +313,7 @@ func (s *Service) PollFeishu(ctx context.Context, agentID string, id string) (Fe
 		cfg.Reactions = saved.Reactions
 	}
 	s.onFeishu(agentID, nil)
-	if err := s.saveFeishu(ctx, agentID, cfg, ""); err != nil {
+	if err := s.saveFeishu(ctx, agentID, cfg, "", true); err != nil {
 		if saved != nil {
 			s.onFeishu(agentID, saved)
 		}

@@ -52,6 +52,7 @@ const bindOutboxFilesToOutbox = `-- name: BindOutboxFilesToOutbox :execrows
 UPDATE outbox_files
 SET outbox_id = ?1
 WHERE submission_id = ?2 AND outbox_id IS NULL
+  AND EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = ?1 AND o.status = 'pending')
 `
 
 type BindOutboxFilesToOutboxParams struct {
@@ -114,7 +115,7 @@ func (q *Queries) GetChannelReactionReceipt(ctx context.Context, id string) (Get
 }
 
 const getOutboxByDedupKey = `-- name: GetOutboxByDedupKey :one
-SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part FROM outbox_messages WHERE dedup_key = ?
+SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part, binding_id FROM outbox_messages WHERE dedup_key = ?
 `
 
 func (q *Queries) GetOutboxByDedupKey(ctx context.Context, dedupKey string) (OutboxMessage, error) {
@@ -145,6 +146,7 @@ func (q *Queries) GetOutboxByDedupKey(ctx context.Context, dedupKey string) (Out
 		&i.CreatedAt,
 		&i.DeliveredAt,
 		&i.SkippedPart,
+		&i.BindingID,
 	)
 	return i, err
 }
@@ -182,7 +184,7 @@ func (q *Queries) GetOutboxFileBySubmission(ctx context.Context, arg GetOutboxFi
 }
 
 const getOutboxMessage = `-- name: GetOutboxMessage :one
-SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part FROM outbox_messages WHERE id = ?
+SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part, binding_id FROM outbox_messages WHERE id = ?
 `
 
 func (q *Queries) GetOutboxMessage(ctx context.Context, id string) (OutboxMessage, error) {
@@ -213,6 +215,7 @@ func (q *Queries) GetOutboxMessage(ctx context.Context, id string) (OutboxMessag
 		&i.CreatedAt,
 		&i.DeliveredAt,
 		&i.SkippedPart,
+		&i.BindingID,
 	)
 	return i, err
 }
@@ -233,11 +236,11 @@ func (q *Queries) HasOutboxForSource(ctx context.Context, sourceSubmissionID sql
 const insertOutboxMessage = `-- name: InsertOutboxMessage :execrows
 INSERT INTO outbox_messages (
     id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at
+    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at, binding_id
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), '{}'),
-    ?9, ?10, ?11, ?12, ?13, ?14
+    ?9, ?10, ?11, ?12, ?13, ?14, ?15
 )
 ON CONFLICT (dedup_key) DO NOTHING
 `
@@ -257,6 +260,7 @@ type InsertOutboxMessageParams struct {
 	Status             string         `json:"status"`
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
+	BindingID          sql.NullInt64  `json:"binding_id"`
 }
 
 func (q *Queries) InsertOutboxMessage(ctx context.Context, arg InsertOutboxMessageParams) (int64, error) {
@@ -275,6 +279,7 @@ func (q *Queries) InsertOutboxMessage(ctx context.Context, arg InsertOutboxMessa
 		arg.Status,
 		arg.CreatedAt,
 		arg.DeliveredAt,
+		arg.BindingID,
 	)
 	if err != nil {
 		return 0, err
@@ -285,7 +290,7 @@ func (q *Queries) InsertOutboxMessage(ctx context.Context, arg InsertOutboxMessa
 const insertStoppedOutboxForConversation = `-- name: InsertStoppedOutboxForConversation :exec
 INSERT INTO outbox_messages (
     id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at
+    kind, peer, channel_context, topic_key, body, reason, status, created_at, binding_id
 )
 SELECT
     s.id,
@@ -300,7 +305,8 @@ SELECT
     '',
     'stopped',
     CASE WHEN s.channel_revoked != 0 THEN 'revoked' ELSE 'pending' END,
-    ?2
+    ?2,
+    s.binding_id
 FROM submissions s
 WHERE s.conversation_id = ?3
   AND s.status = 'pending'
@@ -419,20 +425,21 @@ func (q *Queries) ListOutboxFiles(ctx context.Context, outboxID sql.NullString) 
 
 const listPendingOutboxMessages = `-- name: ListPendingOutboxMessages :many
 SELECT o.id, o.dedup_key, o.agent_id, o.conversation_id, o.source_submission_id,
-       o.kind, o.peer, o.channel_context, o.topic_key, o.body, o.reason,
+       o.kind, b.peer, o.channel_context, o.topic_key, o.body, o.reason,
        o.rendered_parts, o.delivered_parts, o.group_fallback, o.group_cursor, o.remote_ids,
        o.status, o.retry_at, o.error, o.created_at
 FROM outbox_messages o
+JOIN channel_bindings b ON b.id = o.binding_id AND b.revoked_at IS NULL
 JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
 WHERE o.status = 'pending' AND c.execution_scope = ''
   AND o.agent_id = ?1
-  AND o.peer >= ?2 AND o.peer < ?3
+  AND b.peer >= ?2 AND b.peer < ?3
   AND (
       o.kind != 'reply'
       OR NOT EXISTS (
           SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
-          WHERE p.status = 'pending' AND p.origin = o.peer
+          WHERE p.status = 'pending' AND p.binding_id = o.binding_id
             AND p.rowid < coalesce(src.rowid, o.rowid)
             AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0
             AND pc.agent_id = o.agent_id
@@ -638,7 +645,7 @@ func (q *Queries) ListTimelineNotifications(ctx context.Context, arg ListTimelin
 }
 
 const markOutboxDelivered = `-- name: MarkOutboxDelivered :exec
-UPDATE outbox_messages SET status = 'delivered', delivered_at = ?1 WHERE id = ?2
+UPDATE outbox_messages SET status = 'delivered', delivered_at = ?1 WHERE id = ?2 AND status = 'pending'
 `
 
 type MarkOutboxDeliveredParams struct {
@@ -668,6 +675,7 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = ?6 AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
+  AND EXISTS (SELECT 1 FROM channel_bindings b WHERE b.id = s.binding_id AND b.revoked_at IS NULL)
   AND c.agent_id = ?7 AND c.execution_scope = '' AND c.execution_id = ?8
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
@@ -777,21 +785,27 @@ const supersedeOutboxTopic = `-- name: SupersedeOutboxTopic :execrows
 UPDATE outbox_messages
 SET status = 'superseded'
 WHERE conversation_id = ?1
-  AND peer = ?2
-  AND topic_key = ?3
-  AND ?3 != ''
+  AND peer = ?2 AND binding_id IS ?3
+  AND topic_key = ?4
+  AND ?4 != ''
   AND status = 'pending'
   AND delivered_parts = 0
 `
 
 type SupersedeOutboxTopicParams struct {
-	ConversationID int64  `json:"conversation_id"`
-	Peer           string `json:"peer"`
-	TopicKey       string `json:"topic_key"`
+	ConversationID int64         `json:"conversation_id"`
+	Peer           string        `json:"peer"`
+	BindingID      sql.NullInt64 `json:"binding_id"`
+	TopicKey       string        `json:"topic_key"`
 }
 
 func (q *Queries) SupersedeOutboxTopic(ctx context.Context, arg SupersedeOutboxTopicParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, supersedeOutboxTopic, arg.ConversationID, arg.Peer, arg.TopicKey)
+	result, err := q.db.ExecContext(ctx, supersedeOutboxTopic,
+		arg.ConversationID,
+		arg.Peer,
+		arg.BindingID,
+		arg.TopicKey,
+	)
 	if err != nil {
 		return 0, err
 	}

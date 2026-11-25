@@ -272,7 +272,11 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 		return false, err
 	}
 	source := "telegram-callback:" + id
-	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: conv.ChannelKey, Command: row.Action, ChannelContext: string(encoded)}); err != nil {
+	bindingID, err := chat.ChannelInputBinding(ctx, q, m.agentID, peer, identity)
+	if err != nil {
+		return false, err
+	}
+	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: conv.ChannelKey, Command: row.Action, ChannelContext: string(encoded), BindingID: bindingID}); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

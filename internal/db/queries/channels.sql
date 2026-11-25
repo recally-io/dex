@@ -6,13 +6,17 @@ WHERE m.source_key = @source_key
 LIMIT 1;
 
 -- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context) VALUES (?, ?, ?, ?, ?, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'))
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, binding_id)
+VALUES (@agent_id, @source_key, @peer, @channel_key, @command, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'),
+    (SELECT id FROM channel_bindings b WHERE b.id = sqlc.narg(binding_id) AND b.revoked_at IS NULL))
 ON CONFLICT DO NOTHING;
 
 -- name: CreateFeedbackCommand :exec
 -- The existing command receipt is the outbox. Store the reply atomically with its source key.
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer)
-VALUES (?, ?, ?, 'main', '/feedback', ?, 1, ?) ON CONFLICT DO NOTHING;
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer, binding_id)
+VALUES (@agent_id, @source_key, @peer, 'main', '/feedback', @channel_context, 1, @answer,
+    (SELECT id FROM channel_bindings b WHERE b.id = sqlc.narg(binding_id) AND b.revoked_at IS NULL))
+ON CONFLICT DO NOTHING;
 
 -- name: GetChannelCommand :one
 SELECT * FROM channel_commands WHERE source_key = ?;
@@ -24,7 +28,8 @@ UPDATE channel_commands SET completed = 1, answer = ? WHERE source_key = ?;
 UPDATE channel_commands SET answer = ? WHERE source_key = ?;
 
 -- name: ListChannelCommands :many
-SELECT * FROM channel_commands WHERE agent_id = ? AND completed = 0;
+SELECT c.* FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id AND b.revoked_at IS NULL
+WHERE c.agent_id = ? AND c.completed = 0;
 
 -- name: ListChannelReplies :many
 -- A reply waits for every earlier unrevoked pending message of the same agent and origin, so a
@@ -51,8 +56,9 @@ UPDATE submissions SET channel_revoked = 1 WHERE id = ?;
 UPDATE submissions SET delivered_at = ? WHERE id = ?;
 
 -- name: ListChannelCommandReplies :many
-SELECT * FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
-AND agent_id = @agent_id AND peer LIKE @prefix || '%' ORDER BY rowid;
+SELECT c.* FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id AND b.revoked_at IS NULL
+WHERE c.completed = 1 AND c.delivered_at IS NULL
+AND c.agent_id = @agent_id AND b.peer LIKE @prefix || '%' ORDER BY c.rowid;
 
 -- name: MarkChannelCommandDelivered :exec
 UPDATE channel_commands SET delivered_at = @delivered_at,

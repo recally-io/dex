@@ -149,10 +149,6 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a en
 	if err != nil {
 		return engine.MonitorInfo{}, err
 	}
-	if err := monitorActor(ctx, q, conv, rootRequestID); err != nil {
-		return engine.MonitorInfo{}, err
-	}
-
 	if err := checkMonitorCapacity(ctx, q, conv.ID); err != nil {
 		return engine.MonitorInfo{}, err
 	}
@@ -344,7 +340,7 @@ func parseMonitorTimestamp(raw string, loc *time.Location) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("invalid monitor timestamp %q (use RFC3339 or YYYY-MM-DDTHH:MM:SS)", raw)
 }
 
-var errMonitorTarget = errors.New("monitor target or authority is no longer valid")
+var errMonitorTarget = errors.New("monitor target is no longer valid")
 
 func activeMonitorTarget(c sqlc.Conversation) bool {
 	return c.ExecutionID.Valid && !c.ArchivedAt.Valid && c.AbortPending == 0
@@ -369,56 +365,6 @@ func monitorEnvironment(ctx context.Context, q *sqlc.Queries, c sqlc.Conversatio
 	return id, env.UpdatedAt, err
 }
 
-// Check the recorded initiator, not whoever most recently used Main.
-func monitorActor(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, rootID string) error {
-	root, err := q.GetSubmission(ctx, rootID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return errMonitorTarget
-	}
-	if err != nil {
-		return err
-	}
-	if root.ConversationID != conv.ID || root.ChannelRevoked != 0 {
-		return errMonitorTarget
-	}
-	if root.Kind != "message" || !userOrigin(root.Origin) {
-		return nil
-	}
-	switch peer, _, _ := strings.Cut(root.Origin, ":"); peer {
-	case "web":
-		return nil
-	case "telegram":
-		var actor ChannelContext
-		if err := json.Unmarshal([]byte(root.ChannelContext), &actor); err != nil {
-			return errMonitorTarget
-		}
-		allowed, err := TelegramInputAllowed(ctx, q, conv.AgentID, root.Origin, actor)
-		if err != nil {
-			return err
-		}
-		if allowed {
-			return nil
-		}
-	case "feishu":
-		cfg, err := q.GetFeishuSettings(ctx, conv.AgentID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if cfg.OwnerID != "" && root.Origin == "feishu:"+cfg.OwnerID && strings.HasPrefix(root.SourceKey.String, "feishu:"+cfg.AppID+":") {
-			return nil
-		}
-	case "wechat":
-		cfg, err := q.GetWechatSettings(ctx, conv.AgentID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if cfg.Owner != "" && root.Origin == "wechat:"+cfg.Owner && strings.HasPrefix(root.SourceKey.String, "wechat:"+cfg.BotID+":") {
-			return nil
-		}
-	}
-	return errMonitorTarget
-}
-
 func monitorTarget(ctx context.Context, q *sqlc.Queries, row sqlc.Monitor) (sqlc.Conversation, error) {
 	c, err := q.GetConversation(ctx, row.ConversationID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -438,7 +384,7 @@ func monitorTarget(ctx context.Context, q *sqlc.Queries, row sqlc.Monitor) (sqlc
 	if row.TargetExecutionID != 0 && (c.ExecutionID.Int64 != row.TargetExecutionID || c.Cwd != row.TargetCwd || id != row.TargetEnvironment || rev != row.TargetEnvironmentRevision) {
 		return c, errMonitorTarget
 	}
-	return c, monitorActor(ctx, q, c, row.RootRequestID)
+	return c, nil
 }
 
 func checkMonitorCapacity(ctx context.Context, q *sqlc.Queries, conversationID int64) error {

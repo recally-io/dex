@@ -163,6 +163,8 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 		}
 	}
 	source := "wechat:" + b.cfg.BotID + ":" + strconv.FormatUint(msg.ID, 10)
+	peer := "wechat:" + b.cfg.Owner
+	actor := chat.ChannelContext{AccountID: b.cfg.BotID, SenderID: b.cfg.Owner}
 	if received, err := b.channels.ReceivedSource(ctx, source); err != nil {
 		return err
 	} else if received {
@@ -172,12 +174,12 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 		return err
 	} else if received {
 		// Receive completes interrupted commands without repeating attachment side effects.
-		return b.channels.Receive(ctx, "wechat:"+b.cfg.Owner, source, chat.Message{})
+		return b.channels.Receive(ctx, peer, source, chat.Message{ChannelContext: actor})
 	}
 	// Only an explicit text item can request feedback. Do not include quoted text or media.
 	for _, item := range msg.Items {
 		if item.Type == 1 && channel.IsFeedbackCommand(itemText(item)) {
-			return b.channels.Receive(ctx, "wechat:"+b.cfg.Owner, source, chat.Message{Content: itemText(item)})
+			return b.channels.Receive(ctx, peer, source, chat.Message{Content: itemText(item), ChannelContext: actor})
 		}
 	}
 	input, err := b.convert(ctx, msg.Items)
@@ -201,7 +203,8 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 	if strings.TrimSpace(input.Content) == "" && len(input.Attachments) == 0 {
 		return nil
 	}
-	receiveErr := b.channels.Receive(ctx, "wechat:"+b.cfg.Owner, source, input)
+	input.ChannelContext = actor
+	receiveErr := b.channels.Receive(ctx, peer, source, input)
 	// A stored receipt owns its uploads even if native admission has not completed.
 	receipt, err := b.channels.Source(context.WithoutCancel(ctx), source)
 	// On a storage error, preserve files that a committed receipt can still own.

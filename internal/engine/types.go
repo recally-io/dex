@@ -62,8 +62,8 @@ const (
 )
 
 type Input struct {
-	// Authorize checks a new admission after environment preparation. It does not guard native replay.
-	Authorize func(context.Context) error
+	// BeforeAdmission checks receipt state after environment preparation, before a new native commit.
+	BeforeAdmission func(context.Context) error
 	// Changed wakes content-free execution subscribers. It must not block.
 	Changed                                  func()
 	RequestID, Content, Kind, Origin, Source string

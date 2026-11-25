@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-func TestUserResumesFrozenTelegramDeliveryFromBeforeThePackageSplit(t *testing.T) {
+func TestUserResumesFrozenTelegramDeliveryForAnActiveBinding(t *testing.T) {
 	t.Parallel()
 	data := t.TempDir()
 	f := newFakeTelegram(t)
-	d := startTelegram(t, f, data, 42)
+	d := startTelegram(t, f, data, 42, 43)
 	main := d.mainChat(t)
 	d.stop()
 
@@ -28,11 +28,14 @@ func TestUserResumesFrozenTelegramDeliveryFromBeforeThePackageSplit(t *testing.T
 			t.Fatal(err)
 		}
 	}
-	seed(`INSERT INTO channel_commands (source_key, agent_id, peer, channel_key, command, completed, answer, channel_context, rendered_reply)
-		VALUES ('history-command', 'default', 'telegram:42', 'main', '/help', 1, 'Do not render this command', ?, ?)`, identity, command)
-	// A queued reply from a formerly allowed recipient must be settled without a send.
-	seed(`INSERT INTO channel_commands (source_key, agent_id, peer, channel_key, command, completed, answer, channel_context, rendered_reply)
-		VALUES ('history-revoked', 'default', 'telegram:43', 'main', '/help', 1, 'Do not send', '{"accountId":"123","senderId":"43"}', ?)`, command)
+	seed(`INSERT INTO channel_commands (source_key, agent_id, peer, channel_key, command, completed, answer, channel_context, rendered_reply, binding_id)
+		SELECT 'history-command', agent_id, peer, 'main', '/help', 1, 'Do not render this command', ?, ?, id
+		FROM channel_bindings WHERE agent_id = 'default' AND peer = 'telegram:42'`, identity, command)
+	// A queued reply from a revoked binding must close without a send.
+	seed(`INSERT INTO channel_commands (source_key, agent_id, peer, channel_key, command, completed, answer, channel_context, rendered_reply, binding_id)
+		SELECT 'history-revoked', agent_id, peer, 'main', '/help', 1, 'Do not send', '{"accountId":"123","senderId":"43"}', ?, id
+		FROM channel_bindings WHERE agent_id = 'default' AND peer = 'telegram:43'`, command)
+	seed(`UPDATE telegram_settings SET allowed_users = '42' WHERE agent_id = 'default'`)
 	seed(`INSERT INTO telegram_callbacks (id, agent_id, source_id, part, ordinal, peer, channel_context, conversation_id,
 		execution_scope, execution_id, context_revision, label, object_id, action, expires_at)
 		SELECT 'history-button', 'default', 'history-command', 0, 0, 'telegram:42', ?, id,
@@ -41,9 +44,10 @@ func TestUserResumesFrozenTelegramDeliveryFromBeforeThePackageSplit(t *testing.T
 		rendered_reply, delivered_parts, channel_group_fallback, channel_group_cursor, channel_remote_ids)
 		VALUES ('history-reply', ?, 'original input', 'done', 'Do not render this reply', 'telegram:42', 1, 2, ?, ?, 1, 1, 1, ?)`, main, identity, parts, savedIDs)
 	seed(`INSERT INTO outbox_messages (id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context,
-		body, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, created_at)
-		VALUES ('history-reply', 'reply:history-reply', 'default', ?, 'history-reply', 'reply', 'telegram:42', ?,
-		'Do not render this reply', ?, 1, 1, 1, ?, 2)`, main, identity, parts, savedIDs)
+		body, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, created_at, binding_id)
+		SELECT 'history-reply', 'reply:history-reply', agent_id, ?, 'history-reply', 'reply', peer, ?,
+		'Do not render this reply', ?, 1, 1, 1, ?, 2, id
+		FROM channel_bindings WHERE agent_id = 'default' AND peer = 'telegram:42'`, main, identity, parts, savedIDs)
 	seed(`INSERT INTO outbox_files (id, agent_id, operation_key, outbox_id, name, mime_type, body)
 		VALUES ('first', 'default', 'first-file', 'history-reply', 'first.txt', 'text/plain', x'6669727374'),
 		('second', 'default', 'second-file', 'history-reply', 'second.txt', 'text/plain', x'007365636fff')`)
@@ -89,7 +93,7 @@ func TestUserResumesFrozenTelegramDeliveryFromBeforeThePackageSplit(t *testing.T
 	}
 }
 
-func TestUserResumesFrozenFeishuTextFromBeforeThePackageSplit(t *testing.T) {
+func TestUserResumesFrozenFeishuTextForAnActiveBinding(t *testing.T) {
 	t.Parallel()
 	data := t.TempDir()
 	f := newFakeFeishu(t)
@@ -102,8 +106,9 @@ func TestUserResumesFrozenFeishuTextFromBeforeThePackageSplit(t *testing.T) {
 	const frozen = `[{"text":"Frozen plain text"}]`
 	conn := controlWriteDB(t, data)
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO outbox_messages
-		(id, dedup_key, agent_id, conversation_id, kind, peer, body, rendered_parts, created_at)
-		VALUES ('history-text', 'history-text', 'default', ?, 'proactive', 'feishu:owner', 'Do not render this text', ?, 1)`, main, frozen); err != nil {
+		(id, dedup_key, agent_id, conversation_id, kind, peer, body, rendered_parts, created_at, binding_id)
+		SELECT 'history-text', 'history-text', agent_id, ?, 'proactive', peer, 'Do not render this text', ?, 1, id
+		FROM channel_bindings WHERE agent_id = 'default' AND peer = 'feishu:owner'`, main, frozen); err != nil {
 		t.Fatal(err)
 	}
 

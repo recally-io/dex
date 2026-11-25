@@ -9,18 +9,14 @@ import (
 )
 
 // sendReplyPart confirms either the whole group or one fallback member at a time.
-func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot channel.Bot, r sqlc.ListPendingOutboxMessagesRow, index int, part channel.Part, remotes *[]channel.RemoteMessage) error {
-	var beforeSend func() error
-	if isFinalFollowUp(r) && (part.File != nil || len(part.Group) != 0) {
-		// Reading attachment snapshots can block. Recheck after that work,
-		// immediately before handing the request to the platform adapter.
-		beforeSend = func() error {
-			allowed, err := m.authorizeOutboxPart(ctx, platform, r)
-			if err == nil && !allowed {
-				err = errFollowUpNotAuthorized
-			}
-			return err
+func (m *Manager) sendReplyPart(ctx context.Context, bot channel.Bot, r sqlc.ListPendingOutboxMessagesRow, index int, part channel.Part, remotes *[]channel.RemoteMessage) error {
+	beforeSend := func() error {
+		// Attachments can take time to load. Check the binding at dispatch.
+		active, err := m.q.CanSendOutbox(ctx, r.ID)
+		if err == nil && !active {
+			return errOutboxRevoked
 		}
+		return err
 	}
 	if len(part.Group) == 0 || r.GroupFallback == 0 {
 		receipt, err := m.sendPart(ctx, bot, r.Peer, r.ID, index, part, false, beforeSend)
@@ -41,16 +37,6 @@ func (m *Manager) sendReplyPart(ctx context.Context, platform string, bot channe
 		}
 	}
 	for member := int(r.GroupCursor); member < len(part.Group); member++ {
-		allowed, err := m.authorizeOutboxPart(ctx, platform, r)
-		if err != nil {
-			return err
-		}
-		if !allowed {
-			if isFinalFollowUp(r) {
-				return errFollowUpNotAuthorized
-			}
-			return errors.New("destination no longer authorized during group fallback")
-		}
 		file := part.Group[member]
 		receipt, err := m.sendPart(ctx, bot, r.Peer, r.ID, index, channel.Part{File: &file}, false, beforeSend)
 		if err != nil {

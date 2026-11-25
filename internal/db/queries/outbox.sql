@@ -2,7 +2,7 @@
 UPDATE outbox_messages
 SET status = 'superseded'
 WHERE conversation_id = @conversation_id
-  AND peer = @peer
+  AND peer = @peer AND binding_id IS sqlc.narg(binding_id)
   AND topic_key = @topic_key
   AND @topic_key != ''
   AND status = 'pending'
@@ -11,11 +11,11 @@ WHERE conversation_id = @conversation_id
 -- name: InsertOutboxMessage :execrows
 INSERT INTO outbox_messages (
     id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at
+    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at, binding_id
 ) VALUES (
     @id, @dedup_key, @agent_id, @conversation_id, @source_submission_id,
     @kind, @peer, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'),
-    @topic_key, @body, @reason, @status, @created_at, @delivered_at
+    @topic_key, @body, @reason, @status, @created_at, @delivered_at, sqlc.narg(binding_id)
 )
 ON CONFLICT (dedup_key) DO NOTHING;
 
@@ -28,7 +28,8 @@ SELECT * FROM outbox_messages WHERE id = ?;
 -- name: BindOutboxFilesToOutbox :execrows
 UPDATE outbox_files
 SET outbox_id = @outbox_id
-WHERE submission_id = @submission_id AND outbox_id IS NULL;
+WHERE submission_id = @submission_id AND outbox_id IS NULL
+  AND EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = @outbox_id AND o.status = 'pending');
 
 -- name: QueueOutboxFile :execrows
 INSERT INTO outbox_files (id, agent_id, operation_key, submission_id, name, mime_type, body)
@@ -38,6 +39,7 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = @submission_id AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
+  AND EXISTS (SELECT 1 FROM channel_bindings b WHERE b.id = s.binding_id AND b.revoked_at IS NULL)
   AND c.agent_id = @agent_id AND c.execution_scope = '' AND c.execution_id = @execution_id
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
@@ -55,20 +57,21 @@ WHERE outbox_id = ? ORDER BY rowid;
 
 -- name: ListPendingOutboxMessages :many
 SELECT o.id, o.dedup_key, o.agent_id, o.conversation_id, o.source_submission_id,
-       o.kind, o.peer, o.channel_context, o.topic_key, o.body, o.reason,
+       o.kind, b.peer, o.channel_context, o.topic_key, o.body, o.reason,
        o.rendered_parts, o.delivered_parts, o.group_fallback, o.group_cursor, o.remote_ids,
        o.status, o.retry_at, o.error, o.created_at
 FROM outbox_messages o
+JOIN channel_bindings b ON b.id = o.binding_id AND b.revoked_at IS NULL
 JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
 WHERE o.status = 'pending' AND c.execution_scope = ''
   AND o.agent_id = @agent_id
-  AND o.peer >= @origin_start AND o.peer < @origin_end
+  AND b.peer >= @origin_start AND b.peer < @origin_end
   AND (
       o.kind != 'reply'
       OR NOT EXISTS (
           SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
-          WHERE p.status = 'pending' AND p.origin = o.peer
+          WHERE p.status = 'pending' AND p.binding_id = o.binding_id
             AND p.rowid < coalesce(src.rowid, o.rowid)
             AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0
             AND pc.agent_id = o.agent_id
@@ -103,7 +106,7 @@ WHERE id = @id;
 UPDATE outbox_messages SET retry_at = @retry_at, error = @reason WHERE id = @id;
 
 -- name: MarkOutboxDelivered :exec
-UPDATE outbox_messages SET status = 'delivered', delivered_at = @delivered_at WHERE id = @id;
+UPDATE outbox_messages SET status = 'delivered', delivered_at = @delivered_at WHERE id = @id AND status = 'pending';
 
 -- name: RevokeOutboxBySubmission :exec
 UPDATE outbox_messages SET status = 'revoked' WHERE source_submission_id = ? AND status = 'pending';
@@ -130,7 +133,7 @@ SELECT EXISTS (
 -- name: InsertStoppedOutboxForConversation :exec
 INSERT INTO outbox_messages (
     id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at
+    kind, peer, channel_context, topic_key, body, reason, status, created_at, binding_id
 )
 SELECT
     s.id,
@@ -145,7 +148,8 @@ SELECT
     '',
     'stopped',
     CASE WHEN s.channel_revoked != 0 THEN 'revoked' ELSE 'pending' END,
-    @now
+    @now,
+    s.binding_id
 FROM submissions s
 WHERE s.conversation_id = @chat_id
   AND s.status = 'pending'

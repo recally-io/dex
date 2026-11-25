@@ -341,6 +341,8 @@ without setting `admitted_at`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
 channels enters the bot's agent `main` conversation with that peer as origin.
+Dex checks pairing at intake and saves `binding_id` with the input or command
+receipt. The origin labels the transcript; the binding selects the reply route.
 Channel input cannot select a Chat session. Old `channel_peers` records and
 per-peer conversations remain stored but receive no new channel input. The
 Sessions list excludes those conversations. Main and Chat are writable on
@@ -374,10 +376,10 @@ sent or permanently skipped; the source key and routing facts remain. There is
 no feedback store, model input, or GitHub write. The reply remains on the
 messaging platform like any other message.
 
-Each platform has one durable sender. Settlement wakes the origin's sender.
-Legacy Stop wakes senders for withdrawn input. At start
-and after a failed send, it reads settled submissions and command replies
-that remain undelivered, in submission admission order. It records each confirmed part and marks the reply
+Each platform has one durable sender. Settlement wakes the sender for the
+saved route. Legacy Stop wakes senders for withdrawn input. At start and after
+an unsuccessful send, the sender reads pending Outbox entries and command
+replies in submission admission order. It records each confirmed part and marks the reply
 delivered after its last part. A permanent rejection skips that part and does
 not block later replies. A transient error retries with a delay from 5 s to
 60 s. Each bot receives a stable delivery ID and part index through `Bot.Send`.
@@ -416,7 +418,8 @@ in milliseconds.
 
 On a direct channel request, the parent can set `follow_up: true` on
 `session_new` or `session_send`. The commitment belongs to that delegation,
-request, session, and channel authorization. An acknowledgment or progress update does not complete the commitment.
+request, session, and original channel binding. An acknowledgment or progress
+update does not complete the commitment.
 
 The canonical child result starts an independent review turn for the
 same parent. Its reminder tells the parent to use `notify_user` for a reviewed
@@ -457,10 +460,22 @@ WHERE id = :outbox_id;
   a generic `delivered` status proves confirmation. If a provider accepts a
   request and Dex stops before it saves the receipt, a retry can send again.
 
-Channel revocation stays on the original input even if its reply was already
-delivered. It also applies to existing and future child results, with or without
-a follow-up commitment. Restoring the channel grant allows new inputs but does
-not authorize delivery from the old result.
+### Binding lifetime
+
+Pairing creates a new `channel_bindings` ID. Removing a pairing marks that ID
+inactive and revokes all its pending Outbox entries in the same transaction.
+The old ID stays in the store. A later reply or child result keeps the original
+ID even if the channel reconnects with the same account and peer. The sender
+checks whether that ID is active before a platform request. It does not look
+up a replacement by address. A request already in flight can still reach the
+platform.
+
+An upgrade gives current pairings new IDs. Old messages and queued deliveries
+have no proof of continuity and do not inherit these IDs. Dex marks legacy
+pending channel deliveries as revoked and keeps their results in Web. It also
+closes legacy pending command replies and discards unverified webhook payloads
+at upgrade. If a pairing is revoked, Dex closes its pending command replies
+and discards unverified webhook payloads for that channel account.
 
 ## Owner channel tools
 
@@ -471,10 +486,9 @@ flags, and authorized notification destinations. They omit runtime error text,
 credentials, pairing codes, and login details. The transcript omits raw tool
 arguments. Argument errors do not echo rejected values.
 
-Each call checks the stored source of the live run. Only a web message in a
-top-level Main or Chat session can use these tools. A run that mixes web and
-channel input does not qualify. A paired sender, child session, or
-background input cannot make a call as the web owner.
+A live owner turn in a top-level Main or Chat session can use these tools.
+Web and paired private input have the same owner access. A steer does not
+change that access. A child session or background turn cannot use these tools.
 
 `channel_request_change` can request a Telegram or Feishu pairing revocation,
 a disconnect, or a change to the primary notification destination. WeChat
@@ -597,8 +611,10 @@ Only a confirmed result with a bot token, bot ID, base URL, and owner ID can
 activate the bot. Invalid confirmation stays failed on later polls. Valid
 candidate credentials remain available if local activation fails. Activation
 stops and joins the old bot before it changes shared runtime state. It saves
-credentials and runtime initialization in one transaction, starts the replacement,
-and then reports `confirmed`. If the transaction fails, it restores the previous
+credentials, runtime initialization, and the new binding in one transaction.
+Even if the owner and bot ID are unchanged, a new QR login revokes the old
+binding and its pending deliveries. Dex starts the replacement and then reports
+`confirmed`. If the transaction fails, it restores the previous
 bot. A new login ID or delete invalidates an older login request.
 
 The bot ignores other senders, group messages, bot echoes, and unfinished

@@ -260,7 +260,7 @@ func TestUserRevokesFeishuPairingWithoutReplacingCredentials(t *testing.T) {
 	}
 }
 
-func TestUserChannelAndDelegatedRunsCannotManageChannels(t *testing.T) {
+func TestUserCanRequestChannelChangesFromPrivateChatButNotFromAChild(t *testing.T) {
 	t.Parallel()
 	// Given a paired Telegram sender and an owner who can delegate work.
 	f := newFakeTelegram(t)
@@ -268,9 +268,9 @@ func TestUserChannelAndDelegatedRunsCannotManageChannels(t *testing.T) {
 	d := startTelegram(t, f, dir, 42)
 	d.setModel(t, "direct")
 	change := `channel_request_change {"operation":"disconnect","target":"telegram"}`
-	// A private Telegram input cannot request management approval.
+	// A private Telegram input can request the same review as a Web input.
 	f.message(1, 42, 42, change)
-	if got := f.next(t).Text; !strings.Contains(got, "channel management needs a web owner input") {
+	if got := f.next(t).Text; !strings.Contains(got, "pending_owner_confirmation") || !strings.Contains(got, "/channel-approvals/") {
 		t.Fatalf("paired DM management result: %q", got)
 	}
 	// A child of a web owner cannot borrow the parent's authority.

@@ -173,8 +173,8 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			}
 		}
 		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
-			if input.Authorize != nil {
-				if err := input.Authorize(ctx); err != nil {
+			if input.BeforeAdmission != nil {
+				if err := input.BeforeAdmission(ctx); err != nil {
 					return nil, err
 				}
 			}
@@ -206,7 +206,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			if input.Kind == "task_result" && IsMonitorEvent(input.RequestID) && a.config.Tasks.AuthorizeMonitor != nil {
 				c := TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: input.RequestID}
 				if err := a.config.Tasks.AuthorizeMonitor(ctx, c); err != nil {
-					return nil, fmt.Errorf("%w: monitor target or authority is no longer valid", ErrInvalidInput)
+					return nil, fmt.Errorf("%w: monitor target is no longer valid", ErrInvalidInput)
 				}
 			}
 			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Isolation: input.Isolation, ReviewBypass: input.ReviewBypass}

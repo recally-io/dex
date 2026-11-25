@@ -29,8 +29,8 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	if chat.NonPrivateTelegramInput(peer, msg.ChannelContext) {
 		return chat.ErrTelegramUnauthorized
 	}
-	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" {
-		return errors.New("invalid channel peer or source")
+	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" || msg.ChannelContext.AccountID == "" {
+		return errors.New("invalid channel peer, account, or source")
 	}
 	if len(msg.Attachments) > 10 {
 		return errors.New("a message can have at most 10 attachments")
@@ -48,27 +48,30 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 		return err
 	}
 	cmd := strings.TrimSpace(msg.Content)
-	if channel.IsFeedbackCommand(cmd) && msg.AlbumSource == "" && len(msg.Attachments) == 0 {
-		answer := feedbackReply(cmd)
-		identity, err := json.Marshal(msg.ChannelContext)
-		if err != nil {
-			return err
-		}
-		if err := m.q.CreateFeedbackCommand(ctx, sqlc.CreateFeedbackCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelContext: string(identity), Answer: answer}); err != nil {
-			return err
-		}
-		m.Notify(peer)
-		return nil
-	}
+	isFeedback := channel.IsFeedbackCommand(cmd)
 	basicCommand := cmd == "/clear" || cmd == "/new" || cmd == "/stop" || cmd == "/help"
-	if !channel.IsCommand(cmd) || !strings.HasPrefix(peer, "telegram:") && !basicCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
+	telegramCommand := strings.HasPrefix(peer, "telegram:") && channel.IsCommand(cmd)
+	isCommand := isFeedback || basicCommand || telegramCommand
+	if !isCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.chats.AcceptMessage(ctx, m.agentID, peer, source, msg)
+	}
+	bindingID, err := chat.ChannelInputBinding(ctx, m.q, m.agentID, peer, msg.ChannelContext)
+	if err != nil {
+		return err
 	}
 	identity, err := json.Marshal(msg.ChannelContext)
 	if err != nil {
 		return err
 	}
-	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
+	if isFeedback {
+		answer := feedbackReply(cmd)
+		if err := m.q.CreateFeedbackCommand(ctx, sqlc.CreateFeedbackCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelContext: string(identity), Answer: answer, BindingID: bindingID}); err != nil {
+			return err
+		}
+		m.Notify(peer)
+		return nil
+	}
+	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd, ChannelContext: string(identity), BindingID: bindingID}); err != nil {
 		return err
 	}
 	return m.complete(ctx, source)
@@ -128,7 +131,7 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	if err != nil {
 		return err
 	}
-	if c.AgentID != m.agentID || c.Completed != 0 {
+	if c.AgentID != m.agentID || c.Completed != 0 || c.DeliveredAt.Valid || !c.BindingID.Valid {
 		return nil
 	}
 	var target chat.Chat
@@ -187,17 +190,12 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	return nil
 }
 
-// sendCommandReply skips delivery if the Telegram actor is no longer authorized.
-// The sender closes the command receipt in both the sent and skipped cases.
+// sendCommandReply uses the binding recorded when the command was accepted.
 func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.ChannelCommand) error {
 	telegram := strings.HasPrefix(r.Peer, "telegram:")
 	var identity chat.ChannelContext
 	if telegram {
 		if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
-			return err
-		}
-		allowed, err := m.TelegramInputAllowed(ctx, r.Peer, identity)
-		if err != nil || !allowed {
 			return err
 		}
 	}
@@ -208,7 +206,7 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 			return err
 		}
 	} else if telegram && !privateDraft && r.Answer != "" {
-		target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Peer, identity)
+		target, err := m.chats.Main(ctx, m.agentID)
 		if err != nil {
 			return err
 		}
@@ -229,7 +227,16 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 		}
 	}
 	for i, part := range parts {
-		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part, privateDraft, nil); err != nil {
+		beforeSend := func() error {
+			active, err := m.q.CanSendCommandReply(ctx, r.SourceKey)
+			if err == nil && !active {
+				return errOutboxRevoked
+			}
+			return err
+		}
+		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part, privateDraft, beforeSend); errors.Is(err, errOutboxRevoked) {
+			return nil
+		} else if err != nil {
 			return fmt.Errorf("send command reply: %w", err)
 		}
 	}

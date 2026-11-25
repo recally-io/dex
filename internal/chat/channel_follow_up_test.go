@@ -19,7 +19,11 @@ func followUpSource(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42", Options: "{}"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, ConversationID: parent, Content: "Please report back", Attachments: "null", SourceKey: sql.NullString{String: "telegram:123:1", Valid: true}, Origin: "telegram:42", Kind: "message", ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
+	bindingID, err := ChannelInputBinding(ctx, r.q, "bot", "telegram:42", ChannelContext{AccountID: "123", SenderID: "42"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{BindingID: bindingID, ID: call.SourceRequestID, ConversationID: parent, Content: "Please report back", Attachments: "null", SourceKey: sql.NullString{String: "telegram:123:1", Valid: true}, Origin: "telegram:42", Kind: "message", ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
 		t.Fatal(err)
 	}
 	return parent, call
@@ -198,7 +202,12 @@ func TestUserChannelFollowUpCancellationRevokesQueuedConclusion(t *testing.T) {
 			if err != nil || row.Status != "revoked" || row.DeliveredAt.Valid {
 				t.Fatalf("cancelled follow-up can still send: %+v, %v", row, err)
 			}
-			if _, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "Replay after cancellation"}); err == nil {
+			replay, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "Replay after cancellation"})
+			if cancel == "revocation" {
+				if err != nil || replay != outboxID {
+					t.Fatalf("replay did not keep the revoked delivery: %q, %v", replay, err)
+				}
+			} else if err == nil {
 				t.Fatal("cancelled result queued again")
 			}
 		})

@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 	"uuid"
@@ -69,27 +68,9 @@ deliveries:
 			return err
 		}
 		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			allowed, err := m.authorizeOutboxPart(ctx, name, r)
+			err := m.sendReplyPart(ctx, bot, r, i, parts[i], &remotes)
 			if errors.Is(err, errOutboxRevoked) {
 				continue deliveries
-			}
-			if err != nil {
-				return err
-			}
-			if allowed {
-				err = m.sendReplyPart(ctx, name, bot, r, i, parts[i], &remotes)
-				if errors.Is(err, errOutboxRevoked) {
-					continue deliveries
-				}
-			}
-			if !allowed || errors.Is(err, errFollowUpNotAuthorized) {
-				if err := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, Reason: "destination no longer authorized"}); err != nil {
-					return err
-				}
-				if err := m.q.MarkOutboxPartSkipped(ctx, r.ID); err != nil {
-					return err
-				}
-				break
 			}
 			if err != nil {
 				retryAt := time.Now().Add(5 * time.Second).UnixMilli()
@@ -155,12 +136,10 @@ func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string
 		part.Group = files
 	}
 	var receipt channel.Receipt
+	if guardErr := beforeSend(); guardErr != nil {
+		return channel.Receipt{}, guardErr
+	}
 	if err == nil {
-		if beforeSend != nil {
-			if err := beforeSend(); err != nil {
-				return channel.Receipt{}, err
-			}
-		}
 		receipt, err = bot.Send(ctx, peer, id, index, part)
 	}
 	// A platform error can quote the private draft. Keep only the disposition.
@@ -227,13 +206,11 @@ func (m *Manager) replyParts(ctx context.Context, bot channel.Bot, r sqlc.ListPe
 			if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
 				return nil, err
 			}
-			target, err := m.chats.ChannelConversation(ctx, m.agentID, r.Peer, identity)
+			conv, err := m.q.GetConversation(ctx, r.ConversationID)
 			if err != nil {
-				if errors.Is(err, chat.ErrTelegramUnauthorized) {
-					return parts, nil
-				}
 				return nil, err
 			}
+			target := chat.Chat{ID: conv.ID, ExecutionID: conv.ExecutionID.Int64}
 			actions, err := questionActions(question)
 			if err != nil {
 				return nil, err
@@ -254,88 +231,10 @@ func (m *Manager) replyParts(ctx context.Context, bot channel.Bot, r sqlc.ListPe
 	return parts, nil
 }
 
-var (
-	errOutboxRevoked         = errors.New("outbox delivery revoked before send")
-	errFollowUpNotAuthorized = errors.New("follow-up destination no longer authorized")
-)
+var errOutboxRevoked = errors.New("outbox delivery revoked before send")
 
 func isFinalFollowUp(row sqlc.ListPendingOutboxMessagesRow) bool {
 	return strings.HasPrefix(row.DedupKey, "follow-up-final:")
-}
-
-func (m *Manager) authorizeOutboxPart(ctx context.Context, platform string, row sqlc.ListPendingOutboxMessagesRow) (bool, error) {
-	allowed, err := m.authorizedReply(ctx, platform, row.Peer, row.ChannelContext, row.SourceSubmissionID.String)
-	if err != nil {
-		return false, err
-	}
-	if isFinalFollowUp(row) {
-		// Use one last SQLite snapshot for the original grant and Outbox status.
-		state, err := m.q.GetFollowUpDispatchState(ctx, row.ID)
-		if err != nil {
-			return false, err
-		}
-		if state.Status == "revoked" {
-			return false, errOutboxRevoked
-		}
-		return allowed && state.Status == "pending" && state.Authorized, nil
-	}
-	// Read the durable row once, after checking the source. That check can race with Stop,
-	// Clear or a settings write. An explicit revocation is not a skipped delivery.
-	current, err := m.q.GetOutboxMessage(ctx, row.ID)
-	if err != nil {
-		return false, err
-	}
-	if current.Status == "revoked" {
-		return false, errOutboxRevoked
-	}
-	return allowed && current.Status == "pending", nil
-}
-
-func (m *Manager) authorizedReply(ctx context.Context, platform, peer, channelContext, sourceSubmissionID string) (bool, error) {
-	if sourceSubmissionID != "" {
-		current, err := m.q.GetSubmission(ctx, sourceSubmissionID)
-		if err != nil {
-			return false, err
-		}
-		if current.ChannelRevoked != 0 {
-			return false, nil
-		}
-	}
-	if platform != "telegram" {
-		return true, nil
-	}
-	if strings.HasPrefix(peer, "telegram:-") {
-		return false, nil
-	}
-	cfg, err := m.q.GetTelegramSettings(ctx, m.agentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	var source chat.ChannelContext
-	if err := json.Unmarshal([]byte(channelContext), &source); err != nil {
-		return false, err
-	}
-	account, _, ok := strings.Cut(cfg.Token, ":")
-	if !ok || source.AccountID != "" && source.AccountID != account {
-		return false, nil
-	}
-	sender := source.SenderID
-	if sender == "" {
-		sender = strings.TrimPrefix(peer, "telegram:")
-	}
-	id, err := strconv.ParseInt(sender, 10, 64)
-	if err != nil || id <= 0 {
-		return false, nil
-	}
-	for allowed := range strings.SplitSeq(cfg.AllowedUsers, ",") {
-		if strings.TrimSpace(allowed) == sender {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // legacyReplySource identifies the submissions row whose delivery cursor mirrors the outbox.

@@ -103,6 +103,16 @@ type BackgroundCommand struct {
 	EndedAt          sql.NullInt64 `json:"ended_at"`
 }
 
+type ChannelBinding struct {
+	ID        int64         `json:"id"`
+	AgentID   string        `json:"agent_id"`
+	Platform  string        `json:"platform"`
+	AccountID string        `json:"account_id"`
+	Peer      string        `json:"peer"`
+	OwnerPeer string        `json:"owner_peer"`
+	RevokedAt sql.NullInt64 `json:"revoked_at"`
+}
+
 type ChannelCommand struct {
 	AgentID        string        `json:"agent_id"`
 	SourceKey      string        `json:"source_key"`
@@ -114,6 +124,7 @@ type ChannelCommand struct {
 	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
 	ChannelContext string        `json:"channel_context"`
 	RenderedReply  string        `json:"rendered_reply"`
+	BindingID      sql.NullInt64 `json:"binding_id"`
 }
 
 type ChannelFollowUp struct {
@@ -155,6 +166,13 @@ type CompactReceipt struct {
 	ID             string `json:"id"`
 	ConversationID int64  `json:"conversation_id"`
 	Instructions   string `json:"instructions"`
+}
+
+type ConfiguredChannelAddress struct {
+	AgentID   string      `json:"agent_id"`
+	Platform  string      `json:"platform"`
+	AccountID string      `json:"account_id"`
+	Peer      interface{} `json:"peer"`
 }
 
 type Conversation struct {
@@ -316,6 +334,7 @@ type OutboxMessage struct {
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
 	SkippedPart        int64          `json:"skipped_part"`
+	BindingID          sql.NullInt64  `json:"binding_id"`
 }
 
 type Provider struct {
@@ -423,6 +442,12 @@ type Submission struct {
 	ExitAction           string         `json:"exit_action"`
 	RequiredReplyID      string         `json:"required_reply_id"`
 	StopRequested        int64          `json:"stop_requested"`
+	BindingID            sql.NullInt64  `json:"binding_id"`
+}
+
+type SyncChannelBinding struct {
+	AgentID  string `json:"agent_id"`
+	Platform string `json:"platform"`
 }
 
 type SystemSetting struct {

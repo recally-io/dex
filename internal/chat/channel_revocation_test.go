@@ -31,9 +31,19 @@ func TestUserChannelRevocationRetiresOldChildResultsWithoutOptIn(t *testing.T) {
 					}
 				}
 				change("42")
+				peer := platform + ":42"
+				binding := func() sql.NullInt64 {
+					t.Helper()
+					id, err := ChannelInputBinding(ctx, r.q, "bot", peer, ChannelContext{AccountID: "123", SenderID: "42"})
+					if err != nil {
+						t.Fatal(err)
+					}
+					return id
+				}
+				oldBinding := binding()
 				// Given the original acknowledgment was sent while the child still had work to do.
 				call.SourceRequestID = "channel-request"
-				if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, ConversationID: parent, Content: "Please report", Attachments: "null", Origin: platform + ":42", Kind: "message", SourceKey: sql.NullString{String: platform + ":123:1", Valid: true}, ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
+				if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, BindingID: oldBinding, ConversationID: parent, Content: "Please report", Attachments: "null", Origin: platform + ":42", Kind: "message", SourceKey: sql.NullString{String: platform + ":123:1", Valid: true}, ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := r.service.ToolSessionNew(ctx, call, engine.SessionNewArgs{Title: "Worker", Message: "child findings", FollowUp: false}); err != nil {
@@ -89,12 +99,16 @@ func TestUserChannelRevocationRetiresOldChildResultsWithoutOptIn(t *testing.T) {
 					t.Fatalf("old notification was revived: %+v, %v", row, err)
 				}
 				result, err := r.q.GetSubmission(ctx, resultID)
-				if err != nil || result.ChannelRevoked != 1 {
-					t.Fatalf("old result did not retain revocation: %+v, %v", result, err)
+				if err != nil || result.BindingID != oldBinding || row.BindingID != oldBinding {
+					t.Fatalf("old result or notification lost its binding: result=%+v outbox=%+v error=%v", result, row, err)
+				}
+				newBinding := binding()
+				if newBinding == oldBinding {
+					t.Fatal("re-pairing reused the old binding")
 				}
 				// The restored grant still admits new channel work.
 				fresh := "channel-request-after-pair"
-				if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: fresh, ConversationID: parent, Content: "New request", Attachments: "null", Origin: platform + ":42", Kind: "message", SourceKey: sql.NullString{String: platform + ":123:2", Valid: true}}); err != nil {
+				if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: fresh, BindingID: newBinding, ConversationID: parent, Content: "New request", Attachments: "null", Origin: platform + ":42", Kind: "message", SourceKey: sql.NullString{String: platform + ":123:2", Valid: true}}); err != nil {
 					t.Fatal(err)
 				}
 				if err := r.service.settle(ctx, fresh, engine.Outcome{Status: "done", Answer: "New response"}); err != nil {

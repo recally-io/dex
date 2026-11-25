@@ -296,7 +296,7 @@ func TestUserMonitorDoesNotFollowAChangedProject(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := listedMonitor(t, r, id, info.ID)
-	if got.State != "cancelled" || got.Outcome != "monitor target or authority is no longer valid" || got.Runs != 0 {
+	if got.State != "cancelled" || got.Outcome != "monitor target is no longer valid" || got.Runs != 0 {
 		t.Fatalf("monitor followed a project change: %+v", got)
 	}
 }
