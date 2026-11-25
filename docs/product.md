@@ -113,7 +113,7 @@ to read in an afternoon.
 - Channel pages in bot Settings show connection, owner, and notification
   settings before usage instructions. A disconnected channel shows its available
   setup options. Notifications can make the channel's owner the primary target
-  for routine results.
+  for automation results.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
   are for the owner. Paired private chats and the web have the same owner
   access. Each bot belongs to one agent. The web selects an agent.
@@ -130,7 +130,7 @@ to read in an afternoon.
   same account does not send old replies. They remain available on the web.
   Channels send final replies without drafts. Long replies send an extract and refer to Web for the full text. Pending deliveries resume after restart. A crash before the sender saves a Telegram receipt can duplicate one message. Bot settings
   show each channel's runtime status and setup.
-- Agents can deliver files from main, Chat, Routine runs, and child sessions.
+- Agents can deliver files from main, Chat, Automation runs, and child sessions.
   Dex stores each delivery as an immutable snapshot of at most 20 MiB. The user
   can preview Markdown and safe raster images in Dex and download other files.
   A delivery of a child session appears in that session and in its parent conversation.
@@ -167,18 +167,19 @@ to read in an afternoon.
 - Monitors: bounded follow-ups to the same Main or Chat session. A prompt
   Monitor queues one or more scheduled prompts. A script Monitor uses the
   session's Bash access and queues a prompt when its check output changes.
-  The user can list and cancel Monitors in the chat activity panel. Old
-  scheduled Timers appear as one-run Monitors after an upgrade.
+  Session activity lists Monitors and the Outbox. The owner can cancel an
+  active Monitor in a writable session. The panel does not list Processes;
+  a writable session manages them with the `process_*` tools.
 - Automations: long-lived automation. In Main or a writable Chat, the
   owner can ask the agent to list, create, inspect, update, pause, resume, or
-  run a routine. The agent can read the 10 most recent run results and their
+  run an automation. The agent can read the 10 most recent run results and their
   transcript references. These tools use the current bot; they cannot manage another bot's
-  routines. The tools require a user-input turn. Automation runs, background
+  automations. The tools require a user-input turn. Automation runs, background
   tasks, dreams, and task-result continuations cannot use them.
   A partial update keeps fields that the owner did not change. Creation uses
   the current project directory unless the owner selects another directory.
-  Replaying one tool call does not create another routine, start another run,
-  or move the schedule again. There is no routine deletion tool.
+  Replaying one tool call does not create another automation, start another run,
+  or move the schedule again. There is no automation deletion tool.
 - Cross-bot sessions. One
   owner has all the bots, so a bot can give work to another bot. `session_new`
   with `bot` (an ID or a name) creates a child session in that bot. The child
@@ -196,7 +197,7 @@ to read in an afternoon.
   A file that a child delivers in a turn of its parent shows in the parent
   conversation, also when the child belongs to another bot. Bot
   isolation holds for everything else: the API returns 404 for another bot's
-  resources, and channels, routines, and agent-level vault secrets stay with their bot.
+  resources, and channels, automations, and agent-level vault secrets stay with their bot.
 
 Inputs store their origin. Web input uses `web`. Channel input uses the exact
 peer, such as `telegram:7`. A background result keeps the origin of its source
@@ -222,15 +223,15 @@ The sidebar only switches bots. A child session is a Chat session with a parent.
 and the name of the parent: Main, or the title of a Chat, also when that Chat is
 archived. The list has no task rows, no step preview, no Stop on a row, no Mark
 handled and no Completed group.
-A busy session shows a dot in Chats and a Running badge in All sessions. The
+A busy session shows a dot in the Sessions sidebar and a Running badge in All sessions. The
 dot and the badge change to Stalled when the session shows no sign of work: a
 tool has run for more than 30 minutes, or no tool runs and the engine saw no
 activity for 5 minutes. The hint checks the time every 15 seconds, so it appears
 with no click.
-A child session that runs in another bot appears in the parent bot’s Chats and
+A child session that runs in another bot appears in the parent bot’s Sessions sidebar and
 All sessions list. The row names its bot and opens in that bot. The child bot
 names the parent bot.
-Routine run history links to read-only automation transcripts.
+Automation run history links to read-only automation transcripts.
 Old channel transcript URLs remain readable. The legacy Sessions URL remains
 available for saved links.
 Named dispatch and result labels open the child session that holds the turn. An
@@ -305,17 +306,17 @@ rule can also hold an event that matches no Task. Dex holds only events from
 trusted authors, or events with conflicting links. The owner attaches a held
 event to an open Task or dismisses it. An attach links the event's free objects
 to the Task, so later events go there. A decision does not alert Main.
-The Inbox also links to Routine results.
-Routine result records include settled `changed` or `failed` outcomes without a
+The Inbox also links to Automation results.
+Automation result records include settled `changed` or `failed` outcomes without a
 duplicate mark. Unknown and `unchanged` outcomes stay in run history. Opening
 a result marks it read. Marking it handled dismisses it. Both states survive restart.
 
-Result details show the outcome, routine, bot, time, summary, and run transcript.
-Continue in chat opens a writable Chat for that bot, sets the routine's current
-project directory, and sends a first message that quotes the stored result
-and exact run reference. Routine history shows outcome dots, summaries,
+Result details show the outcome, automation, bot, time, summary, and run transcript.
+Continue in a session opens a writable session for that bot. It pins the
+run's Runner and project directory, then sends a message that quotes the
+stored result and its run reference. Automation history shows outcome dots, summaries,
 duplicate marks, and links to saved results. The Automations
-entry in the header shows a red dot when an enabled routine's latest run failed.
+entry in the header shows a red dot when an enabled automation's latest run failed.
 
 When the main agent starts background work, it continues independent local
 work within the same scope. When no local work remains, it names the background
@@ -426,10 +427,10 @@ and task-specific automation result routing are later work. Other chat channels 
   automation or dream, leaves the bot as it is. The agent sees the decision
   as the last line of the answer. The default bot, the asking bot and a bot with a
   running session are refused. An archived bot leaves the sidebar and the bot
-  list, its Telegram, Feishu and WeChat channels stop, and its routines stop
+  list, its Telegram, Feishu and WeChat channels stop, and its automations stop
   running. Its chats, memory, settings and files stay. Settings > Archived bots
   lists archived bots with a Restore button. Restore brings back the sidebar row,
-  the channels and the routines as they were. A routine whose time passed while
+  the channels and the automations as they were. An automation whose time passed while
   the bot was archived runs again only if it is at most one hour late.
 - Native desktop applications. Use a browser to access the web UI.
 - More than one host. One machine runs one dex controller process; individual bots
@@ -483,7 +484,7 @@ apply when the affected agent reloads. dex ignores old `.env` files. The old
 `/secrets` address opens global Secrets.
 
 Bot Settings → Skills shows file levels and skills. Bot Settings → Integrations
-shows MCP servers. Both show configuration warnings. The automatic reload
+shows MCP servers. Both show configuration warnings. Both pages offer Reload. The automatic reload
 requires all agents to be idle before it replaces the selected agent's execution
 resources and MCP connections. After that idle check succeeds, other agents
 can start work while Reload continues. Invalid configuration for the selected

@@ -89,7 +89,7 @@ automatic channel Outbox row is written. Web input and a parent's
 
 Main and Chat display explicit `notify_user` output when the stored source
 submission has Web origin. The notice and source must belong to the requested
-conversation. A Routine does not get a Web timeline notification. A channel target
+conversation. An Automation does not get a Web timeline notification. A channel target
 on an eligible Web notification does not change its origin.
 
 The Web stream reads a recent page from `web_notifications` when it connects.
@@ -178,7 +178,7 @@ writing child separate files or directories. The tools are:
 Each session, list row and match names its bot (`bot` and `botId`).
 
 Only a parent can send to, stop or fork a child. A child has no parent session
-tools, routine tools, or `ask_user`. The app selects the child extensions for
+tools, automation tools, or `ask_user`. The app selects the child extensions for
 each input, and the handlers also check the caller.
 A conversation that was a task before the upgrade is a child in the same way.
 
@@ -186,7 +186,7 @@ A conversation that was a task before the upgrade is a child in the same way.
 
 A child uses `session_report` from the `child-outbox` extension. Its only
 arguments are `content` and `final`. The recipient is always the direct parent,
-which can be a Routine session. The tool cannot name another session. The
+which can be an Automation session. The tool cannot name another session. The
 native validator rejects `id`, `message`, `mode` and `follow_up`. The handler
 refuses a call from a conversation without a parent.
 
@@ -285,7 +285,7 @@ The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
 line at each `session_send` call. A `session_report` call shows as a
 "Reported to parent" step. That step keeps a
-System Turn trace unfolded. A result mark is one line with a "View thread"
+System Turn trace unfolded. A result mark is one line with a "View session"
 action. The card, the line and the action open a read-only side panel that
 shows the child's own transcript with the usual chat reads and stream. The web
 reads the child ID from the session tool result and finds the child of a result
@@ -572,17 +572,16 @@ persistent files. Operations renew its timeout while it is in use, including
 short commands. A confirmed expiry fails the operation without replay. Later
 work opens a fresh sandbox in the same selected environment; old files do not
 carry over.
-Routines still support explicit local and SSH overrides only.
+Automations support explicit overrides for Local and SSH Machines only.
 
 A web chat selects its environment before its first message
 (`PUT /api/agents/{agentId}/chats/{chatId}/environment`); a started chat answers
 409. `session_new` takes `environment`. A child of the same bot runs in its
 parent's environment unless it selects another one. A child of another bot runs
 in that bot's environment unless it selects another one. `environment_list`
-shows local and the registered environments with ID, name, kind, and status,
-with the bot's default first. The stored kind `runner` identifies a Remote
-Machine with an Outbound connection through `dex-agent`. An offline Outbound Machine remains
-listed. The tool includes
+shows Local and the registered Runners with ID, name, kind, and status, with
+the bot's default first. The stored kind `runner` identifies an Outbound
+Machine that connects through `dex-agent`. An offline Machine remains listed. The tool includes
 `desc` when the owner sets a description on the saved environment in Settings.
 This plain text is data. It does not change selection or access and does not go
 into the system prompt. The tool does not show configuration or secrets.

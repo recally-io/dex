@@ -54,6 +54,9 @@ test("moves bot instructions, skills, channels, and secrets into four settings p
   expect(new URL(await browser.url()).pathname).toBe("/a/default/integrations");
   await expect(screen.getByRole("link", "Telegram", { exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", "MCP servers")).toBeVisible();
+  await screen.getByRole("button", "Reload", { exact: true }).tap();
+  await expect(screen.getByRole("button", "Reload", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Could not reload tools and MCP servers")).toHaveCount(0);
   await screen.getByRole("link", "Secrets", { exact: true }).tap();
   await expect(screen.getByRole("heading", "Secret vault", { exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", "1Password", { exact: true })).toHaveCount(0);

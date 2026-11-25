@@ -177,12 +177,10 @@ describe("chat", () => {
       );
     await screen.getByRole("button", "Send message").tap();
     await screen.getByText(new RegExp(`^tool:.*${prompt}`)).waitFor();
-    await screen.getByRole("button", "Monitors and outbox").tap();
+    await screen.getByRole("button", "Session activity").tap();
+    await expect(screen.getByText(/Use session tools to manage background Processes/)).toBeVisible();
 
-    const monitor = screen
-      .getByRole("list", "Follow-up monitors")
-      .getByRole("listitem")
-      .filter({ hasText: prompt });
+    const monitor = screen.getByRole("list", "Monitors").getByRole("listitem").filter({ hasText: prompt });
 
     await monitor.waitFor();
     await expect(monitor).toContainText("script · 0/3 checks");

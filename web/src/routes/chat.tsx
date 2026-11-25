@@ -220,7 +220,7 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
   if (chat.channel === "automation") {
     const pill = (
       <Badge variant="secondary" className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
-        <Clock className="size-[11px]" /> Routine
+        <Clock className="size-[11px]" /> Automation
       </Badge>
     );
 

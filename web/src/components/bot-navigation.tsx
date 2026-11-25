@@ -75,7 +75,11 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
         <CalendarClock size={15} /> Automations
         {routines ? <span className="text-xs tabular-nums">{routines}</span> : null}
         {failed ? (
-          <span role="img" aria-label="Latest routine run failed" className="size-1.5 rounded-full bg-red" />
+          <span
+            role="img"
+            aria-label="Latest automation run failed"
+            className="size-1.5 rounded-full bg-red"
+          />
         ) : null}
       </DropdownMenuItem>
       <DropdownMenuItem
@@ -128,7 +132,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           {failed ? (
             <span
               role="img"
-              aria-label="Latest routine run failed"
+              aria-label="Latest automation run failed"
               className="size-1.5 rounded-full bg-red"
             />
           ) : null}

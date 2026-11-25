@@ -30,14 +30,14 @@ func routineCaller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (
 		return conv, sqlc.Submission{}, err
 	}
 	if !chat.Writable(conv.ChannelKey) {
-		return conv, sqlc.Submission{}, fmt.Errorf("%w: routines require main or a writable Chat", ErrInvalid)
+		return conv, sqlc.Submission{}, fmt.Errorf("%w: automations require Main or a writable session", ErrInvalid)
 	}
 	source, err := q.GetSubmission(ctx, c.SourceRequestID)
 	if err != nil {
 		return conv, source, err
 	}
 	if source.ConversationID != conv.ID || source.Kind != "message" || source.Origin == "automation" || source.Origin == "task" || source.Origin == "dream" {
-		return conv, source, fmt.Errorf("%w: routine tools require a user input in this conversation", ErrInvalid)
+		return conv, source, fmt.Errorf("%w: automation tools require a user input in this conversation", ErrInvalid)
 	}
 	return conv, source, nil
 }
@@ -285,7 +285,7 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 		// The writer can confirm the environment, but two sessions can share it. Do not
 		// redirect a tool run to a replacement target selected during preflight.
 		if row.Session == "session" && pre != nil && row.TargetConversationID.Valid && (preRow.Session != row.Session || preRow.TargetConversationID != row.TargetConversationID) {
-			return nil, fmt.Errorf("%w: the routine target changed during its check; run it again", engine.ErrBusy)
+			return nil, fmt.Errorf("%w: the automation target changed during its check; run it again", engine.ErrBusy)
 		}
 		r, err := local.admit(ctx, row, sql.NullInt64{}, "", pre)
 		return toolRun(r), err

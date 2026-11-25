@@ -105,7 +105,7 @@ export function ThreadView({
 
   return (
     <aside
-      aria-label="Session thread"
+      aria-label="Child session"
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
       }}
@@ -126,7 +126,7 @@ export function ThreadView({
         >
           <ExternalLink aria-hidden className="size-4" />
         </Link>
-        <IconButton label="Close thread" onClick={onClose}>
+        <IconButton label="Close child session" onClick={onClose}>
           <X aria-hidden className="size-4" />
         </IconButton>
       </header>
@@ -142,7 +142,7 @@ export function ThreadView({
         <div className="flex flex-col gap-3 px-4 py-5">
           {chat.isError ? (
             <Failure
-              title="Could not load this thread"
+              title="Could not load this child session"
               error={chat.error}
               retry={() => void chat.refetch()}
             />

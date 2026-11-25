@@ -102,7 +102,7 @@ function ThreadCard({ call }: { call: ThreadCall }) {
   const title = call.title;
 
   return (
-    <section aria-label={`Session thread: ${title}`} className="my-2 min-w-0 rounded-md border text-sm">
+    <section aria-label={`Child session: ${title}`} className="my-2 min-w-0 rounded-md border text-sm">
       <ThreadOpen
         thread={data.thread}
         className={cn("block w-full rounded-md p-3 text-left", data.thread && "hover:bg-accent")}
@@ -202,14 +202,14 @@ export function ResultLine({ item }: { item: TaskItem }) {
                 .catch(() => setFailed(true));
             }}
           >
-            View thread
+            View session
           </button>
         ) : (
           <Link to="/a/$agentId/tasks/$turnId" params={{ agentId, turnId: item.taskId }} className={link}>
-            View thread
+            View session
           </Link>
         )}
-        {failed ? <span role="alert"> · Could not open the thread.</span> : null}
+        {failed ? <span role="alert"> · Could not open the child session.</span> : null}
       </h3>
     </header>
   );

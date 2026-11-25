@@ -425,7 +425,7 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
             {current
               ? environmentBotHint(current)
               : missingSelection
-                ? `Configured environment (${environmentId}) is missing.`
+                ? `Configured Runner (${environmentId}) is missing.`
                 : "Runs tools and workspaces on this computer."}{" "}
             <Link className="font-medium text-primary underline" to="/settings/runners">
               Manage Runners
@@ -466,12 +466,12 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
       </div>
       {environments.isError ? (
         <div className="mt-3">
-          <Failure title="Could not load environments" error={environments.error} />
+          <Failure title="Could not load Runners" error={environments.error} />
         </div>
       ) : null}
       {save.isError ? (
         <div className="mt-3">
-          <Failure title="Could not save execution environment" error={save.error} />
+          <Failure title="Could not save Runner" error={save.error} />
         </div>
       ) : null}
       {resetSandbox.isError ? (

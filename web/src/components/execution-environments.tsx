@@ -457,8 +457,8 @@ function DeleteEnvironmentDialog({
   return (
     <Confirm
       title={`Remove ${env.name}?`}
-      description="dex deletes this environment configuration."
-      confirmLabel={current ? "Reassign bots and remove" : "Remove environment"}
+      description="dex deletes this Runner configuration."
+      confirmLabel={current ? "Reassign bots and remove" : "Remove Runner"}
       pending={pending}
       error={reassign.error ?? remove.error}
       onCancel={onClose}
@@ -467,7 +467,7 @@ function DeleteEnvironmentDialog({
       {current ? (
         <div className="flex flex-col gap-3 rounded-md bg-orange-tint p-3">
           <p className="text-[13px] font-medium text-foreground">
-            {names} {users.length === 1 ? "uses" : "use"} this environment now.
+            {names} {users.length === 1 ? "uses" : "use"} this Runner now.
           </p>
           <Field
             label={users.length === 1 ? "Before removal, move the bot to" : "Before removal, move bots to"}
@@ -479,7 +479,7 @@ function DeleteEnvironmentDialog({
                 disabled={pending}
                 onChange={(event) => setTargetEnvId(event.target.value)}
               >
-                <option value="">This computer</option>
+                <option value="">Local</option>
                 {others.map((item) => (
                   <option key={item.id} value={item.id}>
                     {environmentOptionLabel(item)}

@@ -99,7 +99,7 @@ start from the control host's login shell environment and configured
 and the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
-request a reload. Environment settings changes request a reload for agents
+request a reload. Runner settings changes request a reload for agents
 that use the environment. A machine reconnect requests a reload if the default
 machine was offline at cold open or the last reload could not open it. Each open agent reloads
 when it is idle. If validation fails, dex keeps the current resources and
@@ -187,8 +187,9 @@ Plain values in declarations are stored as plain text.
 `GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
 For an open Harness, the request uses the default environment's lease to inspect
 workspace skills. If the lease has not opened, this request can open it without
-blocking admission in other environments. The Web Extensions page shows the
-loaded server state from `mcp_server_list` and the current OAuth grant state.
+blocking admission in other environments. Bot Settings → Integrations shows
+loaded MCP server state and the current OAuth grant state. Reload is available
+from both Integrations and Skills.
 Before the agent opens, the API shows connection state `idle` for declarations
 that are not disabled.
 

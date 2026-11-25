@@ -89,7 +89,7 @@ function useAutomationUpdate(automation: Automation) {
             (patch.session ?? automation.session) === "session" ? automation.targetConversationId : undefined,
           enabled: automation.enabled,
           cwd: automation.cwd,
-          // A PUT replaces the routine, so an omitted environment would make it follow the bot.
+          // A PUT replaces the automation, so an omitted environment would make it follow the bot.
           environmentId: automation.environmentId,
           ...patch,
         },
@@ -251,10 +251,10 @@ function ReplyComposer({
   });
 
   return (
-    <section aria-label="New chat" className="flex flex-col gap-2.5 border-2 border-foreground p-3.5">
+    <section aria-label="New session" className="flex flex-col gap-2.5 border-2 border-foreground p-3.5">
       <div className="flex items-center gap-2">
         <span className="flex-1 text-[11px] font-bold tracking-wide uppercase">
-          New chat with {botName}
+          New session with {botName}
           {run.cwd ? ` · ${run.cwd}` : ""}
         </span>
         <Button size="xs" variant="outline" onClick={onCancel} disabled={start.isPending}>
@@ -281,7 +281,7 @@ function ReplyComposer({
           {start.isPending ? "Starting…" : "Start chat"}
         </Button>
       </div>
-      {start.isError ? <Failure title="Could not start chat" error={start.error} /> : null}
+      {start.isError ? <Failure title="Could not start session" error={start.error} /> : null}
     </section>
   );
 }
@@ -349,7 +349,7 @@ function RunBlock({
         <div className="flex flex-wrap items-center gap-2">
           {run.chatId ? (
             <Button size="sm" variant="outline" disabled={replying} onClick={() => setReplying(true)}>
-              Reply in a new chat
+              Reply in a new session
             </Button>
           ) : null}
           {canHandle ? (
