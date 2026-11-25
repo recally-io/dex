@@ -157,7 +157,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	// These tools bind to services that exist only after the engine.
 	botTools := &agent.BotTools{}
 	var channelTools agent.ChannelTools
-	taskTools := worktasktools.New(conn).Handlers(pluginTools(plugins))
+	taskToolService := worktasktools.New(conn)
+	taskToolService.ConfigureWorkTasks(workTasks)
+	taskTools := taskToolService.Handlers(pluginTools(plugins))
 	deliverArtifact := func(ctx context.Context, caller engine.TaskContext, path string) (artifact.Delivery, error) {
 		result, err := artifacts.Deliver(ctx, caller, path)
 		if err != nil {
@@ -262,6 +264,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	artifacts = artifact.New(cfg.DataDir, native.ReadWorkspaceFile)
 	bg.ConfigureEnvOpener(native.ExecEnv)
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
+	chats.ConfigureWorkTasks(workTasks)
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
 	automations.ConfigureEnvironmentStatus(envs.Status)

@@ -2,14 +2,26 @@
 
 This document describes Board, the Task event store, holds, Task
 alerts, and the Task tools. Optional sources that send Task events are in
-[Plugins](plugins.md). For the planned Bot-centric, append-only Task Board
-redesign, see [Task Board Architecture](task-board.md).
+[Plugins](plugins.md). For the full Task Board design and rollout, see
+[Task Board Architecture](task-board.md).
 
 ## Board and event store
 
 Board reads `work_tasks` and `work_task_entries` from `control.sqlite`. Each
-Task belongs to one Owner Bot. Its lifecycle and notes do not change the state of a
-Session. Board hides closed Tasks by default. Inbox shows items that need owner
+Task has one Assignee Bot. Its status and notes do not change the state of a
+Session. Board hides closed Tasks by default. The existing HTTP API and tools
+read `done` as `completed`, `cancelled` as `cancelled`, and other statuses as
+`open`.
+
+Task mutations update the Task projection and append a ledger entry in the
+same write transaction. Each Task has a stable number, a revision, and entry
+sequences. A tombstone retracts an entry without deleting it. The legacy
+Timeline shows notes, artifacts, and external events that are not retracted.
+The service derives blockers from unresolved waits and open Task questions.
+It does not store `Blocked` as a status. The optional entry hook runs only
+after commit. Consumers must use the durable entry ID to catch up.
+
+Inbox shows items that need owner
 action, including held events and Automation results. The owner can send a
 message from a Task to its Owner Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
@@ -75,7 +87,8 @@ linked object as `links`: its namespace, type, and key, with the waits on that
 object. The core does not decode these values, so links stay readable when no
 source can read them.
 
-`work_task_sessions` links a Task to Sessions across Bots. When a Task input
+`task_executions` links a Task to Sessions across Bots with the `dex_session`
+kind. When a Task input
 starts a child through `session_new` or `session_fork`, Dex saves the link in
 the same transaction as the child. The first link is primary. A later link
 does not replace it. `task_update` with `session` can add a direct child of
@@ -85,9 +98,9 @@ access to Tasks of the child's Bot or change alert routing.
 
 `task_get` and Task detail return linked `sessions` in primary-first order.
 The legacy `session` field still returns the primary Session when present.
-The upgrade keeps old links as primary and uses the Session creation time as
-their link time because the old schema did not store a link time. Downgrading
-this migration keeps only the primary link for each Task.
+The Phase 1 upgrade copies each link with its original Bot, primary flag,
+and timestamp. Downgrading restores these Session links. The old schema
+cannot store Board status detail, review versions, or non-Session executions.
 
 `task_link_github_pull` from the GitHub plugin links a PR and can add a review
 wait that starts at the call time. Set `alertMain` to `true` to send a Task

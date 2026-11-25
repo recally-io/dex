@@ -89,7 +89,7 @@ func (q *Queries) CreateTelegramCallback(ctx context.Context, arg CreateTelegram
 }
 
 const getChildWorkflowSource = `-- name: GetChildWorkflowSource :one
-SELECT s.id, s.conversation_id, s.content, s.status, s.answer, s.reason, s.created_at, s.settled_at, s.source_key, s.attachments, s.delivered_at, s.delivered_parts, s.origin, s.kind, s.admitted_at, s.when_busy, s.parent_request_id, s.result_child_id, s.native_answer_id, s.channel_context, s.rendered_reply, s.channel_retry_at, s.channel_delivery_error, s.channel_remote_ids, s.channel_revoked, s.channel_group_fallback, s.channel_group_cursor, s.exit_action, s.required_reply_id, s.stop_requested, s.producer, s.reply_channel, s.reply_peer FROM submissions s
+SELECT s.id, s.conversation_id, s.content, s.status, s.answer, s.reason, s.created_at, s.settled_at, s.source_key, s.attachments, s.delivered_at, s.delivered_parts, s.origin, s.admitted_at, s.when_busy, s.parent_request_id, s.result_child_id, s.native_answer_id, s.channel_context, s.rendered_reply, s.channel_retry_at, s.channel_delivery_error, s.channel_remote_ids, s.channel_revoked, s.channel_group_fallback, s.channel_group_cursor, s.exit_action, s.required_reply_id, s.stop_requested, s.producer, s.reply_channel, s.reply_peer, s.kind FROM submissions s
 WHERE s.conversation_id = ?1 AND s.parent_request_id IS NOT NULL
 ORDER BY s.rowid LIMIT 1
 `
@@ -111,7 +111,6 @@ func (q *Queries) GetChildWorkflowSource(ctx context.Context, childID int64) (Su
 		&i.DeliveredAt,
 		&i.DeliveredParts,
 		&i.Origin,
-		&i.Kind,
 		&i.AdmittedAt,
 		&i.WhenBusy,
 		&i.ParentRequestID,
@@ -131,6 +130,7 @@ func (q *Queries) GetChildWorkflowSource(ctx context.Context, childID int64) (Su
 		&i.Producer,
 		&i.ReplyChannel,
 		&i.ReplyPeer,
+		&i.Kind,
 	)
 	return i, err
 }

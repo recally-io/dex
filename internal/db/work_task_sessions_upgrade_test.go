@@ -7,6 +7,7 @@ import (
 
 	"github.com/pressly/goose/v3"
 	"github.com/recally-io/dex/internal/db"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 func TestUserKeepsPrimarySessionWhenBoardSupportsMultipleSessions(t *testing.T) {
@@ -46,16 +47,13 @@ func TestUserKeepsPrimarySessionWhenBoardSupportsMultipleSessions(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	var owner, bot string
-	var primary, linkedAt int64
-	err = conn.QueryRowContext(t.Context(), `SELECT t.agent_id, s.agent_id, s.is_primary, s.linked_at FROM work_tasks t JOIN work_task_sessions s ON s.task_id = t.id WHERE s.conversation_id = 1`).Scan(&owner, &bot, &primary, &linkedAt)
-	if err != nil || owner != "owner" || bot != "coder" || primary != 1 || linkedAt != 10 {
-		t.Fatalf("upgraded link: owner=%q bot=%q primary=%d linkedAt=%d err=%v", owner, bot, primary, linkedAt, err)
-	}
+	assertTaskBoardRows(t, conn, `SELECT json_array(t.assignee_bot_id, e.bot_id, e.is_primary, e.started_at, e.kind)
+		FROM work_tasks t JOIN task_executions e ON e.task_id = t.id WHERE e.conversation_id = 1`,
+		`["owner","coder",1,10,"dex_session"]`)
 
 	// Then a second Bot can link a session, and the database forbids two primary links.
-	exec(conn, `INSERT INTO work_task_sessions (task_id, conversation_id, agent_id, linked_at) VALUES ('task', 2, 'owner', 40)`)
-	if _, err := conn.ExecContext(t.Context(), `UPDATE work_task_sessions SET is_primary = 1 WHERE task_id = 'task' AND conversation_id = 2`); err == nil {
-		t.Fatal("a Task accepted two primary sessions")
-	}
+	exec(conn, `INSERT INTO task_executions (id, task_id, conversation_id, bot_id, kind, started_at)
+		VALUES ('session:task:2', 'task', 2, 'owner', 'dex_session', 40)`)
+	_, err = conn.ExecContext(t.Context(), `UPDATE task_executions SET is_primary = 1 WHERE task_id = 'task' AND conversation_id = 2`)
+	assertTaskBoardSQLiteError(t, err, sqlite3.SQLITE_CONSTRAINT_UNIQUE)
 }

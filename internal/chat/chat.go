@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 // Chat is one conversation on one channel.
@@ -142,6 +143,7 @@ type Service struct {
 	monitorMu     sync.Mutex // serialize creation to enforce the shared active limit
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
+	workTasks     *worktask.Service
 
 	admissionMu    sync.RWMutex            // receipt changes, withdrawals and maintenance lease confirmation
 	delivery       map[int64]*deliveryGate // One entry per Session that used a gate since startup.
@@ -352,6 +354,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	}
 	complete, archived := false, ""
 	createdReceipt := false
+	var ledger *worktask.Ledger
 	chatID, err := func() (int64, error) {
 		s.admissionMu.RLock()
 		defer s.admissionMu.RUnlock()
@@ -495,7 +498,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			}
 		}
 		if created > 0 && taskID != "" {
-			if err := recordWorkTaskMessage(ctx, q, agentID, taskID, m, submittedAt); err != nil {
+			ledger = worktask.NewLedger(q)
+			if err := recordWorkTaskMessage(ctx, q, ledger, agentID, taskID, m, submittedAt); err != nil {
 				return 0, err
 			}
 		}
@@ -538,6 +542,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		}
 		return conv.ID, nil
 	}()
+	if createdReceipt && ledger != nil {
+		s.workTasks.Notify(ledger)
+	}
 	// Channel runtime changes run outside the receipt gate, so a busy bot cannot block the gate.
 	s.botArchived(archived)
 	if createdReceipt {

@@ -13,8 +13,8 @@ import (
 const addWorkTaskWait = `-- name: AddWorkTaskWait :execrows
 INSERT INTO work_task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at, alert)
 SELECT t.id, o.namespace, o.object_type, o.object_key, ?1, ?2, ?3, ?4
-FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.agent_id
-WHERE t.id = ?5 AND t.agent_id = ?6 AND t.lifecycle = 'open' AND a.archived_at IS NULL
+FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = ?5 AND t.assignee_bot_id = ?6 AND t.status NOT IN ('done', 'cancelled') AND a.archived_at IS NULL
 AND o.namespace = ?7 AND o.object_type = ?8 AND o.object_key = ?9
 ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at, alert = excluded.alert
 `
@@ -133,7 +133,7 @@ func (q *Queries) EnsureWorkTaskMain(ctx context.Context, arg EnsureWorkTaskMain
 }
 
 const findWorkTaskByObject = `-- name: FindWorkTaskByObject :one
-SELECT t.id, t.agent_id, t.title, t.lifecycle, t.created_at, t.updated_at FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.agent_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
 WHERE o.namespace = ? AND o.object_type = ? AND o.object_key = ? AND a.archived_at IS NULL
 `
 
@@ -148,11 +148,21 @@ func (q *Queries) FindWorkTaskByObject(ctx context.Context, arg FindWorkTaskByOb
 	var i WorkTask
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.AssigneeBotID,
 		&i.Title,
-		&i.Lifecycle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
 	)
 	return i, err
 }
@@ -279,8 +289,8 @@ func (q *Queries) HoldWorkSourceEvent(ctx context.Context, arg HoldWorkSourceEve
 
 const linkWorkTaskObject = `-- name: LinkWorkTaskObject :execrows
 INSERT INTO work_task_objects (namespace, object_type, object_key, task_id)
-SELECT ?1, ?2, ?3, t.id FROM work_tasks t JOIN agents a ON a.id = t.agent_id
-WHERE t.id = ?4 AND t.agent_id = ?5 AND a.archived_at IS NULL
+SELECT ?1, ?2, ?3, t.id FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = ?4 AND t.assignee_bot_id = ?5 AND a.archived_at IS NULL
 ON CONFLICT (namespace, object_type, object_key) DO UPDATE SET task_id = excluded.task_id
 WHERE work_task_objects.task_id = excluded.task_id
 `
@@ -363,6 +373,44 @@ func (q *Queries) ListHeldWorkSourceEvents(ctx context.Context) ([]ListHeldWorkS
 	return items, nil
 }
 
+const listUnresolvedWorkTaskWaits = `-- name: ListUnresolvedWorkTaskWaits :many
+SELECT id, task_id, namespace, object_type, object_key, event_type, revision, after_at, resolved_by, alert FROM work_task_waits WHERE task_id = ? AND resolved_by IS NULL ORDER BY id
+`
+
+func (q *Queries) ListUnresolvedWorkTaskWaits(ctx context.Context, taskID string) ([]WorkTaskWait, error) {
+	rows, err := q.db.QueryContext(ctx, listUnresolvedWorkTaskWaits, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkTaskWait{}
+	for rows.Next() {
+		var i WorkTaskWait
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Namespace,
+			&i.ObjectType,
+			&i.ObjectKey,
+			&i.EventType,
+			&i.Revision,
+			&i.AfterAt,
+			&i.ResolvedBy,
+			&i.Alert,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWorkTaskObjects = `-- name: ListWorkTaskObjects :many
 SELECT namespace, object_type, object_key, task_id FROM work_task_objects WHERE task_id = ? ORDER BY namespace, object_type, object_key
 `
@@ -396,8 +444,8 @@ func (q *Queries) ListWorkTaskObjects(ctx context.Context, taskID string) ([]Wor
 }
 
 const listWorkTaskWaits = `-- name: ListWorkTaskWaits :many
-SELECT w.id, w.task_id, w.namespace, w.object_type, w.object_key, w.event_type, w.revision, w.after_at, w.resolved_by, w.alert FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.agent_id
-WHERE w.task_id = ?1 AND t.agent_id = ?2 AND a.archived_at IS NULL ORDER BY w.id
+SELECT w.id, w.task_id, w.namespace, w.object_type, w.object_key, w.event_type, w.revision, w.after_at, w.resolved_by, w.alert FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.assignee_bot_id
+WHERE w.task_id = ?1 AND t.assignee_bot_id = ?2 AND a.archived_at IS NULL ORDER BY w.id
 `
 
 type ListWorkTaskWaitsParams struct {

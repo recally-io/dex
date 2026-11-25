@@ -1,7 +1,6 @@
 package server
 
 import (
-	"cmp"
 	"context"
 	"encoding/json/v2"
 	"errors"
@@ -12,11 +11,11 @@ import (
 )
 
 func workTask(t sqlc.WorkTask) api.WorkTask {
-	return api.WorkTask{Id: t.ID, AgentId: t.AgentID, Title: t.Title, Lifecycle: api.WorkTaskLifecycle(t.Lifecycle), CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}
+	return api.WorkTask{Id: t.ID, AgentId: t.AssigneeBotID, Title: t.Title, Lifecycle: api.WorkTaskLifecycle(worktask.LegacyLifecycle(t.Status)), CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt}
 }
 
 func workTaskEntry(e sqlc.WorkTaskEntry) api.WorkTaskEntry {
-	out := api.WorkTaskEntry{Id: e.ID, Author: api.WorkTaskEntryAuthor(cmp.Or(e.Author, "unknown")), Content: e.Content, CreatedAt: e.CreatedAt}
+	out := api.WorkTaskEntry{Id: e.ID, Author: api.WorkTaskEntryAuthor(worktask.LegacyAuthor(e.Trust, e.MetaJson)), Content: e.Content, CreatedAt: e.CreatedAt}
 	if e.EventID.Valid {
 		out.EventId = new(e.EventID.String)
 		out.Author = api.WorkTaskEntryAuthorExternal

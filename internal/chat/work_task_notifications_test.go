@@ -6,6 +6,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T) {
@@ -26,7 +27,7 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, err := r.q.CreateWorkTask(ctx, sqlc.CreateWorkTaskParams{ID: "task", AgentID: conv.AgentID, Title: "Sign-in", At: 1})
+	task, err := worktask.New(r.conn, nil).Create(ctx, conv.AgentID, "Sign-in")
 	if err != nil {
 		t.Fatal(err)
 	}

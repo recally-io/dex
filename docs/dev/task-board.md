@@ -36,7 +36,9 @@ Four invariants govern the design:
 | `task_executions`   | `id`, `task_id`, `bot_id`, `kind` (`dex_session` \| `external_agent`), `conversation_id`, `turn_request_id`, `is_primary`, `harness`, `machine_id`, `host_meta_json`, `workspace_path`, `git_branch`, `external_session_id`, `state`, `lease_epoch`, `lease_expires_at`, `last_heartbeat_at`, timestamps. |
 | `task_dependencies` | `(task_id, depends_on_task_id)` (Phase 2). Allowed only between sibling Tasks that share the same `parent_task_id`. Cycle check and insert run in the same write transaction.                                                                                                                             |
 
-Upgrading from the current schema maps `work_tasks.agent_id` to `assignee_bot_id` and migrates existing `work_task_sessions` rows (including `agent_id`, `is_primary`, and `linked_at`) into `task_executions` (`kind = 'dex_session'`) without losing primary links or history.
+The Phase 1 upgrade maps `work_tasks.agent_id` to `assignee_bot_id` and copies `work_task_sessions` into `task_executions` (`kind = 'dex_session'`). It preserves the Bot, primary flag, and link time. It assigns Task numbers in `(created_at, id)` order. The upgrade maps legacy `open` to `in_progress`, `completed` to `done`, and `cancelled` to `cancelled`.
+
+Phase 1 PR 1 adds the schema, ledger, and authorization rules. The existing HTTP API and tools still use legacy Task IDs and lifecycle values. `task_wake` is valid in storage, but the runtime does not create it yet. The later PRs add the wake, cursor reads, and Board API and UI.
 
 Board does not introduce `Spaces` or `Watchers` as first-class entities. Filtering uses Assignee Bot, Status, `In Review`, `Blocked`, and linked Source; access control uses Assignee, Reviewer, and bound Sessions/Executions.
 

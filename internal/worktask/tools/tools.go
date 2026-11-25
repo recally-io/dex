@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
-	"uuid"
 
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -30,13 +29,19 @@ const (
 
 // Service checks the caller and applies each change with its replay record in one transaction.
 type Service struct {
-	db  *sql.DB
-	q   *sqlc.Queries
-	now func() time.Time
+	db    *sql.DB
+	q     *sqlc.Queries
+	now   func() time.Time
+	tasks *worktask.Service
 }
 
 func New(conn *sql.DB) *Service {
 	return &Service{db: conn, q: sqlc.New(conn), now: time.Now}
+}
+
+// ConfigureWorkTasks binds Task entry notifications before the tools start.
+func (s *Service) ConfigureWorkTasks(tasks *worktask.Service) {
+	s.tasks = tasks
 }
 
 // Handlers binds the engine tools to this service. links are the tools of the enabled plugins.
@@ -86,6 +91,26 @@ func fromUser(source sqlc.Submission) bool {
 	return source.Kind == "message" && chat.UserOrigin(source.Origin)
 }
 
+func taskActor(conv sqlc.Conversation) worktask.Actor {
+	if conv.ParentID.Valid {
+		return worktask.SessionBot(conv.AgentID, conv.ID)
+	}
+	return worktask.Bot(conv.AgentID)
+}
+
+func taskOrigin(source sqlc.Submission) worktask.Origin {
+	switch {
+	case fromUser(source):
+		return worktask.OriginUser
+	case source.Kind == "task_wake":
+		return worktask.OriginTaskWake
+	case source.Kind == "task_result" && source.Producer == chat.ProducerSubSession:
+		return worktask.OriginTaskResult
+	default:
+		return worktask.OriginOther
+	}
+}
+
 func (s *Service) List(ctx context.Context, c engine.TaskContext, a WorkTaskListArgs) ([]WorkTaskInfo, error) {
 	if a.Lifecycle != "" && a.Lifecycle != "open" && a.Lifecycle != "all" {
 		return nil, invalid("lifecycle is open or all")
@@ -99,7 +124,7 @@ func (s *Service) List(ctx context.Context, c engine.TaskContext, a WorkTaskList
 	}
 	out := make([]WorkTaskInfo, 0, len(rows))
 	for _, row := range rows {
-		info := WorkTaskInfo{ID: row.ID, Title: row.Title, Lifecycle: row.Lifecycle, UpdatedAt: row.UpdatedAt}
+		info := WorkTaskInfo{ID: row.ID, Title: row.Title, Lifecycle: worktask.LegacyLifecycle(row.Status), UpdatedAt: row.UpdatedAt}
 		if row.SessionID != 0 {
 			info.Session = &WorkTaskSession{ID: strconv.FormatInt(row.SessionID, 10), IsPrimary: true}
 		}
@@ -115,12 +140,13 @@ func (s *Service) Get(ctx context.Context, c engine.TaskContext, id string) (Wor
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
-	if _, _, err := caller(ctx, q, c); err != nil {
+	conv, _, err := caller(ctx, q, c)
+	if err != nil {
 		return WorkTaskDetail{}, err
 	}
-	task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: id, AgentID: c.AgentID})
+	task, err := readableTask(ctx, q, conv, id)
 	if err != nil {
-		return WorkTaskDetail{}, notFound(err)
+		return WorkTaskDetail{}, err
 	}
 	info, err := taskInfo(ctx, q, task)
 	if err != nil {
@@ -162,15 +188,11 @@ func (s *Service) Get(ctx context.Context, c engine.TaskContext, id string) (Wor
 }
 
 func entryInfo(e sqlc.ListWorkTaskTimelineRow) WorkTaskEntryInfo {
-	info := WorkTaskEntryInfo{ID: e.ID, CreatedAt: e.CreatedAt}
-	if e.EventID != "" {
+	info := WorkTaskEntryInfo{ID: e.ID, CreatedAt: e.CreatedAt, Author: worktask.LegacyAuthor(e.Trust, e.MetaJson)}
+	if e.Trust == worktask.TrustExternal {
 		// External text stays out of the model context. The owner reads it in the Inbox.
-		info.Author, info.EventType, info.SourceURL, info.AuthorClass = "external", e.EventType, e.SourceUrl, e.AuthorAssociation
+		info.EventType, info.SourceURL, info.AuthorClass = e.EventType, e.SourceUrl, e.AuthorAssociation
 		return info
-	}
-	info.Author = e.Author
-	if info.Author == "" {
-		info.Author = "unknown"
 	}
 	info.Content = e.Content
 	if utf8.RuneCountInString(e.Content) > entryPreview {
@@ -180,7 +202,7 @@ func entryInfo(e sqlc.ListWorkTaskTimelineRow) WorkTaskEntryInfo {
 }
 
 func taskInfo(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (WorkTaskInfo, error) {
-	info := WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: task.Lifecycle, UpdatedAt: task.UpdatedAt}
+	info := WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: worktask.LegacyLifecycle(task.Status), UpdatedAt: task.UpdatedAt}
 	sessions, err := q.ListWorkTaskSessions(ctx, task.ID)
 	if err != nil {
 		return info, err
@@ -202,9 +224,22 @@ func notFound(err error) error {
 	return err
 }
 
+// readableTask applies the central ACL without widening the legacy assignee scope.
+func readableTask(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, id string) (sqlc.WorkTask, error) {
+	task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: id, AgentID: conv.AgentID})
+	if err != nil {
+		return task, notFound(err)
+	}
+	allowed, err := worktask.CanRead(ctx, q, taskActor(conv), task)
+	if err == nil && !allowed {
+		err = notFound(sql.ErrNoRows)
+	}
+	return task, err
+}
+
 // mutate runs one change and stores its result under the durable key of the tool call. A replay
 // of the call returns the stored result.
-func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action string, change func(*sqlc.Queries, sqlc.Conversation, sqlc.Submission, int64) (R, error)) (R, error) {
+func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action string, change func(*sqlc.Queries, *worktask.Ledger, sqlc.Conversation, sqlc.Submission, int64) (R, error)) (R, error) {
 	var zero R
 	if c.Key == "" || !strings.HasPrefix(c.Key, c.AgentID+"/") {
 		return zero, invalid("a durable tool key is required")
@@ -215,6 +250,9 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+	if err := q.LockWorkTaskWriter(ctx); err != nil {
+		return zero, err
+	}
 	conv, source, err := caller(ctx, q, c)
 	if err != nil {
 		return zero, err
@@ -230,7 +268,8 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	if !errors.Is(err, sql.ErrNoRows) {
 		return zero, err
 	}
-	result, err := change(q, conv, source, s.now().UnixMilli())
+	ledger := worktask.NewLedger(q)
+	result, err := change(q, ledger, conv, source, s.now().UnixMilli())
 	if err != nil {
 		return zero, err
 	}
@@ -241,7 +280,11 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	if err := q.CreateWorkTaskToolOperation(ctx, sqlc.CreateWorkTaskToolOperationParams{Key: c.Key, AgentID: c.AgentID, ConversationID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
 		return zero, err
 	}
-	return result, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return zero, err
+	}
+	s.tasks.Notify(ledger)
+	return result, nil
 }
 
 func (s *Service) New(ctx context.Context, c engine.TaskContext, a WorkTaskNewArgs) (WorkTaskInfo, error) {
@@ -255,20 +298,17 @@ func (s *Service) New(ctx context.Context, c engine.TaskContext, a WorkTaskNewAr
 			return WorkTaskInfo{}, invalid("the note has at most 32000 characters")
 		}
 	}
-	return mutate(ctx, s, c, "new", func(q *sqlc.Queries, _ sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskInfo, error) {
+	return mutate(ctx, s, c, "new", func(_ *sqlc.Queries, l *worktask.Ledger, conv sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskInfo, error) {
 		if !fromUser(source) {
 			return WorkTaskInfo{}, invalid("create a Task only for a user request; this run started from %s", source.Kind)
 		}
-		task, err := q.CreateWorkTask(ctx, sqlc.CreateWorkTaskParams{ID: uuid.NewV7().String(), AgentID: c.AgentID, Title: title, At: now})
+		task, err := l.CreateTask(ctx, taskActor(conv), taskOrigin(source), worktask.CreateTaskParams{
+			AssigneeBotID: conv.AgentID, Title: title, Note: note,
+		}, now)
 		if err != nil {
 			return WorkTaskInfo{}, err
 		}
-		if note != "" {
-			if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: task.ID, AgentID: c.AgentID, Content: note, CreatedAt: now, Author: worktask.AuthorAgent}); err != nil {
-				return WorkTaskInfo{}, err
-			}
-		}
-		return WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: task.Lifecycle, UpdatedAt: task.UpdatedAt}, nil
+		return WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: worktask.LegacyLifecycle(task.Status), UpdatedAt: task.UpdatedAt}, nil
 	})
 }
 
@@ -277,15 +317,16 @@ func (s *Service) Append(ctx context.Context, c engine.TaskContext, a WorkTaskAp
 	if err != nil {
 		return WorkTaskEntryInfo{}, invalid("the content has 1 to 32000 characters")
 	}
-	return mutate(ctx, s, c, "append", func(q *sqlc.Queries, _ sqlc.Conversation, _ sqlc.Submission, now int64) (WorkTaskEntryInfo, error) {
-		entry, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: a.ID, AgentID: c.AgentID, Content: content, CreatedAt: now, Author: worktask.AuthorAgent})
+	return mutate(ctx, s, c, "append", func(q *sqlc.Queries, l *worktask.Ledger, conv sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskEntryInfo, error) {
+		task, err := readableTask(ctx, q, conv, a.ID)
 		if err != nil {
-			return WorkTaskEntryInfo{}, notFound(err)
-		}
-		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: a.ID, At: now}); err != nil {
 			return WorkTaskEntryInfo{}, err
 		}
-		return WorkTaskEntryInfo{ID: entry.ID, Author: worktask.AuthorAgent, CreatedAt: entry.CreatedAt}, nil
+		entry, err := l.PostEntry(ctx, taskActor(conv), taskOrigin(source), task, worktask.PostEntryParams{Kind: worktask.KindNote, Content: content}, now)
+		if err != nil {
+			return WorkTaskEntryInfo{}, err
+		}
+		return WorkTaskEntryInfo{ID: entry.ID, Author: worktask.LegacyAuthor(entry.Trust, entry.MetaJson), CreatedAt: entry.CreatedAt}, nil
 	})
 }
 
@@ -308,21 +349,21 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a WorkTaskUp
 	if title == "" && a.Lifecycle == "" && a.Session == "" {
 		return WorkTaskInfo{}, invalid("give at least one field to change")
 	}
-	return mutate(ctx, s, c, "update", func(q *sqlc.Queries, conv sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskInfo, error) {
+	return mutate(ctx, s, c, "update", func(q *sqlc.Queries, l *worktask.Ledger, conv sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskInfo, error) {
 		task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: a.ID, AgentID: c.AgentID})
 		if err != nil {
 			return WorkTaskInfo{}, notFound(err)
 		}
-		if a.Lifecycle != "" && a.Lifecycle != task.Lifecycle {
+		if a.Lifecycle != "" && a.Lifecycle != worktask.LegacyLifecycle(task.Status) {
 			if !fromUser(source) {
 				return WorkTaskInfo{}, invalid("only the user can complete, cancel, or reopen a Task; this run started from %s", source.Kind)
 			}
-			if task, err = q.SetWorkTaskLifecycle(ctx, sqlc.SetWorkTaskLifecycleParams{ID: task.ID, AgentID: c.AgentID, Lifecycle: a.Lifecycle, UpdatedAt: now}); err != nil {
+			if task, err = l.SetLegacyLifecycle(ctx, task, a.Lifecycle, now); err != nil {
 				return WorkTaskInfo{}, err
 			}
 		}
 		if title != "" && title != task.Title {
-			if task, err = q.RenameWorkTask(ctx, sqlc.RenameWorkTaskParams{ID: task.ID, AgentID: c.AgentID, Title: title, UpdatedAt: now}); err != nil {
+			if task, err = l.Rename(ctx, taskActor(conv), task, title, now); err != nil {
 				return WorkTaskInfo{}, err
 			}
 		}
@@ -331,23 +372,12 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a WorkTaskUp
 			if err != nil {
 				return WorkTaskInfo{}, err
 			}
-			if err := q.LinkWorkTaskSession(ctx, sqlc.LinkWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID, LinkedAt: now}); err != nil {
+			if err := l.LinkSession(ctx, taskActor(conv), task, child.ID, a.Primary, now); err != nil {
 				return WorkTaskInfo{}, err
 			}
-			if a.Primary {
-				if err := q.ClearWorkTaskPrimarySession(ctx, task.ID); err != nil {
-					return WorkTaskInfo{}, err
-				}
-				if err := q.PromoteWorkTaskSession(ctx, sqlc.PromoteWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID}); err != nil {
-					return WorkTaskInfo{}, err
-				}
+			if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {
+				return WorkTaskInfo{}, err
 			}
-		}
-		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
-			return WorkTaskInfo{}, err
-		}
-		if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {
-			return WorkTaskInfo{}, err
 		}
 		return taskInfo(ctx, q, task)
 	})
@@ -368,7 +398,7 @@ func childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id 
 
 // Link writes the link of one plugin tool call with its replay record. A wait starts at the call time.
 func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID string, l worktask.Link) (WorkTaskInfo, error) {
-	return mutate(ctx, s, c, tool, func(q *sqlc.Queries, _ sqlc.Conversation, _ sqlc.Submission, now int64) (WorkTaskInfo, error) {
+	return mutate(ctx, s, c, tool, func(q *sqlc.Queries, ledger *worktask.Ledger, conv sqlc.Conversation, _ sqlc.Submission, now int64) (WorkTaskInfo, error) {
 		task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: c.AgentID})
 		if err != nil {
 			return WorkTaskInfo{}, notFound(err)
@@ -381,7 +411,7 @@ func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID s
 			return WorkTaskInfo{}, invalid("%s is linked to another Task", l.Name)
 		}
 		if l.WaitEvent != "" {
-			if task.Lifecycle != "open" {
+			if !worktask.IsOpenStatus(task.Status) {
 				return WorkTaskInfo{}, invalid("a closed Task cannot wait for %s", l.Name)
 			}
 			var alert int64
@@ -392,7 +422,7 @@ func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID s
 				return WorkTaskInfo{}, err
 			}
 		}
-		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
+		if err := ledger.RecordAssociation(ctx, taskActor(conv), task, "Linked "+l.Name, now); err != nil {
 			return WorkTaskInfo{}, err
 		}
 		if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {

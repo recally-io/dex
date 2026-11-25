@@ -7,6 +7,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 // ErrWorkTaskConflict means the selected Task does not match the question.
@@ -21,12 +22,20 @@ func workTaskForInput(ctx context.Context, q *sqlc.Queries, id string) (string, 
 }
 
 // linkTaskChild records a new child only when its source input belongs to an open Task.
-func linkTaskChild(ctx context.Context, q *sqlc.Queries, sourceID string, childID, now int64) error {
+func linkTaskChild(ctx context.Context, q *sqlc.Queries, l *worktask.Ledger, sourceID string, childID, now int64) error {
 	taskID, err := workTaskForInput(ctx, q, sourceID)
 	if err != nil || taskID == "" {
 		return err
 	}
-	return q.LinkWorkTaskSession(ctx, sqlc.LinkWorkTaskSessionParams{TaskID: taskID, ConversationID: childID, LinkedAt: now, OnlyOpen: 1})
+	task, err := q.GetBoardTask(ctx, taskID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil || !worktask.IsOpenStatus(task.Status) {
+		return err
+	}
+	// The source receipt authorizes the association, including for a child in another Bot.
+	return l.LinkSession(ctx, worktask.System, task, childID, false, now)
 }
 
 func workTaskForMessage(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, m Message) (string, error) {
@@ -66,21 +75,24 @@ func promoteTaskQuestion(ctx context.Context, q *sqlc.Queries, conv sqlc.Convers
 	return err
 }
 
-func recordWorkTaskMessage(ctx context.Context, q *sqlc.Queries, agentID, taskID string, m Message, now int64) error {
+// ConfigureWorkTasks binds Task entry notifications before the chat service starts.
+func (s *Service) ConfigureWorkTasks(tasks *worktask.Service) {
+	s.workTasks = tasks
+}
+
+func recordWorkTaskMessage(ctx context.Context, q *sqlc.Queries, l *worktask.Ledger, agentID, taskID string, m Message, now int64) error {
 	task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: agentID})
 	if err != nil {
 		return err
 	}
-	if task.Lifecycle != "open" && m.AnswersQuestion == "" {
+	if !worktask.IsOpenStatus(task.Status) && m.AnswersQuestion == "" {
 		return ErrWorkTaskConflict
 	}
 	if err := q.AssociateWorkTaskInput(ctx, sqlc.AssociateWorkTaskInputParams{SubmissionID: m.ID, TaskID: taskID}); err != nil {
 		return err
 	}
 	if m.Content != "" {
-		if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: taskID, AgentID: agentID, Content: m.Content, CreatedAt: now, Author: "owner"}); err != nil {
-			return err
-		}
+		return l.RecordOwnerMessage(ctx, task, m.Content, now)
 	}
-	return q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: taskID, At: now})
+	return l.RecordAssociation(ctx, worktask.Owner, task, "Task input associated", now)
 }
