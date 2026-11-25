@@ -81,6 +81,7 @@ describe("Routine run history", () => {
       path: { agentId: agent.id, automationId: routine.id },
       throwOnError: true,
     });
+
     expect(run.status).toBe("skipped");
     expect(run.reason).toBe("the bot has no model");
 
