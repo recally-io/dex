@@ -2351,6 +2351,43 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/agents/{agentId}/extensions/mcp/{name}/oauth:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    post:
+      operationId: startMcpOAuth
+      description: Start browser authorization for the effective MCP declaration at the given scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope: { $ref: "#/components/schemas/ExtensionScope" }
+      responses:
+        "200":
+          description: The authorization URL and a browser binding cookie.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorizationUrl]
+                properties:
+                  authorizationUrl: { type: string }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/agents/{agentId}/vault:
     parameters:
       - in: path
@@ -4184,6 +4221,10 @@ components:
           type: array
           description: The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
           items: { type: string }
+        oauth:
+          type: string
+          description: The action or status of an OAuth connection. Absent for other connections.
+          enum: [authorize, reauthorize, authorized]
         vaultReferences:
           type: object
           properties:

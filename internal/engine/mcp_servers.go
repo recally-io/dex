@@ -9,15 +9,17 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 // MCPStore owns control-host MCP declarations and their reload revisions.
 type MCPStore struct {
-	db        *sql.DB
-	mu        sync.Mutex
-	revisions map[string]uint64
+	db         *sql.DB
+	mu         sync.Mutex
+	revisions  map[string]uint64
+	oauthLocks [64]sync.Mutex
 }
 
 func NewMCPStore(db *sql.DB) *MCPStore {
@@ -62,7 +64,7 @@ func (s *MCPStore) list(ctx context.Context, agentID string) ([]serverEntry, err
 		if c.Disabled {
 			info.State = "disabled"
 		}
-		entry := serverEntry{info: info, config: c}
+		entry := serverEntry{info: info, config: c, scopeID: row.AgentID}
 		if override {
 			servers[pos] = entry
 		} else {
@@ -118,6 +120,18 @@ func (s *MCPStore) set(ctx context.Context, agentID, name string, c serverConfig
 		}
 		c.URL = base + "?" + query
 	}
+	if err := validateMCPOAuth(c); err != nil {
+		return err
+	}
+	c.OAuthID = ""
+	if c.OAuth != nil {
+		if previous.OAuth != nil && *previous.OAuth == *c.OAuth && previous.URL == c.URL && previous.Disabled == c.Disabled {
+			c.OAuthID = previous.OAuthID
+		}
+		if c.OAuthID == "" {
+			c.OAuthID = uuid.NewV4().String()
+		}
+	}
 	raw, err := json.Marshal(c)
 	if err != nil {
 		return &privateError{message: "cannot encode MCP declaration", cause: err}
@@ -149,6 +163,8 @@ func (s *MCPStore) remove(ctx context.Context, agentID, name string) error {
 
 const hiddenMCPValue = "[hidden]"
 
+var mcpOAuthSecret = regexp.MustCompile(`^vault:[A-Za-z_][A-Za-z0-9_]*$`)
+
 var mcpVaultReference = regexp.MustCompile(`^vault:[A-Za-z_][A-Za-z0-9_]*$|\$\{vault:[A-Za-z_][A-Za-z0-9_]*\}`)
 
 type mcpVaultReferences struct {
@@ -174,6 +190,12 @@ func listMCPVaultReferences(c serverConfig) *mcpVaultReferences {
 }
 
 func redactMCPConfig(c serverConfig) serverConfig {
+	c.OAuthID = ""
+	if c.OAuth != nil && c.OAuth.ClientSecret != "" && !mcpOAuthSecret.MatchString(c.OAuth.ClientSecret) {
+		redacted := *c.OAuth
+		redacted.ClientSecret = hiddenMCPValue
+		c.OAuth = &redacted
+	}
 	if c.Args == nil {
 		c.Args = []string{}
 	}

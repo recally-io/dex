@@ -44,6 +44,7 @@ type McpServerInfo struct {
 	State           string              `json:"state"`
 	Tools           []string            `json:"tools"`
 	Error           string              `json:"error,omitempty"`
+	OAuth           string              `json:"oauth,omitempty"`
 	VaultReferences *mcpVaultReferences `json:"vaultReferences,omitempty"`
 }
 type ExtensionInfo struct {
@@ -123,10 +124,13 @@ type serverConfig struct {
 	URL      string            `json:"url"`
 	Headers  map[string]string `json:"headers"`
 	Disabled bool              `json:"disabled"`
+	OAuth    *mcpOAuthConfig   `json:"oauth,omitempty"`
+	OAuthID  string            `json:"oauthId,omitempty"`
 }
 type serverEntry struct {
-	info   McpServerInfo
-	config serverConfig
+	info    McpServerInfo
+	config  serverConfig
+	scopeID string
 }
 type extensionScan struct {
 	info    ExtensionInfo
@@ -400,6 +404,7 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 	if mcpErr == nil {
 		s.servers = servers
 		for _, entry := range servers {
+			entry.info.OAuth = entry.oauthStatus(a.vault)
 			s.info.Servers = append(s.info.Servers, entry.info)
 		}
 	}
@@ -544,7 +549,19 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 	c := entry.config
 	client := mcp.NewClient(mcp.ClientOptions{Name: "dex", Version: "1", RequestTimeoutMs: 30000})
 	var transport mcp.Transport
-	if c.Type == "http" {
+	var auth *mcpOAuthConnection
+	switch {
+	case c.OAuth != nil:
+		if err := validateMCPOAuth(c); err != nil {
+			return nil, nil, err
+		}
+		auth = &mcpOAuthConnection{entry: entry, vault: a.vault, store: a.mcp}
+		t, err := mcp.NewStreamableHTTPTransport(mcp.StreamableHTTPTransportOptions{URL: c.URL, Fetch: auth})
+		if err != nil {
+			return nil, nil, &privateError{message: "invalid MCP URL", cause: err}
+		}
+		transport = t
+	case c.Type == "http":
 		headers := maps.Clone(c.Headers)
 		missing := false
 		for key, value := range headers {
@@ -569,7 +586,7 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 			return nil, nil, &privateError{message: "invalid MCP URL", cause: err}
 		}
 		transport = t
-	} else {
+	default:
 		vars := maps.Clone(env)
 		if vars == nil {
 			vars = map[string]string{}
@@ -600,6 +617,9 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 	}
 	tools := []*durable.ToolRegistration{}
 	for _, tool := range listed {
+		if auth != nil && auth.mask(tool.Name) != tool.Name {
+			continue
+		}
 		name := "mcp__" + entry.info.Name + "__" + tool.Name
 		if !toolName.MatchString(name) {
 			continue
@@ -621,19 +641,31 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 			delete(schema, "required")
 		}
 		description := tool.Description
+		if auth != nil {
+			description = auth.mask(description)
+			schema = auth.maskJSON(schema).(map[string]any) //nolint:forcetypeassert // The mask preserves JSON value types.
+		}
 		if description == "" {
 			description = tool.Name
 		}
 		tools = append(tools, &durable.ToolRegistration{Name: name, Description: description, Parameters: schema, Deferred: true, Execute: func(ctx context.Context, args any, _ durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 			result, err := client.CallTool(ctx, tool.Name, args, mcp.RequestOptions{TimeoutMs: 600000})
 			if err != nil {
+				if errors.Is(err, errMCPAuthorize) || errors.Is(err, errMCPReauthorize) {
+					return durable.ToolExecutionResult{}, errMCPReauthorize
+				}
 				return durable.ToolExecutionResult{}, &privateError{message: "MCP tool call failed", cause: err}
 			}
 			output := []ai.ToolResultMessageContent{}
 			for _, block := range mcp.ToLLMContent(*result) {
 				if block.Type == "image" {
-					output = append(output, ai.ImageContent{Data: block.Data, MimeType: block.MimeType})
+					if auth == nil || (auth.mask(block.Data) == block.Data && auth.mask(block.MimeType) == block.MimeType) {
+						output = append(output, ai.ImageContent{Data: block.Data, MimeType: block.MimeType})
+					}
 				} else {
+					if auth != nil {
+						block.Text = auth.mask(block.Text)
+					}
 					output = append(output, ai.TextContent{Text: block.Text})
 				}
 			}
@@ -643,6 +675,12 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 	return client, tools, nil
 }
 func mcpFailure(err error) string {
+	if errors.Is(err, errMCPAuthorize) {
+		return errMCPAuthorize.Error()
+	}
+	if errors.Is(err, errMCPReauthorize) {
+		return errMCPReauthorize.Error()
+	}
 	if e, ok := errors.AsType[*vault.MissingError](err); ok {
 		return e.Error()
 	}
@@ -680,6 +718,7 @@ func extensionGuide(levels []ExtensionLevel, secrets string) string {
 		"Keep secrets in the vault. Use vault_list to find names and pass vault:NAME references in the env argument of bash or a Monitor. Ask the user to add missing values in Settings. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
 		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or agent level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the agent finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,
+		`For browser OAuth, set type to http and add oauth: {}. If the provider requires a registered client, set oauth.clientId and use vault:NAME in oauth.clientSecret. Ask the owner to authorize the connection in Tools. Never ask for OAuth tokens or codes.`,
 		"",
 		"The tool environment starts from the user's login shell environment.",
 		secrets,
