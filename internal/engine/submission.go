@@ -33,6 +33,12 @@ func (s *Submission) Running(ctx context.Context) (bool, error) {
 	return record.Status == durable.SubmissionPlaced, err
 }
 
+// Queued reports whether native execution still holds this input in its inbox.
+func (s *Submission) Queued(ctx context.Context) (bool, error) {
+	record, err := s.native.Status(ctx)
+	return record.Status == durable.SubmissionQueued, err
+}
+
 func (s *Submission) Wait(ctx context.Context) (Outcome, error) {
 	select {
 	case <-ctx.Done():
