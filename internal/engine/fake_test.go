@@ -25,7 +25,7 @@ func TestUserFauxTaskResultKeepsStableMetadata(t *testing.T) {
 
 func TestUserFauxAnswersConcurrentRequests(t *testing.T) {
 	// Given a first request paused before the faux response factory runs.
-	provider := fakeProvider()
+	provider := fakeProvider("")
 	models, err := provider.GetModels()
 	if err != nil {
 		t.Fatal(err)

@@ -386,7 +386,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	}
 	marker, taskRelease := filepath.Join(r.dir, "task-started"), filepath.Join(r.dir, "task-release")
 	defer func() { _ = os.WriteFile(taskRelease, nil, 0600) }()
-	_, err = r.service.ToolSessionNew(t.Context(), engine.TaskContext{AgentID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, engine.SessionNewArgs{
+	_, err = r.service.ToolSessionNew(t.Context(), engine.TaskContext{AgentID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, SessionNewArgs{
 		Title: "Result", Message: "touch " + marker + "; while [ ! -f " + taskRelease + " ]; do sleep 0.01; done; printf 'saved report'", Provider: "faux", ModelID: "bash",
 	})
 	if err != nil {

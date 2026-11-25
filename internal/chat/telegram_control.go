@@ -12,7 +12,6 @@ import (
 
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/engine"
 )
 
 var ErrTelegramUnauthorized = errors.New("telegram input is not authorized")
@@ -161,7 +160,7 @@ func (s *Service) ChannelConversation(ctx context.Context, agentID, peer string,
 
 // ChannelChildren lists the direct children of an already resolved channel target, never the
 // private global session list.
-func (s *Service) ChannelChildren(ctx context.Context, agentID string, target Chat) ([]engine.SessionRef, error) {
+func (s *Service) ChannelChildren(ctx context.Context, agentID string, target Chat) ([]SessionRef, error) {
 	parent, err := s.q.GetConversation(ctx, target.ID)
 	if err != nil {
 		return nil, err
@@ -173,7 +172,7 @@ func (s *Service) ChannelChildren(ctx context.Context, agentID string, target Ch
 	if err != nil {
 		return nil, err
 	}
-	out := make([]engine.SessionRef, 0, len(children))
+	out := make([]SessionRef, 0, len(children))
 	for _, child := range children {
 		ref, err := s.ref(ctx, s.q, child)
 		if err != nil {

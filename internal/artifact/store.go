@@ -226,52 +226,52 @@ func (s *Service) Delete(agentID, name string) error {
 }
 
 // Deliver copies a workspace file under its actual name. Existing names are conflicts.
-func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
+func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path string) (Delivery, error) {
 	if !filepath.IsLocal(path) || path == "." {
-		return engine.ArtifactInfo{}, ErrInvalidName
+		return Delivery{}, ErrInvalidName
 	}
 	name := filepath.Base(path)
 	if err := checkName(name); err != nil {
-		return engine.ArtifactInfo{}, err
+		return Delivery{}, err
 	}
 	s.mu.Lock()
 	reader := s.readWorkspace
 	s.mu.Unlock()
 	if reader == nil {
-		return engine.ArtifactInfo{}, errors.New("workspace reader is not configured")
+		return Delivery{}, errors.New("workspace reader is not configured")
 	}
 	data, err := reader(ctx, caller, path, MaxSize)
 	if err != nil {
-		return engine.ArtifactInfo{}, err
+		return Delivery{}, err
 	}
 	if int64(len(data)) > MaxSize {
-		return engine.ArtifactInfo{}, errors.New("deliver a regular file of at most 20 MB")
+		return Delivery{}, errors.New("deliver a regular file of at most 20 MB")
 	}
 	return s.storeDeliveredBytes(caller.AgentID, name, data)
 }
 
-func (s *Service) storeDeliveredBytes(agentID, name string, data []byte) (engine.ArtifactInfo, error) {
+func (s *Service) storeDeliveredBytes(agentID, name string, data []byte) (Delivery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	root, err := s.root(agentID, true)
 	if err != nil {
-		return engine.ArtifactInfo{}, err
+		return Delivery{}, err
 	}
 	defer root.Close()
 	out, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if os.IsExist(err) {
-		return engine.ArtifactInfo{}, ErrConflict
+		return Delivery{}, ErrConflict
 	}
 	if err != nil {
-		return engine.ArtifactInfo{}, err
+		return Delivery{}, err
 	}
 	_, writeErr := out.Write(data)
 	closeErr := out.Close()
 	if err := errors.Join(writeErr, closeErr); err != nil {
 		_ = root.Remove(name)
-		return engine.ArtifactInfo{}, err
+		return Delivery{}, err
 	}
-	return engine.ArtifactInfo{
+	return Delivery{
 		Name: name,
 		Size: int64(len(data)),
 		URL:  "/api/agents/" + url.PathEscape(agentID) + "/artifacts/" + url.PathEscape(name),

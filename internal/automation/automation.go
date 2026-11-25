@@ -46,15 +46,15 @@ var ErrNotFound = errors.New("automation not found")
 
 // Input is what the user sets.
 type Input struct {
-	Notification         *engine.RoutineNotification `json:"notification,omitempty"`
-	Cwd                  string                      `json:"cwd"`
-	Name                 string                      `json:"name"`
-	Prompt               string                      `json:"prompt"`
-	Schedule             Schedule                    `json:"schedule"`
-	TimeZone             string                      `json:"timeZone"`
-	Session              string                      `json:"session"` // new, reuse, or session
-	TargetConversationID int64                       `json:"targetConversationId,omitzero"`
-	Enabled              bool                        `json:"enabled"`
+	Notification         *RoutineNotification `json:"notification,omitempty"`
+	Cwd                  string               `json:"cwd"`
+	Name                 string               `json:"name"`
+	Prompt               string               `json:"prompt"`
+	Schedule             Schedule             `json:"schedule"`
+	TimeZone             string               `json:"timeZone"`
+	Session              string               `json:"session"` // new, reuse, or session
+	TargetConversationID int64                `json:"targetConversationId,omitzero"`
+	Enabled              bool                 `json:"enabled"`
 	// EnvironmentID is local or an SSH environment ID. Empty follows the environment of the bot.
 	EnvironmentID string `json:"environmentId"`
 }
@@ -311,7 +311,7 @@ func (s *Service) checkEnvironment(ctx context.Context, id, current string) erro
 	return nil
 }
 
-func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *engine.RoutineNotification) error {
+func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *RoutineNotification) error {
 	if n == nil {
 		return nil
 	}
@@ -399,7 +399,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
-		Notification: &engine.RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
+		Notification: &RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
 		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID.Int64,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}

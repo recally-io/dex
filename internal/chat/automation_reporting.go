@@ -15,7 +15,7 @@ import (
 )
 
 // ToolReportCheck stores a provisional report. Settlement decides the final outcome.
-func (s *Service) ToolReportCheck(ctx context.Context, caller engine.TaskContext, report engine.CheckReport) error {
+func (s *Service) ToolReportCheck(ctx context.Context, caller engine.TaskContext, report CheckReport) error {
 	_, err := s.toolCaller(ctx, caller)
 	if err != nil {
 		return err

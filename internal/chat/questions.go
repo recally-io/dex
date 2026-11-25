@@ -80,7 +80,7 @@ func (s *Service) questionView(ctx context.Context, row sqlc.Question) (*Questio
 // ToolAskUser saves a question for the user. A replay of the same tool call returns the same
 // question. The source input must still run, the chat must not be archived, and the chat must
 // have no other question that waits.
-func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
+func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a AskUserArgs) (QuestionInfo, error) {
 	return s.askQuestion(ctx, r, a, nil)
 }
 
@@ -91,88 +91,88 @@ func NormalizeText(s string) string { return strings.TrimSpace(s) }
 
 // askQuestion saves a question. An action question also needs a user input as its source, and the
 // action must be allowed now; control runs the action only when the owner approves it.
-func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engine.AskUserArgs, action *questionAction) (engine.QuestionInfo, error) {
+func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUserArgs, action *questionAction) (QuestionInfo, error) {
 	// One line, so the answer wrapper "Answer to: <question>" has an unambiguous first line.
 	text := strings.Join(strings.Fields(a.Question), " ")
 	if text == "" || utf8.RuneCountInString(text) > maxQuestion || len(a.Options) < 2 || len(a.Options) > 4 {
-		return engine.QuestionInfo{}, fmt.Errorf("%w: a question of 1 to %d characters and 2 to 4 options", ErrQuestionInvalid, maxQuestion)
+		return QuestionInfo{}, fmt.Errorf("%w: a question of 1 to %d characters and 2 to 4 options", ErrQuestionInvalid, maxQuestion)
 	}
 	options := make([]string, len(a.Options))
 	for i, option := range a.Options {
 		options[i] = NormalizeText(option)
 		if options[i] == "" || utf8.RuneCountInString(options[i]) > maxOption {
-			return engine.QuestionInfo{}, fmt.Errorf("%w: each option has 1 to %d characters", ErrQuestionInvalid, maxOption)
+			return QuestionInfo{}, fmt.Errorf("%w: each option has 1 to %d characters", ErrQuestionInvalid, maxOption)
 		}
 	}
 	encoded, err := json.Marshal(options)
 	if err != nil {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	// Stop, Clear and archive take the same writer before they read.
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if prior, err := q.GetQuestionByOperation(ctx, r.Key); err == nil {
 		stored, err := questionOf(prior)
 		if err != nil {
-			return engine.QuestionInfo{}, err
+			return QuestionInfo{}, err
 		}
-		return engine.QuestionInfo{ID: stored.ID, Text: stored.Text, Options: stored.Options}, nil
+		return QuestionInfo{ID: stored.ID, Text: stored.Text, Options: stored.Options}, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	if !Writable(conv.ChannelKey) || conv.ParentID.Valid {
-		return engine.QuestionInfo{}, fmt.Errorf("%w: only Main and Chat sessions ask the user", ErrQuestionInvalid)
+		return QuestionInfo{}, fmt.Errorf("%w: only Main and Chat sessions ask the user", ErrQuestionInvalid)
 	}
 	if conv.ArchivedAt.Valid {
-		return engine.QuestionInfo{}, fmt.Errorf("%w: the chat is archived", ErrQuestionClosed)
+		return QuestionInfo{}, fmt.Errorf("%w: the chat is archived", ErrQuestionClosed)
 	}
 	source, err := liveSource(ctx, q, r)
 	if err != nil {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	followUp := false
 	if f, err := q.GetChannelFollowUpByInput(ctx, source.ID); err == nil {
 		followUp = true
 		if f.State != "open" || source.ChannelRevoked != 0 {
-			return engine.QuestionInfo{}, errChannelFollowUp
+			return QuestionInfo{}, errChannelFollowUp
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	if action != nil {
 		if err := action.allowed(ctx, q, r, source); err != nil {
-			return engine.QuestionInfo{}, err
+			return QuestionInfo{}, err
 		}
 	}
 	var queued int64
 	switch current, err := q.GetCurrentQuestion(ctx, conv.ID); {
 	case errors.Is(err, sql.ErrNoRows):
 	case err != nil:
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	case current.Status == "answered" && current.AnswerSubmissionID.String == source.ID:
 		// The turn that runs the answer may ask the next question.
 		if err := q.ConsumeQuestion(ctx, sqlc.ConsumeQuestionParams{SubmissionID: sql.NullString{String: source.ID, Valid: true}, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
-			return engine.QuestionInfo{}, err
+			return QuestionInfo{}, err
 		}
 	default:
 		if action != nil || conv.ChannelKey != MainKey {
-			return engine.QuestionInfo{}, errQuestionOpen
+			return QuestionInfo{}, errQuestionOpen
 		}
 		taskID, err := workTaskForInput(ctx, q, source.ID)
 		if err != nil {
-			return engine.QuestionInfo{}, err
+			return QuestionInfo{}, err
 		}
 		if taskID == "" {
-			return engine.QuestionInfo{}, errQuestionOpen
+			return QuestionInfo{}, errQuestionOpen
 		}
 		queued = 1
 	}
@@ -180,7 +180,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 	params := sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, ConversationID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli(), Queued: queued}
 	action.store(&params)
 	if err := q.CreateQuestion(ctx, params); err != nil {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	inputIDs := r.RunInputIDs
 	if followUp || len(inputIDs) == 0 {
@@ -188,14 +188,14 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a engin
 	}
 	for _, inputID := range inputIDs {
 		if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: inputID, ExitAction: "ask_user"}); err != nil {
-			return engine.QuestionInfo{}, err
+			return QuestionInfo{}, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return engine.QuestionInfo{}, err
+		return QuestionInfo{}, err
 	}
 	s.signal(conv.ID)
-	return engine.QuestionInfo{ID: id, Text: text, Options: options}, nil
+	return QuestionInfo{ID: id, Text: text, Options: options}, nil
 }
 
 // answerContent loads the open question for an answer inside the receipt transaction and returns

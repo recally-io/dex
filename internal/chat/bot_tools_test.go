@@ -37,7 +37,7 @@ func archivedAt(t *testing.T, r *nativeTest, id string) bool {
 	return row.ArchivedAt.Valid
 }
 
-func askArchive(t *testing.T, r *nativeTest, source engine.TaskContext) engine.QuestionInfo {
+func askArchive(t *testing.T, r *nativeTest, source engine.TaskContext) QuestionInfo {
 	t.Helper()
 	q, err := r.service.ToolAskArchive(t.Context(), source, "coder", "Coder", "It has no work left")
 	if err != nil {
@@ -121,7 +121,7 @@ func TestOwnerAnswersThatDoNotApproveLeaveTheBotActive(t *testing.T) {
 func TestPlainQuestionWithTheSameWordsArchivesNothing(t *testing.T) {
 	// Given ask_user with the text and options of an archive question.
 	r, _, source := archiveFixture(t)
-	q, err := r.service.ToolAskUser(t.Context(), source, engine.AskUserArgs{Question: `Archive bot "Coder"?`, Options: []string{approve, "Cancel"}})
+	q, err := r.service.ToolAskUser(t.Context(), source, AskUserArgs{Question: `Archive bot "Coder"?`, Options: []string{approve, "Cancel"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestBotToolCallerNeedsAPersonInMainOrAChat(t *testing.T) {
 func TestBotToolCallerRefusesAChildSessionWithAChatKey(t *testing.T) {
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "work"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "work"})
 	if err != nil {
 		t.Fatal(err)
 	}

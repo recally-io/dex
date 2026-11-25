@@ -47,12 +47,12 @@ func TestUserSessionNewReplayKeepsIdentity(t *testing.T) {
 	// Given a parent run that calls session_new.
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
-	first, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "One", Message: "one"})
+	first, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "One", Message: "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// When the same tool call runs again with other arguments.
-	replay, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Replay", Message: "different"})
+	replay, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Replay", Message: "different"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestUserSessionNewReplayKeepsTheSavedDirectory(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	a, b := t.TempDir(), t.TempDir()
-	first, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "One", Message: "one", Cwd: a})
+	first, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "One", Message: "one", Cwd: a})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestUserSessionNewReplayKeepsTheSavedDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, cwd := range []string{"", b} {
-		replay, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "One", Message: "one", Cwd: cwd})
+		replay, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "One", Message: "one", Cwd: cwd})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,7 +115,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	// Given a child of bot and a session of another bot.
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "One", Message: "one"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "One", Message: "one"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,11 +133,11 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	foreign := engine.TaskContext{AgentID: "other", ConversationID: otherRef.ID, SourceRequestID: "other-source", Key: "other/send"}
-	if _, err := r.service.ToolSessionSend(t.Context(), foreign, engine.SessionSendArgs{ID: child.ID, Message: "hi"}); !errors.Is(err, ErrSessionNotFound) {
+	if _, err := r.service.ToolSessionSend(t.Context(), foreign, SessionSendArgs{ID: child.ID, Message: "hi"}); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("foreign send: %v", err)
 	}
 	// Reading is open to any bot.
-	if page, err := r.service.ToolSessionRead(t.Context(), foreign, engine.SessionReadArgs{ID: child.ID}); err != nil || page.BotID != "bot" {
+	if page, err := r.service.ToolSessionRead(t.Context(), foreign, SessionReadArgs{ID: child.ID}); err != nil || page.BotID != "bot" {
 		t.Fatalf("foreign read: %+v, %v", page, err)
 	}
 	// When the child calls a management tool, the handler rejects it, whatever tools the child has.
@@ -154,14 +154,14 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	asChild := engine.TaskContext{AgentID: "bot", ConversationID: childRef.ID, SourceRequestID: turnID(source.Key), Key: "bot/child-new"}
-	if _, err := r.service.ToolSessionNew(t.Context(), asChild, engine.SessionNewArgs{Title: "Grandchild", Message: "no"}); !errors.Is(err, errSessionInvalid) {
+	if _, err := r.service.ToolSessionNew(t.Context(), asChild, SessionNewArgs{Title: "Grandchild", Message: "no"}); !errors.Is(err, errSessionInvalid) {
 		t.Fatalf("child new: %v", err)
 	}
-	if _, err := r.service.ToolSessionSend(t.Context(), asChild, engine.SessionSendArgs{ID: child.ID, Message: "no"}); !errors.Is(err, errSessionInvalid) {
+	if _, err := r.service.ToolSessionSend(t.Context(), asChild, SessionSendArgs{ID: child.ID, Message: "no"}); !errors.Is(err, errSessionInvalid) {
 		t.Fatalf("child send: %v", err)
 	}
 	// A child may read.
-	if _, err := r.service.ToolSessionList(t.Context(), asChild, engine.SessionListArgs{Scope: "all"}); err != nil {
+	if _, err := r.service.ToolSessionList(t.Context(), asChild, SessionListArgs{Scope: "all"}); err != nil {
 		t.Fatalf("child list: %v", err)
 	}
 }
@@ -170,7 +170,7 @@ func TestUserSessionStopReplayKeepsLaterWork(t *testing.T) {
 	// Given a child that the parent stopped, and work that the parent sent to it afterwards.
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "first"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestUserSessionStopReplayKeepsLaterWork(t *testing.T) {
 	}
 	send := source
 	send.Key = "bot/send-after-stop"
-	if _, err = r.service.ToolSessionSend(t.Context(), send, engine.SessionSendArgs{ID: child.ID, Message: "later work"}); err != nil {
+	if _, err = r.service.ToolSessionSend(t.Context(), send, SessionSendArgs{ID: child.ID, Message: "later work"}); err != nil {
 		t.Fatal(err)
 	}
 	// When the same session_stop call runs again.
@@ -203,7 +203,7 @@ func TestUserConcurrentSessionForkWithOneKeyCreatesOneFork(t *testing.T) {
 	// Given a child that has a finished turn.
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "first"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,13 +215,13 @@ func TestUserConcurrentSessionForkWithOneKeyCreatesOneFork(t *testing.T) {
 	call := source
 	call.Key = "bot/fork-one"
 	start := make(chan struct{})
-	refs := make(chan engine.SessionRef, 8)
+	refs := make(chan SessionRef, 8)
 	errs := make(chan error, 8)
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
 			<-start
-			ref, err := r.service.ToolSessionFork(t.Context(), call, engine.SessionForkArgs{ID: child.ID, Message: "fork work"})
+			ref, err := r.service.ToolSessionFork(t.Context(), call, SessionForkArgs{ID: child.ID, Message: "fork work"})
 			refs <- ref
 			errs <- err
 		})

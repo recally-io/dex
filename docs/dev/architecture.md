@@ -29,7 +29,9 @@ native store per agent. Startup [seals legacy Telegram group data](channels.md#u
 without opening its native stores.
 Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
 acknowledging them and use the same platform receive functions. The engine does
-not import dex business packages.
+not import dex business packages. Each business package defines its model tools.
+`internal/app` registers those [extensions](execution.md#tool-registration)
+and selects which sessions can use them.
 
 Tools and stdio MCP servers can start child processes. Bash has a default
 120-second timeout. An omitted or null `timeout` uses the default. An explicit

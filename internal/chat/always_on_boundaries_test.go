@@ -82,7 +82,7 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 		SourceRequestID: "u-monitor-rec",
 		Key:             "bot/t-rec-1",
 	}
-	info, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: "recover once"})
+	info, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 120, Prompt: "recover once"})
 	if err != nil {
 		t.Fatal(err)
 	}

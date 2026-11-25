@@ -39,8 +39,8 @@ type channelApproval struct {
 	expires     time.Time
 }
 
-func (s *Service) ChannelToolHandlers(chats *chat.Service) engine.ChannelTools {
-	return engine.ChannelTools{
+func (s *Service) ChannelToolHandlers(chats *chat.Service) ChannelTools {
+	return ChannelTools{
 		Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
 			if _, err := chats.ChannelToolCaller(ctx, c); err != nil {
 				return nil, err

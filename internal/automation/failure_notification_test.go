@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/recally-io/dex/internal/automation"
+
 	"github.com/recally-io/dex/internal/chat"
-	"github.com/recally-io/dex/internal/engine"
 )
 
 func TestUserRoutineScheduleAndEnvironmentFailuresAlertButBusyDoesNot(t *testing.T) {
@@ -32,7 +33,7 @@ INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) 
 				t.Fatal(err)
 			}
 			in := routineInput()
-			in.Notification = &engine.RoutineNotification{Mode: "default"}
+			in.Notification = &automation.RoutineNotification{Mode: "default"}
 			if tc.name == "missed schedule" {
 				in.Schedule.Kind = "daily"
 				in.Schedule.Time, in.Schedule.Minutes = "09:00", 0
@@ -103,7 +104,7 @@ INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) 
 		t.Fatal(err)
 	}
 	in := routineInput()
-	in.Notification = &engine.RoutineNotification{Mode: "default"}
+	in.Notification = &automation.RoutineNotification{Mode: "default"}
 	a, err := f.routines.Create(ctx, "a", in)
 	if err != nil {
 		t.Fatal(err)

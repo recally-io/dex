@@ -1,4 +1,4 @@
-package engine
+package chat
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/recally-io/dex/internal/engine"
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
@@ -43,9 +45,9 @@ type OutboxSummary struct {
 
 // OutboxTools connects Outbox and System Turn exit-control tools to the chat service.
 type OutboxTools struct {
-	NotifyUser   func(context.Context, TaskContext, NotifyUserArgs) (string, error)
-	ReportParent func(context.Context, TaskContext, ReportParentArgs) (string, error)
-	RecentOutbox func(context.Context, Ref) ([]OutboxSummary, error)
+	NotifyUser   func(context.Context, engine.TaskContext, NotifyUserArgs) (string, error)
+	ReportParent func(context.Context, engine.TaskContext, ReportParentArgs) (string, error)
+	RecentOutbox func(context.Context, engine.Ref) ([]OutboxSummary, error)
 }
 
 func boolDefaultTrue(v *bool) bool {
@@ -55,8 +57,8 @@ func boolDefaultTrue(v *bool) bool {
 	return *v
 }
 
-func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
-	return &durable.Extension{
+func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
+	return &engine.Extension{
 		Name: "outbox",
 		Tools: []*durable.ToolRegistration{
 			{
@@ -71,7 +73,7 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 					},
 				},
 				Replay: durable.ReplaySafe,
-				Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+				Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 					if tools.NotifyUser == nil {
 						return durable.ToolExecutionResult{}, errors.New("outbox service is unavailable")
 					}
@@ -80,11 +82,11 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 						return durable.ToolExecutionResult{}, err
 					}
 					final := boolDefaultTrue(args.Final)
-					var call TaskContext
+					var call engine.TaskContext
 					if final {
-						call, err = turnEndingCall(ctx, api, agentID, "notify_user")
+						call, err = invocation.TurnEnding(ctx, "notify_user")
 					} else {
-						call, err = toolCall(ctx, api, agentID)
+						call, err = invocation.Context(ctx)
 					}
 					if err != nil {
 						return durable.ToolExecutionResult{}, err
@@ -107,7 +109,7 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 						res.Control = &durable.ToolControl{Terminate: true}
 					}
 					return res, nil
-				},
+				}),
 			},
 		},
 		Sections: []*durable.PromptSection{
@@ -115,7 +117,7 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 				if tools.RecentOutbox == nil {
 					return nil, nil
 				}
-				rows, err := tools.RecentOutbox(ctx, Ref{AgentID: agentID, ID: int64(input.ConversationId)})
+				rows, err := tools.RecentOutbox(ctx, engine.Ref{AgentID: agentID, ID: int64(input.ConversationId)})
 				if err != nil || len(rows) == 0 {
 					return nil, err
 				}
@@ -146,11 +148,48 @@ func outboxExtension(agentID string, tools OutboxTools) *durable.Extension {
 	}
 }
 
-const legacyParentReport = "report_parent"
+const LegacyParentReport = "report_parent"
 const hideLegacyReportMemo = "dex.hideLegacyParentReport"
 
-// childOutboxExtension lets a child report without access to the parent dispatch tools.
-func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension {
+// ChildOutboxExtension lets a child report without access to the parent dispatch tools.
+func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
+	execute := func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
+		if tools.ReportParent == nil {
+			return durable.ToolExecutionResult{}, errors.New("parent reporting is unavailable")
+		}
+		args, err := durable.FromJsonValue[ReportParentArgs](raw)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		final := boolDefaultTrue(args.Final)
+		var call engine.TaskContext
+		if final {
+			call, err = invocation.TurnEnding(ctx, "session_report")
+			if err == nil {
+				err = invocation.RecordActivation(ctx, &call)
+			}
+		} else {
+			call, err = invocation.Context(ctx)
+		}
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		resultID, err := tools.ReportParent(ctx, call, args)
+		if err != nil {
+			return durable.ToolExecutionResult{}, err
+		}
+		text := resultID
+		if text != ReportStaged && text != ReportIgnored {
+			text = "Reported to parent: " + resultID
+		}
+		res := durable.ToolExecutionResult{
+			Output: []ai.ToolResultMessageContent{ai.TextContent{Text: text}},
+		}
+		if final {
+			res.Control = &durable.ToolControl{Terminate: true}
+		}
+		return res, nil
+	}
 	report := &durable.ToolRegistration{
 		Name:        "session_report",
 		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be a Routine rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. For an opted-in delegation, the final report is staged for the canonical completion and does not send a separate update. Set final=false to send a milestone and continue.",
@@ -161,69 +200,26 @@ func childOutboxExtension(agentID string, tools OutboxTools) *durable.Extension 
 				"final":   map[string]any{"type": "boolean", "description": "If true (default), ends this turn immediately after reporting. Set false to send a milestone and keep working."},
 			},
 		},
-		Replay: durable.ReplaySafe,
-		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
-			if tools.ReportParent == nil {
-				return durable.ToolExecutionResult{}, errors.New("parent reporting is unavailable")
-			}
-			args, err := durable.FromJsonValue[ReportParentArgs](raw)
-			if err != nil {
-				return durable.ToolExecutionResult{}, err
-			}
-			final := boolDefaultTrue(args.Final)
-			var call TaskContext
-			if final {
-				call, err = turnEndingCall(ctx, api, agentID, "session_report")
-				if err == nil {
-					err = reportActivation(ctx, api, &call)
-				}
-			} else {
-				call, err = toolCall(ctx, api, agentID)
-			}
-			if err != nil {
-				return durable.ToolExecutionResult{}, err
-			}
-			resultID, err := tools.ReportParent(ctx, call, args)
-			if err != nil {
-				return durable.ToolExecutionResult{}, err
-			}
-			text := resultID
-			if text != ReportStaged && text != ReportIgnored {
-				text = "Reported to parent: " + resultID
-			}
-			res := durable.ToolExecutionResult{
-				Output: []ai.ToolResultMessageContent{ai.TextContent{Text: text}},
-			}
-			if final {
-				res.Control = &durable.ToolControl{Terminate: true}
-			}
-			return res, nil
-		},
+		Replay:  durable.ReplaySafe,
+		Execute: engine.BindTool(agentID, execute),
 	}
 	legacy := *report
-	legacy.Name = legacyParentReport
+	legacy.Name = LegacyParentReport
 	legacy.Callers = []durable.ToolCaller{durable.CallerModel}
-	legacy.Execute = func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+	legacy.Execute = engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 		// PiG uses the committed tool list for dispatch, not the request hook's list.
 		// Admit only calls whose owning generation predates the hook.
 		unavailable := errors.New("report_parent is not available; use session_report")
-		task, err := api.GetTask(ctx, api.TaskId())
+		allowed, err := invocation.GenerationPredatesMemo(ctx, hideLegacyReportMemo)
 		if err != nil {
 			return durable.ToolExecutionResult{}, err
 		}
-		if task == nil || task.Owner == nil {
+		if !allowed {
 			return durable.ToolExecutionResult{}, unavailable
 		}
-		generation, err := api.GetTask(ctx, *task.Owner)
-		if err != nil {
-			return durable.ToolExecutionResult{}, err
-		}
-		if generation == nil || generation.Kind != harness.GenerationTask.AnyDefinition().Name || generation.Memos[hideLegacyReportMemo] != nil {
-			return durable.ToolExecutionResult{}, unavailable
-		}
-		return report.Execute(ctx, raw, api)
-	}
-	return &durable.Extension{
+		return execute(ctx, raw, invocation)
+	})
+	return &engine.Extension{
 		Name:  "child-outbox",
 		Tools: []*durable.ToolRegistration{report, &legacy},
 		Hooks: []durable.HookRegistration{harness.Hook(harness.GenerationTask, &harness.GenerationHooks{
@@ -240,10 +236,10 @@ func hideLegacyParentReport(ctx context.Context, request harness.GenerationReque
 	for i, message := range request.Messages {
 		if system, ok := message.(ai.SystemMessage); ok {
 			system.ToolsAdded = slices.DeleteFunc(system.ToolsAdded, func(tool ai.ToolSchema) bool {
-				return tool.Name == legacyParentReport
+				return tool.Name == LegacyParentReport
 			})
 			system.ToolsRemoved = slices.DeleteFunc(system.ToolsRemoved, func(tool ai.ToolReference) bool {
-				return tool.Name == legacyParentReport
+				return tool.Name == LegacyParentReport
 			})
 			request.Messages[i] = system
 		}

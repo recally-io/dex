@@ -9,11 +9,11 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/toolsearch"
 )
 
-func toolSearchExtension() *durable.Extension {
+func toolSearchExtension(hidden func(string) bool) *durable.Extension {
 	extension := toolsearch.CreateExtension()
 	tool := extension.Tools[0]
 	tool.Description = "Search tools available to this conversation, including built-in tools and MCP tools. Matching deferred tools become available on the next model call."
-	tool.Parameters = objectSchema([]string{"query"}, map[string]any{
+	tool.Parameters = ObjectSchema([]string{"query"}, map[string]any{
 		"query": map[string]any{"type": "string", "description": "Search query for tools."},
 		"limit": map[string]any{"type": "number", "description": "Maximum number of tools to return. Defaults to 8."},
 	})
@@ -27,7 +27,7 @@ func toolSearchExtension() *durable.Extension {
 		candidates := make([]*durable.ToolRegistration, 0, len(agent.Deferred)+len(agent.Tools))
 		catalog := make(map[string]*durable.ToolRegistration, cap(candidates))
 		for _, entry := range agent.Tools {
-			if entry.Name == legacyParentReport {
+			if hidden != nil && hidden(entry.Name) {
 				continue
 			}
 			offered[entry.Name] = true

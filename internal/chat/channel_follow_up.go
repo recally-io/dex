@@ -90,9 +90,9 @@ func stageFinalReport(ctx context.Context, q *sqlc.Queries, r engine.TaskContext
 	if err != nil {
 		return "", err
 	}
-	disposition := engine.ReportStaged
+	disposition := ReportStaged
 	if reason != "" {
-		disposition = engine.ReportIgnored
+		disposition = ReportIgnored
 	}
 	if err := q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{
 		Key: r.Key, AgentID: r.AgentID, ConversationID: child.ID, SourceRequestID: source.ID, Action: finalReportOperation, Result: disposition,

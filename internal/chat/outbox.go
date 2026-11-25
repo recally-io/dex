@@ -39,7 +39,7 @@ func boolPtrOrTrue(v *bool) bool {
 	return *v
 }
 
-func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
+func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a NotifyUserArgs) (string, error) {
 	if strings.TrimSpace(a.Content) == "" {
 		return "", errors.New("notify_user requires non-empty content")
 	}
@@ -184,7 +184,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 
 // ToolReportParent stages an opted-in final for settlement. Progress and ordinary
 // final reports still write a wake for the direct parent.
-func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a engine.ReportParentArgs) (string, error) {
+func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a ReportParentArgs) (string, error) {
 	if strings.TrimSpace(a.Content) == "" {
 		return "", errors.New("session_report requires non-empty content")
 	}
@@ -266,7 +266,7 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	return resultID, nil
 }
 
-func (s *Service) ToolRecentOutbox(ctx context.Context, ref engine.Ref) ([]engine.OutboxSummary, error) {
+func (s *Service) ToolRecentOutbox(ctx context.Context, ref engine.Ref) ([]OutboxSummary, error) {
 	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{
 		AgentID: ref.AgentID,
 
@@ -282,9 +282,9 @@ func (s *Service) ToolRecentOutbox(ctx context.Context, ref engine.Ref) ([]engin
 	if err != nil {
 		return nil, err
 	}
-	out := make([]engine.OutboxSummary, 0, len(rows))
+	out := make([]OutboxSummary, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, engine.OutboxSummary{
+		out = append(out, OutboxSummary{
 			ID:          row.ID,
 			Kind:        row.Kind,
 			Peer:        row.Peer,

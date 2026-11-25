@@ -49,10 +49,12 @@ func TestUserUpgradeDeliversAnAdmittedChildReportOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 			var service *chat.Service
-			report := func(ctx context.Context, call engine.TaskContext, args engine.ReportParentArgs) (string, error) {
+			report := func(ctx context.Context, call engine.TaskContext, args chat.ReportParentArgs) (string, error) {
 				return service.ToolReportParent(ctx, call, args)
 			}
-			agents, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, Tasks: engine.TaskTools{Outbox: engine.OutboxTools{ReportParent: report}}})
+			agents, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
+				return engine.ExtensionSet{Optional: []*engine.Extension{chat.ChildOutboxExtension(rt.AgentID, chat.OutboxTools{ReportParent: report})}}
+			}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -75,7 +77,7 @@ func TestUserUpgradeDeliversAnAdmittedChildReportOnce(t *testing.T) {
 				Parameters: map[string]any{"type": "object", "required": []string{"content"}, "properties": map[string]any{"content": map[string]any{"type": "string"}, "final": map[string]any{"type": "boolean"}}},
 				Execute: func(ctx context.Context, _ any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 					if cut == "after report commit" {
-						if _, err := report(ctx, engine.TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: request, RunInputIDs: []string{request}, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, engine.ReportParentArgs{Content: content}); err != nil {
+						if _, err := report(ctx, engine.TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: request, RunInputIDs: []string{request}, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, chat.ReportParentArgs{Content: content}); err != nil {
 							return durable.ToolExecutionResult{}, err
 						}
 					}
