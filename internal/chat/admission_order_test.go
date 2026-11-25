@@ -26,14 +26,12 @@ type nativeTest struct {
 	close   func()
 }
 
-type reportFunc = func(context.Context, engine.TaskContext, ReportParentArgs) (string, error)
-
 func startNative(t *testing.T, model string, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
 	t.Helper()
-	return openNativeTest(t, t.TempDir(), model, nil, wrap...)
+	return openNativeTest(t, t.TempDir(), model, wrap...)
 }
 
-func openNativeTest(t *testing.T, dir, model string, wrapReport func(reportFunc) reportFunc, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
+func openNativeTest(t *testing.T, dir, model string, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
 	t.Helper()
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
 	if err != nil {
@@ -53,9 +51,6 @@ func openNativeTest(t *testing.T, dir, model string, wrapReport func(reportFunc)
 	}
 	report := func(ctx context.Context, c engine.TaskContext, a ReportParentArgs) (string, error) {
 		return service.ToolReportParent(ctx, c, a)
-	}
-	if wrapReport != nil {
-		report = wrapReport(report)
 	}
 	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, FakeInputSuffix: BoundRoutineCheckSuffix, ExecEnv: provider, SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
 		id := rt.AgentID

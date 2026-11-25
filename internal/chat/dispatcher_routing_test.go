@@ -142,7 +142,7 @@ func TestUserPureBackgroundRunNeverAutoSendsAndMixedRunRoutesToLastUser(t *testi
 func TestUserWebSteerDuringTelegramRunKeepsAnswerInWebAndPreservesOrderAcrossRestart(t *testing.T) {
 	t.Parallel()
 	dataDir := t.TempDir()
-	r := openNativeTest(t, dataDir, "bash", nil)
+	r := openNativeTest(t, dataDir, "bash")
 	ctx := t.Context()
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
 		AgentID:      "bot",
@@ -527,7 +527,7 @@ func TestCrashBeforeControlSettleHelper(t *testing.T) {
 	dataDir := os.Getenv("DEX_CRASH_DATA_DIR")
 	gateDir := os.Getenv("DEX_CRASH_GATE_DIR")
 	ctx := context.Background()
-	r := openNativeTest(t, dataDir, "bash", nil)
+	r := openNativeTest(t, dataDir, "bash")
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
 		AgentID:      "bot",
 		Token:        "123:tok",
@@ -612,7 +612,7 @@ func TestUserCrashBeforeControlSettlePreservesWebSteerRoutingAfterSIGKILL(t *tes
 	}
 
 	// When Dex restarts after SIGKILL, both Control submissions settle via same-ID replay and stay in Web.
-	r := openNativeTest(t, dataDir, "bash", nil)
+	r := openNativeTest(t, dataDir, "bash")
 	ctx := t.Context()
 	if err := r.service.RecoverSessions(ctx); err != nil {
 		t.Fatal(err)
