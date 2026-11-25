@@ -105,6 +105,11 @@ func (s *Service) notificationTargets(ctx context.Context, agentID string) (Noti
 func (s *Service) SetPrimaryNotificationTarget(ctx context.Context, agentID, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.setPrimaryNotificationTarget(ctx, agentID, id, "")
+}
+
+// An approval must match both the current target ID and the peer on the review page.
+func (s *Service) setPrimaryNotificationTarget(ctx context.Context, agentID, id, expectedPeer string) error {
 	list, err := s.notificationTargets(ctx, agentID)
 	if err != nil {
 		return err
@@ -112,7 +117,7 @@ func (s *Service) SetPrimaryNotificationTarget(ctx context.Context, agentID, id 
 	if id != "" {
 		found := false
 		for _, target := range list.Targets {
-			if target.ID == id {
+			if target.ID == id && (expectedPeer == "" || target.Peer == expectedPeer) {
 				found = true
 				break
 			}

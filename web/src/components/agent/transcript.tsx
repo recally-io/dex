@@ -8,6 +8,7 @@ import {
   CornerDownRight,
   FileText,
   GitBranch,
+  Bell,
   SquarePen,
 } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
@@ -15,7 +16,7 @@ import { createContext, memo, useContext, useEffect, useState, type ReactNode } 
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
+import type { Attachment, Item, Retry, TimelineNotification, ToolItem } from "../../api/generated/types.gen";
 import { getChatItemOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { formatSize, isImage } from "../../lib/attachments";
 import {
@@ -923,8 +924,10 @@ export function Transcript({
   memory,
   queuedActions,
   messageActions,
+  notifications,
 }: {
   chatId: number;
+  notifications?: TimelineNotification[];
   items: Item[];
   running: boolean;
   retry: (index: number) => void;
@@ -964,21 +967,54 @@ export function Transcript({
 
   const grouped = blocks(items);
 
+  // Place notices between turns so they cannot split a tool group or enter a system trace.
+  const rows: ReactNode[] = [];
+  let next = 0;
+
+  grouped.forEach((block, index) => {
+    const item = block.kind === "steps" ? undefined : block.item;
+    const at = item?.kind === "user" && item.queued ? Infinity : item && "at" in item ? item.at : undefined;
+
+    if (at !== undefined) {
+      for (let notice = notifications?.[next]; notice && notice.at < at; notice = notifications?.[++next])
+        rows.push(notificationRow(notice));
+    }
+
+    rows.push(
+      block.kind === "task" ? (
+        <TaskSection
+          key={block.item.id}
+          block={block}
+          content={content}
+          streaming={running && index === grouped.length - 1}
+        />
+      ) : (
+        content(block)
+      ),
+    );
+  });
+
+  for (const notice of notifications?.slice(next) ?? []) rows.push(notificationRow(notice));
+
+  return <TranscriptChat.Provider value={chatId}>{rows}</TranscriptChat.Provider>;
+}
+
+function notificationRow(notice: TimelineNotification) {
+  const time = new Date(notice.at);
+
   return (
-    <TranscriptChat.Provider value={chatId}>
-      {grouped.map((block, blockIndex) =>
-        block.kind === "task" ? (
-          <TaskSection
-            key={block.item.id}
-            block={block}
-            content={content}
-            streaming={running && blockIndex === grouped.length - 1}
-          />
-        ) : (
-          content(block)
-        ),
-      )}
-    </TranscriptChat.Provider>
+    <article
+      key={`outbox:${notice.id}`}
+      aria-label="Notification"
+      className="mt-5 min-w-0 space-y-2 rounded-md border border-border bg-muted/30 px-4 py-3 first:mt-0"
+    >
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <Bell size={14} aria-hidden />
+        <span className="font-medium text-foreground">Notification</span>
+        <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
+      </header>
+      <Markdown text={notice.text} />
+    </article>
   );
 }
 

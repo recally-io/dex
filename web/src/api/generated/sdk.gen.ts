@@ -1363,7 +1363,7 @@ export const compactChat = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call.
+ * Reads committed items before an entry ID, oldest first. Pages can overlap the live snapshot. Merge by item ID. The entry limit extends to an assistant or input boundary to keep tool results with their call. Notifications use a separate cursor and are newest first. Supply at least one cursor.
  *
  */
 export const getChatHistory = <ThrowOnError extends boolean = false>(options: Options<GetChatHistoryData, ThrowOnError>): RequestResult<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError> => (options.client ?? client).get<GetChatHistoryResponses, GetChatHistoryErrors, ThrowOnError>({
@@ -1444,7 +1444,7 @@ export const listChatOutbox = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a snapshot; a later snapshot replaces all state. A comment line comes every 15 s. The server closes the stream when the agent reloads, the engine closes, or the client is too slow. The client reconnects and gets a new snapshot.
+ * Server-sent events. Each event has `event: <type>` and one `data:` line with a ChatEvent as JSON. The first event is a native snapshot. An eligible Web conversation also gets an initial notifications page and later notification updates. Merge notifications by Outbox ID; a native snapshot does not replace them. A comment line comes every 15 s. The server closes the stream when the agent reloads, the engine closes, or the client is too slow. The client reconnects and gets a new snapshot.
  *
  */
 export const watchChat = <ThrowOnError extends boolean = false>(options: Options<WatchChatData, ThrowOnError, WatchChatResponse>): Promise<ServerSentEventsResult<WatchChatResponses>> => (options.client ?? client).sse.get<WatchChatResponses, WatchChatErrors, ThrowOnError>({

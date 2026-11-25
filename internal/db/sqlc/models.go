@@ -468,6 +468,12 @@ type TelegramEffect struct {
 	CreatedAt    int64  `json:"created_at"`
 }
 
+type TelegramQueueAcknowledgement struct {
+	SubmissionID string `json:"submission_id"`
+	Outcome      string `json:"outcome"`
+	UpdatedAt    int64  `json:"updated_at"`
+}
+
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`

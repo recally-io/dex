@@ -582,6 +582,23 @@ export type AutomationRunList = {
 export type HistoryPage = {
     items: Array<Item>;
     nextBefore?: number;
+    notifications?: Array<TimelineNotification>;
+    nextBeforeNotification?: string;
+};
+
+/**
+ * A Web-origin notification read from the Outbox. It is not a delivery receipt.
+ */
+export type TimelineNotification = {
+    /**
+     * Outbox ID.
+     */
+    id: string;
+    text: string;
+    /**
+     * Creation time in milliseconds.
+     */
+    at: number;
 };
 
 export type BoundaryItem = {
@@ -768,7 +785,22 @@ export type ChatEvent = ({
     type: 'run';
 } & RunEvent) | ({
     type: 'child';
-} & ChildEvent);
+} & ChildEvent) | ({
+    type: 'notifications';
+} & NotificationsEvent);
+
+export type NotificationsEvent = {
+    type: 'notifications';
+    /**
+     * Newest first. Merge by Outbox ID.
+     */
+    notifications: Array<TimelineNotification>;
+    /**
+     * True for the first notification page of a connection.
+     */
+    initial: boolean;
+    nextBeforeNotification?: string;
+};
 
 /**
  * Current state of this chat or an observed child. Idle is not a turn outcome. A disconnected client must show unavailable until the new stream supplies this state.
@@ -4527,8 +4559,9 @@ export type GetChatHistoryData = {
         agentId: string;
         chatId: number;
     };
-    query: {
-        before: number;
+    query?: {
+        before?: number;
+        beforeNotification?: string;
         limit?: number;
     };
     url: '/api/agents/{agentId}/chats/{chatId}/history';
@@ -4553,7 +4586,7 @@ export type GetChatHistoryError = GetChatHistoryErrors[keyof GetChatHistoryError
 
 export type GetChatHistoryResponses = {
     /**
-     * A history page. No nextBefore means the start was reached.
+     * A history page. An absent cursor means that source has no more entries.
      */
     200: HistoryPage;
 };

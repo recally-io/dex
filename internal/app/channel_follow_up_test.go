@@ -2,10 +2,14 @@ package app_test
 
 import (
 	"context"
+	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/recally-io/dex/internal/api"
 )
 
 func TestUserPromisedChannelFollowUpStaysInternalWithoutExplicitSend(t *testing.T) {
@@ -91,6 +95,8 @@ func TestUserSeesConfirmedFollowUpWhenStopRacesAnInFlightSend(t *testing.T) {
 	d.setModel(t, "spawn-notify")
 	main := d.mainChat(t)
 	conn := sessionDB(t, d)
+	watch := d.watch(t, main)
+	watch.until(t, "Main's initial notice page", func(tr *transcript) bool { return len(tr.noticeEvents) > 0 })
 	f.message(1, 42, 7, childJSON(t, map[string]any{"title": "In-flight follow-up", "message": "child data", "provider": "faux", "modelId": "echo", "follow_up": true}))
 	work := waitExecution(t, conn, main, "In-flight follow-up", "done")
 	select {
@@ -103,10 +109,37 @@ func TestUserSeesConfirmedFollowUpWhenStopRacesAnInFlightSend(t *testing.T) {
 		n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ? AND status = 'revoked' AND delivered_at IS NULL`, work.ResultID)
 		return n == 1, n
 	})
+	var outbox api.OutboxMessageList
+	d.must(t, http.MethodGet, chatPath(main, "outbox"), nil, &outbox)
+	if !slices.ContainsFunc(outbox.Messages, func(m api.OutboxMessage) bool {
+		return m.Body == conclusion && m.Peer == "telegram:7" && m.Status == api.OutboxMessageStatusRevoked
+	}) {
+		t.Fatalf("owner lost the revoked delivery record: %+v", outbox)
+	}
 	close(release)
 	eventually(t, "platform receipt for the already in-flight conclusion", func() (bool, any) {
 		var status, remotes string
 		err := conn.QueryRowContext(t.Context(), `SELECT status, remote_ids FROM outbox_messages WHERE source_submission_id = ?`, work.ResultID).Scan(&status, &remotes)
 		return err == nil && status == "delivered" && remotes != "[]", []any{status, remotes, err}
 	})
+
+	// A later Web notice proves the live stream progressed past the Telegram send.
+	d.setModel(t, "tool")
+	d.send(t, main, `notify_user {"content":"Web timeline only"}`)
+	web := waitTimelineNotice(t, watch, "Web timeline only", false)
+	for _, event := range watch.tr.noticeEvents {
+		if len(event.Notifications) > 0 && !slices.Equal(event.Notifications, []api.TimelineNotification{web}) {
+			t.Fatalf("channel notice leaked into live Web timeline: %+v", event)
+		}
+	}
+	reloaded := d.watch(t, main)
+	waitTimelineNotice(t, reloaded, web.Text, true)
+	if !slices.Equal(reloaded.tr.noticeEvents[0].Notifications, []api.TimelineNotification{web}) {
+		t.Fatalf("channel notice leaked after reconnect: %+v", reloaded.tr.noticeEvents)
+	}
+	var page api.HistoryPage
+	d.must(t, http.MethodGet, chatPath(main, "history?beforeNotification="+url.QueryEscape(web.Id)), nil, &page)
+	if page.Notifications == nil || len(*page.Notifications) != 0 {
+		t.Fatalf("channel notice leaked in history: %+v", page)
+	}
 }
