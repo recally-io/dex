@@ -213,28 +213,6 @@ func (q *Queries) SetTelegramManagerCredential(ctx context.Context, credentialRe
 	return err
 }
 
-const telegramAccountOwner = `-- name: TelegramAccountOwner :one
-SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id
-WHERE substr(s.token, 1, instr(s.token, ':') - 1) = ?1 AND s.agent_id <> ?2 LIMIT 1
-`
-
-type TelegramAccountOwnerParams struct {
-	AccountID   string `json:"account_id"`
-	ExceptAgent string `json:"except_agent"`
-}
-
-type TelegramAccountOwnerRow struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-func (q *Queries) TelegramAccountOwner(ctx context.Context, arg TelegramAccountOwnerParams) (TelegramAccountOwnerRow, error) {
-	row := q.db.QueryRowContext(ctx, telegramAccountOwner, arg.AccountID, arg.ExceptAgent)
-	var i TelegramAccountOwnerRow
-	err := row.Scan(&i.ID, &i.Name)
-	return i, err
-}
-
 const telegramManagerCredential = `-- name: TelegramManagerCredential :one
 SELECT credential_ref FROM telegram_manager WHERE id = 1
 `

@@ -54,6 +54,7 @@ type managedTelegramAPI struct {
 	failToken  bool
 	tokenGate  <-chan struct{}
 	old        *fakeTelegram
+	child      *fakeTelegram
 	server     *httptest.Server
 }
 
@@ -63,7 +64,7 @@ const telegramChannelPath = "/api/agents/default/channels/telegram"
 
 func fakeManagedTelegram(t *testing.T, failToken bool) *managedTelegramAPI {
 	t.Helper()
-	f := &managedTelegramAPI{old: newFakeTelegram(t), failToken: failToken}
+	f := &managedTelegramAPI{old: newFakeTelegram(t), child: newFakeTelegram(t), failToken: failToken}
 	f.server = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.server.Close)
 	return f
@@ -123,8 +124,10 @@ func (f *managedTelegramAPI) serve(w http.ResponseWriter, r *http.Request) {
 		switch method {
 		case "getMe":
 			_, _ = w.Write([]byte(`{"ok":true,"result":{"id":789,"is_bot":true}}`))
-		case "setMyCommands":
-			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+		case "setWebhook", "deleteWebhook", "setMyCommands", "setMessageReaction", "sendRichMessage":
+			request := r.Clone(r.Context())
+			request.URL.Path = "/bot" + fakeToken + "/" + method
+			f.child.serve(w, request)
 		case "getUpdates":
 			_, _ = io.Copy(io.Discard, r.Body)
 			f.childPolls.Add(1)
@@ -245,6 +248,87 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 	if f.fetched.Load() != 1 {
 		t.Fatalf("replay fetched the token again: %d", f.fetched.Load())
 	}
+}
+
+func TestUserKeepsTelegramWebhookWhenConnectingManagedBot(t *testing.T) {
+	t.Parallel()
+	// Given an existing webhook channel and a verified setup owner.
+	dir := t.TempDir()
+	f := fakeManagedTelegram(t, false)
+	d := startDex(t, dir, f.server.URL)
+	d.setModel(t, "echo")
+	const secret = "managed-webhook-secret"
+	const endpoint = "https://hooks.example.test" + telegramHook
+	d.must(t, http.MethodPut, telegramChannelPath, map[string]any{
+		"token": fakeToken, "allowedUsers": []int64{11}, "transport": "webhook",
+		"webhook": map[string]string{"url": endpoint, "secretToken": secret},
+	}, nil)
+	f.old.nextEvent(t, "setWebhook")
+	configureManagedTelegram(t, d)
+	path, username := beginAndVerifyManagedTelegram(t, d, f, 1)
+
+	// When Telegram confirms the new bot, the old webhook is removed and the new bot uses its settings.
+	f.managed(2, 42, username)
+	waitManaged(t, func() bool { return f.offset.Load() >= 3 })
+	status, view := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
+	if status != http.StatusOK || !strings.Contains(view, `"transport":"webhook"`) || !strings.Contains(view, endpoint) ||
+		strings.Contains(view, secret) || strings.Contains(view, managedTestToken) {
+		t.Fatalf("managed channel did not retain a write-only webhook configuration (HTTP %d)", status)
+	}
+	var setup agent.TelegramManagedSetup
+	d.must(t, http.MethodGet, path, nil, &setup)
+	if setup.State != "connected" {
+		t.Fatalf("managed setup = %s", setup.State)
+	}
+	f.old.nextEvent(t, "deleteWebhook")
+	f.child.nextEvent(t, "setWebhook")
+
+	// Then a token-free edit and a restart keep webhook intake on the new account.
+	d.must(t, http.MethodPut, telegramChannelPath, map[string]any{"token": "", "allowedUsers": []int64{42}}, nil)
+	f.child.nextEvent(t, "setWebhook")
+	d.stop()
+	d = startDex(t, dir, f.server.URL)
+	f.child.nextEvent(t, "setWebhook")
+	const header = "X-Telegram-Bot-Api-Secret-Token"
+	payload := telegramHookMessage(t, 201, 42, "managed webhook")
+	postChannelHook(t, d, telegramHook, payload, map[string]string{header: "wrong"}, http.StatusUnauthorized)
+	postChannelHook(t, d, telegramHook, payload, map[string]string{header: secret}, http.StatusOK)
+	waitTaskChannelText(t, f.child, "echo: managed webhook")
+	assertWebhookInputs(t, dir, "telegram:789:201", 1)
+	if polls := f.childPolls.Load(); polls != 0 {
+		t.Fatalf("managed bot polled %d times in webhook mode", polls)
+	}
+}
+
+func TestUserKeepsTelegramWebhookWhenManagedBotCannotRemoveOldRegistration(t *testing.T) {
+	t.Parallel()
+	// Given a registered webhook that Telegram will not remove.
+	f := fakeManagedTelegram(t, false)
+	d := startDex(t, t.TempDir(), f.server.URL)
+	d.setModel(t, "echo")
+	const secret = "original-webhook-secret"
+	d.must(t, http.MethodPut, telegramChannelPath, map[string]any{
+		"token": fakeToken, "allowedUsers": []int64{11}, "transport": "webhook",
+		"webhook": map[string]string{"url": "https://hooks.example.test" + telegramHook, "secretToken": secret},
+	}, nil)
+	f.old.nextEvent(t, "setWebhook")
+	f.old.mu.Lock()
+	f.old.failures["deleteWebhook"] = []platformFailure{{HTTPStatus: http.StatusServiceUnavailable}}
+	f.old.mu.Unlock()
+	configureManagedTelegram(t, d)
+	path, username := beginAndVerifyManagedTelegram(t, d, f, 1)
+
+	// When Telegram confirms creation, replacement fails and the original bot still answers.
+	f.managed(2, 42, username)
+	waitManaged(t, func() bool { return f.offset.Load() >= 3 })
+	var setup agent.TelegramManagedSetup
+	d.must(t, http.MethodGet, path, nil, &setup)
+	if setup.State != "failed" {
+		t.Fatalf("managed setup = %s, want failed", setup.State)
+	}
+	postChannelHook(t, d, telegramHook, telegramHookMessage(t, 201, 11, "original webhook"),
+		map[string]string{"X-Telegram-Bot-Api-Secret-Token": secret}, http.StatusOK)
+	waitTaskChannelText(t, f.old, "echo: original webhook")
 }
 
 func TestUserKeepsExistingTelegramWhenManagedSetupDoesNotComplete(t *testing.T) {

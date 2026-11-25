@@ -19,6 +19,7 @@ import (
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/background"
+	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
@@ -480,8 +481,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		chats.RetryNow()
 	})
 	a.handler = server.New(server.Config{
-		WorkTasks: workTasks,
-		Plugins:   plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
+		ChannelWebhooks: http.HandlerFunc(bots.webhook),
+		WorkTasks:       workTasks,
+		Plugins:         plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine: native,
 		Envs:   envs,
 		EnvironmentChanged: func(ctx context.Context, id string) {
@@ -515,6 +517,14 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := jobs.Every("followup-monitors", min(cmp.Or(cfg.AutomationCheck, 5*time.Second), 5*time.Second), func(ctx context.Context) {
 		if err := chats.FireDueMonitors(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("fire due followup monitors", "err", err)
+		}
+	}); err != nil {
+		return nil, err
+	}
+	if err := jobs.Every("channel-webhook-prune", time.Hour, func(ctx context.Context) {
+		cutoff := time.Now().Add(-(channel.WebhookRetention + channel.WebhookFutureSkew)).UnixMilli()
+		if err := q.PruneHandledChannelWebhooks(ctx, cutoff); err != nil && ctx.Err() == nil {
+			slog.Warn("prune handled channel webhooks", "err", err)
 		}
 	}); err != nil {
 		return nil, err

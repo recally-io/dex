@@ -338,7 +338,7 @@ func (s *Service) failManagedSetup(ctx context.Context, id string) error {
 	return err
 }
 
-// connectManagedBot does not stop the existing bot until the credential and settings are saved.
+// connectManagedBot keeps the saved channel until the new credential and settings are ready.
 func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManager, row sqlc.TelegramManagedSetup, account, token string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -368,8 +368,27 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 	if err := json.Unmarshal([]byte(options), &cfg.Options); err != nil {
 		return err
 	}
+	cfg.Webhook = telegram.WebhookConfig{URL: saved.WebhookUrl, SecretToken: saved.WebhookSecret}
 	if err := s.telegramVault.EditCredential(ref, &token); err != nil {
 		return s.failManagedSetup(ctx, row.ID)
+	}
+	committed := false
+	if saved.WebhookUrl != "" && !strings.HasPrefix(saved.Token, account+":") {
+		old, err := s.TelegramConfig(ctx, row.AgentID)
+		if err != nil {
+			return err
+		}
+		// The callback URL and secret carry over, so the old account must stop sending there.
+		s.onTelegram(row.AgentID, nil)
+		defer func() {
+			if !committed {
+				s.onTelegram(row.AgentID, old)
+			}
+		}()
+		if err := telegram.DeleteWebhook(ctx, *old); err != nil {
+			s.forgetTelegramCredential(ref)
+			return s.failManagedSetup(ctx, row.ID)
+		}
 	}
 	// Vault writes are atomic but cannot join SQLite transactions. A crash before commit can
 	// leave an unused vault entry; a committed channel always has its credential.
@@ -390,13 +409,17 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 		}
 		return err
 	}
-	cfg.RetryAt, err = q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: row.AgentID, Token: ref, AllowedUsers: strconv.FormatInt(row.OwnerID, 10), Options: options})
+	cfg.RetryAt, err = q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
+		AgentID: row.AgentID, Token: ref, AllowedUsers: strconv.FormatInt(row.OwnerID, 10), Options: options,
+		WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
+	})
 	if err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+	committed = true
 	s.onTelegram(row.AgentID, nil)
 	s.onTelegram(row.AgentID, &cfg)
 	if strings.Contains(saved.Token, telegramVaultMarker) {
@@ -406,7 +429,7 @@ func (s *Service) connectManagedBot(ctx context.Context, manager *telegramManage
 }
 
 func (s *Service) checkTelegramAccount(ctx context.Context, agentID, account string) error {
-	owner, err := s.q.TelegramAccountOwner(ctx, sqlc.TelegramAccountOwnerParams{AccountID: account, ExceptAgent: agentID})
+	owner, err := s.q.TelegramCredentialOwner(ctx, sqlc.TelegramCredentialOwnerParams{Account: account, AgentID: agentID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

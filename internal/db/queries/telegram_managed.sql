@@ -45,7 +45,3 @@ RETURNING *;
 -- name: FinishTelegramManagedSetup :execrows
 UPDATE telegram_managed_setups SET state = @state
 WHERE id = @id AND state = 'pending' AND expires_at > @now;
-
--- name: TelegramAccountOwner :one
-SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id
-WHERE substr(s.token, 1, instr(s.token, ':') - 1) = @account_id AND s.agent_id <> @except_agent LIMIT 1;

@@ -178,7 +178,7 @@ function SetupDialog({
       title="Create a Telegram bot"
       description={
         replacing
-          ? "Your existing connection stays active until the new bot is connected."
+          ? "Dex keeps your saved connection if setup does not succeed."
           : "Confirm each step in Telegram. Dex connects the bot without showing its token."
       }
       pending={cancel.isPending}

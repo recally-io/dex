@@ -100,6 +100,8 @@ type Telegram struct {
 	Options                  telegram.Options `json:"options"`
 	ManagerConfigured        bool             `json:"managerConfigured,omitzero"`
 	ManagedCreationAvailable bool             `json:"managedCreationAvailable,omitzero"`
+	Transport                string           `json:"transport"`
+	WebhookURL               string           `json:"webhookUrl,omitempty"`
 }
 
 // Agent reads one agent.
@@ -308,7 +310,8 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 	if err := json.Unmarshal([]byte(row.Options), &options); err != nil {
 		return nil, err
 	}
-	cfg := &telegram.Config{Options: options, Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token), RetryAt: row.RetryAt}
+	cfg := &telegram.Config{Options: options, Token: row.Token, AllowedUsers: users, APIURL: s.apiURL, Pair: s.pairTelegram(agentID, row.Token), RetryAt: row.RetryAt,
+		Webhook: telegram.WebhookConfig{URL: row.WebhookUrl, SecretToken: row.WebhookSecret}}
 	if strings.Contains(row.Token, telegramVaultMarker) {
 		cfg.CredentialRef = row.Token
 		cfg.Token, err = s.telegramVault.Credential(row.Token)
@@ -324,13 +327,13 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 
 // SetTelegram saves the bot configuration and restarts the bot. An empty token keeps the saved
 // token.
-func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64, options *telegram.Options) error {
+func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.setTelegram(ctx, agentID, token, allowedUsers, options)
+	return s.setTelegram(ctx, agentID, token, allowedUsers, options, transport, webhook)
 }
 
-func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowedUsers []int64, options *telegram.Options) error {
+func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
 	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
 		return err
 	}
@@ -339,13 +342,6 @@ func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowe
 	if err != nil {
 		return err
 	}
-	s.onTelegram(agentID, nil)
-	committed := false
-	defer func() {
-		if !committed && saved != nil {
-			s.onTelegram(agentID, saved)
-		}
-	}()
 	if token == "" {
 		if saved != nil {
 			token = saved.Token
@@ -369,6 +365,25 @@ func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowe
 	}
 	key := cmp.Or(cfg.CredentialRef, cfg.Token)
 	cfg.Pair = s.pairTelegram(agentID, key)
+	account, _, _ := strings.Cut(cfg.Token, ":")
+	sameBot := saved != nil && strings.HasPrefix(saved.Token, account+":")
+	if sameBot {
+		cfg.Webhook = saved.Webhook
+	}
+	switch {
+	case transport == "polling" && webhook == nil:
+		cfg.Webhook = telegram.WebhookConfig{}
+	case transport == "webhook":
+		if webhook != nil {
+			cfg.Webhook = *webhook
+		}
+		if cfg.Webhook.URL == "" {
+			return fmt.Errorf("%w: enter the Telegram webhook URL and secret", ErrInvalid)
+		}
+	case transport == "" && webhook == nil:
+	default:
+		return fmt.Errorf("%w: choose webhook transport to set Telegram webhook credentials", ErrInvalid)
+	}
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
@@ -383,8 +398,25 @@ func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowe
 	if err != nil {
 		return err
 	}
+	s.onTelegram(agentID, nil)
+	committed := false
+	defer func() {
+		if !committed && saved != nil {
+			s.onTelegram(agentID, saved)
+		}
+	}()
+	if saved != nil && saved.Webhook.URL != "" && (!sameBot || cfg.Webhook.URL == "") {
+		teardown := *saved
+		if sameBot {
+			teardown.Token = cfg.Token
+		}
+		if err := telegram.DeleteWebhook(ctx, teardown); err != nil {
+			return err
+		}
+	}
 	cfg.RetryAt, err = s.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: agentID,
 		Token: key, AllowedUsers: strings.Join(users, ","), Options: string(encoded),
+		WebhookUrl: cfg.Webhook.URL, WebhookSecret: cfg.Webhook.SecretToken,
 	})
 	if err != nil {
 		return err
@@ -410,6 +442,12 @@ func (s *Service) deleteTelegram(ctx context.Context, agentID string) error {
 		return err
 	}
 	s.onTelegram(agentID, nil)
+	if saved != nil && saved.Webhook.URL != "" {
+		if err := telegram.DeleteWebhook(ctx, *saved); err != nil {
+			s.onTelegram(agentID, saved)
+			return err
+		}
+	}
 	if err := s.q.DeleteTelegramSettings(ctx, agentID); err != nil {
 		if saved != nil {
 			s.onTelegram(agentID, saved)

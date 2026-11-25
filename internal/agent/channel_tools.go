@@ -247,7 +247,8 @@ func (s *Service) applyChannelChange(ctx context.Context, p channelApproval) err
 	case "revoke_pairing":
 		switch p.target {
 		case "telegram":
-			return s.setTelegram(ctx, p.BotID, "", nil, nil)
+			// Revoking pairing keeps the current transport and its credentials.
+			return s.setTelegram(ctx, p.BotID, "", nil, nil, "", nil)
 		case "feishu":
 			return s.revokeFeishuPairing(ctx, p.BotID)
 		}

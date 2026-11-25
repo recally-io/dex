@@ -1,5 +1,4 @@
-// Package telegram connects Telegram chats to an agent. It reads messages from the Bot API with long
-// polling and sends replies back. /clear clears the main timeline's context.
+// Package telegram connects Telegram chats to an agent through the Bot API.
 package telegram
 
 import (
@@ -31,6 +30,7 @@ const channelPrefix = "telegram:"
 // Config configures a Bot.
 type Config struct {
 	Options Options
+	Webhook WebhookConfig
 	Speech  speech.Resolve
 	Token   string
 	// CredentialRef is the stored key for a vault-backed token.
@@ -52,6 +52,9 @@ func (c Config) Validate() error {
 	if err := c.Options.Validate(); err != nil {
 		return err
 	}
+	if err := c.Webhook.validate(); err != nil {
+		return err
+	}
 	id, secret, ok := strings.Cut(c.Token, ":")
 	if _, err := strconv.ParseInt(id, 10, 64); err != nil || !ok || secret == "" {
 		return errors.New("the bot token must look like 123456:ABC-DEF; get one from @BotFather")
@@ -71,6 +74,7 @@ func (c Config) botID() string {
 }
 
 type inbound interface {
+	channel.WebhookInbox
 	Receive(ctx context.Context, peer, source string, msg chat.Message) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
 	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
@@ -121,8 +125,7 @@ func New(cfg Config, chats inbound) *Bot {
 	}
 }
 
-// Run receives messages and sends replies until ctx is done.
-func (b *Bot) Run(ctx context.Context) error {
+func (b *Bot) installCommands(ctx context.Context) {
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
 		{"command": "menu", "description": "Open current conversation controls"},
 		{"command": "status", "description": "Show current conversation status"},
@@ -134,13 +137,28 @@ func (b *Bot) Run(ctx context.Context) error {
 		{"command": "stop", "description": "Stop the current conversation and its child work"},
 		{"command": "feedback", "description": "Prepare a public GitHub issue draft in private"},
 		{"command": "help", "description": "List commands"},
-	}}, nil); err != nil {
+	}}, nil); err != nil && ctx.Err() == nil {
 		slog.Warn("telegram: command menu", "err", err)
 	}
+}
+
+// Run receives messages and sends replies until ctx is done.
+func (b *Bot) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
-	var media sync.WaitGroup
-	media.Go(func() { b.collectAlbums(ctx) })
-	defer func() { cancel(); media.Wait(); b.closePreviews(ctx) }()
+	var workers sync.WaitGroup
+	defer func() { cancel(); workers.Wait(); b.closePreviews(ctx) }()
+	webhook := b.cfg.Webhook.URL != ""
+	if webhook {
+		// Restart can replay committed events even when registration is unavailable.
+		config := b.cfg
+		workers.Go(func() { b.registerWebhook(ctx, config) })
+	} else {
+		b.installCommands(ctx)
+	}
+	workers.Go(func() { b.collectAlbums(ctx) })
+	if err := b.drainWebhookInbox(ctx); err != nil || webhook {
+		return err
+	}
 
 	// Telegram sends an update again until a getUpdates call with a higher offset confirms it. After
 	// a restart the offset is 0, so the last batch comes again; Receive ignores the repeats.
@@ -148,10 +166,15 @@ func (b *Bot) Run(ctx context.Context) error {
 	for {
 		var updates []update
 		err := b.call(ctx, "getUpdates", map[string]any{
-			"offset": offset, "timeout": 30, "allowed_updates": []string{"message", "edited_message", "callback_query"},
+			"offset": offset, "timeout": 30, "allowed_updates": inboundUpdateTypes(),
 		}, &updates)
 		for _, u := range updates {
-			if err = b.receive(ctx, u); err != nil {
+			var handled bool
+			handled, err = b.chats.HandledWebhook(ctx, "telegram", b.cfg.botID(), strconv.FormatInt(u.UpdateID, 10))
+			if err == nil && !handled {
+				err = b.receive(ctx, u)
+			}
+			if err != nil {
 				break // retry this update on the next poll
 			}
 			offset = u.UpdateID + 1
@@ -392,6 +415,9 @@ func (b *Bot) requestAPI(ctx context.Context, method string, body io.Reader, con
 			}
 		}
 		return &apiError{Code: out.Code, Description: strings.ReplaceAll(out.Description, b.cfg.Token, "[redacted]"), RetryAfter: out.Parameters.RetryAfter}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return &apiError{Code: resp.StatusCode, Description: "unexpected HTTP status"}
 	}
 	if result == nil {
 		return nil

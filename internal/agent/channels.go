@@ -48,7 +48,7 @@ func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error
 
 // channels leaves out the web setup capability so callers can hold the settings lock.
 func (s *Service) channels(ctx context.Context, agentID string) (Channels, error) {
-	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}}
+	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}, Transport: "polling"}
 	row, err := s.q.GetTelegramSettings(ctx, agentID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Channels{}, err
@@ -62,6 +62,9 @@ func (s *Service) channels(ctx context.Context, agentID string) (Channels, error
 		}
 		if err := json.Unmarshal([]byte(row.Options), &tg.Options); err != nil {
 			return Channels{}, err
+		}
+		if row.WebhookUrl != "" {
+			tg.Transport, tg.WebhookURL = "webhook", row.WebhookUrl
 		}
 	}
 	if s.ChannelStatus != nil {
@@ -80,8 +83,8 @@ func (s *Service) checkCredential(ctx context.Context, agentID, platform, creden
 	var err error
 	switch platform {
 	case "telegram":
-		owner, e := s.q.TelegramCredentialOwner(ctx, credential)
-		id, name, err = owner.ID, owner.Name, e
+		account, _, _ := strings.Cut(credential, ":")
+		return s.checkTelegramAccount(ctx, agentID, account)
 	case "wechat":
 		owner, e := s.q.WechatCredentialOwner(ctx, credential)
 		id, name, err = owner.ID, owner.Name, e
