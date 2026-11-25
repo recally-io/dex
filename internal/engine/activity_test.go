@@ -37,7 +37,7 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	if running, ok := a.ChildRunning(ref); !ok || !running {
 		t.Fatalf("ChildRunning during execution = (%t, %t), want (true, true)", running, ok)
 	}
-	if err := a.Abort(t.Context(), ref); err != nil {
+	if err := a.Stop(t.Context(), ref, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, s := range []*Submission{sub, replay} {

@@ -404,9 +404,15 @@ func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 			t.Fatalf("Main Stop crossed into %s", child.gate)
 		}
 	}
-	// An explicit Stop on a child still works without a Main run target.
+	// A supplied but empty target must not turn into session cancellation.
 	child := children[0]
-	s.d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/abort", child.agent, child.id), nil, nil)
+	childPath := fmt.Sprintf("/api/agents/%s/chats/%d", child.agent, child.id)
+	abort(childPath, "", http.StatusConflict)
+	if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
+		t.Fatal("empty target stopped the child")
+	}
+	// An explicit session cancellation still works when the target is omitted.
+	s.d.must(t, http.MethodPost, childPath+"/abort", nil, nil)
 	waitTaskPIDGone(t, filepath.Join(s.dir, child.gate+".pid"))
 	child = children[1]
 	releaseResultGate(t, s.dir, child.gate)

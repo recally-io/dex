@@ -54,7 +54,7 @@ func TestUserSourceReceiptBelongsToItsAgentBeforeAdmission(t *testing.T) {
 		t.Fatalf("cancelled lookup=%v", err)
 	}
 	// Stopping the input keeps the receipt but removes the pending preview state.
-	if err := r.service.Stop(t.Context(), "bot", stored.ChatID); err != nil {
+	if err := r.service.CancelSession(t.Context(), "bot", stored.ChatID); err != nil {
 		t.Fatal(err)
 	}
 	stopped, err := r.service.LookupSource(t.Context(), "bot", "owned-source")

@@ -165,7 +165,7 @@ func TestUserLateStopDuringAgentOpenIsolatesBeforeResume(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	stopped := make(chan error, 1)
-	go func() { stopped <- a.Abort(ctx, ref) }()
+	go func() { stopped <- a.Stop(ctx, ref, nil) }()
 	if err := lifecycleResult(t, stopped, "late cancelled Stop"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled Stop: %v", err)
 	}

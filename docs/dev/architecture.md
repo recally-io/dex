@@ -384,9 +384,12 @@ commits the result and any follow-up intent together with a stable request
 ID. The scheduler still checks due Monitors in one serial batch. A finish can
 wait for its own Session gate so it cannot race explicit Monitor cancellation.
 Ordinary inputs do not use the scheduler. The normal Session dispatcher admits
-the Monitor intent as a follow-up. Legacy Stop, Clear, cancellation, archive,
-and changed target authority block stale results. Web Main turn-stop leaves
-Monitors alone. Dex rechecks the target before native admission. Cancellation
+the Monitor intent as a follow-up. Session cancellation, Clear, Monitor
+cancellation, archive, and changed target authority block stale results.
+The engine's Stop entry point applies task or Session cancellation. A task
+Stop uses the exact native task ID and leaves Monitors alone. See
+[Sessions](sessions.md) for the task handoff and Inbox recovery rules. Monitor
+cancellation is a separate action. Dex rechecks the target before native admission. Cancellation
 withdraws any Monitor inputs that are still queued. It does not interrupt a
 prompt that already started. An in-flight check can finish within its time
 limit, but it cannot queue a new prompt after cancellation. Dex does not move

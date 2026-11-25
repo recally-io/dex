@@ -616,7 +616,7 @@ export type BoundaryItem = {
      */
     text?: string;
     /**
-     * Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (legacy Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+     * Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (session cancellation drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
      *
      */
     status?: 'pending' | 'queued' | 'nothing' | 'failed';
@@ -4759,7 +4759,7 @@ export type AbortChatData = {
     };
     query?: {
         /**
-         * Required on Main. Use the exact target from the snapshot or run event. Omit for other sessions.
+         * Required on Main. Use the native task target from the snapshot or run event. Omit for other sessions.
          */
         runTarget?: string;
     };

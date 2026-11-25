@@ -1011,7 +1011,7 @@ type BoundaryItem struct {
 	// Reason Why the compaction failed.
 	Reason *string `json:"reason,omitempty"`
 
-	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (legacy Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (session cancellation drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 	Status *BoundaryItemStatus `json:"status,omitempty"`
 
 	// Text The handoff of a reset, the summary of a compaction, or the notice of a fork to another environment. Absent when there is none.
@@ -1024,7 +1024,7 @@ type BoundaryItemBoundary string
 // BoundaryItemKind defines model for BoundaryItem.Kind.
 type BoundaryItemKind string
 
-// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (legacy Stop drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
+// BoundaryItemStatus Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (session cancellation drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 type BoundaryItemStatus string
 
 // ChannelStatus defines model for ChannelStatus.
@@ -2170,7 +2170,7 @@ type PollWechatLoginJSONBody struct {
 
 // AbortChatParams defines parameters for AbortChat.
 type AbortChatParams struct {
-	// RunTarget Required on Main. Use the exact target from the snapshot or run event. Omit for other sessions.
+	// RunTarget Required on Main. Use the native task target from the snapshot or run event. Omit for other sessions.
 	RunTarget *string `form:"runTarget,omitempty" json:"runTarget,omitempty"`
 }
 

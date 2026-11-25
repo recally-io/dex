@@ -203,7 +203,7 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 				if sub := receipt(t, r, queued); sub.Reason.String != "withdrawn" || sub.AdmittedAt.Valid {
 					t.Fatalf("withdrew wrong input: %+v", sub)
 				}
-				if err := r.service.Stop(ctx, "bot", childID); err != nil {
+				if err := r.service.CancelSession(ctx, "bot", childID); err != nil {
 					t.Fatal(err)
 				}
 				close(release)

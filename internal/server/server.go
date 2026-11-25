@@ -733,7 +733,7 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.StopWeb(ctx, agentID(ctx), req.ChatId, deref(req.Params.RunTarget)); err != nil {
+	if err := h.Chats.Stop(ctx, agentID(ctx), req.ChatId, req.Params.RunTarget); err != nil {
 		return nil, err
 	}
 	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil

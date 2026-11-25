@@ -1969,7 +1969,7 @@ paths:
       description: >
         Summarizes the older context of this writable session. It also works
         while the session runs; the summary joins the context at the next
-        boundary. Legacy Stop drops a summary that still waits. The timeline
+        boundary. Session cancellation drops a summary that still waits. The timeline
         shows a pending, then a queued compaction boundary, then the summary,
         "nothing to compact", or the failure. Without an id each call starts
         a new compaction. A retry with the same id starts at most one
@@ -2076,15 +2076,17 @@ paths:
     post:
       operationId: abortChat
       description: >
-        Main stops only the current run identified by runTarget. It keeps queued
-        input, child sessions, background commands and Monitors. Other writable
-        sessions use legacy Stop, which withdraws pending input and can stop
-        child work. Earlier actions are not undone. Processes and remote work may continue.
+        On Main, Stop cancels only the native foreground task identified by runTarget.
+        An ended or foreign target returns 409. Stop cannot cancel a successor task.
+        It keeps queued input, child sessions, background commands and Monitors.
+        On other writable sessions, omit runTarget to cancel the session. Session
+        cancellation withdraws pending input and can stop child work. Processes
+        and remote work may continue. Cancellation does not undo prior actions.
         Automation and channel sessions return 403.
       parameters:
         - in: query
           name: runTarget
-          description: Required on Main. Use the exact target from the snapshot or run event. Omit for other sessions.
+          description: Required on Main. Use the native task target from the snapshot or run event. Omit for other sessions.
           schema: { type: string }
       responses:
         "200":
@@ -3456,7 +3458,7 @@ components:
           enum: [pending, queued, nothing, failed]
           description: >
             Only on compaction. pending while the summary is made; queued when
-            the summary waits for the run's next boundary (legacy Stop drops it);
+            the summary waits for the run's next boundary (session cancellation drops it);
             nothing when there was nothing to compact;
             failed with a reason. Absent on a placed summary.
         reason: { type: string, description: Why the compaction failed. }

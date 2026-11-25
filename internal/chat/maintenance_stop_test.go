@@ -24,7 +24,7 @@ func TestUserStopCancelsActiveRunAfterClientDisconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	r.service.changed = func(int64) { cancel() }
-	if err = r.service.Stop(ctx, "bot", id); err != nil {
+	if err = r.service.CancelSession(ctx, "bot", id); err != nil {
 		t.Fatal(err)
 	}
 	sub := receipt(t, r, "running")
@@ -81,7 +81,7 @@ func TestUserMaintenanceStopDefersColdCancellationUntilRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When Stop withdraws the input during maintenance, cancellation stays durable.
-	if err = service.Stop(t.Context(), "bot", c.ID); err != nil {
+	if err = service.CancelSession(t.Context(), "bot", c.ID); err != nil {
 		t.Fatalf("durable Stop rejected during maintenance: %v", err)
 	}
 	saved, err := r.q.GetConversation(t.Context(), c.ID)

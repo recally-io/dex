@@ -1017,13 +1017,10 @@ func waitSubmission(ctx context.Context, h harness.Harness, id durable.Submissio
 	return submission.Wait(ctx)
 }
 
-func (a *Agents) Abort(ctx context.Context, ref Ref) error {
-	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
-		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
-	}
+func (a *Agents) beginSessionStop(ref Ref) error {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.closed {
-		a.mu.Unlock()
 		return ErrClosed
 	}
 	// Stop may cancel open work while maintenance blocks new admission.
@@ -1036,17 +1033,10 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 		// Opening must isolate stored work before Harness.Resume can start it.
 		a.recovering[key][durable.ConversationId(ref.ID)] = true
 	}
-	a.mu.Unlock()
-	defer a.end(key)
-	unlock, err := a.lock(ctx, ref)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	conversation, err := a.conversation(ctx, ref)
-	if err != nil {
-		return err
-	}
+	return nil
+}
+
+func (a *Agents) stopSession(ctx context.Context, ref Ref, conversation harness.Conversation) error {
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := withdrawQueuedInputs(bounded, conversation); err != nil {

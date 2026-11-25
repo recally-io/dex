@@ -66,7 +66,7 @@ func TestUserStopDuringModelDiscoveryKeepsCancellationDurable(t *testing.T) {
 	// When Stop runs before discovery completes, it saves cancellation and returns.
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	if err = service.Stop(ctx, "bot", chatID); err != nil {
+	if err = service.CancelSession(ctx, "bot", chatID); err != nil {
 		t.Fatalf("durable Stop rejected while discovering models: %v", err)
 	}
 	saved, err := r.q.GetConversation(t.Context(), chatID)

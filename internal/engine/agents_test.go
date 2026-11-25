@@ -167,7 +167,7 @@ func TestUserStopWithdrawsQueuedInputWithoutModelContext(t *testing.T) {
 		t.Fatalf("reload of beta waited for alpha: %v", err)
 	}
 	// When Stop cancels the run and withdraws the queue.
-	if err := a.Abort(t.Context(), ref); err != nil {
+	if err := a.Stop(t.Context(), ref, nil); err != nil {
 		t.Fatal(err)
 	}
 	if outcome := coreWait(t, running); outcome.Status != "unanswered" {

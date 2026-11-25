@@ -340,7 +340,7 @@ func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id 
 	if err != nil {
 		return engine.SessionRef{}, err
 	}
-	stored, err := s.stop(ctx, child.AgentID, child.ID, nil, &stopCall{task: r, parent: parent.ID, child: child})
+	stored, err := s.cancelSession(ctx, child.AgentID, child.ID, nil, &stopCall{task: r, parent: parent.ID, child: child})
 	if err != nil {
 		return engine.SessionRef{}, err
 	}

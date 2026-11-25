@@ -11,8 +11,9 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// StopWeb cancels only the observed foreground run on Main. Other writable sessions keep legacy Stop.
-func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target string) error {
+// Stop cancels the observed task on Main. Without a target, other writable
+// sessions use session cancellation.
+func (s *Service) Stop(ctx context.Context, agentID string, id int64, target *string) error {
 	c, err := s.Get(ctx, agentID, id)
 	if err != nil {
 		return err
@@ -21,13 +22,13 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 		return ErrNotFound
 	}
 	if c.ChannelKey != MainKey {
-		if target != "" {
+		if target != nil {
 			return engine.ErrStaleRunTarget
 		}
-		return s.Stop(ctx, agentID, id)
+		return s.CancelSession(ctx, agentID, id)
 	}
-	if target == "" {
-		return fmt.Errorf("%w: Main Stop requires a run target", engine.ErrInvalidInput)
+	if target == nil || *target == "" {
+		return fmt.Errorf("%w: Main Stop requires a task target", engine.ErrInvalidInput)
 	}
 	if c.ExecutionID == 0 {
 		return engine.ErrStaleRunTarget
@@ -47,7 +48,7 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 	}
 	ref := engine.Ref{AgentID: agentID, ID: c.ExecutionID}
 	trace := slog.With("session", id, "agent", agentID, "native_conversation_id", ref.ID)
-	if err := s.engine.ValidateRunTarget(ctx, ref, target); err != nil {
+	if err := s.engine.ValidateRunTarget(ctx, ref, *target); err != nil {
 		trace.InfoContext(ctx, "session stop", "phase", "stop_rejected", "reason", admissionRetryReason(err))
 		return err
 	}
@@ -57,13 +58,16 @@ func (s *Service) StopWeb(ctx context.Context, agentID string, id int64, target 
 		s.admissionMu.RUnlock()
 		return engine.ErrMaintenance
 	}
-	err = s.q.RecordMainTurnStop(ctx, sqlc.RecordMainTurnStopParams{ConversationID: id, Target: target})
+	err = s.q.RecordMainTurnStop(ctx, sqlc.RecordMainTurnStopParams{ConversationID: id, Target: *target})
 	s.admissionMu.RUnlock()
 	if err != nil {
 		return err
 	}
-	trace.InfoContext(ctx, "session stop", "phase", "stop_recorded", "target", target)
-	if err := s.applyMainStop(ctx, id, ref, target); err != nil {
+	trace.InfoContext(ctx, "session stop", "phase", "stop_recorded", "target", *target)
+	if err := s.applyMainStop(ctx, id, ref, *target); err != nil {
+		if errors.Is(err, engine.ErrStaleRunTarget) {
+			return err
+		}
 		s.retrySession(ctx, id)
 		if !errors.Is(err, engine.ErrModelsPending) && !errors.Is(err, engine.ErrMaintenance) {
 			return err
@@ -78,7 +82,7 @@ func (s *Service) reconcileMainStops(ctx context.Context, id int64, ref engine.R
 		return err
 	}
 	for _, target := range targets {
-		if err := s.applyMainStop(ctx, id, ref, target); err != nil {
+		if err := s.applyMainStop(ctx, id, ref, target); err != nil && !errors.Is(err, engine.ErrStaleRunTarget) {
 			return err
 		}
 	}
@@ -88,18 +92,20 @@ func (s *Service) reconcileMainStops(ctx context.Context, id int64, ref engine.R
 func (s *Service) applyMainStop(ctx context.Context, id int64, ref engine.Ref, target string) error {
 	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 	defer cancel()
+	result := engine.ErrStaleRunTarget
 	if ref.ID > 0 {
-		err := s.engine.StopRun(callCtx, ref, target)
-		if err != nil {
-			slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_reconcile", "reason", admissionRetryReason(err))
-			if !errors.Is(err, engine.ErrNotFound) && !errors.Is(err, engine.ErrStaleRunTarget) {
-				return err
-			}
+		result = s.engine.Stop(callCtx, ref, &target)
+		if errors.Is(result, engine.ErrNotFound) {
+			result = engine.ErrStaleRunTarget
+		}
+		if result != nil && !errors.Is(result, engine.ErrStaleRunTarget) {
+			slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_reconcile", "reason", admissionRetryReason(result))
+			return result
 		}
 	}
-	err := s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target})
-	if err != nil {
+	if err := s.q.FinishMainTurnStop(callCtx, sqlc.FinishMainTurnStopParams{ConversationID: id, Target: target}); err != nil {
 		slog.InfoContext(ctx, "session stop", "session", id, "phase", "stop_receipt_pending", "reason", admissionRetryReason(err))
+		return err
 	}
-	return err
+	return result
 }

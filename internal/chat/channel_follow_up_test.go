@@ -185,7 +185,7 @@ func TestUserChannelFollowUpCancellationRevokesQueuedConclusion(t *testing.T) {
 			}
 			switch cancel {
 			case "stop":
-				err = r.service.Stop(ctx, "bot", parent)
+				err = r.service.CancelSession(ctx, "bot", parent)
 			case "clear":
 				err = r.service.Clear(ctx, "bot", parent, "reset-follow-up", "web", "")
 			case "revocation":
