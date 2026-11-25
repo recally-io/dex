@@ -445,24 +445,16 @@ func TestUserWechatMediaBecomesUploadsAndVoiceBecomesText(t *testing.T) {
 	}
 }
 
-func TestUserWechatSplitsRepliesAndKeepsSupportedMarkdown(t *testing.T) {
+func TestUserWechatKeepsSupportedMarkdown(t *testing.T) {
 	t.Parallel()
-	// Given a long answer with Chinese text, supported Markdown, and unsupported images and headings.
+	// Given a short answer with Chinese text, supported Markdown, and unsupported images and headings.
 	f := newFakeWechat(t)
-	text := strings.Repeat("中", 4010) + "\n##### Heading\n**bold**\n`![keep](code)`\n| a | b |\n![drop](https://example.test/image)\n*中文*\n***English***\n```md\n###### code\n![keep](fenced)\n```"
+	text := "中文" + "\n##### Heading\n**bold**\n`![keep](code)`\n| a | b |\n![drop](https://example.test/image)\n*中文*\n***English***\n```md\n###### code\n![keep](fenced)\n```"
 	f.batch("c1", wxText(1, "owner", text))
 	d := startWechat(t, f, t.TempDir())
 	connectWechat(t, d)
-	// When the answer is sent, no part exceeds 2000 Unicode characters.
-	var answer strings.Builder
-	for range 3 {
-		part := f.next(t)
-		if n := len([]rune(wxSentText(part))); n > 2000 {
-			t.Fatalf("part has %d characters", n)
-		}
-		answer.WriteString(wxSentText(part))
-	}
-	got := answer.String()
+	// When the answer is sent, then WeChat keeps supported Markdown.
+	got := wxSentText(f.next(t))
 	if strings.Contains(got, "##### Heading") || strings.Contains(got, "![drop]") || strings.Contains(got, "*中文*") || !strings.Contains(got, "**bold**\n`![keep](code)`\n| a | b |") || !strings.Contains(got, "```md\n###### code\n![keep](fenced)\n```") {
 		t.Fatalf("filtered answer: %s", got)
 	}
@@ -740,7 +732,7 @@ func TestUserWechatTypingContinuesWhileAnswerIsPending(t *testing.T) {
 	}
 }
 
-func TestUserWechatRescanDoesNotSendAnOldPendingReply(t *testing.T) {
+func TestUserWechatUnpairDoesNotSendAnOldPendingReply(t *testing.T) {
 	t.Parallel()
 	// Given a settled reply rejected with -14 at the send boundary.
 	f := newFakeWechat(t)
@@ -755,11 +747,12 @@ func TestUserWechatRescanDoesNotSendAnOldPendingReply(t *testing.T) {
 		err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions, wechat_runtime WHERE status = 'done' AND delivered_at IS NULL AND pause_until > ?", time.Now().UnixMilli()).Scan(&n)
 		return err == nil && n == 1, fmt.Sprintf("pending=%d err=%v", n, err)
 	})
-	// When the same owner scans again, the old reply stays on the revoked binding.
+	// When the owner unpairs and scans again, the old reply stays failed.
+	d.must(t, http.MethodDelete, "/api/agents/default/channels/wechat", nil, nil)
 	f.staleSend.Store(false)
 	connectWechat(t, d)
-	if n := count(t, conn, `SELECT count(*) FROM outbox_messages o JOIN channel_bindings b ON b.id = o.binding_id
-WHERE o.body = 'echo: pending delivery' AND o.status = 'revoked' AND b.revoked_at IS NOT NULL`); n != 1 {
+	if n := count(t, conn, `SELECT count(*) FROM outbox_messages o
+WHERE o.body = 'echo: pending delivery' AND o.status = 'failed'`); n != 1 {
 		t.Fatal("the old reply did not close with its binding")
 	}
 	f.batch("c2", wxText(2, "owner", "new pairing"))
@@ -1123,8 +1116,8 @@ func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
 	connectWechat(t, d)
 	_ = f.next(t)
 	conn := wxConn(t, dir)
-	if _, err := conn.ExecContext(t.Context(), `INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, binding_id)
-SELECT agent_id, 'wechat:bot1:2', peer, 'main', '/stop', id FROM channel_bindings WHERE agent_id = 'default' AND peer = 'wechat:owner'`); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context)
+VALUES ('default', 'wechat:bot1:2', 'wechat:owner', 'main', '/stop', '{"accountId":"bot1"}')`); err != nil {
 		t.Fatal(err)
 	}
 	// When the source replays with unavailable media, the receipt still completes.

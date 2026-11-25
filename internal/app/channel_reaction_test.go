@@ -3,7 +3,6 @@ package app_test
 import (
 	"net/http"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -136,7 +135,7 @@ func TestUserTelegramStatusWaitsForNativeRunAndConfirmation(t *testing.T) {
 	gate.expect(t, "1", "🔥")
 	releaseResultGate(t, data, "incoming")
 	eventually(t, "first reply awaiting retry", func() (bool, any) {
-		return count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND status='done' AND channel_retry_at>0") == 1, nil
+		return count(t, conn, "SELECT count(*) FROM outbox_messages o JOIN submissions s ON s.id=o.source_submission_id WHERE s.source_key='telegram:123:1' AND o.status='pending' AND o.retry_at>0") == 1, nil
 	})
 	select {
 	case got := <-gate.calls:
@@ -159,45 +158,6 @@ func TestUserTelegramStatusWaitsForNativeRunAndConfirmation(t *testing.T) {
 			}
 		case <-time.After(12 * time.Second):
 			t.Fatal("missing confirmed reply state")
-		}
-	}
-}
-
-func TestUserTelegramStatusWaitsForFinalPart(t *testing.T) {
-	t.Parallel()
-	// Given a multi-part answer whose second part temporarily fails.
-	gate := &reactionGate{calls: make(chan reactionCall, 10)}
-	f := newFakeTelegram(t)
-	f.reactGate = gate
-	f.failAfter.Store(1)
-	data := t.TempDir()
-	d := startTelegram(t, f, data, 42)
-	setAnswer := useRichAnswerProvider(t, d)
-	setAnswer(strings.Repeat("😀x", 20000) + "REACTION-END")
-	f.message(1, 42, 42, "multipart reply")
-	gate.expect(t, "1", "👀")
-	_ = f.next(t)
-	conn := controlWriteDB(t, data)
-	eventually(t, "second part awaiting retry", func() (bool, any) {
-		return count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND status='done' AND delivered_parts=1 AND channel_retry_at>0") == 1, nil
-	})
-	// When the second part is retried, no success can precede its confirmation.
-	f.failAfter.Store(0)
-	for {
-		select {
-		case got := <-gate.calls:
-			if got.status == "🔥" {
-				continue
-			}
-			if got != (reactionCall{"1", "👍"}) {
-				t.Fatalf("unexpected terminal reaction: %+v", got)
-			}
-			if n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_parts=2 AND delivered_at IS NOT NULL"); n != 1 {
-				t.Fatal("success became visible before the final part was confirmed")
-			}
-			return
-		case <-time.After(12 * time.Second):
-			t.Fatal("missing multipart success")
 		}
 	}
 }
@@ -266,20 +226,17 @@ func TestUserFeishuStatusPreservesExplicitOffAcrossSettingsReload(t *testing.T) 
 	gate.expect(t, "om_on", "OneSecond")
 }
 
-func TestUserTelegramStatusShowsFailureWhenAReplyPartIsRejected(t *testing.T) {
+func TestUserTelegramStatusShowsFailureWhenTheReplyIsRejected(t *testing.T) {
 	t.Parallel()
-	// Given a two-part reply and a permanent rejection of its second part.
+	// Given a permanent rejection of the final reply.
 	gate := &reactionGate{calls: make(chan reactionCall, 10)}
 	f := newFakeTelegram(t)
 	f.reactGate = gate
-	f.failures["sendRichMessage"] = []platformFailure{{}, {Code: 400}}
-	d := startTelegram(t, f, t.TempDir(), 42)
-	setAnswer := useRichAnswerProvider(t, d)
-	setAnswer(strings.Repeat("😀x", 20000))
-	f.message(1, 42, 42, "rejected reply part")
+	f.failures["sendRichMessage"] = []platformFailure{{Code: 400}}
+	startTelegram(t, f, t.TempDir(), 42)
+	f.message(1, 42, 42, "rejected reply")
 	gate.expect(t, "1", "👀")
-	_ = f.next(t)
-	// Then a skipped part does not masquerade as successful delivery.
+	// Then rejection appears as a delivery failure.
 	for {
 		select {
 		case got := <-gate.calls:

@@ -19,11 +19,7 @@ func followUpSource(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42", Options: "{}"}); err != nil {
 		t.Fatal(err)
 	}
-	bindingID, err := ChannelInputBinding(ctx, r.q, "bot", "telegram:42", ChannelContext{AccountID: "123", SenderID: "42"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{BindingID: bindingID, ID: call.SourceRequestID, ConversationID: parent, Content: "Please report back", Attachments: "null", SourceKey: sql.NullString{String: "telegram:123:1", Valid: true}, Origin: "telegram:42", Kind: "message", ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
+	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, ConversationID: parent, Content: "Please report back", Attachments: "null", SourceKey: sql.NullString{String: "telegram:123:1", Valid: true}, Origin: "telegram:42", Kind: "message", ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
 		t.Fatal(err)
 	}
 	return parent, call
@@ -67,7 +63,7 @@ func TestUserChannelFollowUpQueuesOneExplicitConclusion(t *testing.T) {
 	// Given an original result bound to a direct channel request.
 	_, call := followUpResult(t, r)
 	// When the parent sends progress, and then sends a reviewed conclusion twice.
-	progressID, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Content: "Working on it", Final: new(false)})
+	progressID, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Channel: "telegram", Content: "Working on it", Final: new(false)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +76,7 @@ func TestUserChannelFollowUpQueuesOneExplicitConclusion(t *testing.T) {
 			invocation := call
 			invocation.Key += string(rune('a' + i))
 			var err error
-			ids[i], err = r.service.ToolNotifyUser(ctx, invocation, NotifyUserArgs{Content: "Reviewed conclusion"})
+			ids[i], err = r.service.ToolNotifyUser(ctx, invocation, NotifyUserArgs{Channel: "telegram", Content: "Reviewed conclusion"})
 			if err != nil {
 				t.Error(err)
 			}
@@ -93,7 +89,7 @@ func TestUserChannelFollowUpQueuesOneExplicitConclusion(t *testing.T) {
 		t.Fatalf("concurrent finals = %v, progress = %s", ids, progressID)
 	}
 	call.Key += "-replay"
-	if replay, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Content: "Do not duplicate"}); err != nil || replay != finalID {
+	if replay, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Channel: "telegram", Content: "Do not duplicate"}); err != nil || replay != finalID {
 		t.Fatalf("replay final = %s want %s, err=%v", replay, finalID, err)
 	}
 	// Then only the reviewed conclusion is queued under the stable commitment key.
@@ -110,7 +106,7 @@ func TestUserLegacyChannelFollowUpWithoutParentCannotNotify(t *testing.T) {
 	if _, err := r.conn.ExecContext(ctx, `UPDATE channel_follow_ups SET parent_request_id=NULL, parent_source_key=NULL WHERE result_id=?`, call.SourceRequestID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Content: "No authorized parent"}); !errors.Is(err, errChannelFollowUp) {
+	if _, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Channel: "telegram", Content: "No authorized parent"}); !errors.Is(err, errChannelFollowUp) {
 		t.Fatalf("legacy follow-up error = %v, want %v", err, errChannelFollowUp)
 	}
 }
@@ -126,9 +122,8 @@ func TestUserChannelFollowUpQuestionIsNotAConclusion(t *testing.T) {
 	if err := r.service.settle(ctx, call.SourceRequestID, engine.Outcome{Status: "done", Answer: "private draft"}); err != nil {
 		t.Fatal(err)
 	}
-	row, err := r.q.GetOutboxByDedupKey(ctx, "question:"+call.SourceRequestID)
-	if err != nil || row.Kind != "question" || row.Peer != "telegram:42" || !strings.Contains(row.Body, "Which scope?") || strings.Contains(row.Body, "private draft") {
-		t.Fatalf("unexpected question delivery: %+v, %v", row, err)
+	if _, err := r.q.GetOutboxMessage(ctx, call.SourceRequestID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("background question must stay in Web: %v", err)
 	}
 	f, err := r.q.GetChannelFollowUpByInput(ctx, call.SourceRequestID)
 	if err != nil || f.State != "open" {
@@ -176,7 +171,7 @@ func TestUserChannelFollowUpCancellationRevokesQueuedConclusion(t *testing.T) {
 			r := startNative(t, "echo")
 			ctx := t.Context()
 			parent, call := followUpResult(t, r)
-			outboxID, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Content: "Do not send after cancellation"})
+			outboxID, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Channel: "telegram", Content: "Do not send after cancellation"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -199,10 +194,10 @@ func TestUserChannelFollowUpCancellationRevokesQueuedConclusion(t *testing.T) {
 			}
 
 			row, err := r.q.GetOutboxMessage(ctx, outboxID)
-			if err != nil || row.Status != "revoked" || row.DeliveredAt.Valid {
+			if err != nil || row.Status != "failed" || row.DeliveredAt.Valid {
 				t.Fatalf("cancelled follow-up can still send: %+v, %v", row, err)
 			}
-			replay, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Content: "Replay after cancellation"})
+			replay, err := r.service.ToolNotifyUser(ctx, call, NotifyUserArgs{Channel: "telegram", Content: "Replay after cancellation"})
 			if cancel == "revocation" {
 				if err != nil || replay != outboxID {
 					t.Fatalf("replay did not keep the revoked delivery: %q, %v", replay, err)

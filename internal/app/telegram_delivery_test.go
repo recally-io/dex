@@ -60,9 +60,9 @@ func TestUserReceivesNativeTelegramFile(t *testing.T) {
 	}
 	conn := controlWriteDB(t, data)
 	eventually(t, "confirmed message IDs and released delivery payload", func() (bool, any) {
-		confirmed := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL AND json_array_length(channel_remote_ids)=2")
-		payloads := count(t, conn, "SELECT count(*) FROM channel_reply_files")
-		return confirmed == 1 && payloads == 0, []int{confirmed, payloads}
+		confirmed := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE peer='telegram:7' AND status='sent' AND json_array_length(remote_ids)=1")
+		payloads := count(t, conn, "SELECT count(*) FROM outbox_files")
+		return confirmed == 2 && payloads == 0, []int{confirmed, payloads}
 	})
 }
 

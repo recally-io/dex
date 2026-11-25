@@ -146,7 +146,7 @@ func TestUserTopLevelLostAdmissionReceiptReconcilesWithoutDuplicateOutbox(t *tes
 	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE source_submission_id = 'u-lost-admit'`).Scan(&outboxCount); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal(err)
 	}
-	if outboxCount != 1 {
-		t.Fatalf("expected exactly 1 deduplicated outbox row after lost admission reconcile, got %d", outboxCount)
+	if outboxCount != 0 {
+		t.Fatalf("Web input must not write outbox rows after lost admission reconcile, got %d", outboxCount)
 	}
 }

@@ -45,7 +45,7 @@ func TestUserTelegramMediaFloodWaitSurvivesRestart(t *testing.T) {
 	var until int64
 	eventually(t, "durable account and reply retry windows", func() (bool, any) {
 		err := conn.QueryRowContext(t.Context(), "SELECT retry_at FROM telegram_settings WHERE agent_id='default'").Scan(&until)
-		n := count(t, conn, "SELECT count(*) FROM submissions WHERE channel_retry_at>0")
+		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE kind='file' AND retry_at>0")
 		return err == nil && until > 0 && n == 1, until
 	})
 	// When control restarts, it must not send again before the stored retry window.
@@ -93,7 +93,7 @@ func TestUserRevokedTelegramFileDoesNotResumeAfterReauthorization(t *testing.T) 
 	}
 	eventually(t, "retired revoked delivery", func() (bool, any) {
 		n := count(t, conn, `SELECT count(*) FROM outbox_messages o JOIN submissions s ON s.id = o.source_submission_id
-WHERE s.source_key = 'telegram:123:1' AND o.status = 'revoked' AND o.delivered_at IS NULL`)
+WHERE s.source_key = 'telegram:123:1' AND o.status = 'failed' AND o.delivered_at IS NULL`)
 		return n == 1, n
 	})
 	select {
@@ -128,7 +128,7 @@ func TestUserMissingTelegramSnapshotIsNotReopenedFromArtifacts(t *testing.T) {
 	}
 	eventually(t, "explicit missing snapshot failure", func() (bool, any) {
 		var reason string
-		err := conn.QueryRowContext(t.Context(), "SELECT channel_delivery_error FROM submissions WHERE source_key='telegram:123:1'").Scan(&reason)
+		err := conn.QueryRowContext(t.Context(), "SELECT error FROM outbox_messages WHERE kind='file' AND body='old.txt'").Scan(&reason)
 		return err == nil && strings.Contains(reason, "snapshot"), reason
 	})
 	if rows := listArtifacts(t, d, "default"); len(rows) != 2 {

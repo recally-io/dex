@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"strings"
+	"time"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -55,8 +55,7 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	if !isCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
 		return m.chats.AcceptMessage(ctx, m.agentID, peer, source, msg)
 	}
-	bindingID, err := chat.ChannelInputBinding(ctx, m.q, m.agentID, peer, msg.ChannelContext)
-	if err != nil {
+	if err := chat.RequirePairedChannel(ctx, m.q, m.agentID, peer, msg.ChannelContext); err != nil {
 		return err
 	}
 	identity, err := json.Marshal(msg.ChannelContext)
@@ -65,17 +64,19 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Mes
 	}
 	if isFeedback {
 		answer := feedbackReply(cmd)
-		if err := m.q.CreateFeedbackCommand(ctx, sqlc.CreateFeedbackCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelContext: string(identity), Answer: answer, BindingID: bindingID}); err != nil {
+		if err := m.q.CreateFeedbackCommand(ctx, sqlc.CreateFeedbackCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelContext: string(identity), Answer: answer}); err != nil {
 			return err
 		}
 		m.Notify(peer)
 		return nil
 	}
-	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd, ChannelContext: string(identity), BindingID: bindingID}); err != nil {
+	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: chat.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
 		return err
 	}
 	return m.complete(ctx, source)
 }
+
+const feedbackTooLong = "This draft is too long for one channel reply. Shorten it or use Feedback in Web."
 
 const feedbackInstructions = "Send /feedback followed by your title on the first line and your description on the lines below. " + feedback.PublicWarning
 
@@ -95,9 +96,9 @@ func feedbackReply(text string) string {
 		return "This draft contains code fences. Remove them or use Feedback in Web."
 	}
 	answer := feedback.PublicWarning + " Copy the title and description below. Submit with your own GitHub account:\n\n" + feedback.IssueURL + "\n\n" + fence + "\nTitle: " + draft.Title + "\n\nDescription:\n" + draft.Description + "\n" + fence
-	// A Feishu text part holds 4000 bytes. Keep both fence markers in the same part.
+	// Keep the complete draft in one message.
 	if len(answer) > 4000 {
-		return "This draft is too long for one channel reply. Shorten it or use Feedback in Web."
+		return feedbackTooLong
 	}
 	return answer
 }
@@ -131,7 +132,7 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	if err != nil {
 		return err
 	}
-	if c.AgentID != m.agentID || c.Completed != 0 || c.DeliveredAt.Valid || !c.BindingID.Valid {
+	if c.AgentID != m.agentID || c.Completed != 0 || c.DeliveredAt.Valid {
 		return nil
 	}
 	var target chat.Chat
@@ -190,24 +191,56 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	return nil
 }
 
-// sendCommandReply uses the binding recorded when the command was accepted.
-func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.ChannelCommand) error {
-	telegram := strings.HasPrefix(r.Peer, "telegram:")
-	var identity chat.ChannelContext
-	if telegram {
-		if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
-			return err
+// QueueChannelNotice records a platform acknowledgement without a model input.
+func (m *Manager) QueueChannelNotice(ctx context.Context, peer, source string, identity chat.ChannelContext, body string) error {
+	target, err := m.chats.Main(ctx, m.agentID)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(identity)
+	if err != nil {
+		return err
+	}
+	id := "notice:" + source
+	if _, err := m.q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
+		ID: id, EventID: id, AgentID: m.agentID, ConversationID: target.ID,
+		Kind: "control", Peer: peer, ChannelContext: string(encoded), Body: body,
+		Status: "pending", CreatedAt: time.Now().UnixMilli(),
+	}); err != nil {
+		return err
+	}
+	m.Notify(peer)
+	return nil
+}
+
+func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc.ChannelCommand) error {
+	now := time.Now().UnixMilli()
+	if r.Answer == "" {
+		return m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}})
+	}
+	target, err := m.chats.Main(ctx, m.agentID)
+	if err != nil {
+		return err
+	}
+	kind := "control"
+	if r.Command == channel.FeedbackCommand {
+		kind = "feedback"
+	}
+	parts := finalMessage(bot, r.Answer, "")
+	if kind == "feedback" {
+		// The private draft is not part of Web history. Never send an extract of it.
+		parts = bot.Parts(channel.Reply{Status: "done", Answer: r.Answer})
+		if len(parts) != 1 {
+			parts = finalMessage(bot, feedbackTooLong, "")
 		}
 	}
-	privateDraft := r.Command == channel.FeedbackCommand
-	parts := bot.Parts(channel.Reply{Status: "done", Answer: r.Answer})
 	if r.RenderedReply != "" {
 		if err := json.Unmarshal([]byte(r.RenderedReply), &parts); err != nil {
 			return err
 		}
-	} else if telegram && !privateDraft && r.Answer != "" {
-		target, err := m.chats.Main(ctx, m.agentID)
-		if err != nil {
+	} else if strings.HasPrefix(r.Peer, "telegram:") && kind == "control" {
+		var identity chat.ChannelContext
+		if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
 			return err
 		}
 		actions, err := m.menuActions(ctx, r.Command, target)
@@ -218,27 +251,19 @@ func (m *Manager) sendCommandReply(ctx context.Context, bot channel.Bot, r sqlc.
 		if err != nil {
 			return err
 		}
-		encoded, err := json.Marshal(parts)
-		if err != nil {
-			return err
-		}
-		if err := m.q.FreezeTelegramCommandReply(ctx, sqlc.FreezeTelegramCommandReplyParams{SourceKey: r.SourceKey, RenderedReply: string(encoded)}); err != nil {
-			return err
-		}
 	}
-	for i, part := range parts {
-		beforeSend := func() error {
-			active, err := m.q.CanSendCommandReply(ctx, r.SourceKey)
-			if err == nil && !active {
-				return errOutboxRevoked
-			}
-			return err
-		}
-		if _, err := m.sendPart(ctx, bot, r.Peer, r.SourceKey, i, part, privateDraft, beforeSend); errors.Is(err, errOutboxRevoked) {
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("send command reply: %w", err)
-		}
+	// An old multipart command could have sent a prefix without a receipt.
+	if len(parts) != 1 {
+		return m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}})
 	}
-	return nil
+	encoded, err := json.Marshal(parts[0])
+	if err != nil {
+		return err
+	}
+	_, err = m.q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
+		ID: r.SourceKey, EventID: "control:" + r.SourceKey, AgentID: m.agentID, ConversationID: target.ID,
+		Kind: kind, Peer: r.Peer, ChannelContext: r.ChannelContext, RenderedMessage: string(encoded),
+		Status: "pending", CreatedAt: now,
+	})
+	return err
 }

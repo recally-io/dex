@@ -1,35 +1,52 @@
 -- name: SupersedeOutboxTopic :execrows
 UPDATE outbox_messages
 SET status = 'superseded'
-WHERE conversation_id = @conversation_id
-  AND peer = @peer AND binding_id IS sqlc.narg(binding_id)
-  AND topic_key = @topic_key
-  AND @topic_key != ''
-  AND status = 'pending'
-  AND delivered_parts = 0;
+WHERE conversation_id = @conversation_id AND peer = @peer
+  AND topic_key = @topic_key AND @topic_key != ''
+  AND status = 'pending' AND rendered_message = '';
 
 -- name: InsertOutboxMessage :execrows
 INSERT INTO outbox_messages (
-    id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at, binding_id
+    id, event_id, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at, rendered_message
 ) VALUES (
-    @id, @dedup_key, @agent_id, @conversation_id, @source_submission_id,
+    @id, @event_id, @agent_id, @conversation_id, @source_submission_id,
     @kind, @peer, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'),
-    @topic_key, @body, @reason, @status, @created_at, @delivered_at, sqlc.narg(binding_id)
+    @topic_key, @body, @reason, @status, @created_at, @delivered_at, @rendered_message
 )
-ON CONFLICT (dedup_key) DO NOTHING;
+ON CONFLICT (event_id, channel, target) DO NOTHING;
 
--- name: GetOutboxByDedupKey :one
-SELECT * FROM outbox_messages WHERE dedup_key = ?;
+-- name: GetOutboxByEvent :one
+SELECT * FROM outbox_messages WHERE event_id = @event_id AND peer = @peer;
+
+-- name: FindNotificationReceipt :one
+-- A tool invocation chooses its destination once, even if settings change before replay.
+SELECT o.id FROM outbox_messages o WHERE o.event_id = @event_id AND o.kind = 'proactive'
+UNION ALL
+SELECT n.id FROM web_notifications n WHERE n.event_id = @event_id
+LIMIT 1;
 
 -- name: GetOutboxMessage :one
 SELECT * FROM outbox_messages WHERE id = ?;
 
--- name: BindOutboxFilesToOutbox :execrows
-UPDATE outbox_files
-SET outbox_id = @outbox_id
+-- name: CreateFileDeliveries :exec
+INSERT INTO outbox_messages (id, event_id, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, body, created_at)
+SELECT 'file:' || f.id, 'file:' || f.agent_id || ':' || f.operation_key,
+    o.agent_id, o.conversation_id, o.source_submission_id,
+    'file', o.peer, o.channel_context, f.name, o.created_at
+FROM outbox_files f JOIN outbox_messages o ON o.id = @outbox_id
+WHERE f.submission_id = @submission_id AND f.outbox_id IS NULL AND o.status = 'pending'
+ORDER BY f.rowid
+ON CONFLICT (event_id, channel, target) DO NOTHING;
+
+-- name: BindFileDeliveries :exec
+UPDATE outbox_files SET outbox_id = 'file:' || id
 WHERE submission_id = @submission_id AND outbox_id IS NULL
-  AND EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = @outbox_id AND o.status = 'pending');
+  AND EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = 'file:' || outbox_files.id AND o.status = 'pending');
+
+-- name: DeleteUnboundOutboxFiles :exec
+DELETE FROM outbox_files WHERE submission_id = ? AND outbox_id IS NULL;
 
 -- name: QueueOutboxFile :execrows
 INSERT INTO outbox_files (id, agent_id, operation_key, submission_id, name, mime_type, body)
@@ -39,147 +56,110 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = @submission_id AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND EXISTS (SELECT 1 FROM channel_bindings b WHERE b.id = s.binding_id AND b.revoked_at IS NULL)
   AND c.agent_id = @agent_id AND c.execution_scope = '' AND c.execution_id = @execution_id
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
 ON CONFLICT DO NOTHING;
 
--- name: GetOutboxFile :one
-SELECT body FROM outbox_files WHERE operation_key = ? AND outbox_id = ?;
-
 -- name: GetOutboxFileBySubmission :one
 SELECT body FROM outbox_files WHERE operation_key = ? AND submission_id = ?;
 
--- name: ListOutboxFiles :many
-SELECT operation_key, name, mime_type, length(body) AS size FROM outbox_files
-WHERE outbox_id = ? ORDER BY rowid;
+-- name: GetOutboxFile :one
+SELECT operation_key, name, mime_type, length(body) AS size, body FROM outbox_files WHERE outbox_id = ?;
 
 -- name: ListPendingOutboxMessages :many
-SELECT o.id, o.dedup_key, o.agent_id, o.conversation_id, o.source_submission_id,
-       o.kind, b.peer, o.channel_context, o.topic_key, o.body, o.reason,
-       o.rendered_parts, o.delivered_parts, o.group_fallback, o.group_cursor, o.remote_ids,
-       o.status, o.retry_at, o.error, o.created_at
+SELECT o.*
 FROM outbox_messages o
-JOIN channel_bindings b ON b.id = o.binding_id AND b.revoked_at IS NULL
 JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
 WHERE o.status = 'pending' AND c.execution_scope = ''
-  AND o.agent_id = @agent_id
-  AND b.peer >= @origin_start AND b.peer < @origin_end
+  AND o.agent_id = @agent_id AND o.channel = @channel
   AND (
       o.kind != 'reply'
       OR NOT EXISTS (
           SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
-          WHERE p.status = 'pending' AND p.binding_id = o.binding_id
+          WHERE p.status = 'pending' AND p.origin = o.peer
             AND p.rowid < coalesce(src.rowid, o.rowid)
             AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0
             AND pc.agent_id = o.agent_id
       )
   )
-ORDER BY coalesce(src.rowid, o.rowid), o.rowid;
+ORDER BY (o.kind IN ('control', 'feedback')) DESC, coalesce(src.rowid, o.rowid), o.rowid;
 
 -- name: FreezeOutboxMessage :exec
-UPDATE outbox_messages SET rendered_parts = ? WHERE id = ? AND rendered_parts = '';
-
--- name: AdvanceOutboxMessage :exec
-UPDATE outbox_messages
-SET delivered_parts = delivered_parts + 1,
-    remote_ids = @remote_ids,
-    retry_at = 0,
-    group_fallback = 0,
-    group_cursor = 0
-WHERE id = @id;
-
--- name: StartOutboxGroupFallback :exec
-UPDATE outbox_messages SET group_fallback = 1
-WHERE id = @id AND delivered_parts = @part AND group_cursor = 0;
-
--- name: AdvanceOutboxGroupMember :exec
-UPDATE outbox_messages
-SET group_cursor = group_cursor + 1,
-    remote_ids = @remote_ids,
-    retry_at = 0
-WHERE id = @id;
+UPDATE outbox_messages SET rendered_message = @rendered_message
+WHERE id = @id AND status = 'pending' AND rendered_message = '';
 
 -- name: SetOutboxError :exec
-UPDATE outbox_messages SET retry_at = @retry_at, error = @reason WHERE id = @id;
+UPDATE outbox_messages SET retry_at = @retry_at, error = @reason, attempts = attempts + 1
+WHERE id = @id AND status = 'pending';
 
--- name: MarkOutboxDelivered :exec
-UPDATE outbox_messages SET status = 'delivered', delivered_at = @delivered_at WHERE id = @id AND status = 'pending';
+-- name: FailOutboxMessage :exec
+UPDATE outbox_messages SET status = 'failed', retry_at = 0, error = @reason
+WHERE id = @id AND status = 'pending';
+
+-- name: MarkOutboxSent :exec
+UPDATE outbox_messages SET status = 'sent', delivered_at = @delivered_at, remote_ids = @remote_ids, retry_at = 0, error = ''
+WHERE id = @id AND status IN ('pending', 'failed');
 
 -- name: RevokeOutboxBySubmission :exec
-UPDATE outbox_messages SET status = 'revoked' WHERE source_submission_id = ? AND status = 'pending';
+UPDATE outbox_messages SET status = 'failed', error = 'source delivery cancelled', retry_at = 0
+WHERE source_submission_id = ? AND status = 'pending';
 
 -- name: ListRecentDeliveredOutbox :many
 SELECT id, kind, peer, topic_key, body, reason, delivered_at, created_at
 FROM outbox_messages
-WHERE conversation_id = @conversation_id
-  AND status = 'delivered'
-  AND kind != 'reply'
+WHERE conversation_id = @conversation_id AND status = 'sent' AND kind NOT IN ('reply', 'control', 'feedback', 'file')
 ORDER BY coalesce(delivered_at, created_at) DESC, rowid DESC
 LIMIT 5;
 
 -- name: SetSubmissionExitAction :exec
-UPDATE submissions
-SET exit_action = @exit_action
-WHERE id = @id AND status = 'pending';
+UPDATE submissions SET exit_action = @exit_action WHERE id = @id AND status = 'pending';
 
 -- name: HasOutboxForSource :one
 SELECT EXISTS (
-    SELECT 1 FROM outbox_messages WHERE source_submission_id = ? AND status IN ('pending', 'delivered')
+    SELECT 1 FROM outbox_messages WHERE source_submission_id = ? AND status IN ('pending', 'sent')
 );
 
 -- name: InsertStoppedOutboxForConversation :exec
 INSERT INTO outbox_messages (
-    id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at, binding_id
+    id, event_id, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, reason, status, created_at
 )
-SELECT
-    s.id,
-    'reply:' || s.id,
-    @agent_id,
-    s.conversation_id,
-    s.id,
-    'reply',
-    s.origin,
-    s.channel_context,
-    '',
-    '',
-    'stopped',
-    CASE WHEN s.channel_revoked != 0 THEN 'revoked' ELSE 'pending' END,
-    @now,
-    s.binding_id
+SELECT s.id, 'reply:' || @agent_id || ':' || s.id, @agent_id, s.conversation_id, s.id,
+    'reply', s.origin, s.channel_context, 'stopped', 'pending', @now
 FROM submissions s
-WHERE s.conversation_id = @chat_id
-  AND s.status = 'pending'
-  AND s.kind = 'message'
-  AND s.origin LIKE '%:%'
-ON CONFLICT(dedup_key) DO NOTHING;
+WHERE s.conversation_id = @chat_id AND s.status = 'pending' AND s.kind = 'message'
+  AND (s.origin LIKE 'telegram:%' OR s.origin LIKE 'feishu:%' OR s.origin LIKE 'wechat:%')
+  AND s.channel_revoked = 0
+ON CONFLICT DO NOTHING;
 
 -- name: ListOutboxByConversation :many
 SELECT id, kind, peer, topic_key, body, reason, status, error, retry_at, created_at, delivered_at
 FROM outbox_messages
-WHERE conversation_id = @conversation_id
+WHERE conversation_id = @conversation_id AND (kind NOT IN ('control', 'feedback') OR status = 'failed')
 ORDER BY created_at DESC, rowid DESC
 LIMIT 30;
 
+-- name: InsertWebNotification :exec
+INSERT INTO web_notifications (id, event_id, agent_id, conversation_id, source_submission_id, body, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (event_id) DO NOTHING;
+
 -- name: ListTimelineNotifications :many
 -- The submission is the trusted origin even when a Web task also has a channel target.
--- Keep the tool: prefix in sync with ToolNotifyUser in internal/chat/outbox.go.
 -- rowid is only a live read position; history sends the durable ID as its cursor.
 SELECT CAST(o.rowid AS INTEGER) AS position, o.id, o.body, o.created_at
-FROM outbox_messages o
+FROM web_notifications o
 JOIN submissions s ON s.id = o.source_submission_id AND s.conversation_id = o.conversation_id
 JOIN conversations c ON c.id = o.conversation_id AND c.agent_id = o.agent_id
 JOIN agents a ON a.id = c.agent_id
 WHERE o.conversation_id = @conversation_id AND o.agent_id = @agent_id
   AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
   AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
-  AND o.kind = 'proactive' AND o.dedup_key LIKE 'tool:%'
   AND s.origin = 'web'
   AND o.rowid > CAST(@after_position AS INTEGER)
-  AND (CAST(@before_id AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM outbox_messages prior
+  AND (CAST(@before_id AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM web_notifications prior
       WHERE prior.id = @before_id AND prior.conversation_id = @conversation_id AND prior.agent_id = @agent_id))
 ORDER BY o.rowid DESC
 LIMIT @page_size;
@@ -189,11 +169,8 @@ UPDATE submissions SET required_reply_id = @outbox_id
 WHERE id = @submission_id AND kind = 'message'
   AND (origin LIKE 'telegram:%' OR origin LIKE 'feishu:%');
 
--- name: MarkOutboxPartSkipped :exec
-UPDATE outbox_messages SET skipped_part = 1 WHERE id = ?;
-
 -- name: GetChannelReactionReceipt :one
 SELECT s.status, s.stop_requested, s.reason, s.exit_action, s.required_reply_id,
-       coalesce(o.status, '') AS reply_status, coalesce(o.skipped_part, 0) AS skipped_part
+       coalesce(o.status, '') AS reply_status
 FROM submissions s LEFT JOIN outbox_messages o ON o.id = s.required_reply_id
 WHERE s.id = ?;

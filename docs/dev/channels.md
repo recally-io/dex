@@ -50,33 +50,8 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   Reply, quote, and forward context cannot change sender authorization. Attachments
   and forwarded or edited command text do not execute chat controls. Feedback
   discards captions and forwarded text from its draft.
-- Goldmark parses all text into versioned Rich Message HTML parts, including
-  plain replies, lists, code, tables, menus and text notifications. `sendRichMessage`
-  sends each frozen part. Lists keep their ordered or bullet markers. Raw HTML
-  stays escaped text. Markdown images keep linked alt text; they do not request
-  remote media. Link URLs have a 1024-byte budget after HTML escaping.
-  The renderer limits each part to 32768 decoded Unicode characters and 500
-  blocks. Formatting stays within 16 nesting levels. Native tables have at most
-  20 columns; row splits repeat the header. A table with more columns or a row
-  that cannot fit with its header becomes labeled rich paragraphs before freezing.
-  Long text and code cells split without truncation. No API error selects a
-  different text format. Unknown responses and 5xx retry the same frozen method;
-  429 retains the existing account and outbox wait.
-  Confirmed message IDs retain their actual kind, including copy and forward
-  results. Album IDs do not use part indexes.
-- Each pending submission has a native watch through `live.Hub`. The bot
-  updates a private rich draft at most once per second with `sendRichMessageDraft`.
-  If drafts fail, the bot sends a rich preview and edits it. Final replacement
-  and tool edits use `editMessageText.rich_message`. A definite missing preview
-  can create a new rich final message; an unknown edit cannot change methods. Typing refreshes every 4 seconds. Previews
-  are best effort. Queued user items do not start answer segments. The final
-  reply stops and joins its preview before delivery. Runtime shutdown removes
-  preview messages that have no final owner. Preview registration and final
-  lookup use one lock; attachment downloads do not hold this lock.
-  Saved `options.preview` can select drafts, message edits, or no previews and
-  no typing. `options.silent` applies to new text, media, and copied or forwarded
-  messages. `options.reactions` is on by default for private chats. An explicit
-  `false` stays off.
+- Goldmark renders one Rich Message for each text delivery. Lists preserve their markers. Raw HTML stays escaped. Markdown images keep linked alt text and do not fetch remote media. Long answers send an extract with a reference to Web, which keeps the full answer. Unknown responses retry the same message format.
+- Telegram refreshes native typing status every 4 seconds while an input is pending. `options.typing` can turn it off. Telegram does not send drafts or edit temporary answer messages. `options.silent` applies to new text and media. `options.reactions` is on by default for private chats.
 - Incoming rich messages keep bounded text from paragraphs, inline formatting,
   tables and nested blocks. The iterative reader caps text at 65536 characters,
   work at 20000 steps and JSON nesting at 64; a limit adds an explicit note.
@@ -92,10 +67,7 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   closes after 800 ms without a new member, 3 seconds from its first member, or
   ten files. Admission uses the existing native input path. Source aliases stay
   available after temporary input data is cleared. Late members form an explicit
-  continuation. Compatible outgoing files use `sendMediaGroup` in batches of 2–10.
-  An explicit API 400 saves fallback mode before single sends. Each single send
-  then has its own durable cursor. Lost or incomplete responses and HTTP 5xx do
-  not permit a method change. Unconfirmed delivery is at least once.
+  continuation. Each outgoing file has its own Outbox row. The sender keeps the byte snapshot until the row ends.
 - Transcription is off by default. `options.stt` requires a saved custom
   provider, an audio model, and consent to send audio. The provider must have
   an explicit base URL and support OpenAI-compatible `/audio/transcriptions`.
@@ -303,7 +275,7 @@ message bodies and channel credentials.
 
 The app owns a registry with one Manager per agent. Startup restores all agents' bots.
 Creating an agent adds its Manager. Shutdown stops all Managers before the database closes.
-Uploads and live previews use the bot's agent directory and stream. Chat notifications
+Uploads use the bot's agent directory. Chat notifications
 wake all Managers; each Manager reads only its agent's replies and commands. This fan-out
 is a limit: route notifications by agent if wakeups become costly.
 
@@ -322,12 +294,12 @@ The root `channel` package defines the transport contract and frozen delivery
 values without storage or runtime dependencies. The app passes the manager to
 each adapter through the inbound interface that adapter defines. The delivery
 package does not import concrete adapters. Telegram rich text, buttons, and
-media groups keep their shared frozen encoding; the adapter owns the wire format.
+files keep their shared frozen encoding; the adapter owns the wire format.
 
 `chat.Service.ReceivedSource` reports the global stored input fact. Channel
 and platform adapters use it for duplicate input and attachment replay, including
 when a bot credential moves between agents. `LookupSource` returns the
-business-owned `SourceReceipt` for reply previews and upload cleanup. Its
+business-owned `SourceReceipt` for typing and upload cleanup. Its
 references belong to the requested agent. A stored receipt means control
 received the input, even when native admission is pending. Adapters do not infer
 this state from `admitted_at` or terminal status. Native admission remains the
@@ -341,8 +313,7 @@ without setting `admitted_at`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
 channels enters the bot's agent `main` conversation with that peer as origin.
-Dex checks pairing at intake and saves `binding_id` with the input or command
-receipt. The origin labels the transcript; the binding selects the reply route.
+Dex checks pairing at intake. The source receipt saves the account and peer for replies and labels the transcript.
 Channel input cannot select a Chat session. Old `channel_peers` records and
 per-peer conversations remain stored but receive no new channel input. The
 Sessions list excludes those conversations. Main and Chat are writable on
@@ -376,23 +347,14 @@ sent or permanently skipped; the source key and routing facts remain. There is
 no feedback store, model input, or GitHub write. The reply remains on the
 messaging platform like any other message.
 
-Each platform has one durable sender. Settlement wakes the sender for the
-saved route. Session cancellation wakes senders for withdrawn input. At start and after
-an unsuccessful send, the sender reads pending Outbox entries and command
-replies in submission admission order. It records each confirmed part and marks the reply
-delivered after its last part. A permanent rejection skips that part and does
-not block later replies. A transient error retries with a delay from 5 s to
-60 s. Each bot receives a stable delivery ID and part index through `Bot.Send`.
-Receipt reconciliation reads pending input and incomplete native abort intent.
-Delivery is at least once: a crash between platform success and the local
-commit can duplicate one part. Migration marks old settled replies as delivered
-because earlier versions did not record delivery success.
+Each platform has one durable sender. All platform message bodies, including command acknowledgements and pure Routine alerts, go through the Outbox. Direct channel inputs can queue final replies or a short error. Ordinary Web and background output stay in the transcript. Background runs can call `notify_user` to queue a message before the run ends. The tool uses the configured default or an explicit paired channel. If a platform has multiple targets, specify `channel:target`.
+
+The key `(event_id, channel, target)` identifies one message. An event can have independent deliveries to different destinations. The sender freezes the platform message before it sends. Confirmation marks it `sent`. Temporary errors keep it `pending`, with backoff from 5 to 320 seconds or the platform wait if longer. A permanent rejection marks it `failed`. No failure changes the destination. Feishu and WeChat use a stable key for retries. Telegram can duplicate a message if the platform accepts it before a crash and the receipt does not commit.
 
 Telegram and Feishu/Lark can show status on an authorized incoming message.
 `delivery` starts observing only after the input intent commits. The native
 submission must enter a run before processing appears. Success needs a settled
-input and confirmation of every part of its required reply, if any. A skipped
-part is not confirmation. Failure and cancellation use distinct reactions.
+input and confirmation of its required reply, if any. Failure and cancellation use distinct reactions.
 Access is checked again before any reaction. A short-lived observer serializes
 changes for its message; slow, rejected, and unknown reaction requests never
 control intake or the reply sender's retries. Commands and Telegram edits do not
@@ -418,13 +380,12 @@ in milliseconds.
 
 On a direct channel request, the parent can set `follow_up: true` on
 `session_new` or `session_send`. The commitment belongs to that delegation,
-request, session, and original channel binding. An acknowledgment or progress
+request, session, and original channel destination. An acknowledgment or progress
 update does not complete the commitment.
 
 The canonical child result starts an independent review turn for the
 same parent. Its reminder tells the parent to use `notify_user` for a reviewed
-conclusion, or `ask_user` for a decision. Only explicit user-facing actions can
-enter the channel Outbox. A question does not complete the commitment. Plain final text
+conclusion. A question stays in Web and does not complete the commitment. Plain final text
 stays internal. Dex records `missed_follow_up` without creating another turn,
 retrying the omission, or forwarding any draft or child output.
 
@@ -450,32 +411,19 @@ FROM outbox_delivery_diagnostics
 WHERE id = :outbox_id;
 ```
 
-- `in_app_only`: there is no platform route or receipt.
 - `platform_confirmed`: Dex saved at least one provider-returned remote ID
-  for the recorded peer. This does not confirm other parts of a multipart
-  delivery. Revocation does not erase these receipts.
+  for the recorded peer. The upgrade keeps earlier remote receipts for diagnosis.
 - `revoked_or_skipped_unconfirmed`: the send was revoked or skipped and
   there is no provider receipt.
 - `unconfirmed`: there is no terminal evidence. Neither a pending send nor
-  a generic `delivered` status proves confirmation. If a provider accepts a
+  a `sent` status on a platform that does not return a remote ID proves confirmation. If a provider accepts a
   request and Dex stops before it saves the receipt, a retry can send again.
 
-### Binding lifetime
+### Pairing and pending deliveries
 
-Pairing creates a new `channel_bindings` ID. Removing a pairing marks that ID
-inactive and revokes all its pending Outbox entries in the same transaction.
-The old ID stays in the store. A later reply or child result keeps the original
-ID even if the channel reconnects with the same account and peer. The sender
-checks whether that ID is active before a platform request. It does not look
-up a replacement by address. A request already in flight can still reach the
-platform.
+The channel settings hold the current pairing. Unpairing marks pending deliveries to the removed destination `failed` in the same transaction. A new pairing for the same account has no generation ID. It does not revive cancelled deliveries. A request already in flight can still reach the platform.
 
-An upgrade gives current pairings new IDs. Old messages and queued deliveries
-have no proof of continuity and do not inherit these IDs. Dex marks legacy
-pending channel deliveries as revoked and keeps their results in Web. It also
-closes legacy pending command replies and discards unverified webhook payloads
-at upgrade. If a pairing is revoked, Dex closes its pending command replies
-and discards unverified webhook payloads for that channel account.
+The single-message migration keeps terminal history and safe pending messages that fit one platform delivery. A legacy multipart entry with an incomplete or uncertain delivery becomes `failed`. Dex keeps its recorded platform receipts. Restore a pre-upgrade database backup to downgrade.
 
 ## Owner channel tools
 
@@ -568,16 +516,7 @@ A rejected resource removes uploads already saved by that attempt. After input
 admission, cleanup removes files only when no stored receipt owns them. An
 uncertain receipt lookup keeps the files.
 
-A preview card reads the chat's native watch events. It merges text updates
-at 250 ms intervals and omits thinking and tool data. The shared durable
-sender patches that card with the final answer, or creates a final card when
-no preview exists. It uses the submission ID and part index for stable send
-UUIDs. Each text part is at most 4000 UTF-8 bytes. A card rejected with HTTP
-400 or an HTTP success status and code `230001` falls back to plain text.
-Temporary or uncertain send
-failures keep the card format and stable identity for retry. An uncertain final
-patch keeps the preview ID, so durable delivery retries the same card. A successful
-final patch restores `running` status.
+Feishu sends one final card and no preview. A long answer sends an extract and keeps the full answer in Web. Feishu uses a stable UUID derived from the delivery ID. A definite card rejection with code `230001` allows a plain text fallback. Other errors do not change the format.
 Network failures, server errors and rate limits get at most
 3 attempts per token. JSON calls and downloads share authorization and one
 token refresh. A token rejection can therefore cause up to 6 API attempts,
@@ -590,10 +529,6 @@ message while it waits for queue space. JSON responses remain
 bounded to 4 MB and download error responses to 1 MB. Retry delays are
 200 ms and 800 ms; `Retry-After`
 can extend a delay to at most 2 seconds. Reply delivery remains at least once.
-Previews use the bot lifetime and continue across WebSocket reconnects.
-Previews are best effort and do not mark a reply as delivered. A restart can
-leave a preview card in the platform; the durable sender sends a final card.
-
 The standard `mise run check` task includes local platform tests and native HTTP
 E2E tests for Feishu. These tests make no real platform requests.
 
@@ -611,9 +546,7 @@ Only a confirmed result with a bot token, bot ID, base URL, and owner ID can
 activate the bot. Invalid confirmation stays failed on later polls. Valid
 candidate credentials remain available if local activation fails. Activation
 stops and joins the old bot before it changes shared runtime state. It saves
-credentials, runtime initialization, and the new binding in one transaction.
-Even if the owner and bot ID are unchanged, a new QR login revokes the old
-binding and its pending deliveries. Dex starts the replacement and then reports
+credentials and runtime initialization in one transaction. A scan for the same bot and owner keeps the same destination. Dex starts the replacement and then reports
 `confirmed`. If the transaction fails, it restores the previous
 bot. A new login ID or delete invalidates an older login request.
 
@@ -646,6 +579,6 @@ command still completes through the shared manager. A failed or rejected attempt
 removes its new uploads before admission. Admitted submissions keep their files.
 
 While a submission is pending, the bot sends typing status every 5 s. Final
-answers keep supported Markdown and use parts of at most 2000 characters.
+answers keep supported Markdown. Long answers send an extract and refer to Web.
 Unanswered submissions send a short error message. The durable sender reads
 the saved context token before each send, including after a restart.

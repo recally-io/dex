@@ -62,15 +62,15 @@ A browser reload discards these drafts.
 Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
 Automation, parent turns to a child session, and dream input use `automation`, `task`, and `dream`.
-A channel input also saves its `binding_id`. A child result copies the origin
-and binding of the parent request in the transaction that settles the child
-turn. Channel replies and task results use the saved binding. They do not
-select a new binding after a re-pair. Web input sends no ordinary channel reply.
+A channel input also saves the account and peer that received it. Pairing is
+checked at intake. A child result can retain the origin for attribution or an
+explicit follow-up; its normal output does not enter the Outbox. An ordinary
+Web reply also stays in Web.
 The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
-The first input owns a run. Its saved binding selects the reply recipient, and its
+The first input owns a run. Its saved channel address selects the reply recipient, and its
 receipt is the source for tool calls. A steered input adds content only. It does
 not change the recipient or grant or remove tool authority. Web input and a
 parent's `session_send` can steer. Channel, automation and dream inputs always
@@ -80,15 +80,14 @@ steered input.
 ## Web notifications
 
 Main and Chat display explicit `notify_user` output when the stored source
-submission has Web origin. The Outbox row and source submission must belong
-to the requested conversation. An isolated channel session
-or a Routine does not get a Web timeline notification. A channel target on an
-otherwise eligible Web notification does not change its origin.
+submission has Web origin. The notice and source must belong to the requested
+conversation. A Routine does not get a Web timeline notification. A channel target
+on an eligible Web notification does not change its origin.
 
-The Web stream reads a recent page from the Outbox when it connects. A committed
-notification wakes that conversation's stream. Older notifications use an Outbox
-ID cursor in chat history, separate from the native entry cursor. The Web client
-merges pages and live updates by Outbox ID. If a newer notice with the same
+The Web stream reads a recent page from `web_notifications` when it connects.
+A committed notice wakes the stream. Older notices use a notification ID cursor
+in chat history, separate from the native entry cursor. The Web client merges
+pages and live updates by notification ID. If a newer notice with the same
 `topicKey` supersedes a pending channel delivery, the timeline keeps both
 notices. Channel revocation does not hide a Web-origin notice. Neither the
 engine transcript nor the platform delivery receipt changes when the Web client
@@ -109,17 +108,17 @@ The receipt, the new `answered` status and the content wrapper `Answer to:
 <question>` commit in one transaction. A message without that field never closes
 a question. Withdrawing the answer reopens the question. The answered input's
 settlement consumes it. Session cancellation, Clear and archive dismiss open and answered
-questions in their own writer transaction. Settlement of the asking input adds
-the question to the reply, so a channel receives it through the reply outbox.
-`Bot.Send` returns the remote message ID. After each confirmed part, the sender
-stores the ID in `question_messages` for the question. Its key contains the
+questions in their own writer transaction. A direct channel input receives its
+final question through the Outbox. Questions from Web or background inputs stay
+in Web. After the platform confirms the question message, the sender stores the
+remote ID in `question_messages`. Its key contains the
 agent ID, peer, and remote message ID, because different bots can return equal
 message IDs for the same peer. Telegram reads
 `reply_to_message.message_id` and Feishu reads `parent_id` as `Message.ReplyTo`.
-`SubmitMessage` maps a quoted ID to `answersQuestionId`. A quote of any part
-answers the question. A quote of a closed question, an unknown ID or a platform
-without quoting (WeChat) is a plain message. A crash between the remote send and
-the mapping write loses the mapping of that part, so its quote is a plain message.
+`SubmitMessage` maps a quoted ID to `answersQuestionId`. A quote of a closed
+question, an unknown ID or a platform without quoting (WeChat) is a plain
+message. A crash between the remote send and the mapping write can leave the
+quote without a match.
 The settle worker takes the Session delivery gate before it settles an aborted
 input. A withdraw holds the same lock, so a withdrawn channel message never gets
 a "no answer" reply.

@@ -18,10 +18,6 @@ WHERE source_id = @source_id AND part = @part AND message_id = '';
 UPDATE telegram_callbacks SET consumed_at = @now
 WHERE id = @id AND consumed_at IS NULL AND expires_at > @now AND message_id <> '';
 
--- name: FreezeTelegramCommandReply :exec
-UPDATE channel_commands SET rendered_reply = @rendered_reply
-WHERE source_key = @source_key AND rendered_reply = '';
-
 -- name: TelegramContextRevision :one
 SELECT CAST(coalesce((SELECT id FROM submissions
 WHERE conversation_id = @conversation_id AND kind = 'context_reset'

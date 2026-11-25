@@ -4361,7 +4361,7 @@ components:
       type: object
       properties:
         silent: { type: boolean, default: false }
-        preview: { type: string, enum: ["", auto, edit, draft, "off"] }
+        typing: { type: boolean }
         reactions:
           type: boolean
           description: Private chat status reactions. On when unset; false explicitly disables them.
@@ -4551,14 +4551,23 @@ components:
         id: { type: string }
         kind:
           type: string
-          enum: [reply, proactive, question, routine, system_error]
+          enum: [
+            reply,
+            proactive,
+            question,
+            routine,
+            system_error,
+            file,
+            control,
+            feedback,
+          ]
         peer: { type: string }
         topicKey: { type: string }
         body: { type: string }
         reason: { type: string }
         status:
           type: string
-          enum: [pending, delivered, superseded, revoked, failed]
+          enum: [pending, sent, superseded, failed]
         error: { type: string }
         retryAt: { type: integer, format: int64 }
         createdAt: { type: integer, format: int64 }

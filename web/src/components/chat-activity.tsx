@@ -61,10 +61,9 @@ function outboxBadgeVariant(
   switch (status) {
     case "pending":
       return "default";
-    case "delivered":
+    case "sent":
       return "secondary";
     case "failed":
-    case "revoked":
       return "destructive";
     default:
       return "outline";

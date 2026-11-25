@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -58,9 +57,8 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 		return "", errors.New("notify_user source belongs to another conversation")
 	}
 	now := s.now().UnixMilli()
-	// Keep the tool: prefix in sync with ListTimelineNotifications in internal/db/queries/outbox.sql.
-	dedupKey := "tool:" + r.Key
-	outboxID := uuid.NewV7().String()
+	eventID := "notify:" + r.Key
+	outboxID := eventID
 	final := boolPtrOrTrue(a.Final)
 
 	tx, q, err := s.writeTransaction(ctx)
@@ -91,60 +89,54 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 		if err != nil {
 			return "", err
 		}
-		if original.ConversationID != conv.ID || original.SourceKey != f.ParentSourceKey || original.ChannelRevoked != 0 ||
-			original.BindingID != source.BindingID {
+		if original.ConversationID != conv.ID || original.SourceKey != f.ParentSourceKey || original.ChannelRevoked != 0 {
 			return "", errChannelFollowUp
 		}
 		if final {
 			// A channel conclusion keeps one key per delegation and stays out of the Web timeline.
-			dedupKey = followUpFinalKey(f.DelegationID)
+			eventID = followUpFinalKey(f.DelegationID)
 			a.TopicKey = "" // Progress cannot supersede the committed conclusion.
 		}
 	}
-	peer, identity, bindingID, err := taskNotificationRoute(ctx, q, conv, source)
+	if existing, err := q.FindNotificationReceipt(ctx, eventID); err == nil {
+		return existing, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	peer, identity, err := notificationRoute(ctx, q, conv, a.Channel)
 	if err != nil {
 		return "", err
 	}
-	status, deliveredAt := outboxInitialStatus(peer, source.ChannelRevoked, now)
-
-	if a.TopicKey != "" {
-		if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
-			ConversationID: conv.ID,
-			Peer:           peer,
-			BindingID:      bindingID,
-			TopicKey:       a.TopicKey,
+	if a.Channel == "" && f.ResultID != "" {
+		// Until the dispatcher replaces opted-in follow-ups, keep the destination
+		// that the owner selected when delegating from a channel.
+		peer, identity = source.Origin, source.ChannelContext
+	}
+	if peer != "" {
+		if a.TopicKey != "" {
+			if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
+				ConversationID: conv.ID, Peer: peer, TopicKey: a.TopicKey,
+			}); err != nil {
+				return "", err
+			}
+		}
+		if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
+			ID: outboxID, EventID: eventID, AgentID: conv.AgentID, ConversationID: conv.ID,
+			SourceSubmissionID: sql.NullString{String: source.ID, Valid: true},
+			Kind:               "proactive", Peer: peer, ChannelContext: identity, TopicKey: a.TopicKey,
+			Body: a.Content, Status: "pending", CreatedAt: now,
 		}); err != nil {
 			return "", err
 		}
+	} else if source.Origin != "web" {
+		return "", errors.New("no default notification channel is configured")
 	}
-	inserted, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID:                 outboxID,
-		DedupKey:           dedupKey,
-		AgentID:            conv.AgentID,
-		ConversationID:     conv.ID,
-		SourceSubmissionID: sql.NullString{String: source.ID, Valid: true},
-		Kind:               "proactive",
-		Peer:               peer,
-		ChannelContext:     identity,
-		BindingID:          bindingID,
-		TopicKey:           a.TopicKey,
-		Body:               a.Content,
-		Reason:             "",
-		Status:             status,
-		CreatedAt:          now,
-		DeliveredAt:        deliveredAt,
-	})
-	if err != nil {
-		return "", err
-	}
-	if inserted == 0 {
-		existing, err := q.GetOutboxByDedupKey(ctx, dedupKey)
-		if err != nil {
+	if source.Origin == "web" {
+		if err := q.InsertWebNotification(ctx, sqlc.InsertWebNotificationParams{
+			ID: outboxID, EventID: eventID, AgentID: conv.AgentID, ConversationID: conv.ID,
+			SourceSubmissionID: source.ID, Body: a.Content, CreatedAt: now,
+		}); err != nil {
 			return "", err
-		}
-		outboxID = existing.ID
-		if f.ResultID != "" && final {
-			return outboxID, nil
 		}
 	}
 	if final {
@@ -153,10 +145,11 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 				return "", err
 			}
 		}
-		if _, err := q.BindOutboxFilesToOutbox(ctx, sqlc.BindOutboxFilesToOutboxParams{
-			OutboxID:     sql.NullString{String: outboxID, Valid: true},
-			SubmissionID: sql.NullString{String: source.ID, Valid: true},
-		}); err != nil {
+		if peer == source.Origin && strings.HasPrefix(peer, "telegram:") {
+			if err := bindFileDeliveries(ctx, q, outboxID, source.ID); err != nil {
+				return "", err
+			}
+		} else if err := q.DeleteUnboundOutboxFiles(ctx, sql.NullString{String: source.ID, Valid: true}); err != nil {
 			return "", err
 		}
 		ids := r.RunInputIDs
@@ -167,15 +160,17 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 			if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "notify_user"}); err != nil {
 				return "", err
 			}
-			if err := q.SetRequiredChannelReply(ctx, sqlc.SetRequiredChannelReplyParams{SubmissionID: id, OutboxID: outboxID}); err != nil {
-				return "", err
+			if peer != "" {
+				if err := q.SetRequiredChannelReply(ctx, sqlc.SetRequiredChannelReplyParams{SubmissionID: id, OutboxID: outboxID}); err != nil {
+					return "", err
+				}
 			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}
-	if peer != "" && status == "pending" && s.notify != nil {
+	if peer != "" && s.notify != nil {
 		s.notify(peer)
 	}
 	s.signal(conv.ID)
@@ -358,19 +353,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			if sub.ExitAction != "ask_user" || event.Status != "done" {
 				return "", q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: sub.ID, State: "missed_follow_up"})
 			}
-			// The explicit question is the entire outbound body, even on recovery or promotion.
-			row, err := q.GetQuestionBySource(ctx, sub.ID)
-			if errors.Is(err, sql.ErrNoRows) || (err == nil && row.Status == "dismissed") {
-				return "", nil
-			}
-			if err != nil {
-				return "", err
-			}
-			question, err := questionOf(row)
-			if err != nil {
-				return "", err
-			}
-			event.Answer = renderQuestion(row, question.Options, row.AgentID, conv.ChannelKey == MainKey, quotes(sub.Origin))
+			return "", nil // Background questions stay in Web.
 		}
 	}
 	if sub.ExitAction == "ask_user" {
@@ -384,9 +367,8 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 	}
 	isUserInput := sub.Kind == "message" && isUserOrigin(sub.Origin)
 	peer := peerFromOrigin(sub.Origin)
-	bindingID := sub.BindingID
 
-	if isUserInput {
+	if isUserInput && peer != "" {
 		if event.Status == "done" {
 			if sub.ExitAction == "notify_user" {
 				return "", nil
@@ -400,28 +382,20 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 				return "", err
 			}
 			identity := sub.ChannelContext
-			if kind == "question" {
-				var err error
-				peer, identity, bindingID, err = taskNotificationRoute(ctx, q, conv, sub)
-				if err != nil {
-					return "", err
-				}
-			}
-			dedupKey := "reply:" + sub.ID
+			eventID := "reply:" + conv.AgentID + ":" + sub.ID
 			if event.AnswerID > 0 {
-				dedupKey = fmt.Sprintf("reply:%d:%d:%s:%d", conv.ID, event.AnswerID, peer, bindingID.Int64)
+				eventID = fmt.Sprintf("reply:%s:%d:%d", conv.AgentID, conv.ID, event.AnswerID)
 			}
 			status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
 			inserted, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 				ID:                 sub.ID,
-				DedupKey:           dedupKey,
+				EventID:            eventID,
 				AgentID:            conv.AgentID,
 				ConversationID:     conv.ID,
 				SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
 				Kind:               kind,
 				Peer:               peer,
 				ChannelContext:     identity,
-				BindingID:          bindingID,
 				TopicKey:           "",
 				Body:               event.Answer,
 				Reason:             "",
@@ -434,7 +408,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			}
 			outboxID := sub.ID
 			if inserted == 0 {
-				existing, err := q.GetOutboxByDedupKey(ctx, dedupKey)
+				existing, err := q.GetOutboxByEvent(ctx, sqlc.GetOutboxByEventParams{EventID: eventID, Peer: peer})
 				if err != nil {
 					return "", err
 				}
@@ -443,10 +417,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			if err := q.SetRequiredChannelReply(ctx, sqlc.SetRequiredChannelReplyParams{SubmissionID: sub.ID, OutboxID: outboxID}); err != nil {
 				return "", err
 			}
-			if _, err := q.BindOutboxFilesToOutbox(ctx, sqlc.BindOutboxFilesToOutboxParams{
-				OutboxID:     sql.NullString{String: outboxID, Valid: true},
-				SubmissionID: sql.NullString{String: sub.ID, Valid: true},
-			}); err != nil {
+			if err := bindFileDeliveries(ctx, q, outboxID, sub.ID); err != nil {
 				return "", err
 			}
 			if status == "pending" {
@@ -461,14 +432,13 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
 		if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 			ID:                 sub.ID,
-			DedupKey:           "reply:" + sub.ID,
+			EventID:            "reply:" + conv.AgentID + ":" + sub.ID,
 			AgentID:            conv.AgentID,
 			ConversationID:     conv.ID,
 			SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
 			Kind:               "reply",
 			Peer:               peer,
 			ChannelContext:     sub.ChannelContext,
-			BindingID:          bindingID,
 			TopicKey:           "",
 			Body:               "",
 			Reason:             event.Reason,
@@ -484,119 +454,64 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 		return "", nil
 	}
 
-	// System Turn in a top-level conversation (Main, Chat, Automation).
-	if event.Status == "done" {
-		isQuestion := sub.ExitAction == "ask_user"
-		if !isQuestion {
-			if _, err := q.GetQuestionBySource(ctx, sub.ID); err == nil {
-				isQuestion = true
-			} else if !errors.Is(err, sql.ErrNoRows) {
-				return "", err
-			}
-		}
-		if !isQuestion {
-			// Fail-quiet by default: internal trace only unless notify_user or ask_user was called.
-			return "", nil
-		}
-		peer, identity, bindingID, err := taskNotificationRoute(ctx, q, conv, sub)
-		if err != nil {
-			return "", err
-		}
-		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
-		if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-			ID:                 sub.ID,
-			DedupKey:           "question:" + sub.ID,
-			AgentID:            conv.AgentID,
-			ConversationID:     conv.ID,
-			SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
-			Kind:               "question",
-			Peer:               peer,
-			ChannelContext:     identity,
-			BindingID:          bindingID,
-			TopicKey:           "",
-			Body:               event.Answer,
-			Reason:             "",
-			Status:             status,
-			CreatedAt:          now,
-			DeliveredAt:        deliveredAt,
-		}); err != nil {
-			return "", err
-		}
-		if status == "pending" {
-			return peer, nil
-		}
-		return "", nil
-	}
-
-	if event.Reason == "stopped" || event.Reason == "withdrawn" || event.Reason == "aborted" || sub.ChannelRevoked != 0 {
-		return "", nil
-	}
-	status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
-	if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID:                 "err:" + sub.ID,
-		DedupKey:           "error:" + sub.ID,
-		AgentID:            conv.AgentID,
-		ConversationID:     conv.ID,
-		SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
-		Kind:               "system_error",
-		Peer:               peer,
-		ChannelContext:     sub.ChannelContext,
-		BindingID:          bindingID,
-		TopicKey:           "",
-		Body:               fmt.Sprintf("System event (%s) failed: %s", sub.Kind, cmp.Or(event.Reason, "execution failed")),
-		Reason:             event.Reason,
-		Status:             status,
-		CreatedAt:          now,
-		DeliveredAt:        deliveredAt,
-	}); err != nil {
-		return "", err
-	}
-	if status == "pending" {
-		return peer, nil
-	}
 	return "", nil
 }
 
 func outboxInitialStatus(peer string, channelRevoked int64, now int64) (string, sql.NullInt64) {
 	if peer == "" {
-		return "delivered", sql.NullInt64{Int64: now, Valid: true}
+		return "sent", sql.NullInt64{Int64: now, Valid: true}
 	}
 	if channelRevoked != 0 {
-		return "revoked", sql.NullInt64{}
+		return "failed", sql.NullInt64{}
 	}
 	return "pending", sql.NullInt64{}
 }
 
-// taskNotificationRoute keeps the input's binding. Only Main Task notifications
-// without a channel source can choose the primary destination when created.
-func taskNotificationRoute(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, sub sqlc.Submission) (string, string, sql.NullInt64, error) {
-	peer := peerFromOrigin(sub.Origin)
-	if peer != "" || conv.ChannelKey != MainKey || sub.ChannelRevoked != 0 {
-		return peer, sub.ChannelContext, sub.BindingID, nil
+func notificationRoute(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, channel string) (string, string, error) {
+	if channel == "" {
+		target, err := q.GetPrimaryNotificationTarget(ctx, conv.AgentID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", "{}", nil
+		}
+		if err != nil {
+			return "", "", err
+		}
+		identity, err := json.Marshal(ChannelContext{AccountID: target.AccountID})
+		return target.Peer, string(identity), err
 	}
-	taskID, err := workTaskForInput(ctx, q, sub.ID)
-	if err != nil || taskID == "" {
-		return "", sub.ChannelContext, sql.NullInt64{}, err
-	}
-	target, err := q.GetPrimaryNotificationTarget(ctx, conv.AgentID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", sub.ChannelContext, sql.NullInt64{}, nil
-	}
+	platform, _, explicitPeer := strings.Cut(channel, ":")
+	paired, err := q.ListPairedChannel(ctx, sqlc.ListPairedChannelParams{AgentID: conv.AgentID, Platform: platform})
 	if err != nil {
-		return "", "", sql.NullInt64{}, err
+		return "", "", err
 	}
-	binding, err := q.GetActiveChannelBinding(ctx, sqlc.GetActiveChannelBindingParams{AgentID: conv.AgentID, Peer: target.Peer, OwnerPeer: target.Peer, AccountID: target.AccountID})
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", "", sql.NullInt64{}, err
+	if !explicitPeer && len(paired) > 1 {
+		return "", "", errors.New("multiple targets are paired; specify the channel and target")
 	}
-	identity, err := json.Marshal(ChannelContext{AccountID: target.AccountID})
-	return target.Peer, string(identity), sql.NullInt64{Int64: binding.ID, Valid: binding.ID != 0}, err
+	for _, p := range paired {
+		if !explicitPeer || p.Peer == channel {
+			identity, err := json.Marshal(ChannelContext{AccountID: p.AccountID})
+			return p.Peer, string(identity), err
+		}
+	}
+	return "", "", errors.New("notification channel is not paired")
+}
+
+func bindFileDeliveries(ctx context.Context, q *sqlc.Queries, outboxID, sourceID string) error {
+	source := sql.NullString{String: sourceID, Valid: true}
+	if err := q.CreateFileDeliveries(ctx, sqlc.CreateFileDeliveriesParams{OutboxID: outboxID, SubmissionID: source}); err != nil {
+		return err
+	}
+	if err := q.BindFileDeliveries(ctx, source); err != nil {
+		return err
+	}
+	// An unpaired destination has no pending row to own the snapshot.
+	return q.DeleteUnboundOutboxFiles(ctx, source)
 }
 
 // WakeRoutineOutbox nudges channel delivery after commit without waking any conversation.
 func (s *Service) WakeRoutineOutbox(ctx context.Context, runID string) {
 	if s.notify != nil {
-		if row, err := s.q.GetOutboxByDedupKey(ctx, "routine:"+runID); err == nil && row.Status == "pending" {
+		if row, err := s.q.GetOutboxMessage(ctx, "routine:"+runID); err == nil && row.Status == "pending" {
 			s.notify(row.Peer)
 		}
 	}
@@ -669,7 +584,6 @@ func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, conv
 		if _, err := q.SupersedeOutboxTopic(ctx, sqlc.SupersedeOutboxTopicParams{
 			ConversationID: convID,
 			Peer:           info.Peer,
-			BindingID:      sql.NullInt64{Int64: info.BindingID, Valid: true},
 			TopicKey:       topicKey,
 		}); err != nil {
 			return err
@@ -683,14 +597,13 @@ func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, conv
 	}
 	_, err = q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 		ID:                 "routine:" + runID,
-		DedupKey:           "routine:" + runID,
+		EventID:            "remind:" + runID,
 		AgentID:            info.AgentID,
 		ConversationID:     convID,
 		SourceSubmissionID: source,
 		Kind:               "routine",
 		Peer:               info.Peer,
 		ChannelContext:     string(chCtx),
-		BindingID:          sql.NullInt64{Int64: info.BindingID, Valid: true},
 		TopicKey:           topicKey,
 		Body:               body,
 		Reason:             "",

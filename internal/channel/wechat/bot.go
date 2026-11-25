@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/chat"
@@ -212,7 +213,7 @@ func (b *Bot) receive(ctx context.Context, msg message) error {
 	return errors.Join(receiveErr, err)
 }
 
-// Parts filters Markdown and splits the final text into at most 2000 runes per part.
+// Parts renders Markdown that fits within the 2000-character limit.
 func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
@@ -222,23 +223,19 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	runes := []rune(text)
-	parts := make([]string, 0, (len(runes)+1999)/2000)
-	for len(runes) > 0 {
-		n := min(len(runes), 2000)
-		parts = append(parts, string(runes[:n]))
-		runes = runes[n:]
+	if utf8.RuneCountInString(text) > 2000 {
+		return nil
 	}
-	return channel.TextParts(parts)
+	return []channel.Part{{Text: text}}
 }
 
-// Send keeps the same client ID across retries of a durable reply part.
+// Send keeps the same client ID across retries of a durable reply.
 // WeChat has no message ID to quote, so the receipt contains none.
-func (b *Bot) Send(ctx context.Context, peer, id string, index int, part channel.Part) (channel.Receipt, error) {
+func (b *Bot) Send(ctx context.Context, peer, id string, part channel.Part) (channel.Receipt, error) {
 	if part.File != nil {
 		return channel.Receipt{}, fmt.Errorf("%w: WeChat file delivery is unavailable", channel.ErrPermanent)
 	}
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", id, index)))
+	sum := sha256.Sum256([]byte(id + ":0"))
 	return channel.Receipt{}, b.send(ctx, peer, fmt.Sprintf("dex:%x", sum[:16]), part.Text)
 }
 

@@ -6,12 +6,12 @@ import (
 	"testing"
 )
 
-func TestUserTelegramSilentPreviewAndReactionPreferencesAffectDelivery(t *testing.T) {
+func TestUserTelegramSilentTypingAndReactionPreferencesAffectDelivery(t *testing.T) {
 	t.Parallel()
 	// Given explicit silent delivery and no streaming preview.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "preview": "off", "reactions": true}}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "typing": false, "reactions": true}}, nil)
 	f.message(1, 42, 42, "https://example.invalid/hello")
 	got := f.next(t)
 	if !got.Silent || got.RichHTML == "" {
@@ -68,7 +68,7 @@ func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
 	data := t.TempDir()
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, data, 42)
-	options := map[string]any{"silent": true, "preview": "off", "reactions": true}
+	options := map[string]any{"silent": true, "typing": false, "reactions": true}
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
 	// When the process restarts, presentation preferences remain separate from the token and allowlist.
 	d.stop()
@@ -76,15 +76,15 @@ func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
 	var view struct {
 		Telegram struct {
 			Options struct {
-				Silent    bool   `json:"silent"`
-				Preview   string `json:"preview"`
-				Reactions bool   `json:"reactions"`
+				Silent    bool  `json:"silent"`
+				Typing    *bool `json:"typing"`
+				Reactions bool  `json:"reactions"`
 			} `json:"options"`
 		} `json:"telegram"`
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &view)
 	got := view.Telegram.Options
-	if !got.Silent || got.Preview != "off" || !got.Reactions {
+	if !got.Silent || got.Typing == nil || *got.Typing || !got.Reactions {
 		t.Fatalf("lost Telegram preferences: %+v", got)
 	}
 	// Existing clients that omit options must not reset the saved preferences.

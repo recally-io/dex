@@ -92,9 +92,9 @@ The panel shows the Monitor mode, attempt limit, and latest outcome. The user
 can cancel an active Monitor in a writable session. Monitor creation uses the
 session tool, not this panel.
 
-Main and Chat display explicit Web-origin Outbox notifications in their
+Main and Chat display explicit Web-origin notifications in their
 transcripts. The client merges the live notification pages and older pages by
-Outbox ID. The native transcript and notifications have separate cursors;
+notification ID. The native transcript and notifications have separate cursors;
 **Show earlier messages** loads both. Channel and Routine delivery records stay
 in the Outbox panel.
 

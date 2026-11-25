@@ -124,7 +124,7 @@ func TestUserOptedInDelegationsOwnSeparateChildActivationsAndPeers(t *testing.T)
 	if n := count(t, conn, `SELECT count(*) FROM submissions WHERE conversation_id=? AND id LIKE 'report:%'`, main); n != 2 {
 		t.Fatalf("standalone protected final wakes: got %d reports, expected only the two ordinary reports", n)
 	}
-	if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE dedup_key LIKE 'follow-up-final:%'`); n != 3 {
+	if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE event_id LIKE 'follow-up-final:%'`); n != 3 {
 		t.Fatalf("unexpected number of conclusions for the three grants: %d", n)
 	}
 }
@@ -267,7 +267,7 @@ func TestUserSamePeerCompletionsGetIndependentMainReviews(t *testing.T) {
 			if n := count(t, conn, `SELECT count(*) FROM submissions WHERE conversation_id=? AND kind='task_result'`, main); n != 2 {
 				t.Fatalf("unexpected Main wake count: %d", n)
 			}
-			if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE dedup_key LIKE 'follow-up-final:%'`); n != 2 {
+			if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE event_id LIKE 'follow-up-final:%'`); n != 2 {
 				t.Fatalf("unexpected conclusion count: %d", n)
 			}
 		})

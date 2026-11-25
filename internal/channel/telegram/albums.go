@@ -77,7 +77,7 @@ func (b *Bot) flushAlbums(ctx context.Context) (time.Duration, error) {
 			return delay, parseErr
 		}
 		if chatID > 0 {
-			b.startPreview(ctx, batch.Source, chatID)
+			b.showTyping(ctx, batch.Source, chatID)
 		}
 		if err != nil {
 			return delay, err

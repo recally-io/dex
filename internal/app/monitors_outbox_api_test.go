@@ -44,7 +44,7 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 		} `json:"messages"`
 	}
 	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/outbox", chatID), nil, &outboxResp)
-	if len(outboxResp.Messages) == 0 || outboxResp.Messages[0].Kind != "reply" || outboxResp.Messages[0].Status != "delivered" {
+	if len(outboxResp.Messages) != 0 {
 		t.Fatalf("unexpected outbox: %+v", outboxResp.Messages)
 	}
 
@@ -75,6 +75,10 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 	d.waitSettled(t, chatID)
 	d.stop()
 	path := filepath.Join(dir, "control.sqlite")
+	snapshot := filepath.Join(dir, "control-fixture.sqlite")
+	if err := os.Rename(path, snapshot); err != nil {
+		t.Fatal(err)
+	}
 	conn, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
 	if err != nil {
 		t.Fatal(err)
@@ -84,8 +88,21 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Roll back to the schema before the Monitor migration, even after later migrations land.
-	if _, err := provider.DownTo(t.Context(), 20261122110000); err != nil {
+	// Build the old schema and link it to the native conversation from the fixture.
+	if _, err := provider.UpTo(t.Context(), 20261122110000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(t.Context(), "ATTACH DATABASE ? AS fixture", snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(t.Context(), `
+INSERT INTO agents (id, name, model_provider, model_id, created_at)
+SELECT id, name, model_provider, model_id, created_at FROM fixture.agents;
+INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at, title)
+SELECT id, agent_id, channel_key, execution_id, created_at, title FROM fixture.conversations;
+INSERT INTO submissions (id, conversation_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer)
+SELECT id, conversation_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer FROM fixture.submissions;
+DETACH DATABASE fixture;`); err != nil {
 		t.Fatal(err)
 	}
 	var root string

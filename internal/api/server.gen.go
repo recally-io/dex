@@ -534,6 +534,9 @@ func (e OnePasswordMode) Valid() bool {
 
 // Defines values for OutboxMessageKind.
 const (
+	Control     OutboxMessageKind = "control"
+	Feedback    OutboxMessageKind = "feedback"
+	File        OutboxMessageKind = "file"
 	Proactive   OutboxMessageKind = "proactive"
 	Question    OutboxMessageKind = "question"
 	Reply       OutboxMessageKind = "reply"
@@ -544,6 +547,12 @@ const (
 // Valid indicates whether the value is a known member of the OutboxMessageKind enum.
 func (e OutboxMessageKind) Valid() bool {
 	switch e {
+	case Control:
+		return true
+	case Feedback:
+		return true
+	case File:
+		return true
 	case Proactive:
 		return true
 	case Question:
@@ -561,23 +570,20 @@ func (e OutboxMessageKind) Valid() bool {
 
 // Defines values for OutboxMessageStatus.
 const (
-	OutboxMessageStatusDelivered  OutboxMessageStatus = "delivered"
 	OutboxMessageStatusFailed     OutboxMessageStatus = "failed"
 	OutboxMessageStatusPending    OutboxMessageStatus = "pending"
-	OutboxMessageStatusRevoked    OutboxMessageStatus = "revoked"
+	OutboxMessageStatusSent       OutboxMessageStatus = "sent"
 	OutboxMessageStatusSuperseded OutboxMessageStatus = "superseded"
 )
 
 // Valid indicates whether the value is a known member of the OutboxMessageStatus enum.
 func (e OutboxMessageStatus) Valid() bool {
 	switch e {
-	case OutboxMessageStatusDelivered:
-		return true
 	case OutboxMessageStatusFailed:
 		return true
 	case OutboxMessageStatusPending:
 		return true
-	case OutboxMessageStatusRevoked:
+	case OutboxMessageStatusSent:
 		return true
 	case OutboxMessageStatusSuperseded:
 		return true

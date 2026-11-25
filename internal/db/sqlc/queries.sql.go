@@ -437,8 +437,8 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 }
 
 const createSubmission = `-- name: CreateSubmission :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context, binding_id)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), 'followUp'), 'pending', ?9, coalesce(nullif(CAST(?10 AS TEXT), ''), '{}'), ?11)
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), 'followUp'), 'pending', ?9, coalesce(nullif(CAST(?10 AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING
 `
 
@@ -453,7 +453,6 @@ type CreateSubmissionParams struct {
 	WhenBusy       string         `json:"when_busy"`
 	CreatedAt      int64          `json:"created_at"`
 	ChannelContext string         `json:"channel_context"`
-	BindingID      sql.NullInt64  `json:"binding_id"`
 }
 
 // A message whose ID or source key exists already is not stored again. An empty when_busy
@@ -470,7 +469,6 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		arg.WhenBusy,
 		arg.CreatedAt,
 		arg.ChannelContext,
-		arg.BindingID,
 	)
 	if err != nil {
 		return 0, err
@@ -1020,7 +1018,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested, binding_id FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -1057,7 +1055,6 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.ExitAction,
 		&i.RequiredReplyID,
 		&i.StopRequested,
-		&i.BindingID,
 	)
 	return i, err
 }

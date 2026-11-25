@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -149,6 +150,17 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 			if err != nil || setup.ConversationID != parent || !strings.Contains(setup.Content, "Waiting for the local wake.") {
 				t.Fatalf("child did not return its setup result to the parent: %+v, %v", setup, err)
 			}
+			if tc.interrupted {
+				if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.q.InsertRoutineNotificationTarget(t.Context(), sqlc.InsertRoutineNotificationTargetParams{ID: "target", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42"}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := r.q.SetPrimaryNotificationTarget(t.Context(), sqlc.SetPrimaryNotificationTargetParams{ID: "bot", PrimaryNotificationTargetID: sql.NullString{String: "target", Valid: true}}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			var outboxBefore, outboxAfter int
 			if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages`).Scan(&outboxBefore); err != nil {
 				t.Fatal(err)
@@ -198,8 +210,8 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 			if tc.interrupted {
 				var kind, peer, body string
 				err := r.conn.QueryRowContext(t.Context(), `SELECT kind, peer, body FROM outbox_messages WHERE source_submission_id = ?`, reportID).Scan(&kind, &peer, &body)
-				if err != nil || got.ExitAction != "notify_user" || outboxAfter != outboxBefore+1 || kind != "proactive" || peer != "" || body != notice {
-					t.Fatalf("expected one explicit notification without adding a channel route, got exit=%q kind=%q peer=%q body=%q new rows=%d err=%v", got.ExitAction, kind, peer, body, outboxAfter-outboxBefore, err)
+				if err != nil || got.ExitAction != "notify_user" || outboxAfter != outboxBefore+1 || kind != "proactive" || peer != "telegram:42" || body != notice {
+					t.Fatalf("expected one explicit notification at the default destination, got exit=%q kind=%q peer=%q body=%q new rows=%d err=%v", got.ExitAction, kind, peer, body, outboxAfter-outboxBefore, err)
 				}
 			} else if outboxAfter != outboxBefore {
 				t.Fatalf("internal report created %d Outbox entries", outboxAfter-outboxBefore)

@@ -64,9 +64,10 @@ func TestUserCannotPairSecondTelegramOwner(t *testing.T) {
 	}
 	f.message(1, 99, 8, "/start stale")
 	// Then atomic consumption rejects the second user and keeps the original allowlist.
-	if got := f.next(t); !strings.Contains(got.Text, "expired") {
-		t.Fatalf("second owner = %+v", got)
-	}
+	eventually(t, "poller handled stale code", func() (bool, any) {
+		offset := f.pollOffset.Load()
+		return offset >= 2, offset
+	})
 	assertTelegramOwner(t, d)
 }
 
@@ -100,7 +101,11 @@ func TestUserTelegramPairingAcknowledgementSurvivesFailure(t *testing.T) {
 			f.failSend.Store(true)
 			f.message(1, 42, 7, "/start "+link.Query().Get("start"))
 			// When consumption succeeds but its acknowledgement fails.
-			waitTelegramState(t, d, "error")
+			conn := controlWriteDB(t, dir)
+			eventually(t, "pairing acknowledgement waits for retry", func() (bool, any) {
+				n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE kind = 'control' AND status = 'pending' AND attempts > 0`)
+				return n == 1, n
+			})
 			assertTelegramOwner(t, d)
 			if restart {
 				d.stop()
@@ -109,7 +114,7 @@ func TestUserTelegramPairingAcknowledgementSurvivesFailure(t *testing.T) {
 			f.failSend.Store(false)
 			// Then replay reports access accurately, including after a restart.
 			got := f.next(t)
-			if !strings.Contains(got.Text, "already paired") {
+			if !strings.Contains(got.Text, "is paired") {
 				t.Fatalf("replayed acknowledgement = %+v", got)
 			}
 			assertTelegramOwner(t, d)

@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -300,7 +299,6 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		config.Uploads = uploads
 		config.Speech = prefs.SpeechEndpoint
-		config.Watch = func(ctx context.Context, chatID int64) (io.ReadCloser, error) { return hub.Open(ctx, agentID, chatID) }
 		manager.Set("telegram", telegram.New(*config, manager)) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 	}
 	prefs = settings.New(q, native.Catalog, native, envs)
@@ -349,7 +347,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			manager.Set("feishu", nil)
 			return
 		}
-		manager.Set("feishu", feishu.New(*config, manager, func(ctx context.Context, chatID int64) (io.ReadCloser, error) { return hub.Open(ctx, agentID, chatID) }, uploads, func(ctx context.Context, owner, code string) (bool, error) {
+		manager.Set("feishu", feishu.New(*config, manager, uploads, func(ctx context.Context, owner, code string) (bool, error) {
 			return agentsService.PairFeishu(ctx, agentID, owner, code)
 		}))
 	}

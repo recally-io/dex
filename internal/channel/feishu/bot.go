@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -20,6 +19,7 @@ import (
 type inbound interface {
 	channel.WebhookInbox
 	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	QueueChannelNotice(ctx context.Context, peer, source string, identity chat.ChannelContext, body string) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
 	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
 	Report(name string, status channel.Status)
@@ -31,24 +31,20 @@ type Bot struct {
 	client    *client
 	reactions *client
 	manager   inbound
-	watch     func(context.Context, int64) (io.ReadCloser, error)
 	uploads   *upload.Store
 	pair      func(context.Context, string, string) (bool, error)
-	mu        sync.Mutex // one owner's traffic; per preview if outbound latency blocks admission
-	previews  map[string]*preview
-	wg        sync.WaitGroup
+	mu        sync.Mutex
 }
 
 // New creates a bot. pair atomically consumes a manual setup code.
-func New(cfg Config, manager inbound, watch func(context.Context, int64) (io.ReadCloser, error), uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
+func New(cfg Config, manager inbound, uploads *upload.Store, pair func(context.Context, string, string) (bool, error)) *Bot {
 	reactionClient := newClient(cfg)
 	reactionClient.once = true
-	return &Bot{cfg: cfg, client: newClient(cfg), reactions: reactionClient, manager: manager, watch: watch, uploads: uploads, pair: pair, previews: make(map[string]*preview)}
+	return &Bot{cfg: cfg, client: newClient(cfg), reactions: reactionClient, manager: manager, uploads: uploads, pair: pair}
 }
 
 // Run receives events until the manager cancels it.
 func (b *Bot) Run(ctx context.Context) error {
-	defer b.wg.Wait()
 	webhook := b.cfg.Webhook.VerificationToken != ""
 	if webhook {
 		b.reportConnection(nil)
@@ -113,8 +109,8 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 		}
 		b.cfg.OwnerID = m.Sender
 		b.manager.Report("feishu", channel.Status{State: "running"})
-		_, err = b.client.Send(sessionCtx, m.Sender, "text", textContent("Paired. Send a message to start."), deliveryUUID("pair:"+m.ID, 0))
-		return err
+		return b.manager.QueueChannelNotice(sessionCtx, "feishu:"+m.Sender, "feishu:"+b.cfg.AppID+":"+m.ID,
+			chat.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender}, "Paired. Send a message to start.")
 	}
 	// Pairing codes are control data, including repeated setup events.
 	if strings.HasPrefix(m.Text, "/pair ") {
@@ -182,20 +178,10 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 	if err := errors.Join(receiveErr, err); err != nil {
 		return err
 	}
-	if !receipt.Pending {
-		return nil
-	}
-	id := receipt.ID
-	// Final delivery takes the same lock, so a fast answer cannot pass this preview.
-	p := &preview{}
-	b.previews[id] = p
-	streamCtx, cancel := context.WithCancel(botCtx)
-	p.cancel = cancel
-	b.wg.Go(func() { b.stream(streamCtx, id, receipt.ChatID, m.Sender, p) })
 	return nil
 }
 
-// Parts renders final replies. The durable sender records each confirmed part.
+// Parts renders a final reply that fits in one message.
 func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	text := reply.Answer
 	if reply.Status != "done" {
@@ -204,23 +190,22 @@ func (b *Bot) Parts(reply channel.Reply) []channel.Part {
 	if strings.TrimSpace(text) == "" {
 		text = "(empty answer)"
 	}
-	return channel.TextParts(parts(text))
+	if len(text) > 4000 {
+		return nil
+	}
+	return []channel.Part{{Text: text}}
 }
 
-// Send patches the preview for part zero. Other parts use a stable create ID.
-func (b *Bot) Send(ctx context.Context, peer, id string, index int, part channel.Part) (channel.Receipt, error) {
+// Send uses a stable platform message ID for retries.
+func (b *Bot) Send(ctx context.Context, peer, id string, part channel.Part) (channel.Receipt, error) {
 	if part.File != nil {
 		return channel.Receipt{}, fmt.Errorf("%w: Feishu file delivery is unavailable", channel.ErrPermanent)
 	}
-	remote, err := b.sendText(ctx, peer, id, index, part.Text)
-	receipt := channel.Receipt{}
-	if remote != "" {
-		receipt.MessageIDs = []string{remote}
-	}
-	return receipt, err
+	remote, err := b.sendText(ctx, peer, id, part.Text)
+	return channel.Receipt{MessageID: remote}, err
 }
 
-func (b *Bot) sendText(ctx context.Context, peer, id string, part int, text string) (string, error) {
+func (b *Bot) sendText(ctx context.Context, peer, id, text string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	owner, ok := strings.CutPrefix(peer, "feishu:")
@@ -228,43 +213,25 @@ func (b *Bot) sendText(ctx context.Context, peer, id string, part int, text stri
 		return "", fmt.Errorf("%w: feishu destination is not the paired owner", channel.ErrPermanent)
 	}
 	card := cardContent(text, strings.HasPrefix(text, "No answer: "))
-	p := b.previews[id]
-	if p != nil && part == 0 {
-		p.cancel()
-		if p.messageID != "" {
-			err := b.client.Patch(ctx, p.messageID, card)
-			if err == nil {
-				delete(b.previews, id)
-				b.manager.Report("feishu", channel.Status{State: "running"})
-				return p.messageID, nil
-			}
-			if !permanentAPIError(err) {
-				b.manager.Report("feishu", channel.Status{State: "error", Reason: err.Error()})
-				return "", err
-			}
-		}
-	}
-	uuid := deliveryUUID(id, part)
+	uuid := deliveryUUID(id)
 	remote, err := b.client.Send(ctx, owner, "interactive", card, uuid)
 	if e, ok := errors.AsType[*apiError](err); ok && e.Code == 230001 && (e.Status == http.StatusBadRequest || e.Status >= 200 && e.Status < 300) {
-		remote, err = b.client.Send(ctx, owner, "text", textContent(text), deliveryUUID(id+":text", part))
+		remote, err = b.client.Send(ctx, owner, "text", textContent(text), uuid)
 	}
 	if err != nil {
 		b.manager.Report("feishu", channel.Status{State: "error", Reason: err.Error()})
 		if permanentAPIError(err) {
-			delete(b.previews, id)
 			return "", fmt.Errorf("%w: %w", channel.ErrPermanent, err)
 		}
 		return "", err
 	}
-	delete(b.previews, id)
 	b.manager.Report("feishu", channel.Status{State: "running"})
 	return remote, nil
 }
 
-func deliveryUUID(id string, part int) string {
+func deliveryUUID(id string) string {
 	// Feishu limits uuid to 50 characters. The complete identity remains in the digest.
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s:%d", id, part)))
+	sum := sha256.Sum256([]byte(id + ":0"))
 	return hex.EncodeToString(sum[:24])
 }
 

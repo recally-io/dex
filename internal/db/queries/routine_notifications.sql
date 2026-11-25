@@ -17,14 +17,14 @@ WHERE a.id = ? AND a.archived_at IS NULL;
 UPDATE agents SET primary_notification_target_id = ? WHERE id = ?;
 
 -- name: GetRoutineOutboxInfo :one
-SELECT a.name, a.agent_id, t.account_id, t.peer, b.id AS binding_id
+SELECT a.name, a.agent_id, t.account_id, t.peer
 FROM automation_runs r
 JOIN automations a ON a.id = r.automation_id
 JOIN agents agent ON agent.id = a.agent_id
 JOIN routine_notification_targets t ON t.agent_id = a.agent_id AND t.id =
     CASE a.notification_route WHEN 'default' THEN agent.primary_notification_target_id WHEN 'target' THEN a.notification_target_id END
-JOIN channel_bindings b ON b.agent_id = t.agent_id AND b.platform = t.platform
-    AND b.account_id = t.account_id AND b.peer = t.peer AND b.owner_peer = t.peer AND b.revoked_at IS NULL
+JOIN configured_channel_addresses b ON b.agent_id = t.agent_id AND b.platform = t.platform
+    AND b.account_id = t.account_id AND b.peer = t.peer
 WHERE r.id = ? AND agent.archived_at IS NULL;
 
 -- name: GetRoutineOutboxConversation :one

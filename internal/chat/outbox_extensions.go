@@ -18,6 +18,7 @@ import (
 // NotifyUserArgs is the input of the notify_user tool.
 type NotifyUserArgs struct {
 	Content  string `json:"content"`
+	Channel  string `json:"channel,omitempty"`
 	TopicKey string `json:"topicKey,omitempty"`
 	Final    *bool  `json:"final,omitempty"`
 }
@@ -68,6 +69,7 @@ func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 					"type": "object", "additionalProperties": false, "required": []string{"content"},
 					"properties": map[string]any{
 						"content":  map[string]any{"type": "string", "minLength": 1, "description": "Message text to send to the user."},
+						"channel":  map[string]any{"type": "string", "description": "Paired channel or channel:target. If omitted, use the owner's default notification target."},
 						"topicKey": map[string]any{"type": "string", "description": "Optional stable key to supersede an earlier pending undelivered update on the same topic."},
 						"final":    map[string]any{"type": "boolean", "description": "If true (default), ends this turn immediately after sending. Set false to send a progress update and keep working."},
 					},
@@ -103,7 +105,7 @@ func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 						return durable.ToolExecutionResult{}, err
 					}
 					res := durable.ToolExecutionResult{
-						Output: []ai.ToolResultMessageContent{ai.TextContent{Text: "Sent via Outbox: " + string(data)}},
+						Output: []ai.ToolResultMessageContent{ai.TextContent{Text: "Queued via Outbox: " + string(data)}},
 					}
 					if final {
 						res.Control = &durable.ToolControl{Terminate: true}

@@ -39,40 +39,6 @@ func TestUserRichTelegramRetriesKeepTheFrozenMethod(t *testing.T) {
 	}
 }
 
-func TestUserRichTelegramReplyKeepsFrozenPartsAcrossRestart(t *testing.T) {
-	t.Parallel()
-	// Given a two-part rich reply whose first part is confirmed.
-	data := t.TempDir()
-	f := newFakeTelegram(t)
-	f.failAfter.Store(1)
-	d := startTelegram(t, f, data, 42)
-	setAnswer := useRichAnswerProvider(t, d)
-	answer := strings.Repeat("😀x", 20000) + "FROZEN-END"
-	setAnswer(answer)
-	f.message(1, 42, 42, "generate long reply")
-	first := f.next(t)
-	firstText := richPayloadText(t, first)
-	conn := controlWriteDB(t, data)
-	var frozen string
-	eventually(t, "first rich part committed and remainder pending", func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT rendered_reply FROM submissions WHERE source_key='telegram:123:1' AND delivered_parts=1 AND delivered_at IS NULL AND channel_retry_at>0").Scan(&frozen)
-		return err == nil, frozen
-	})
-	d.stop()
-	// When the answer text changes after settlement, recovery still uses the frozen payload.
-	execSQL(t, conn, "UPDATE submissions SET answer='must not be re-rendered' WHERE source_key='telegram:123:1'")
-	f.failAfter.Store(0)
-	startDex(t, data, f.srv.URL)
-	second := f.next(t)
-	secondText := richPayloadText(t, second)
-	if firstText+secondText != answer {
-		t.Fatal("restart re-rendered, repeated, or lost rich text")
-	}
-	eventually(t, "frozen rich reply delivered", func() (bool, any) {
-		return count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL AND rendered_reply=?", frozen) == 1, nil
-	})
-}
-
 func TestUserTelegramRichInputKeepsBodyWithoutExecutingRichCommands(t *testing.T) {
 	t.Parallel()
 	// Given rich message content from an authorized sender.

@@ -2,33 +2,26 @@ package db_test
 
 import (
 	"database/sql"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/pressly/goose/v3"
-
-	"github.com/recally-io/dex/internal/db"
 )
 
 func TestOwnerRollsBackPluginTablesOnlyBeforeAPluginMigrates(t *testing.T) {
 	// Given a database at the core migration that adds enabled_plugins and applied_plugin_migrations.
 	path := filepath.Join(t.TempDir(), "control.sqlite")
-	conn, err := db.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := conn.Close(); err != nil {
-		t.Fatal(err)
-	}
 	raw, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = raw.Close() })
-	provider, err := goose.NewProvider(goose.DialectSQLite3, raw, os.DirFS("migrations"))
+	provider, err := goose.NewProvider(goose.DialectSQLite3, raw, migrationFS(t, func(name string) bool { return name < "20261125060045_single_message_outbox.sql" }))
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := raw.ExecContext(t.Context(), "INSERT INTO enabled_plugins (name) VALUES ('webhook')"); err != nil {

@@ -103,14 +103,9 @@ type BackgroundCommand struct {
 	EndedAt          sql.NullInt64 `json:"ended_at"`
 }
 
-type ChannelBinding struct {
-	ID        int64         `json:"id"`
-	AgentID   string        `json:"agent_id"`
-	Platform  string        `json:"platform"`
-	AccountID string        `json:"account_id"`
-	Peer      string        `json:"peer"`
-	OwnerPeer string        `json:"owner_peer"`
-	RevokedAt sql.NullInt64 `json:"revoked_at"`
+type CancelUnpairedChannelWork struct {
+	AgentID  string `json:"agent_id"`
+	Platform string `json:"platform"`
 }
 
 type ChannelCommand struct {
@@ -124,7 +119,6 @@ type ChannelCommand struct {
 	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
 	ChannelContext string        `json:"channel_context"`
 	RenderedReply  string        `json:"rendered_reply"`
-	BindingID      sql.NullInt64 `json:"binding_id"`
 }
 
 type ChannelFollowUp struct {
@@ -311,30 +305,26 @@ type OutboxFile struct {
 
 type OutboxMessage struct {
 	ID                 string         `json:"id"`
-	DedupKey           string         `json:"dedup_key"`
+	EventID            string         `json:"event_id"`
 	AgentID            string         `json:"agent_id"`
 	ConversationID     int64          `json:"conversation_id"`
 	SourceSubmissionID sql.NullString `json:"source_submission_id"`
 	Kind               string         `json:"kind"`
 	Peer               string         `json:"peer"`
+	Channel            sql.NullString `json:"channel"`
+	Target             sql.NullString `json:"target"`
 	ChannelContext     string         `json:"channel_context"`
 	TopicKey           string         `json:"topic_key"`
 	Body               string         `json:"body"`
 	Reason             string         `json:"reason"`
-	RenderedParts      string         `json:"rendered_parts"`
-	DeliveredParts     int64          `json:"delivered_parts"`
-	GroupFallback      int64          `json:"group_fallback"`
-	GroupCursor        int64          `json:"group_cursor"`
+	RenderedMessage    string         `json:"rendered_message"`
 	RemoteIds          string         `json:"remote_ids"`
 	Status             string         `json:"status"`
 	RetryAt            int64          `json:"retry_at"`
+	Attempts           int64          `json:"attempts"`
 	Error              string         `json:"error"`
-	ReadAt             sql.NullInt64  `json:"read_at"`
-	DismissedAt        sql.NullInt64  `json:"dismissed_at"`
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
-	SkippedPart        int64          `json:"skipped_part"`
-	BindingID          sql.NullInt64  `json:"binding_id"`
 }
 
 type Provider struct {
@@ -442,12 +432,6 @@ type Submission struct {
 	ExitAction           string         `json:"exit_action"`
 	RequiredReplyID      string         `json:"required_reply_id"`
 	StopRequested        int64          `json:"stop_requested"`
-	BindingID            sql.NullInt64  `json:"binding_id"`
-}
-
-type SyncChannelBinding struct {
-	AgentID  string `json:"agent_id"`
-	Platform string `json:"platform"`
 }
 
 type SystemSetting struct {
@@ -538,6 +522,16 @@ type TelegramSetting struct {
 	Options        string `json:"options"`
 	WebhookUrl     string `json:"webhook_url"`
 	WebhookSecret  string `json:"webhook_secret"`
+}
+
+type WebNotification struct {
+	ID                 string `json:"id"`
+	EventID            string `json:"event_id"`
+	AgentID            string `json:"agent_id"`
+	ConversationID     int64  `json:"conversation_id"`
+	SourceSubmissionID string `json:"source_submission_id"`
+	Body               string `json:"body"`
+	CreatedAt          int64  `json:"created_at"`
 }
 
 type WechatRuntime struct {

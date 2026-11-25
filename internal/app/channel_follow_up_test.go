@@ -70,8 +70,8 @@ func assertFollowUpTelegramReceipt(t *testing.T, conn *sql.DB, resultID string, 
 	eventually(t, "confirmed Telegram receipt for the reviewed conclusion", func() (bool, any) {
 		var state, peer, ids string
 		err := conn.QueryRowContext(t.Context(), `SELECT f.state, o.peer, o.remote_ids FROM outbox_messages o
-JOIN channel_follow_ups f ON o.dedup_key='follow-up-final:'||f.delegation_id
-WHERE o.source_submission_id=? AND o.status='delivered'`, resultID).Scan(&state, &peer, &ids)
+JOIN channel_follow_ups f ON o.event_id='follow-up-final:'||f.delegation_id
+WHERE o.source_submission_id=? AND o.status='sent'`, resultID).Scan(&state, &peer, &ids)
 		var remotes []channel.RemoteMessage
 		decode := json.Unmarshal([]byte(ids), &remotes)
 		return err == nil && decode == nil && state == "notified" && peer == fmt.Sprintf("telegram:%d", platform.ChatID) &&
@@ -154,8 +154,8 @@ func TestUserPromisedChannelFollowUpSendsOneConfirmedConclusion(t *testing.T) {
 			e.wait(t, "Reviewed channel conclusion")
 			eventually(t, "platform confirmation", func() (bool, any) {
 				var state, delivery, peer string
-				err := conn.QueryRowContext(t.Context(), `SELECT f.state,o.status,o.peer FROM channel_follow_ups f JOIN outbox_messages o ON o.dedup_key='follow-up-final:'||f.delegation_id WHERE f.result_id=? AND o.delivered_at IS NOT NULL`, work.ResultID).Scan(&state, &delivery, &peer)
-				return err == nil && state == "notified" && delivery == "delivered" && peer == e.peer, []any{state, delivery, peer, err}
+				err := conn.QueryRowContext(t.Context(), `SELECT f.state,o.status,o.peer FROM channel_follow_ups f JOIN outbox_messages o ON o.event_id='follow-up-final:'||f.delegation_id WHERE f.result_id=? AND o.delivered_at IS NOT NULL`, work.ResultID).Scan(&state, &delivery, &peer)
+				return err == nil && state == "notified" && delivery == "sent" && peer == e.peer, []any{state, delivery, peer, err}
 			})
 			sent := 0
 			for _, m := range e.sends() {
@@ -203,13 +203,13 @@ func TestUserSeesConfirmedFollowUpWhenStopRacesAnInFlightSend(t *testing.T) {
 	}
 	f.message(2, 42, 7, "/stop")
 	eventually(t, "legacy channel Stop revokes the in-flight conclusion", func() (bool, any) {
-		n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ? AND status = 'revoked' AND delivered_at IS NULL`, work.ResultID)
+		n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id = ? AND status = 'failed' AND delivered_at IS NULL`, work.ResultID)
 		return n == 1, n
 	})
 	var outbox api.OutboxMessageList
 	d.must(t, http.MethodGet, chatPath(main, "outbox"), nil, &outbox)
 	if !slices.ContainsFunc(outbox.Messages, func(m api.OutboxMessage) bool {
-		return m.Body == conclusion && m.Peer == "telegram:7" && m.Status == api.OutboxMessageStatusRevoked
+		return m.Body == conclusion && m.Peer == "telegram:7" && m.Status == api.OutboxMessageStatusFailed
 	}) {
 		t.Fatalf("owner lost the revoked delivery record: %+v", outbox)
 	}

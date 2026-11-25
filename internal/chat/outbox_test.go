@@ -10,7 +10,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserSystemTurnFailQuietAndErrorFallback(t *testing.T) {
+func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
 
@@ -46,12 +46,8 @@ func TestUserSystemTurnFailQuietAndErrorFallback(t *testing.T) {
 	if err := r.service.settle(t.Context(), "sys-fail-1", engine.Outcome{Status: "unanswered", Reason: "model_error"}); err != nil {
 		t.Fatal(err)
 	}
-	var kind, peer, body string
-	if err := r.conn.QueryRowContext(t.Context(), `SELECT kind, peer, body FROM outbox_messages WHERE dedup_key=?`, "error:sys-fail-1").Scan(&kind, &peer, &body); err != nil {
-		t.Fatal(err)
-	}
-	if kind != "system_error" || peer != "telegram:42" || !strings.Contains(body, "model_error") {
-		t.Fatalf("unexpected system_error outbox row: kind=%q peer=%q body=%q", kind, peer, body)
+	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE source_submission_id=?`, "sys-fail-1").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("background failure wrote %d outbound messages: %v", count, err)
 	}
 }
 
@@ -61,12 +57,8 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
 		t.Fatal(err)
 	}
-	bindingID, err := ChannelInputBinding(t.Context(), r.q, "bot", "telegram:42", ChannelContext{AccountID: "123", SenderID: "42"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-		ID: "sys-notify-src", BindingID: bindingID, ConversationID: conv, Content: "wake",
+		ID: "sys-notify-src", ConversationID: conv, Content: "wake",
 		Attachments: "null", Origin: "telegram:42", Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
@@ -94,12 +86,12 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 		SourceRequestID: "sys-notify-src", RunInputIDs: []string{"sys-notify-src"}, Key: "bot/101",
 	}
 	nonFinal := false
-	firstID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 1", TopicKey: "deploy", Final: &nonFinal})
+	firstID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 1", Channel: "telegram", TopicKey: "deploy", Final: &nonFinal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	call.Key = "bot/102"
-	secondID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 2", TopicKey: "deploy"})
+	secondID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 2", Channel: "telegram", TopicKey: "deploy"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,8 +106,8 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	if firstMsg.Status != "superseded" || secondMsg.Status != "pending" {
 		t.Fatalf("expected first superseded and second pending, got %s / %s", firstMsg.Status, secondMsg.Status)
 	}
-	if err := r.q.MarkOutboxDelivered(t.Context(), sqlc.MarkOutboxDeliveredParams{
-		ID: secondID, DeliveredAt: sql.NullInt64{Int64: r.service.now().UnixMilli(), Valid: true},
+	if err := r.q.MarkOutboxSent(t.Context(), sqlc.MarkOutboxSentParams{
+		ID: secondID, RemoteIds: "[]", DeliveredAt: sql.NullInt64{Int64: r.service.now().UnixMilli(), Valid: true},
 	}); err != nil {
 		t.Fatal(err)
 	}

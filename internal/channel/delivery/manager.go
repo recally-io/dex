@@ -18,7 +18,6 @@ import (
 
 // TelegramHooks provides optional Telegram operations used by the durable sender.
 type TelegramHooks interface {
-	GroupParts([]channel.Part) []channel.Part
 	WakeMedia()
 }
 
@@ -158,7 +157,7 @@ func (m *Manager) ReceivedSource(ctx context.Context, source string) (bool, erro
 	return m.chats.ReceivedSource(ctx, source)
 }
 
-// Source returns the stored input and preview state for this manager's agent.
+// Source returns the stored input and typing state for this manager's agent.
 func (m *Manager) Source(ctx context.Context, source string) (chat.SourceReceipt, error) {
 	return m.chats.LookupSource(ctx, m.agentID, source)
 }

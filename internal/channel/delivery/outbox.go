@@ -1,15 +1,14 @@
 package delivery
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
-	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -38,19 +37,15 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 		return err
 	}
 	for _, r := range acks {
-		if err := m.sendCommandReply(ctx, bot, r); err != nil {
-			return err
-		}
-		if err := m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}}); err != nil {
+		if err := m.queueCommandReply(ctx, bot, r); err != nil {
 			return err
 		}
 	}
-	replies, err := m.q.ListPendingOutboxMessages(ctx, sqlc.ListPendingOutboxMessagesParams{AgentID: m.agentID, OriginStart: name + ":", OriginEnd: name + ";"})
+	replies, err := m.q.ListPendingOutboxMessages(ctx, sqlc.ListPendingOutboxMessagesParams{AgentID: m.agentID, Channel: sql.NullString{String: name, Valid: true}})
 	if err != nil {
 		return err
 	}
 	blocked := make(map[string]bool)
-deliveries:
 	for _, r := range replies {
 		if blocked[r.Peer] {
 			continue
@@ -59,40 +54,49 @@ deliveries:
 			blocked[r.Peer] = true
 			continue
 		}
-		parts, err := m.replyParts(ctx, bot, r)
-		if err != nil {
-			return err
-		}
-		var remotes []channel.RemoteMessage
-		if err := json.Unmarshal([]byte(r.RemoteIds), &remotes); err != nil {
-			return err
-		}
-		for i := int(r.DeliveredParts); i < len(parts); i++ {
-			err := m.sendReplyPart(ctx, bot, r, i, parts[i], &remotes)
-			if errors.Is(err, errOutboxRevoked) {
-				continue deliveries
+		part, err := m.renderMessage(ctx, bot, r)
+		if err == nil {
+			active, checkErr := m.q.CanSendOutbox(ctx, r.ID)
+			if checkErr != nil {
+				return checkErr
 			}
-			if err != nil {
-				retryAt := time.Now().Add(5 * time.Second).UnixMilli()
-				if flood, ok := errors.AsType[*channel.RetryError](err); ok {
-					retryAt = time.Now().Add(flood.After).UnixMilli()
+			if !active {
+				continue
+			}
+			var receipt channel.Receipt
+			receipt, err = bot.Send(ctx, r.Peer, r.ID, part)
+			if err == nil {
+				if name == "wechat" || receipt.MessageID != "" {
+					if err := m.confirmDelivery(ctx, r, part, receipt); err != nil {
+						return err
+					}
+					continue
 				}
-				if stored := m.saveDeliveryError(ctx, r.ID, legacyReplySource(r), retryAt, err); stored != nil {
-					return errors.Join(err, stored)
-				}
+				err = errors.New("platform did not confirm one message")
+			}
+		}
+		delay := 5 * time.Second << min(r.Attempts, 6)
+		if flood, ok := errors.AsType[*channel.RetryError](err); ok {
+			delay = max(delay, flood.After)
+		}
+		if r.Kind == "feedback" {
+			// A platform error can quote the private draft.
+			if errors.Is(err, channel.ErrPermanent) {
+				err = channel.ErrPermanent
+			} else {
+				err = errors.New("feedback reply delivery failed")
+			}
+		}
+		if errors.Is(err, channel.ErrPermanent) {
+			if err := m.q.FailOutboxMessage(ctx, sqlc.FailOutboxMessageParams{ID: r.ID, Reason: err.Error()}); err != nil {
 				return err
 			}
-			r.GroupFallback, r.GroupCursor = 0, 0
+			continue
 		}
-		now := time.Now().UnixMilli()
-		if err := m.q.MarkOutboxDelivered(ctx, sqlc.MarkOutboxDeliveredParams{ID: r.ID, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
-			return err
+		if stored := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, RetryAt: time.Now().Add(delay).UnixMilli(), Reason: err.Error()}); stored != nil {
+			return errors.Join(err, stored)
 		}
-		if source := legacyReplySource(r); source.Valid {
-			if err := m.q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: source.String, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
-				return err
-			}
-		}
+		blocked[r.Peer] = true
 	}
 	return nil
 }
@@ -112,207 +116,111 @@ func (m *Manager) rememberQuestionMessage(ctx context.Context, q *sqlc.Queries, 
 	return q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{AgentID: m.agentID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
 }
 
-func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string, index int, part channel.Part, redactError bool, beforeSend func() error) (channel.Receipt, error) {
-	var err error
-	if part.File != nil {
-		file := *part.File
-		part.File = &file
-		part.File.Body, err = m.q.GetOutboxFile(ctx, sqlc.GetOutboxFileParams{OperationKey: part.File.Key, OutboxID: sql.NullString{String: id, Valid: true}})
+func (m *Manager) renderMessage(ctx context.Context, bot channel.Bot, r sqlc.OutboxMessage) (channel.Part, error) {
+	if r.Kind == "file" {
+		file, err := m.q.GetOutboxFile(ctx, sql.NullString{String: r.ID, Valid: true})
 		if errors.Is(err, sql.ErrNoRows) {
-			err = fmt.Errorf("%w: file snapshot is no longer available", channel.ErrPermanent)
+			return channel.Part{}, fmt.Errorf("%w: file snapshot is no longer available", channel.ErrPermanent)
 		}
+		return channel.Part{File: &channel.File{Key: file.OperationKey, Name: file.Name, MimeType: file.MimeType, Size: file.Size.Int64, Body: file.Body}}, err
 	}
-	if len(part.Group) > 0 {
-		files := slices.Clone(part.Group)
-		for i := range files {
-			files[i].Body, err = m.q.GetOutboxFile(ctx, sqlc.GetOutboxFileParams{OperationKey: files[i].Key, OutboxID: sql.NullString{String: id, Valid: true}})
-			if errors.Is(err, sql.ErrNoRows) {
-				err = fmt.Errorf("%w: group snapshot is no longer available", channel.ErrPermanent)
-			}
-			if err != nil {
-				break
-			}
-		}
-		part.Group = files
+	if r.RenderedMessage != "" {
+		var part channel.Part
+		err := json.Unmarshal([]byte(r.RenderedMessage), &part)
+		return part, err
 	}
-	var receipt channel.Receipt
-	if guardErr := beforeSend(); guardErr != nil {
-		return channel.Receipt{}, guardErr
+	parts := finalMessage(bot, r.Body, r.Reason)
+	if len(parts) != 1 {
+		return channel.Part{}, fmt.Errorf("%w: cannot render one platform message", channel.ErrPermanent)
 	}
-	if err == nil {
-		receipt, err = bot.Send(ctx, peer, id, index, part)
-	}
-	// A platform error can quote the private draft. Keep only the disposition.
-	if redactError && err != nil {
-		if errors.Is(err, channel.ErrPermanent) {
-			err = channel.ErrPermanent
-		} else {
-			err = errors.New("feedback reply delivery failed")
-		}
-	}
-	if errors.Is(err, channel.ErrPermanent) {
-		slog.Warn("channel: skipped a rejected reply part", "delivery", id, "part", index, "err", err)
-		return channel.Receipt{}, m.saveDeliveryError(ctx, id, sql.NullString{String: id, Valid: true}, 0, err)
-	}
-	if err == nil && len(part.Buttons) > 0 && len(receipt.MessageIDs) == 1 {
-		err = m.q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: id, Part: int64(index), MessageID: receipt.MessageIDs[0]})
-	}
-	return receipt, err
-}
-
-func outboxReplyStatus(r sqlc.ListPendingOutboxMessagesRow) string {
-	if r.Reason != "" || r.Kind == "system_error" {
-		return "unanswered"
-	}
-	return "done"
-}
-
-func (m *Manager) replyParts(ctx context.Context, bot channel.Bot, r sqlc.ListPendingOutboxMessagesRow) ([]channel.Part, error) {
-	var parts []channel.Part
-	if r.RenderedParts != "" {
-		err := json.Unmarshal([]byte(r.RenderedParts), &parts)
-		return parts, err
-	}
-	status := outboxReplyStatus(r)
-	parts = bot.Parts(channel.Reply{Status: status, Answer: r.Body, Reason: r.Reason})
-	if status == "done" {
-		files, err := m.q.ListOutboxFiles(ctx, sql.NullString{String: r.ID, Valid: true})
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range files {
-			parts = append(parts, channel.Part{File: &channel.File{Key: f.OperationKey, Name: f.Name, MimeType: f.MimeType, Size: f.Size.Int64}})
-		}
-	}
-	if group, ok := bot.(TelegramHooks); ok {
-		for i := range parts {
-			if file := parts[i].File; file != nil {
-				var err error
-				file.Body, err = m.q.GetOutboxFile(ctx, sqlc.GetOutboxFileParams{OperationKey: file.Key, OutboxID: sql.NullString{String: r.ID, Valid: true}})
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-		parts = group.GroupParts(parts)
-	}
-	if strings.HasPrefix(r.Peer, "telegram:") && r.SourceSubmissionID.Valid {
+	if r.Kind == "question" && strings.HasPrefix(r.Peer, "telegram:") && r.SourceSubmissionID.Valid {
 		question, err := m.q.GetQuestionBySource(ctx, r.SourceSubmissionID.String)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
+			return channel.Part{}, err
 		}
 		if err == nil {
 			var identity chat.ChannelContext
 			if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
-				return nil, err
+				return channel.Part{}, err
 			}
 			conv, err := m.q.GetConversation(ctx, r.ConversationID)
 			if err != nil {
-				return nil, err
+				return channel.Part{}, err
 			}
 			target := chat.Chat{ID: conv.ID, ExecutionID: conv.ExecutionID.Int64}
 			actions, err := questionActions(question)
 			if err != nil {
-				return nil, err
+				return channel.Part{}, err
 			}
 			parts, err = m.addButtons(ctx, parts, r.SourceSubmissionID.String, r.Peer, identity, target, actions)
 			if err != nil {
-				return nil, err
+				return channel.Part{}, err
 			}
 		}
 	}
-	encoded, err := json.Marshal(parts)
+	encoded, err := json.Marshal(parts[0])
 	if err != nil {
-		return nil, err
+		return channel.Part{}, err
 	}
-	if err := m.q.FreezeOutboxMessage(ctx, sqlc.FreezeOutboxMessageParams{ID: r.ID, RenderedParts: string(encoded)}); err != nil {
-		return nil, err
-	}
-	return parts, nil
+	err = m.q.FreezeOutboxMessage(ctx, sqlc.FreezeOutboxMessageParams{ID: r.ID, RenderedMessage: string(encoded)})
+	return parts[0], err
 }
 
-var errOutboxRevoked = errors.New("outbox delivery revoked before send")
-
-func isFinalFollowUp(row sqlc.ListPendingOutboxMessagesRow) bool {
-	return strings.HasPrefix(row.DedupKey, "follow-up-final:")
-}
-
-// legacyReplySource identifies the submissions row whose delivery cursor mirrors the outbox.
-func legacyReplySource(r sqlc.ListPendingOutboxMessagesRow) sql.NullString {
-	if r.Kind == "reply" || r.Kind == "question" {
-		return r.SourceSubmissionID
+func finalMessage(bot channel.Bot, body, reason string) []channel.Part {
+	if reason != "" && body == "" {
+		return bot.Parts(channel.Reply{Status: "unanswered", Reason: "The request did not complete. See Web for details."})
 	}
-	return sql.NullString{}
+	if len(body) <= 4000 {
+		if parts := bot.Parts(channel.Reply{Status: "done", Answer: body}); len(parts) == 1 {
+			return parts
+		}
+	}
+	runes := []rune(body)
+	for size := min(len(runes), 900); size > 0; size /= 2 {
+		text := strings.TrimSpace(string(runes[:size])) + "\n\nFull answer in Web."
+		if parts := bot.Parts(channel.Reply{Status: "done", Answer: text}); len(parts) == 1 {
+			return parts
+		}
+	}
+	return bot.Parts(channel.Reply{Status: "done", Answer: "Full answer in Web."})
 }
 
-func (m *Manager) saveDeliveryError(ctx context.Context, id string, legacySource sql.NullString, retryAt int64, cause error) error {
-	reason := cause.Error()
-	if err := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: id, RetryAt: retryAt, Reason: reason}); err != nil {
+func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.OutboxMessage, part channel.Part, receipt channel.Receipt) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	remoteID := receipt.MessageID
+	remotes := []channel.RemoteMessage{}
+	if remoteID != "" {
+		remotes = append(remotes, channel.RemoteMessage{ID: remoteID, Kind: receipt.Kind})
+	}
+	encoded, err := json.Marshal(remotes)
+	if err != nil {
 		return err
-	}
-	if legacySource.Valid {
-		return m.q.SetChannelReplyError(ctx, sqlc.SetChannelReplyErrorParams{ID: legacySource.String, RetryAt: retryAt, Reason: reason})
-	}
-	return nil
-}
-
-func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxMessagesRow, receipt channel.Receipt, remotes *[]channel.RemoteMessage, member bool) error {
-	if isFinalFollowUp(r) && len(receipt.MessageIDs) != 0 {
-		// Route changes can cancel a delivery worker. Once a real receipt has
-		// returned, record it even if that worker cannot dispatch another part.
-		receiptCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		ctx = receiptCtx
 	}
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, "UPDATE submissions SET id = id WHERE 0"); err != nil {
+	q := m.q.WithTx(tx)
+	now := sql.NullInt64{Int64: time.Now().UnixMilli(), Valid: true}
+	if err := q.MarkOutboxSent(ctx, sqlc.MarkOutboxSentParams{ID: r.ID, DeliveredAt: now, RemoteIds: string(encoded)}); err != nil {
 		return err
 	}
-	q := m.q.WithTx(tx)
-	if len(receipt.MessageIDs) == 0 && (strings.HasPrefix(r.Peer, "telegram:") || strings.HasPrefix(r.Peer, "feishu:")) && (r.Kind == "reply" || r.Kind == "question" || r.Kind == "proactive") {
-		if err := q.MarkOutboxPartSkipped(ctx, r.ID); err != nil {
+	if r.SourceSubmissionID.Valid && (r.Kind == "reply" || r.Kind == "question") {
+		if err := m.rememberQuestionMessage(ctx, q, r.SourceSubmissionID.String, r.Peer, remoteID); err != nil {
+			return err
+		}
+		if err := q.MarkChannelReplyDelivered(ctx, sqlc.MarkChannelReplyDeliveredParams{ID: r.SourceSubmissionID.String, DeliveredAt: now}); err != nil {
 			return err
 		}
 	}
-	if r.SourceSubmissionID.Valid {
-		for _, id := range receipt.MessageIDs {
-			if err := m.rememberQuestionMessage(ctx, q, r.SourceSubmissionID.String, r.Peer, id); err != nil {
-				return err
-			}
+	if len(part.Buttons) != 0 {
+		if err := q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: cmp.Or(r.SourceSubmissionID.String, r.ID), Part: 0, MessageID: remoteID}); err != nil {
+			return err
 		}
 	}
-	next := append([]channel.RemoteMessage{}, (*remotes)...)
-	for _, id := range receipt.MessageIDs {
-		next = append(next, channel.RemoteMessage{ID: id, Kind: receipt.Kind})
-	}
-	encoded, err := json.Marshal(next)
-	if err != nil {
-		return err
-	}
-	source := legacyReplySource(r)
-	if member {
-		err = q.AdvanceOutboxGroupMember(ctx, sqlc.AdvanceOutboxGroupMemberParams{ID: r.ID, RemoteIds: string(encoded)})
-		if err == nil && source.Valid {
-			err = q.AdvanceChannelGroupMember(ctx, sqlc.AdvanceChannelGroupMemberParams{ID: source.String, RemoteIds: string(encoded)})
-		}
-	} else {
-		err = q.AdvanceOutboxMessage(ctx, sqlc.AdvanceOutboxMessageParams{ID: r.ID, RemoteIds: string(encoded)})
-		if err == nil && source.Valid {
-			err = q.AdvanceChannelReply(ctx, sqlc.AdvanceChannelReplyParams{ID: source.String, RemoteIds: string(encoded)})
-		}
-	}
-	if err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	*remotes = next
-	return nil
+	return tx.Commit()
 }
 
 // QueueFile binds bytes to the initiating Telegram input. Web and child calls keep URL-only delivery.
