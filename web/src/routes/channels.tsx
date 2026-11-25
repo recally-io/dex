@@ -36,6 +36,7 @@ import {
 } from "../components/channel-kit";
 import { FeishuChannel } from "./feishu";
 import { TelegramOptionsFields } from "../components/telegram-options";
+import { TelegramManagedCreation, TelegramManagerSettings } from "../components/telegram-managed";
 
 function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string; state: string }) {
   const agentId = useAgentId();
@@ -224,13 +225,26 @@ function Telegram({ settings }: { settings: Settings }) {
                 In Telegram, open <Mono>@BotFather</Mono> and send <Mono>/newbot</Mono>.
               </li>
               <li>Copy the token that BotFather gives you.</li>
-              <li>Select Connect bot and enter the token.</li>
+              <li>Enter the token in Dex.</li>
             </Steps>
-            <Button className="mt-4" size="sm" onClick={() => setEdit(true)}>
-              Connect bot
-            </Button>
+            {!telegram.managedCreationAvailable ? (
+              <Button className="mt-4" size="sm" onClick={() => setEdit(true)}>
+                Connect bot
+              </Button>
+            ) : null}
           </Panel>
         )}
+        <div className="mt-3 flex flex-wrap gap-2 empty:hidden">
+          {!telegram.enabled && telegram.managedCreationAvailable ? (
+            <Button size="sm" onClick={() => setEdit(true)}>
+              Use an existing Bot Token
+            </Button>
+          ) : null}
+          <TelegramManagedCreation
+            available={!!telegram.managedCreationAvailable}
+            replacing={telegram.enabled}
+          />
+        </div>
         <p className="mt-3 text-[12px] text-muted-foreground">
           Transcription sends audio only to your selected provider. Review data-sending consent in Edit.
         </p>
@@ -287,6 +301,7 @@ function Telegram({ settings }: { settings: Settings }) {
           <Notifications channel="telegram" />
         </>
       ) : null}
+      <TelegramManagerSettings telegram={telegram} />
       <HowToUse channel="telegram">
         <li>Send text, images or files in a private chat with the bot.</li>
         <li>Paired senders can use isolated Telegram groups and topics without a mention by default.</li>

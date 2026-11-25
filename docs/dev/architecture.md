@@ -244,10 +244,11 @@ cannot send messages or change settings. [Channel approval pages](channels.md#ow
 use the same cross-origin check. When dex requires sign-in, channel approval
 pages require a web session cookie.
 
-`control.sqlite` holds provider keys, channel tokens, WeChat context tokens,
-plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain text. WeChat logs exclude credentials and remote error text. The
-data directory is created with mode 0700. The API never returns a key or a
-token.
+`control.sqlite` holds provider keys, manual channel tokens, WeChat context
+tokens, plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain
+text. Telegram manager and managed bot tokens stay in the private [vault](extensions.md#secret-vault).
+WeChat logs exclude credentials and remote error text. Dex creates the data
+directory with mode 0700. The API never returns a key or a token.
 
 Uploads: a file name with a path, a control character, or more than 255
 bytes is refused. An upload ID must be a UUID in its normal form, so it

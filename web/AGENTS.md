@@ -111,6 +111,12 @@ On Tools, an OAuth MCP row starts provider authorization with an authenticated
 POST. The browser follows the returned URL in the same tab. The server
 callback returns to Tools. The browser does not receive provider tokens.
 
+The Telegram page under Channels uses the existing token form. It also offers
+managed creation when the API confirms Bot Management Mode for the saved manager.
+The managed dialog polls its setup state. It shows a private owner verification
+link first and the Telegram bot creation link second. Cancel calls the API.
+Neither the managed dialog nor the Channels response receives the created token.
+
 The old `/settings/<section>` addresses redirect to the new pages.
 
 ## Components and theme

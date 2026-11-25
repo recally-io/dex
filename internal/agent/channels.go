@@ -3,13 +3,13 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/wechat"
-	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 var ErrCredentialInUse = errors.New("channel credential already in use")
@@ -39,18 +39,32 @@ func (s *Service) channelSession(agentID string) *channelSession {
 }
 
 func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error) {
+	channels, err := s.channels(ctx, agentID)
+	if err == nil {
+		channels.Telegram.ManagerConfigured, channels.Telegram.ManagedCreationAvailable = s.managerStatus()
+	}
+	return channels, err
+}
+
+// channels leaves out the web setup capability so callers can hold the settings lock.
+func (s *Service) channels(ctx context.Context, agentID string) (Channels, error) {
 	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}, Transport: "polling"}
-	cfg, err := s.TelegramConfig(ctx, agentID)
-	if err != nil {
+	row, err := s.q.GetTelegramSettings(ctx, agentID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Channels{}, err
 	}
-	if cfg != nil {
+	if err == nil {
 		tg.Enabled = true
-		tg.BotID, _, _ = strings.Cut(cfg.Token, ":")
-		tg.AllowedUsers = cfg.AllowedUsers
-		tg.Options = cfg.Options
-		if cfg.Webhook.URL != "" {
-			tg.Transport, tg.WebhookURL = "webhook", cfg.Webhook.URL
+		tg.BotID, _, _ = strings.Cut(row.Token, ":")
+		tg.AllowedUsers, err = parseUsers(row.AllowedUsers)
+		if err != nil {
+			return Channels{}, err
+		}
+		if err := json.Unmarshal([]byte(row.Options), &tg.Options); err != nil {
+			return Channels{}, err
+		}
+		if row.WebhookUrl != "" {
+			tg.Transport, tg.WebhookURL = "webhook", row.WebhookUrl
 		}
 	}
 	if s.ChannelStatus != nil {
@@ -70,8 +84,7 @@ func (s *Service) checkCredential(ctx context.Context, agentID, platform, creden
 	switch platform {
 	case "telegram":
 		account, _, _ := strings.Cut(credential, ":")
-		owner, e := s.q.TelegramCredentialOwner(ctx, sqlc.TelegramCredentialOwnerParams{AgentID: agentID, Account: account})
-		id, name, err = owner.ID, owner.Name, e
+		return s.checkTelegramAccount(ctx, agentID, account)
 	case "wechat":
 		owner, e := s.q.WechatCredentialOwner(ctx, credential)
 		id, name, err = owner.ID, owner.Name, e

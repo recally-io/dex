@@ -71,7 +71,7 @@ func (s *Service) channelToolRead(ctx context.Context, id, view string) (any, er
 		}
 		return targets, nil
 	}
-	channels, err := s.Channels(ctx, id)
+	channels, err := s.channels(ctx, id)
 	if err != nil {
 		return nil, errors.New("cannot read channel settings")
 	}

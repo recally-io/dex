@@ -37,6 +37,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/upload"
+	"github.com/recally-io/dex/internal/vault"
 	"github.com/recally-io/dex/internal/worktask"
 	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 )
@@ -376,6 +377,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
+	if err := agentsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
+		slog.Warn("telegram: could not open the manager credential")
+	}
 	agentsService.OnEnvironmentChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
 		_ = native.CloseAgent(changeCtx, agentID)
 		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
@@ -532,7 +536,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 		}
 	}
-	jobs.Start(runCtx)
+	if err := jobs.Every("telegram-manager", time.Second, agentsService.TelegramManagerPoll()); err != nil {
+		return nil, err
+	}
 	for _, agent := range agents {
 		tg, err := agentsService.TelegramConfig(ctx, agent.ID)
 		if err != nil {
@@ -550,6 +556,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		setFeishu(agent.ID, fs)
 		setWechat(agent.ID, wx)
 	}
+	jobs.Start(runCtx)
 	return a, nil
 }
 

@@ -148,6 +148,10 @@ the files. A process that can read the identity and the encrypted files can
 read the vault. Keep the identity separate from any copy that must not grant
 access to secrets.
 
+`credentials.age` uses the same identity. It holds control-service credentials,
+including the Telegram manager and managed bot tokens. Tool resolution and
+vault API routes do not read this file.
+
 At startup dex warns about old `.env` files at the dex and agent levels and
 ignores them. It does not import them. Move secrets into the vault. Put other
 values in shell rc files or in the `env` of a call or MCP server.

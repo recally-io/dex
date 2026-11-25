@@ -1293,6 +1293,14 @@ export type WechatLogin = {
     reason?: string;
 };
 
+export type TelegramManagedSetup = {
+    id: string;
+    state: 'verify_owner' | 'create_bot' | 'connected' | 'expired' | 'failed' | 'canceled';
+    expiresAt: number;
+    url?: string;
+    username?: string;
+};
+
 export type Telegram = {
     enabled: boolean;
     botId?: string;
@@ -1301,6 +1309,8 @@ export type Telegram = {
     status: ChannelStatus;
     allowedUsers: Array<number>;
     options?: TelegramOptions;
+    managerConfigured?: boolean;
+    managedCreationAvailable?: boolean;
 };
 
 export type ChannelStatus = {
@@ -3230,6 +3240,116 @@ export type SetPrimaryNotificationTargetResponses = {
 };
 
 export type SetPrimaryNotificationTargetResponse = SetPrimaryNotificationTargetResponses[keyof SetPrimaryNotificationTargetResponses];
+
+export type SetTelegramManagerData = {
+    body: {
+        token: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/telegram/manager';
+};
+
+export type SetTelegramManagerErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type SetTelegramManagerError = SetTelegramManagerErrors[keyof SetTelegramManagerErrors];
+
+export type SetTelegramManagerResponses = {
+    /**
+     * Manager setting saved.
+     */
+    200: Ok;
+};
+
+export type SetTelegramManagerResponse = SetTelegramManagerResponses[keyof SetTelegramManagerResponses];
+
+export type BeginTelegramManagedSetupData = {
+    body?: never;
+    path: {
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels/telegram/managed';
+};
+
+export type BeginTelegramManagedSetupErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type BeginTelegramManagedSetupError = BeginTelegramManagedSetupErrors[keyof BeginTelegramManagedSetupErrors];
+
+export type BeginTelegramManagedSetupResponses = {
+    /**
+     * Setup started.
+     */
+    200: TelegramManagedSetup;
+};
+
+export type BeginTelegramManagedSetupResponse = BeginTelegramManagedSetupResponses[keyof BeginTelegramManagedSetupResponses];
+
+export type CancelTelegramManagedSetupData = {
+    body?: never;
+    path: {
+        agentId: string;
+        setupId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}';
+};
+
+export type CancelTelegramManagedSetupErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type CancelTelegramManagedSetupError = CancelTelegramManagedSetupErrors[keyof CancelTelegramManagedSetupErrors];
+
+export type CancelTelegramManagedSetupResponses = {
+    /**
+     * Setup canceled or already closed.
+     */
+    200: Ok;
+};
+
+export type CancelTelegramManagedSetupResponse = CancelTelegramManagedSetupResponses[keyof CancelTelegramManagedSetupResponses];
+
+export type GetTelegramManagedSetupData = {
+    body?: never;
+    path: {
+        agentId: string;
+        setupId: string;
+    };
+    query?: never;
+    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}';
+};
+
+export type GetTelegramManagedSetupErrors = {
+    /**
+     * The request failed.
+     */
+    default: Error;
+};
+
+export type GetTelegramManagedSetupError = GetTelegramManagedSetupErrors[keyof GetTelegramManagedSetupErrors];
+
+export type GetTelegramManagedSetupResponses = {
+    /**
+     * Setup state and the current Telegram link, if any.
+     */
+    200: TelegramManagedSetup;
+};
+
+export type GetTelegramManagedSetupResponse = GetTelegramManagedSetupResponses[keyof GetTelegramManagedSetupResponses];
 
 export type CreateTelegramPairingData = {
     body?: never;
