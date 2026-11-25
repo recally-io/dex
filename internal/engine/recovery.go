@@ -93,6 +93,11 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 			return Recovered{}, errors.New("completed native input has no answer entry")
 		}
 		outcome.Answer = answerText(entry.Entry.Model)
+		runInputs, err := runInputIDsForAnswerStore(readCtx, store, durable.ConversationId(ref.ID), *record.Answer)
+		if err != nil {
+			return Recovered{}, err
+		}
+		outcome.RunInputIDs = runInputs
 		if record.Entry != nil {
 			start, err := store.Entry(readCtx, *record.Entry)
 			if err != nil {
@@ -104,4 +109,53 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 		}
 	}
 	return Recovered{State: RecoverySettled, Outcome: outcome}, nil
+}
+
+func runInputIDsForAnswerStore(ctx context.Context, store durable.Storage, convID durable.ConversationId, answerID durable.EntryId) ([]string, error) {
+	maxID := answerID
+	var cursor durable.Cursor
+	var reversed []string
+	for {
+		page, err := store.ScanEntries(ctx, durable.EntryQuery{ConversationId: convID, MaxEntryId: &maxID}, 64, cursor)
+		if err != nil {
+			return nil, err
+		}
+		stop := false
+		for _, e := range page.Items {
+			if e.Id == answerID {
+				continue
+			}
+			if e.Kind == "pi.reset" || e.Kind == "dex.reset" {
+				stop = true
+				break
+			}
+			if e.Kind != "dex.user" && e.Kind != "dex.task_result" {
+				continue
+			}
+			reqID := metadata(e.Data).RequestID
+			if reqID == "" {
+				continue
+			}
+			sub, err := store.SubmissionByRequest(ctx, convID, reqID)
+			if err != nil {
+				return nil, err
+			}
+			if sub != nil && sub.Answer != nil {
+				if *sub.Answer == answerID {
+					reversed = append(reversed, reqID)
+				} else if *sub.Answer < answerID {
+					stop = true
+					break
+				}
+			}
+		}
+		if stop || page.Next == nil {
+			break
+		}
+		cursor = *page.Next
+	}
+	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
+		reversed[i], reversed[j] = reversed[j], reversed[i]
+	}
+	return reversed, nil
 }

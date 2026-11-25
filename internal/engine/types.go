@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/recally-io/dex/internal/execenv"
@@ -108,9 +109,21 @@ type inputMetadata struct {
 type Outcome struct {
 	Status, Answer, Reason string
 	AnswerID               int64
+	// RunInputIDs lists the request IDs of inputs answered by AnswerID, in PiG placement order.
+	RunInputIDs []string
 	// ActivationID is the native first entry of an isolated run, not a submission or task ID.
 	ActivationID int64
 }
+
+func (o Outcome) Equal(other Outcome) bool {
+	return o.Status == other.Status &&
+		o.Answer == other.Answer &&
+		o.Reason == other.Reason &&
+		o.AnswerID == other.AnswerID &&
+		o.ActivationID == other.ActivationID &&
+		slices.Equal(o.RunInputIDs, other.RunInputIDs)
+}
+
 type Config struct {
 	MCPServers    *MCPStore
 	DataDir, Home string

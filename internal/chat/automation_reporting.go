@@ -70,33 +70,34 @@ func routineExecutionReason(reason string) string {
 }
 
 // settleInput commits the receipt, the routine result, and the result for the parent session in one
-// control transaction. It returns the parent session that got a result, or zero.
-func (s *Service) settleInput(ctx context.Context, id string, event engine.Outcome) (changed, parent int64, err error) {
+// control transaction. It returns the parent session that got a result (or zero) and any channel
+// peer woken by an Outbox write.
+func (s *Service) settleInput(ctx context.Context, id string, event engine.Outcome) (changed, parent int64, outboxPeer string, err error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	defer func() { _ = tx.Rollback() }()
-	changed, parent, err = s.settleIn(ctx, s.q.WithTx(tx), id, event, 0)
+	changed, parent, outboxPeer, err = s.settleIn(ctx, s.q.WithTx(tx), id, event, 0)
 	if err != nil || changed == 0 {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
-	return changed, parent, tx.Commit()
+	return changed, parent, outboxPeer, tx.Commit()
 }
 
 // settleIn writes the outcome of one input in the transaction of q.
-func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, event engine.Outcome, withdrawn int) (changed, parent int64, err error) {
+func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, event engine.Outcome, withdrawn int) (changed, parent int64, outboxPeer string, err error) {
 	changed, err = q.SettleSubmission(ctx, sqlc.SettleSubmissionParams{ID: id, Status: event.Status, Answer: sql.NullString{String: event.Answer, Valid: event.Status == "done"}, Reason: sql.NullString{String: event.Reason, Valid: event.Reason != ""}, SettledAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
 	if err != nil || changed == 0 {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	sub, err := q.GetSubmission(ctx, id)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	conv, err := q.GetConversation(ctx, sub.ConversationID)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	// An answer that ran closes its question. One that never produced a reply opens it again.
 	if event.Status == "done" {
@@ -105,34 +106,34 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 		err = reopenQuestion(ctx, q, id)
 	}
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	reason := routineExecutionReason(event.Reason)
 	if err = q.FinalizeAutomationRun(ctx, sqlc.FinalizeAutomationRunParams{ID: id, ExecutionStatus: event.Status, Failure: reason}); err != nil {
-		return 0, 0, err
+		return 0, 0, "", err
 	}
 	if !routineCanceled(event.Status, event.Reason) {
 		if err = queueRoutineOutbox(ctx, q, id, conv.ID, s.now().UnixMilli()); err != nil {
-			return 0, 0, err
+			return 0, 0, "", err
 		}
 	}
-	if _, err = writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {
-		return 0, 0, err
+	if outboxPeer, err = writeOutboxOnSettle(ctx, q, sub, conv, event, s.now().UnixMilli()); err != nil {
+		return 0, 0, "", err
 	}
 	if conv.ChannelKey == MainKey {
 		if err := promoteTaskQuestion(ctx, q, conv, s.now().UnixMilli()); err != nil {
-			return 0, 0, err
+			return 0, 0, "", err
 		}
 	}
 	// An older run can have a saved exit action when dex resumes after an upgrade.
 	if sub.ExitAction != "stay_silent" {
 		if parent, err = s.sendResult(ctx, q, id, event, withdrawn); err != nil {
-			return 0, 0, err
+			return 0, 0, "", err
 		}
 	}
 	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && sub.Origin != "automation" && !isUserOrigin(sub.Origin) && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
 		if archived, aerr := q.ConversationAgentArchived(ctx, conv.ParentID.Int64); aerr != nil {
-			return 0, 0, aerr
+			return 0, 0, "", aerr
 		} else if archived == 0 {
 			body := sessionResult{
 				Session:   strconv.FormatInt(conv.ID, 10),
@@ -149,7 +150,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 				Result sessionResult `json:"task-result"`
 			}{body})
 			if merr != nil {
-				return 0, 0, merr
+				return 0, 0, "", merr
 			}
 			if _, cerr := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 				ID:             "err:" + sub.ID,
@@ -161,10 +162,10 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 				Kind:           "task_result",
 				CreatedAt:      s.now().UnixMilli(),
 			}); cerr != nil {
-				return 0, 0, cerr
+				return 0, 0, "", cerr
 			}
 			parent = conv.ParentID.Int64
 		}
 	}
-	return changed, parent, nil
+	return changed, parent, outboxPeer, nil
 }

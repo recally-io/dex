@@ -75,12 +75,15 @@ The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
-The first input owns a run. Its saved channel address selects the reply recipient, and its
-receipt is the source for tool calls. A steered input adds content only. It does
-not change the recipient or grant or remove tool authority. Web input and a
-parent's `session_send` can steer. Channel, automation and dream inputs always
-use `followUp`. Bot and routine management check the source input, not the
-steered input.
+For a completed run, Dispatcher inspects the inputs actually answered by that
+native answer in PiG placement order and selects the last `producer = user`
+input: if that input came from a channel (`reply_channel`/`reply_peer`), that
+input writes the single final Outbox reply; if it came from Web, the answer
+stays in Web with no channel Outbox row. Pure background runs (no `user` input)
+never auto-send to channels—Main must explicitly call `notify_user` to emit a
+channel notification. If run membership or order cannot be verified, no
+automatic channel Outbox row is written. Web input and a parent's
+`session_send` can steer; channel, automation, and dream inputs use `followUp`.
 
 ## Web notifications
 

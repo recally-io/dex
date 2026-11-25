@@ -124,7 +124,7 @@ func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenR
 		if in.outcome.Reason == "interrupted" {
 			count = withdrawn
 		}
-		_, parent, err := s.settleIn(ctx, q, in.id, in.outcome, count)
+		_, parent, _, err := s.settleIn(ctx, q, in.id, in.outcome, count)
 		if err != nil {
 			return err
 		}

@@ -366,70 +366,103 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			return "", nil
 		}
 	}
-	isUserInput := sub.Kind == "message" && isUserOrigin(sub.Origin)
-	peer := peerFromOrigin(sub.Origin)
-
-	if isUserInput && peer != "" {
-		if event.Status == "done" {
-			if sub.ExitAction == "notify_user" {
+	// Priority 1: delegated child inputs only report back to their parent session, never directly to a channel.
+	if sub.ParentRequestID.Valid {
+		return "", nil
+	}
+	if event.Status == "done" {
+		runIDs := event.RunInputIDs
+		if len(runIDs) == 0 {
+			if event.AnswerID > 0 {
+				// Run membership/order cannot be verified for this native answer; never guess a destination.
 				return "", nil
 			}
-			kind := "reply"
-			if sub.ExitAction == "ask_user" {
-				kind = "question"
-			} else if _, err := q.GetQuestionBySource(ctx, sub.ID); err == nil {
-				kind = "question"
-			} else if !errors.Is(err, sql.ErrNoRows) {
-				return "", err
+			runIDs = []string{sub.ID}
+		}
+		var lastUser *sqlc.Submission
+		for _, rid := range runIDs {
+			row, err := q.GetSubmission(ctx, rid)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
 			}
-			identity := sub.ChannelContext
-			eventID := "reply:" + conv.AgentID + ":" + sub.ID
-			if event.AnswerID > 0 {
-				eventID = fmt.Sprintf("reply:%s:%d:%d", conv.AgentID, conv.ID, event.AnswerID)
-			}
-			status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
-			inserted, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-				ID:                 sub.ID,
-				EventID:            eventID,
-				AgentID:            conv.AgentID,
-				ConversationID:     conv.ID,
-				SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
-				Kind:               kind,
-				Peer:               peer,
-				ChannelContext:     identity,
-				TopicKey:           "",
-				Body:               event.Answer,
-				Reason:             "",
-				Status:             status,
-				CreatedAt:          now,
-				DeliveredAt:        deliveredAt,
-			})
 			if err != nil {
 				return "", err
 			}
-			outboxID := sub.ID
-			if inserted == 0 {
-				existing, err := q.GetOutboxByEvent(ctx, sqlc.GetOutboxByEventParams{EventID: eventID, Peer: peer})
-				if err != nil {
-					return "", err
-				}
-				outboxID = existing.ID
+			if row.Producer == ProducerUser {
+				cp := row
+				lastUser = &cp
 			}
-			if err := q.SetRequiredChannelReply(ctx, sqlc.SetRequiredChannelReplyParams{SubmissionID: sub.ID, OutboxID: outboxID}); err != nil {
-				return "", err
-			}
-			if err := bindFileDeliveries(ctx, q, outboxID, sub.ID); err != nil {
-				return "", err
-			}
-			if status == "pending" {
-				return peer, nil
-			}
+		}
+		// Pure background runs (no user input) never auto-send to channels; only the last user input
+		// placed in the answering run decides whether the final reply goes to Web or a Channel.
+		if lastUser == nil || lastUser.ID != sub.ID {
 			return "", nil
 		}
+		if lastUser.ReplyChannel == "" || lastUser.ReplyPeer == "" {
+			return "", nil
+		}
+		if sub.ExitAction == "notify_user" {
+			return "", nil
+		}
+		peer := lastUser.ReplyChannel + ":" + lastUser.ReplyPeer
+		kind := "reply"
+		if sub.ExitAction == "ask_user" {
+			kind = "question"
+		} else if _, err := q.GetQuestionBySource(ctx, sub.ID); err == nil {
+			kind = "question"
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return "", err
+		}
+		identity := sub.ChannelContext
+		eventID := "reply:" + conv.AgentID + ":" + sub.ID
+		if event.AnswerID > 0 {
+			eventID = fmt.Sprintf("reply:%s:%d:%d", conv.AgentID, conv.ID, event.AnswerID)
+		}
+		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
+		inserted, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
+			ID:                 sub.ID,
+			EventID:            eventID,
+			AgentID:            conv.AgentID,
+			ConversationID:     conv.ID,
+			SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
+			Kind:               kind,
+			Peer:               peer,
+			ChannelContext:     identity,
+			TopicKey:           "",
+			Body:               event.Answer,
+			Reason:             "",
+			Status:             status,
+			CreatedAt:          now,
+			DeliveredAt:        deliveredAt,
+		})
+		if err != nil {
+			return "", err
+		}
+		outboxID := sub.ID
+		if inserted == 0 {
+			existing, err := q.GetOutboxByEvent(ctx, sqlc.GetOutboxByEventParams{EventID: eventID, Peer: peer})
+			if err != nil {
+				return "", err
+			}
+			outboxID = existing.ID
+		}
+		if err := q.SetRequiredChannelReply(ctx, sqlc.SetRequiredChannelReplyParams{SubmissionID: sub.ID, OutboxID: outboxID}); err != nil {
+			return "", err
+		}
+		if err := bindFileDeliveries(ctx, q, outboxID, sub.ID); err != nil {
+			return "", err
+		}
+		if status == "pending" {
+			return peer, nil
+		}
+		return "", nil
+	}
 
-		if event.Reason == "withdrawn" || sub.ChannelRevoked != 0 {
+	if sub.Producer == ProducerUser && sub.ReplyChannel != "" && sub.ReplyPeer != "" {
+		if event.Reason == "withdrawn" || event.Reason == "stopped" || event.Reason == "aborted" || sub.ChannelRevoked != 0 {
 			return "", nil
 		}
+		peer := sub.ReplyChannel + ":" + sub.ReplyPeer
 		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
 		if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 			ID:                 sub.ID,
