@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,7 +16,10 @@ import (
 )
 
 func TestUserUnprovenAndRevokedFinalReportsCannotWakeMain(t *testing.T) {
-	t.Parallel()
+	var logs sessionLogBuffer
+	priorLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(priorLogger) })
 	started, release := make(chan engine.TaskContext, 1), make(chan struct{})
 	r := openNativeTest(t, t.TempDir(), "tool", func(next reportFunc) reportFunc {
 		return func(ctx context.Context, call engine.TaskContext, args engine.ReportParentArgs) (string, error) {
@@ -68,6 +72,9 @@ func TestUserUnprovenAndRevokedFinalReportsCannotWakeMain(t *testing.T) {
 	}
 	if got, err := r.service.ToolReportParent(ctx, owner, engine.ReportParentArgs{Content: "replay"}); err != nil || got != prior.Result {
 		t.Fatalf("wrong no-op replay: %q, %v", got, err)
+	}
+	if log := logs.String(); strings.Count(log, "phase=report_ignored reason=revoked") != 1 || strings.Contains(log, "private conclusion after revocation") {
+		t.Fatalf("expected one content-free revocation diagnostic, including on replay: %s", log)
 	}
 	result := receipt(t, r, "result:"+turn)
 	if result.ConversationID != parentID || result.ChannelRevoked == 0 || strings.Contains(result.Content, "channel-follow-up") || strings.Contains(result.Content, "private conclusion") {

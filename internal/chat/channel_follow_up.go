@@ -86,37 +86,67 @@ func stageFinalReport(ctx context.Context, q *sqlc.Queries, r engine.TaskContext
 	if !protected {
 		return "", nil
 	}
-	disposition := engine.ReportIgnored
-	if r.Isolation == engine.IsolatedDelegation && r.ActivationID > 0 && f.State == "open" &&
-		!f.StagedReport.Valid && source.Status == "pending" && source.StopRequested == 0 && source.ChannelRevoked == 0 && child.AbortPending == 0 {
-		parent, err := followUpParent(ctx, q, f, child, source)
-		if err != nil {
-			return "", err
-		}
-		if parent.ID != "" && parent.ChannelRevoked == 0 {
-			archived, err := q.ConversationAgentArchived(ctx, f.ConversationID)
-			if err != nil {
-				return "", err
-			}
-			if archived == 0 {
-				// The tool can run before control records native admission. The native
-				// owner proof recovers the same immutable binding in this transaction.
-				bound, err := bindChannelFollowUp(ctx, q, source.ID, r.ActivationID)
-				if err != nil {
-					return "", err
-				}
-				if bound == 1 {
-					if err := q.StageChannelFollowUpReport(ctx, sqlc.StageChannelFollowUpReportParams{DelegationID: source.ID, StagedReport: sql.NullString{String: body, Valid: true}}); err != nil {
-						return "", err
-					}
-					disposition = engine.ReportStaged
-				}
-			}
-		}
+	reason, err := stageProtectedReport(ctx, q, r, f, child, source, body)
+	if err != nil {
+		return "", err
 	}
-	return disposition, q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{
+	disposition := engine.ReportStaged
+	if reason != "" {
+		disposition = engine.ReportIgnored
+	}
+	if err := q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{
 		Key: r.Key, AgentID: r.AgentID, ConversationID: child.ID, SourceRequestID: source.ID, Action: finalReportOperation, Result: disposition,
-	})
+	}); err != nil {
+		return "", err
+	}
+	if reason != "" {
+		receiptTrace(child.ID, source.ID).InfoContext(ctx, "session report", "phase", "report_ignored", "reason", reason)
+	}
+	return disposition, nil
+}
+
+// stageProtectedReport returns an empty reason when it stages the report.
+func stageProtectedReport(ctx context.Context, q *sqlc.Queries, r engine.TaskContext, f sqlc.ChannelFollowUp, child sqlc.Conversation, source sqlc.Submission, body string) (string, error) {
+	switch {
+	case r.Isolation != engine.IsolatedDelegation || r.ActivationID <= 0:
+		if len(r.RunInputIDs) > 1 {
+			return "shared_run", nil
+		}
+		return "no_activation", nil
+	case source.ChannelRevoked != 0:
+		return "revoked", nil
+	case f.State != "open" || source.Status != "pending" || source.StopRequested != 0 || child.AbortPending != 0:
+		return "not_open", nil
+	case f.StagedReport.Valid:
+		return "already_staged", nil
+	}
+	parent, err := followUpParent(ctx, q, f, child, source)
+	if err != nil {
+		return "", err
+	}
+	if parent.ID == "" {
+		return "no_lineage", nil
+	}
+	if parent.ChannelRevoked != 0 {
+		return "revoked", nil
+	}
+	archived, err := q.ConversationAgentArchived(ctx, f.ConversationID)
+	if err != nil {
+		return "", err
+	}
+	if archived != 0 {
+		return "archived", nil
+	}
+	// The tool can run before control records native admission. The native
+	// owner proof recovers the same immutable binding in this transaction.
+	bound, err := bindChannelFollowUp(ctx, q, source.ID, r.ActivationID)
+	if err != nil {
+		return "", err
+	}
+	if bound != 1 {
+		return "no_activation", nil
+	}
+	return "", q.StageChannelFollowUpReport(ctx, sqlc.StageChannelFollowUpReportParams{DelegationID: source.ID, StagedReport: sql.NullString{String: body, Valid: true}})
 }
 
 // cancelChannelFollowUps runs inside the Stop or Clear transaction. Outbox revocation
