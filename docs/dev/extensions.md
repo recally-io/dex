@@ -125,7 +125,7 @@ Use Settings → Environment to set shared values. Use a bot's Tools page to
 set values for that bot. An agent entry overrides a shared entry with the same
 name. `GET /api/agents/{agentId}/vault` returns names, scopes, and last change
 times. `PUT` sets a value and `DELETE` removes it. Neither returns a value.
-The agent has only `vault_list`, which shows effective names and metadata.
+The agent has only `secret_list`, which shows effective names and metadata.
 
 `bash`, `monitor_set_command`, and `monitor_set_schedule` accept `vault:NAME`
 as an `env` value. A schedule stores the reference and resolves it when the

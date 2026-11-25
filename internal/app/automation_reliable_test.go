@@ -104,7 +104,7 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			// Given a routine that reports its result through the real tool boundary.
 			key := "release-73-" + outcome
-			prompt := fmt.Sprintf(`report_check {"outcome":%q,"summary":"fixture check completed","changeKey":%q}`, outcome, key)
+			prompt := fmt.Sprintf(`automation_report {"outcome":%q,"summary":"fixture check completed","changeKey":%q}`, outcome, key)
 			a := d.createAutomation(t, "Check", prompt, "new", map[string]any{"kind": "daily", "time": "09:00"})
 			// When the routine completes.
 			first := d.runNow(t, a.ID)
@@ -131,7 +131,7 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 			}
 			// When a third run reports another outcome with the same key, it is not a duplicate.
 			other := map[string]string{"changed": "unchanged", "unchanged": "changed", "failed": "changed"}[outcome]
-			body := map[string]any{"name": "Check", "prompt": fmt.Sprintf(`report_check {"outcome":%q,"summary":"fixture check completed","changeKey":%q}`, other, key), "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "Asia/Shanghai", "session": "new", "enabled": true}
+			body := map[string]any{"name": "Check", "prompt": fmt.Sprintf(`automation_report {"outcome":%q,"summary":"fixture check completed","changeKey":%q}`, other, key), "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "Asia/Shanghai", "session": "new", "enabled": true}
 			d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
 			third := settledRoutine(t, d, a.ID, d.runNow(t, a.ID).ID)
 			if third.Outcome != other || third.Duplicate {
@@ -241,7 +241,7 @@ func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprintln(w, `data: {"id":"check","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"report_check","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"provisional success\"}"}}]},"finish_reason":null}]}`)
+		_, _ = fmt.Fprintln(w, `data: {"id":"check","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"check_1","type":"function","function":{"name":"automation_report","arguments":"{\"outcome\":\"unchanged\",\"summary\":\"provisional success\"}"}}]},"finish_reason":null}]}`)
 		_, _ = fmt.Fprint(w, "\n"+`data: {"id":"check","object":"chat.completion.chunk","created":1,"model":"routine","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`+"\n\ndata: [DONE]\n")
 	}))
 	defer boundary.Close()
@@ -249,7 +249,7 @@ func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/settings/providers/routine", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "models": []string{"routine"}}, nil)
 	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "routine", "modelId": "routine", "thinkingLevel": "off", "instructions": ""}, nil)
 	a := d.createAutomation(t, "Error after report", "run the check", "new", map[string]any{"kind": "daily", "time": "09:00"})
-	// When the provider fails after report_check succeeds.
+	// When the provider fails after automation_report succeeds.
 	run := d.runNow(t, a.ID)
 	result := settledRoutine(t, d, a.ID, run.ID)
 	// Then the provisional unchanged report cannot conceal an execution failure.
@@ -258,7 +258,7 @@ func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
 	}
 	d.watch(t, run.ChatID).until(t, "successful provisional report", func(tr *transcript) bool {
 		for _, item := range tr.items {
-			if item.Kind == "tool" && item.Name == "report_check" && item.Status == "done" {
+			if item.Kind == "tool" && item.Name == "automation_report" && item.Status == "done" {
 				return true
 			}
 		}

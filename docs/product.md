@@ -465,7 +465,7 @@ project. Project skills come from
 
 The system prompt always includes a guide to these files, even with no
 skills. It explains paths, file formats, environment use, and Reload. It
-contains no vault secret names or values. `vault_list` returns secret names
+contains no vault secret names or values. `secret_list` returns secret names
 and metadata only.
 
 Tools start from the user's login shell environment, so a value that the

@@ -18,7 +18,7 @@ type CheckReport struct {
 	ChangeKey string `json:"changeKey,omitempty"`
 }
 
-const routineCheckRules = "Before this automation run ends, call report_check once with changed, unchanged, or failed, a short summary, and an optional stable change key. Report unchanged only after the required checks succeeded and found no change. Missing reports and execution errors fail the run. A repeated change key marks a duplicate; it does not undo or prevent actions."
+const routineCheckRules = "Before this automation run ends, call automation_report once with changed, unchanged, or failed, a short summary, and an optional stable change key. Report unchanged only after the required checks succeeded and found no change. Missing reports and execution errors fail the run. A repeated change key marks a duplicate; it does not undo or prevent actions."
 const BoundRoutineCheckSuffix = "\n\nRoutine reporting instructions (for this input only): " + routineCheckRules
 
 // Keep the existing section and extension name for dedicated Routine sessions.
@@ -36,10 +36,10 @@ func CheckExtension(agentID string, report func(context.Context, engine.TaskCont
 		"summary":   map[string]any{"type": "string", "minLength": 1, "maxLength": 1000},
 		"changeKey": map[string]any{"type": "string", "maxLength": 200},
 	}}
-	return &engine.Extension{Name: "routine-reporting", Tools: []*durable.ToolRegistration{{Name: "report_check", Description: "Report the outcome of the current Routine run. This tool only works during a Routine run. Use a stable change key to identify the same change across runs.", Replay: durable.ReplaySafe, Parameters: schema,
+	return &engine.Extension{Name: "routine-reporting", Tools: []*durable.ToolRegistration{{Name: "automation_report", Description: "Report the outcome of the current Routine run. This tool only works during a Routine run. Use a stable change key to identify the same change across runs.", Replay: durable.ReplaySafe, Parameters: schema,
 		Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 			if report == nil {
-				return durable.ToolExecutionResult{}, errors.New("report_check reporting is unavailable")
+				return durable.ToolExecutionResult{}, errors.New("automation_report reporting is unavailable")
 			}
 			args, err := durable.FromJsonValue[CheckReport](raw)
 			if err != nil {

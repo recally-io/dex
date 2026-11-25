@@ -668,12 +668,12 @@ UPDATE automation_runs SET
     outcome = CASE WHEN NOT (CAST(?1 AS TEXT) = 'done') OR outcome = '' THEN 'failed' ELSE outcome END,
     summary = CASE
         WHEN NOT (CAST(?1 AS TEXT) = 'done') THEN ?2
-        WHEN outcome = '' THEN 'run ended without report_check'
+        WHEN outcome = '' THEN 'run ended without automation_report'
         ELSE summary END,
     status = CASE WHEN NOT (CAST(?1 AS TEXT) = 'done') OR outcome IN ('', 'failed') THEN 'failed' ELSE status END,
     reason = CASE
         WHEN NOT (CAST(?1 AS TEXT) = 'done') THEN ?2
-        WHEN outcome = '' THEN 'run ended without report_check'
+        WHEN outcome = '' THEN 'run ended without automation_report'
         WHEN outcome = 'failed' THEN summary
         ELSE reason END,
     duplicate = CASE WHEN (CAST(?1 AS TEXT) = 'done') AND outcome <> '' AND change_key <> '' AND EXISTS (

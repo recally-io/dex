@@ -64,11 +64,11 @@ func TestUserInjectsVaultValueOnlyForOneCall(t *testing.T) {
 	if got := taskTool(t, d, chat, "bash", map[string]string{"command": "test ! -e should-not-run && printf absent"}); got != "tool: absent" {
 		t.Fatalf("missing secret must prevent execution: %s", got)
 	}
-	got = taskTool(t, d, chat, "vault_list", map[string]any{})
+	got = taskTool(t, d, chat, "secret_list", map[string]any{})
 	_, raw, ok := strings.Cut(got, "tool: ")
 	var list []apiVaultEntry
 	if !ok || json.Unmarshal([]byte(raw), &list) != nil || len(list) != 1 || list[0].Name != "GITHUB_TOKEN" || list[0].Scope != "agent" || list[0].UpdatedAt == "" || strings.Contains(got, "github-test-vault-value") {
-		t.Fatalf("vault_list: %s", got)
+		t.Fatalf("secret_list: %s", got)
 	}
 }
 

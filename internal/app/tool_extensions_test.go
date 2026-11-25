@@ -27,7 +27,7 @@ func TestUserChildSubmitStripsForegroundTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tool := range []string{"session_new", "ask_user", "create_routine"} {
+	for _, tool := range []string{"session_new", "ask_user", "automation_create"} {
 		sub, err := a.engine.Submit(t.Context(), ref, engine.Input{
 			RequestID: "child-" + tool,
 			Content:   tool + " {}",
