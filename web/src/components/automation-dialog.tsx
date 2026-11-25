@@ -147,7 +147,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
 
   return (
     <Modal
-      title={existing ? "Edit routine" : "New routine"}
+      title={existing ? "Edit automation" : "New automation"}
       description="Set a prompt and a schedule, and choose where the routine runs."
       pending={pending}
       onClose={onClose}
@@ -165,7 +165,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             {pending ? (
               <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
             ) : null}
-            {pending ? "Saving…" : "Save routine"}
+            {pending ? "Saving…" : "Save automation"}
           </Button>
         </>
       }
@@ -451,7 +451,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             <p className="mt-2 text-[12px]">This routine is paused. Enable it to run on this schedule.</p>
           ) : null}
         </section>
-        {error ? <Failure title="Could not save routine" error={error} /> : null}
+        {error ? <Failure title="Could not save automation" error={error} /> : null}
       </form>
     </Modal>
   );

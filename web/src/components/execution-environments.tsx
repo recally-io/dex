@@ -66,10 +66,10 @@ export function ExecutionEnvironments() {
 
   return (
     <Section
-      title="Execution environments"
+      title="Available Runners"
       caption={
         envs.length
-          ? `${envs.length + 1} available (1 built-in, ${envs.length} remote)`
+          ? `${envs.length + 1} total, including the built-in Local Runner`
           : "Where bots run commands and store workspaces."
       }
       action={
@@ -80,7 +80,7 @@ export function ExecutionEnvironments() {
             </Button>
           ) : null}
           <Button size="sm" onClick={() => setDialog("new")}>
-            Add environment
+            Add Runner
           </Button>
         </div>
       }
@@ -88,16 +88,12 @@ export function ExecutionEnvironments() {
       {query.isPending ? (
         <Loading />
       ) : query.isError ? (
-        <Failure
-          title="Could not load execution environments"
-          error={query.error}
-          retry={() => void query.refetch()}
-        />
+        <Failure title="Could not load Runners" error={query.error} retry={() => void query.refetch()} />
       ) : (
         <div className="flex flex-col gap-3">
           <Panel>
             <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-              <h3 className="text-[14px] font-medium text-foreground">This computer</h3>
+              <h3 className="text-[14px] font-medium text-foreground">Local</h3>
               <Badge variant="secondary" className="h-5 px-2 text-[11px]">
                 Built-in
               </Badge>

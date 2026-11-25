@@ -129,27 +129,27 @@ with a `description` and an optional `name`. Without a `name`, the directory
 name is the skill name. A skill can be in a nested directory, such as
 `skills/team/review/SKILL.md`. dex does not look inside a skill, hidden
 directories, or `node_modules`. When two skills in one level have the same
-name, the first in path order wins, and the bot's Tools tab shows a warning.
+name, the first in path order wins, and the bot's Skills page shows a warning.
 The prompt lists each skill. The agent reads the file when a task needs it.
 An edit to a skill applies to the next message.
 
 Ask the agent in an owner session to manage MCP declarations with the
 `mcp_server_*` tools. Use vault references for secrets. dex stores declarations
-in `control.sqlite` and shows their status in the bot's Extensions tab.
+in `control.sqlite` and shows their status in the bot's Integrations page.
 Changes apply after the agent finishes its current work. dex ignores old
 `mcp.json` files. See [MCP declarations](docs/dev/extensions.md#mcp-declarations).
 
 For an OAuth-enabled remote MCP server, ask the agent to add an HTTP declaration
 with `oauth: {}` and no static headers. If the provider requires a registered
 client, use its client ID and a vault reference for its secret. In the bot's
-Tools tab, select **Authorize** and sign in with the provider. See
+Integrations page, select **Authorize** and sign in with the provider. See
 [MCP browser authorization](docs/dev/extensions.md#mcp-browser-authorization)
 for the callback URL and client settings.
 
 ## Secrets
 
-Add shared secrets in **Settings → Environment**. Add secrets for one bot on
-its **Tools** page. dex encrypts the values with age and never shows them in
+Add shared secrets in **Settings → Secrets**. Add secrets for one bot on
+its **Secrets** page. dex encrypts the values with age and never shows them in
 Settings. Tell the bot to use a reference such as `vault:GITHUB_TOKEN` in the
 `env` argument of `bash`, a Monitor, or an MCP declaration. You do not need the
 1Password CLI.

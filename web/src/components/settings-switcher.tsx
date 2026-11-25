@@ -29,9 +29,9 @@ function segment(current: boolean) {
 
 const botPages = [
   { to: "/a/$agentId/agent", label: "General", segment: "agent" },
-  { to: "/a/$agentId/instructions", label: "Instructions", segment: "instructions" },
-  { to: "/a/$agentId/channels", label: "Channels", segment: "channels" },
-  { to: "/a/$agentId/extensions", label: "Tools", segment: "extensions" },
+  { to: "/a/$agentId/skills", label: "Skills", segment: "skills" },
+  { to: "/a/$agentId/integrations", label: "Integrations", segment: "integrations" },
+  { to: "/a/$agentId/secrets", label: "Secrets", segment: "secrets" },
 ] as const;
 
 /** The pages of a bot's settings. */
@@ -63,8 +63,10 @@ export function BotSettingsSwitcher({ segment: active }: { segment: string | und
 export const globalPages = [
   { to: "/settings/general", label: "General" },
   { to: "/settings/providers", label: "Providers" },
-  { to: "/settings/environment", label: "Environment" },
-  { to: "/settings/archived", label: "Archived bots" },
+  { to: "/settings/runners", label: "Runners" },
+  { to: "/settings/secrets", label: "Secrets" },
+  { to: "/settings/integrations", label: "Integrations" },
+  { to: "/settings/archived", label: "Archived" },
   { to: "/settings/about", label: "About" },
 ] as const;
 

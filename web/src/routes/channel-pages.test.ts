@@ -11,7 +11,7 @@ import {
   getNotificationTargetsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { AppProvider } from "../lib/app-state";
-import { ChannelPage, ChannelsPage } from "./channels";
+import { ChannelPage, BotIntegrationsPage } from "./channels";
 import { FeishuChannel } from "./feishu";
 import type { ChannelId } from "../components/channel-kit";
 
@@ -139,7 +139,7 @@ test("user keeps the saved Lark platform when opening settings", async () => {
   client.clear();
 });
 
-test("user sees Needs owner for unpaired Feishu on ChannelsPage", async () => {
+test("user sees Needs owner for unpaired Feishu on BotIntegrationsPage", async () => {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
   client.setQueryData(getChannelsOptions(path).queryKey, {
     feishu: { enabled: true, appId: "app", brand: "feishu", paired: false, status: "needs_login", error: "" },
@@ -149,7 +149,7 @@ test("user sees Needs owner for unpaired Feishu on ChannelsPage", async () => {
   client.setQueryData(getNotificationTargetsOptions(path).queryKey, { primaryId: "", targets: [] });
 
   const router = createRouter({
-    routeTree: createRootRoute({ component: ChannelsPage }),
+    routeTree: createRootRoute({ component: BotIntegrationsPage }),
     history: createMemoryHistory({ initialEntries: ["/"] }),
   });
 

@@ -22,8 +22,8 @@ describe("Routine session binding", () => {
     if (session.status !== 201) throw new Error(`Create target fixture: ${session.status}`);
     const { id }: { id: number } = await session.json();
     await app.open(`/a/${agentId}/automations`);
-    await screen.getByRole("button", "New routine").tap();
-    const dialog = screen.getByRole("dialog", "New routine");
+    await screen.getByRole("button", "New automation").tap();
+    const dialog = screen.getByRole("dialog", "New automation");
     await dialog.getByLabel("Name", { exact: true }).fill("Routine browser check");
     await dialog.getByLabel("Prompt", { exact: true }).fill("Browser fixture prompt");
     await dialog.getByLabel("Session for each run").selectOption({ value: "session" });
@@ -34,7 +34,7 @@ describe("Routine session binding", () => {
       (await dialog.getByLabel("Project directory").count()) +
       (await dialog.getByLabel("Environment", { exact: true }).count());
 
-    await dialog.getByRole("button", "Save routine").tap();
+    await dialog.getByRole("button", "Save automation").tap();
     await screen.getByRole("link", /Routine browser check/).waitFor();
     const response = await fetch(`${bot}/automations`);
 

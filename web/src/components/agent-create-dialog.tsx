@@ -190,14 +190,14 @@ function CreateForm({
           )}
         </Field>
         {environments.length > 0 ? (
-          <Field label="Execution environment">
+          <Field label="Default Runner">
             {({ id }) => (
               <Select
                 id={id}
                 value={environmentId}
                 onChange={(event) => setEnvironmentId(event.target.value)}
               >
-                <option value="">This computer</option>
+                <option value="">Local</option>
                 {environments.map((env) => (
                   <option key={env.id} value={env.id}>
                     {environmentOptionLabel(env)}

@@ -45,8 +45,10 @@ See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 
-The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
-Bot links open Main. The right Chats sidebar starts closed. The global sidebar
+Bot links open Main. The bot header offers New session, Sessions, Automations,
+and Settings. Settings has General, Skills, Integrations, and Secrets. Old
+`/instructions`, `/channels`, and `/extensions` bot URLs still open the relevant
+settings page. The right Chats sidebar starts closed. The global sidebar
 links to Board (`/board`) for Tasks and Inbox (`/inbox`) for owner actions.
 Inbox reads active questions, unhandled failed or changed automation results,
 and missing models from `/api/work`, and reads held events from the held events
@@ -57,7 +59,7 @@ A held event shows its type, reason, author, source link, and text. The owner
 chooses an open Task before Attach is enabled, because no API removes the object
 links of an attach. The owner can also dismiss the event.
 `/a/{agentId}/inbox/{taskId}` still opens a Task under its owner bot.
-General settings lists the plugins with a switch for each. A note asks for a
+Global Integrations lists Sources with a switch for each. A note asks for a
 restart while a stored choice differs from what runs. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
 components in `src/plugins/<name>/`, and a page renders them only when the
@@ -73,7 +75,7 @@ shows the target picker instead of the routine environment and project fields.
 The routine dialog offers "Follow bot", `local`, and the SSH environments. It
 keeps a saved environment that the list no longer shows, and a change of the
 environment clears the project directory. A routine update sends
-`environmentId`, because a PUT replaces the routine. Routines and Inbox continue
+`environmentId`, because a PUT replaces the routine. Automations and Inbox continue
 a result through `continueResult` (`lib/inbox.ts`): the new chat pins the available
 local, SSH, or runner environment of the run and uses its cwd. A run in an E2B
 sandbox, in an unavailable environment, or with no recorded environment stops
@@ -105,18 +107,19 @@ in the Outbox panel.
 
 The About page (`/settings/about`) manages server operations through `/api/system/*`: switching the persisted update channel (`stable` or `prerelease`), checking releases, running an in-place upgrade with automatic `control.sqlite` backup, restarting the server gracefully (with wait-until-idle, cancel, and force-now controls), taking manual hot backups, and reading recent entries from the in-memory log ring buffer. When a restart or upgrade begins, it polls `GET /api/system/status`. A change in `startedAt` confirms the restart and refreshes health data.
 
-Execution Environments (`/settings/environment`) shows each Remote runner's live online state, platform, reported version, and version alignment status against `GET /api/health`'s server version (`Matches server`, auto-update on reconnect, or why manual update is needed).
-The shared environment editor lets the owner set or clear an optional plain-text
-Description for a Runner, SSH host, or E2B sandbox. The environment card shows
-it when set. The description is separate from Runner enrollment.
-The Environment page also edits shared vault secrets. A bot's Tools page
-edits that bot's secrets. The vault API returns metadata only. The editor
-clears the secret value after submit and does not store it in the browser.
-On Tools, an OAuth MCP row starts provider authorization with an authenticated
-POST. The browser follows the returned URL in the same tab. The server
-callback returns to Tools. The browser does not receive provider tokens.
+Runners (`/settings/runners`) shows the built-in Local Runner, Machines, and
+Sandboxes. Machines use SSH or Outbound. The page shows each Outbound Machine's
+online state, platform, and version alignment against `GET /api/health`.
+The Runner editor lets the owner set or clear an optional plain-text description.
+Global Secrets (`/settings/secrets`) edits shared Vault entries and 1Password.
+A bot's Secrets page edits its own Vault entries. The vault API returns metadata
+only. The editor clears the value after submit and does not store it in the browser.
+In Bot Settings → Integrations, an OAuth MCP row starts authorization with an
+authenticated POST. The browser follows the returned URL in the same tab. The
+server callback still returns to the old `/extensions` URL, which redirects
+to Integrations. The browser does not receive provider tokens.
 
-The Telegram page under Channels uses the existing token form. It also offers
+The Telegram page under Integrations uses the existing token form. It also offers
 managed creation when the API confirms Bot Management Mode for the saved manager.
 The managed dialog polls its setup state. It shows a private owner verification
 link first and the Telegram bot creation link second. Cancel calls the API.

@@ -111,7 +111,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
           onCheckedChange={() => update.change({ enabled: !automation.enabled })}
         />
       </span>
-      {update.isError ? <Failure title="Could not change routine" error={update.error} /> : null}
+      {update.isError ? <Failure title="Could not change automation" error={update.error} /> : null}
     </span>
   );
 }
@@ -119,7 +119,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
 export function AutomationsPage() {
   return (
     <FramedPage
-      title="Routines"
+      title="Automations"
       description="Prompts that the bot runs on a schedule. Each run has its own record."
     >
       <AutomationsSection />
@@ -145,12 +145,12 @@ function AutomationsSection() {
   return (
     <>
       <Section
-        title="All routines"
+        title="All automations"
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
         // SAFETY: ToggleGroup values come only from the two Filter items below.
         action={
           <Button disabled={noModel} onClick={() => setCreate(true)}>
-            New routine
+            New automation
           </Button>
         }
       >
@@ -158,7 +158,7 @@ function AutomationsSection() {
           <Loading />
         ) : automations.isError ? (
           <Failure
-            title="Could not load routines"
+            title="Could not load automations"
             error={automations.error}
             retry={() => void automations.refetch()}
           />
@@ -197,9 +197,9 @@ function AutomationsSection() {
             </ul>
           </Panel>
         ) : (
-          <Empty title="No routines yet">
+          <Empty title="No automations yet">
             {noModel
-              ? "Choose a bot model first. Routines use the same model as every chat."
+              ? "Choose a bot model first. Automations use the same model as every chat."
               : "Create one to run a prompt every few minutes, every day, on some weekdays, or once."}
           </Empty>
         )}
@@ -522,7 +522,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
 
   const crumb = (
     <Link to="/a/$agentId/automations" params={{ agentId }} className="hover:underline">
-      Routines
+      Automations
     </Link>
   );
 

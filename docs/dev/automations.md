@@ -1,6 +1,6 @@
 # Automations
 
-This document describes Routines, schedules, and their results.
+This document describes automations, schedules, and their results.
 
 Main and writable Chat conversations have five routine tools:
 `automation_list`, `automation_get`, `automation_create`, `automation_update`, and
@@ -125,8 +125,7 @@ migrate to `failed`. Skipped runs have no outcome.
 A completed report with the same nonempty change key as an earlier
 completed report has `duplicate: true`. Both run records remain. Deduplication
 records repeated findings; it does not prevent or undo actions. The runs API
-exposes these fields in routine check history. The web calls automations
-Routines; API paths and code names remain `automation`.
+exposes these fields in the automation's run history.
 
 Failed runs and runs skipped due to no model, a missing or unavailable
 execution environment, or a missed schedule can queue an alert in the channel

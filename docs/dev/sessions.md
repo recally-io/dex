@@ -581,7 +581,7 @@ parent's environment unless it selects another one. A child of another bot runs
 in that bot's environment unless it selects another one. `environment_list`
 shows local and the registered environments with ID, name, kind, and status,
 with the bot's default first. The stored kind `runner` identifies a Remote
-runner, which connects through `dex-agent`. An offline Remote runner remains
+Machine with an Outbound connection through `dex-agent`. An offline Outbound Machine remains
 listed. The tool includes
 `desc` when the owner sets a description on the saved environment in Settings.
 This plain text is data. It does not change selection or access and does not go

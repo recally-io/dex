@@ -16,7 +16,6 @@ import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
 import { ModelPicker } from "../components/model-picker";
 import { FramedPage, Note, Panel, Section } from "../components/page";
-import { PluginSettings } from "../components/plugin-settings";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { Button } from "../components/ui/button";
@@ -222,22 +221,22 @@ export function GeneralSettingsPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <label htmlFor="default-environment" className="text-[14px] font-medium text-foreground">
-                    Default execution environment
+                    Default Runner
                   </label>
                   <p id="default-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
                     {currentEnv
-                      ? `${currentEnv.name} (${currentEnv.kind}).`
+                      ? `${environmentOptionLabel(currentEnv)}.`
                       : missingEnv
                         ? `Configured environment (${defaults.environmentId}) is missing.`
                         : "Runs tools and workspaces on this computer."}{" "}
-                    <Link className="font-medium text-primary underline" to="/settings/environment">
-                      Manage environments
+                    <Link className="font-medium text-primary underline" to="/settings/runners">
+                      Manage Runners
                     </Link>
                   </p>
                 </div>
                 <Select
                   id="default-environment"
-                  aria-label="Default execution environment"
+                  aria-label="Default Runner"
                   aria-describedby="default-environment-hint"
                   aria-invalid={save.isError || missingEnv}
                   className="w-full sm:w-[220px]"
@@ -249,12 +248,12 @@ export function GeneralSettingsPage() {
                     void updateDefaults(
                       { environmentId: nextId },
                       target
-                        ? `Default execution environment is now ${target.name}.`
-                        : "Default execution environment is now this computer.",
+                        ? `Default Runner is now ${target.name}.`
+                        : "Default Runner is now this computer.",
                     ).catch(() => {});
                   }}
                 >
-                  <option value="">This computer</option>
+                  <option value="">Local</option>
                   {missingEnv ? (
                     <option value={defaults.environmentId}>Missing ({defaults.environmentId})</option>
                   ) : null}
@@ -290,7 +289,6 @@ export function GeneralSettingsPage() {
           </Panel>
         </Section>
       ) : null}
-      <PluginSettings />
     </FramedPage>
   );
 }

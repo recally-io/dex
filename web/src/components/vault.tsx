@@ -132,10 +132,7 @@ export function Vault({ target }: { target: VaultTarget }) {
         )}
       </Panel>
       {scope === "agent" ? (
-        <Link
-          to="/settings/environment"
-          className="mt-3 inline-block text-sm text-muted-foreground underline"
-        >
+        <Link to="/settings/secrets" className="mt-3 inline-block text-sm text-muted-foreground underline">
           Manage secrets shared by all bots
         </Link>
       ) : null}

@@ -6,7 +6,11 @@ import type { AddressInfo } from "node:net";
 
 const contentType = { "content-type": "application/json" };
 
-test("authorizes an MCP connection in the browser and returns to Tools", async ({ app, browser, screen }) => {
+test("authorizes an MCP connection and follows the legacy callback to Integrations", async ({
+  app,
+  browser,
+  screen,
+}) => {
   await app.open("/");
 
   const dex = new URL(await browser.url()).origin;
@@ -120,7 +124,7 @@ test("authorizes an MCP connection in the browser and returns to Tools", async (
     if (!created.ok) throw new Error(`Could not create OAuth test bot (${created.status})`);
 
     const { id }: { id: string } = await created.json();
-    const tools = `/a/${id}/extensions`;
+    const integrations = `/a/${id}/integrations`;
 
     try {
       await app.open(`/a/${id}`);
@@ -131,11 +135,11 @@ test("authorizes an MCP connection in the browser and returns to Tools", async (
         );
       await screen.getByRole("button", "Send message").tap();
       await screen.getByText(/^tool:.*Saved/).waitFor();
-      await app.open(tools);
+      await app.open(integrations);
       await screen.getByRole("button", { name: "Authorize", exact: true }).tap();
       await expect(screen.getByRole("button", { name: "Reauthorize", exact: true })).toBeVisible();
       await expect(screen.getByText("Connected", { exact: true })).toBeVisible();
-      expect(new URL(await browser.url()).pathname).toBe(tools);
+      expect(new URL(await browser.url()).pathname).toBe(integrations);
     } finally {
       await fetch(`${dex}/api/agents/${id}`, { method: "DELETE" });
     }
