@@ -20,7 +20,10 @@ import (
 	"github.com/recally-io/dex/internal/upload"
 )
 
-const maxOutboxAttempts = 20
+const (
+	minOutboxAttemptsBeforeExpiry = 20
+	maxOutboxRetryAge             = 24 * time.Hour
+)
 
 func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error {
 	commands, err := m.q.ListChannelCommands(ctx, m.agentID)
@@ -89,7 +92,8 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 				err = errors.New("feedback reply delivery failed")
 			}
 		}
-		if errors.Is(err, channel.ErrPermanent) || r.Attempts+1 >= maxOutboxAttempts {
+		expired := r.Attempts+1 >= minOutboxAttemptsBeforeExpiry && time.Now().UnixMilli()-r.CreatedAt >= maxOutboxRetryAge.Milliseconds()
+		if errors.Is(err, channel.ErrPermanent) || expired {
 			if err := m.q.FailOutboxMessage(ctx, sqlc.FailOutboxMessageParams{ID: r.ID, Reason: err.Error()}); err != nil {
 				return err
 			}
