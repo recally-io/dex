@@ -86,10 +86,21 @@ func TestUserTelegramCallbackExpiryRevocationAndClearGenerationSurviveRestart(t 
 	if event := f.callbackResult(t); event.Text == "Accepted." {
 		t.Fatal("regrant revived canceled button")
 	}
-	// After restart, an unconsumed clear still targets its original Main generation.
+	f.callback(7, 42, 7, 0, menu.ID, clearButton)
+	if event := f.callbackResult(t); event.Text == "Accepted." {
+		t.Fatal("re-pairing revived an unused button")
+	}
+	f.message(8, 42, 7, "/menu")
+	menu = f.next(t)
+	clearButton = f.button(t, menu.ID, "Clear")
+	eventually(t, "menu receipt", func() (bool, any) {
+		n := count(t, conn, `SELECT count(*) FROM channel_commands WHERE source_key = 'telegram:123:8' AND delivered_at IS NOT NULL`)
+		return n == 1, n
+	})
+	// After restart, an unused button on the new binding still targets its Main generation.
 	d.stop()
 	startTelegram(t, f, data, 42)
-	f.callback(7, 42, 7, 0, menu.ID, clearButton)
+	f.callback(9, 42, 7, 0, menu.ID, clearButton)
 	if event := f.callbackResult(t); event.Text != "Accepted." {
 		t.Fatalf("durable callback lost on restart: %+v", event)
 	}
@@ -98,7 +109,7 @@ func TestUserTelegramCallbackExpiryRevocationAndClearGenerationSurviveRestart(t 
 	}
 	// Another unconsumed button from the old generation cannot act on the new native conversation.
 	stale := f.button(t, menu.ID, "Settings")
-	f.callback(8, 42, 7, 0, menu.ID, stale)
+	f.callback(10, 42, 7, 0, menu.ID, stale)
 	if event := f.callbackResult(t); event.Text == "Accepted." {
 		t.Fatal("old generation callback acted after clear")
 	}

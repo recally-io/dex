@@ -740,7 +740,7 @@ func TestUserWechatTypingContinuesWhileAnswerIsPending(t *testing.T) {
 	}
 }
 
-func TestUserWechatRescanDeliversReplyAfterSendSessionExpires(t *testing.T) {
+func TestUserWechatRescanDoesNotSendAnOldPendingReply(t *testing.T) {
 	t.Parallel()
 	// Given a settled reply rejected with -14 at the send boundary.
 	f := newFakeWechat(t)
@@ -755,11 +755,16 @@ func TestUserWechatRescanDeliversReplyAfterSendSessionExpires(t *testing.T) {
 		err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions, wechat_runtime WHERE status = 'done' AND delivered_at IS NULL AND pause_until > ?", time.Now().UnixMilli()).Scan(&n)
 		return err == nil && n == 1, fmt.Sprintf("pending=%d err=%v", n, err)
 	})
-	// When the owner scans again, the same durable sender resumes the saved answer.
+	// When the same owner scans again, the old reply stays on the revoked binding.
 	f.staleSend.Store(false)
 	connectWechat(t, d)
-	if got := wxSentText(f.next(t)); got != "echo: pending delivery" {
-		t.Fatal(got)
+	if n := count(t, conn, `SELECT count(*) FROM outbox_messages o JOIN channel_bindings b ON b.id = o.binding_id
+WHERE o.body = 'echo: pending delivery' AND o.status = 'revoked' AND b.revoked_at IS NOT NULL`); n != 1 {
+		t.Fatal("the old reply did not close with its binding")
+	}
+	f.batch("c2", wxText(2, "owner", "new pairing"))
+	if got := wxSentText(f.next(t)); got != "echo: new pairing" {
+		t.Fatalf("got %q, want only the new reply", got)
 	}
 }
 
@@ -1118,7 +1123,8 @@ func TestUserWechatInterruptedCommandSkipsMediaBeforeCompletion(t *testing.T) {
 	connectWechat(t, d)
 	_ = f.next(t)
 	conn := wxConn(t, dir)
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command) VALUES ('default','wechat:bot1:2', 'wechat:owner', 'main', '/stop')"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, binding_id)
+SELECT agent_id, 'wechat:bot1:2', peer, 'main', '/stop', id FROM channel_bindings WHERE agent_id = 'default' AND peer = 'wechat:owner'`); err != nil {
 		t.Fatal(err)
 	}
 	// When the source replays with unavailable media, the receipt still completes.

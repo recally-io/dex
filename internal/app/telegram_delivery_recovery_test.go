@@ -79,7 +79,7 @@ func TestUserRevokedTelegramFileDoesNotResumeAfterReauthorization(t *testing.T) 
 	// When the owner revokes the sender, its payload is removed in the settings transaction.
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"allowedUsers": []int64{99}}, nil)
 	conn := controlWriteDB(t, data)
-	if n := count(t, conn, "SELECT count(*) FROM channel_reply_files"); n != 0 {
+	if n := count(t, conn, "SELECT count(*) FROM outbox_files"); n != 0 {
 		t.Fatalf("retained revoked payloads=%d", n)
 	}
 	// Reauthorization permits new work, not the revoked pending delivery.
@@ -92,7 +92,8 @@ func TestUserRevokedTelegramFileDoesNotResumeAfterReauthorization(t *testing.T) 
 		t.Fatalf("revoked file resumed: %+v", got)
 	}
 	eventually(t, "retired revoked delivery", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND channel_revoked=1 AND delivered_at IS NOT NULL")
+		n := count(t, conn, `SELECT count(*) FROM outbox_messages o JOIN submissions s ON s.id = o.source_submission_id
+WHERE s.source_key = 'telegram:123:1' AND o.status = 'revoked' AND o.delivered_at IS NULL`)
 		return n == 1, n
 	})
 	select {

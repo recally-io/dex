@@ -48,8 +48,8 @@ UPDATE background_commands SET state = 'unknown' WHERE state IN ('starting', 'ru
 -- background wake only wakes the child itself and never auto-escalates to its parent. The ID
 -- follows the event, so a replay does not store a second input. An archived bot takes no input: the
 -- condition is part of the insert, so an archive cannot slip between a check and the write.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-SELECT @id, b.conversation_id, @content, 'null', @id, s.origin, 'task_result', 'pending', @created_at
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context, binding_id)
+SELECT @id, b.conversation_id, @content, 'null', @id, s.origin, 'task_result', 'pending', @created_at, s.channel_context, s.binding_id
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
 JOIN conversations c ON c.id = b.conversation_id

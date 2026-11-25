@@ -18,19 +18,6 @@ UPDATE channel_follow_ups SET staged_report = @staged_report WHERE delegation_id
 -- name: ConsumeChannelFollowUpReport :exec
 UPDATE channel_follow_ups SET staged_report = NULL WHERE delegation_id = ?;
 
--- name: GetFollowUpDispatchState :one
-SELECT o.status, EXISTS (
-    SELECT 1 FROM channel_follow_ups f
-    JOIN submissions original ON original.id = f.parent_request_id
-    JOIN submissions result ON result.id = f.result_id
-    WHERE o.source_submission_id = result.id AND o.dedup_key = 'follow-up-final:' || f.delegation_id
-      AND f.state = 'notified'
-      AND original.conversation_id = f.conversation_id AND result.conversation_id = f.conversation_id
-      AND original.source_key = f.parent_source_key AND original.channel_revoked = 0 AND result.channel_revoked = 0
-      AND original.origin = o.peer AND original.channel_context = o.channel_context
-) AS authorized
-FROM outbox_messages o WHERE o.id = ?;
-
 -- name: SetOpenChannelFollowUpState :exec
 UPDATE channel_follow_ups SET state = @state WHERE result_id = @result_id AND state = 'open';
 

@@ -62,15 +62,15 @@ A browser reload discards these drafts.
 Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
 Automation, parent turns to a child session, and dream input use `automation`, `task`, and `dream`.
-A child result copies the origin of the parent request in the same transaction
-that settles the child turn. A result chain thus keeps the
-first input's origin. Existing rows use `unknown`. The durable channel sender
-routes ordinary replies and task results by origin. Web input sends no channel reply.
+A channel input also saves its `binding_id`. A child result copies the origin
+and binding of the parent request in the transaction that settles the child
+turn. Channel replies and task results use the saved binding. They do not
+select a new binding after a re-pair. Web input sends no ordinary channel reply.
 The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
-The first input owns a run. Its origin selects the reply recipient, and its
+The first input owns a run. Its saved binding selects the reply recipient, and its
 receipt is the source for tool calls. A steered input adds content only. It does
 not change the recipient or grant or remove tool authority. Web input and a
 parent's `session_send` can steer. Channel, automation and dream inputs always
@@ -80,8 +80,8 @@ steered input.
 ## Web notifications
 
 Main and Chat display explicit `notify_user` output when the stored source
-submission has Web origin. The Outbox row, source submission, and requested
-conversation must agree on the original binding. An isolated channel session
+submission has Web origin. The Outbox row and source submission must belong
+to the requested conversation. An isolated channel session
 or a Routine does not get a Web timeline notification. A channel target on an
 otherwise eligible Web notification does not change its origin.
 
@@ -196,7 +196,7 @@ final report does not write a `report:` wake. The child starts its own native
 activation. Its first native entry binds that activation to the delegation.
 Only the tool operation that belongs to this activation can stage a final
 report. The control writer checks the child, direct parent, original receipt
-and current grant. A replay returns the same disposition. A second final
+and native activation. A replay returns the same disposition. A second final
 cannot replace the first report. A native `done` settlement can consume that
 report as the canonical result's answer. Settlement, consumption, and result
 creation share one transaction. Revocation or unsuccessful settlement does

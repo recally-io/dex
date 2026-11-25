@@ -1,13 +1,12 @@
 package chat
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-func TestUserChannelSteerCannotBorrowWebOwnerToolAccess(t *testing.T) {
+func TestUserCanManageChannelsFromWebAndPairedPrivateChat(t *testing.T) {
 	// Given a live web input on Main.
 	r := startNative(t, "echo")
 	id, caller := taskParent(t, r)
@@ -15,7 +14,7 @@ func TestUserChannelSteerCannotBorrowWebOwnerToolAccess(t *testing.T) {
 	if got, err := r.service.ChannelToolCaller(t.Context(), caller); err != nil || got != id {
 		t.Fatalf("web input: session=%d error=%v", got, err)
 	}
-	// When a paired channel adds input to that run, then the entire run loses access.
+	// When the owner uses a private chat, alone or in a shared run, the tools stay available.
 	for _, origin := range []string{"telegram:7", "feishu:ou_1", "wechat:wx"} {
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 			ID: origin, ConversationID: id, Content: "manage channels", Attachments: "null", Origin: origin, Kind: "message", CreatedAt: 2,
@@ -23,8 +22,14 @@ func TestUserChannelSteerCannotBorrowWebOwnerToolAccess(t *testing.T) {
 			t.Fatal(err)
 		}
 		caller.RunInputIDs = []string{caller.SourceRequestID, origin}
-		if _, err := r.service.ChannelToolCaller(t.Context(), caller); !errors.Is(err, errChannelToolCaller) {
-			t.Errorf("mixed web and %s input: %v", origin, err)
+		if got, err := r.service.ChannelToolCaller(t.Context(), caller); err != nil || got != id {
+			t.Errorf("mixed web and %s input: session=%d error=%v", origin, got, err)
+		}
+		private := caller
+		private.SourceRequestID = origin
+		private.RunInputIDs = []string{origin}
+		if got, err := r.service.ChannelToolCaller(t.Context(), private); err != nil || got != id {
+			t.Errorf("private %s input: session=%d error=%v", origin, got, err)
 		}
 	}
 }

@@ -45,6 +45,7 @@ func pendingTelegramConclusion(t *testing.T) (*Manager, *sql.DB) {
 	// Given a durable final conclusion authorized for the original Telegram receipt.
 	if _, err := conn.ExecContext(ctx, `
 INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('fixture-bot','Fixture','','',1);
+INSERT INTO telegram_settings (agent_id,token,allowed_users) VALUES ('fixture-bot','123:fixture','42');
 INSERT INTO conversations (id,agent_id,channel_key,title,created_at) VALUES (1,'fixture-bot','main','Main',1),(2,'fixture-bot','child','Child',1);
 UPDATE conversations SET parent_id=1 WHERE id=2;
 INSERT INTO submissions (id,conversation_id,content,status,source_key,origin,kind,channel_context,created_at) VALUES
@@ -54,12 +55,9 @@ INSERT INTO submissions (id,conversation_id,content,status,source_key,origin,kin
 UPDATE submissions SET parent_request_id='original' WHERE id='child-turn';
 INSERT INTO channel_follow_ups (delegation_id,result_id,conversation_id,child_id,parent_request_id,parent_source_key,state)
 VALUES ('child-turn','result:child-turn',1,2,'original','original-key','notified');
-INSERT INTO outbox_messages (id,dedup_key,agent_id,conversation_id,source_submission_id,kind,peer,channel_context,body,created_at)
-VALUES ('final','follow-up-final:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4);`); err != nil {
-		t.Fatal(err)
-	}
-	q := sqlc.New(conn)
-	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "fixture-bot", Token: "123:fixture", AllowedUsers: "42", Options: "{}"}); err != nil {
+INSERT INTO outbox_messages (id,dedup_key,agent_id,conversation_id,source_submission_id,kind,peer,channel_context,body,created_at,binding_id)
+SELECT 'final','follow-up-final:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4,id
+FROM channel_bindings WHERE agent_id = 'fixture-bot' AND peer = 'telegram:42';`); err != nil {
 		t.Fatal(err)
 	}
 	return manager, conn
@@ -136,7 +134,14 @@ func TestUserRevokedOutboxSnapshotIsNotSentOrConfirmed(t *testing.T) {
 	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: "Result", Attachments: "null", Origin: "wechat:fixture-peer", Kind: "task_result"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{ID: id, DedupKey: id, AgentID: "fixture-bot", ConversationID: conv.ID, SourceSubmissionID: source, Kind: "proactive", Peer: "wechat:fixture-peer", Body: "Reviewed conclusion", Status: "pending"}); err != nil {
+	if err := q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "fixture-bot", BotID: "fixture-bot", Owner: "fixture-peer"}); err != nil {
+		t.Fatal(err)
+	}
+	binding, err := q.GetActiveChannelBinding(ctx, sqlc.GetActiveChannelBindingParams{AgentID: "fixture-bot", AccountID: "fixture-bot", Peer: "wechat:fixture-peer", OwnerPeer: "wechat:fixture-peer"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{ID: id, DedupKey: id, BindingID: sql.NullInt64{Int64: binding.ID, Valid: true}, AgentID: "fixture-bot", ConversationID: conv.ID, SourceSubmissionID: source, Kind: "proactive", Peer: "wechat:fixture-peer", Body: "Reviewed conclusion", Status: "pending"}); err != nil {
 		t.Fatal(err)
 	}
 	// Stop revokes the row after the sender loads it but before any platform call.

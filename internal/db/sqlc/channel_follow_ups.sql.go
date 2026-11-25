@@ -138,32 +138,6 @@ func (q *Queries) GetChannelFollowUpByInput(ctx context.Context, resultID string
 	return i, err
 }
 
-const getFollowUpDispatchState = `-- name: GetFollowUpDispatchState :one
-SELECT o.status, EXISTS (
-    SELECT 1 FROM channel_follow_ups f
-    JOIN submissions original ON original.id = f.parent_request_id
-    JOIN submissions result ON result.id = f.result_id
-    WHERE o.source_submission_id = result.id AND o.dedup_key = 'follow-up-final:' || f.delegation_id
-      AND f.state = 'notified'
-      AND original.conversation_id = f.conversation_id AND result.conversation_id = f.conversation_id
-      AND original.source_key = f.parent_source_key AND original.channel_revoked = 0 AND result.channel_revoked = 0
-      AND original.origin = o.peer AND original.channel_context = o.channel_context
-) AS authorized
-FROM outbox_messages o WHERE o.id = ?
-`
-
-type GetFollowUpDispatchStateRow struct {
-	Status     string `json:"status"`
-	Authorized bool   `json:"authorized"`
-}
-
-func (q *Queries) GetFollowUpDispatchState(ctx context.Context, id string) (GetFollowUpDispatchStateRow, error) {
-	row := q.db.QueryRowContext(ctx, getFollowUpDispatchState, id)
-	var i GetFollowUpDispatchStateRow
-	err := row.Scan(&i.Status, &i.Authorized)
-	return i, err
-}
-
 const setOpenChannelFollowUpState = `-- name: SetOpenChannelFollowUpState :exec
 UPDATE channel_follow_ups SET state = ?1 WHERE result_id = ?2 AND state = 'open'
 `

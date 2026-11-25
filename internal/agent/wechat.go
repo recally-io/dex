@@ -136,6 +136,10 @@ func (s *Service) activateWechat(ctx context.Context, agentID string, cfg *wecha
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+	// A fresh QR login is a new binding even if the account and owner did not change.
+	if err := q.RevokeChannelBindings(ctx, sqlc.RevokeChannelBindingsParams{AgentID: agentID, Platform: "wechat"}); err != nil {
+		return err
+	}
 	if err = q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: agentID, Token: cfg.Token, BaseUrl: cfg.BaseURL, BotID: cfg.BotID, Owner: cfg.Owner}); err != nil {
 		return err
 	}

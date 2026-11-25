@@ -11,7 +11,7 @@ import (
 type SourceReceipt struct {
 	ID      string
 	ChatID  int64
-	Pending bool
+	Pending bool // A pending input with a live preview route.
 	Staged  bool
 }
 
@@ -64,5 +64,12 @@ func (s *Service) LookupSource(ctx context.Context, agentID, source string) (Sou
 	if _, err := s.Get(ctx, agentID, sub.ConversationID); err != nil {
 		return SourceReceipt{}, err
 	}
-	return SourceReceipt{ID: id, ChatID: sub.ConversationID, Pending: sub.Status == "pending"}, nil
+	preview := false
+	if sub.Status == "pending" {
+		preview, err = s.q.ChannelBindingActive(ctx, sub.BindingID)
+		if err != nil {
+			return SourceReceipt{}, err
+		}
+	}
+	return SourceReceipt{ID: id, ChatID: sub.ConversationID, Pending: preview}, nil
 }

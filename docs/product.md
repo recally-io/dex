@@ -117,7 +117,8 @@ to read in an afternoon.
   setup options. Notifications can make the channel's owner the primary target
   for routine results.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
-  are for the owner. Each bot belongs to one agent. The web selects an agent.
+  are for the owner. Paired private chats and the web have the same owner
+  access. Each bot belongs to one agent. The web selects an agent.
   Web input and channel input for that agent share its main context. Input from one entry can
   affect an answer at another entry. Channel messages show their channel name
   in the web timeline. Replies return only to the input's origin. Web input
@@ -127,8 +128,9 @@ to read in an afternoon.
   `/stop` stops main's current answer, pending input and background work from
   every main entry. Chat and automation sessions stay outside that scope.
   `/help` lists commands.
-  Reply delivery resumes after a restart and skips confirmed
-  parts. A crash after remote success can duplicate one part. Bot settings
+  Disconnecting a channel cancels its pending deliveries. Reconnecting the
+  same account does not send old replies. They remain available on the web.
+  Reply delivery resumes after a restart and skips confirmed parts. A crash after remote success can duplicate one part. Bot settings
   show each channel's runtime status and setup.
 - Agents can deliver files from main, Chat, Routine runs, and child sessions.
   Dex stores each delivery as an immutable snapshot of at most 20 MiB. The user
@@ -202,8 +204,8 @@ Inputs store their origin. Web input uses `web`. Channel input uses the exact
 peer, such as `telegram:7`. A background result keeps the origin of its source
 input, also when that source is another result. Automation, internal execution,
 and memory consolidation use `automation`, `task`, and `dream`. Channel delivery
-uses origin, including for results that finish after a newer input from another
-entry. Channel input cannot reach a separate Chat session. Old per-peer
+uses the pairing saved with the source input, even if the result finishes after
+another input or a new pairing. Channel input cannot reach a separate Chat session. Old per-peer
 conversations receive no new channel input. Their saved transcript URLs remain readable.
 
 The main chat shows the user's messages and the main agent's answers.

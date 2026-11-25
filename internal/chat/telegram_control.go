@@ -45,7 +45,7 @@ func checkTelegramControl(ctx context.Context, q *sqlc.Queries, source, agentID 
 
 // ValidateTelegramControl is the read-only validity check of a claimed callback command. Other
 // sources pass. The command must keep its button's peer, conversation, generation, object,
-// expiry, actor and a current grant. It returns ErrTelegramUnauthorized for a stale command.
+// expiry, actor, and active binding. It returns ErrTelegramUnauthorized for a stale command.
 // Effects must call it again under their writer through checkTelegramControl.
 func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agentID string, conversationID int64) error {
 	id, callback := strings.CutPrefix(source, "telegram-callback:")
@@ -81,7 +81,7 @@ func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agent
 	if actor.AccountID != original.AccountID || actor.SenderID != original.SenderID || actor.ChatID != original.ChatID || actor.TopicID != original.TopicID || actor.TopicShared != original.TopicShared || actor.MessageID != row.MessageID {
 		return ErrTelegramUnauthorized
 	}
-	allowed, err := TelegramInputAllowed(ctx, q, row.AgentID, row.Peer, actor)
+	allowed, err := q.ChannelBindingActive(ctx, command.BindingID)
 	if err != nil {
 		return err
 	}

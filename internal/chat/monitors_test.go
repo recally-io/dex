@@ -176,6 +176,9 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.q.InsertRoutineNotificationTarget(t.Context(), sqlc.InsertRoutineNotificationTargetParams{
 		ID: "tgt-1", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {

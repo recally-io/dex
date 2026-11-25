@@ -90,7 +90,11 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 		if err != nil {
 			return 0, err
 		}
-		revoke = f.State == "cancelled" || original.ID == "" || original.ChannelRevoked != 0
+		active, err := q.ChannelBindingActive(ctx, original.BindingID)
+		if err != nil {
+			return 0, err
+		}
+		revoke = f.State == "cancelled" || !active || original.ChannelRevoked != 0
 		if f.State == "open" && !revoke {
 			guidance = followUpPrompt
 			consume = outcome == "done" && f.StagedReport.Valid && event.ActivationID != 0 && f.NativeActivationID.Int64 == event.ActivationID

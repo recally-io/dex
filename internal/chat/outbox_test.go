@@ -58,8 +58,15 @@ func TestUserSystemTurnFailQuietAndErrorFallback(t *testing.T) {
 func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+		t.Fatal(err)
+	}
+	bindingID, err := ChannelInputBinding(t.Context(), r.q, "bot", "telegram:42", ChannelContext{AccountID: "123", SenderID: "42"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-		ID: "sys-notify-src", ConversationID: conv, Content: "wake",
+		ID: "sys-notify-src", BindingID: bindingID, ConversationID: conv, Content: "wake",
 		Attachments: "null", Origin: "telegram:42", Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)

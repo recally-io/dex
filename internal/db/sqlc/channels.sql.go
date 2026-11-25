@@ -72,17 +72,20 @@ func (q *Queries) CountChannelPending(ctx context.Context, arg CountChannelPendi
 }
 
 const createChannelCommand = `-- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context) VALUES (?, ?, ?, ?, ?, coalesce(nullif(CAST(? AS TEXT), ''), '{}'))
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, binding_id)
+VALUES (?1, ?2, ?3, ?4, ?5, coalesce(nullif(CAST(?6 AS TEXT), ''), '{}'),
+    (SELECT id FROM channel_bindings b WHERE b.id = ?7 AND b.revoked_at IS NULL))
 ON CONFLICT DO NOTHING
 `
 
 type CreateChannelCommandParams struct {
-	AgentID        string `json:"agent_id"`
-	SourceKey      string `json:"source_key"`
-	Peer           string `json:"peer"`
-	ChannelKey     string `json:"channel_key"`
-	Command        string `json:"command"`
-	ChannelContext string `json:"channel_context"`
+	AgentID        string        `json:"agent_id"`
+	SourceKey      string        `json:"source_key"`
+	Peer           string        `json:"peer"`
+	ChannelKey     string        `json:"channel_key"`
+	Command        string        `json:"command"`
+	ChannelContext string        `json:"channel_context"`
+	BindingID      sql.NullInt64 `json:"binding_id"`
 }
 
 func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCommandParams) error {
@@ -93,21 +96,25 @@ func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCom
 		arg.ChannelKey,
 		arg.Command,
 		arg.ChannelContext,
+		arg.BindingID,
 	)
 	return err
 }
 
 const createFeedbackCommand = `-- name: CreateFeedbackCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer)
-VALUES (?, ?, ?, 'main', '/feedback', ?, 1, ?) ON CONFLICT DO NOTHING
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer, binding_id)
+VALUES (?1, ?2, ?3, 'main', '/feedback', ?4, 1, ?5,
+    (SELECT id FROM channel_bindings b WHERE b.id = ?6 AND b.revoked_at IS NULL))
+ON CONFLICT DO NOTHING
 `
 
 type CreateFeedbackCommandParams struct {
-	AgentID        string `json:"agent_id"`
-	SourceKey      string `json:"source_key"`
-	Peer           string `json:"peer"`
-	ChannelContext string `json:"channel_context"`
-	Answer         string `json:"answer"`
+	AgentID        string        `json:"agent_id"`
+	SourceKey      string        `json:"source_key"`
+	Peer           string        `json:"peer"`
+	ChannelContext string        `json:"channel_context"`
+	Answer         string        `json:"answer"`
+	BindingID      sql.NullInt64 `json:"binding_id"`
 }
 
 // The existing command receipt is the outbox. Store the reply atomically with its source key.
@@ -118,6 +125,7 @@ func (q *Queries) CreateFeedbackCommand(ctx context.Context, arg CreateFeedbackC
 		arg.Peer,
 		arg.ChannelContext,
 		arg.Answer,
+		arg.BindingID,
 	)
 	return err
 }
@@ -139,7 +147,7 @@ func (q *Queries) FeishuCredentialOwner(ctx context.Context, appID string) (Feis
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE source_key = ?
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply, binding_id FROM channel_commands WHERE source_key = ?
 `
 
 func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (ChannelCommand, error) {
@@ -156,6 +164,7 @@ func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (Chan
 		&i.DeliveredAt,
 		&i.ChannelContext,
 		&i.RenderedReply,
+		&i.BindingID,
 	)
 	return i, err
 }
@@ -247,8 +256,9 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
-AND agent_id = ?1 AND peer LIKE ?2 || '%' ORDER BY rowid
+SELECT c.agent_id, c.source_key, c.peer, c.channel_key, c.command, c.answer, c.completed, c.delivered_at, c.channel_context, c.rendered_reply, c.binding_id FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id AND b.revoked_at IS NULL
+WHERE c.completed = 1 AND c.delivered_at IS NULL
+AND c.agent_id = ?1 AND b.peer LIKE ?2 || '%' ORDER BY c.rowid
 `
 
 type ListChannelCommandRepliesParams struct {
@@ -276,6 +286,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 			&i.DeliveredAt,
 			&i.ChannelContext,
 			&i.RenderedReply,
+			&i.BindingID,
 		); err != nil {
 			return nil, err
 		}
@@ -291,7 +302,8 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE agent_id = ? AND completed = 0
+SELECT c.agent_id, c.source_key, c.peer, c.channel_key, c.command, c.answer, c.completed, c.delivered_at, c.channel_context, c.rendered_reply, c.binding_id FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id AND b.revoked_at IS NULL
+WHERE c.agent_id = ? AND c.completed = 0
 `
 
 func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]ChannelCommand, error) {
@@ -314,6 +326,7 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 			&i.DeliveredAt,
 			&i.ChannelContext,
 			&i.RenderedReply,
+			&i.BindingID,
 		); err != nil {
 			return nil, err
 		}

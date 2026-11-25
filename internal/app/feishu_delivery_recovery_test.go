@@ -103,8 +103,9 @@ func TestUserFeishuCredentialRotationRevokesPendingOutbox(t *testing.T) {
 		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE status='revoked' AND peer='feishu:owner'")
 		return n == 1, n
 	})
-	if n := count(t, conn, "SELECT count(*) FROM submissions WHERE origin='feishu:owner' AND channel_revoked=1"); n != 1 {
-		t.Fatalf("expected submission channel_revoked=1, got %d", n)
+	if n := count(t, conn, `SELECT count(*) FROM submissions s JOIN channel_bindings b ON b.id = s.binding_id
+WHERE s.origin = 'feishu:owner' AND b.revoked_at IS NOT NULL`); n != 1 {
+		t.Fatalf("expected one submission with an inactive binding, got %d", n)
 	}
 
 	// And even after re-enabling sends, the revoked message is never delivered.

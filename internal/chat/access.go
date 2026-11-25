@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/db"
-
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
@@ -44,37 +43,37 @@ func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Co
 }
 
 func toolCallerIn(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Conversation, error) {
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
-	if err != nil {
-		return conv, err
-	}
-	source, err := q.GetSubmission(ctx, r.SourceRequestID)
-	if err != nil {
-		return conv, err
-	}
-	if source.ConversationID != conv.ID {
-		return conv, errSessionInvalid
-	}
-	return conv, nil
+	conv, _, err := toolSource(ctx, q, r)
+	return conv, err
 }
 
-// liveSource returns the input that started the run of the caller, and fails when that run is over.
-func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
-	if err := db.RequireActive(ctx, q, r.AgentID); err != nil {
-		return sqlc.Submission{}, err
-	}
+func toolSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
 	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
-		return sqlc.Submission{}, err
+		return conv, sqlc.Submission{}, err
 	}
 	source, err := q.GetSubmission(ctx, r.SourceRequestID)
-	if err != nil {
-		return source, err
+	if err == nil && source.ConversationID != conv.ID {
+		err = errSessionInvalid
 	}
-	if source.ConversationID != conv.ID || source.Status != "pending" {
-		return source, fmt.Errorf("%w: the source run is no longer active", errSessionInvalid)
+	return conv, source, err
+}
+
+// liveSource returns the input that started the caller's run while it is still active.
+func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Submission, error) {
+	_, source, err := liveToolSource(ctx, q, r)
+	return source, err
+}
+
+func liveToolSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
+	if err := db.RequireActive(ctx, q, r.AgentID); err != nil {
+		return sqlc.Conversation{}, sqlc.Submission{}, err
 	}
-	return source, nil
+	conv, source, err := toolSource(ctx, q, r)
+	if err == nil && source.Status != "pending" {
+		err = fmt.Errorf("%w: the source run is no longer active", errSessionInvalid)
+	}
+	return conv, source, err
 }
 
 // sessionParent returns the conversation of a caller that may manage child sessions. A child and

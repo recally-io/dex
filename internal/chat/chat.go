@@ -443,12 +443,20 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, err
 			}
 		}
+		var bindingID sql.NullInt64
+		if peerFromOrigin(origin) != "" && m.ChannelContext.AccountID != "" {
+			bindingID, err = ChannelInputBinding(ctx, q, agentID, origin, m.ChannelContext)
+			if err != nil {
+				return 0, fmt.Errorf("channel input has no active binding: %w", err)
+			}
+		}
 		channelContext, err := json.Marshal(m.ChannelContext)
 		if err != nil {
 			return 0, err
 		}
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 			ChannelContext: string(channelContext),
+			BindingID:      bindingID,
 			ID:             m.ID,
 			ConversationID: conv.ID,
 			Content:        content,
@@ -820,7 +828,7 @@ func (s *Service) admitInput(ctx context.Context, p sqlc.ListPendingSubmissionsR
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy, ReviewBypass: reviewBypass}
-	input.Authorize = func(ctx context.Context) error { return s.checkAdmission(ctx, conv, p.ID) }
+	input.BeforeAdmission = func(ctx context.Context) error { return s.checkAdmission(ctx, p.ID) }
 	if input.Child {
 		_, err := s.q.GetChannelFollowUpByDelegation(ctx, p.ID)
 		if err == nil {
@@ -866,9 +874,6 @@ func (s *Service) admitInput(ctx context.Context, p sqlc.ListPendingSubmissionsR
 		admissionErr = err
 		if errors.Is(err, errInputSettled) {
 			return nil
-		}
-		if errors.Is(err, ErrTelegramUnauthorized) {
-			return s.channelAdmissionError(ctx, p.ID, err)
 		}
 		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.
@@ -919,7 +924,7 @@ var errInputSettled = errors.New("input is no longer pending")
 
 // A cascading Stop can update this receipt during remote preparation. Check again
 // before the native commit, without holding the control writer across either store.
-func (s *Service) checkAdmission(ctx context.Context, conv sqlc.Conversation, id string) error {
+func (s *Service) checkAdmission(ctx context.Context, id string) error {
 	source, err := s.q.GetSubmission(ctx, id)
 	if err != nil {
 		return err
@@ -930,30 +935,7 @@ func (s *Service) checkAdmission(ctx context.Context, conv sqlc.Conversation, id
 	if source.StopRequested != 0 {
 		return errStopPending
 	}
-	if source.Kind != "message" || !strings.HasPrefix(source.Origin, "telegram:") {
-		return nil
-	}
-	var actor ChannelContext
-	if err := json.Unmarshal([]byte(source.ChannelContext), &actor); err != nil {
-		return err
-	}
-	if !privateTelegramSource(source.Origin, actor) {
-		return nil // Old receipts without platform identity keep their existing behavior.
-	}
-	if source.ChannelRevoked != 0 {
-		return ErrTelegramUnauthorized
-	}
-	return authorizeTelegramActor(ctx, s.q, conv.AgentID, actor.AccountID, actor.SenderID)
-}
-
-func (s *Service) channelAdmissionError(ctx context.Context, id string, err error) error {
-	if !errors.Is(err, ErrTelegramUnauthorized) {
-		return err
-	}
-	if err := s.q.RevokeChannelSubmission(ctx, id); err != nil {
-		return err
-	}
-	return s.settle(ctx, id, engine.Outcome{Status: "unanswered", Reason: ErrTelegramUnauthorized.Error()})
+	return nil
 }
 
 // chatOptions are the run settings of a chat: its own model and thinking level, else the agent's.

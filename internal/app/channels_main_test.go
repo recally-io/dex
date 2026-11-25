@@ -454,7 +454,7 @@ func assertSubmissionOrigin(t *testing.T, conn *sql.DB, id, want string) {
 	}
 }
 
-func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
+func TestUserRevokedChannelStopDoesNotReplyOrAffectLaterWork(t *testing.T) {
 	t.Parallel()
 	// Given a Stop whose withdrawal commits but whose completion fails.
 	f := newFakeTelegram(t)
@@ -477,12 +477,15 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	later := d.send(t, main, taskGate(t, dir, "later-turn"))
 	waitTaskFile(t, filepath.Join(dir, "later-turn.pid"))
 
-	// When command delivery retries while the new turn and task run.
+	// When the same account reconnects while the new turn and task run.
 	if _, err := conn.ExecContext(t.Context(), "DROP TRIGGER fail_command_completion"); err != nil {
 		t.Fatal(err)
 	}
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
-	waitTaskChannelText(t, f, "Stop requested.")
+	if n := count(t, conn, `SELECT count(*) FROM channel_commands c JOIN channel_bindings b ON b.id = c.binding_id
+WHERE c.source_key = 'telegram:123:1' AND b.revoked_at IS NOT NULL AND c.delivered_at IS NOT NULL`); n != 1 {
+		t.Fatal("the old acknowledgment did not close with its binding")
+	}
 	if got := resultSubmission(t, conn, later); got.status != "pending" {
 		t.Fatalf("replayed Stop withdrew later running input: %+v", got)
 	}
@@ -502,6 +505,11 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	result := waitResultSubmission(t, conn, task.ResultID, "done")
 	if !strings.Contains(result.answer, "gate released") {
 		t.Fatalf("later task answer missing: %+v", result)
+	}
+	d.setModel(t, "echo")
+	f.message(2, 42, 7, "new binding")
+	if got := f.next(t); got.Text != "echo: new binding" {
+		t.Fatalf("expected only the new reply: %+v", got)
 	}
 	t.Logf("artifact: later input=%s; task=%s status=%s report=%q", later, task.ID, task.Status, task.Report)
 }

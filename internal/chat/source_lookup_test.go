@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 func TestUserSourceReceiptBelongsToItsAgentBeforeAdmission(t *testing.T) {
@@ -22,7 +24,10 @@ func TestUserSourceReceiptBelongsToItsAgentBeforeAdmission(t *testing.T) {
 		t.Fatalf("absent source=%+v err=%v", absent, err)
 	}
 	// When a channel stores an input, its business receipt exists before admission.
-	if err := r.service.SubmitMessage(t.Context(), "bot", "telegram:7", "owned-source", Message{Content: "stored input"}); err != nil {
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "7"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.service.SubmitMessage(t.Context(), "bot", "telegram:7", "owned-source", Message{Content: "stored input", ChannelContext: ChannelContext{AccountID: "123", SenderID: "7"}}); err != nil {
 		t.Fatal(err)
 	}
 	stored, err := r.service.LookupSource(t.Context(), "bot", "owned-source")

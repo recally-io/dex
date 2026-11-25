@@ -135,14 +135,15 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 		return nil
 	}
 	peer := "feishu:" + m.Sender
+	actor := chat.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender, MessageID: m.ID}
 	if channel.IsFeedbackCommand(m.Text) {
 		text := channel.FeedbackCommand
 		if m.PlainText {
 			text = m.Text
 		}
-		return b.manager.Receive(botCtx, peer, source, chat.Message{Content: text})
+		return b.manager.Receive(botCtx, peer, source, chat.Message{Content: text, ChannelContext: actor})
 	}
-	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo, ChannelContext: chat.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender, MessageID: m.ID}}
+	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo, ChannelContext: actor}
 	stored := false
 	defer func() {
 		if !stored {
