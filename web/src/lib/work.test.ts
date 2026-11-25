@@ -1,8 +1,8 @@
 import { expect, test } from "vite-plus/test";
 import type { Chat, Work } from "../api/generated/types.gen";
-import { botStatus, needsItems } from "./work";
+import { attentionItems, botStatus } from "./work";
 
-test("a bot row shows needs you before working, and only for its own items", () => {
+test("a bot row shows attention before working, and only for its own items", () => {
   const empty = { sessions: [], automations: [], inbox: [] };
   const failedRun = { agentId: "a", outcome: "failed", dismissed: false } as const;
 
@@ -35,11 +35,14 @@ test("a bot row shows needs you before working, and only for its own items", () 
   ).toBeUndefined();
 
   expect(botStatus("a", { ...empty, inbox: [failedRun] }, undefined)).toBe("needs");
+  expect(botStatus("a", { ...empty, inbox: [{ ...failedRun, outcome: "changed" }] }, undefined)).toBe(
+    "needs",
+  );
   expect(botStatus("a", { ...empty, inbox: [{ ...failedRun, dismissed: true }] }, undefined)).toBeUndefined();
   expect(botStatus("a", { ...empty, automations: [{ agentId: "a", setup: true }] }, undefined)).toBe("needs");
 });
 
-test("needsItems keeps open questions, unhandled failed runs, and setup automations for one bot", () => {
+test("Inbox shows open questions, unhandled failures and changes, and missing models across bots", () => {
   const openQ = { id: "q1", text: "Pick one", options: ["A"], status: "open" as const };
   const answeredQ = { id: "q2", text: "Old", options: ["A"], status: "answered" as const };
 
@@ -115,8 +118,11 @@ test("needsItems keeps open questions, unhandled failed runs, and setup automati
     ],
   };
 
-  const items = needsItems("a", work);
-  expect(items.questions.map((c) => c.id)).toEqual([1]);
-  expect(items.results.map((r) => r.runId)).toEqual(["r1"]);
-  expect(items.setup.map((a) => a.id)).toEqual(["auto-1"]);
+  work.inbox.push({ ...work.inbox[0], runId: "r3", agentId: "b", outcome: "changed", read: true });
+  work.automations.push({ ...work.automations[0], agentId: "b", setup: false });
+
+  const items = attentionItems(work);
+  expect(items.questions.map((item) => item.chat.id)).toEqual([1, 3]);
+  expect(items.results.map((result) => result.runId)).toEqual(["r1", "r3"]);
+  expect(items.setup.map(({ automation }) => automation.id)).toEqual(["auto-1"]);
 });

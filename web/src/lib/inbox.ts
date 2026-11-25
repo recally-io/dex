@@ -1,4 +1,4 @@
-import { listInboxOptions } from "../api/generated/@tanstack/react-query.gen";
+import { listHeldEventsOptions, listInboxOptions } from "../api/generated/@tanstack/react-query.gen";
 import {
   createChat,
   listAgentEnvironments,
@@ -11,6 +11,7 @@ import { refreshChats } from "./queries";
 import { newId } from "./utils";
 
 export const inboxOptions = () => listInboxOptions({ query: { includeDismissed: true } });
+export const heldEventsOptions = () => ({ ...listHeldEventsOptions(), refetchInterval: 10_000 });
 
 // The first line is plain text because the chat takes its title from the start of the message.
 export function resultQuote(

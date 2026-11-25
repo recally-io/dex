@@ -17,6 +17,7 @@ Set `DEX_API_URL` when the backend uses another address.
 
 After an API change, run `mise run generate:api`.
 Run `mise run check:web` to check types, lint, format, and the event reducer.
+Set `DEX_E2E_DATA_DIR` to an empty directory to run browser tests with fresh data.
 Git does not track `dist/`. Build and Go check tasks generate the embedded UI.
 Run `mise run build:web` to build it separately.
 
@@ -46,11 +47,16 @@ it; a message sends only upload IDs.
 
 The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
 Bot links open Main. The right Chats sidebar starts closed. The global sidebar
-links to `/inbox`, which lists Tasks, held events, and Routine results across bots.
+links to Board (`/board`) for Tasks and Inbox (`/inbox`) for owner actions.
+Inbox reads active questions, unhandled failed or changed automation results,
+and missing models from `/api/work`, and reads held events from the held events
+endpoint. The Inbox link counts those items. One-way notifications stay in
+transcripts and channels. `/work` redirects to Board; `/needs-you` redirects to
+Inbox. Queued Task questions remain answerable from Task detail.
 A held event shows its type, reason, author, source link, and text. The owner
 chooses an open Task before Attach is enabled, because no API removes the object
 links of an attach. The owner can also dismiss the event.
-`/a/{agentId}/inbox/{taskId}` opens a Task only under the bot that owns it.
+`/a/{agentId}/inbox/{taskId}` still opens a Task under its owner bot.
 General settings lists the plugins with a switch for each. A note asks for a
 restart while a stored choice differs from what runs. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
