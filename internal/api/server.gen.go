@@ -2138,6 +2138,18 @@ type WorkTaskSession struct {
 	Title   string `json:"title"`
 }
 
+// WorkTaskSessionLink defines model for WorkTaskSessionLink.
+type WorkTaskSessionLink struct {
+	AgentId        string `json:"agentId"`
+	AgentName      string `json:"agentName"`
+	ConversationId int64  `json:"conversationId"`
+	IsPrimary      bool   `json:"isPrimary"`
+
+	// LinkedAt Unix time in milliseconds.
+	LinkedAt int64  `json:"linkedAt"`
+	Title    string `json:"title"`
+}
+
 // WorkTaskWait defines model for WorkTaskWait.
 type WorkTaskWait struct {
 	AfterAt int64 `json:"afterAt"`
@@ -10361,7 +10373,10 @@ type GetWorkTask200JSONResponse struct {
 
 	// Session The primary work Session of the Task.
 	Session *WorkTaskSession `json:"session,omitempty"`
-	Task    WorkTask         `json:"task"`
+
+	// Sessions Linked Sessions across Bots. The primary Session comes first when present.
+	Sessions []WorkTaskSessionLink `json:"sessions"`
+	Task     WorkTask              `json:"task"`
 }
 
 func (response GetWorkTask200JSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {

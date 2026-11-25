@@ -7,11 +7,10 @@ alerts, and the Task tools. Optional sources that send Task events are in
 ## Board and event store
 
 Board reads `work_tasks` and `work_task_entries` from `control.sqlite`. Each
-Task belongs to a bot. Its lifecycle and notes do not change the state of a
+Task belongs to one Owner Bot. Its lifecycle and notes do not change the state of a
 Session. Board hides closed Tasks by default. Inbox shows items that need owner
 action, including held events and Automation results. The owner can send a
-message from a Task to Main. The
-Task link and timeline entry commit with the message receipt. An answer to a
+message from a Task to its Owner Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
 message from Main uses the original channel peer. If the input has no channel
@@ -45,7 +44,7 @@ wait or sends a Task alert.
 
 ## Task alerts and tools
 
-A Task alert is a `task_result` submission on the bot's Main. It is linked to
+A Task alert is a `task_result` submission on the Owner Bot's Main. It is linked to
 the Task, so Main shows it with the Task title. Dex creates an alert when a
 source rule creates a Task, or when an event resolves a wait that has `alert`
 set. Dex writes the alert in the same transaction as the event, with the event
@@ -75,10 +74,20 @@ linked object as `links`: its namespace, type, and key, with the waits on that
 object. The core does not decode these values, so links stay readable when no
 source can read them.
 
-`work_task_sessions` holds the primary work Session of a Task. When the input
-that started a Main run is linked to a Task, the first `session_new` of that
-run links its child, in the same transaction as the child. A later child does
-not replace it. `task_update` with `session` sets any child of the caller.
+`work_task_sessions` links a Task to Sessions across Bots. When a Task input
+starts a child through `session_new` or `session_fork`, Dex saves the link in
+the same transaction as the child. The first link is primary. A later link
+does not replace it. `task_update` with `session` can add a direct child of
+the caller, even if that child belongs to another Bot. Set `primary` to `true`
+to promote the child without removing other links. This does not grant tools
+access to Tasks of the child's Bot or change alert routing.
+
+`task_get` and Task detail return linked `sessions` in primary-first order.
+The legacy `session` field still returns the primary Session when present.
+The upgrade keeps old links as primary and uses the Session creation time as
+their link time because the old schema did not store a link time. Downgrading
+this migration keeps only the primary link for each Task.
+
 `task_link_github_pull` from the GitHub plugin links a PR and can add a review
 wait that starts at the call time. Set `alertMain` to `true` to send a Task
 alert when the review arrives.

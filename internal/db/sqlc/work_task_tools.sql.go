@@ -9,6 +9,15 @@ import (
 	"context"
 )
 
+const clearWorkTaskPrimarySession = `-- name: ClearWorkTaskPrimarySession :exec
+UPDATE work_task_sessions SET is_primary = 0 WHERE task_id = ? AND is_primary = 1
+`
+
+func (q *Queries) ClearWorkTaskPrimarySession(ctx context.Context, taskID string) error {
+	_, err := q.db.ExecContext(ctx, clearWorkTaskPrimarySession, taskID)
+	return err
+}
+
 const createWorkTaskToolOperation = `-- name: CreateWorkTaskToolOperation :exec
 INSERT INTO work_task_tool_operations (key, agent_id, conversation_id, source_request_id, action, result)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -35,24 +44,6 @@ func (q *Queries) CreateWorkTaskToolOperation(ctx context.Context, arg CreateWor
 	return err
 }
 
-const getWorkTaskSession = `-- name: GetWorkTaskSession :one
-SELECT c.id, c.agent_id, c.title FROM work_task_sessions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.task_id = ?
-`
-
-type GetWorkTaskSessionRow struct {
-	ID      int64  `json:"id"`
-	AgentID string `json:"agent_id"`
-	Title   string `json:"title"`
-}
-
-func (q *Queries) GetWorkTaskSession(ctx context.Context, taskID string) (GetWorkTaskSessionRow, error) {
-	row := q.db.QueryRowContext(ctx, getWorkTaskSession, taskID)
-	var i GetWorkTaskSessionRow
-	err := row.Scan(&i.ID, &i.AgentID, &i.Title)
-	return i, err
-}
-
 const getWorkTaskToolOperation = `-- name: GetWorkTaskToolOperation :one
 SELECT "key", agent_id, conversation_id, source_request_id, "action", result FROM work_task_tool_operations WHERE key = ?
 `
@@ -71,26 +62,36 @@ func (q *Queries) GetWorkTaskToolOperation(ctx context.Context, key string) (Wor
 	return i, err
 }
 
-const linkFirstWorkTaskSession = `-- name: LinkFirstWorkTaskSession :exec
-INSERT INTO work_task_sessions (task_id, conversation_id)
-SELECT t.id, ?1 FROM work_tasks t WHERE t.id = ?2 AND t.lifecycle = 'open'
-ON CONFLICT (task_id) DO NOTHING
+const linkWorkTaskSession = `-- name: LinkWorkTaskSession :exec
+INSERT INTO work_task_sessions (task_id, conversation_id, agent_id, is_primary, linked_at)
+SELECT t.id, c.id, c.agent_id,
+  NOT EXISTS (SELECT 1 FROM work_task_sessions s WHERE s.task_id = t.id AND s.is_primary = 1), ?1
+FROM work_tasks t JOIN conversations c ON c.id = ?2
+WHERE t.id = ?3 AND (CAST(?4 AS INTEGER) = 0 OR t.lifecycle = 'open')
+ON CONFLICT (task_id, conversation_id) DO NOTHING
 `
 
-type LinkFirstWorkTaskSessionParams struct {
+type LinkWorkTaskSessionParams struct {
+	LinkedAt       int64  `json:"linked_at"`
 	ConversationID int64  `json:"conversation_id"`
 	TaskID         string `json:"task_id"`
+	OnlyOpen       int64  `json:"only_open"`
 }
 
-// The first Session that a Task-linked input starts becomes primary. A later one does not replace it.
-func (q *Queries) LinkFirstWorkTaskSession(ctx context.Context, arg LinkFirstWorkTaskSessionParams) error {
-	_, err := q.db.ExecContext(ctx, linkFirstWorkTaskSession, arg.ConversationID, arg.TaskID)
+// Keep the original timestamp on replay. The first link becomes primary.
+func (q *Queries) LinkWorkTaskSession(ctx context.Context, arg LinkWorkTaskSessionParams) error {
+	_, err := q.db.ExecContext(ctx, linkWorkTaskSession,
+		arg.LinkedAt,
+		arg.ConversationID,
+		arg.TaskID,
+		arg.OnlyOpen,
+	)
 	return err
 }
 
 const listAgentWorkTasks = `-- name: ListAgentWorkTasks :many
 SELECT t.id, t.agent_id, t.title, t.lifecycle, t.created_at, t.updated_at, CAST(coalesce(s.conversation_id, 0) AS INTEGER) AS session_id
-FROM work_tasks t JOIN agents a ON a.id = t.agent_id LEFT JOIN work_task_sessions s ON s.task_id = t.id
+FROM work_tasks t JOIN agents a ON a.id = t.agent_id LEFT JOIN work_task_sessions s ON s.task_id = t.id AND s.is_primary = 1
 WHERE t.agent_id = ?1 AND a.archived_at IS NULL AND (t.lifecycle = 'open' OR ?2)
 ORDER BY t.updated_at DESC, t.id DESC LIMIT 50
 `
@@ -127,6 +128,51 @@ func (q *Queries) ListAgentWorkTasks(ctx context.Context, arg ListAgentWorkTasks
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SessionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkTaskSessions = `-- name: ListWorkTaskSessions :many
+SELECT s.conversation_id, s.agent_id, a.name AS agent_name, c.title, s.is_primary, s.linked_at
+FROM work_task_sessions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.agent_id
+WHERE s.task_id = ? ORDER BY s.is_primary DESC, s.linked_at, s.conversation_id
+`
+
+type ListWorkTaskSessionsRow struct {
+	ConversationID int64  `json:"conversation_id"`
+	AgentID        string `json:"agent_id"`
+	AgentName      string `json:"agent_name"`
+	Title          string `json:"title"`
+	IsPrimary      int64  `json:"is_primary"`
+	LinkedAt       int64  `json:"linked_at"`
+}
+
+func (q *Queries) ListWorkTaskSessions(ctx context.Context, taskID string) ([]ListWorkTaskSessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkTaskSessions, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWorkTaskSessionsRow{}
+	for rows.Next() {
+		var i ListWorkTaskSessionsRow
+		if err := rows.Scan(
+			&i.ConversationID,
+			&i.AgentID,
+			&i.AgentName,
+			&i.Title,
+			&i.IsPrimary,
+			&i.LinkedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -197,6 +243,20 @@ func (q *Queries) ListWorkTaskTimeline(ctx context.Context, arg ListWorkTaskTime
 	return items, nil
 }
 
+const promoteWorkTaskSession = `-- name: PromoteWorkTaskSession :exec
+UPDATE work_task_sessions SET is_primary = 1 WHERE task_id = ? AND conversation_id = ?
+`
+
+type PromoteWorkTaskSessionParams struct {
+	TaskID         string `json:"task_id"`
+	ConversationID int64  `json:"conversation_id"`
+}
+
+func (q *Queries) PromoteWorkTaskSession(ctx context.Context, arg PromoteWorkTaskSessionParams) error {
+	_, err := q.db.ExecContext(ctx, promoteWorkTaskSession, arg.TaskID, arg.ConversationID)
+	return err
+}
+
 const renameWorkTask = `-- name: RenameWorkTask :one
 UPDATE work_tasks SET title = ?1, updated_at = ?2
 WHERE work_tasks.id = ?3 AND work_tasks.agent_id = ?4 AND EXISTS (SELECT 1 FROM agents a WHERE a.id = ?4 AND a.archived_at IS NULL)
@@ -227,19 +287,4 @@ func (q *Queries) RenameWorkTask(ctx context.Context, arg RenameWorkTaskParams) 
 		&i.UpdatedAt,
 	)
 	return i, err
-}
-
-const setWorkTaskSession = `-- name: SetWorkTaskSession :exec
-INSERT INTO work_task_sessions (task_id, conversation_id) VALUES (?, ?)
-ON CONFLICT (task_id) DO UPDATE SET conversation_id = excluded.conversation_id
-`
-
-type SetWorkTaskSessionParams struct {
-	TaskID         string `json:"task_id"`
-	ConversationID int64  `json:"conversation_id"`
-}
-
-func (q *Queries) SetWorkTaskSession(ctx context.Context, arg SetWorkTaskSessionParams) error {
-	_, err := q.db.ExecContext(ctx, setWorkTaskSession, arg.TaskID, arg.ConversationID)
-	return err
 }

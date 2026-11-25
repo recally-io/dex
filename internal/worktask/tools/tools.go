@@ -101,7 +101,7 @@ func (s *Service) List(ctx context.Context, c engine.TaskContext, a WorkTaskList
 	for _, row := range rows {
 		info := WorkTaskInfo{ID: row.ID, Title: row.Title, Lifecycle: row.Lifecycle, UpdatedAt: row.UpdatedAt}
 		if row.SessionID != 0 {
-			info.Session = &WorkTaskSession{ID: strconv.FormatInt(row.SessionID, 10)}
+			info.Session = &WorkTaskSession{ID: strconv.FormatInt(row.SessionID, 10), IsPrimary: true}
 		}
 		out = append(out, info)
 	}
@@ -181,14 +181,17 @@ func entryInfo(e sqlc.ListWorkTaskTimelineRow) WorkTaskEntryInfo {
 
 func taskInfo(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (WorkTaskInfo, error) {
 	info := WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: task.Lifecycle, UpdatedAt: task.UpdatedAt}
-	session, err := q.GetWorkTaskSession(ctx, task.ID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return info, nil
-	}
+	sessions, err := q.ListWorkTaskSessions(ctx, task.ID)
 	if err != nil {
 		return info, err
 	}
-	info.Session = &WorkTaskSession{ID: strconv.FormatInt(session.ID, 10), Title: session.Title, BotID: session.AgentID}
+	for _, s := range sessions {
+		link := WorkTaskSession{ID: strconv.FormatInt(s.ConversationID, 10), Title: s.Title, BotID: s.AgentID, BotName: s.AgentName, IsPrimary: s.IsPrimary == 1, LinkedAt: s.LinkedAt}
+		info.Sessions = append(info.Sessions, link)
+		if link.IsPrimary {
+			info.Session = new(link)
+		}
+	}
 	return info, nil
 }
 
@@ -299,6 +302,9 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a WorkTaskUp
 	default:
 		return WorkTaskInfo{}, invalid("lifecycle is open, completed, or cancelled")
 	}
+	if a.Primary && a.Session == "" {
+		return WorkTaskInfo{}, invalid("primary requires a session")
+	}
 	if title == "" && a.Lifecycle == "" && a.Session == "" {
 		return WorkTaskInfo{}, invalid("give at least one field to change")
 	}
@@ -325,8 +331,16 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a WorkTaskUp
 			if err != nil {
 				return WorkTaskInfo{}, err
 			}
-			if err := q.SetWorkTaskSession(ctx, sqlc.SetWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID}); err != nil {
+			if err := q.LinkWorkTaskSession(ctx, sqlc.LinkWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID, LinkedAt: now}); err != nil {
 				return WorkTaskInfo{}, err
+			}
+			if a.Primary {
+				if err := q.ClearWorkTaskPrimarySession(ctx, task.ID); err != nil {
+					return WorkTaskInfo{}, err
+				}
+				if err := q.PromoteWorkTaskSession(ctx, sqlc.PromoteWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID}); err != nil {
+					return WorkTaskInfo{}, err
+				}
 			}
 		}
 		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {

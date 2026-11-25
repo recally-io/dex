@@ -247,13 +247,8 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now}); err != nil {
 		return SessionRef{}, err
 	}
-	// Work for a Task starts here, so the first child of a Task input becomes its primary Session.
-	if taskID, err := workTaskForInput(ctx, q, source.ID); err != nil {
+	if err := linkTaskChild(ctx, q, source.ID, child.ID, now); err != nil {
 		return SessionRef{}, err
-	} else if taskID != "" {
-		if err := q.LinkFirstWorkTaskSession(ctx, sqlc.LinkFirstWorkTaskSessionParams{TaskID: taskID, ConversationID: child.ID}); err != nil {
-			return SessionRef{}, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return SessionRef{}, err
@@ -365,12 +360,16 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
 		}
-		created, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()})
-		if err == nil && created == 0 {
+		now := s.now().UnixMilli()
+		created, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now})
+		if err != nil {
+			return err
+		}
+		if created == 0 {
 			// A concurrent call with the same key stored its fork first. Roll this fork back.
 			return errRepeatedTurn
 		}
-		return err
+		return linkTaskChild(ctx, q, r.SourceRequestID, fork.ID, now)
 	})
 	if errors.Is(err, errRepeatedTurn) {
 		c, ok, err := repeatedTurn(ctx, s.q, turn, parent)

@@ -324,10 +324,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [task, entries, questions, links]
+                required: [task, entries, questions, links, sessions]
                 properties:
                   task: { $ref: "#/components/schemas/WorkTask" }
                   session: { $ref: "#/components/schemas/WorkTaskSession" }
+                  sessions: {
+                    type: array,
+                    items: { $ref: "#/components/schemas/WorkTaskSessionLink" },
+                    description: Linked Sessions across Bots. The primary Session comes first when present.,
+                  }
                   entries: {
                     type: array,
                     items: { $ref: "#/components/schemas/WorkTaskEntry" },
@@ -2710,6 +2715,20 @@ components:
         id: { type: integer, format: int64 }
         agentId: { type: string }
         title: { type: string }
+    WorkTaskSessionLink:
+      type: object
+      required: [conversationId, agentId, agentName, title, isPrimary, linkedAt]
+      properties:
+        conversationId: { type: integer, format: int64 }
+        agentId: { type: string }
+        agentName: { type: string }
+        title: { type: string }
+        isPrimary: { type: boolean }
+        linkedAt: {
+          type: integer,
+          format: int64,
+          description: Unix time in milliseconds.,
+        }
     HeldEvent:
       type: object
       required: [
