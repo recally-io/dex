@@ -9,6 +9,7 @@ import (
 
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/wechat"
+	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
 var ErrCredentialInUse = errors.New("channel credential already in use")
@@ -38,7 +39,7 @@ func (s *Service) channelSession(agentID string) *channelSession {
 }
 
 func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error) {
-	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}}
+	tg := Telegram{AllowedUsers: []int64{}, Status: channel.Status{State: "off"}, Transport: "polling"}
 	cfg, err := s.TelegramConfig(ctx, agentID)
 	if err != nil {
 		return Channels{}, err
@@ -48,6 +49,9 @@ func (s *Service) Channels(ctx context.Context, agentID string) (Channels, error
 		tg.BotID, _, _ = strings.Cut(cfg.Token, ":")
 		tg.AllowedUsers = cfg.AllowedUsers
 		tg.Options = cfg.Options
+		if cfg.Webhook.URL != "" {
+			tg.Transport, tg.WebhookURL = "webhook", cfg.Webhook.URL
+		}
 	}
 	if s.ChannelStatus != nil {
 		tg.Status = s.ChannelStatus(agentID, "telegram")
@@ -65,7 +69,8 @@ func (s *Service) checkCredential(ctx context.Context, agentID, platform, creden
 	var err error
 	switch platform {
 	case "telegram":
-		owner, e := s.q.TelegramCredentialOwner(ctx, credential)
+		account, _, _ := strings.Cut(credential, ":")
+		owner, e := s.q.TelegramCredentialOwner(ctx, sqlc.TelegramCredentialOwnerParams{AgentID: agentID, Account: account})
 		id, name, err = owner.ID, owner.Name, e
 	case "wechat":
 		owner, e := s.q.WechatCredentialOwner(ctx, credential)
