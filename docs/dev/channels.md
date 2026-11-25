@@ -376,32 +376,12 @@ crash at that boundary cannot leave the outcome of an earlier attempt in place.
 request. It does not prove the user saw the reaction. `updated_at` is Unix time
 in milliseconds.
 
-### Promised follow-ups
+### Background results and delivery diagnostics
 
-On a direct channel request, the parent can set `follow_up: true` on
-`session_new` or `session_send`. The commitment belongs to that delegation,
-request, session, and original channel destination. An acknowledgment or progress
-update does not complete the commitment.
-
-The canonical child result starts an independent review turn for the
-same parent. Its reminder tells the parent to use `notify_user` for a reviewed
-conclusion. A question stays in Web and does not complete the commitment. Plain final text
-stays internal. Dex records `missed_follow_up` without creating another turn,
-retrying the omission, or forwarding any draft or child output.
-
-While a Main review waits, new queued messages stay behind it. A user steer
-can pass the waiting review to join a running user turn. If that turn ends
-before PiG takes the steer, PiG can start a separate user turn with it. That
-turn does not accept more steers ahead of the review. Once the review starts,
-it runs alone. New user inputs wait, and an input in `reject` mode returns
-busy.
-
-The control store records the commitment separately from delivery. A `notified`
-commitment means an explicit conclusion entered the Outbox, not that the channel
-accepted it. Session cancellation and Clear cancel outstanding commitments and revoke
-their pending Outbox entries in the same transaction. Precise Main Web Stop
-only stops the observed turn. If an already-started send succeeds, Dex still
-records its platform receipt.
+Child session results, monitors, and background completions enter Main as internal
+non-user inputs with no inherited channel destination. Pure background runs never
+auto-send to channels; Main decides whether to call `notify_user` to reach the owner
+through the single-message Outbox.
 
 For delivery diagnostics, read `control.sqlite`:
 

@@ -94,13 +94,12 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ? AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL;
 
 -- name: CreateTurnResult :execrows
--- The result of a parent turn goes to the parent session with the origin of the parent request.
--- The ID follows the turn, so a replay does not store a second result.
+-- The result of a parent turn goes to the parent session as an internal sub_session input
+-- with no inherited channel origin. The ID follows the turn, so a replay does not store a second result.
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
-SELECT @id, c.parent_id, @content, 'null', @id, source.origin, 'sub_session', '', '', 'task_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id), source.channel_context, max(source.channel_revoked, CAST(@revoke_route AS INTEGER))
+SELECT @id, c.parent_id, @content, 'null', @id, 'task', 'sub_session', '', '', 'task_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id), '{}', 0
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
-JOIN submissions source ON source.id = turn.parent_request_id
 WHERE turn.id = @turn_id AND c.parent_id IS NOT NULL
 ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 

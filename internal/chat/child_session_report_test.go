@@ -110,7 +110,7 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 	provider.SetResponses([]ai.FauxResponseStep{
 		step(func(req ai.TranscriptContext) ai.AssistantMessage {
 			// The parent keeps the dispatch schema of session_send.
-			if got := schemaProperties(offeredTools(req)["session_send"]); !slices.Equal(got, []string{"follow_up", "id", "message", "mode"}) {
+			if got := schemaProperties(offeredTools(req)["session_send"]); !slices.Equal(got, []string{"id", "message", "mode"}) {
 				t.Errorf("parent session_send schema = %v", got)
 			}
 			return calls(call("session_new", map[string]any{"title": "Verifier", "message": "Wait for a wake."}))

@@ -274,12 +274,8 @@ final answer cut at 4,000 characters, or the failure reason. A restart adds
 the number of queued inputs it withdrew. Child results enter the parent as
 `producer = 'sub_session'` with no channel reply destination; pure background
 runs never auto-send to channels, and Main decides whether to call `notify_user`.
-An ordinary result can enter the parent's follow-up Inbox while the parent
-is busy. A result with a usable channel commitment waits in control until it
-can start a native review with no other inputs. The guard checks the live run
-and native Inbox in the admission transaction, and prevents steers from
-joining the review. Ordinary shared runs do not change. Control never changes
-a settled submission back to pending. The parent reads the child's
+An ordinary result enters the parent's follow-up Inbox while the parent is busy.
+Control never changes a settled submission back to pending. The parent reads the child's
 final answer from the result and can call `session_read` for a cut text.
 
 Control passes a trusted input kind, the turn ID and the child title to the

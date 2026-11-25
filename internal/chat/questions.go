@@ -139,15 +139,6 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 	if err != nil {
 		return QuestionInfo{}, err
 	}
-	followUp := false
-	if f, err := q.GetChannelFollowUpByInput(ctx, source.ID); err == nil {
-		followUp = true
-		if f.State != "open" || source.ChannelRevoked != 0 {
-			return QuestionInfo{}, errChannelFollowUp
-		}
-	} else if !errors.Is(err, sql.ErrNoRows) {
-		return QuestionInfo{}, err
-	}
 	if action != nil {
 		if err := action.allowed(ctx, q, r, source); err != nil {
 			return QuestionInfo{}, err
@@ -183,7 +174,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 		return QuestionInfo{}, err
 	}
 	inputIDs := r.RunInputIDs
-	if followUp || len(inputIDs) == 0 {
+	if len(inputIDs) == 0 {
 		inputIDs = []string{source.ID}
 	}
 	for _, inputID := range inputIDs {

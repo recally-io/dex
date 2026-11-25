@@ -100,11 +100,10 @@ func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnPara
 
 const createTurnResult = `-- name: CreateTurnResult :execrows
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
-SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'sub_session', '', '', 'task_result', 'pending', ?3, c.id, ?4, source.channel_context, max(source.channel_revoked, CAST(?5 AS INTEGER))
+SELECT ?1, c.parent_id, ?2, 'null', ?1, 'task', 'sub_session', '', '', 'task_result', 'pending', ?3, c.id, ?4, '{}', 0
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
-JOIN submissions source ON source.id = turn.parent_request_id
-WHERE turn.id = ?6 AND c.parent_id IS NOT NULL
+WHERE turn.id = ?5 AND c.parent_id IS NOT NULL
 ON CONFLICT (result_child_id, native_answer_id) DO NOTHING
 `
 
@@ -113,19 +112,17 @@ type CreateTurnResultParams struct {
 	Content        string        `json:"content"`
 	CreatedAt      int64         `json:"created_at"`
 	NativeAnswerID sql.NullInt64 `json:"native_answer_id"`
-	RevokeRoute    int64         `json:"revoke_route"`
 	TurnID         string        `json:"turn_id"`
 }
 
-// The result of a parent turn goes to the parent session with the origin of the parent request.
-// The ID follows the turn, so a replay does not store a second result.
+// The result of a parent turn goes to the parent session as an internal sub_session input
+// with no inherited channel origin. The ID follows the turn, so a replay does not store a second result.
 func (q *Queries) CreateTurnResult(ctx context.Context, arg CreateTurnResultParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, createTurnResult,
 		arg.ID,
 		arg.Content,
 		arg.CreatedAt,
 		arg.NativeAnswerID,
-		arg.RevokeRoute,
 		arg.TurnID,
 	)
 	if err != nil {

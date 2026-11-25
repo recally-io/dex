@@ -18,8 +18,6 @@ type TaskContext struct {
 	SourceRequestID string
 	RunInputIDs     []string
 	Key             string
-	Isolation       InputIsolation
-	ActivationID    int64
 }
 
 // EnvironmentInfo is an execution environment that a session can select. It has no secrets.
@@ -55,9 +53,6 @@ func (c ToolCall) Context(ctx context.Context) (TaskContext, error) {
 }
 func (c ToolCall) TurnEnding(ctx context.Context, name string) (TaskContext, error) {
 	return turnEndingCall(ctx, c.api, c.agentID, name)
-}
-func (c ToolCall) RecordActivation(ctx context.Context, call *TaskContext) error {
-	return reportActivation(ctx, c.api, call)
 }
 
 func (c ToolCall) SetCwd(ctx context.Context, path string) error {

@@ -53,10 +53,8 @@ INSERT INTO submissions (id,conversation_id,content,status,source_key,origin,kin
     ('child-turn',2,'Do work','done',NULL,'task','message','{}',2),
     ('result:child-turn',1,'Canonical result','done',NULL,'telegram:42','task_result','{"accountId":"123","senderId":"42"}',3);
 UPDATE submissions SET parent_request_id='original' WHERE id='child-turn';
-INSERT INTO channel_follow_ups (delegation_id,result_id,conversation_id,child_id,parent_request_id,parent_source_key,state)
-VALUES ('child-turn','result:child-turn',1,2,'original','original-key','notified');
 INSERT INTO outbox_messages (id,event_id,agent_id,conversation_id,source_submission_id,kind,peer,channel_context,body,created_at)
-VALUES ('final','follow-up-final:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4);`); err != nil {
+VALUES ('final','notify:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4);`); err != nil {
 		t.Fatal(err)
 	}
 	return manager, conn

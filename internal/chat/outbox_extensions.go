@@ -167,9 +167,6 @@ func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 		var call engine.TaskContext
 		if final {
 			call, err = invocation.TurnEnding(ctx, "session_report")
-			if err == nil {
-				err = invocation.RecordActivation(ctx, &call)
-			}
 		} else {
 			call, err = invocation.Context(ctx)
 		}

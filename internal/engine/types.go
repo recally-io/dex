@@ -11,7 +11,6 @@ import (
 
 var (
 	ErrBusy                 = errors.New("conversation is busy")
-	ErrReviewBarrier        = errors.New("a channel review holds queued inputs")
 	ErrEnvironmentResetting = errors.New("environment reset in progress")
 	ErrOriginBusy           = errors.New("follow-up queue holds another origin")
 	ErrMaintenance          = errors.New("engine admission is paused")
@@ -54,18 +53,10 @@ type Attachment struct {
 	Path     string `json:"path"`
 }
 
-// InputIsolation keeps an input out of PiG's shared Inbox boundaries.
-type InputIsolation string
-
-const (
-	IsolatedDelegation InputIsolation = "delegation"
-	IsolatedReview     InputIsolation = "review"
-)
-
 type Input struct {
 	// BeforeAdmission checks receipt state after environment preparation, before a new native commit.
 	BeforeAdmission func(context.Context) error
-	// ValidateAdmission runs after isolation checks, just before a new native commit.
+	// ValidateAdmission runs just before a new native commit.
 	ValidateAdmission func(context.Context, Ref) error
 	// RequireEnvironment delays admission until the selected environment is online.
 	RequireEnvironment bool
@@ -87,32 +78,25 @@ type Input struct {
 	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
 	// waits for the run to end, "steer" joins the run after its current tool step, and "reject"
 	// returns ErrBusy.
-	WhenBusy  string
-	Isolation InputIsolation
-	// ReviewBypass permits an immediate input past a waiting review, only while native work is active.
-	ReviewBypass bool
+	WhenBusy string
 }
 type inputMetadata struct {
-	RequestID    string         `json:"requestId"`
-	Content      string         `json:"content"`
-	HasWorkTask  bool           `json:"hasWorkTask,omitzero"`
-	Kind         string         `json:"kind,omitempty"`
-	Origin       string         `json:"origin"`
-	Source       string         `json:"source"`
-	Attachments  []Attachment   `json:"attachments"`
-	TaskID       string         `json:"taskId,omitempty"`
-	TaskTitle    string         `json:"taskTitle,omitempty"`
-	Reason       string         `json:"reason,omitempty"`
-	Isolation    InputIsolation `json:"isolation,omitempty"`
-	ReviewBypass bool           `json:"reviewBypass,omitzero"`
+	RequestID   string       `json:"requestId"`
+	Content     string       `json:"content"`
+	HasWorkTask bool         `json:"hasWorkTask,omitzero"`
+	Kind        string       `json:"kind,omitempty"`
+	Origin      string       `json:"origin"`
+	Source      string       `json:"source"`
+	Attachments []Attachment `json:"attachments"`
+	TaskID      string       `json:"taskId,omitempty"`
+	TaskTitle   string       `json:"taskTitle,omitempty"`
+	Reason      string       `json:"reason,omitempty"`
 }
 type Outcome struct {
 	Status, Answer, Reason string
 	AnswerID               int64
 	// RunInputIDs lists the request IDs of inputs answered by AnswerID, in PiG placement order.
 	RunInputIDs []string
-	// ActivationID is the native first entry of an isolated run, not a submission or task ID.
-	ActivationID int64
 }
 
 func (o Outcome) Equal(other Outcome) bool {
@@ -120,7 +104,6 @@ func (o Outcome) Equal(other Outcome) bool {
 		o.Answer == other.Answer &&
 		o.Reason == other.Reason &&
 		o.AnswerID == other.AnswerID &&
-		o.ActivationID == other.ActivationID &&
 		slices.Equal(o.RunInputIDs, other.RunInputIDs)
 }
 

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -71,62 +70,15 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 			body.Answer += fmt.Sprintf("\n[The answer is cut. Read the rest with session_read: id %d, turn %s, offset %d.]", link.ChildID, turn, textLimit)
 		}
 	}
-	f, err := q.GetChannelFollowUpByDelegation(ctx, turn)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
-	}
-	var guidance string
-	var revoke bool
-	var consume bool
-	if f.DelegationID != "" {
-		child, err := q.GetConversation(ctx, link.ChildID)
-		if err != nil {
-			return 0, err
-		}
-		input, err := q.GetSubmission(ctx, turn)
-		if err != nil {
-			return 0, err
-		}
-		original, err := followUpParent(ctx, q, f, child, input)
-		if err != nil {
-			return 0, err
-		}
-		var actor ChannelContext
-		if err := json.Unmarshal([]byte(original.ChannelContext), &actor); err != nil {
-			return 0, err
-		}
-		owner := original.Origin
-		if strings.HasPrefix(owner, "telegram:") {
-			owner = "telegram:" + actor.SenderID
-		}
-		paired, err := q.ChannelPaired(ctx, sqlc.ChannelPairedParams{AgentID: child.AgentID, Peer: owner, AccountID: actor.AccountID})
-		if err != nil {
-			return 0, err
-		}
-		revoke = f.State == "cancelled" || !paired || original.ChannelRevoked != 0
-		if f.State == "open" && !revoke {
-			guidance = followUpPrompt
-			consume = outcome == "done" && f.StagedReport.Valid && event.ActivationID != 0 && f.NativeActivationID.Int64 == event.ActivationID
-			if consume {
-				body.Answer = f.StagedReport.String
-			}
-		}
-	}
 	content, err := json.Marshal(struct {
-		Result   sessionResult `json:"task-result"`
-		FollowUp string        `json:"channel-follow-up,omitempty"`
-	}{body, guidance})
+		Result sessionResult `json:"task-result"`
+	}{body})
 	if err != nil {
 		return 0, err
 	}
-	created, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{ID: "result:" + turn, TurnID: turn, Content: string(content), CreatedAt: s.now().UnixMilli(), NativeAnswerID: sql.NullInt64{Int64: event.AnswerID, Valid: outcome == "done"}, RevokeRoute: boolInt(revoke)})
+	created, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{ID: "result:" + turn, TurnID: turn, Content: string(content), CreatedAt: s.now().UnixMilli(), NativeAnswerID: sql.NullInt64{Int64: event.AnswerID, Valid: outcome == "done"}})
 	if err != nil || created == 0 {
 		return 0, err
-	}
-	if consume {
-		if err := q.ConsumeChannelFollowUpReport(ctx, turn); err != nil {
-			return 0, err
-		}
 	}
 	return link.ParentID.Int64, nil
 }

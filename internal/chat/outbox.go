@@ -70,34 +70,6 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 	if err != nil {
 		return "", err
 	}
-	f, err := q.GetChannelFollowUpByInput(ctx, source.ID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
-	}
-	if f.ResultID != "" {
-		if source.ChannelRevoked != 0 || f.ConversationID != conv.ID ||
-			(f.State != "open" || source.Status != "pending") && (!final || f.State != "notified") {
-			return "", errChannelFollowUp
-		}
-		if !f.ParentRequestID.Valid || !f.ParentSourceKey.Valid {
-			return "", errChannelFollowUp
-		}
-		original, err := q.GetSubmission(ctx, f.ParentRequestID.String)
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", errChannelFollowUp
-		}
-		if err != nil {
-			return "", err
-		}
-		if original.ConversationID != conv.ID || original.SourceKey != f.ParentSourceKey || original.ChannelRevoked != 0 {
-			return "", errChannelFollowUp
-		}
-		if final {
-			// A channel conclusion keeps one key per delegation and stays out of the Web timeline.
-			eventID = followUpFinalKey(f.DelegationID)
-			a.TopicKey = "" // Progress cannot supersede the committed conclusion.
-		}
-	}
 	if existing, err := q.FindNotificationReceipt(ctx, eventID); err == nil {
 		return existing, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
@@ -106,11 +78,6 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 	peer, identity, err := notificationRoute(ctx, q, conv, a.Channel)
 	if err != nil {
 		return "", err
-	}
-	if a.Channel == "" && f.ResultID != "" {
-		// Until the dispatcher replaces opted-in follow-ups, keep the destination
-		// that the owner selected when delegating from a channel.
-		peer, identity = source.Origin, source.ChannelContext
 	}
 	if peer != "" {
 		if a.TopicKey != "" {
@@ -140,11 +107,6 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 		}
 	}
 	if final {
-		if f.ResultID != "" {
-			if err := q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: source.ID, State: "notified"}); err != nil {
-				return "", err
-			}
-		}
 		if peer == source.Origin && strings.HasPrefix(peer, "telegram:") {
 			if err := bindFileDeliveries(ctx, q, outboxID, source.ID); err != nil {
 				return "", err
@@ -152,11 +114,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 		} else if err := q.DeleteUnboundOutboxFiles(ctx, sql.NullString{String: source.ID, Valid: true}); err != nil {
 			return "", err
 		}
-		ids := r.RunInputIDs
-		if f.ResultID != "" {
-			ids = []string{source.ID}
-		}
-		for _, id := range ids {
+		for _, id := range r.RunInputIDs {
 			if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "notify_user"}); err != nil {
 				return "", err
 			}
@@ -201,15 +159,6 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 		bodyText += fmt.Sprintf("\n[The report is cut. Read the child session with session_read: id %d.]", conv.ID)
 	}
 	final := boolPtrOrTrue(a.Final)
-	if final {
-		disposition, err := stageFinalReport(ctx, q, r, conv, source, bodyText)
-		if err != nil {
-			return "", err
-		}
-		if disposition != "" {
-			return disposition, tx.Commit()
-		}
-	}
 	if !conv.ParentID.Valid {
 		return "", errors.New("only child sessions can report to a parent")
 	}
@@ -338,24 +287,6 @@ func (s *Service) ListOutbox(ctx context.Context, agentID string, chatID int64) 
 func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submission, conv sqlc.Conversation, event engine.Outcome, now int64) (string, error) {
 	if conv.ParentID.Valid {
 		return "", nil
-	}
-	if sub.Kind == "task_result" {
-		f, err := q.GetChannelFollowUpByInput(ctx, sub.ID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return "", err
-		}
-		if f.ResultID != "" {
-			if f.State != "open" {
-				return "", nil
-			}
-			if sub.ChannelRevoked != 0 || event.Reason == "stopped" || event.Reason == "aborted" || event.Reason == "withdrawn" {
-				return "", q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: sub.ID, State: "cancelled"})
-			}
-			if sub.ExitAction != "ask_user" || event.Status != "done" {
-				return "", q.SetOpenChannelFollowUpState(ctx, sqlc.SetOpenChannelFollowUpStateParams{ResultID: sub.ID, State: "missed_follow_up"})
-			}
-			return "", nil // Background questions stay in Web.
-		}
 	}
 	if sub.ExitAction == "ask_user" {
 		question, err := q.GetQuestionBySource(ctx, sub.ID)
