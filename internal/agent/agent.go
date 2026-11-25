@@ -313,10 +313,10 @@ func (s *Service) TelegramConfig(ctx context.Context, agentID string) (*telegram
 func (s *Service) SetTelegram(ctx context.Context, agentID string, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.setTelegram(ctx, agentID, token, allowedUsers, options)
+	return s.setTelegram(ctx, agentID, token, allowedUsers, options, transport, webhook)
 }
 
-func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowedUsers []int64, options *telegram.Options) error {
+func (s *Service) setTelegram(ctx context.Context, agentID, token string, allowedUsers []int64, options *telegram.Options, transport string, webhook *telegram.WebhookConfig) error {
 	if err := db.RequireActive(ctx, s.q, agentID); err != nil {
 		return err
 	}

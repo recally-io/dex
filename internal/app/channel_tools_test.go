@@ -178,11 +178,22 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	stale := channelApprovalPath(t, request(bot.ID, "revoke_pairing", "telegram"))
 	setTelegram(44)
 	reviewChannelChange(t, d, owner, http.MethodPost, stale, "", http.StatusConflict)
+	// Owner approval changes pairing without resetting the saved webhook.
+	hook := "/hooks/channels/telegram/" + bot.ID
+	const hookSecret = "owner-review-webhook"
+	d.must(t, http.MethodPut, base+"/channels/telegram", map[string]any{
+		"token": "", "allowedUsers": []int64{44}, "transport": "webhook",
+		"webhook": map[string]string{"url": "https://hooks.example.test" + hook, "secretToken": hookSecret},
+	}, nil)
+	f.nextEvent(t, "setWebhook")
 	revoke := channelApprovalPath(t, request(bot.ID, "revoke_pairing", "telegram"))
 	reviewChannelChange(t, d, owner, http.MethodPost, revoke, "", http.StatusOK)
 	if got := read("channel_pairing", bot.ID); !strings.Contains(got, `"telegram":false`) {
 		t.Fatalf("pairing survived revocation: %q", got)
 	}
+	f.nextEvent(t, "setWebhook")
+	headers := map[string]string{"X-Telegram-Bot-Api-Secret-Token": hookSecret}
+	postChannelHook(t, d, hook, []byte(`{"update_id":700}`), headers, http.StatusOK)
 	var pairing struct {
 		URL string `json:"url"`
 	}
@@ -196,6 +207,8 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	if got := read("channel_status", bot.ID); !strings.Contains(got, `"telegram":"off"`) {
 		t.Fatalf("channel survived disconnection: %q", got)
 	}
+	f.nextEvent(t, "deleteWebhook")
+	postChannelHook(t, d, hook, []byte(`{"update_id":700}`), headers, http.StatusNotFound)
 
 	// The audit contains both outcomes and no credentials, peer IDs or confirmation links.
 	var applied, denied, staleDenied int
