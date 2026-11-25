@@ -26,7 +26,7 @@ type nativeTest struct {
 	close   func()
 }
 
-type reportFunc = func(context.Context, engine.TaskContext, engine.ReportParentArgs) (string, error)
+type reportFunc = func(context.Context, engine.TaskContext, ReportParentArgs) (string, error)
 
 func startNative(t *testing.T, model string, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
 	t.Helper()
@@ -51,38 +51,34 @@ func openNativeTest(t *testing.T, dir, model string, wrapReport func(reportFunc)
 	for _, f := range wrap {
 		provider = f(provider)
 	}
-	report := func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
+	report := func(ctx context.Context, c engine.TaskContext, a ReportParentArgs) (string, error) {
 		return service.ToolReportParent(ctx, c, a)
 	}
 	if wrapReport != nil {
 		report = wrapReport(report)
 	}
-	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, ExecEnv: provider, SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Tasks: engine.TaskTools{
-		AuthorizeMonitor: func(ctx context.Context, c engine.TaskContext) error { return service.AuthorizeMonitor(ctx, c) },
-		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
-			return service.ToolReadDreamMessage(ctx, c, request)
-		},
-		Outbox: engine.OutboxTools{
-			NotifyUser: func(ctx context.Context, c engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
-				return service.ToolNotifyUser(ctx, c, a)
-			},
-			ReportParent: report,
-		},
-		Sessions: engine.SessionTools{
-			New: func(ctx context.Context, c engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-				return service.ToolSessionNew(ctx, c, a)
-			},
-			Send: func(ctx context.Context, c engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
-				return service.ToolSessionSend(ctx, c, a)
-			},
-			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.SessionRef, error) {
-				return service.ToolSessionStop(ctx, c, id)
-			},
-			List: func(ctx context.Context, c engine.TaskContext, a engine.SessionListArgs) ([]engine.SessionInfo, error) {
-				return service.ToolSessionList(ctx, c, a)
-			},
-		},
-	}})
+	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, FakeInputSuffix: BoundRoutineCheckSuffix, ExecEnv: provider, SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
+		id := rt.AgentID
+		handlers := SessionHandlers{Sessions: SessionTools{
+			New: service.ToolSessionNew, Send: service.ToolSessionSend, Stop: service.ToolSessionStop, List: service.ToolSessionList,
+		}}
+		outbox := OutboxTools{NotifyUser: service.ToolNotifyUser, ReportParent: report}
+		return engine.ExtensionSet{
+			Before:   map[string][]*engine.Extension{"vault": {SessionExtension(id, handlers), SessionReadExtension(id, handlers)}},
+			Optional: []*engine.Extension{OutboxExtension(id, outbox), ChildOutboxExtension(id, outbox), DreamMessageExtension(id, service.ToolReadDreamMessage)},
+		}
+	}, InputExtensions: func(input engine.Input) engine.ExtensionEdit {
+		switch {
+		case input.Child:
+			return engine.ExtensionEdit{Remove: []string{"sessions", "outbox"}, Add: []string{"child-outbox"}}
+		case input.Origin == "dream":
+			return engine.ExtensionEdit{Remove: []string{"sessions", "session-reading"}, Add: []string{"dream-message"}}
+		case !input.Automation:
+			return engine.ExtensionEdit{Add: []string{"outbox"}}
+		default:
+			return engine.ExtensionEdit{}
+		}
+	}, HideToolFromSearch: func(name string) bool { return name == LegacyParentReport }})
 	if err != nil {
 		t.Fatal(err)
 	}

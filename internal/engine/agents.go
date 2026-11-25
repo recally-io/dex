@@ -128,7 +128,7 @@ func New(config Config) (*Agents, error) {
 		return nil, err
 	}
 	warnIgnoredEnv(config.DataDir)
-	agents := &Agents{vault: vault.New(config.DataDir), Catalog: NewCatalog(config.FakeModel), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, dirty: map[string]string{}, refused: map[string]string{}, reloadWake: make(chan struct{}, 1), serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}
+	agents := &Agents{vault: vault.New(config.DataDir), Catalog: newCatalog(config.FakeModel, config.FakeInputSuffix), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, dirty: map[string]string{}, refused: map[string]string{}, reloadWake: make(chan struct{}, 1), serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}
 	agents.Catalog.onDiscoveryDone = agents.wakeReloads
 	return agents, nil
 }
@@ -428,50 +428,27 @@ func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agen
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	background := func(ctx context.Context, id durable.ConversationId) (backgroundEnv, error) {
-		s, err := envs.session(ctx, int64(id))
-		if err != nil {
-			return backgroundEnv{}, err
-		}
-		outputDir := filepath.Join(dir, "background")
-		if s.Inherit {
-			outputDir = execenv.JoinTargetPath(s.Handle.Workspace(), ".dex", "background")
-		}
-		return backgroundEnv{EnvironmentID: s.ID, Env: s.Vars, InheritEnv: s.Inherit, Kind: s.Handle.Kind(), OutputDir: outputDir, Workspace: s.Handle.Workspace()}, nil
-	}
 	registry := harness.CreateRegistry()
-	extensions := []*durable.Extension{sessionTraceExtension(agentID), compactionExtension(), checkExtension(agentID, a.config.Tasks.ReportCheck), toolSearchExtension(), codingTools(session, a.config.BashTimeout, loaded.Vault), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), monitorExtension(agentID, a.config.Tasks.Monitors, background, loaded.Vault), vaultExtension(agentID, loaded.Vault), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
-		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
-	}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
-	for _, extension := range extensions {
-		if err := registry.Install(extension); err != nil {
-			return nil, err
-		}
+	builtins := []*Extension{
+		sessionTraceExtension(agentID), compactionExtension(), toolSearchExtension(a.config.HideToolFromSearch),
+		codingTools(session, a.config.BashTimeout, loaded.Vault), vaultExtension(agentID, loaded.Vault),
+		a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+			return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
+		}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}),
+		loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)},
 	}
-	if err := registry.Install(frontDeskExtension()); err != nil {
-		return nil, err
+	var app ExtensionSet
+	if a.config.Extensions != nil {
+		app = a.config.Extensions(ExtensionRuntime{
+			AgentID: agentID, AgentDir: dir, Secrets: loaded.Vault,
+			Environment: func(ctx context.Context, id int64) (ToolEnvironment, error) {
+				s, err := envs.session(ctx, id)
+				return ToolEnvironment{ID: s.ID, Vars: s.Vars, Inherit: s.Inherit, Handle: s.Handle}, err
+			},
+		})
 	}
-	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox))); err != nil {
-		return nil, err
-	}
-	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {
-		return nil, err
-	}
-	if err := errors.Join(registry.Install(botReadExtension(agentID, a.config.Bots)), registry.Install(botManageExtension(agentID, a.config.Bots))); err != nil {
-		return nil, err
-	}
-	for _, extension := range channelExtensions(agentID, a.config.Channels) {
-		if err := registry.Install(extension); err != nil {
-			return nil, err
-		}
-	}
-	if err := registry.Install(workTaskExtension(agentID, a.config.WorkTasks)); err != nil {
-		return nil, err
-	}
-	if err := registry.Install(childExtension()); err != nil {
-		return nil, err
-	}
-	if err := registry.Install(dreamMessageExtension(agentID, a.config.Tasks.ReadDreamMessage)); err != nil {
+	extensions, err := app.install(registry, builtins)
+	if err != nil {
 		return nil, err
 	}
 	store, err := storage.OpenNodeSqliteStorage(filepath.Join(dir, "state.sqlite"), storage.NodeSqliteStorageOptions{})
@@ -483,9 +460,6 @@ func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agen
 			resultErr = errors.Join(resultErr, store.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	if err := registry.Install(routineCheckInstructions()); err != nil {
-		return nil, err
-	}
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
 		Models: a.modelsFor(agentID), Registry: registry,
 		Settings: func() *harness.HarnessSettings {

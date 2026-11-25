@@ -12,7 +12,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-var askArgs = engine.AskUserArgs{Question: "Which one?", Options: []string{"first", "second"}}
+var askArgs = AskUserArgs{Question: "Which one?", Options: []string{"first", "second"}}
 
 func TestUserQuestionReplayReturnsTheStoredQuestion(t *testing.T) {
 	// Given a question that the tool saved.
@@ -24,7 +24,7 @@ func TestUserQuestionReplayReturnsTheStoredQuestion(t *testing.T) {
 	}
 
 	// When PiG replays the same tool call with different arguments, then it gets the saved question.
-	replay, err := r.service.ToolAskUser(t.Context(), source, engine.AskUserArgs{Question: "Changed?", Options: []string{"x", "y", "z"}})
+	replay, err := r.service.ToolAskUser(t.Context(), source, AskUserArgs{Question: "Changed?", Options: []string{"x", "y", "z"}})
 	if err != nil || replay.ID != first.ID || replay.Text != "Which one?" || len(replay.Options) != 2 {
 		t.Fatalf("replay: %+v %v", replay, err)
 	}
@@ -49,7 +49,7 @@ func TestUserQuestionIsRefusedWhenItCannotBeAnswered(t *testing.T) {
 
 	// Given invalid options, then the tool reports the limits.
 	source.Key = "bot/spawn-3"
-	if _, err := r.service.ToolAskUser(t.Context(), source, engine.AskUserArgs{Question: "One option?", Options: []string{"only"}}); !errors.Is(err, ErrQuestionInvalid) {
+	if _, err := r.service.ToolAskUser(t.Context(), source, AskUserArgs{Question: "One option?", Options: []string{"only"}}); !errors.Is(err, ErrQuestionInvalid) {
 		t.Fatalf("one option: %v", err)
 	}
 

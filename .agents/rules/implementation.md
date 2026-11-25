@@ -4,35 +4,35 @@ Read this before you change code, dependencies, native execution, or stored data
 
 ## Modules
 
-| Path                        | Owns                                                                               |
-| --------------------------- | ---------------------------------------------------------------------------------- |
-| `cmd/dex`                   | Process entry: data directory, address, HTTP server                                |
-| `internal/app`              | Wiring: business storage, engine, chat service, HTTP, channels                     |
-| `internal/chat`             | Input intents, business receipts, child session turns and results, source state    |
-| `internal/engine`           | PiG Harnesses, execution storage, models, tools, extensions, transcript projection |
-| `internal/db`               | `control.sqlite`, goose migrations, sqlc queries                                   |
-| `internal/server`           | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`                         |
-| `internal/api`              | Generated from `api/openapi.yaml` (`mise run generate:api`)                        |
-| `internal/live`             | SSE transport over typed engine watches and history                                |
-| `internal/dream`            | Hidden chats that consolidate the memory repo                                      |
-| `internal/scheduler`        | Job schedules; jobs check durable state                                            |
-| `internal/automation`       | Automation prompts, schedules, runs, and chats                                     |
-| `internal/channel`          | Channel transport contract and frozen delivery values                              |
-| `internal/channel/delivery` | Bot lifecycle, channel commands, and durable reply outbox                          |
-| `internal/channel/telegram` | Telegram polling, pairing, protocol, and media adaptation                          |
-| `internal/channel/feishu`   | Feishu/Lark setup, events, cards, and media adaptation                             |
-| `internal/channel/wechat`   | WeChat login, polling, protocol, and media adaptation                              |
-| `internal/upload`           | Upload validation, file storage, and agent-scoped paths                            |
-| `internal/service`          | Per-user launchd/systemd definitions, commands, and readiness checks               |
-| `internal/sysops`           | In-process server operations: update coordination, restart, SQLite backups, logs   |
-| `internal/update`           | Release verification, maintenance coordination, and executable replacement         |
-| `internal/mcptest`          | Local MCP test servers; no production execution                                    |
-| `internal/settings`         | Global providers, model checks, 1Password credentials, access token                |
-| `internal/agent`            | Agent settings, activity, paths, channel configuration                             |
-| `internal/worktask`         | Tasks, the source event store, holds, waits, and the `task_*` tools                |
-| `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools   |
-| `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it         |
-| `web`                       | React UI, built into `web/dist` and embedded                                       |
+| Path                        | Owns                                                                                |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| `cmd/dex`                   | Process entry: data directory, address, HTTP server                                 |
+| `internal/app`              | Wiring: business storage, engine, chat service, HTTP, channels                      |
+| `internal/chat`             | Input intents, business receipts, child session turns and results, source state     |
+| `internal/engine`           | PiG Harnesses, execution storage, model access, tool runtime, transcript projection |
+| `internal/db`               | `control.sqlite`, goose migrations, sqlc queries                                    |
+| `internal/server`           | HTTP API handlers of `api/openapi.yaml`, the web UI at `/`                          |
+| `internal/api`              | Generated from `api/openapi.yaml` (`mise run generate:api`)                         |
+| `internal/live`             | SSE transport over typed engine watches and history                                 |
+| `internal/dream`            | Hidden chats that consolidate the memory repo                                       |
+| `internal/scheduler`        | Job schedules; jobs check durable state                                             |
+| `internal/automation`       | Automation prompts, schedules, runs, and chats                                      |
+| `internal/channel`          | Channel transport contract and frozen delivery values                               |
+| `internal/channel/delivery` | Bot lifecycle, channel commands, and durable reply outbox                           |
+| `internal/channel/telegram` | Telegram polling, pairing, protocol, and media adaptation                           |
+| `internal/channel/feishu`   | Feishu/Lark setup, events, cards, and media adaptation                              |
+| `internal/channel/wechat`   | WeChat login, polling, protocol, and media adaptation                               |
+| `internal/upload`           | Upload validation, file storage, and agent-scoped paths                             |
+| `internal/service`          | Per-user launchd/systemd definitions, commands, and readiness checks                |
+| `internal/sysops`           | In-process server operations: update coordination, restart, SQLite backups, logs    |
+| `internal/update`           | Release verification, maintenance coordination, and executable replacement          |
+| `internal/mcptest`          | Local MCP test servers; no production execution                                     |
+| `internal/settings`         | Global providers, model checks, 1Password credentials, access token                 |
+| `internal/agent`            | Agent settings, activity, paths, channel configuration                              |
+| `internal/worktask`         | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
+| `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
+| `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it          |
+| `web`                       | React UI, built into `web/dist` and embedded                                        |
 
 ## Rules
 
@@ -43,7 +43,11 @@ Read this before you change code, dependencies, native execution, or stored data
   serialized protocol or a backend subprocess.
 - Only the engine opens `<data dir>/agents/<id>/state.sqlite`. Business
   services must not query execution SQLite. Run one dex process per data
-  directory. Keep PiG library calls inside `internal/engine`.
+  directory. Keep PiG execution and storage calls inside `internal/engine`.
+- Business packages define their own tools and prompt sections.
+  `internal/app` registers the extensions and sets their session visibility.
+  Use native extension descriptors and the engine's tool call context. Keep
+  the existing extension names and order because PiG saves them with sessions.
 - Pin the PiG module version. Provider and SDK behavior can change between
   releases. Validate model, tool, cancellation, and storage boundaries when
   you change that version.

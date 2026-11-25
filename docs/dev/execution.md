@@ -28,10 +28,22 @@ source, and optional turn ID and title of a result. `dex.user` and `dex.task_res
 keep display facts with the durable input. `dex.withdrawn` entries preserve
 queued inputs that Stop removed. Withdrawn entries contribute no model text.
 
-Session tools call injected typed handlers in `internal/chat`. The engine does
-not import the HTTP API package. Frontend `Item`, `Event`, `Retry`, and
-`History` types live in the engine and keep the HTTP JSON field names. JSON
-encoding occurs at the HTTP boundary.
+The engine does not import the HTTP API package. Frontend `Item`, `Event`,
+`Retry`, and `History` types live in the engine and keep the HTTP JSON field
+names. JSON encoding occurs at the HTTP boundary.
+
+## Tool registration
+
+Business packages define the tool schemas, prompt sections, and handlers.
+`internal/app` supplies these extensions when the engine opens or reloads an
+agent. The engine registers them before PiG can resume work. The app selects
+optional extensions by name before native input admission. Keep the existing
+extension names because PiG saves them with sessions. Default extensions keep
+their order in the model prompt.
+
+`engine.BindTool` gives a tool its execution session and operation key. The tool
+can resolve the initiating request and the other inputs in the run. The engine
+owns the PiG lookups. Business storage and authorization stay in each handler.
 
 ## Command Monitors
 

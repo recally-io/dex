@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/engine"
 )
 
 func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
@@ -36,7 +35,7 @@ func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
 	}
 	write("waiting")
 	// Given a synthetic status file, a relative project path, and a per-check vault reference.
-	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 10, Prompt: "Read the fixture's status", CheckCommand: `case "$MONITOR_FIXTURE" in monitor-vault-*) ;; *) exit 3;; esac; cat ./reading || exit 2; if [ "$(cat ./reading)" = done ]; then exit 10; fi`, Env: map[string]string{"MONITOR_FIXTURE": "vault:MONITOR_FIXTURE"}})
+	info, err := r.service.ToolMonitorSet(t.Context(), source, MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 10, Prompt: "Read the fixture's status", CheckCommand: `case "$MONITOR_FIXTURE" in monitor-vault-*) ;; *) exit 3;; esac; cat ./reading || exit 2; if [ "$(cat ./reading)" = done ]; then exit 10; fi`, Env: map[string]string{"MONITOR_FIXTURE": "vault:MONITOR_FIXTURE"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +102,7 @@ func TestUserMonitorStopsAtEitherLimitAndShowsCheckFailures(t *testing.T) {
 	ids := make(map[string]string)
 	for _, c := range cases {
 		source.Key = c.key
-		args := engine.MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: c.max, Prompt: "bounded check", CheckCommand: c.cmd}
+		args := MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: c.max, Prompt: "bounded check", CheckCommand: c.cmd}
 		if c.expiry != 0 {
 			args.ExpiresAt = now.Add(c.expiry).Format(time.RFC3339Nano)
 		}
@@ -136,7 +135,7 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 	if _, err := r.service.SetProject(t.Context(), "bot", id, cwd); err != nil {
 		t.Fatal(err)
 	}
-	args := engine.MonitorSetArgs{DelaySeconds: 60, MaxRuns: 1, Prompt: "wait for fixture", CheckCommand: `printf test > started; for i in {1..100}; do test -f release && break; sleep .05; done; exit 10`}
+	args := MonitorSetArgs{DelaySeconds: 60, MaxRuns: 1, Prompt: "wait for fixture", CheckCommand: `printf test > started; for i in {1..100}; do test -f release && break; sleep .05; done; exit 10`}
 	// A real shell waits on a private synthetic fixture for a bounded duration.
 	info, err := r.service.ToolMonitorSet(t.Context(), source, args)
 	if err != nil {
@@ -187,7 +186,7 @@ func TestUserMonitorOfflineEnvironmentDoesNotRunLocally(t *testing.T) {
 	if _, err := r.conn.ExecContext(t.Context(), `UPDATE conversations SET environment_id = 'offline' WHERE id = ?`, id); err != nil {
 		t.Fatal(err)
 	}
-	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, Prompt: "check fixture", CheckCommand: `exit 10`})
+	info, err := r.service.ToolMonitorSet(t.Context(), source, MonitorSetArgs{DelaySeconds: 60, Prompt: "check fixture", CheckCommand: `exit 10`})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +200,7 @@ func TestUserMonitorOfflineEnvironmentDoesNotRunLocally(t *testing.T) {
 	}
 }
 
-func listedMonitor(t *testing.T, r *nativeTest, id int64, monitor string) engine.MonitorInfo {
+func listedMonitor(t *testing.T, r *nativeTest, id int64, monitor string) MonitorInfo {
 	t.Helper()
 	list, err := r.service.ListMonitors(t.Context(), "bot", id)
 	if err != nil {
@@ -213,7 +212,7 @@ func listedMonitor(t *testing.T, r *nativeTest, id int64, monitor string) engine
 		}
 	}
 	t.Fatalf("monitor %s not listed: %+v", monitor, list)
-	return engine.MonitorInfo{}
+	return MonitorInfo{}
 }
 
 func TestUserMonitorQueuesWithoutSteeringAndWithdrawsOnCancel(t *testing.T) {
@@ -225,7 +224,7 @@ func TestUserMonitorQueuesWithoutSteeringAndWithdrawsOnCancel(t *testing.T) {
 	if _, err := r.service.SetProject(t.Context(), "bot", id, cwd); err != nil {
 		t.Fatal(err)
 	}
-	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 2, Prompt: "synthetic queued follow-up"})
+	info, err := r.service.ToolMonitorSet(t.Context(), source, MonitorSetArgs{DelaySeconds: 60, IntervalSeconds: 60, MaxRuns: 2, Prompt: "synthetic queued follow-up"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,7 +282,7 @@ func TestUserMonitorDoesNotFollowAChangedProject(t *testing.T) {
 	if _, err := r.service.SetProject(t.Context(), "bot", id, t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	info, err := r.service.ToolMonitorSet(t.Context(), source, engine.MonitorSetArgs{DelaySeconds: 60, CheckCommand: `exit 10`, Prompt: "synthetic project check"})
+	info, err := r.service.ToolMonitorSet(t.Context(), source, MonitorSetArgs{DelaySeconds: 60, CheckCommand: `exit 10`, Prompt: "synthetic project check"})
 	if err != nil {
 		t.Fatal(err)
 	}

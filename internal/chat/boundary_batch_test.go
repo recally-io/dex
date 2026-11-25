@@ -34,7 +34,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 				ai.FauxAssistantMessage(ai.FauxContentString("one batch answer"), ai.FauxAssistantMessageOptions{}),
 			})
 			r.agents.Catalog.Models.SetProvider(provider.Provider())
-			child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Batch", Message: "root", Provider: "review-boundary", ModelID: "model"})
+			child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Batch", Message: "root", Provider: "review-boundary", ModelID: "model"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -50,7 +50,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 			for i, mode := range []string{"steer", "steer", "queue"} {
 				call := source
 				call.Key = fmt.Sprintf("bot/batch-%d", i)
-				if _, err := r.service.ToolSessionSend(t.Context(), call, engine.SessionSendArgs{ID: child.ID, Message: fmt.Sprintf("input %d", i), Mode: mode}); err != nil {
+				if _, err := r.service.ToolSessionSend(t.Context(), call, SessionSendArgs{ID: child.ID, Message: fmt.Sprintf("input %d", i), Mode: mode}); err != nil {
 					t.Fatal(err)
 				}
 				id := turnID(call.Key)
@@ -102,7 +102,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Maintenance", Message: "first"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Maintenance", Message: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 	awaitReceipt(t, r, turnID(source.Key))
 	call := source
 	call.Key = "bot/queued-parent"
-	if _, err := r.service.ToolSessionSend(t.Context(), call, engine.SessionSendArgs{ID: child.ID, Message: "parent queued"}); err != nil {
+	if _, err := r.service.ToolSessionSend(t.Context(), call, SessionSendArgs{ID: child.ID, Message: "parent queued"}); err != nil {
 		t.Fatal(err)
 	}
 	childID, _ := strconv.ParseInt(child.ID, 10, 64)
@@ -151,7 +151,7 @@ func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
 	r := startNative(t, "bash")
 	parent, source := taskParent(t, r)
 	marker := filepath.Join(r.dir, "root-started")
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Race", Message: "touch " + marker + "; sleep 60"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Race", Message: "touch " + marker + "; sleep 60"})
 	if err != nil {
 		t.Fatal(err)
 	}

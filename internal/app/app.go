@@ -155,108 +155,26 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		jobs.Close()
 		return nil, errors.Join(err, conn.Close())
 	}
-	tools := engine.TaskTools{
-		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
-			return chats.ToolReadDreamMessage(ctx, c, request)
-		},
-		DeliverArtifact: func(ctx context.Context, caller engine.TaskContext, path string) (engine.ArtifactInfo, error) {
-			result, err := artifacts.Deliver(ctx, caller, path)
-			if err != nil {
-				return result, err
-			}
-			_, file, err := artifacts.Open(caller.AgentID, result.Name)
-			if err != nil {
-				return result, err
-			}
-			defer file.Close()
-			queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, result.Name, file)
-			if queued {
-				result.ChannelDelivery = "queued"
-			}
-			return result, err
-		},
-		ReportCheck: func(ctx context.Context, c engine.TaskContext, r engine.CheckReport) error {
-			return chats.ToolReportCheck(ctx, c, r)
-		},
-		SetProject: func(ctx context.Context, c engine.TaskContext, path string) (string, error) {
-			return chats.ToolSetProject(ctx, c, path)
-		},
-		Sessions: engine.SessionTools{
-			New: func(ctx context.Context, c engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-				return chats.ToolSessionNew(ctx, c, a)
-			},
-			Send: func(ctx context.Context, c engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
-				return chats.ToolSessionSend(ctx, c, a)
-			},
-			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.SessionRef, error) {
-				return chats.ToolSessionStop(ctx, c, id)
-			},
-			Fork: func(ctx context.Context, c engine.TaskContext, a engine.SessionForkArgs) (engine.SessionRef, error) {
-				return chats.ToolSessionFork(ctx, c, a)
-			},
-			List: func(ctx context.Context, c engine.TaskContext, a engine.SessionListArgs) ([]engine.SessionInfo, error) {
-				return chats.ToolSessionList(ctx, c, a)
-			},
-			Read: func(ctx context.Context, c engine.TaskContext, a engine.SessionReadArgs) (engine.SessionPage, error) {
-				return chats.ToolSessionRead(ctx, c, a)
-			},
-			Search: func(ctx context.Context, c engine.TaskContext, a engine.SessionSearchArgs) ([]engine.SessionMatch, error) {
-				return chats.ToolSessionSearch(ctx, c, a)
-			},
-		},
-		AskUser: func(ctx context.Context, c engine.TaskContext, a engine.AskUserArgs) (engine.QuestionInfo, error) {
-			return chats.ToolAskUser(ctx, c, a)
-		},
-		Outbox: engine.OutboxTools{
-			NotifyUser: func(ctx context.Context, c engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
-				return chats.ToolNotifyUser(ctx, c, a)
-			},
-			ReportParent: func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
-				return chats.ToolReportParent(ctx, c, a)
-			},
-			RecentOutbox: func(ctx context.Context, ref engine.Ref) ([]engine.OutboxSummary, error) {
-				return chats.ToolRecentOutbox(ctx, ref)
-			},
-		},
-		Environments: func(ctx context.Context, c engine.TaskContext) ([]engine.EnvironmentInfo, error) {
-			return prefs.SessionEnvironments(ctx, c.AgentID)
-		},
-		AuthorizeMonitor: func(ctx context.Context, c engine.TaskContext) error { return chats.AuthorizeMonitor(ctx, c) },
-		Monitors: engine.MonitorTools{
-			Command: func(ctx context.Context, c engine.TaskContext, a engine.MonitorCommandArgs) (engine.MonitorInfo, error) {
-				return chats.ToolMonitorCommand(ctx, c, a)
-			},
-			Set: func(ctx context.Context, c engine.TaskContext, a engine.MonitorSetArgs) (engine.MonitorInfo, error) {
-				return chats.ToolMonitorSet(ctx, c, a)
-			},
-			List: func(ctx context.Context, c engine.TaskContext) ([]engine.MonitorInfo, error) {
-				return chats.ToolMonitorList(ctx, c)
-			},
-			Cancel: func(ctx context.Context, c engine.TaskContext, id string) (engine.MonitorInfo, error) {
-				return chats.ToolMonitorCancel(ctx, c, id)
-			},
-		},
-	}
-	routines := engine.RoutineTools{
-		List: func(ctx context.Context, c engine.TaskContext) ([]engine.RoutineInfo, error) {
-			return routineTools.List(ctx, c)
-		},
-		Get: func(ctx context.Context, c engine.TaskContext, id string) (engine.RoutineInfo, error) {
-			return routineTools.Get(ctx, c, id)
-		},
-		Create: func(ctx context.Context, c engine.TaskContext, p engine.RoutinePatch) (engine.RoutineInfo, error) {
-			return routineTools.Create(ctx, c, p)
-		},
-		Update: func(ctx context.Context, c engine.TaskContext, p engine.RoutinePatch) (engine.RoutineInfo, error) {
-			return routineTools.Update(ctx, c, p)
-		},
-		Run: func(ctx context.Context, c engine.TaskContext, id string) (engine.RoutineRun, error) {
-			return routineTools.Run(ctx, c, id)
-		},
-	}
 	// These tools bind to services that exist only after the engine.
 	botTools := &agent.BotTools{}
-	var channelTools engine.ChannelTools
+	var channelTools agent.ChannelTools
+	taskTools := worktasktools.New(conn).Handlers(pluginTools(plugins))
+	deliverArtifact := func(ctx context.Context, caller engine.TaskContext, path string) (artifact.Delivery, error) {
+		result, err := artifacts.Deliver(ctx, caller, path)
+		if err != nil {
+			return result, err
+		}
+		_, file, err := artifacts.Open(caller.AgentID, result.Name)
+		if err != nil {
+			return result, err
+		}
+		defer file.Close()
+		queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, result.Name, file)
+		if queued {
+			result.ChannelDelivery = "queued"
+		}
+		return result, err
+	}
 	envs := execenv.NewManager(execenv.ManagerConfig{
 		DataDir:    cfg.DataDir,
 		SSHHome:    cfg.Home,
@@ -279,19 +197,56 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) {
 			return chats.SessionEnvironment(ctx, ref)
 		},
-		FakeModel: cfg.FakeModel,
-		Tasks:     tools,
-		Routines:  routines,
-		Bots:      botTools.Handlers(),
-		Channels: engine.ChannelTools{
-			Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
-				return channelTools.Read(ctx, c, view, bot)
-			},
-			Request: func(ctx context.Context, c engine.TaskContext, bot, op, target string) (any, error) {
-				return channelTools.Request(ctx, c, bot, op, target)
-			},
+		FakeModel:       cfg.FakeModel,
+		FakeInputSuffix: chat.BoundRoutineCheckSuffix,
+		Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
+			id := rt.AgentID
+			sessions := chat.SessionHandlers{
+				SetProject: chats.ToolSetProject,
+				Sessions: chat.SessionTools{
+					New: chats.ToolSessionNew, Send: chats.ToolSessionSend, Stop: chats.ToolSessionStop,
+					Fork: chats.ToolSessionFork, List: chats.ToolSessionList, Read: chats.ToolSessionRead, Search: chats.ToolSessionSearch,
+				},
+				Environments: func(ctx context.Context, c engine.TaskContext) ([]engine.EnvironmentInfo, error) {
+					return prefs.SessionEnvironments(ctx, c.AgentID)
+				},
+			}
+			outbox := chat.OutboxTools{NotifyUser: chats.ToolNotifyUser, ReportParent: chats.ToolReportParent, RecentOutbox: chats.ToolRecentOutbox}
+			botHandlers := botTools.Handlers()
+			optional := []*engine.Extension{
+				chat.FrontDeskExtension(), chat.OutboxExtension(id, outbox), chat.ChildOutboxExtension(id, outbox),
+				chat.AskUserExtension(id, chats.ToolAskUser), agent.BotReadExtension(id, botHandlers), agent.BotManageExtension(id, botHandlers),
+			}
+			optional = append(optional, agent.ChannelExtensions(id, agent.ChannelTools{
+				Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
+					return channelTools.Read(ctx, c, view, bot)
+				},
+				Request: func(ctx context.Context, c engine.TaskContext, bot, op, target string) (any, error) {
+					return channelTools.Request(ctx, c, bot, op, target)
+				},
+			})...)
+			optional = append(optional, worktasktools.WorkTaskExtension(id, taskTools), chat.ChildExtension(),
+				chat.DreamMessageExtension(id, chats.ToolReadDreamMessage), chat.RoutineCheckInstructions())
+			return engine.ExtensionSet{
+				Before: map[string][]*engine.Extension{
+					"tool-search": {chat.CheckExtension(id, chats.ToolReportCheck)},
+					"vault": {
+						automation.RoutineExtension(id, automation.RoutineTools{
+							List: routineTools.List, Get: routineTools.Get, Create: routineTools.Create, Update: routineTools.Update, Run: routineTools.Run,
+						}),
+						chat.SessionExtension(id, sessions), chat.SessionReadExtension(id, sessions),
+						chat.MonitorExtension(rt, chat.MonitorTools{
+							Command: chats.ToolMonitorCommand, Set: chats.ToolMonitorSet, List: chats.ToolMonitorList, Cancel: chats.ToolMonitorCancel,
+						}),
+					},
+					"memory": {chat.WorkLoopExtension(), artifact.Extension(rt, deliverArtifact)},
+				},
+				Optional: optional,
+			}
 		},
-		WorkTasks: worktasktools.New(conn).Handlers(pluginTools(plugins)),
+		InputExtensions:    inputExtensions,
+		HideToolArguments:  agent.IsChannelTool,
+		HideToolFromSearch: hideToolFromSearch,
 		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
 			row, err := q.GetAgent(ctx, agentID)
 			if err != nil {

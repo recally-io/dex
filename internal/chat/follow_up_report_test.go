@@ -22,7 +22,7 @@ func TestUserUnprovenAndRevokedFinalReportsCannotWakeMain(t *testing.T) {
 	t.Cleanup(func() { slog.SetDefault(priorLogger) })
 	started, release := make(chan engine.TaskContext, 1), make(chan struct{})
 	r := openNativeTest(t, t.TempDir(), "tool", func(next reportFunc) reportFunc {
-		return func(ctx context.Context, call engine.TaskContext, args engine.ReportParentArgs) (string, error) {
+		return func(ctx context.Context, call engine.TaskContext, args ReportParentArgs) (string, error) {
 			started <- call
 			select {
 			case <-release:
@@ -34,7 +34,7 @@ func TestUserUnprovenAndRevokedFinalReportsCannotWakeMain(t *testing.T) {
 	})
 	ctx := t.Context()
 	parentID, parent := followUpSource(t, r)
-	if _, err := r.service.ToolSessionNew(ctx, parent, engine.SessionNewArgs{
+	if _, err := r.service.ToolSessionNew(ctx, parent, SessionNewArgs{
 		Title: "Revoked before first final", Message: `session_report {"content":"private conclusion after revocation"}`, FollowUp: true,
 	}); err != nil {
 		t.Fatal(err)
@@ -55,8 +55,8 @@ func TestUserUnprovenAndRevokedFinalReportsCannotWakeMain(t *testing.T) {
 		invalid := owner
 		invalid.Key += "-claim-" + strconv.FormatInt(claimed, 10)
 		invalid.ActivationID = claimed
-		got, err := r.service.ToolReportParent(ctx, invalid, engine.ReportParentArgs{Content: "wrong owner"})
-		if got != engine.ReportIgnored || err != nil {
+		got, err := r.service.ToolReportParent(ctx, invalid, ReportParentArgs{Content: "wrong owner"})
+		if got != ReportIgnored || err != nil {
 			t.Fatalf("unproven final did not fail closed: %q, %v", got, err)
 		}
 	}
@@ -67,10 +67,10 @@ func TestUserUnprovenAndRevokedFinalReportsCannotWakeMain(t *testing.T) {
 	close(release)
 	awaitReceipt(t, r, turn)
 	prior, err := r.q.GetRoutineToolOperation(ctx, owner.Key)
-	if err != nil || prior.Result != engine.ReportIgnored {
+	if err != nil || prior.Result != ReportIgnored {
 		t.Fatalf("missing durable no-op for the first report after revocation: %+v, %v", prior, err)
 	}
-	if got, err := r.service.ToolReportParent(ctx, owner, engine.ReportParentArgs{Content: "replay"}); err != nil || got != prior.Result {
+	if got, err := r.service.ToolReportParent(ctx, owner, ReportParentArgs{Content: "replay"}); err != nil || got != prior.Result {
 		t.Fatalf("wrong no-op replay: %q, %v", got, err)
 	}
 	if log := logs.String(); strings.Count(log, "phase=report_ignored reason=revoked") != 1 || strings.Contains(log, "private conclusion after revocation") {
@@ -103,7 +103,7 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 				model = "tool-report-fail"
 			}
 			r := openNativeTest(t, dir, model, func(next reportFunc) reportFunc {
-				return func(ctx context.Context, call engine.TaskContext, args engine.ReportParentArgs) (string, error) {
+				return func(ctx context.Context, call engine.TaskContext, args ReportParentArgs) (string, error) {
 					disposition, err := next(ctx, call, args)
 					staged <- committedReport{call, disposition, err}
 					// No test substitute for reporting or settlement: hold the real tool's
@@ -121,7 +121,7 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 				}
 			})
 			parentID, parent := followUpSource(t, r)
-			child, err := r.service.ToolSessionNew(ctx, parent, engine.SessionNewArgs{
+			child, err := r.service.ToolSessionNew(ctx, parent, SessionNewArgs{
 				Title: "Staged", Message: `session_report {"content":"first verified findings"}`, FollowUp: true,
 			})
 			if err != nil {
@@ -141,7 +141,7 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 			case <-time.After(15 * time.Second):
 				t.Fatal("native session_report did not commit")
 			}
-			if tool.err != nil || tool.disposition != engine.ReportStaged || tool.call.SourceRequestID != turn || tool.call.ActivationID == 0 {
+			if tool.err != nil || tool.disposition != ReportStaged || tool.call.SourceRequestID != turn || tool.call.ActivationID == 0 {
 				t.Fatalf("wrong report ownership: %+v", tool)
 			}
 			resultID := "result:" + turn
@@ -158,20 +158,20 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 			}
 			checkReport := func(service *Service, call engine.TaskContext, want string) {
 				t.Helper()
-				if got, err := service.ToolReportParent(ctx, call, engine.ReportParentArgs{Content: "must not replace first report"}); err != nil || got != want {
+				if got, err := service.ToolReportParent(ctx, call, ReportParentArgs{Content: "must not replace first report"}); err != nil || got != want {
 					t.Errorf("tool %s result=%q want=%q err=%v", call.Key, got, want, err)
 				}
 			}
 			replay := tool.call
 			later := tool.call
 			later.Key += "-later"
-			checkReport(r.service, replay, engine.ReportStaged)
-			checkReport(r.service, later, engine.ReportIgnored)
+			checkReport(r.service, replay, ReportStaged)
+			checkReport(r.service, later, ReportIgnored)
 			var wg sync.WaitGroup
 			racing := tool.call
 			racing.Key += "-racing"
 			if scenario != "interrupted" {
-				wg.Go(func() { checkReport(r.service, racing, engine.ReportIgnored) })
+				wg.Go(func() { checkReport(r.service, racing, ReportIgnored) })
 			}
 			switch scenario {
 			case "done", "failed":
@@ -183,14 +183,14 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				checkReport(r.service, replay, engine.ReportStaged)
+				checkReport(r.service, replay, ReportStaged)
 				close(release)
 				awaitReceipt(t, r, turn)
 			case "stopped":
 				// A second opt-in still waits in control. Withdraw it by request ID, not by
 				// the foreground activation, then explicitly stop the owner of the stage.
 				parent.Key += "-withdraw"
-				if _, err := r.service.ToolSessionSend(ctx, parent, engine.SessionSendArgs{ID: child.ID, Message: "must not execute", FollowUp: true}); err != nil {
+				if _, err := r.service.ToolSessionSend(ctx, parent, SessionSendArgs{ID: child.ID, Message: "must not execute", FollowUp: true}); err != nil {
 					t.Fatal(err)
 				}
 				queued := turnID(parent.Key)
@@ -215,10 +215,10 @@ func TestUserOptedInFinalReportCommitsOnlyWithItsNativeOutcome(t *testing.T) {
 				}
 			}
 			wg.Wait()
-			checkReport(r.service, replay, engine.ReportStaged)
-			checkReport(r.service, later, engine.ReportIgnored)
+			checkReport(r.service, replay, ReportStaged)
+			checkReport(r.service, later, ReportIgnored)
 			later.Key += "-after"
-			checkReport(r.service, later, engine.ReportIgnored)
+			checkReport(r.service, later, ReportIgnored)
 			if scenario == "stopped" {
 				if sub := awaitReceipt(t, r, turn); sub.Status != "unanswered" || sub.Reason.String != "stopped" {
 					t.Fatalf("child Stop retained success: %+v", sub)

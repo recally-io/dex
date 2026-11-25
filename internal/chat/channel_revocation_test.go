@@ -46,7 +46,7 @@ func TestUserChannelRevocationRetiresOldChildResultsWithoutOptIn(t *testing.T) {
 				if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, BindingID: oldBinding, ConversationID: parent, Content: "Please report", Attachments: "null", Origin: platform + ":42", Kind: "message", SourceKey: sql.NullString{String: platform + ":123:1", Valid: true}, ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
 					t.Fatal(err)
 				}
-				if _, err := r.service.ToolSessionNew(ctx, call, engine.SessionNewArgs{Title: "Worker", Message: "child findings", FollowUp: false}); err != nil {
+				if _, err := r.service.ToolSessionNew(ctx, call, SessionNewArgs{Title: "Worker", Message: "child findings", FollowUp: false}); err != nil {
 					t.Fatal(err)
 				}
 				if err := r.service.settle(ctx, call.SourceRequestID, engine.Outcome{Status: "done", Answer: "I will report back"}); err != nil {
@@ -69,7 +69,7 @@ func TestUserChannelRevocationRetiresOldChildResultsWithoutOptIn(t *testing.T) {
 					action := call
 					action.SourceRequestID = resultID
 					action.Key += "/notify"
-					id, err := r.service.ToolNotifyUser(ctx, action, engine.NotifyUserArgs{Content: "Reviewed conclusion"})
+					id, err := r.service.ToolNotifyUser(ctx, action, NotifyUserArgs{Content: "Reviewed conclusion"})
 					if err != nil {
 						t.Fatal(err)
 					}

@@ -829,6 +829,19 @@ func (s *Service) admitInput(ctx context.Context, p sqlc.ListPendingSubmissionsR
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy, ReviewBypass: reviewBypass}
 	input.BeforeAdmission = func(ctx context.Context) error { return s.checkAdmission(ctx, p.ID) }
+	if input.Origin == "automation" && input.Kind == "message" && !input.Automation {
+		input.ModelSuffix = BoundRoutineCheckSuffix
+	}
+	if input.Kind == "task_result" && isMonitorEvent(input.RequestID) {
+		input.RequireEnvironment = true
+		input.ValidateAdmission = func(ctx context.Context, ref engine.Ref) error {
+			caller := engine.TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: p.ID}
+			if err := s.authorizeMonitor(ctx, caller); err != nil {
+				return fmt.Errorf("%w: monitor target is no longer valid", engine.ErrInvalidInput)
+			}
+			return nil
+		}
+	}
 	if input.Child {
 		_, err := s.q.GetChannelFollowUpByDelegation(ctx, p.ID)
 		if err == nil {

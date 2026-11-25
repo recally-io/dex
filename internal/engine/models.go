@@ -48,10 +48,14 @@ type Catalog struct {
 }
 
 func NewCatalog(fake bool) *Catalog {
+	return newCatalog(fake, "")
+}
+
+func newCatalog(fake bool, fakeInputSuffix string) *Catalog {
 	credentials := ai.NewInMemoryCredentialStore()
 	c := &Catalog{credentials: credentials, custom: map[string]*providerRegistration{}, Models: ai.BuiltinModels(ai.CreateModelsOptions{Credentials: credentials, AuthContext: &ai.AuthContext{Env: func(string) (string, bool) { return "", false }, FileExists: func(string) bool { return false }}})}
 	if fake {
-		c.Models.SetProvider(fakeProvider())
+		c.Models.SetProvider(fakeProvider(fakeInputSuffix))
 	}
 	return c
 }

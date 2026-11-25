@@ -172,9 +172,9 @@ writing child separate files or directories. The tools are:
 
 Each session, list row and match names its bot (`bot` and `botId`).
 
-Only a parent can send to, stop or fork a child. A child has none of the parent
-session tools, no routine tools and no `ask_user`: the engine removes them from every input of
-a conversation that has a parent, and the handlers refuse the call as well.
+Only a parent can send to, stop or fork a child. A child has no parent session
+tools, routine tools, or `ask_user`. The app selects the child extensions for
+each input, and the handlers also check the caller.
 A conversation that was a task before the upgrade is a child in the same way.
 
 ### Child reports

@@ -1,4 +1,4 @@
-package engine
+package tools
 
 import (
 	"context"
@@ -6,17 +6,19 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/recally-io/dex/internal/engine"
+
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
 // WorkTaskTools record work on Tasks. They never start, steer, or stop a session.
 type WorkTaskTools struct {
-	List   func(context.Context, TaskContext, WorkTaskListArgs) ([]WorkTaskInfo, error)
-	Get    func(context.Context, TaskContext, string) (WorkTaskDetail, error)
-	New    func(context.Context, TaskContext, WorkTaskNewArgs) (WorkTaskInfo, error)
-	Update func(context.Context, TaskContext, WorkTaskUpdateArgs) (WorkTaskInfo, error)
-	Append func(context.Context, TaskContext, WorkTaskAppendArgs) (WorkTaskEntryInfo, error)
+	List   func(context.Context, engine.TaskContext, WorkTaskListArgs) ([]WorkTaskInfo, error)
+	Get    func(context.Context, engine.TaskContext, string) (WorkTaskDetail, error)
+	New    func(context.Context, engine.TaskContext, WorkTaskNewArgs) (WorkTaskInfo, error)
+	Update func(context.Context, engine.TaskContext, WorkTaskUpdateArgs) (WorkTaskInfo, error)
+	Append func(context.Context, engine.TaskContext, WorkTaskAppendArgs) (WorkTaskEntryInfo, error)
 	// Links are the tools of the enabled plugins.
 	Links []WorkTaskLinkTool
 }
@@ -27,7 +29,7 @@ type WorkTaskLinkTool struct {
 	Name, Description, Rules string
 	Properties               map[string]any
 	Required                 []string
-	Invoke                   func(ctx context.Context, c TaskContext, taskID string, args []byte) (WorkTaskInfo, error)
+	Invoke                   func(ctx context.Context, c engine.TaskContext, taskID string, args []byte) (WorkTaskInfo, error)
 }
 
 type WorkTaskListArgs struct {
@@ -110,40 +112,40 @@ type WorkTaskDetail struct {
 	Links     []WorkTaskLinkInfo     `json:"links"`
 }
 
-func workTaskExtension(agentID string, handlers WorkTaskTools) *durable.Extension {
+func WorkTaskExtension(agentID string, handlers WorkTaskTools) *durable.Extension {
 	str := map[string]any{"type": "string", "minLength": 1}
 	id := map[string]any{"type": "string", "minLength": 1, "description": "A Task ID from task_list or task_new."}
 	tools := []*durable.ToolRegistration{
-		sessionTool(agentID, "task_list", "List the Tasks of this bot, most recently updated first, up to 50. A Task is a tracking record in the owner's Inbox. It does not run work.",
-			objectSchema(nil, map[string]any{"lifecycle": map[string]any{"type": "string", "enum": []string{"open", "all"}, "description": "open (the default) or all, which also lists completed and cancelled Tasks."}}),
+		engine.JSONTool(agentID, "task_list", "List the Tasks of this bot, most recently updated first, up to 50. A Task is a tracking record in the owner's Inbox. It does not run work.",
+			engine.ObjectSchema(nil, map[string]any{"lifecycle": map[string]any{"type": "string", "enum": []string{"open", "all"}, "description": "open (the default) or all, which also lists completed and cancelled Tasks."}}),
 			handlers.List != nil, handlers.List),
-		sessionTool(agentID, "task_get", "Read one Task: its primary Session, linked external objects and their waits, open questions, and the latest 20 timeline entries. External entries have no text.",
-			objectSchema([]string{"id"}, map[string]any{"id": id}), handlers.Get != nil,
-			func(ctx context.Context, c TaskContext, a struct {
+		engine.JSONTool(agentID, "task_get", "Read one Task: its primary Session, linked external objects and their waits, open questions, and the latest 20 timeline entries. External entries have no text.",
+			engine.ObjectSchema([]string{"id"}, map[string]any{"id": id}), handlers.Get != nil,
+			func(ctx context.Context, c engine.TaskContext, a struct {
 				ID string `json:"id"`
 			}) (WorkTaskDetail, error) {
 				return handlers.Get(ctx, c, a.ID)
 			}),
-		sessionTool(agentID, "task_new", "Create an open Task in the owner's Inbox. It does not start a session. Use it only when the user asks to track the work or agrees to it.",
-			objectSchema([]string{"title"}, map[string]any{"title": map[string]any{"type": "string", "minLength": 1, "maxLength": 160}, "note": map[string]any{"type": "string", "description": "An optional first timeline entry."}}),
+		engine.JSONTool(agentID, "task_new", "Create an open Task in the owner's Inbox. It does not start a session. Use it only when the user asks to track the work or agrees to it.",
+			engine.ObjectSchema([]string{"title"}, map[string]any{"title": map[string]any{"type": "string", "minLength": 1, "maxLength": 160}, "note": map[string]any{"type": "string", "description": "An optional first timeline entry."}}),
 			handlers.New != nil, handlers.New),
-		sessionTool(agentID, "task_update", "Change a Task. Omitted fields stay the same. lifecycle needs an explicit user request in this run. session sets the primary Session to a child session of this conversation.",
-			objectSchema([]string{"id"}, map[string]any{
+		engine.JSONTool(agentID, "task_update", "Change a Task. Omitted fields stay the same. lifecycle needs an explicit user request in this run. session sets the primary Session to a child session of this conversation.",
+			engine.ObjectSchema([]string{"id"}, map[string]any{
 				"id": id, "title": map[string]any{"type": "string", "minLength": 1, "maxLength": 160},
 				"lifecycle": map[string]any{"type": "string", "enum": []string{"open", "completed", "cancelled"}},
 				"session":   map[string]any{"type": "string", "minLength": 1, "description": "The ID of a child session of this conversation."},
 			}),
 			handlers.Update != nil, handlers.Update),
-		sessionTool(agentID, "task_append", "Add a short entry to a Task timeline, for example a decision, a result, or a link. It is marked as written by the agent and does not start a session.",
-			objectSchema([]string{"id", "content"}, map[string]any{"id": id, "content": str}),
+		engine.JSONTool(agentID, "task_append", "Add a short entry to a Task timeline, for example a decision, a result, or a link. It is marked as written by the agent and does not start a session.",
+			engine.ObjectSchema([]string{"id", "content"}, map[string]any{"id": id, "content": str}),
 			handlers.Append != nil, handlers.Append),
 	}
 	rules := []string{workTaskRules}
 	for _, link := range handlers.Links {
 		properties := map[string]any{"id": id}
 		maps.Copy(properties, link.Properties)
-		tools = append(tools, sessionTool(agentID, link.Name, link.Description, objectSchema(append([]string{"id"}, link.Required...), properties), true,
-			func(ctx context.Context, c TaskContext, a map[string]any) (WorkTaskInfo, error) {
+		tools = append(tools, engine.JSONTool(agentID, link.Name, link.Description, engine.ObjectSchema(append([]string{"id"}, link.Required...), properties), true,
+			func(ctx context.Context, c engine.TaskContext, a map[string]any) (WorkTaskInfo, error) {
 				taskID, _ := a["id"].(string)
 				delete(a, "id")
 				args, err := json.Marshal(a)

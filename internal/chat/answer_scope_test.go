@@ -30,7 +30,7 @@ func TestUserAnswerDedupIsScopedToChild(t *testing.T) {
 			t.Fatal(err)
 		}
 		call := engine.TaskContext{AgentID: agent, ConversationID: ref.ID, SourceRequestID: source, Key: agent + "/scope"}
-		if _, err := r.service.ToolSessionNew(t.Context(), call, engine.SessionNewArgs{Title: "Child", Message: "same"}); err != nil {
+		if _, err := r.service.ToolSessionNew(t.Context(), call, SessionNewArgs{Title: "Child", Message: "same"}); err != nil {
 			t.Fatal(err)
 		}
 		turn := turnID(call.Key)

@@ -12,8 +12,9 @@ import (
 	"time"
 	"uuid"
 
+	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
+
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/engine"
 )
 
 // taskToolJSON calls a task_* tool in a conversation and decodes its result.
@@ -35,7 +36,7 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
 
 	// Given a Task that Main creates on the owner's request.
-	var task engine.WorkTaskInfo
+	var task worktasktools.WorkTaskInfo
 	taskToolJSON(t, d, main.ID, "task_new", map[string]string{"title": "Ship login", "note": "Tracked on request"}, &task)
 	path := "/api/agents/default/inbox/tasks/" + task.ID
 	var detail api.GetWorkTask200JSONResponse
@@ -66,13 +67,13 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 	child := fmt.Sprint(detail.Session.Id)
 
 	// When Main links the PR of the work and records progress.
-	var updated engine.WorkTaskInfo
+	var updated worktasktools.WorkTaskInfo
 	taskToolJSON(t, d, main.ID, "task_update", map[string]any{"id": task.ID, "session": child}, &updated)
 	if updated.Session == nil || updated.Session.ID != child {
 		t.Fatalf("task_update must keep the child as primary Session: %+v", updated)
 	}
 	taskToolJSON(t, d, main.ID, "task_link_github_pull", map[string]any{"id": task.ID, "repositoryId": 10, "pullNumber": 2, "waitRevision": "abc"}, &updated)
-	var appended engine.WorkTaskEntryInfo
+	var appended worktasktools.WorkTaskEntryInfo
 	taskToolJSON(t, d, main.ID, "task_append", map[string]string{"id": task.ID, "content": "PR #2 is open"}, &appended)
 
 	// And a member reviews the commit, with text that tries to steer the agent.
@@ -82,7 +83,7 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 	deliverGitHub(t, d, secret, "review-31", "pull_request_review", body)
 
 	// Then task_get shows the external entry without its text, and the wait as resolved.
-	var got engine.WorkTaskDetail
+	var got worktasktools.WorkTaskDetail
 	taskToolJSON(t, d, main.ID, "task_get", map[string]string{"id": task.ID}, &got)
 	if len(got.Entries) != 4 || len(got.Links) != 1 || len(got.Links[0].Waits) != 1 || !got.Links[0].Waits[0].Resolved || got.Links[0].Waits[0].Event != "review.submitted" {
 		t.Fatalf("unexpected Task detail: %+v", got)
@@ -109,7 +110,7 @@ func TestUserTracksWorkThroughTaskTools(t *testing.T) {
 	if out := taskTool(t, d, main.ID, "task_get", map[string]string{"id": foreign.Id}); !strings.Contains(out, "no Task of this bot") {
 		t.Fatalf("task_get read a Task of another bot: %s", out)
 	}
-	var listed []engine.WorkTaskInfo
+	var listed []worktasktools.WorkTaskInfo
 	taskToolJSON(t, d, main.ID, "task_list", map[string]string{"lifecycle": "all"}, &listed)
 	if len(listed) != 1 || listed[0].ID != task.ID {
 		t.Fatalf("task_list must list only this bot's Tasks: %+v", listed)

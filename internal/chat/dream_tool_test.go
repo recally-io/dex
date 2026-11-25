@@ -73,7 +73,7 @@ func TestUserDreamReadsOnlyItsOwnIncludedMessage(t *testing.T) {
 	}
 	caller := engine.TaskContext{AgentID: "bot", ConversationID: 102, SourceRequestID: "run"}
 	// When the dream requests the next page at a Unicode character boundary.
-	page, err := r.service.ToolReadDreamMessage(ctx, caller, engine.DreamMessageRequest{MessageID: "original", Field: "user", Offset: 4000})
+	page, err := r.service.ToolReadDreamMessage(ctx, caller, DreamMessageRequest{MessageID: "original", Field: "user", Offset: 4000})
 	if err != nil || !strings.HasPrefix(page.Text, "CORRECTION") || page.HasMore {
 		t.Fatalf("page = %+v, %v", page, err)
 	}
@@ -86,7 +86,7 @@ func TestUserDreamReadsOnlyItsOwnIncludedMessage(t *testing.T) {
 		{engine.TaskContext{AgentID: "bot", ConversationID: 101, SourceRequestID: "run"}, "original"},
 		{caller, "run"},
 	} {
-		if _, err := r.service.ToolReadDreamMessage(ctx, tc.caller, engine.DreamMessageRequest{MessageID: tc.id, Field: "user"}); err == nil {
+		if _, err := r.service.ToolReadDreamMessage(ctx, tc.caller, DreamMessageRequest{MessageID: tc.id, Field: "user"}); err == nil {
 			t.Fatalf("unexpected access: %+v", tc)
 		}
 	}

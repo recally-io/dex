@@ -7,7 +7,6 @@ import (
 
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/engine"
 )
 
 func submissionCount(t *testing.T, r *nativeTest) int {
@@ -81,7 +80,7 @@ func TestArchivedBotRejectsChildSessionInput(t *testing.T) {
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE agents SET archived_at = 1 WHERE id = 'bot'"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "work"})
+	_, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "work"})
 	if !errors.Is(err, db.ErrAgentArchived) {
 		t.Fatalf("err = %v, want ErrAgentArchived", err)
 	}

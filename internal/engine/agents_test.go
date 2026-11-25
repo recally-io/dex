@@ -385,28 +385,6 @@ func TestUserQueuedInputContinuesAfterModelFailure(t *testing.T) {
 	}
 }
 
-func TestUserChildSubmitStripsForegroundTools(t *testing.T) {
-	a := coreEngine(t, Config{})
-	ref := coreCreate(t, a, "alpha", coreOptions("direct"))
-	for _, tool := range []string{"session_new", "ask_user", "create_routine"} {
-		sub, err := a.Submit(t.Context(), ref, Input{
-			RequestID: "child-" + tool,
-			Content:   tool + " {}",
-			Kind:      "message",
-			Origin:    "task",
-			Source:    "dex:alpha/task/1",
-			Child:     true,
-			Options:   coreOptions("direct"),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if outcome := coreWait(t, sub); !strings.HasPrefix(outcome.Answer, "tool error:") {
-			t.Fatalf("child tool %s was unexpectedly available: %+v", tool, outcome)
-		}
-	}
-}
-
 func TestUserMaintenanceBlocksTranscriptRecovery(t *testing.T) {
 	for _, method := range []string{"watch", "history"} {
 		t.Run(method, func(t *testing.T) {

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/execenv"
 )
 
@@ -164,7 +163,7 @@ func TestUserSameBotSessionsAdmitWhileChildWaitsForEnvironment(t *testing.T) {
 	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{}), id: gatedEnvironment}
 	r := startNative(t, "context", func(p execenv.Provider) execenv.Provider { gate.Provider = p; return gate })
 	parent, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "first"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}

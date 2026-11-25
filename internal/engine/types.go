@@ -64,20 +64,25 @@ const (
 type Input struct {
 	// BeforeAdmission checks receipt state after environment preparation, before a new native commit.
 	BeforeAdmission func(context.Context) error
+	// ValidateAdmission runs after isolation checks, just before a new native commit.
+	ValidateAdmission func(context.Context, Ref) error
+	// RequireEnvironment delays admission until the selected environment is online.
+	RequireEnvironment bool
 	// Changed wakes content-free execution subscribers. It must not block.
 	Changed                                  func()
 	RequestID, Content, Kind, Origin, Source string
 	Attachments                              []Attachment
 	Options
 	Automation bool
-	// Child marks an input to a conversation that has a parent. A child has no session tools and no
-	// routine tools, and it gets the child rules.
+	// Child marks an input to a conversation that has a parent.
 	Child bool
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string
 	// WorkTaskContext is model context. It is not part of the owner's message.
 	WorkTaskContext string
+	// ModelSuffix adds guidance to the model input without changing the saved message.
+	ModelSuffix string
 	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
 	// waits for the run to end, "steer" joins the run after its current tool step, and "reject"
 	// returns ErrBusy.
@@ -122,11 +127,15 @@ type Config struct {
 	// FallbackModel returns the current fallback model for an agent, or an empty ModelRef.
 	FallbackModel func(ctx context.Context, agentID string) ModelRef
 	FakeModel     bool
-	BashTimeout   time.Duration
-	Tasks         TaskTools
-	Routines      RoutineTools
-	Bots          BotTools
-	Channels      ChannelTools
-	// WorkTasks backs the task_* tools of Main and writable Chats.
-	WorkTasks WorkTaskTools
+	// FakeInputSuffix is model guidance that the faux command fixtures omit from arguments.
+	FakeInputSuffix string
+	BashTimeout     time.Duration
+	// Extensions supplies application extensions at agent open and reload.
+	Extensions func(ExtensionRuntime) ExtensionSet
+	// InputExtensions selects application extensions before each fresh admission.
+	InputExtensions func(Input) ExtensionEdit
+	// HideToolArguments omits sensitive arguments from history and live events.
+	HideToolArguments func(string) bool
+	// HideToolFromSearch excludes compatibility tools from the active tool catalog.
+	HideToolFromSearch func(string) bool
 }

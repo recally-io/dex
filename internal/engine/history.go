@@ -41,7 +41,7 @@ func (a *Agents) History(ctx context.Context, ref Ref, before int64, limit int) 
 	if cursor != nil && len(entries) > 0 {
 		out.NextBefore = int64(entries[len(entries)-1].Id)
 	}
-	out.Items = brief((projection{entries: entries}).render())
+	out.Items = brief((projection{entries: entries, hideToolArguments: a.config.HideToolArguments}).render())
 	return out, nil
 }
 
@@ -93,7 +93,7 @@ func (a *Agents) Detail(ctx context.Context, ref Ref, entryID int64, itemID stri
 		return Item{}, ErrItemNotFound
 	}
 	entries := page.Items
-	item, ok := find((projection{entries: entries}).render(), itemID)
+	item, ok := find((projection{entries: entries, hideToolArguments: a.config.HideToolArguments}).render(), itemID)
 	if !ok {
 		return Item{}, ErrItemNotFound
 	}
@@ -118,7 +118,7 @@ func (a *Agents) Detail(ctx context.Context, ref Ref, entryID int64, itemID stri
 			}
 		}
 	}
-	item, _ = find((projection{entries: entries}).render(), itemID)
+	item, _ = find((projection{entries: entries, hideToolArguments: a.config.HideToolArguments}).render(), itemID)
 	return item, nil
 }
 

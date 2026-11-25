@@ -148,11 +148,11 @@ func TestUserRoutineToolReplayReturnsCommittedMutationsAfterRestart(t *testing.T
 	service := automation.New(sqlc.New(conn), nil, time.Now) // Read service; mutations bind the real transactional input writer.
 	tools := automation.NewToolService(conn, service, func(int64) {})
 	for range 2 {
-		replay, err := tools.Create(t.Context(), createSource, engine.RoutinePatch{})
+		replay, err := tools.Create(t.Context(), createSource, automation.RoutinePatch{})
 		if err != nil || replay.ID != created.ID {
 			t.Fatalf("create replay: %+v %v", replay, err)
 		}
-		edit, err := tools.Update(t.Context(), updateSource, engine.RoutinePatch{ID: created.ID, Schedule: &engine.RoutineSchedule{Kind: "every", Minutes: 45}})
+		edit, err := tools.Update(t.Context(), updateSource, automation.RoutinePatch{ID: created.ID, Schedule: &automation.RoutineSchedule{Kind: "every", Minutes: 45}})
 		if err != nil || !slices.Equal(edit.NextRuns, updated.NextRuns) || edit.UpdatedAt != updated.UpdatedAt {
 			t.Fatalf("update replay: %+v %v", edit, err)
 		}
@@ -192,10 +192,10 @@ func TestUserRoutineBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 		if _, err := tools.Get(t.Context(), c, a.ID); err == nil {
 			t.Fatal("get accepted untrusted source")
 		}
-		if _, err := tools.Create(t.Context(), c, engine.RoutinePatch{}); err == nil {
+		if _, err := tools.Create(t.Context(), c, automation.RoutinePatch{}); err == nil {
 			t.Fatal("create accepted untrusted source")
 		}
-		if _, err := tools.Update(t.Context(), c, engine.RoutinePatch{ID: a.ID, Enabled: new(false)}); err == nil {
+		if _, err := tools.Update(t.Context(), c, automation.RoutinePatch{ID: a.ID, Enabled: new(false)}); err == nil {
 			t.Fatal("update accepted untrusted source")
 		}
 		if _, err := tools.Run(t.Context(), c, a.ID); err == nil {

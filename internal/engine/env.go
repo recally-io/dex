@@ -59,7 +59,7 @@ func codingTools(session func(context.Context, durable.ConversationId) (sessionE
 				if timeout, ok := properties["timeout"].(map[string]any); ok {
 					timeout["description"] = "Timeout in seconds. The default is 600 seconds."
 				}
-				properties["env"] = commandEnvSchema("Environment variables for this call only. Use vault:NAME for secrets.")
+				properties["env"] = CommandEnvSchema("Environment variables for this call only. Use vault:NAME for secrets.")
 			}
 			bash.PrepareArguments = bashDefaultTimeout(timeoutSeconds)
 			execute := bash.Execute

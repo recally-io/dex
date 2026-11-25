@@ -94,12 +94,12 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 		SourceRequestID: "sys-notify-src", RunInputIDs: []string{"sys-notify-src"}, Key: "bot/101",
 	}
 	nonFinal := false
-	firstID, err := r.service.ToolNotifyUser(t.Context(), call, engine.NotifyUserArgs{Content: "step 1", TopicKey: "deploy", Final: &nonFinal})
+	firstID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 1", TopicKey: "deploy", Final: &nonFinal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	call.Key = "bot/102"
-	secondID, err := r.service.ToolNotifyUser(t.Context(), call, engine.NotifyUserArgs{Content: "step 2", TopicKey: "deploy"})
+	secondID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 2", TopicKey: "deploy"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestUserChildTurnKeepsSavedSilentExit(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	_, source := taskParent(t, r)
-	if _, err := r.service.ToolSessionNew(ctx, source, engine.SessionNewArgs{Title: "Worker", Message: "Finish this turn"}); err != nil {
+	if _, err := r.service.ToolSessionNew(ctx, source, SessionNewArgs{Title: "Worker", Message: "Finish this turn"}); err != nil {
 		t.Fatal(err)
 	}
 	// Given a child turn with a silent exit saved by an older release.
@@ -156,7 +156,7 @@ func TestUserChildTurnKeepsSavedSilentExit(t *testing.T) {
 func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Worker", Message: "init"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Worker", Message: "init"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	resultID, err := r.service.ToolReportParent(t.Context(), engine.TaskContext{
 		AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
 		SourceRequestID: "child-bg-wake", RunInputIDs: []string{"child-bg-wake"}, Key: "bot/202",
-	}, engine.ReportParentArgs{Content: "explicit child escalation"})
+	}, ReportParentArgs{Content: "explicit child escalation"})
 	if err != nil {
 		t.Fatal(err)
 	}

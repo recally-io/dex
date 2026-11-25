@@ -10,7 +10,7 @@ import (
 	"github.com/MichaelKinsy/PiG/ai"
 )
 
-func fakeProvider() *ai.ModelsProvider {
+func fakeProvider(inputSuffix string) *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
 	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "tool-report-fail", "spawn", "spawn-notify", "spawn-monitor", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
@@ -65,10 +65,10 @@ func fakeProvider() *ai.ModelsProvider {
 			if result, ok := last.(ai.ToolResultMessage); ok {
 				return fakeText("bash: " + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
-			return fakeCall("bash", map[string]any{"command": fakeBashCommand(strings.TrimSuffix(text, boundRoutineCheckSuffix))}), nil
+			return fakeCall("bash", map[string]any{"command": fakeBashCommand(strings.TrimSuffix(text, inputSuffix))}), nil
 		case "tool", "tool-report-fail", "direct", "direct-content":
 			// The fixture parses the user prompt as literal arguments, not natural language.
-			text = strings.TrimSuffix(text, boundRoutineCheckSuffix)
+			text = strings.TrimSuffix(text, inputSuffix)
 			if strings.HasPrefix(text, "Dex Task: ") {
 				if _, body, ok := strings.Cut(text, "\n\n"); ok {
 					text = body
@@ -246,6 +246,7 @@ func fakeExposed(t ai.TranscriptContext, name string) bool {
 	}
 	return exposed
 }
+
 func fakeBashCommand(text string) string {
 	if !strings.HasPrefix(text, "Chats since the previous dream") {
 		return text

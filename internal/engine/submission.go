@@ -14,7 +14,6 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/execenv/runner"
-	"github.com/recally-io/dex/internal/vault"
 )
 
 // Submission joins one durable input and the memory commit that follows its settlement.
@@ -103,7 +102,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		// but attachments must wait until they can be staged there.
 		// A lease stays valid while its machine is offline, so check the machine here
 		// without waiting: the input stays in business storage until the machine is back.
-		if waits := target.ID == "" || len(input.Attachments) > 0 || (input.Kind == "task_result" && IsMonitorEvent(input.RequestID)); waits {
+		if waits := target.ID == "" || len(input.Attachments) > 0 || input.RequireEnvironment; waits {
 			if envErr == nil && envs.status(ctx, target.ID) == "offline" {
 				envErr = fmt.Errorf("%w: %w", execenv.ErrUnavailable, runner.ErrOffline)
 			}
@@ -122,33 +121,11 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			options.Instructions = target.Files.instructionsContext(ctx, options.Cwd, options.Instructions)
 		}
 		change := agentChange(options)
-		if input.Automation {
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{routineExtension(ref.AgentID, a.config.Routines)}, Add: []*durable.Extension{routineCheckInstructions(), botReadExtension(ref.AgentID, a.config.Bots)}}})
-		}
-		// Only Main and Chat sessions can ask the user. Extension edits persist on the conversation,
-		// so a child, an automation or a dream never gets the tool and needs no removal.
-		dream := input.Origin == "dream" || strings.Contains(input.Source, "/dream/")
-		asksUser := !input.Automation && !input.Child && !dream
-		switch {
-		case input.Main:
-			add := []*durable.Extension{frontDeskExtension()}
-			if asksUser {
-				add = append(add, channelExtensions(ref.AgentID, a.config.Channels)...)
-				add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
+		if a.config.InputExtensions != nil {
+			edit := a.config.InputExtensions(input)
+			if len(edit.Add) != 0 || len(edit.Remove) != 0 {
+				change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: edit.native()})
 			}
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{workLoopExtension()}, Add: add}})
-		case asksUser:
-			add := channelExtensions(ref.AgentID, a.config.Channels)
-			add = append(add, askUserExtension(ref.AgentID, a.config.Tasks.AskUser), outboxExtension(ref.AgentID, a.config.Tasks.Outbox), botReadExtension(ref.AgentID, a.config.Bots), botManageExtension(ref.AgentID, a.config.Bots), workTaskExtension(ref.AgentID, a.config.WorkTasks))
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Add: add}})
-		}
-		switch {
-		case input.Child:
-			// Every input of a child repeats this edit, so a user message in a child that was a task
-			// before the upgrade loses the same extensions.
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), workLoopExtension(), frontDeskExtension(), routineExtension(ref.AgentID, a.config.Routines), outboxExtension(ref.AgentID, a.config.Tasks.Outbox)}, Add: []*durable.Extension{childExtension(), childOutboxExtension(ref.AgentID, a.config.Tasks.Outbox)}}})
-		case dream:
-			change.Extensions = harness.SetTo(harness.ExtensionChange{Edit: &harness.ExtensionEdit{Remove: []*durable.Extension{sessionExtension(ref.AgentID, a.config.Tasks), sessionReadExtension(ref.AgentID, a.config.Tasks), monitorExtension(ref.AgentID, a.config.Tasks.Monitors, nil, vault.Snapshot{}), workLoopExtension(), routineExtension(ref.AgentID, a.config.Routines), artifactExtension(ref.AgentID, nil, a.config.Tasks.DeliverArtifact)}, Add: []*durable.Extension{dreamMessageExtension(ref.AgentID, a.config.Tasks.ReadDreamMessage)}}})
 		}
 		if err := conversation.Configure(ctx, change); err != nil {
 			return nil, err
@@ -203,10 +180,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					}
 				}
 			}
-			if input.Kind == "task_result" && IsMonitorEvent(input.RequestID) && a.config.Tasks.AuthorizeMonitor != nil {
-				c := TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: input.RequestID}
-				if err := a.config.Tasks.AuthorizeMonitor(ctx, c); err != nil {
-					return nil, fmt.Errorf("%w: monitor target is no longer valid", ErrInvalidInput)
+			if input.ValidateAdmission != nil {
+				if err := input.ValidateAdmission(ctx, ref); err != nil {
+					return nil, err
 				}
 			}
 			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Isolation: input.Isolation, ReviewBypass: input.ReviewBypass}
@@ -316,11 +292,7 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 }
 
 func inputText(input Input, workspace string) string {
-	content := input.Content
-	// Keep the owner transcript and durable source identity separate from model guidance.
-	if input.Origin == "automation" && input.Kind == "message" && !input.Automation {
-		content += boundRoutineCheckSuffix
-	}
+	content := input.Content + input.ModelSuffix
 	if input.WorkTaskContext != "" {
 		content = "Dex Task: " + input.WorkTaskContext + "\n\n" + content
 	}

@@ -1,9 +1,11 @@
-package engine
+package chat
 
 import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+
+	"github.com/recally-io/dex/internal/engine"
 
 	"github.com/MichaelKinsy/PiG/ai"
 	"github.com/MichaelKinsy/PiG/durable"
@@ -23,17 +25,17 @@ type DreamMessagePage struct {
 	HasMore    bool   `json:"hasMore"`
 }
 
-func dreamMessageExtension(agentID string, read func(context.Context, TaskContext, DreamMessageRequest) (DreamMessagePage, error)) *durable.Extension {
-	return &durable.Extension{Name: "dream-message", Tools: []*durable.ToolRegistration{{
+func DreamMessageExtension(agentID string, read func(context.Context, engine.TaskContext, DreamMessageRequest) (DreamMessagePage, error)) *engine.Extension {
+	return &engine.Extension{Name: "dream-message", Tools: []*durable.ToolRegistration{{
 		Name: "memory_source_read", Description: "Read a page of the original user message or answer for a source supplied in this memory consolidation run. Offset is in Unicode characters; use nextOffset while hasMore is true.", Replay: durable.ReplaySafe,
 		Parameters: map[string]any{"type": "object", "additionalProperties": false, "required": []string{"messageId", "field", "offset"}, "properties": map[string]any{
 			"messageId": map[string]any{"type": "string", "minLength": 1}, "field": map[string]any{"type": "string", "enum": []string{"user", "answer"}}, "offset": map[string]any{"type": "integer", "minimum": 0},
 		}},
-		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+		Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 			if read == nil {
 				return durable.ToolExecutionResult{}, errors.New("memory source service is unavailable")
 			}
-			request, err := taskSource(ctx, api)
+			request, err := invocation.Source(ctx)
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
@@ -41,7 +43,7 @@ func dreamMessageExtension(agentID string, read func(context.Context, TaskContex
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			page, err := read(ctx, TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: request}, args)
+			page, err := read(ctx, engine.TaskContext{AgentID: agentID, ConversationID: invocation.ConversationID(), SourceRequestID: request}, args)
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
@@ -50,6 +52,6 @@ func dreamMessageExtension(agentID string, read func(context.Context, TaskContex
 				return durable.ToolExecutionResult{}, err
 			}
 			return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: string(data)}}}, nil
-		},
+		}),
 	}}}
 }
