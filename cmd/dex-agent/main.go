@@ -24,8 +24,8 @@ import (
 
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/coder/websocket"
-	"github.com/recally-io/dex/internal/execenv/runner"
 	"github.com/recally-io/dex/internal/loginenv"
+	"github.com/recally-io/dex/internal/runner/outbound"
 )
 
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
@@ -241,7 +241,7 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	selfVer := agentVersion()
 	exePath, _ := os.Executable()
 	capInfo := probeSelfUpdate(selfVer, exePath, noAutoUpdate)
-	readyMeta := runner.Ready{
+	readyMeta := outbound.Ready{
 		Version:          selfVer,
 		CanSelfUpdate:    capInfo.Supported,
 		SelfUpdateReason: capInfo.Reason,
@@ -253,7 +253,7 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	for ctx.Err() == nil {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
 		// websocket.Dial takes ownership of the response on a successful upgrade.
-		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}}) //nolint:bodyclose
+		c, res, dialErr := websocket.Dial(attempt, address, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{outbound.Version}}) //nolint:bodyclose
 		cancel()
 		// A refused token is terminal, so the agent stops with success and the service manager leaves it stopped.
 		if res != nil && (res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden) {
@@ -294,7 +294,7 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 				backoff.clear()
 			}
 			log.Print("connected to Dex")
-			_ = runner.ServeWithInfo(ctx, c, node.NewNodeExecutionEnv(execution), readyMeta)
+			_ = outbound.ServeWithInfo(ctx, c, node.NewNodeExecutionEnv(execution), readyMeta)
 			delay = time.Second
 		}
 		timer := time.NewTimer(delay)

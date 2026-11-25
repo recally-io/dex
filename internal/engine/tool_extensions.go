@@ -6,7 +6,7 @@ import (
 
 	"github.com/MichaelKinsy/PiG/durable"
 	"github.com/MichaelKinsy/PiG/durable/harness"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/vault"
 )
 
@@ -24,7 +24,7 @@ type ToolEnvironment struct {
 	ID      string
 	Vars    map[string]string
 	Inherit bool
-	Handle  execenv.Handle
+	Handle  runner.Handle
 }
 
 // ExtensionSet installs default extensions before the named built-ins to keep

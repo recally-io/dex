@@ -22,8 +22,8 @@ import (
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	storage "github.com/MichaelKinsy/PiG/durable/storage/sqlite/node"
-	"github.com/recally-io/dex/internal/execenv"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 	"github.com/recally-io/dex/internal/vault"
 )
 
@@ -120,7 +120,7 @@ func New(config Config) (*Agents, error) {
 	}
 	config.BaseEnv = maps.Clone(config.BaseEnv)
 	if config.ExecEnv == nil {
-		config.ExecEnv = execenv.NewLocalProvider(config.DataDir, "")
+		config.ExecEnv = runner.NewLocalProvider(config.DataDir, "")
 	}
 	// Code mode uses PiG's embedded JavaScript sandbox. It loads on the first script.
 	codeSandbox, err := codemode.NewSandbox(codemode.SandboxOptions{})
@@ -378,7 +378,7 @@ func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agen
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	var execHandle execenv.Handle
+	var execHandle runner.Handle
 	var ownErr error
 	// Reload refreshes the default workspace. A cold Harness leaves that work to its Sessions.
 	if reload {
@@ -398,7 +398,7 @@ func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agen
 	}
 	// Status does not dial the environment. Keep the reconnect signal without opening a lease.
 	if !reload && envs.status(ctx, "") == "offline" {
-		envs.ownErr = runner.ErrOffline
+		envs.ownErr = outbound.ErrOffline
 	}
 	envs.restoreDefault = envs.ownErr != nil
 	defer func() {
@@ -1204,7 +1204,7 @@ func (a *Agents) close(ctx context.Context) {
 	close(a.closeDone)
 }
 
-func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
+func (a *Agents) files(agentID string, handle runner.Handle) *agentExtensions {
 	files := newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
 	files.mcp = a.config.MCPServers
 	files.vault = a.vault
@@ -1223,9 +1223,9 @@ func (a *Agents) ReadWorkspaceFile(ctx context.Context, caller TaskContext, relP
 		return nil, err
 	}
 	var data []byte
-	err = a.withEnvironment(ctx, caller.AgentID, environmentID, func(h execenv.Handle) error {
+	err = a.withEnvironment(ctx, caller.AgentID, environmentID, func(h runner.Handle) error {
 		var readErr error
-		data, readErr = execenv.ReadWorkspaceFile(ctx, h, relPath, maxBytes)
+		data, readErr = runner.ReadWorkspaceFile(ctx, h, relPath, maxBytes)
 		return readErr
 	})
 	return data, err
@@ -1238,9 +1238,9 @@ func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, environmentID,
 		return "", nil
 	}
 	var resolved string
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
 		var err error
-		resolved, err = execenv.ResolveProjectPath(ctx, h, raw)
+		resolved, err = runner.ResolveProjectPath(ctx, h, raw)
 		return err
 	})
 	return resolved, err
@@ -1252,9 +1252,9 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, environmentID 
 		return []string{}, nil
 	}
 	var existing []string
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
 		for _, p := range paths {
-			if _, resErr := execenv.ResolveProjectPath(ctx, h, p); resErr == nil {
+			if _, resErr := runner.ResolveProjectPath(ctx, h, p); resErr == nil {
 				existing = append(existing, p)
 				if len(existing) >= limit {
 					break
@@ -1270,11 +1270,11 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, environmentID 
 }
 
 // ListDirectories lists browsable directories in an execution environment of the agent.
-func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID string, path *string) (execenv.DirectoryListing, error) {
-	var listing execenv.DirectoryListing
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
+func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID string, path *string) (runner.DirectoryListing, error) {
+	var listing runner.DirectoryListing
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
 		var listErr error
-		listing, listErr = execenv.ListDirectories(ctx, h, path)
+		listing, listErr = runner.ListDirectories(ctx, h, path)
 		return listErr
 	})
 	return listing, err
@@ -1282,7 +1282,7 @@ func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID str
 
 // ExecEnv opens an ExecutionEnv for background or ad-hoc execution in an environment of the agent.
 // An empty environmentID selects the agent's own environment. Callers must invoke release once finished.
-func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
+func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, "", "", nil, ErrInvalidInput
 	}
@@ -1362,7 +1362,7 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 		}
 		info, err = files.Info(ctx)
 	} else {
-		err = a.withEnvironment(ctx, agentID, "", func(h execenv.Handle) error {
+		err = a.withEnvironment(ctx, agentID, "", func(h runner.Handle) error {
 			var infoErr error
 			info, infoErr = a.files(agentID, h).Info(ctx)
 			return infoErr

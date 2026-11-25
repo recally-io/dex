@@ -9,12 +9,12 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 	t.Setenv("HOST_E2B_SECRET", "host-secret-must-not-leak")
-	fake := execenvtest.NewFakeE2B(t, "e2b_live_secret")
+	fake := runnertest.NewFakeE2B(t, "e2b_live_secret")
 	dataDir := t.TempDir()
 
 	d := startDexWith(t, app.Config{
@@ -120,7 +120,7 @@ func TestUserManagesE2BSandboxResetsAndSwitchesEnvironments(t *testing.T) {
 }
 
 func TestUserManagesCustomE2BEndpointWithoutKeyOverHTTP(t *testing.T) {
-	fake := execenvtest.NewFakeE2B(t, "")
+	fake := runnertest.NewFakeE2B(t, "")
 	fake.SetConnectUnsupported(true)
 	dataDir := t.TempDir()
 

@@ -10,7 +10,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // Origin is the chat that a fork copied its history from.
@@ -174,7 +174,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 // deleted environment shows its ID, because a fork is the way out of a session on it.
 func (s *Service) moveNotice(ctx context.Context, from, to string) (string, error) {
 	name := func(id string) (string, error) {
-		if id == execenv.LocalID {
+		if id == runner.LocalID {
 			return id, nil
 		}
 		row, err := s.q.GetEnvironment(ctx, id)

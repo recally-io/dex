@@ -16,7 +16,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 const routinesPath = "/api/agents/default/automations"
@@ -246,7 +246,7 @@ func TestUserSeesARoutineSkipWhenItsSessionIsGone(t *testing.T) {
 func TestUserBoundRoutineUsesTheSessionEnvironmentAndProject(t *testing.T) {
 	t.Parallel()
 	// Given a session with a local pin and a project, and a bot that defaults to an SSH environment.
-	ssh := execenvtest.NewFakeSSH(t)
+	ssh := runnertest.NewFakeSSH(t)
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), SSHProgram: ssh.SSHProgram})
 	d.setModel(t, "bash")
 	var remote apiEnvironment

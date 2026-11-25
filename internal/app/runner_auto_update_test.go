@@ -20,7 +20,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 )
 
 func buildRunnerArchive(t *testing.T, tag string) []byte {
@@ -135,7 +135,7 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 	// When a runner connects normally and reports v1.0.0 in Ready, the API exposes its live runner status.
 	conn, okRes, err := websocket.Dial(t.Context(), wsURL, &websocket.DialOptions{ //nolint:bodyclose // websocket.Dial owns body on upgrade
 		HTTPHeader:   http.Header{"Authorization": []string{"Bearer " + paired.Token}},
-		Subprotocols: []string{runner.Version},
+		Subprotocols: []string{outbound.Version},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestUserRunnerHandshakeReportsVersionAndCachesReleaseProxy(t *testing.T) {
 	serveDone := make(chan struct{})
 	go func() {
 		defer close(serveDone)
-		_ = runner.ServeWithInfo(t.Context(), conn, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: t.TempDir()}), runner.Ready{
+		_ = outbound.ServeWithInfo(t.Context(), conn, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: t.TempDir()}), outbound.Ready{
 			Version:       "v1.0.0",
 			CanSelfUpdate: true,
 		})

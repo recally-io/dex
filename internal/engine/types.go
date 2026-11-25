@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 var (
@@ -116,7 +116,7 @@ type Config struct {
 	// BaseEnv.
 	LoginEnv func(ctx context.Context, base map[string]string) (map[string]string, error)
 	// ExecEnv configures agent workspace and execution backends. Nil defaults to a host-local provider.
-	ExecEnv execenv.Provider
+	ExecEnv runner.Provider
 	// SessionEnvironment returns the explicit execution environment of a session, or
 	// empty when the session follows its agent. Nil makes every session follow its agent.
 	SessionEnvironment func(ctx context.Context, ref Ref) (string, error)

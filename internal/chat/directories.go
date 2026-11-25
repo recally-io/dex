@@ -3,12 +3,12 @@ package chat
 import (
 	"context"
 
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
-type DirectoryEntry = execenv.DirectoryEntry
+type DirectoryEntry = runner.DirectoryEntry
 
-type DirectoryListing = execenv.DirectoryListing
+type DirectoryListing = runner.DirectoryListing
 
 // ListDirectories exposes names and paths in an execution environment of the agent. An empty
 // environmentID selects the environment of the agent.

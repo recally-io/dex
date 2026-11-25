@@ -8,7 +8,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 var (
@@ -36,7 +36,7 @@ func (s *Service) SessionEnvironment(ctx context.Context, ref engine.Ref) (strin
 
 // checkEnvironment validates an explicit selection without opening the environment.
 func checkEnvironment(ctx context.Context, q *sqlc.Queries, environmentID string) error {
-	if environmentID == execenv.LocalID {
+	if environmentID == runner.LocalID {
 		return nil
 	}
 	row, err := q.GetEnvironment(ctx, environmentID)
@@ -46,7 +46,7 @@ func checkEnvironment(ctx context.Context, q *sqlc.Queries, environmentID string
 	if err != nil {
 		return err
 	}
-	if !execenv.IsRegisteredKind(execenv.Kind(row.Kind)) {
+	if !runner.IsRegisteredKind(runner.Kind(row.Kind)) {
 		return fmt.Errorf("%w: %s has unsupported environment kind %s", ErrEnvironmentInvalid, row.Name, row.Kind)
 	}
 	return nil
@@ -59,7 +59,7 @@ func effectiveEnvironment(agent sqlc.Agent, id string) string {
 		return id
 	}
 	if agent.EnvironmentID == "" {
-		return execenv.LocalID
+		return runner.LocalID
 	}
 	return agent.EnvironmentID
 }

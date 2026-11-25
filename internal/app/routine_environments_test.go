@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 type routineEnvironment struct {
@@ -19,8 +19,8 @@ type routineEnvironment struct {
 // Given an SSH environment, when routines select environments, then each run uses only the
 // selected environment, a removed one skips the run, and a reused chat never changes machine.
 func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
-	sshFix := execenvtest.NewFakeSSH(t)
-	fake := execenvtest.NewFakeE2B(t, "e2b_routine_secret")
+	sshFix := runnertest.NewFakeSSH(t)
+	fake := runnertest.NewFakeE2B(t, "e2b_routine_secret")
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
 	var remoteEnv, sandbox apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{

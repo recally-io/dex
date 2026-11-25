@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 type apiEnvironmentConfig struct {
@@ -46,7 +46,7 @@ func TestUserManagesPiEnvEnvironmentAndExecutesBotRemotely(t *testing.T) {
 	t.Setenv("HOST_PIENV_SECRET", "do-not-leak")
 	dataDir := t.TempDir()
 	localHome := t.TempDir()
-	sshFix := execenvtest.NewFakeSSH(t)
+	sshFix := runnertest.NewFakeSSH(t)
 
 	if err := os.MkdirAll(filepath.Join(sshFix.RemoteHome, "remote-proj", ".git"), 0o700); err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ func TestUserDiscoversSSHConfigProbesAndRecoversHostKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sshFix := execenvtest.NewFakeSSH(t)
+	sshFix := runnertest.NewFakeSSH(t)
 	d := startDexHome(t, app.Config{
 		DataDir:    dataDir,
 		SSHProgram: sshFix.SSHProgram,

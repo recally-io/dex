@@ -20,7 +20,7 @@ import (
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	envnode "github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/MichaelKinsy/PiG/durable/tools"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // The dex level is shared by all agents. Serialize host mutations and scans, but
@@ -29,7 +29,7 @@ var skillWrites sync.Mutex
 
 type skillStore struct {
 	repo     *memoryRepo
-	snapshot execenv.SkillSnapshot
+	snapshot runner.SkillSnapshot
 }
 
 func (a *Agents) skillStore(level ExtensionLevel) *skillStore {
@@ -46,10 +46,10 @@ func (a *Agents) skillStore(level ExtensionLevel) *skillStore {
 	return store
 }
 
-func (a *agentExtensions) snapshots() (map[string]execenv.SkillSnapshot, error) {
+func (a *agentExtensions) snapshots() (map[string]runner.SkillSnapshot, error) {
 	skillWrites.Lock()
 	defer skillWrites.Unlock()
-	out := make(map[string]execenv.SkillSnapshot, len(a.levels))
+	out := make(map[string]runner.SkillSnapshot, len(a.levels))
 	for _, level := range a.distinct() {
 		snapshot := &a.stores[level.Scope].snapshot
 		if err := snapshot.Scan(filepath.Join(level.Dir, "skills")); err != nil {
@@ -82,7 +82,7 @@ func (a *agentExtensions) syncSkills(ctx context.Context, env durableenv.Executi
 	}
 	a.skillsMu.Lock()
 	defer a.skillsMu.Unlock()
-	connection, err := execenv.SkillConnection(ctx, a.execHandle)
+	connection, err := runner.SkillConnection(ctx, a.execHandle)
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func (a *agentExtensions) syncSkills(ctx context.Context, env durableenv.Executi
 	}
 	for _, scope := range slices.Sorted(maps.Keys(snapshots)) {
 		snapshot := snapshots[scope]
-		if err := snapshot.Sync(ctx, env, execenv.JoinTargetPath(a.remoteSkillsRoot(), scope)); err != nil {
+		if err := snapshot.Sync(ctx, env, runner.JoinTargetPath(a.remoteSkillsRoot(), scope)); err != nil {
 			return err
 		}
 	}
@@ -207,7 +207,7 @@ func (a *agentExtensions) managedSkills() ([]SkillInfo, []string) {
 
 func (a *agentExtensions) skillSessionPath(base, scope, rel string) string {
 	if a.isRemote() {
-		return execenv.JoinTargetPath(a.remoteSkillsRoot(), scope, rel)
+		return runner.JoinTargetPath(a.remoteSkillsRoot(), scope, rel)
 	}
 	return filepath.Join(base, filepath.FromSlash(rel))
 }

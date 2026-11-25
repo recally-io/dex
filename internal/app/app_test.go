@@ -21,9 +21,9 @@ import (
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
 	"github.com/recally-io/dex/internal/mcptest"
 	"github.com/recally-io/dex/internal/plugin"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 	"github.com/recally-io/dex/plugins/email"
 	"github.com/recally-io/dex/plugins/github"
 	"github.com/recally-io/dex/plugins/webhook"
@@ -41,7 +41,7 @@ type dex struct {
 }
 
 func TestMain(m *testing.M) {
-	execenvtest.DispatchHelperMain()
+	runnertest.DispatchHelperMain()
 	// The tests start this binary as a stdio MCP server; see mcpServer.
 	if dir := os.Getenv("DEX_TEST_MCP_DIR"); dir != "" {
 		if err := (&mcptest.Server{Dir: dir, Prefix: os.Getenv("DEX_TEST_MCP_PREFIX"),

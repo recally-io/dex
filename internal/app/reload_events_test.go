@@ -12,12 +12,12 @@ import (
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/sysops"
 )
 
 type observedStamps struct {
-	execenv.Provider
+	runner.Provider
 	checked chan struct{}
 }
 
@@ -32,7 +32,7 @@ func (p *observedStamps) Stamp(ctx context.Context, agentID, envID string) (stri
 func TestUserIdleBotDoesNotCheckExtensionStampsPeriodically(t *testing.T) {
 	t.Parallel()
 	data, home := t.TempDir(), t.TempDir()
-	p := &observedStamps{Provider: execenv.NewLocalProvider(data, home), checked: make(chan struct{}, 1)}
+	p := &observedStamps{Provider: runner.NewLocalProvider(data, home), checked: make(chan struct{}, 1)}
 	d := startDexHome(t, app.Config{DataDir: data, ExecEnv: p}, home)
 	d.setModel(t, "echo")
 	if got := taskTurn(t, d, d.newSession(t).ID, "finished"); got != "echo: finished" {

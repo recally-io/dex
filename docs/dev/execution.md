@@ -53,7 +53,11 @@ turn. Do not detach work with `&` or `nohup`. The `monitors` extension also
 provides [schedule Monitors](architecture.md#session-monitors).
 [`internal/background`](../../internal/background/background.go) owns the
 processes. [`internal/chat/background.go`](../../internal/chat/background.go)
-binds each command to its session.
+binds each command to its session. The Local executor owns a POSIX process
+group, so it can stop and sweep the group after the shell exits. Machine and
+Sandbox executors use the selected Runner's execution lease. That interface
+supports cancellation but does not give the control host a process group
+that it can signal.
 
 - `process_start` starts the command and
   returns the ID and the output file path at once. It runs in a new session

@@ -12,7 +12,7 @@ import (
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	envnode "github.com/MichaelKinsy/PiG/durable/env/node"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // agentsMDDepth is how many import levels below an AGENTS.md dex follows.
@@ -155,9 +155,9 @@ func (r *agentsMDReader) resolve(dir, token string) (string, bool) {
 		if r.home == "" {
 			return "", false
 		}
-		resolved = execenv.JoinTargetPath(r.home, filepath.ToSlash(token[2:]))
-	case !execenv.IsAbsPath(token):
-		resolved = execenv.JoinTargetPath(dir, filepath.ToSlash(token))
+		resolved = runner.JoinTargetPath(r.home, filepath.ToSlash(token[2:]))
+	case !runner.IsAbsPath(token):
+		resolved = runner.JoinTargetPath(dir, filepath.ToSlash(token))
 	}
 	return r.regularFile(resolved)
 }
@@ -289,5 +289,5 @@ func (a *agentExtensions) agentsMDContext(ctx context.Context, cwd string) agent
 	if err != nil {
 		return agentsMD{}
 	}
-	return readAgentsMDEnv(ctx, env, execenv.JoinTargetPath(cwd, "AGENTS.md"), a.execHandle.Home(), canonCwd)
+	return readAgentsMDEnv(ctx, env, runner.JoinTargetPath(cwd, "AGENTS.md"), a.execHandle.Home(), canonCwd)
 }

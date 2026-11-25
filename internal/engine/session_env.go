@@ -9,8 +9,8 @@ import (
 	"time"
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
-	"github.com/recally-io/dex/internal/execenv"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 )
 
 // sessionEnv is the execution environment of one session: a lease and the tool environment
@@ -18,7 +18,7 @@ import (
 type sessionEnv struct {
 	// ID is the explicit selection of the session, or empty when it follows the agent.
 	ID     string
-	Handle execenv.Handle
+	Handle runner.Handle
 	Files  *agentExtensions
 	// Vars hold the base values, without any vault secrets. Remote commands use the target's
 	// environment with only the configured 1Password credentials from the control host.
@@ -41,7 +41,7 @@ func (s sessionEnv) executionEnv(ctx context.Context, cwd string) (durableenv.Ex
 // Only opens of the same lease wait for each other.
 type environments struct {
 	agentID  string
-	provider execenv.Provider
+	provider runner.Provider
 	// selected returns the explicit environment of a session, or empty when it follows the agent.
 	selected func(ctx context.Context, ref Ref) (string, error)
 	files    *agentExtensions
@@ -50,7 +50,7 @@ type environments struct {
 	restoreDefault bool
 
 	mu         sync.Mutex
-	own        execenv.Handle
+	own        runner.Handle
 	ownFiles   *agentExtensions
 	ownErr     error
 	retryAfter time.Time
@@ -60,18 +60,18 @@ type environments struct {
 	closed     bool
 }
 
-func (e *environments) vars(h execenv.Handle) (map[string]string, bool) {
+func (e *environments) vars(h runner.Handle) (map[string]string, bool) {
 	if e.loaded == nil {
-		return nil, h.Kind() != execenv.KindLocal
+		return nil, h.Kind() != runner.KindLocal
 	}
-	if h.Kind() == execenv.KindLocal {
+	if h.Kind() == runner.KindLocal {
 		return e.loaded.Env, false
 	}
 	return e.loaded.ExplicitEnv, true
 }
 
 // session returns the environment of the session conversationID. A session that selects
-// an environment fails with execenv.ErrUnavailable when that environment was removed or is not
+// an environment fails with runner.ErrUnavailable when that environment was removed or is not
 // allowed: it never runs in the environment of the agent instead.
 func (e *environments) session(ctx context.Context, conversationID int64) (sessionEnv, error) {
 	id := ""
@@ -99,7 +99,7 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 		if current, err := e.provider.Stamp(ctx, e.agentID, ""); err == nil && current == stamp {
 			s, err := e.byID(ctx, "")
 			if err == nil && s.Handle.Stamp() != stamp {
-				return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; retry", execenv.ErrUnavailable)
+				return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; retry", runner.ErrUnavailable)
 			}
 			s.ID = id
 			return s, err
@@ -115,7 +115,7 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 		if own != nil && stamp == own.Stamp() {
 			e.mu.Unlock()
 			useOwn := true
-			if id != "" && own.Kind() == execenv.KindE2B {
+			if id != "" && own.Kind() == runner.KindE2B {
 				// A pinned selection cannot use the bot's old sandbox after a default change.
 				current, err := e.provider.Stamp(ctx, e.agentID, "")
 				useOwn = err == nil && current == stamp
@@ -128,7 +128,7 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 		}
 		if id == "" && own != nil {
 			e.mu.Unlock()
-			return sessionEnv{}, fmt.Errorf("%w: the bot environment changed; wait for reload", execenv.ErrUnavailable)
+			return sessionEnv{}, fmt.Errorf("%w: the bot environment changed; wait for reload", runner.ErrUnavailable)
 		}
 		if active := e.opening[id]; active != nil {
 			e.mu.Unlock()
@@ -147,9 +147,9 @@ func (e *environments) byID(ctx context.Context, id string) (sessionEnv, error) 
 		if h := previous.Handle; h != nil {
 			if stamp != h.Stamp() {
 				e.mu.Unlock()
-				return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; wait for reload", execenv.ErrUnavailable)
+				return sessionEnv{}, fmt.Errorf("%w: the selected environment changed; wait for reload", runner.ErrUnavailable)
 			}
-			if !execenv.LeaseExpired(h) {
+			if !runner.LeaseExpired(h) {
 				e.mu.Unlock()
 				return previous, nil
 			}
@@ -175,7 +175,7 @@ func (e *environments) defaultUnopened() bool {
 	return e.own == nil
 }
 
-func (e *environments) openLease(ctx context.Context, id, stamp string, expired execenv.Handle, recentErr error, done chan struct{}) (sessionEnv, error) {
+func (e *environments) openLease(ctx context.Context, id, stamp string, expired runner.Handle, recentErr error, done chan struct{}) (sessionEnv, error) {
 	defer func() {
 		e.mu.Lock()
 		delete(e.opening, id)
@@ -243,7 +243,7 @@ func (e *environments) restorable(ctx context.Context) bool {
 
 // backOnline reports that err is the offline error of a machine that is connected now.
 func (e *environments) backOnline(ctx context.Context, err error) bool {
-	return errors.Is(err, runner.ErrOffline) && e.status(ctx, "") == "available"
+	return errors.Is(err, outbound.ErrOffline) && e.status(ctx, "") == "available"
 }
 
 // status is the provider report for an environment of the agent: "available", "offline", or
@@ -297,7 +297,7 @@ func (e *environments) close(ctx context.Context) error {
 // a temporary lease for the default when the agent is not open. Explicit browsing opens the
 // agent (and loads its configured MCP servers) so subsequent operations use the
 // same lease, including disposable sandboxes.
-func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID string, fn func(execenv.Handle) error) error {
+func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID string, fn func(runner.Handle) error) error {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
 	}

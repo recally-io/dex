@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 const gatedEnvironment = "gated-environment"
 
 type gatedOpen struct {
-	execenv.Provider
+	runner.Provider
 	entered, release chan struct{}
 	once             sync.Once
 	id               string
@@ -29,7 +29,7 @@ func (g *gatedOpen) Stamp(ctx context.Context, agent, id string) (string, error)
 	return g.Provider.Stamp(ctx, agent, id)
 }
 
-func (g *gatedOpen) Open(ctx context.Context, agent, id string) (execenv.Handle, error) {
+func (g *gatedOpen) Open(ctx context.Context, agent, id string) (runner.Handle, error) {
 	if id != g.id {
 		return g.Provider.Open(ctx, agent, id)
 	}
@@ -43,14 +43,14 @@ func (g *gatedOpen) Open(ctx context.Context, agent, id string) (execenv.Handle,
 			return nil, errors.New("first environment open failed")
 		}
 	}
-	h, err := g.Provider.Open(ctx, agent, execenv.LocalID)
+	h, err := g.Provider.Open(ctx, agent, runner.LocalID)
 	if err != nil {
 		return nil, err
 	}
 	return gatedHandle{h}, nil
 }
 
-type gatedHandle struct{ execenv.Handle }
+type gatedHandle struct{ runner.Handle }
 
 func (gatedHandle) Stamp() string { return gatedEnvironment }
 
@@ -110,14 +110,14 @@ func TestUserRejectModeInputWaitsForEnvironmentReset(t *testing.T) {
 func TestUserColdBotAdmitsLocalSessionWhileDefaultOpenWaits(t *testing.T) {
 	// Given a cold Bot with a default environment that stalls on its first open.
 	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{})}
-	r := startNative(t, "echo", func(p execenv.Provider) execenv.Provider { gate.Provider = p; return gate })
+	r := startNative(t, "echo", func(p runner.Provider) runner.Provider { gate.Provider = p; return gate })
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	local, err := r.service.Create(ctx, "bot")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.service.SetEnvironment(ctx, "bot", local.ID, execenv.LocalID); err != nil {
+	if _, err := r.service.SetEnvironment(ctx, "bot", local.ID, runner.LocalID); err != nil {
 		t.Fatal(err)
 	}
 	runReconciler(t, r)
@@ -161,7 +161,7 @@ func TestUserColdBotAdmitsLocalSessionWhileDefaultOpenWaits(t *testing.T) {
 func TestUserSameBotSessionsAdmitWhileChildWaitsForEnvironment(t *testing.T) {
 	// Given a warm bot and a child whose first admission waits on its environment.
 	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{}), id: gatedEnvironment}
-	r := startNative(t, "context", func(p execenv.Provider) execenv.Provider { gate.Provider = p; return gate })
+	r := startNative(t, "context", func(p runner.Provider) runner.Provider { gate.Provider = p; return gate })
 	parent, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "first"})
 	if err != nil {
