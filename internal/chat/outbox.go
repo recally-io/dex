@@ -371,16 +371,23 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 		return "", nil
 	}
 	if event.Status == "done" {
+		if sub.Kind != "message" {
+			return "", nil
+		}
 		runIDs := event.RunInputIDs
 		if len(runIDs) == 0 {
 			if event.AnswerID > 0 {
 				// Run membership/order cannot be verified for this native answer; never guess a destination.
+				if err := q.DeleteUnboundOutboxFiles(ctx, sql.NullString{String: sub.ID, Valid: true}); err != nil {
+					return "", err
+				}
 				return "", nil
 			}
 			runIDs = []string{sub.ID}
 		}
+		var firstRow *sqlc.Submission
 		var lastUser *sqlc.Submission
-		for _, rid := range runIDs {
+		for i, rid := range runIDs {
 			row, err := q.GetSubmission(ctx, rid)
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
@@ -388,23 +395,41 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			if err != nil {
 				return "", err
 			}
-			if row.Producer == ProducerUser {
+			if i == 0 {
+				cp := row
+				firstRow = &cp
+			}
+			if row.Producer == ProducerUser && row.Kind == "message" {
 				cp := row
 				lastUser = &cp
 			}
 		}
 		// Pure background runs (no user input) never auto-send to channels; only the last user input
 		// placed in the answering run decides whether the final reply goes to Web or a Channel.
-		if lastUser == nil || lastUser.ID != sub.ID {
-			return "", nil
+		// When the Run's source input shares the winning channel destination (e.g. back-to-back
+		// messages from the same Telegram peer in one QueueAll run), let the source input own the
+		// Outbox row so send_file and ask_user side effects bound to Inputs[0] stay attached.
+		var owner *sqlc.Submission
+		if lastUser != nil && lastUser.ReplyChannel != "" && lastUser.ReplyPeer != "" {
+			owner = lastUser
+			if firstRow != nil && firstRow.Producer == ProducerUser && firstRow.Kind == "message" &&
+				firstRow.ReplyChannel == lastUser.ReplyChannel && firstRow.ReplyPeer == lastUser.ReplyPeer {
+				owner = firstRow
+			}
 		}
-		if lastUser.ReplyChannel == "" || lastUser.ReplyPeer == "" {
+		if owner == nil || owner.ID != sub.ID {
+			if err := q.DeleteUnboundOutboxFiles(ctx, sql.NullString{String: sub.ID, Valid: true}); err != nil {
+				return "", err
+			}
 			return "", nil
 		}
 		if sub.ExitAction == "notify_user" {
+			if err := q.DeleteUnboundOutboxFiles(ctx, sql.NullString{String: sub.ID, Valid: true}); err != nil {
+				return "", err
+			}
 			return "", nil
 		}
-		peer := lastUser.ReplyChannel + ":" + lastUser.ReplyPeer
+		peer := owner.ReplyChannel + ":" + owner.ReplyPeer
 		kind := "reply"
 		if sub.ExitAction == "ask_user" {
 			kind = "question"
@@ -458,7 +483,7 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 		return "", nil
 	}
 
-	if sub.Producer == ProducerUser && sub.ReplyChannel != "" && sub.ReplyPeer != "" {
+	if sub.Kind == "message" && sub.Producer == ProducerUser && sub.ReplyChannel != "" && sub.ReplyPeer != "" {
 		if event.Reason == "withdrawn" || event.Reason == "stopped" || event.Reason == "aborted" || sub.ChannelRevoked != 0 {
 			return "", nil
 		}

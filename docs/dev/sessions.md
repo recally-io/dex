@@ -271,9 +271,9 @@ is treated as already delivered.
 
 The result names the child, its title, the turn and the outcome. It has the
 final answer cut at 4,000 characters, or the failure reason. A restart adds
-the number of queued inputs it withdrew. The result copies the origin of the
-parent request, so a Chat gets its own results and a channel peer gets the
-results of work that the peer started.
+the number of queued inputs it withdrew. Child results enter the parent as
+`producer = 'sub_session'` with no channel reply destination; pure background
+runs never auto-send to channels, and Main decides whether to call `notify_user`.
 An ordinary result can enter the parent's follow-up Inbox while the parent
 is busy. A result with a usable channel commitment waits in control until it
 can start a native review with no other inputs. The guard checks the live run

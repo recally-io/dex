@@ -174,7 +174,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					}
 					data, _ := item.Entry.Get("data")
 					// Each bound Routine needs its own source and report, even when
-					// different routines use the same busy session.
+					// different routines use the same busy session. Rejecting foreign
+					// follow-up origins also preserves the QueueAll routing invariant
+					// that inputs from different channels never merge into one run.
 					if m := metadata(data); m.Origin != input.Origin || (input.Origin == "automation" && !input.Automation) {
 						return nil, ErrOriginBusy
 					}
@@ -272,8 +274,13 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 					if err != nil || entry == nil {
 						return nil, err
 					}
-					runInputs, err = runInputIDsForAnswer(tx, conversation.Id(), *settled.Answer)
-					return nil, err
+					var scanErr error
+					runInputs, scanErr = runInputIDsForAnswer(tx, conversation.Id(), *settled.Answer)
+					if scanErr != nil {
+						slog.Warn("resolve run input membership", "agent", ref.AgentID, "conversation", ref.ID, "answer_id", *settled.Answer, "error", scanErr)
+						runInputs = nil
+					}
+					return nil, nil
 				})
 				switch {
 				case err != nil:
@@ -341,12 +348,21 @@ func inputEntryKind(input Input) string {
 	return "dex.user"
 }
 
-func runInputIDsForAnswer(tx durable.Tx, convID durable.ConversationId, answerID durable.EntryId) ([]string, error) {
+type entryScanner interface {
+	ScanEntries(durable.EntryQuery, int, durable.Cursor) (durable.Page[durable.EntryRecord, durable.Cursor], error)
+	SubmissionByRequest(durable.ConversationId, string) (*durable.SubmissionRecord, error)
+}
+
+func runInputIDsForAnswer(scanner entryScanner, convID durable.ConversationId, answerID durable.EntryId) ([]string, error) {
 	maxID := answerID
 	var cursor durable.Cursor
 	var reversed []string
 	for {
-		page, err := tx.ScanEntries(durable.EntryQuery{ConversationId: convID, MaxEntryId: &maxID}, 64, cursor)
+		page, err := scanner.ScanEntries(durable.EntryQuery{
+			ConversationId: convID,
+			MaxEntryId:     &maxID,
+			Order:          new(durable.ScanDescending),
+		}, 64, cursor)
 		if err != nil {
 			return nil, err
 		}
@@ -366,7 +382,7 @@ func runInputIDsForAnswer(tx durable.Tx, convID durable.ConversationId, answerID
 			if reqID == "" {
 				continue
 			}
-			sub, err := tx.SubmissionByRequest(convID, reqID)
+			sub, err := scanner.SubmissionByRequest(convID, reqID)
 			if err != nil {
 				return nil, err
 			}
