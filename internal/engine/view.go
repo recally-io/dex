@@ -157,6 +157,8 @@ func metadata(value any) inputMetadata {
 	m := inputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), TaskID: text("taskId"), TaskTitle: text("taskTitle"), Isolation: InputIsolation(text("isolation"))}
 	flag, _ := obj.Get("hasWorkTask")
 	m.HasWorkTask, _ = flag.(bool)
+	flag, _ = obj.Get("reviewBypass")
+	m.ReviewBypass, _ = flag.(bool)
 	raw, _ := obj.Get("attachments")
 	if list, ok := raw.([]any); ok {
 		for _, v := range list {

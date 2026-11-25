@@ -248,17 +248,28 @@ func (s *Service) reconcileSession(ctx context.Context, id int64, until string) 
 	if err != nil {
 		return err
 	}
+	var barrier error
 	for _, p := range pending {
 		if _, ok := s.waiting.Load(p.ID); !ok {
-			if err := s.admit(ctx, p); err != nil {
-				return err
+			var err error
+			if barrier == nil {
+				err = s.admit(ctx, p)
+			} else if p.Kind == "message" && (p.WhenBusy == "steer" || p.WhenBusy == "reject") {
+				// Leave queued work in order. Only try inputs that can act on a live run.
+				err = s.admitInput(ctx, p, true)
+			}
+			if err != nil {
+				if !errors.Is(err, engine.ErrReviewBarrier) {
+					return err
+				}
+				barrier = err
 			}
 		}
 		if p.ID == until {
 			break
 		}
 	}
-	return nil
+	return barrier
 }
 
 // ErrMessageID means a message ID was reused for a different request.
@@ -780,7 +791,11 @@ func forkOrigin(r sqlc.GetChatRow) *Origin {
 }
 
 // admit crosses the durable admission boundary with a stable request ID.
-func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (resultErr error) {
+func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
+	return s.admitInput(ctx, p, false)
+}
+
+func (s *Service) admitInput(ctx context.Context, p sqlc.ListPendingSubmissionsRow, reviewBypass bool) (resultErr error) {
 	if s.leaseUntil.Load() != 0 {
 		return nil
 	}
@@ -857,7 +872,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	if err = json.Unmarshal([]byte(p.Attachments), &attachments); err != nil {
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
-	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
+	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy, ReviewBypass: reviewBypass}
 	input.Authorize = func(ctx context.Context) error { return s.checkAdmission(ctx, conv, p.ID) }
 	if input.Child {
 		_, err := s.q.GetChannelFollowUpByDelegation(ctx, p.ID)

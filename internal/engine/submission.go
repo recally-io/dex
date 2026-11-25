@@ -190,7 +190,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					return nil, err
 				}
 			}
-			mode, err := isolatedAdmission(tx, conversation.Id(), input.Isolation, whenBusy)
+			mode, err := isolatedAdmission(tx, conversation.Id(), input, whenBusy)
 			if err != nil {
 				return nil, err
 			}
@@ -221,16 +221,22 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					return nil, fmt.Errorf("%w: monitor target or authority is no longer valid", ErrInvalidInput)
 				}
 			}
-			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Isolation: input.Isolation}
+			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Isolation: input.Isolation, ReviewBypass: input.ReviewBypass}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
 			}
 			draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, inputDirectory)), WhenBusy: mode, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
+			if input.ReviewBypass {
+				draft.WhenIdle = durable.WhenIdleReject
+			}
 			id, err = conversation.SubmitIn(tx, draft)
 			return nil, err
 		})
 		if err != nil {
+			if _, ok := errors.AsType[*durable.ConversationIdle](err); ok {
+				return nil, ErrReviewBarrier
+			}
 			if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
 				return nil, errors.Join(ErrBusy, err)
 			}

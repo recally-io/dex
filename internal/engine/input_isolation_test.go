@@ -146,15 +146,18 @@ func TestUserCanonicalReviewsDoNotShareCurrentOrQueuedMainWork(t *testing.T) {
 		}
 	}
 
-	// Given an ordinary foreground run and an ordinary steer already in the native Inbox.
+	// Given an ordinary foreground run, a deferred review and a steer that passes it.
 	command, started, _ := isolationGate(t, dir, "foreground")
 	foreground := submit(Input{RequestID: "foreground", Kind: "message", Content: command})
 	coreFile(t, started)
 	command, steerStarted, releaseSteer := isolationGate(t, dir, "pending-steer")
-	steer := submit(Input{RequestID: "steer-before-review", Kind: "message", Content: command, WhenBusy: "steer"})
 	reviewCommand, reviewStarted, releaseReview := isolationGate(t, dir, "first-review")
 	review := Input{RequestID: "result:one", Kind: "task_result", Isolation: IsolatedReview, Content: reviewCommand}
 	busy(review)
+	steer := submit(Input{RequestID: "steer-before-review", Kind: "message", Content: command, WhenBusy: "steer", ReviewBypass: true})
+	lateSteer := Input{RequestID: "steer-during-review", Kind: "message", Content: "printf late-steer", WhenBusy: "steer"}
+	bypass := lateSteer
+	bypass.Main, bypass.Options, bypass.ReviewBypass = true, coreOptions("bash"), true
 
 	// When precise Stop has aborted its foreground task but not yet applied its Inbox boundary,
 	// a protected review must *still* wait. Native SubmitIn on this idle Inbox would otherwise
@@ -171,11 +174,15 @@ func TestUserCanonicalReviewsDoNotShareCurrentOrQueuedMainWork(t *testing.T) {
 		t.Fatalf("foreground was not stopped: %+v", got)
 	}
 	busy(review)
+	if _, err := a.Submit(t.Context(), ref, bypass); !errors.Is(err, ErrReviewBarrier) || errors.Is(err, ErrBusy) {
+		t.Fatalf("a bypass cannot start an idle run: %v", err)
+	}
 	if err := a.StopRun(t.Context(), ref, runTargetPrefix(ref)+fmt.Sprint(current.TaskId)); err != nil {
 		t.Fatal(err)
 	}
 	coreFile(t, steerStarted)
 	busy(review)
+	busy(bypass)
 	releaseSteer()
 	if got := coreWait(t, steer); got.Answer != "bash: pending-steer" {
 		t.Fatalf("the existing native steer was not serviced at the boundary: %+v", got)
@@ -189,8 +196,8 @@ func TestUserCanonicalReviewsDoNotShareCurrentOrQueuedMainWork(t *testing.T) {
 	command, secondStarted, releaseSecond := isolationGate(t, dir, "second-review")
 	secondReview := Input{RequestID: "result:two", Kind: "task_result", Isolation: IsolatedReview, Content: command}
 	ordinary := Input{RequestID: "queued-during-review", Kind: "message", Content: "printf ordinary"}
-	lateSteer := Input{RequestID: "steer-during-review", Kind: "message", Content: "printf late-steer", WhenBusy: "steer"}
-	for _, input := range []Input{secondReview, ordinary, lateSteer} {
+	reject := Input{RequestID: "reject-during-review", Kind: "message", Content: "printf rejected", WhenBusy: "reject", ReviewBypass: true}
+	for _, input := range []Input{secondReview, ordinary, lateSteer, bypass, reject} {
 		busy(input)
 	}
 	// Another session on the same agent is not serialized behind Main.

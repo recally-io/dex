@@ -486,6 +486,13 @@ enter the channel Outbox. A question does not complete the commitment. Plain fin
 stays internal. Dex records `missed_follow_up` without creating another turn,
 retrying the omission, or forwarding any draft or child output.
 
+While a Main review waits, new queued messages stay behind it. A user steer
+can pass the waiting review to join a running user turn. If that turn ends
+before PiG takes the steer, PiG can start a separate user turn with it. That
+turn does not accept more steers ahead of the review. Once the review starts,
+it runs alone. New user inputs wait, and an input in `reject` mode returns
+busy.
+
 The control store records the commitment separately from delivery. A `notified`
 commitment means an explicit conclusion entered the Outbox, not that the channel
 accepted it. Legacy Stop and Clear cancel outstanding commitments and revoke

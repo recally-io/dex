@@ -17,38 +17,66 @@ func liveRun(tx durable.Tx, id durable.ConversationId) (*harness.LiveRun, error)
 	return state.Run, err
 }
 
+var errReviewBusy = errors.Join(ErrBusy, ErrReviewBarrier)
+
 // PiG selects steers and follow-ups together at a final boundary. Never put an
 // isolated input in that Inbox, even if there is no current run: SubmitIn can
 // itself apply a final boundary on an idle conversation with pending items.
 // Check on the native transaction line, not against an earlier run snapshot.
-func isolatedAdmission(tx durable.Tx, id durable.ConversationId, isolation InputIsolation, mode durable.WhenBusy) (durable.WhenBusy, error) {
+func isolatedAdmission(tx durable.Tx, id durable.ConversationId, input Input, mode durable.WhenBusy) (durable.WhenBusy, error) {
 	run, err := liveRun(tx, id)
 	if err != nil {
 		return mode, err
 	}
-	if isolation != "" {
+	if input.Isolation != "" {
+		blocked := ErrBusy
+		if input.Isolation == IsolatedReview {
+			blocked = errReviewBusy
+		}
 		if run != nil {
-			return mode, ErrBusy
+			return mode, blocked
 		}
 		inbox, err := tx.Doc(harness.InboxDoc, id)
 		if err != nil {
 			return mode, err
 		}
 		if inbox.Array("items").Len() != 0 {
-			return mode, ErrBusy
+			return mode, blocked
 		}
 		return mode, nil
 	}
-	if run == nil || run.First == nil {
-		return mode, nil
+	if run == nil {
+		return mode, nil // SubmitIn rejects an idle bypass in the same transaction.
 	}
-	entry, err := tx.Entry(*run.First)
-	if err != nil || entry == nil {
-		return mode, err
+	var first inputMetadata
+	if run.First != nil {
+		entry, err := tx.Entry(*run.First)
+		if err != nil {
+			return mode, err
+		}
+		if entry != nil {
+			first = metadata(entry.Data)
+		}
 	}
-	switch metadata(entry.Data).Isolation {
+	if input.ReviewBypass && mode == durable.WhenBusySteer {
+		// A final boundary can start a run with the steer. Let that run finish
+		// without a bypass so continuous steers cannot starve the review.
+		if first.Kind != "message" || first.ReviewBypass || len(run.Inputs) == 0 {
+			return mode, errReviewBusy
+		}
+		// Continue can use the previous run's first entry. Only bypass when
+		// the first entry belongs to this run's first placed input.
+		start, err := tx.SubmissionByRequest(id, first.RequestID)
+		if err != nil {
+			return mode, err
+		}
+		if start == nil || start.Id != run.Inputs[0] {
+			return mode, errReviewBusy
+		}
+	}
+	switch first.Isolation {
 	case IsolatedReview:
-		return mode, ErrBusy
+		return mode, errReviewBusy
 	case IsolatedDelegation:
 		if mode == durable.WhenBusySteer {
 			return durable.WhenBusyFollowUp, nil

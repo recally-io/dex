@@ -10,6 +10,7 @@ import (
 
 var (
 	ErrBusy                 = errors.New("conversation is busy")
+	ErrReviewBarrier        = errors.New("a channel review holds queued inputs")
 	ErrEnvironmentResetting = errors.New("environment reset in progress")
 	ErrOriginBusy           = errors.New("follow-up queue holds another origin")
 	ErrMaintenance          = errors.New("engine admission is paused")
@@ -86,20 +87,23 @@ type Input struct {
 	// returns ErrBusy.
 	WhenBusy  string
 	Isolation InputIsolation
+	// ReviewBypass permits an immediate input past a waiting review, only while native work is active.
+	ReviewBypass bool
 }
 type inputMetadata struct {
-	Scope       string         `json:"scope,omitempty"`
-	RequestID   string         `json:"requestId"`
-	Content     string         `json:"content"`
-	HasWorkTask bool           `json:"hasWorkTask,omitzero"`
-	Kind        string         `json:"kind,omitempty"`
-	Origin      string         `json:"origin"`
-	Source      string         `json:"source"`
-	Attachments []Attachment   `json:"attachments"`
-	TaskID      string         `json:"taskId,omitempty"`
-	TaskTitle   string         `json:"taskTitle,omitempty"`
-	Reason      string         `json:"reason,omitempty"`
-	Isolation   InputIsolation `json:"isolation,omitempty"`
+	Scope        string         `json:"scope,omitempty"`
+	RequestID    string         `json:"requestId"`
+	Content      string         `json:"content"`
+	HasWorkTask  bool           `json:"hasWorkTask,omitzero"`
+	Kind         string         `json:"kind,omitempty"`
+	Origin       string         `json:"origin"`
+	Source       string         `json:"source"`
+	Attachments  []Attachment   `json:"attachments"`
+	TaskID       string         `json:"taskId,omitempty"`
+	TaskTitle    string         `json:"taskTitle,omitempty"`
+	Reason       string         `json:"reason,omitempty"`
+	Isolation    InputIsolation `json:"isolation,omitempty"`
+	ReviewBypass bool           `json:"reviewBypass,omitzero"`
 }
 type Outcome struct {
 	Status, Answer, Reason string

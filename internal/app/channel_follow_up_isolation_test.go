@@ -129,6 +129,51 @@ func TestUserOptedInDelegationsOwnSeparateChildActivationsAndPeers(t *testing.T)
 	}
 }
 
+func TestUserSteersMainWhileAChannelReviewWaits(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, dir, 42)
+	d.setModel(t, "spawn-notify")
+	main, conn := d.mainChat(t), sessionDB(t, d)
+	const child = "child-before-steer"
+	f.message(1, 42, 42, childJSON(t, map[string]any{
+		"title": child, "message": taskGate(t, dir, child), "provider": "faux", "modelId": "bash", "follow_up": true,
+	}))
+	followUpTelegramSend(t, f, "spawn:")
+	waitTaskFile(t, filepath.Join(dir, child+".pid"))
+	bash := func(command string) string {
+		return childJSON(t, map[string]any{"tool": "bash", "command": command})
+	}
+	const hold = "main-before-steer"
+	first := d.send(t, main, bash(taskGate(t, dir, hold)))
+	waitTaskFile(t, filepath.Join(dir, hold+".pid"))
+	releaseResultGate(t, dir, child)
+	result := waitExecution(t, conn, main, child, "done").ResultID
+	waitResultSubmission(t, conn, result, "pending")
+
+	// The older review holds queued work, but a steer still joins the running turn.
+	queued, steer := uuid.NewV7().String(), uuid.NewV7().String()
+	sendMode(t, d, main, queued, bash("printf queued-after-review"), "followUp", http.StatusAccepted)
+	sendMode(t, d, main, steer, bash("printf steer-before-review"), "steer", http.StatusAccepted)
+	w := d.watch(t, main)
+	w.until(t, "steer in the native Inbox", queuedSteer(steer))
+	if n := count(t, conn, `SELECT count(*) FROM submissions WHERE id IN (?,?) AND admitted_at IS NULL`, result, queued); n != 2 {
+		t.Fatalf("review and queued input must both wait outside the Inbox; got %d pending", n)
+	}
+	releaseResultGate(t, dir, hold)
+	for _, id := range []string{first, steer} {
+		if got := waitResultSubmission(t, conn, id, "done").answer; got != "spawn: steer-before-review" {
+			t.Fatalf("input %s did not share the steered answer: %q", id, got)
+		}
+	}
+	waitResultSubmission(t, conn, result, "done")
+	assertFollowUpTelegramReceipt(t, conn, result, followUpTelegramSend(t, f, "Reviewed channel conclusion"))
+	if got := waitResultSubmission(t, conn, queued, "done").answer; got != "spawn: queued-after-review" {
+		t.Fatalf("queued input did not have its own answer after the review: %q", got)
+	}
+}
+
 func TestUserSamePeerCompletionsGetIndependentMainReviews(t *testing.T) {
 	// This test reads the native generation diagnostic, so it does not run in parallel.
 	for _, stop := range []bool{false, true} {
