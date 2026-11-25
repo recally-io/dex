@@ -99,6 +99,12 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	if err != nil {
 		return 0, 0, "", err
 	}
+	// The existing child result informs the parent. The projection does not send a wake.
+	if conv.ParentID.Valid {
+		if err := q.ProjectTaskChildExecution(ctx, conv.ID); err != nil {
+			return 0, 0, "", err
+		}
+	}
 	// An answer that ran closes its question. One that never produced a reply opens it again.
 	if event.Status == "done" {
 		err = q.ConsumeQuestion(ctx, sqlc.ConsumeQuestionParams{SubmissionID: sql.NullString{String: id, Valid: true}, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})

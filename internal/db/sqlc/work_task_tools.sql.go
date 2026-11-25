@@ -134,9 +134,11 @@ func (q *Queries) HasWorkTaskExternalExecution(ctx context.Context, arg HasWorkT
 }
 
 const linkWorkTaskSession = `-- name: LinkWorkTaskSession :one
-INSERT INTO task_executions (id, task_id, conversation_id, bot_id, kind, is_primary, started_at)
+INSERT INTO task_executions (id, task_id, conversation_id, bot_id, kind, is_primary, started_at, turn_request_id)
 SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.agent_id, 'dex_session',
-  NOT EXISTS (SELECT 1 FROM task_executions s WHERE s.task_id = ?1 AND s.is_primary = 1), ?2
+  NOT EXISTS (SELECT 1 FROM task_executions s WHERE s.task_id = ?1 AND s.is_primary = 1), ?2,
+  COALESCE((SELECT s.id FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message'
+    AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
 FROM conversations c WHERE c.id = ?3
 ON CONFLICT DO NOTHING RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at
 `
@@ -147,7 +149,7 @@ type LinkWorkTaskSessionParams struct {
 	ConversationID int64  `json:"conversation_id"`
 }
 
-// Keep the original timestamp on replay. The first execution becomes primary.
+// Keep the original timestamp and child turn on replay. The first execution becomes primary.
 func (q *Queries) LinkWorkTaskSession(ctx context.Context, arg LinkWorkTaskSessionParams) (TaskExecution, error) {
 	row := q.db.QueryRowContext(ctx, linkWorkTaskSession, arg.TaskID, arg.LinkedAt, arg.ConversationID)
 	var i TaskExecution

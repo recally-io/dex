@@ -180,7 +180,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ?;
 
 -- name: ListPendingSubmissions :many
--- SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
+-- SQLite assigns rowids under the writer lock. Keep receipt order, with Board wakes last.
 SELECT
     s.id,
     s.content,
@@ -199,7 +199,7 @@ SELECT
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(@conversation_id AS INTEGER) = 0 OR s.conversation_id = @conversation_id)
-ORDER BY s.rowid;
+ORDER BY (s.kind = 'task_wake'), s.rowid;
 
 -- name: ListChats :many
 -- The sessions of one bot, and the children of its sessions that belong to another bot.

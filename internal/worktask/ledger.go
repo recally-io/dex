@@ -15,8 +15,9 @@ import (
 // must hold the writer before it reads a Task and abort the transaction on error.
 // Call Service.Notify only after the transaction commits.
 type Ledger struct {
-	q        *sqlc.Queries
-	entryIDs []int64
+	q                 *sqlc.Queries
+	entryIDs          []int64
+	wakeConversations []int64
 }
 
 func NewLedger(q *sqlc.Queries) *Ledger { return &Ledger{q: q} }
@@ -220,6 +221,10 @@ func (l *Ledger) LinkSession(ctx context.Context, actor Actor, task sqlc.WorkTas
 		exec, err = l.q.GetWorkTaskSession(ctx, sqlc.GetWorkTaskSessionParams{TaskID: task.ID, ConversationID: sql.NullInt64{Int64: conversationID, Valid: true}})
 	}
 	if err != nil {
+		return err
+	}
+	// A Task can link to a child after its first turn has already settled.
+	if err := l.q.ProjectTaskChildExecution(ctx, conversationID); err != nil {
 		return err
 	}
 	changePrimary := promote && exec.IsPrimary == 0

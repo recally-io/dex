@@ -59,17 +59,17 @@ wait or sends a Task alert.
 
 ## Task alerts and tools
 
-A Task alert is a `task_result` submission on the Owner Bot's Main. It is linked to
-the Task, so Main shows it with the Task title. Dex creates an alert when a
-source rule creates a Task, or when an event resolves a wait that has `alert`
-set. Dex writes the alert in the same transaction as the event, with the event
-ID as its source key, so each event sends at most one alert. A replayed
-delivery or a restart does not send a second alert. If the runner is offline,
-the alert stays pending until the runner returns. The alert contains only the
-event type, author class, source link, and the reason. It does not contain the
-event text. An alert is a system input, so it cannot create, complete, cancel,
-or reopen a Task. A quiet wait, a record-only event, a closed Task, an
-unmatched event, and a link conflict do not send an alert.
+A source rule that creates a Task adds `assigned` to the Assignee Bot's
+[Board wake](task-board.md#coalesced-main-wakeups). An event that resolves a
+wait with `alert` set adds `gate_unblocked`. The event and the wake commit in
+the same transaction. A replay does not add a second wake. If the runner is
+offline, the wake stays pending until the runner returns. Main shows a
+`Board wake` mark. The submission contains only Task keys, reasons, and an
+entry cursor. Dex links the submission to a Task only if all items refer to
+that Task and Main belongs to the Assignee Bot.
+The legacy Task tools do not let a wake create a Task or change its lifecycle.
+A quiet wait, a record-only event, an unmatched event, and a link conflict do
+not wake Main. Events on closed Tasks do not wake Main.
 
 Main and writable Chats have the `task_list`, `task_get`, `task_new`,
 `task_update`, and `task_append` tools (`internal/worktask/tools`). They record
@@ -80,8 +80,8 @@ never grants its Bot's Main access to the Task.
 
 `task_new` and a lifecycle change need a user turn on Main or in a top-level
 Chat. A rename or Session link needs a user turn or a Task wake on Main. A
-top-level Chat can also rename a Task or link its child on a user turn. A
-source alert cannot rename a Task or link a Session. Each change commits
+top-level Chat can also rename a Task or link its child on a user turn.
+Each change commits
 with a replay record under the tool key, so a replayed call does not add a
 second Task or entry. `task_get` returns the latest 20 entries, cuts each
 entry to 2000 characters, and omits the text of external entries. It gives

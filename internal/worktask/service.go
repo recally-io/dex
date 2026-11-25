@@ -52,14 +52,21 @@ func New(conn *sql.DB, wake func(conversationID int64)) *Service {
 // SetOnEntry sets the optional post-commit hook. Set it before serving requests.
 func (s *Service) SetOnEntry(onEntry func(entryID int64)) { s.onEntry = onEntry }
 
-// Notify publishes the entries of a committed Ledger. Commits can publish out of
-// order across transactions; a subscriber must read by the durable entry cursor.
+// Notify publishes entries and wakes Main after the Ledger commits. Entries can
+// publish out of order; subscribers must read by the durable entry cursor.
 func (s *Service) Notify(l *Ledger) {
-	if s == nil || s.onEntry == nil || l == nil {
+	if s == nil || l == nil {
 		return
 	}
-	for _, id := range l.entryIDs {
-		s.onEntry(id)
+	if s.onEntry != nil {
+		for _, id := range l.entryIDs {
+			s.onEntry(id)
+		}
+	}
+	if s.wake != nil {
+		for _, id := range l.wakeConversations {
+			s.wake(id)
+		}
 	}
 }
 
@@ -211,6 +218,10 @@ func (s *Service) TransitionStatus(ctx context.Context, actor Actor, origin Orig
 			return ErrInvalid
 		}
 		result, err = l.changeStatus(ctx, actor, task, status, now)
+		if err != nil || status != StatusInReview || task.ReviewerKind != ActorBot {
+			return err
+		}
+		_, err = l.queueWake(ctx, task.ReviewerID, result, WakeReviewRequested, now)
 		return err
 	})
 	return result, err
@@ -268,6 +279,10 @@ func (s *Service) Review(ctx context.Context, actor Actor, origin Origin, taskID
 		result, _, err = l.append(ctx, actor, task, status, task.Title, 0, sqlc.InsertWorkTaskEntryParams{
 			Kind: KindReview, Content: feedback, MetaJson: string(meta), CreatedAt: now,
 		})
+		if err != nil || decision != ReviewRequestChanges {
+			return err
+		}
+		_, err = l.queueWake(ctx, task.AssigneeBotID, result, WakeChangesRequested, now)
 		return err
 	})
 	return result, err

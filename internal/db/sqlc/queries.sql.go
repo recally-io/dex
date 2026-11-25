@@ -1676,7 +1676,7 @@ SELECT
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(?1 AS INTEGER) = 0 OR s.conversation_id = ?1)
-ORDER BY s.rowid
+ORDER BY (s.kind = 'task_wake'), s.rowid
 `
 
 type ListPendingSubmissionsRow struct {
@@ -1696,7 +1696,7 @@ type ListPendingSubmissionsRow struct {
 	ChannelKey     string        `json:"channel_key"`
 }
 
-// SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
+// SQLite assigns rowids under the writer lock. Keep receipt order, with Board wakes last.
 func (q *Queries) ListPendingSubmissions(ctx context.Context, conversationID int64) ([]ListPendingSubmissionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingSubmissions, conversationID)
 	if err != nil {

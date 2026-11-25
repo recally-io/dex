@@ -167,8 +167,14 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 				return withdrawal{}, err
 			}
 		}
-		if _, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now}); err != nil {
+		stopped, err := q.StopConversationSubmissions(ctx, sqlc.StopConversationSubmissionsParams{ChatID: c.ID, Now: now})
+		if err != nil {
 			return withdrawal{}, err
+		}
+		if stopped > 0 && c.ParentID.Valid {
+			if err := q.ProjectTaskChildExecution(ctx, c.ID); err != nil {
+				return withdrawal{}, err
+			}
 		}
 		if err := q.RequestExecutionAbort(ctx, c.ID); err != nil {
 			return withdrawal{}, err
@@ -243,15 +249,39 @@ func (s *Service) reconcileStop(ctx context.Context, id int64) error {
 			}
 		}
 		// The exact request still belongs to this snapshot. A placed input keeps running.
-		if outcome != engine.Placed {
-			if _, err := s.q.StopSubmission(ctx, sqlc.StopSubmissionParams{ID: request, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
-				return err
-			}
-			s.signal(id)
-		}
-		if err := s.q.FinishParentInputStop(ctx, request); err != nil {
+		if err := s.finishParentInputStop(ctx, id, request, outcome); err != nil {
 			return err
+		}
+		if outcome != engine.Placed {
+			s.signal(id)
 		}
 	}
 	return s.reconcileMainStops(ctx, id, ref)
+}
+
+func (s *Service) finishParentInputStop(ctx context.Context, childID int64, request string, outcome engine.Withdrawal) error {
+	if outcome == engine.Placed {
+		return s.q.FinishParentInputStop(ctx, request)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	if err := stopParentInput(ctx, q, childID, request, s.now().UnixMilli()); err != nil {
+		return err
+	}
+	if err := q.FinishParentInputStop(ctx, request); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func stopParentInput(ctx context.Context, q *sqlc.Queries, childID int64, request string, now int64) error {
+	stopped, err := q.StopSubmission(ctx, sqlc.StopSubmissionParams{ID: request, Now: sql.NullInt64{Int64: now, Valid: true}})
+	if err != nil || stopped == 0 {
+		return err
+	}
+	return q.ProjectTaskChildExecution(ctx, childID)
 }

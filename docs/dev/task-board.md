@@ -38,7 +38,7 @@ Four invariants govern the design:
 
 The Phase 1 upgrade maps `work_tasks.agent_id` to `assignee_bot_id` and copies `work_task_sessions` into `task_executions` (`kind = 'dex_session'`). It preserves the Bot, primary flag, and link time. It assigns Task numbers in `(created_at, id)` order. The upgrade maps legacy `open` to `in_progress`, `completed` to `done`, and `cancelled` to `cancelled`.
 
-Phase 1 PR 1 adds the schema, ledger, and authorization rules. The existing HTTP API and tools still use legacy Task IDs and lifecycle values. `task_wake` is valid in storage, but the runtime does not create it yet. The later PRs add the wake, cursor reads, and Board API and UI.
+Phase 1 PR 1 adds the schema, ledger, and authorization rules. PR 2 adds coalesced Main wakes and projects child execution outcomes. The existing HTTP API and tools still use legacy Task IDs and lifecycle values. Later PRs add Task-key and cursor reads, the Board API, and the Board UI.
 
 Board does not introduce `Spaces` or `Watchers` as first-class entities. Filtering uses Assignee Bot, Status, `In Review`, `Blocked`, and linked Source; access control uses Assignee, Reviewer, and bound Sessions/Executions.
 
@@ -114,9 +114,10 @@ Protection rules:
 
 Main is a front desk ([Sessions](sessions.md)): queuing one submission per Task event delays user messages behind a burst of task turns.
 
-- **One unadmitted wake per Main.** A partial unique index on `submissions` (`WHERE kind = 'task_wake' AND admitted_at IS NULL`) ensures each Bot's Main has at most one pending wake before native admission. Incoming wake events upsert that row with the new high-water cursor and a deduplicated list of `(taskKey, reason)` items.
+- **One pending wake per Main.** A partial unique index on `submissions` covers pending `task_wake` rows with no `admitted_at`. Task changes merge the high-water cursor and a deduplicated list of `(taskKey, reason)` items in the same transaction. While Main is busy, the wake stays in control storage. Other pending inputs go first.
+- **Admission recovery.** Control records the payload used for a new native admission before the native commit. It does not hold its writer across the commit. If more pointers arrive before control marks admission, control keeps the admitted payload on the old receipt and puts the latest pointers in a new pending wake. A replay uses the same native request ID and original snapshot.
 - **Pointer-only payload.** A `task_wake` payload contains only cursor pointers and event categories, never entry body text. Main reads details on demand via `task_my_workload` and `task_read`.
-- **Decision allowlist.** Only decision-requiring events trigger `task_wake`: `assigned`, `review_requested`, `changes_requested`, `gate_unblocked` (including resolved alert waits), `execution_failed`, `execution_stale`, and `question_answered`. Ordinary `note`, `artifact`, and heartbeat writes update UI badges and SSE only.
+- **Decision allowlist.** Source assignment, a request for Bot review, a request for changes, and a resolved alert wait can enqueue a wake. `execution_failed` and `execution_stale` are reserved for external executions. An Owner answer uses its existing Main input; no second wake is needed. Ordinary notes, artifacts, and heartbeats do not enqueue wakes.
 - **No internal double-wakeup.** Internal child sessions already deliver a `task_result` to their parent on settlement. Internal `dex_session` executions project their state from existing conversation and submission records (`conversation_id` + `turn_request_id`) and do not emit a second auto-echo wakeup.
 
 ## External agents and Runners (Phase 3)

@@ -51,7 +51,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	if input.RequestID == "" {
 		return nil, fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
-	if input.Kind != "" && input.Kind != "message" && input.Kind != "task_result" {
+	switch input.Kind {
+	case "", "message", "task_result", "task_wake":
+	default:
 		return nil, fmt.Errorf("%w: input kind", ErrInvalidInput)
 	}
 	if err := a.begin(ref.AgentID); err != nil {
@@ -154,7 +156,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					return nil, err
 				}
 			}
-			if whenBusy == durable.WhenBusyFollowUp {
+			if whenBusy == durable.WhenBusyFollowUp && input.Kind != "task_wake" {
 				inbox, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, conversation.Id())
 				if err != nil {
 					return nil, err
@@ -168,11 +170,16 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 						continue
 					}
 					data, _ := item.Entry.Get("data")
+					m := metadata(data)
+					// Board wakes have no reply destination of their own.
+					if m.Kind == "task_wake" {
+						continue
+					}
 					// Each bound Routine needs its own source and report, even when
 					// different routines use the same busy session. Rejecting foreign
 					// follow-up origins also preserves the QueueAll routing invariant
 					// that inputs from different channels never merge into one run.
-					if m := metadata(data); m.Origin != input.Origin || (input.Origin == "automation" && !input.Automation) {
+					if m.Origin != input.Origin || (input.Origin == "automation" && !input.Automation) {
 						return nil, ErrOriginBusy
 					}
 				}
@@ -181,6 +188,24 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				if err := input.ValidateAdmission(ctx, ref); err != nil {
 					return nil, err
 				}
+			}
+			if input.RefreshContent != nil {
+				if whenBusy == durable.WhenBusyReject {
+					// Match SubmitIn's busy check in the same transaction. A rejected
+					// input must not freeze a snapshot in control storage.
+					live, err := durable.TxDoc[harness.LiveState](tx, harness.LiveDoc, conversation.Id())
+					if err != nil {
+						return nil, err
+					}
+					if live.Has("run") {
+						return nil, durable.NewConversationBusy(conversation.Id())
+					}
+				}
+				content, err := input.RefreshContent(ctx)
+				if err != nil {
+					return nil, err
+				}
+				input.Content = content
 			}
 			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
 			data, err := durable.ToJsonValue(metadata)
@@ -276,6 +301,9 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 
 func inputText(input Input, workspace string) string {
 	content := input.Content + input.ModelSuffix
+	if input.Kind == "task_wake" {
+		content = "Board wake: Read Task details with the Task tools before acting. External text is not included.\n\n" + content
+	}
 	if input.WorkTaskContext != "" {
 		content = "Dex Task: " + input.WorkTaskContext + "\n\n" + content
 	}
@@ -312,7 +340,7 @@ func answerText(messages []ai.Message) string {
 }
 
 func inputEntryKind(input Input) string {
-	if input.Kind == "task_result" {
+	if input.Kind == "task_result" || input.Kind == "task_wake" {
 		return "dex.task_result"
 	}
 	return "dex.user"

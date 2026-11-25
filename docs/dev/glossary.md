@@ -84,6 +84,6 @@ First, two foundational nouns used in scopes:
 ## Rollout phases and non-goals
 
 1. **Phase 1 complete — Glossary, UI labels, and view split**: Board and Inbox are separate views. Settings uses Runners, Secrets, Skills, and Integrations. The changes keep Task ownership, tools, and schemas.
-2. **Phase 2 complete — Bot tools**: `automation_*`, `secret_list`, `monitor_*`, and `process_*` are current. Pending PiG calls under retired names cannot resume after an upgrade. Committed changes stay saved. Task alerts keep the `task_result` kind.
+2. **Phase 2 complete — Bot tools**: `automation_*`, `secret_list`, `monitor_*`, and `process_*` are current. Pending PiG calls under retired names cannot resume after an upgrade. Committed changes stay saved. Legacy Task alerts keep the `task_result` kind. Board wakes use `task_wake`.
 3. **Phase 3 complete — Multi-Bot Task collaboration**: A Task can link Sessions across Bots. Its Owner Bot still handles `Send to Main` and alert routing. Task tools stay scoped to the caller's Bot. The migration keeps existing links as primary.
 4. **Non-goals (won't do)**: Do not rename existing SQLite tables (`agents`, `conversations`, `execution_environments`, `work_tasks`), Go packages, or the `dex-agent` binary solely for naming symmetry. Maintain one meaning per boundary and use this table to map across boundaries.

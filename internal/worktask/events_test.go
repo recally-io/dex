@@ -71,17 +71,17 @@ func TestUserSeesOneSourceChangeAndItsWaitAfterRestart(t *testing.T) {
 	if len(*woken) != 0 {
 		t.Fatalf("a replay woke Main: %v", *woken)
 	}
-	alert, err := s.q.GetSubmission(ctx, "task-alert:"+accepted.EventID)
-	if err != nil || alert.Kind != "task_result" || alert.Status != "pending" || strings.Contains(alert.Content, "New review") ||
-		!strings.Contains(alert.Content, "[Task event: review]") {
-		t.Fatalf("Main must have one metadata-only alert: %+v, %v", alert, err)
+	var alertID, content string
+	err = s.db.QueryRowContext(ctx, `SELECT id, content FROM submissions WHERE kind = 'task_wake' AND status = 'pending'`).Scan(&alertID, &content)
+	if err != nil || strings.Contains(content, "New review") || !strings.Contains(content, `"reason":"gate_unblocked"`) {
+		t.Fatalf("Main must have a pointer-only wake: %q, %v", content, err)
 	}
-	if linked, err := s.q.WorkTaskForInput(ctx, alert.ID); err != nil || linked != task.ID {
-		t.Fatalf("the alert must belong to the Task: %q, %v", linked, err)
+	if linked, err := s.q.WorkTaskForInput(ctx, alertID); err != nil || linked != task.ID {
+		t.Fatalf("the wake must belong to the Task: %q, %v", linked, err)
 	}
 	var alerts int
-	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM submissions WHERE kind = 'task_result'").Scan(&alerts); err != nil || alerts != 1 {
-		t.Fatalf("expected exactly one alert, got %d, %v", alerts, err)
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM submissions").Scan(&alerts); err != nil || alerts != 1 {
+		t.Fatalf("expected exactly one wake, got %d, %v", alerts, err)
 	}
 	detail, err := s.Detail(ctx, "default", task.ID)
 	if err != nil || len(detail.Entries) != 2 || detail.Entries[0].Content != "New review" {

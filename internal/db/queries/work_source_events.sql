@@ -56,20 +56,6 @@ WHERE w.task_id = @task_id AND t.assignee_bot_id = @agent_id AND a.archived_at I
 -- name: ListUnresolvedWorkTaskWaits :many
 SELECT * FROM work_task_waits WHERE task_id = ? AND resolved_by IS NULL ORDER BY id;
 
--- name: EnsureWorkTaskMain :exec
--- Main is created on first use. An alert can be the first input of a new bot.
-INSERT INTO conversations (agent_id, channel_key, title, created_at)
-SELECT a.id, 'main', a.name, @created_at FROM agents a WHERE a.id = @agent_id AND a.archived_at IS NULL
-ON CONFLICT (agent_id, channel_key) DO NOTHING;
-
--- name: CreateWorkTaskAlert :one
--- A Task alert is a system input of Main. Its ID comes from the event, so one event alerts once.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
-SELECT @id, c.id, @content, 'null', @id, 'web', 'plugin', '', '', 'task_result', 'pending', @created_at, '{}'
-FROM conversations c WHERE c.agent_id = @agent_id AND c.channel_key = 'main' AND c.archived_at IS NULL
-ON CONFLICT DO NOTHING
-RETURNING conversation_id;
-
 -- name: HoldWorkSourceEvent :exec
 INSERT INTO work_source_holds (event_id, held_at) VALUES (?, ?);
 

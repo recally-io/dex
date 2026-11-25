@@ -2,7 +2,6 @@ package chat
 
 import (
 	"context"
-	"database/sql"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
@@ -101,7 +100,7 @@ func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenR
 	var parents []int64
 	for _, in := range settled {
 		if in.outcome.Reason == "stopped" {
-			if _, err := q.StopSubmission(ctx, sqlc.StopSubmissionParams{ID: in.id, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+			if err := stopParentInput(ctx, q, c.ID, in.id, s.now().UnixMilli()); err != nil {
 				return err
 			}
 			continue

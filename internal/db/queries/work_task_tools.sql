@@ -15,10 +15,12 @@ FROM task_executions s JOIN conversations c ON c.id = s.conversation_id JOIN age
 WHERE s.task_id = ? AND s.kind = 'dex_session' ORDER BY s.is_primary DESC, s.started_at, c.id;
 
 -- name: LinkWorkTaskSession :one
--- Keep the original timestamp on replay. The first execution becomes primary.
-INSERT INTO task_executions (id, task_id, conversation_id, bot_id, kind, is_primary, started_at)
+-- Keep the original timestamp and child turn on replay. The first execution becomes primary.
+INSERT INTO task_executions (id, task_id, conversation_id, bot_id, kind, is_primary, started_at, turn_request_id)
 SELECT 'session:' || @task_id || ':' || c.id, @task_id, c.id, c.agent_id, 'dex_session',
-  NOT EXISTS (SELECT 1 FROM task_executions s WHERE s.task_id = @task_id AND s.is_primary = 1), @linked_at
+  NOT EXISTS (SELECT 1 FROM task_executions s WHERE s.task_id = @task_id AND s.is_primary = 1), @linked_at,
+  COALESCE((SELECT s.id FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message'
+    AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
 FROM conversations c WHERE c.id = @conversation_id
 ON CONFLICT DO NOTHING RETURNING *;
 

@@ -4,15 +4,18 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json/v2"
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/db"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
@@ -97,31 +100,31 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	pushReview(22, "old", "2026-11-21T03:01:00Z", "MEMBER")
 	pushReview(24, "abc", "2026-11-21T03:02:00Z", "NONE")
 	checkWait(false)
-	// The Issue Task alerted Main once. Reviews that resolve no wait add no alert.
-	// The runner is offline, so Main keeps the alerts as pending input.
-	alerts := func(want int) {
+	// The runner is offline, so Main keeps one wake. Only the review that resolves the wait adds an item.
+	assigned := worktask.TaskWakeItem{TaskKey: "T-1", Reason: worktask.WakeAssigned}
+	unblocked := worktask.TaskWakeItem{TaskKey: "T-1", Reason: worktask.WakeGateUnblocked}
+	alerts := func(want ...worktask.TaskWakeItem) {
 		t.Helper()
 		got := pendingTaskAlerts(t, dir)
-		if len(got) != want {
-			t.Fatalf("expected %d pending Task alerts in Main, got %q", want, got)
+		if len(got) != 1 {
+			t.Fatalf("expected one pending Board wake in Main, got %q", got)
 		}
-		for _, alert := range got {
-			if strings.Contains(alert, "Fix login") || strings.Contains(alert, "approved") {
-				t.Fatalf("a Task alert carries external text: %q", alert)
-			}
+		payload := decodeTaskWake(t, got[0])
+		if !slices.Equal(payload.Items, want) {
+			t.Fatalf("Board wake items = %+v; want %+v", payload.Items, want)
 		}
 	}
-	alerts(1)
+	alerts(assigned)
 	pushReview(23, "abc", "2026-11-21T03:03:00Z", "COLLABORATOR")
 	checkWait(true)
-	alerts(2)
+	alerts(assigned, unblocked)
 
 	// Then a controller restart retains the reviews and the wait result while the runner stays offline.
 	d.stop()
 	d = startDex(t, dir, "")
 	probeRunner()
 	afterRestart := checkWait(true)
-	alerts(2)
+	alerts(assigned, unblocked)
 	if len(afterRestart.Entries) != 5 || afterRestart.Entries[0].EventId == nil || !strings.Contains(afterRestart.Entries[0].Content, "GitHub review: approved") {
 		t.Fatalf("accepted review missing after restart: %+v", afterRestart.Entries)
 	}
@@ -129,7 +132,7 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	// A redelivery adds no duplicate and does not change the unrelated Task.
 	pushReview(23, "abc", "2026-11-21T03:03:00Z", "COLLABORATOR")
 	detail := checkWait(true)
-	alerts(2)
+	alerts(assigned, unblocked)
 	if len(detail.Entries) != 5 || detail.Entries[4].Content != "Fix login" {
 		t.Fatalf("unexpected Issue Task timeline: %+v", detail.Entries)
 	}
@@ -139,7 +142,16 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	}
 }
 
-// pendingTaskAlerts returns the content of the Task alerts that Main has not handled.
+func decodeTaskWake(t *testing.T, content string) worktask.TaskWakePayload {
+	t.Helper()
+	var payload worktask.TaskWakePayload
+	if err := json.Unmarshal([]byte(content), &payload, json.RejectUnknownMembers(true)); err != nil || payload.HighWaterEntryID <= 0 {
+		t.Fatalf("Board wake must have only Task pointers and a cursor: %q, %v", content, err)
+	}
+	return payload
+}
+
+// pendingTaskAlerts returns the content of the Board wakes Main has not handled.
 func pendingTaskAlerts(t *testing.T, dir string) []string {
 	t.Helper()
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
@@ -148,7 +160,7 @@ func pendingTaskAlerts(t *testing.T, dir string) []string {
 	}
 	defer conn.Close()
 	rows, err := conn.QueryContext(t.Context(), `SELECT s.content FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-JOIN work_task_inputs i ON i.submission_id = s.id WHERE c.channel_key = 'main' AND s.kind = 'task_result' AND s.status = 'pending' ORDER BY s.created_at`)
+WHERE c.channel_key = 'main' AND s.kind = 'task_wake' AND s.status = 'pending' ORDER BY s.created_at`)
 	if err != nil {
 		t.Fatal(err)
 	}

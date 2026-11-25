@@ -452,6 +452,12 @@ type TaskExecution struct {
 	EndedAt           sql.NullInt64 `json:"ended_at"`
 }
 
+type TaskWakeAdmissionSnapshot struct {
+	SubmissionID string         `json:"submission_id"`
+	Content      string         `json:"content"`
+	TaskID       sql.NullString `json:"task_id"`
+}
+
 type TelegramAlbumMember struct {
 	SourceKey   string `json:"source_key"`
 	AgentID     string `json:"agent_id"`

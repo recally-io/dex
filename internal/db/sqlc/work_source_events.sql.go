@@ -68,34 +68,6 @@ func (q *Queries) ClaimWorkSourceReceipt(ctx context.Context, arg ClaimWorkSourc
 	return result.RowsAffected()
 }
 
-const createWorkTaskAlert = `-- name: CreateWorkTaskAlert :one
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
-SELECT ?1, c.id, ?2, 'null', ?1, 'web', 'plugin', '', '', 'task_result', 'pending', ?3, '{}'
-FROM conversations c WHERE c.agent_id = ?4 AND c.channel_key = 'main' AND c.archived_at IS NULL
-ON CONFLICT DO NOTHING
-RETURNING conversation_id
-`
-
-type CreateWorkTaskAlertParams struct {
-	ID        string `json:"id"`
-	Content   string `json:"content"`
-	CreatedAt int64  `json:"created_at"`
-	AgentID   string `json:"agent_id"`
-}
-
-// A Task alert is a system input of Main. Its ID comes from the event, so one event alerts once.
-func (q *Queries) CreateWorkTaskAlert(ctx context.Context, arg CreateWorkTaskAlertParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, createWorkTaskAlert,
-		arg.ID,
-		arg.Content,
-		arg.CreatedAt,
-		arg.AgentID,
-	)
-	var conversation_id int64
-	err := row.Scan(&conversation_id)
-	return conversation_id, err
-}
-
 const decideWorkSourceHold = `-- name: DecideWorkSourceHold :execrows
 UPDATE work_source_holds SET decision = ?1, decided_at = ?2
 WHERE event_id = ?3 AND decision IS NULL
@@ -113,23 +85,6 @@ func (q *Queries) DecideWorkSourceHold(ctx context.Context, arg DecideWorkSource
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const ensureWorkTaskMain = `-- name: EnsureWorkTaskMain :exec
-INSERT INTO conversations (agent_id, channel_key, title, created_at)
-SELECT a.id, 'main', a.name, ?1 FROM agents a WHERE a.id = ?2 AND a.archived_at IS NULL
-ON CONFLICT (agent_id, channel_key) DO NOTHING
-`
-
-type EnsureWorkTaskMainParams struct {
-	CreatedAt int64  `json:"created_at"`
-	AgentID   string `json:"agent_id"`
-}
-
-// Main is created on first use. An alert can be the first input of a new bot.
-func (q *Queries) EnsureWorkTaskMain(ctx context.Context, arg EnsureWorkTaskMainParams) error {
-	_, err := q.db.ExecContext(ctx, ensureWorkTaskMain, arg.CreatedAt, arg.AgentID)
-	return err
 }
 
 const findWorkTaskByObject = `-- name: FindWorkTaskByObject :one

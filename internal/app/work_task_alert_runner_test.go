@@ -89,19 +89,19 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
 	conn := sessionDB(t, d)
 	var alertID string
-	if err := conn.QueryRowContext(t.Context(), `SELECT submission_id FROM work_task_inputs WHERE submission_id LIKE 'task-alert:%'`).Scan(&alertID); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT s.id FROM submissions s JOIN work_task_inputs i ON i.submission_id = s.id WHERE s.kind = 'task_wake'`).Scan(&alertID); err != nil {
 		t.Fatal(err)
 	}
 	waitResultSubmission(t, conn, alertID, "done")
 	deliverGitHub(t, d, secret, "issue-1-again", "issues", issue)
-	if got := count(t, conn, `SELECT count(*) FROM work_task_inputs WHERE submission_id LIKE 'task-alert:%'`); got != 1 {
+	if got := count(t, conn, `SELECT count(*) FROM submissions WHERE kind = 'task_wake'`); got != 1 {
 		t.Fatalf("Main has %d Task alerts, want one", got)
 	}
 	w := d.watch(t, main.ID)
 	w.until(t, "the settled transcript snapshot", func(tr *transcript) bool { return tr.snapshots > 0 })
 	answers := 0
 	for _, it := range w.tr.items {
-		if it.Kind == "assistant" && strings.HasPrefix(it.Text, "context: ") && strings.Contains(it.Text, "[Task event: issue.opened]") {
+		if it.Kind == "assistant" && strings.HasPrefix(it.Text, "context: ") && strings.Contains(it.Text, `\"reason\":\"assigned\"`) {
 			answers++
 		}
 	}

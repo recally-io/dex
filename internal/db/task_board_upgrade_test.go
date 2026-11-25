@@ -121,7 +121,8 @@ func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 	// Keep wake receipts through downgrade without treating them as channel replies.
 	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, kind, content, status, created_at, delivered_at)
 		VALUES ('undelivered-wake', 1, 'task_wake', '', 'done', 60, NULL),
-		       ('delivered-wake', 2, 'task_wake', '', 'done', 60, 61)`); err != nil {
+		       ('delivered-wake', 2, 'task_wake', '', 'done', 60, 61),
+		       ('next-wake', 1, 'task_wake', '', 'pending', 62, NULL)`); err != nil {
 		t.Fatal(err)
 	}
 	// When Goose rolls back Phase 1, the old schema can read the same history.
@@ -130,7 +131,7 @@ func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 		t.Fatal(err)
 	}
 	down, err := provider.DownTo(ctx, legacyVersion)
-	if err != nil || len(down) != 1 {
+	if err != nil || len(down) != 2 {
 		t.Fatalf("roll back Phase 1: applied %d down migrations: %v", len(down), err)
 	}
 	assertTaskBoardRows(t, conn, `SELECT json_array(id, agent_id, title, lifecycle) FROM work_tasks ORDER BY id`,

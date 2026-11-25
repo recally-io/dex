@@ -81,7 +81,9 @@ input: if that input came from a channel (`reply_channel`/`reply_peer`), that
 input writes the single final Outbox reply; if it came from Web, the answer
 stays in Web with no channel Outbox row. Pure background runs (no `user` input)
 never auto-send to channels—Main must explicitly call `notify_user` to emit a
-channel notification. If run membership or order cannot be verified, no
+channel notification. A [Board wake](task-board.md#coalesced-main-wakeups) is
+a background input. It stays in control storage while Main is busy and gives
+other pending inputs priority. If run membership or order cannot be verified, no
 automatic channel Outbox row is written. Web input and a parent's
 `session_send` can steer; channel, automation, and dream inputs use `followUp`.
 
@@ -262,8 +264,11 @@ In an ordinary shared run, the first parent input to settle owns
 `result:<turn ID>`. A done native input without an Answer is an
 error. Each failed or interrupted parent input sends its own result; user inputs
 send none. A stopped, aborted or withdrawn input sends none. Result insertion
-and receipt settlement share a control transaction. Only an Answer key conflict
-is treated as already delivered.
+and receipt settlement share a control transaction. For a child linked to a
+Task, that transaction also records the outcome of the first parent turn on
+its execution. Stop and withdrawal record cancellation in their own receipt
+transaction. Settlement does not write a Board wake. Only an Answer key
+conflict is treated as already delivered.
 
 The result names the child, its title, the turn and the outcome. It has the
 final answer cut at 4,000 characters, or the failure reason. A restart adds

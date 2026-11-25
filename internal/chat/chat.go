@@ -822,6 +822,14 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
 	input.BeforeAdmission = func(ctx context.Context) error { return s.checkAdmission(ctx, p.ID) }
+	boardWake := p.Kind == "task_wake"
+	if boardWake {
+		// Keep the mutable wake in control storage while Main is busy.
+		input.WhenBusy = "reject"
+		input.TaskTitle = "Board wake"
+		input.Content = current.Content
+		input.RefreshContent = func(ctx context.Context) (string, error) { return s.snapshotTaskWake(ctx, p.ID) }
+	}
 	if input.Origin == "automation" && input.Kind == "message" && !input.Automation {
 		input.ModelSuffix = BoundRoutineCheckSuffix
 	}
@@ -835,9 +843,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 			return nil
 		}
 	}
-	// An owner message or a Task alert of a Task carries the Task context.
+	// A Board wake carries only its own Task pointers, even when it links one Task.
 	var workTask sqlc.WorkTask
-	if input.Main {
+	if input.Main && !boardWake {
 		taskID, err := workTaskForInput(ctx, s.q, p.ID)
 		if err != nil {
 			return err
@@ -864,16 +872,24 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		if errors.Is(err, errInputSettled) {
 			return nil
 		}
-		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
+		if boardWake && errors.Is(err, ErrNoModel) {
+			return err
+		}
+		if !boardWake && p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.
 			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
 		}
 		return s.admissionError(ctx, p.ID, err)
 	}
-	if s.channelAdmission != nil {
-		s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
+	if boardWake {
+		err = s.markTaskWakeAdmitted(ctx, p.ID)
+	} else {
+		if s.channelAdmission != nil {
+			s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
+		}
+		err = s.markAdmitted(ctx, p.ID)
 	}
-	if err := s.markAdmitted(ctx, p.ID); err != nil {
+	if err != nil {
 		return err
 	}
 	if trace != nil {
