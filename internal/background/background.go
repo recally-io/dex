@@ -150,7 +150,7 @@ type StartParams struct {
 // environmentID selects the environment of the agent.
 type ExecEnvOpener func(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error)
 
-// outputHooks receive live command output chunks and events from a runner.
+// outputHooks receive live command output and events from an executor.
 type outputHooks struct {
 	OnStdoutLine func(line string)
 	OnSizeLimit  func()
@@ -170,8 +170,8 @@ type runningProcess interface {
 	Abandon()
 }
 
-// runner starts and supervises background commands inside a local or remote execution environment.
-type runner interface {
+// executor starts and supervises background commands inside a local or remote execution environment.
+type executor interface {
 	ValidateDir(ctx context.Context, p StartParams, cwd string) error
 	PrepareOutput(ctx context.Context, p StartParams, id string) (string, error)
 	Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error)
@@ -255,12 +255,12 @@ type proc struct {
 	windowN      int
 }
 
-func (m *Manager) runnerFor(kind execenv.Kind, opener ExecEnvOpener) (runner, error) {
+func (m *Manager) executorFor(kind execenv.Kind, opener ExecEnvOpener) (executor, error) {
 	if kind == "" || kind == execenv.KindLocal {
 		return &localRunner{limits: m.limits, wg: &m.wg}, nil
 	}
 	if opener == nil {
-		return nil, fmt.Errorf("%w: remote background runner is unavailable", ErrInvalid)
+		return nil, fmt.Errorf("%w: remote background executor is unavailable", ErrInvalid)
 	}
 	return newEnvRunner(opener, m.limits), nil
 }
@@ -295,11 +295,11 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	m.mu.Lock()
 	opener := m.envOpener
 	m.mu.Unlock()
-	runner, err := m.runnerFor(p.EnvKind, opener)
+	executor, err := m.executorFor(p.EnvKind, opener)
 	if err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
-	if err := runner.ValidateDir(ctx, p, cwd); err != nil {
+	if err := executor.ValidateDir(ctx, p, cwd); err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
 
@@ -322,7 +322,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	}
 
 	id := uuid.NewV7().String()
-	output, err := runner.PrepareOutput(ctx, p, id)
+	output, err := executor.PrepareOutput(ctx, p, id)
 	if err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
@@ -341,7 +341,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	if created == 0 {
 		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: the call key is in use", ErrInvalid)
 	}
-	started, err := m.launch(ctx, runner, id, p, cwd, output)
+	started, err := m.launch(ctx, executor, id, p, cwd, output)
 	if err != nil {
 		// The command never ran, so no row stays and a replayed call can try again.
 		if derr := m.q.DeleteBackgroundCommand(context.WithoutCancel(ctx), id); derr != nil {
@@ -386,7 +386,7 @@ func (m *Manager) abandon(ctx context.Context, started *proc, id string) {
 	}
 }
 
-func (m *Manager) launch(ctx context.Context, r runner, id string, p StartParams, cwd, output string) (*proc, error) {
+func (m *Manager) launch(ctx context.Context, r executor, id string, p StartParams, cwd, output string) (*proc, error) {
 	started := &proc{done: make(chan struct{}), maskOutput: p.MaskOutput}
 	run, err := r.Start(ctx, p, id, cwd, output, outputHooks{
 		OnStdoutLine: func(line string) { m.event(started, line) }, //nolint:contextcheck // line batching outlives the start tool call
@@ -948,7 +948,7 @@ type envRunner struct {
 	limits  Limits
 }
 
-// newEnvRunner creates a runner that executes commands via durableenv.ExecutionEnv.
+// newEnvRunner starts commands through durableenv.ExecutionEnv.
 func newEnvRunner(openEnv ExecEnvOpener, limits Limits) *envRunner {
 	return &envRunner{openEnv: openEnv, limits: limits}
 }

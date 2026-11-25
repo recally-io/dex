@@ -45,9 +45,9 @@ their order in the model prompt.
 can resolve the initiating request and the other inputs in the run. The engine
 owns the PiG lookups. Business storage and authorization stay in each handler.
 
-## Command Monitors
+## Session Processes
 
-A session uses `monitor_set_command` for long work. The call does not wait for
+A session uses `process_start` for long work. The call does not wait for
 completion. Use foreground `bash` for work that must finish in the current
 turn. Do not detach work with `&` or `nohup`. The `monitors` extension also
 provides [schedule Monitors](architecture.md#session-monitors).
@@ -55,7 +55,7 @@ provides [schedule Monitors](architecture.md#session-monitors).
 processes. [`internal/chat/background.go`](../../internal/chat/background.go)
 binds each command to its session.
 
-- `monitor_set_command` starts the command and
+- `process_start` starts the command and
   returns the ID and the output file path at once. It runs in a new session
   (`Setsid`), so the shell leads its own process group, with the environment of
   the bash tool of the bot. `env` overrides variables for this command only.
@@ -79,9 +79,10 @@ binds each command to its session.
   Previously, an `exit` command without a timeout could run indefinitely.
   New commands that need more than 30 minutes must set a longer timeout.
 - Wake `none` sends no wake-up. Its default timeout is 1800 seconds.
-- `monitor_list` shows both kinds of Monitor in the calling session.
-  `monitor_cancel` sends SIGTERM to a running command's process group and
-  SIGKILL after 5 seconds. Cancellation sends no wake-up.
+- `process_list` shows active and recent Processes in the calling session.
+  `process_stop` accepts the `command-` ID from `process_start` or `process_list`,
+  or the raw ID from a wake-up. It sends SIGTERM to the process group and then
+  SIGKILL after 5 seconds if needed. It sends no wake-up.
 - A command owns its whole process group. When the shell leader exits, dex ends
   the rest of the group (SIGTERM, then SIGKILL after 5 s) before it stores the
   final state. Once that sweep starts, dex sends no other signal to the group, so
@@ -99,7 +100,7 @@ reason. The state is `starting`, `running`, `exited`, `stopped`, `timed_out` or
 `unknown`. The reason is `stop`, `shutdown`, `timeout`, `output_limit`,
 `rate_limit` or `start_failed`.
 
-The tool call key is unique. `monitor_set_command` stores the row in state
+The tool call key is unique. `process_start` stores the row in state
 `starting` before it starts the process, then stores the PID and `running`. A
 replay that finds any row returns it and never starts a process, so a crash
 between the process start and the row write cannot run a command twice. After

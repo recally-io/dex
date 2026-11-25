@@ -54,7 +54,7 @@ func codingTools(session func(context.Context, durable.ConversationId) (sessionE
 				maps.Copy(execution.Env, extra)
 				return nil
 			}})
-			bash.Description += " The default timeout is 600 seconds. Set timeout for longer foreground work, or use monitor_set_command for long work."
+			bash.Description += " The default timeout is 600 seconds. Set timeout for longer foreground work, or use process_start for long work."
 			if properties, ok := bash.Parameters["properties"].(map[string]any); ok {
 				if timeout, ok := properties["timeout"].(map[string]any); ok {
 					timeout["description"] = "Timeout in seconds. The default is 600 seconds."

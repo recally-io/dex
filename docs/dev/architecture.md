@@ -36,7 +36,7 @@ and selects which sessions can use them.
 Tools and stdio MCP servers can start child processes. Bash has a default
 120-second timeout. An omitted or null `timeout` uses the default. An explicit
 `timeout` in seconds replaces it. PiG stops the shell process group and waits for it on timeout or cancellation.
-Use `monitor_set_command` for supervised long work. It has its own timeout defaults.
+Use `process_start` for supervised long work. It has its own timeout defaults.
 Other tools do not receive the bash or background timeout defaults. MCP calls have
 a 600-second timeout, but remote work can continue after cancellation. A generic
 deadline cannot safely stop a tool that ignores cancellation.
@@ -296,7 +296,7 @@ such as `DEX_TOKEN` do not reach tools unless a shell rc file exports them.
 The [vault](extensions.md#secret-vault) encrypts shared and agent-level
 secrets with age. Only the control host resolves references. It passes values
 in the process environment, not in command arguments. It masks exact values
-in final tool results and command Monitor wake-ups. Local tools run as the dex
+in final tool results and Process wake-ups. Local tools run as the dex
 user and have the same access to the control files as that user.
 
 ## Limits
@@ -350,21 +350,21 @@ renames the original Timer table in place and treats its rows as one-run
 prompt Monitors. The existing due time, submission IDs, deduplication key,
 and one-hour grace rule stay. There are no old tool or API aliases.
 
-Main, Chat, child sessions, and tasks can use both kinds of Monitor from any
-turn. Dreams have no Monitor tools. `monitor_list` and `monitor_cancel` act
-only on Monitors in the calling session. Tool results add `schedule-` or
-`command-` to the stored ID. Use the prefixed ID to cancel a Monitor. The
-session can have at most 32 active Monitors across both kinds. Each Monitor in a chain of wake-ups advances the
-depth. After six steps, wait for user input before setting another Monitor.
+Main, Chat, child sessions, and tasks can set Monitors and start Processes.
+Dreams have neither tool group. Both groups use the same `monitors` extension.
+`monitor_list` lists only scheduled and check Monitors in the calling session.
+`monitor_cancel` accepts the `schedule-` ID from the tool or the raw ID from
+HTTP. The session shares a cap of 32 active Monitors and Processes. Both types
+of wake-up count toward the same depth limit of six.
 
-`monitor_set_schedule` takes `at` or `delaySeconds`, and a prompt. Use
+`monitor_set` takes `at` or `delaySeconds`, and a prompt. Use
 `maxRuns` (1–100), `intervalSeconds` (at least 60 for multiple runs), and an
 optional `expiresAt` for repeated checks. A check Monitor takes `checkCommand`.
 Repeated and check Monitors have a maximum lifetime of seven days. `env` is
 valid only with `checkCommand`. It overrides environment variables for that
 check. Use non-secret values: dex stores these arguments.
 
-`monitor_set_command` starts a [command Monitor](execution.md#command-monitors).
+`process_start` starts a [Process](execution.md#session-processes).
 It can wake the session on exit or in batches of stdout lines. Use `wake: none`
 for a command that sends no wake-up. A bot can run at most eight commands.
 

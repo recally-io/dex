@@ -88,11 +88,19 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Stay silent", target: arg(tool, "reason") };
   }
 
-  if (tool.name === "monitor_set_command") {
-    return { verb: "Start command monitor", target: arg(tool, "label") || arg(tool, "command") };
+  if (tool.name === "process_start") {
+    return { verb: "Start process", target: arg(tool, "label") || arg(tool, "command") };
   }
 
-  if (tool.name === "monitor_set_schedule") {
+  if (tool.name === "process_list") {
+    return { verb: "List processes", target: "" };
+  }
+
+  if (tool.name === "process_stop") {
+    return { verb: "Stop process", target: arg(tool, "id") };
+  }
+
+  if (tool.name === "monitor_set") {
     return { verb: "Schedule monitor", target: arg(tool, "at") || arg(tool, "prompt") };
   }
 

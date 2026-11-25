@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/MichaelKinsy/PiG/ai"
@@ -156,11 +157,14 @@ func fakeProvider(inputSuffix string) *ai.ModelsProvider {
 			}
 			if result, ok := args["background-result"]; ok {
 				if wake, ok := result.(map[string]any); m.ID == "spawn-monitor" && ok && wake["event"] == "exited" {
-					switch wake["label"] {
-					case "chain fixture":
-						return fakeCall("monitor_set_command", map[string]any{"command": "printf ready", "wake": "exit", "label": "chain fixture"}), nil
-					case "check fixture":
-						return fakeCall("monitor_set_schedule", map[string]any{"delaySeconds": 60, "maxRuns": 2, "intervalSeconds": 60, "prompt": "fixture ready", "checkCommand": "exit 10"}), nil
+					label, _ := wake["label"].(string)
+					if step, ok := strings.CutPrefix(label, "chain fixture "); ok {
+						if remaining, err := strconv.Atoi(step); err == nil && remaining > 1 {
+							return fakeCall("process_start", map[string]any{"command": "printf ready", "wake": "exit", "label": fmt.Sprintf("chain fixture %d", remaining-1)}), nil
+						}
+					}
+					if label == "check fixture" || label == "chain fixture 1" {
+						return fakeCall("monitor_set", map[string]any{"delaySeconds": 60, "maxRuns": 2, "intervalSeconds": 60, "prompt": "fixture ready", "checkCommand": "exit 10"}), nil
 					}
 				}
 				data, err := json.Marshal(result, json.Deterministic(true))

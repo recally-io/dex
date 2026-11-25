@@ -85,7 +85,7 @@ Run scripts from the skill directory in the session environment. Every `bash`
 call sets `DEX_SKILL_CACHE` to `<workspace>/.dex/cache/skills`. Create
 `$DEX_SKILL_CACHE/<name>` with `mkdir -p` and put runtime files there. Keep
 secrets in the vault. Pass references in the `env` argument of `bash` or
-`monitor_set_command`.
+`process_start`.
 
 Each host store is a Git repository. dex commits changes at submission settlement
 as `Update skills from <source>`, with the same source as memory. On open, dex
@@ -127,7 +127,7 @@ name. `GET /api/agents/{agentId}/vault` returns names, scopes, and last change
 times. `PUT` sets a value and `DELETE` removes it. Neither returns a value.
 The agent has only `secret_list`, which shows effective names and metadata.
 
-`bash`, `monitor_set_command`, and `monitor_set_schedule` accept `vault:NAME`
+`bash`, `process_start`, and `monitor_set` accept `vault:NAME`
 as an `env` value. A schedule stores the reference and resolves it when the
 check runs. dex resolves values on the control host and sends only the
 requested variables to the command. Local, SSH, runner, and E2B use the same
@@ -135,9 +135,9 @@ path. Remote targets need no extra program for vault access. A missing name stop
 before it starts. A plain Bash call gets no vault values.
 
 A snapshot masks exact values of at least 8 characters as `[vault:NAME]` in final
-top-level tool results and command Monitor wake-ups. Values passed between
+top-level tool results and Process wake-ups. Values passed between
 nested Code Mode tools are not masked. A long Bash call's full output file
-and a Monitor's output file stay as written on the execution host. Masking
+and a Process's output file stay as written on the execution host. Masking
 does not hide encoded values, or block another process of the same user from
 reading a process environment. The vault is not a sandbox on the control host.
 
