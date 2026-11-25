@@ -104,7 +104,7 @@ func (s *Service) CreateTask(ctx context.Context, actor Actor, origin Origin, p 
 	return task, err
 }
 
-// Detail holds the current Task and its recent legacy timeline entries.
+// Detail holds a Task and its related records from one snapshot.
 type Detail struct {
 	Task      sqlc.WorkTask
 	Entries   []sqlc.WorkTaskEntry
@@ -122,17 +122,36 @@ func (s *Service) List(ctx context.Context, includeClosed bool) ([]sqlc.WorkTask
 
 // Detail reads the Task and timeline in one snapshot.
 func (s *Service) Detail(ctx context.Context, agentID, id string) (Detail, error) {
+	return s.detail(ctx, agentID, id)
+}
+
+// BoardDetail reads the Owner's full timeline by Task key or UUID.
+func (s *Service) BoardDetail(ctx context.Context, key string) (Detail, error) {
+	return s.detail(ctx, "", key)
+}
+
+func (s *Service) detail(ctx context.Context, agentID, key string) (Detail, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return Detail{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
-	task, err := legacyTask(ctx, q, agentID, id)
+	var task sqlc.WorkTask
+	if agentID == "" {
+		task, err = boardTask(ctx, q, key)
+	} else {
+		task, err = legacyTask(ctx, q, agentID, key)
+	}
 	if err != nil {
 		return Detail{}, err
 	}
-	entries, err := q.ListWorkTaskEntries(ctx, task.ID)
+	var entries []sqlc.WorkTaskEntry
+	if agentID == "" {
+		entries, err = q.ListBoardTimeline(ctx, task.ID)
+	} else {
+		entries, err = q.ListWorkTaskEntries(ctx, task.ID)
+	}
 	if err != nil {
 		return Detail{}, err
 	}
@@ -144,7 +163,7 @@ func (s *Service) Detail(ctx context.Context, agentID, id string) (Detail, error
 	if err != nil {
 		return Detail{}, err
 	}
-	waits, err := q.ListWorkTaskWaits(ctx, sqlc.ListWorkTaskWaitsParams{AgentID: agentID, TaskID: task.ID})
+	waits, err := q.ListBoardTaskWaits(ctx, task.ID)
 	if err != nil {
 		return Detail{}, err
 	}

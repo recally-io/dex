@@ -57,7 +57,17 @@ Inbox. Queued Task questions remain answerable from Task detail.
 A held event shows its type, reason, author, source link, and text. The owner
 chooses an open Task before Attach is enabled, because no API removes the object
 links of an attach. The owner can also dismiss the event.
-`/a/{agentId}/inbox/{taskId}` still opens a Task under its owner bot.
+Board reads `/api/board/*`. It offers Kanban and List views, an inline
+creation form, and Bot, In Review, Blocked, Source, and closed Task filters.
+The Bot filter uses `/board?bot=<id>`. Task detail opens at
+`/board/$taskKey` with a stable key such as `T-42`. The legacy
+`/a/{agentId}/inbox/{taskId}` URL redirects to that key.
+
+`src/lib/board-stream.ts` uses EventSource to resume with `Last-Event-ID`.
+It invalidates Task list and detail queries on Board events. Board does not
+poll. Task edits keep the revision from the start of the edit. A conflict
+prompts the Owner to load the latest values. Approval uses the current review
+sequence. The composer adds a note or sends to the Assignee Bot's Main.
 Global Integrations lists Sources with a switch for each. A note asks for a
 restart while a stored choice differs from what runs. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
@@ -66,7 +76,7 @@ plugin is on.
 An optional commit SHA sets a wait for a review submitted after the form is
 submitted. The Task shows all linked Sessions above its external links, wait
 states, and timeline. Each Session link uses the Session's Bot ID in its URL,
-shows the Bot name, and marks the primary Session. A link shows its type, key, and namespace as
+shows the Bot name and execution state, and marks the primary Session. A link shows its type, key, and namespace as
 stored, for example `pull_request 7` in `github.com/repository/10`. Each timeline entry shows its author.
 Automation history links to run transcripts and saved results.
 The automation dialog can bind to a writable, unarchived session of the same bot.

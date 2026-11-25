@@ -8,10 +8,18 @@ alerts, and the Task tools. Optional sources that send Task events are in
 ## Board and event store
 
 Board reads `work_tasks` and `work_task_entries` from `control.sqlite`. Each
-Task has one Assignee Bot. Its status and notes do not change the state of a
-Session. Board hides closed Tasks by default. The existing HTTP API and tools
-read `done` as `completed`, `cancelled` as `cancelled`, and other statuses as
+Task has one Assignee Bot and a stable key such as `T-42`. Its status and
+notes do not change the state of a Session. Board shows Tasks in Kanban or
+List view. It hides closed Tasks by default. The legacy Inbox Task API maps
+`done` to `completed`, `cancelled` to `cancelled`, and all other statuses to
 `open`.
+
+The Owner uses `/api/board/tasks` to list and create Tasks. Detail and write
+paths accept a Task key or UUID. A PATCH or note POST can include an
+`If-Match` revision. A stale revision returns 412 and leaves the Task
+unchanged. Approval requires the current `reviewSeq`. A stale approval
+returns 409. Reassignment of an open Task wakes the new Assignee. It does
+not transfer Sessions or open questions from the old Assignee.
 
 Task mutations update the Task projection and append a ledger entry in the
 same write transaction. Each Task has a stable number, a revision, and entry
@@ -21,11 +29,20 @@ The service derives blockers from unresolved waits and open Task questions.
 A closed Task has no blockers. The Main queue position includes open
 questions that do not belong to a Task. The service does not store `Blocked`
 as a status. The optional entry hook runs only after commit. Consumers must
-use the durable entry ID to catch up.
+use the durable entry ID to catch up. `GET /api/board/events` starts at the
+ledger head unless the client supplies `Last-Event-ID` or `after`. The
+stream sends `board_entry` events in ID order with Task IDs and no entry text.
+It then sends `board_ready` with the current cursor. Questions and execution
+state can change without a ledger write. Such changes can send
+`board_refresh` without advancing the cursor. Board refreshes its reads on
+these events. The legacy held-events API is unchanged.
+
+Phase 1 returns all matching Tasks and the full Owner timeline for each Task.
+Add cursor pages when large Boards or timelines make these reads too slow.
 
 Inbox shows items that need owner
 action, including held events and Automation results. The owner can send a
-message from a Task to its Owner Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
+message from a Task to its Assignee Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
 message from Main uses the original channel peer. If the input has no channel
@@ -98,7 +115,7 @@ External entries have metadata only. The model sees a key-based title for a
 Task created by a Source until an authorized rename. The Owner can still see
 the source title. Retracted entries are omitted.
 
-`task_read` and `GET /api/agents/{agentId}/inbox/tasks/{taskId}` list every
+`task_read` and `GET /api/board/tasks/{taskKey}` list every
 linked object as `links`: its namespace, type, and key, with the waits on that
 object. The core does not decode these values, so links stay readable when no
 source can read them.
@@ -113,7 +130,8 @@ to promote the child without removing other links. This does not grant tools
 access to Tasks of the child's Bot or change alert routing.
 
 `task_read` and Task detail return linked `sessions` in primary-first order.
-The legacy `session` field still returns the primary Session when present.
+The Board summary returns `primarySession` when present. The legacy
+`session` field stays available on the legacy Task API.
 The Phase 1 upgrade copies each link with its original Bot, primary flag,
 and timestamp. Downgrading restores these Session links. The old schema
 cannot store Board status detail, review versions, or non-Session executions.

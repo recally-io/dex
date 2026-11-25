@@ -284,18 +284,20 @@ func (q *Queries) ListBotWorkTasks(ctx context.Context, arg ListBotWorkTasksPara
 }
 
 const listWorkTaskSessions = `-- name: ListWorkTaskSessions :many
-SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at
+SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
 FROM task_executions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.bot_id
 WHERE s.task_id = ? AND s.kind = 'dex_session' ORDER BY s.is_primary DESC, s.started_at, c.id
 `
 
 type ListWorkTaskSessionsRow struct {
-	ConversationID int64  `json:"conversation_id"`
-	AgentID        string `json:"agent_id"`
-	AgentName      string `json:"agent_name"`
-	Title          string `json:"title"`
-	IsPrimary      int64  `json:"is_primary"`
-	LinkedAt       int64  `json:"linked_at"`
+	ConversationID int64         `json:"conversation_id"`
+	AgentID        string        `json:"agent_id"`
+	AgentName      string        `json:"agent_name"`
+	Title          string        `json:"title"`
+	IsPrimary      int64         `json:"is_primary"`
+	LinkedAt       int64         `json:"linked_at"`
+	State          string        `json:"state"`
+	EndedAt        sql.NullInt64 `json:"ended_at"`
 }
 
 func (q *Queries) ListWorkTaskSessions(ctx context.Context, taskID string) ([]ListWorkTaskSessionsRow, error) {
@@ -314,6 +316,8 @@ func (q *Queries) ListWorkTaskSessions(ctx context.Context, taskID string) ([]Li
 			&i.Title,
 			&i.IsPrimary,
 			&i.LinkedAt,
+			&i.State,
+			&i.EndedAt,
 		); err != nil {
 			return nil, err
 		}

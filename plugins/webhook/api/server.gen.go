@@ -27,6 +27,9 @@ type AgentId = string
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
+// BoardTaskKey defines model for BoardTaskKey.
+type BoardTaskKey = string
+
 // ChatId defines model for ChatId.
 type ChatId = int64
 

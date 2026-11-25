@@ -72,7 +72,7 @@ SELECT i.task_id FROM work_task_inputs i JOIN questions q ON q.source_submission
 WHERE q.id = @question_id AND q.conversation_id = @conversation_id;
 
 -- name: ListWorkTaskQuestionBlockers :many
-SELECT q.id, q.text, CAST(CASE WHEN c.agent_id = @assignee_bot_id AND c.channel_key = 'main' THEN 1 + (
+SELECT q.id, q.text, CAST(CASE WHEN c.channel_key = 'main' THEN 1 + (
   SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id
   WHERE prior.status = 'open' AND ps.status = 'done' AND prior.conversation_id = q.conversation_id
     AND (prior.queued, prior.rowid) < (q.queued, q.rowid)

@@ -58,6 +58,261 @@ func (e AssistantItemKind) Valid() bool {
 	}
 }
 
+// Defines values for BoardEntryCreateKind.
+const (
+	BoardEntryCreateKindArtifact BoardEntryCreateKind = "artifact"
+	BoardEntryCreateKindNote     BoardEntryCreateKind = "note"
+)
+
+// Valid indicates whether the value is a known member of the BoardEntryCreateKind enum.
+func (e BoardEntryCreateKind) Valid() bool {
+	switch e {
+	case BoardEntryCreateKindArtifact:
+		return true
+	case BoardEntryCreateKindNote:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardEntryCreateTag.
+const (
+	Brief    BoardEntryCreateTag = "brief"
+	Decision BoardEntryCreateTag = "decision"
+	Handoff  BoardEntryCreateTag = "handoff"
+	Update   BoardEntryCreateTag = "update"
+)
+
+// Valid indicates whether the value is a known member of the BoardEntryCreateTag enum.
+func (e BoardEntryCreateTag) Valid() bool {
+	switch e {
+	case Brief:
+		return true
+	case Decision:
+		return true
+	case Handoff:
+		return true
+	case Update:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardReviewDecision.
+const (
+	BoardReviewDecisionApprove        BoardReviewDecision = "approve"
+	BoardReviewDecisionRequestChanges BoardReviewDecision = "request_changes"
+)
+
+// Valid indicates whether the value is a known member of the BoardReviewDecision enum.
+func (e BoardReviewDecision) Valid() bool {
+	switch e {
+	case BoardReviewDecisionApprove:
+		return true
+	case BoardReviewDecisionRequestChanges:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardReviewerKind.
+const (
+	BoardReviewerKindBot   BoardReviewerKind = "bot"
+	BoardReviewerKindEmpty BoardReviewerKind = ""
+	BoardReviewerKindOwner BoardReviewerKind = "owner"
+)
+
+// Valid indicates whether the value is a known member of the BoardReviewerKind enum.
+func (e BoardReviewerKind) Valid() bool {
+	switch e {
+	case BoardReviewerKindBot:
+		return true
+	case BoardReviewerKindEmpty:
+		return true
+	case BoardReviewerKindOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardStatus.
+const (
+	BoardStatusBacklog    BoardStatus = "backlog"
+	BoardStatusCancelled  BoardStatus = "cancelled"
+	BoardStatusDone       BoardStatus = "done"
+	BoardStatusInProgress BoardStatus = "in_progress"
+	BoardStatusInReview   BoardStatus = "in_review"
+	BoardStatusReady      BoardStatus = "ready"
+)
+
+// Valid indicates whether the value is a known member of the BoardStatus enum.
+func (e BoardStatus) Valid() bool {
+	switch e {
+	case BoardStatusBacklog:
+		return true
+	case BoardStatusCancelled:
+		return true
+	case BoardStatusDone:
+		return true
+	case BoardStatusInProgress:
+		return true
+	case BoardStatusInReview:
+		return true
+	case BoardStatusReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskBlockerKind.
+const (
+	BoardTaskBlockerKindQuestion BoardTaskBlockerKind = "question"
+	BoardTaskBlockerKindWait     BoardTaskBlockerKind = "wait"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskBlockerKind enum.
+func (e BoardTaskBlockerKind) Valid() bool {
+	switch e {
+	case BoardTaskBlockerKindQuestion:
+		return true
+	case BoardTaskBlockerKindWait:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskCreateStatus.
+const (
+	BoardTaskCreateStatusBacklog    BoardTaskCreateStatus = "backlog"
+	BoardTaskCreateStatusInProgress BoardTaskCreateStatus = "in_progress"
+	BoardTaskCreateStatusReady      BoardTaskCreateStatus = "ready"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskCreateStatus enum.
+func (e BoardTaskCreateStatus) Valid() bool {
+	switch e {
+	case BoardTaskCreateStatusBacklog:
+		return true
+	case BoardTaskCreateStatusInProgress:
+		return true
+	case BoardTaskCreateStatusReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskEntryDecision.
+const (
+	BoardTaskEntryDecisionApprove        BoardTaskEntryDecision = "approve"
+	BoardTaskEntryDecisionRequestChanges BoardTaskEntryDecision = "request_changes"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskEntryDecision enum.
+func (e BoardTaskEntryDecision) Valid() bool {
+	switch e {
+	case BoardTaskEntryDecisionApprove:
+		return true
+	case BoardTaskEntryDecisionRequestChanges:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskEntryKind.
+const (
+	BoardTaskEntryKindArtifact  BoardTaskEntryKind = "artifact"
+	BoardTaskEntryKindAssign    BoardTaskEntryKind = "assign"
+	BoardTaskEntryKindExecution BoardTaskEntryKind = "execution"
+	BoardTaskEntryKindExternal  BoardTaskEntryKind = "external"
+	BoardTaskEntryKindNote      BoardTaskEntryKind = "note"
+	BoardTaskEntryKindReview    BoardTaskEntryKind = "review"
+	BoardTaskEntryKindStatus    BoardTaskEntryKind = "status"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskEntryKind enum.
+func (e BoardTaskEntryKind) Valid() bool {
+	switch e {
+	case BoardTaskEntryKindArtifact:
+		return true
+	case BoardTaskEntryKindAssign:
+		return true
+	case BoardTaskEntryKindExecution:
+		return true
+	case BoardTaskEntryKindExternal:
+		return true
+	case BoardTaskEntryKindNote:
+		return true
+	case BoardTaskEntryKindReview:
+		return true
+	case BoardTaskEntryKindStatus:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskEntryTrust.
+const (
+	BoardTaskEntryTrustAgent    BoardTaskEntryTrust = "agent"
+	BoardTaskEntryTrustExternal BoardTaskEntryTrust = "external"
+	BoardTaskEntryTrustOwner    BoardTaskEntryTrust = "owner"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskEntryTrust enum.
+func (e BoardTaskEntryTrust) Valid() bool {
+	switch e {
+	case BoardTaskEntryTrustAgent:
+		return true
+	case BoardTaskEntryTrustExternal:
+		return true
+	case BoardTaskEntryTrustOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardTaskSessionState.
+const (
+	BoardTaskSessionStateCancelled  BoardTaskSessionState = "cancelled"
+	BoardTaskSessionStateCompleted  BoardTaskSessionState = "completed"
+	BoardTaskSessionStateDispatched BoardTaskSessionState = "dispatched"
+	BoardTaskSessionStateFailed     BoardTaskSessionState = "failed"
+	BoardTaskSessionStateIdle       BoardTaskSessionState = "idle"
+	BoardTaskSessionStateRunning    BoardTaskSessionState = "running"
+	BoardTaskSessionStateStale      BoardTaskSessionState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the BoardTaskSessionState enum.
+func (e BoardTaskSessionState) Valid() bool {
+	switch e {
+	case BoardTaskSessionStateCancelled:
+		return true
+	case BoardTaskSessionStateCompleted:
+		return true
+	case BoardTaskSessionStateDispatched:
+		return true
+	case BoardTaskSessionStateFailed:
+		return true
+	case BoardTaskSessionStateIdle:
+		return true
+	case BoardTaskSessionStateRunning:
+		return true
+	case BoardTaskSessionStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BoundaryItemBoundary.
 const (
 	BoundaryItemBoundaryCompaction  BoundaryItemBoundary = "compaction"
@@ -534,34 +789,34 @@ func (e OnePasswordMode) Valid() bool {
 
 // Defines values for OutboxMessageKind.
 const (
-	Control     OutboxMessageKind = "control"
-	Feedback    OutboxMessageKind = "feedback"
-	File        OutboxMessageKind = "file"
-	Proactive   OutboxMessageKind = "proactive"
-	Question    OutboxMessageKind = "question"
-	Reply       OutboxMessageKind = "reply"
-	Routine     OutboxMessageKind = "routine"
-	SystemError OutboxMessageKind = "system_error"
+	OutboxMessageKindControl     OutboxMessageKind = "control"
+	OutboxMessageKindFeedback    OutboxMessageKind = "feedback"
+	OutboxMessageKindFile        OutboxMessageKind = "file"
+	OutboxMessageKindProactive   OutboxMessageKind = "proactive"
+	OutboxMessageKindQuestion    OutboxMessageKind = "question"
+	OutboxMessageKindReply       OutboxMessageKind = "reply"
+	OutboxMessageKindRoutine     OutboxMessageKind = "routine"
+	OutboxMessageKindSystemError OutboxMessageKind = "system_error"
 )
 
 // Valid indicates whether the value is a known member of the OutboxMessageKind enum.
 func (e OutboxMessageKind) Valid() bool {
 	switch e {
-	case Control:
+	case OutboxMessageKindControl:
 		return true
-	case Feedback:
+	case OutboxMessageKindFeedback:
 		return true
-	case File:
+	case OutboxMessageKindFile:
 		return true
-	case Proactive:
+	case OutboxMessageKindProactive:
 		return true
-	case Question:
+	case OutboxMessageKindQuestion:
 		return true
-	case Reply:
+	case OutboxMessageKindReply:
 		return true
-	case Routine:
+	case OutboxMessageKindRoutine:
 		return true
-	case SystemError:
+	case OutboxMessageKindSystemError:
 		return true
 	default:
 		return false
@@ -762,22 +1017,22 @@ func (e TelegramInputTransport) Valid() bool {
 
 // Defines values for TelegramSpeechOptionsFormat.
 const (
-	Empty TelegramSpeechOptionsFormat = ""
-	Mp3   TelegramSpeechOptionsFormat = "mp3"
-	Opus  TelegramSpeechOptionsFormat = "opus"
-	Wav   TelegramSpeechOptionsFormat = "wav"
+	TelegramSpeechOptionsFormatEmpty TelegramSpeechOptionsFormat = ""
+	TelegramSpeechOptionsFormatMp3   TelegramSpeechOptionsFormat = "mp3"
+	TelegramSpeechOptionsFormatOpus  TelegramSpeechOptionsFormat = "opus"
+	TelegramSpeechOptionsFormatWav   TelegramSpeechOptionsFormat = "wav"
 )
 
 // Valid indicates whether the value is a known member of the TelegramSpeechOptionsFormat enum.
 func (e TelegramSpeechOptionsFormat) Valid() bool {
 	switch e {
-	case Empty:
+	case TelegramSpeechOptionsFormatEmpty:
 		return true
-	case Mp3:
+	case TelegramSpeechOptionsFormatMp3:
 		return true
-	case Opus:
+	case TelegramSpeechOptionsFormatOpus:
 		return true
-	case Wav:
+	case TelegramSpeechOptionsFormatWav:
 		return true
 	default:
 		return false
@@ -1003,6 +1258,162 @@ type AutomationTarget struct {
 	Id    int64  `json:"id"`
 	Main  bool   `json:"main"`
 	Title string `json:"title"`
+}
+
+// BoardEntryCreate defines model for BoardEntryCreate.
+type BoardEntryCreate struct {
+	Content string                `json:"content"`
+	Kind    *BoardEntryCreateKind `json:"kind,omitempty"`
+	Tag     *BoardEntryCreateTag  `json:"tag,omitempty"`
+}
+
+// BoardEntryCreateKind defines model for BoardEntryCreate.Kind.
+type BoardEntryCreateKind string
+
+// BoardEntryCreateTag defines model for BoardEntryCreate.Tag.
+type BoardEntryCreateTag string
+
+// BoardEvent defines model for BoardEvent.
+type BoardEvent struct {
+	TaskId string `json:"taskId"`
+}
+
+// BoardReview defines model for BoardReview.
+type BoardReview struct {
+	Decision  BoardReviewDecision `json:"decision"`
+	Note      *string             `json:"note,omitempty"`
+	ReviewSeq *int64              `json:"reviewSeq,omitempty"`
+}
+
+// BoardReviewDecision defines model for BoardReview.Decision.
+type BoardReviewDecision string
+
+// BoardReviewerKind defines model for BoardReviewerKind.
+type BoardReviewerKind string
+
+// BoardStatus defines model for BoardStatus.
+type BoardStatus string
+
+// BoardTaskBlocker defines model for BoardTaskBlocker.
+type BoardTaskBlocker struct {
+	EventType     *string              `json:"eventType,omitempty"`
+	Kind          BoardTaskBlockerKind `json:"kind"`
+	Namespace     *string              `json:"namespace,omitempty"`
+	ObjectKey     *string              `json:"objectKey,omitempty"`
+	ObjectType    *string              `json:"objectType,omitempty"`
+	Question      *string              `json:"question,omitempty"`
+	QuestionId    *string              `json:"questionId,omitempty"`
+	QueuePosition *int64               `json:"queuePosition,omitempty"`
+	WaitId        *int64               `json:"waitId,omitempty"`
+}
+
+// BoardTaskBlockerKind defines model for BoardTaskBlocker.Kind.
+type BoardTaskBlockerKind string
+
+// BoardTaskCreate defines model for BoardTaskCreate.
+type BoardTaskCreate struct {
+	AssigneeBotId string                 `json:"assigneeBotId"`
+	Note          *string                `json:"note,omitempty"`
+	ReviewerId    *string                `json:"reviewerId,omitempty"`
+	ReviewerKind  *BoardReviewerKind     `json:"reviewerKind,omitempty"`
+	Status        *BoardTaskCreateStatus `json:"status,omitempty"`
+	Title         string                 `json:"title"`
+}
+
+// BoardTaskCreateStatus defines model for BoardTaskCreate.Status.
+type BoardTaskCreateStatus string
+
+// BoardTaskDetail defines model for BoardTaskDetail.
+type BoardTaskDetail struct {
+	Blockers  []BoardTaskBlocker  `json:"blockers"`
+	Entries   []BoardTaskEntry    `json:"entries"`
+	Links     []WorkTaskLink      `json:"links"`
+	Questions []BoardTaskQuestion `json:"questions"`
+	Sessions  []BoardTaskSession  `json:"sessions"`
+	Task      BoardTaskSummary    `json:"task"`
+}
+
+// BoardTaskEntry defines model for BoardTaskEntry.
+type BoardTaskEntry struct {
+	ActorBotId string                  `json:"actorBotId"`
+	ActorKind  string                  `json:"actorKind"`
+	Content    string                  `json:"content"`
+	CreatedAt  int64                   `json:"createdAt"`
+	Decision   *BoardTaskEntryDecision `json:"decision,omitempty"`
+	EventId    *string                 `json:"eventId,omitempty"`
+	Id         int64                   `json:"id"`
+	Kind       BoardTaskEntryKind      `json:"kind"`
+	Seq        int64                   `json:"seq"`
+	Status     *BoardStatus            `json:"status,omitempty"`
+	Tag        string                  `json:"tag"`
+	Trust      BoardTaskEntryTrust     `json:"trust"`
+}
+
+// BoardTaskEntryDecision defines model for BoardTaskEntry.Decision.
+type BoardTaskEntryDecision string
+
+// BoardTaskEntryKind defines model for BoardTaskEntry.Kind.
+type BoardTaskEntryKind string
+
+// BoardTaskEntryTrust defines model for BoardTaskEntry.Trust.
+type BoardTaskEntryTrust string
+
+// BoardTaskList defines model for BoardTaskList.
+type BoardTaskList struct {
+	Tasks []BoardTaskSummary `json:"tasks"`
+}
+
+// BoardTaskQuestion defines model for BoardTaskQuestion.
+type BoardTaskQuestion struct {
+	AgentId        string   `json:"agentId"`
+	ConversationId int64    `json:"conversationId"`
+	Id             string   `json:"id"`
+	Options        []string `json:"options"`
+	Queued         bool     `json:"queued"`
+	Text           string   `json:"text"`
+}
+
+// BoardTaskSession defines model for BoardTaskSession.
+type BoardTaskSession struct {
+	AgentId        string                `json:"agentId"`
+	AgentName      string                `json:"agentName"`
+	ConversationId int64                 `json:"conversationId"`
+	EndedAt        *int64                `json:"endedAt,omitempty"`
+	IsPrimary      bool                  `json:"isPrimary"`
+	LinkedAt       int64                 `json:"linkedAt"`
+	State          BoardTaskSessionState `json:"state"`
+	Title          string                `json:"title"`
+}
+
+// BoardTaskSessionState defines model for BoardTaskSession.State.
+type BoardTaskSessionState string
+
+// BoardTaskSummary defines model for BoardTaskSummary.
+type BoardTaskSummary struct {
+	AssigneeBotId  string            `json:"assigneeBotId"`
+	Blocked        bool              `json:"blocked"`
+	BlockerCount   int64             `json:"blockerCount"`
+	CreatedAt      int64             `json:"createdAt"`
+	Id             string            `json:"id"`
+	Key            string            `json:"key"`
+	Number         int64             `json:"number"`
+	PrimarySession *BoardTaskSession `json:"primarySession,omitempty"`
+	ReviewSeq      int64             `json:"reviewSeq"`
+	ReviewerId     string            `json:"reviewerId"`
+	ReviewerKind   BoardReviewerKind `json:"reviewerKind"`
+	Revision       int64             `json:"revision"`
+	Status         BoardStatus       `json:"status"`
+	Title          string            `json:"title"`
+	UpdatedAt      int64             `json:"updatedAt"`
+}
+
+// BoardTaskUpdate defines model for BoardTaskUpdate.
+type BoardTaskUpdate struct {
+	AssigneeBotId *string            `json:"assigneeBotId,omitempty"`
+	ReviewerId    *string            `json:"reviewerId,omitempty"`
+	ReviewerKind  *BoardReviewerKind `json:"reviewerKind,omitempty"`
+	Status        *BoardStatus       `json:"status,omitempty"`
+	Title         *string            `json:"title,omitempty"`
 }
 
 // BoundaryItem defines model for BoundaryItem.
@@ -2170,6 +2581,12 @@ type AgentId = string
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
+// BoardRevision defines model for BoardRevision.
+type BoardRevision = int64
+
+// BoardTaskKey defines model for BoardTaskKey.
+type BoardTaskKey = string
+
 // ChatId defines model for ChatId.
 type ChatId = int64
 
@@ -2305,6 +2722,36 @@ type PutVaultJSONBody struct {
 	Value *string        `json:"value,omitempty"`
 }
 
+// WatchBoardParams defines parameters for WatchBoard.
+type WatchBoardParams struct {
+	After       *int64  `form:"after,omitempty" json:"after,omitempty"`
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
+}
+
+// ListBoardTasksParams defines parameters for ListBoardTasks.
+type ListBoardTasksParams struct {
+	BotId    *string      `form:"botId,omitempty" json:"botId,omitempty"`
+	Status   *BoardStatus `form:"status,omitempty" json:"status,omitempty"`
+	Blocked  *bool        `form:"blocked,omitempty" json:"blocked,omitempty"`
+	InReview *bool        `form:"inReview,omitempty" json:"inReview,omitempty"`
+
+	// Source A linked Source namespace or its prefix before a slash.
+	Source        *string `form:"source,omitempty" json:"source,omitempty"`
+	IncludeClosed *bool   `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
+}
+
+// UpdateBoardTaskParams defines parameters for UpdateBoardTask.
+type UpdateBoardTaskParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *BoardRevision `json:"If-Match,omitempty"`
+}
+
+// CreateBoardEntryParams defines parameters for CreateBoardEntry.
+type CreateBoardEntryParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *BoardRevision `json:"If-Match,omitempty"`
+}
+
 // ListDirectoriesParams defines parameters for ListDirectories.
 type ListDirectoriesParams struct {
 	Path    *string `form:"path,omitempty" json:"path,omitempty"`
@@ -2438,6 +2885,18 @@ type PutVaultJSONRequestBody PutVaultJSONBody
 
 // PreviewScheduleJSONRequestBody defines body for PreviewSchedule for application/json ContentType.
 type PreviewScheduleJSONRequestBody = ScheduleInput
+
+// CreateBoardTaskJSONRequestBody defines body for CreateBoardTask for application/json ContentType.
+type CreateBoardTaskJSONRequestBody = BoardTaskCreate
+
+// UpdateBoardTaskJSONRequestBody defines body for UpdateBoardTask for application/json ContentType.
+type UpdateBoardTaskJSONRequestBody = BoardTaskUpdate
+
+// CreateBoardEntryJSONRequestBody defines body for CreateBoardEntry for application/json ContentType.
+type CreateBoardEntryJSONRequestBody = BoardEntryCreate
+
+// ReviewBoardTaskJSONRequestBody defines body for ReviewBoardTask for application/json ContentType.
+type ReviewBoardTaskJSONRequestBody = BoardReview
 
 // AttachHeldEventJSONRequestBody defines body for AttachHeldEvent for application/json ContentType.
 type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
@@ -3228,6 +3687,27 @@ type ServerInterface interface {
 
 	// (POST /api/automations/preview)
 	PreviewSchedule(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/board/events)
+	WatchBoard(w http.ResponseWriter, r *http.Request, params WatchBoardParams)
+
+	// (GET /api/board/tasks)
+	ListBoardTasks(w http.ResponseWriter, r *http.Request, params ListBoardTasksParams)
+
+	// (POST /api/board/tasks)
+	CreateBoardTask(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/board/tasks/{taskKey})
+	GetBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
+
+	// (PATCH /api/board/tasks/{taskKey})
+	UpdateBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params UpdateBoardTaskParams)
+
+	// (POST /api/board/tasks/{taskKey}/entries)
+	CreateBoardEntry(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params CreateBoardEntryParams)
+
+	// (POST /api/board/tasks/{taskKey}/review)
+	ReviewBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
 
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
@@ -5708,6 +6188,324 @@ func (siw *ServerInterfaceWrapper) PreviewSchedule(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// WatchBoard operation middleware
+func (siw *ServerInterfaceWrapper) WatchBoard(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params WatchBoardParams
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Last-Event-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
+		var LastEventID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
+			return
+		}
+
+		params.LastEventID = &LastEventID
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.WatchBoard(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBoardTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListBoardTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBoardTasksParams
+
+	// ------------- Optional query parameter "botId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "botId", r.URL.Query(), &params.BotId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "botId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "botId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "blocked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "blocked", r.URL.Query(), &params.Blocked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "blocked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "blocked", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "inReview" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "inReview", r.URL.Query(), &params.InReview, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "inReview"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "inReview", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeClosed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeClosed", r.URL.Query(), &params.IncludeClosed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeClosed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeClosed", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBoardTasks(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBoardTask operation middleware
+func (siw *ServerInterfaceWrapper) CreateBoardTask(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBoardTask(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetBoardTask operation middleware
+func (siw *ServerInterfaceWrapper) GetBoardTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetBoardTask(w, r, taskKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateBoardTask operation middleware
+func (siw *ServerInterfaceWrapper) UpdateBoardTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateBoardTaskParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch BoardRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateBoardTask(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBoardEntry operation middleware
+func (siw *ServerInterfaceWrapper) CreateBoardEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateBoardEntryParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch BoardRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBoardEntry(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReviewBoardTask operation middleware
+func (siw *ServerInterfaceWrapper) ReviewBoardTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey BoardTaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReviewBoardTask(w, r, taskKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListDirectories operation middleware
 func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *http.Request) {
 
@@ -6660,6 +7458,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/tasks", wrapper.ListBoardTasks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks", wrapper.CreateBoardTask)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/tasks/{taskKey}", wrapper.GetBoardTask)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/board/tasks/{taskKey}", wrapper.UpdateBoardTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/entries", wrapper.CreateBoardEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/review", wrapper.ReviewBoardTask)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/events", wrapper.WatchBoard)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/tasks", wrapper.ListWorkTasks)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks", wrapper.CreateWorkTask)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.GetWorkTask)
@@ -11102,6 +11907,404 @@ func (response PreviewScheduledefaultJSONResponse) VisitPreviewScheduleResponse(
 	return err
 }
 
+type WatchBoardRequestObject struct {
+	Params WatchBoardParams
+}
+
+type WatchBoardResponseObject interface {
+	VisitWatchBoardResponse(w http.ResponseWriter) error
+}
+
+type WatchBoard200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response WatchBoard200TexteventStreamResponse) VisitWatchBoardResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type WatchBoard400JSONResponse struct{ ErrorJSONResponse }
+
+func (response WatchBoard400JSONResponse) VisitWatchBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type WatchBoard401JSONResponse Error
+
+func (response WatchBoard401JSONResponse) VisitWatchBoardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoardTasksRequestObject struct {
+	Params ListBoardTasksParams
+}
+
+type ListBoardTasksResponseObject interface {
+	VisitListBoardTasksResponse(w http.ResponseWriter) error
+}
+
+type ListBoardTasks200JSONResponse BoardTaskList
+
+func (response ListBoardTasks200JSONResponse) VisitListBoardTasksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoardTasks400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListBoardTasks400JSONResponse) VisitListBoardTasksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardTaskRequestObject struct {
+	Body *CreateBoardTaskJSONRequestBody
+}
+
+type CreateBoardTaskResponseObject interface {
+	VisitCreateBoardTaskResponse(w http.ResponseWriter) error
+}
+
+type CreateBoardTask201JSONResponse BoardTaskSummary
+
+func (response CreateBoardTask201JSONResponse) VisitCreateBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateBoardTask400JSONResponse) VisitCreateBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardTask404JSONResponse Error
+
+func (response CreateBoardTask404JSONResponse) VisitCreateBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBoardTaskRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+}
+
+type GetBoardTaskResponseObject interface {
+	VisitGetBoardTaskResponse(w http.ResponseWriter) error
+}
+
+type GetBoardTask200JSONResponse BoardTaskDetail
+
+func (response GetBoardTask200JSONResponse) VisitGetBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetBoardTask404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetBoardTask404JSONResponse) VisitGetBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoardTaskRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+	Params  UpdateBoardTaskParams
+	Body    *UpdateBoardTaskJSONRequestBody
+}
+
+type UpdateBoardTaskResponseObject interface {
+	VisitUpdateBoardTaskResponse(w http.ResponseWriter) error
+}
+
+type UpdateBoardTask200JSONResponse BoardTaskSummary
+
+func (response UpdateBoardTask200JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoardTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response UpdateBoardTask400JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoardTask404JSONResponse Error
+
+func (response UpdateBoardTask404JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateBoardTask412JSONResponse Error
+
+func (response UpdateBoardTask412JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardEntryRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+	Params  CreateBoardEntryParams
+	Body    *CreateBoardEntryJSONRequestBody
+}
+
+type CreateBoardEntryResponseObject interface {
+	VisitCreateBoardEntryResponse(w http.ResponseWriter) error
+}
+
+type CreateBoardEntry201JSONResponse BoardTaskEntry
+
+func (response CreateBoardEntry201JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardEntry400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateBoardEntry400JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardEntry404JSONResponse Error
+
+func (response CreateBoardEntry404JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateBoardEntry412JSONResponse Error
+
+func (response CreateBoardEntry412JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewBoardTaskRequestObject struct {
+	TaskKey BoardTaskKey `json:"taskKey"`
+	Body    *ReviewBoardTaskJSONRequestBody
+}
+
+type ReviewBoardTaskResponseObject interface {
+	VisitReviewBoardTaskResponse(w http.ResponseWriter) error
+}
+
+type ReviewBoardTask200JSONResponse BoardTaskSummary
+
+func (response ReviewBoardTask200JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewBoardTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReviewBoardTask400JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewBoardTask404JSONResponse Error
+
+func (response ReviewBoardTask404JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewBoardTask409JSONResponse Error
+
+func (response ReviewBoardTask409JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListDirectoriesRequestObject struct {
 	Params ListDirectoriesParams
 }
@@ -13227,6 +14430,27 @@ type StrictServerInterface interface {
 
 	// (POST /api/automations/preview)
 	PreviewSchedule(ctx context.Context, request PreviewScheduleRequestObject) (PreviewScheduleResponseObject, error)
+
+	// (GET /api/board/events)
+	WatchBoard(ctx context.Context, request WatchBoardRequestObject) (WatchBoardResponseObject, error)
+
+	// (GET /api/board/tasks)
+	ListBoardTasks(ctx context.Context, request ListBoardTasksRequestObject) (ListBoardTasksResponseObject, error)
+
+	// (POST /api/board/tasks)
+	CreateBoardTask(ctx context.Context, request CreateBoardTaskRequestObject) (CreateBoardTaskResponseObject, error)
+
+	// (GET /api/board/tasks/{taskKey})
+	GetBoardTask(ctx context.Context, request GetBoardTaskRequestObject) (GetBoardTaskResponseObject, error)
+
+	// (PATCH /api/board/tasks/{taskKey})
+	UpdateBoardTask(ctx context.Context, request UpdateBoardTaskRequestObject) (UpdateBoardTaskResponseObject, error)
+
+	// (POST /api/board/tasks/{taskKey}/entries)
+	CreateBoardEntry(ctx context.Context, request CreateBoardEntryRequestObject) (CreateBoardEntryResponseObject, error)
+
+	// (POST /api/board/tasks/{taskKey}/review)
+	ReviewBoardTask(ctx context.Context, request ReviewBoardTaskRequestObject) (ReviewBoardTaskResponseObject, error)
 
 	// (GET /api/directories)
 	ListDirectories(ctx context.Context, request ListDirectoriesRequestObject) (ListDirectoriesResponseObject, error)
@@ -15532,6 +16756,216 @@ func (sh *strictHandler) PreviewSchedule(w http.ResponseWriter, r *http.Request)
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PreviewScheduleResponseObject); ok {
 		if err := validResponse.VisitPreviewScheduleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// WatchBoard operation middleware
+func (sh *strictHandler) WatchBoard(w http.ResponseWriter, r *http.Request, params WatchBoardParams) {
+	var request WatchBoardRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.WatchBoard(ctx, request.(WatchBoardRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "WatchBoard")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(WatchBoardResponseObject); ok {
+		if err := validResponse.VisitWatchBoardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListBoardTasks operation middleware
+func (sh *strictHandler) ListBoardTasks(w http.ResponseWriter, r *http.Request, params ListBoardTasksParams) {
+	var request ListBoardTasksRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBoardTasks(ctx, request.(ListBoardTasksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBoardTasks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBoardTasksResponseObject); ok {
+		if err := validResponse.VisitListBoardTasksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBoardTask operation middleware
+func (sh *strictHandler) CreateBoardTask(w http.ResponseWriter, r *http.Request) {
+	var request CreateBoardTaskRequestObject
+
+	var body CreateBoardTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBoardTask(ctx, request.(CreateBoardTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBoardTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBoardTaskResponseObject); ok {
+		if err := validResponse.VisitCreateBoardTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetBoardTask operation middleware
+func (sh *strictHandler) GetBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey) {
+	var request GetBoardTaskRequestObject
+
+	request.TaskKey = taskKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetBoardTask(ctx, request.(GetBoardTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetBoardTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetBoardTaskResponseObject); ok {
+		if err := validResponse.VisitGetBoardTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateBoardTask operation middleware
+func (sh *strictHandler) UpdateBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params UpdateBoardTaskParams) {
+	var request UpdateBoardTaskRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body UpdateBoardTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateBoardTask(ctx, request.(UpdateBoardTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateBoardTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateBoardTaskResponseObject); ok {
+		if err := validResponse.VisitUpdateBoardTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBoardEntry operation middleware
+func (sh *strictHandler) CreateBoardEntry(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params CreateBoardEntryParams) {
+	var request CreateBoardEntryRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body CreateBoardEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBoardEntry(ctx, request.(CreateBoardEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBoardEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBoardEntryResponseObject); ok {
+		if err := validResponse.VisitCreateBoardEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReviewBoardTask operation middleware
+func (sh *strictHandler) ReviewBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey) {
+	var request ReviewBoardTaskRequestObject
+
+	request.TaskKey = taskKey
+
+	var body ReviewBoardTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReviewBoardTask(ctx, request.(ReviewBoardTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReviewBoardTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReviewBoardTaskResponseObject); ok {
+		if err := validResponse.VisitReviewBoardTaskResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

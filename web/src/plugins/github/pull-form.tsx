@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { getWorkTaskOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { bindTaskGitHubPull } from "../../api/generated/sdk.gen";
 import type { BindTaskGitHubPullData } from "../../api/generated/types.gen";
 import { Failure } from "../../components/feedback";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { invalidateBoard } from "../../lib/board-stream";
 
 function positiveId(value: string) {
   return /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
@@ -26,7 +26,7 @@ export function GitHubPullForm({ path }: { path: BindTaskGitHubPullData["path"] 
       setRepository("");
       setNumber("");
       setCommit("");
-      await client.invalidateQueries({ queryKey: getWorkTaskOptions({ path }).queryKey });
+      await invalidateBoard(client);
     },
   });
 

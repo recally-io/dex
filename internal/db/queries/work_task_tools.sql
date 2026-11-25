@@ -20,7 +20,7 @@ SELECT EXISTS (SELECT 1 FROM work_task_entries
   WHERE task_id = @task_id AND kind = 'status' AND trust <> 'external' AND content = @title);
 
 -- name: ListWorkTaskSessions :many
-SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at
+SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
 FROM task_executions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.bot_id
 WHERE s.task_id = ? AND s.kind = 'dex_session' ORDER BY s.is_primary DESC, s.started_at, c.id;
 

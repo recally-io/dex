@@ -81,7 +81,14 @@ func (s *Service) ConfigureWorkTasks(tasks *worktask.Service) {
 }
 
 func recordWorkTaskMessage(ctx context.Context, q *sqlc.Queries, l *worktask.Ledger, agentID, taskID string, m Message, now int64) error {
-	task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: agentID})
+	var task sqlc.WorkTask
+	var err error
+	if m.AnswersQuestion != "" {
+		// The question is validated in its original Session, even after reassignment.
+		task, err = q.GetBoardTask(ctx, taskID)
+	} else {
+		task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: agentID})
+	}
 	if err != nil {
 		return err
 	}

@@ -260,6 +260,149 @@ paths:
       responses:
         "204": { description: Webhook disabled. }
         default: { $ref: "#/components/responses/Error" }
+  /api/board/tasks:
+    get:
+      operationId: listBoardTasks
+      parameters:
+        - in: query
+          name: botId
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { $ref: "#/components/schemas/BoardStatus" }
+        - in: query
+          name: blocked
+          schema: { type: boolean }
+        - in: query
+          name: inReview
+          schema: { type: boolean }
+        - in: query
+          name: source
+          description: A linked Source namespace or its prefix before a slash.
+          schema: { type: string }
+        - in: query
+          name: includeClosed
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Tasks for the Owner.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskList" }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createBoardTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardTaskCreate" }
+      responses:
+        "201":
+          description: Created Task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskSummary" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /api/board/tasks/{taskKey}:
+    parameters:
+      - $ref: "#/components/parameters/BoardTaskKey"
+    get:
+      operationId: getBoardTask
+      responses:
+        "200":
+          description: Task and its timeline.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskDetail" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateBoardTask
+      parameters:
+        - $ref: "#/components/parameters/BoardRevision"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardTaskUpdate" }
+      responses:
+        "200":
+          description: Updated Task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskSummary" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+
+  /api/board/tasks/{taskKey}/entries:
+    parameters:
+      - $ref: "#/components/parameters/BoardTaskKey"
+    post:
+      operationId: createBoardEntry
+      parameters:
+        - $ref: "#/components/parameters/BoardRevision"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardEntryCreate" }
+      responses:
+        "201":
+          description: Appended entry.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskEntry" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "412": { $ref: "#/components/responses/Error" }
+
+  /api/board/tasks/{taskKey}/review:
+    parameters:
+      - $ref: "#/components/parameters/BoardTaskKey"
+    post:
+      operationId: reviewBoardTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BoardReview" }
+      responses:
+        "200":
+          description: Reviewed Task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardTaskSummary" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /api/board/events:
+    get:
+      operationId: watchBoard
+      description: >
+        Server-sent events. Each board_entry event has a global ledger ID and a BoardEvent JSON body.
+        Last-Event-ID takes precedence over after. Without a cursor, the stream starts at the current
+        head. A board_ready event marks the end of catch-up. A board_refresh event signals
+        a change to a related projection without advancing the cursor. A comment comes every 15 s.
+      parameters:
+        - in: header
+          name: Last-Event-ID
+          schema: { type: string }
+        - in: query
+          name: after
+          schema: { type: integer, format: int64, minimum: 0 }
+      responses:
+        "200":
+          description: The Board event stream.
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/BoardEvent" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
   /api/inbox/tasks:
     get:
       operationId: listWorkTasks
@@ -2625,6 +2768,17 @@ paths:
 
 components:
   parameters:
+    BoardTaskKey:
+      in: path
+      name: taskKey
+      required: true
+      description: A Board key such as T-42, or the Task UUID.
+      schema: { type: string }
+    BoardRevision:
+      in: header
+      name: If-Match
+      description: The expected Task revision as a decimal integer.
+      schema: { type: integer, format: int64, minimum: 0 }
     AgentId:
       in: path
       name: agentId
@@ -2715,6 +2869,199 @@ components:
         id: { type: integer, format: int64 }
         agentId: { type: string }
         title: { type: string }
+    BoardStatus: {
+      type: string,
+      enum: [backlog, ready, in_progress, in_review, done, cancelled],
+    }
+    BoardReviewerKind: { type: string, enum: ["", owner, bot] }
+    BoardTaskList:
+      type: object
+      required: [tasks]
+      properties:
+        tasks: {
+          type: array,
+          items: { $ref: "#/components/schemas/BoardTaskSummary" },
+        }
+    BoardTaskSummary:
+      type: object
+      required: [
+        id,
+        key,
+        number,
+        title,
+        status,
+        assigneeBotId,
+        reviewerKind,
+        reviewerId,
+        reviewSeq,
+        revision,
+        blocked,
+        blockerCount,
+        createdAt,
+        updatedAt,
+      ]
+      properties:
+        id: { type: string }
+        key: { type: string }
+        number: { type: integer, format: int64 }
+        title: { type: string, minLength: 1, maxLength: 160 }
+        status: { $ref: "#/components/schemas/BoardStatus" }
+        assigneeBotId: { type: string }
+        reviewerKind: { $ref: "#/components/schemas/BoardReviewerKind" }
+        reviewerId: { type: string }
+        reviewSeq: { type: integer, format: int64 }
+        revision: { type: integer, format: int64 }
+        blocked: { type: boolean }
+        blockerCount: { type: integer, format: int64 }
+        createdAt: { type: integer, format: int64 }
+        updatedAt: { type: integer, format: int64 }
+        primarySession: { $ref: "#/components/schemas/BoardTaskSession" }
+    BoardTaskSession:
+      type: object
+      required: [
+        conversationId,
+        agentId,
+        agentName,
+        title,
+        isPrimary,
+        linkedAt,
+        state,
+      ]
+      properties:
+        conversationId: { type: integer, format: int64 }
+        agentId: { type: string }
+        agentName: { type: string }
+        title: { type: string }
+        isPrimary: { type: boolean }
+        linkedAt: { type: integer, format: int64 }
+        state: {
+          type: string,
+          enum: [
+            dispatched,
+            running,
+            idle,
+            completed,
+            failed,
+            stale,
+            cancelled,
+          ],
+        }
+        endedAt: { type: integer, format: int64 }
+    BoardTaskCreate:
+      type: object
+      required: [assigneeBotId, title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        status: { type: string, enum: [backlog, ready, in_progress] }
+        assigneeBotId: { type: string }
+        reviewerKind: { $ref: "#/components/schemas/BoardReviewerKind" }
+        reviewerId: { type: string }
+        note: { type: string, maxLength: 32000 }
+    BoardTaskUpdate:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        status: { $ref: "#/components/schemas/BoardStatus" }
+        assigneeBotId: { type: string }
+        reviewerKind: { $ref: "#/components/schemas/BoardReviewerKind" }
+        reviewerId: { type: string }
+    BoardEntryCreate:
+      type: object
+      required: [content]
+      properties:
+        kind: { type: string, enum: [note, artifact] }
+        tag: { type: string, enum: [brief, decision, handoff, update] }
+        content: { type: string, maxLength: 32000 }
+    BoardReview:
+      type: object
+      required: [decision]
+      properties:
+        decision: { type: string, enum: [approve, request_changes] }
+        reviewSeq: { type: integer, format: int64 }
+        note: { type: string, maxLength: 32000 }
+    BoardTaskDetail:
+      type: object
+      required: [task, entries, sessions, blockers, questions, links]
+      properties:
+        task: { $ref: "#/components/schemas/BoardTaskSummary" }
+        entries: {
+          type: array,
+          items: { $ref: "#/components/schemas/BoardTaskEntry" },
+        }
+        sessions: {
+          type: array,
+          items: { $ref: "#/components/schemas/BoardTaskSession" },
+        }
+        blockers: {
+          type: array,
+          items: { $ref: "#/components/schemas/BoardTaskBlocker" },
+        }
+        questions: {
+          type: array,
+          items: { $ref: "#/components/schemas/BoardTaskQuestion" },
+        }
+        links: {
+          type: array,
+          items: { $ref: "#/components/schemas/WorkTaskLink" },
+        }
+    BoardTaskEntry:
+      type: object
+      required: [
+        id,
+        seq,
+        kind,
+        tag,
+        actorKind,
+        actorBotId,
+        trust,
+        content,
+        createdAt,
+      ]
+      properties:
+        id: { type: integer, format: int64 }
+        seq: { type: integer, format: int64 }
+        kind: {
+          type: string,
+          enum: [note, artifact, status, assign, review, execution, external],
+        }
+        tag: { type: string }
+        actorKind: { type: string }
+        actorBotId: { type: string }
+        trust: { type: string, enum: [owner, agent, external] }
+        content: { type: string }
+        createdAt: { type: integer, format: int64 }
+        eventId: { type: string }
+        status: { $ref: "#/components/schemas/BoardStatus" }
+        decision: { type: string, enum: [approve, request_changes] }
+    BoardTaskBlocker:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [wait, question] }
+        waitId: { type: integer, format: int64 }
+        namespace: { type: string }
+        objectType: { type: string }
+        objectKey: { type: string }
+        eventType: { type: string }
+        questionId: { type: string }
+        question: { type: string }
+        queuePosition: { type: integer, format: int64 }
+    BoardTaskQuestion:
+      type: object
+      required: [id, text, options, queued, agentId, conversationId]
+      properties:
+        id: { type: string }
+        text: { type: string }
+        options: { type: array, items: { type: string } }
+        queued: { type: boolean }
+        agentId: { type: string }
+        conversationId: { type: integer, format: int64 }
+    BoardEvent:
+      type: object
+      required: [taskId]
+      properties:
+        taskId: { type: string }
+
     WorkTaskSessionLink:
       type: object
       required: [conversationId, agentId, agentName, title, isPrimary, linkedAt]

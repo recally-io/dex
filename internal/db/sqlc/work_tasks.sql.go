@@ -365,21 +365,16 @@ func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]Wor
 }
 
 const listWorkTaskQuestionBlockers = `-- name: ListWorkTaskQuestionBlockers :many
-SELECT q.id, q.text, CAST(CASE WHEN c.agent_id = ?1 AND c.channel_key = 'main' THEN 1 + (
+SELECT q.id, q.text, CAST(CASE WHEN c.channel_key = 'main' THEN 1 + (
   SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id
   WHERE prior.status = 'open' AND ps.status = 'done' AND prior.conversation_id = q.conversation_id
     AND (prior.queued, prior.rowid) < (q.queued, q.rowid)
 ) ELSE 0 END AS INTEGER) AS queue_position
 FROM questions q JOIN work_task_inputs i ON i.submission_id = q.source_submission_id
 JOIN submissions s ON s.id = q.source_submission_id JOIN conversations c ON c.id = q.conversation_id
-WHERE i.task_id = ?2 AND q.status = 'open' AND s.status = 'done'
+WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
 ORDER BY q.queued, q.rowid
 `
-
-type ListWorkTaskQuestionBlockersParams struct {
-	AssigneeBotID string `json:"assignee_bot_id"`
-	TaskID        string `json:"task_id"`
-}
 
 type ListWorkTaskQuestionBlockersRow struct {
 	ID            string `json:"id"`
@@ -387,8 +382,8 @@ type ListWorkTaskQuestionBlockersRow struct {
 	QueuePosition int64  `json:"queue_position"`
 }
 
-func (q *Queries) ListWorkTaskQuestionBlockers(ctx context.Context, arg ListWorkTaskQuestionBlockersParams) ([]ListWorkTaskQuestionBlockersRow, error) {
-	rows, err := q.db.QueryContext(ctx, listWorkTaskQuestionBlockers, arg.AssigneeBotID, arg.TaskID)
+func (q *Queries) ListWorkTaskQuestionBlockers(ctx context.Context, taskID string) ([]ListWorkTaskQuestionBlockersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkTaskQuestionBlockers, taskID)
 	if err != nil {
 		return nil, err
 	}

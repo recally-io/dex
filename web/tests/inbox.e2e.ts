@@ -17,19 +17,26 @@ test("keeps Tasks on Board and redirects the old Work and Needs you routes", asy
   await app.open("/work");
   await expect(screen.getByRole("heading", "Board", { exact: true })).toBeVisible();
   await screen.getByRole("textbox", "Task title").fill("Fix the sign-in flow");
+  await screen.getByLabel("Initial status").selectOption({ value: "in_progress" });
   await screen.getByRole("button", "Create task").tap();
   await expect(screen.getByRole("heading", "Fix the sign-in flow")).toBeVisible();
 
   await screen.getByRole("textbox", "Task note").fill("The change is ready for review.");
   await screen.getByRole("button", "Add note").tap();
   await expect(screen.getByText("The change is ready for review.")).toBeVisible();
-  await expect(screen.getByText("Owner")).toBeVisible();
+  await expect(screen.getByText("#02", { exact: true })).toBeVisible();
 
-  await screen.getByRole("button", "Complete task").tap();
-  await expect(screen.getByRole("button", "Reopen task")).toBeVisible();
-  await screen.getByRole("button", "Reopen task").tap();
-  await expect(screen.getByRole("button", "Complete task")).toBeVisible();
+  await screen.getByLabel("Status", { exact: true }).selectOption({ value: "in_review" });
+  await screen.getByRole("button", "Save changes").tap();
+  await expect(screen.getByRole("region", "In Review", { exact: true })).toBeVisible();
+  await screen.getByRole("button", "Approve").tap();
+  await expect(screen.getByText("Approved", { exact: true })).toBeVisible();
+  await screen.getByLabel("Status", { exact: true }).selectOption({ value: "in_progress" });
+  await screen.getByRole("button", "Save changes").tap();
+  await expect(screen.getByRole("button", "Save changes")).toBeDisabled();
   await screen.getByRole("link", "Back to Board").tap();
+  await screen.getByRole("button", "List", { exact: true }).tap();
+  await screen.getByLabel("Filter by Bot").selectOption({ value: "default" });
   await expect(screen.getByRole("link", /Fix the sign-in flow/)).toBeVisible();
   await expect(screen.getByRole("heading", "Held events", { exact: true })).toHaveCount(0);
 
@@ -71,6 +78,8 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
 
   const path = { agentId: owner.id, taskId: task.id };
   await app.open(`/a/${owner.id}/inbox/${task.id}`);
+  await expect(screen.getByRole("heading", task.title)).toBeVisible();
+  expect(new URL(await browser.url()).pathname).toMatch(/^\/board\/T-\d+$/);
 
   async function startChild(title: string, bot?: string) {
     await sendMessage({
@@ -166,6 +175,10 @@ test("opens questions and resolves changed results from the global Inbox", async
   await app.open(`/a/${bot.id}`);
   await expect(screen.getByRole("button", "A Blue", { exact: true })).toBeVisible();
 
+  // Allow one 10-second Inbox refresh if the initial read comes before the result.
+  await app.open("/inbox");
+  await expect(screen.getByRole("link", /^Inbox, 3 items need attention$/)).toBeVisible({ timeout: 15_000 });
+
   // The tool fixture expects a tool call as input. Use echo for the owner's answer.
   await updateAgent({
     client,
@@ -173,8 +186,6 @@ test("opens questions and resolves changed results from the global Inbox", async
     body: { name: bot.name, provider: "faux", modelId: "echo", thinkingLevel: "off", environmentId: "local" },
     throwOnError: true,
   });
-  await app.open("/inbox");
-  await expect(screen.getByRole("link", /^Inbox, 3 items need attention$/)).toBeVisible();
   await expect(screen.getByText("Inbox missing model fixture", { exact: true })).toBeVisible();
   await expect(screen.getByRole("link", "Configure model")).toBeVisible();
   await screen.getByRole("link", "Open question").tap();
@@ -252,7 +263,7 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
   });
   await screen.getByRole("link", new RegExp(title)).tap();
   await expect(screen.getByRole("heading", title)).toBeVisible();
-  await expect(screen.getByText("External event")).toBeVisible();
+  await expect(screen.getByText("External", { exact: true })).toBeVisible();
   await screen.getByRole("textbox", "Repository ID").fill(String(repositoryId));
   await screen.getByRole("textbox", "PR number").fill("42");
   await screen.getByRole("textbox", "Commit SHA (optional)").fill("commit-a");

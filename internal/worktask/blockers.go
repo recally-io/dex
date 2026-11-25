@@ -7,7 +7,7 @@ import (
 )
 
 // Blocker describes an unresolved external wait or open Task question. A queue
-// position starts at 1 on the Assignee's Main and is 0 outside that queue.
+// position starts at 1 in the question's Main and is 0 outside that queue.
 type Blocker struct {
 	Kind          string `json:"kind"`
 	WaitID        int64  `json:"waitId,omitzero"`
@@ -30,7 +30,7 @@ func ComputeBlockers(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (
 	if err != nil {
 		return nil, err
 	}
-	questions, err := q.ListWorkTaskQuestionBlockers(ctx, sqlc.ListWorkTaskQuestionBlockersParams{TaskID: task.ID, AssigneeBotID: task.AssigneeBotID})
+	questions, err := q.ListWorkTaskQuestionBlockers(ctx, task.ID)
 	if err != nil {
 		return nil, err
 	}

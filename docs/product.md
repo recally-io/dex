@@ -272,26 +272,28 @@ or continue in a chat. Configure a model in bot settings. Attach a held event
 to an open Task or dismiss it. One-way notifications stay in the transcript
 or channel. The sidebar shows the number of Inbox items.
 
-Board (`/board`) lists Tasks across bots. A Task tracks one piece of work. It has a title,
-notes, and a status. Creating a Task or adding a note does not start a Session.
-Each Task has one Owner Bot. Send to Main starts a turn in that Bot's Main with the selected Task title and ID. A reply to
-a linked question keeps the Task of that question. Task detail shows questions
-that need an answer, including queued questions. The owner can answer any of
-these questions from its Task. Channels send one Main question at a time.
-The owner can complete, cancel, or reopen a Task. The default list hides closed Tasks.
-In Main or a writable Chat, the agent can list, read, create, and update the
-Bot's Tasks, add timeline entries, and link its child Sessions, including children that run in another Bot. When the
-GitHub plugin is on, the agent can also link a GitHub PR. GitHub, like other
-optional sources, is a plugin. The owner turns plugins on or off in General
-settings, and the change applies after dex restarts. GitHub starts on. The agent creates a Task only when the owner asks for one or agrees to it,
-and only the owner's request completes, cancels, or reopens a Task. Each
-timeline entry shows its author: Owner, Agent, External event, or Source not
-recorded. The agent reads external entries only as event type, author class,
-and link. Task detail shows all linked Sessions with their Bot names and marks the primary Session.
-The Owner Bot's Main gets a Task alert when a source rule creates a Task, or when a review
-arrives for a wait that asks for an alert. The alert shows the Task title,
-the event type, the author class, and the link, but not the event text.
-Each event sends at most one alert.
+Board (`/board`) shows Tasks across Bots in Kanban or List view. Each Task
+has a key such as `T-42`, a status, and an Assignee Bot. The default view
+hides closed Tasks. The Owner can edit the title, reassign a Task, choose a
+Reviewer, or change its status. In Review, the Owner can approve the current
+submission or request changes with feedback.
+
+Creating a Task or adding a note does not start a Session. Send to Main
+starts a turn in the Assignee Bot's Main and links it to the Task. Task detail
+shows linked Sessions, the primary Session, and blockers such as external
+waits and open questions. The Owner can answer queued questions from Task
+detail. Channels show one active Main question at a time.
+
+Bots can read or update Tasks when their role and Session permit it. The
+Owner controls cancellation and reopening. Timeline entries identify the
+author. Bots get metadata instead of the text of external entries. The
+GitHub plugin lets the Owner link a PR. The Owner can change plugin settings
+in General. A change applies after dex restarts.
+
+A Source assignment, reassignment of an open Task, review request, request
+for changes, or resolution of a wait with alerts can wake the relevant Bot's
+Main. The wake contains Task keys, reasons, and a cursor. It does not contain
+external event text.
 A finished CI run on a linked PR only adds a timeline entry.
 When the Webhook plugin is on, another service, such as a calendar, can send
 signed events to a Webhook source. A source rule can open a Task for a new
