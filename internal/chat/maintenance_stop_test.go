@@ -51,7 +51,7 @@ func TestUserMaintenanceStopDefersColdCancellationUntilRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Given stored native work whose next start would repeat an external action.
-	_, err = r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "cold", ConversationID: c.ID, Content: "stored work", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1})
+	_, err = r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "cold", ConversationID: c.ID, Content: "stored work", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

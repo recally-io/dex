@@ -51,7 +51,7 @@ func newFixture(t *testing.T, limits background.Limits) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: conv.ID, Content: "run", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: conv.ID, Content: "run", Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	f := &fixture{t: t, dir: dir, conn: conn, q: q, conv: conv.ID, source: "source"}

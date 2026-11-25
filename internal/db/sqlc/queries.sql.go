@@ -445,7 +445,7 @@ VALUES (
     ?4,
     ?5,
     ?6,
-    coalesce(nullif(CAST(?7 AS TEXT), ''), 'user'),
+    ?7,
     coalesce(CAST(?8 AS TEXT), ''),
     coalesce(CAST(?9 AS TEXT), ''),
     ?10,

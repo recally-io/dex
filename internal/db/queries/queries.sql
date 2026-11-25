@@ -144,7 +144,7 @@ VALUES (
     @attachments,
     @source_key,
     @origin,
-    coalesce(nullif(CAST(@producer AS TEXT), ''), 'user'),
+    @producer,
     coalesce(CAST(@reply_channel AS TEXT), ''),
     coalesce(CAST(@reply_peer AS TEXT), ''),
     @kind,

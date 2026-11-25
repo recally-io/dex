@@ -190,7 +190,7 @@ func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "busy-input", ConversationID: busyConversation.ID, Content: "work", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "busy-input", ConversationID: busyConversation.ID, Content: "work", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ask("bot/busy", "coder"); !errors.Is(err, db.ErrAgentBusy) {
@@ -211,7 +211,7 @@ func TestBotBecomingBusyAfterTheQuestionIsNotArchivedOnApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "busy-input", ConversationID: busyConversation.ID, Content: "work", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "busy-input", ConversationID: busyConversation.ID, Content: "work", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := answer(t, r, q.ID, "web", approve); err != nil {
@@ -289,7 +289,7 @@ func TestBotToolCallerNeedsAPersonInMainOrAChat(t *testing.T) {
 				t.Fatal(err)
 			}
 			id := fmt.Sprintf("input-%d", next)
-			if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: "x", Attachments: "null", Origin: c.origin, Kind: "message", CreatedAt: 1}); err != nil {
+			if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: id, ConversationID: conv.ID, Content: "x", Attachments: "null", Origin: c.origin, Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 				t.Fatal(err)
 			}
 			err = r.service.ToolBotCaller(t.Context(), engine.TaskContext{AgentID: "bot", ConversationID: next, SourceRequestID: id}, c.change)
@@ -322,7 +322,7 @@ func TestBotToolCallerRefusesAChildSessionWithAChatKey(t *testing.T) {
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE conversations SET execution_id = 7000 WHERE id = ?", row.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "child-followup", ConversationID: row.ID, Content: "change a bot", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "child-followup", ConversationID: row.ID, Content: "change a bot", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	for _, change := range []bool{false, true} {

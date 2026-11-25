@@ -204,7 +204,7 @@ func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
 		{"run-changed", "changed", 1},
 	} {
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: tc.id, ConversationID: conv, Content: "routine", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1,
+			ID: tc.id, ConversationID: conv, Content: "routine", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1,
 		}); err != nil {
 			t.Fatal(err)
 		}

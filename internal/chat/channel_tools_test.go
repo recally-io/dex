@@ -17,7 +17,7 @@ func TestUserCanManageChannelsFromWebAndPairedPrivateChat(t *testing.T) {
 	// When the owner uses a private chat, alone or in a shared run, the tools stay available.
 	for _, origin := range []string{"telegram:7", "feishu:ou_1", "wechat:wx"} {
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: origin, ConversationID: id, Content: "manage channels", Attachments: "null", Origin: origin, Kind: "message", CreatedAt: 2,
+			ID: origin, ConversationID: id, Content: "manage channels", Attachments: "null", Origin: origin, Producer: ProducerUser, Kind: "message", CreatedAt: 2,
 		}); err != nil {
 			t.Fatal(err)
 		}

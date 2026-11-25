@@ -42,7 +42,11 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 		{"task-alert", "task_result", "web", "ask_user", "", true},
 	}
 	for _, tc := range cases {
-		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: tc.id, ConversationID: conv.ID, Kind: tc.kind, Origin: tc.origin, Content: "input", Attachments: "null", CreatedAt: 1})
+		producer := ProducerUser
+		if tc.kind == "task_result" {
+			producer = ProducerPlugin
+		}
+		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: tc.id, ConversationID: conv.ID, Kind: tc.kind, Origin: tc.origin, Producer: producer, Content: "input", Attachments: "null", CreatedAt: 1})
 		if err != nil {
 			t.Fatal(err)
 		}

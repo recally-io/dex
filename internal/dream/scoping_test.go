@@ -201,7 +201,7 @@ func TestUserDreamClipsLongMessageAndCapsBatchBytes(t *testing.T) {
 		id := fmt.Sprintf("msg-%02d", i)
 		createdAt := int64(100 + i)
 		if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: id, ConversationID: conv.ID, Content: content, Attachments: "null", Origin: "web", Kind: "message", CreatedAt: createdAt,
+			ID: id, ConversationID: conv.ID, Content: content, Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: createdAt,
 		}); err != nil {
 			t.Fatal(err)
 		}

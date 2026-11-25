@@ -197,7 +197,7 @@ func TestUserSameBotSessionsAdmitWhileChildWaitsForEnvironment(t *testing.T) {
 	}
 
 	// When more input reaches the child, Main and another session can admit first.
-	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: "second", ConversationID: id, Content: "second", Origin: "web", Attachments: "null", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: "second", ConversationID: id, Content: "second", Origin: "web", Producer: ProducerUser, Attachments: "null", Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	for _, target := range []struct {

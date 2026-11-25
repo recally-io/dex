@@ -116,7 +116,7 @@ func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 	childID, _ := strconv.ParseInt(child.ID, 10, 64)
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "queued-user", ConversationID: childID, Content: "user queued", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 2}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "queued-user", ConversationID: childID, Content: "user queued", Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
@@ -244,7 +244,7 @@ func TestUserFollowUpQueueAllBatchesSameOriginWakes(t *testing.T) {
 		wakeIDs = append(wakeIDs, id)
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 			ID: id, ConversationID: parent, Content: fmt.Sprintf("wake %d", i),
-			Attachments: "null", Origin: "web", Kind: "task_result", CreatedAt: int64(i + 1),
+			Attachments: "null", Origin: "web", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: int64(i + 1),
 		}); err != nil {
 			t.Fatal(err)
 		}
