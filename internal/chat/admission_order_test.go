@@ -73,7 +73,7 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(execenv.Provid
 		default:
 			return engine.ExtensionEdit{}
 		}
-	}, HideToolFromSearch: func(name string) bool { return name == LegacyParentReport }})
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}

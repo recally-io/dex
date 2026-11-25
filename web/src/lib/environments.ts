@@ -41,7 +41,7 @@ export function detectSandboxPreset(cfg: EnvironmentConfig): SandboxPreset {
 export function environmentKindBadge(env: Pick<Environment, "kind" | "config">): string {
   if (env.kind === "pi-env") return "SSH";
 
-  if (env.kind === "runner") return "dex runner";
+  if (env.kind === "runner") return "Remote";
 
   return detectSandboxPreset(env.config) === "local" ? "Local sandbox" : "E2B sandbox";
 }
@@ -55,7 +55,7 @@ export function environmentBotHint(env: Pick<Environment, "name" | "kind" | "con
     return `Runs tools on ${env.name} over SSH (${formatSshTarget(env.config)}).`;
   }
 
-  if (env.kind === "runner") return `Runs tools on ${env.name} through dex runner.`;
+  if (env.kind === "runner") return `Runs tools on ${env.name} through dex-agent.`;
 
   if (detectSandboxPreset(env.config) === "local") {
     return `Runs tools in ${env.name}, a local sandbox.`;

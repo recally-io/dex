@@ -15,7 +15,7 @@ import (
 	"github.com/recally-io/dex/internal/execenv/runner"
 )
 
-// runnerBackend opens leases on the live session of an enrolled machine.
+// runnerBackend opens leases on enrolled Remote hosts.
 type runnerBackend struct{ runners *Runners }
 
 func (runnerBackend) normalize(spec EnvironmentSpec) (string, error) {
@@ -28,7 +28,7 @@ func (runnerBackend) normalize(spec EnvironmentSpec) (string, error) {
 func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
 	session := b.runners.online(spec.ID)
 	if session == nil {
-		return TestResult{Error: "Runner is offline"}, nil
+		return TestResult{Error: "Remote runner is offline"}, nil
 	}
 	meta := session.Info()
 	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil

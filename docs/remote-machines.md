@@ -1,6 +1,6 @@
 # Connect a remote machine
 
-dex runner runs tools on a machine that Dex cannot reach over SSH. The machine opens an
+A Remote runner runs tools on a machine that Dex cannot reach over SSH. The machine opens an
 outbound HTTPS connection to Dex, so it needs no `sshd` and no inbound port.
 
 Dex does not terminate TLS itself. Put it behind the same HTTPS front that serves the web UI:
@@ -42,7 +42,7 @@ can read the traffic can read that token.
 
 ## Install a machine
 
-1. In Dex, open **Settings → Execution environments** and add a **dex runner**.
+1. In Dex, open **Settings → Execution environments** and select **Remote** when you add an environment.
 2. Select **Get install command**. Dex issues a one-time code and shows the command that uses
    the address of the page. The code expires after ten minutes and works once.
 3. Copy the command and run it in a terminal on the target machine, as the account that will

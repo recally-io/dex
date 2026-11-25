@@ -209,11 +209,9 @@ not use staged content. A stage is not a send.
 
 The child edit of each input removes the `sessions` extension when it adds
 `child-outbox`, so the child can report but cannot dispatch to other sessions.
-The old name `report_parent` remains available only to direct model calls that
-an older release admitted and that recovery lets resume. New model requests
-and tool search do not show it. A resumed call uses its original task ID, so
-the operation does not create a second wake when the report transaction
-committed before the restart. Recovery does not resolve the old name for calls from other tools.
+Use `session_report` for new calls. PiG cannot resume an unfinished call
+under the retired tool name. A report committed before restart stays in the
+parent's Inbox and does not create a second wake.
 
 ## Cross-bot sessions
 
@@ -285,8 +283,8 @@ Neither layer uses message text or an ID pattern to hide results.
 
 The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
-line at each `session_send` call. A `session_report` call and an old
-`report_parent` call show as a "Reported to parent" step. That step keeps a
+line at each `session_send` call. A `session_report` call shows as a
+"Reported to parent" step. That step keeps a
 System Turn trace unfolded. A result mark is one line with a "View thread"
 action. The card, the line and the action open a read-only side panel that
 shows the child's own transcript with the usual chat reads and stream. The web
@@ -582,7 +580,9 @@ A web chat selects its environment before its first message
 parent's environment unless it selects another one. A child of another bot runs
 in that bot's environment unless it selects another one. `environment_list`
 shows local and the registered environments with ID, name, kind, and status,
-with the bot's default first. An offline runner remains listed. The tool includes
+with the bot's default first. The stored kind `runner` identifies a Remote
+runner, which connects through `dex-agent`. An offline Remote runner remains
+listed. The tool includes
 `desc` when the owner sets a description on the saved environment in Settings.
 This plain text is data. It does not change selection or access and does not go
 into the system prompt. The tool does not show configuration or secrets.

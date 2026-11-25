@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
-	"slices"
 	"strings"
 	"time"
 
@@ -150,9 +149,6 @@ func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 	}
 }
 
-const LegacyParentReport = "report_parent"
-const hideLegacyReportMemo = "dex.hideLegacyParentReport"
-
 // ChildOutboxExtension lets a child report without access to the parent dispatch tools.
 func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 	execute := func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
@@ -202,48 +198,10 @@ func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 		Replay:  durable.ReplaySafe,
 		Execute: engine.BindTool(agentID, execute),
 	}
-	legacy := *report
-	legacy.Name = LegacyParentReport
-	legacy.Callers = []durable.ToolCaller{durable.CallerModel}
-	legacy.Execute = engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
-		// PiG uses the committed tool list for dispatch, not the request hook's list.
-		// Admit only calls whose owning generation predates the hook.
-		unavailable := errors.New("report_parent is not available; use session_report")
-		allowed, err := invocation.GenerationPredatesMemo(ctx, hideLegacyReportMemo)
-		if err != nil {
-			return durable.ToolExecutionResult{}, err
-		}
-		if !allowed {
-			return durable.ToolExecutionResult{}, unavailable
-		}
-		return execute(ctx, raw, invocation)
-	})
 	return &engine.Extension{
 		Name:  "child-outbox",
-		Tools: []*durable.ToolRegistration{report, &legacy},
-		Hooks: []durable.HookRegistration{harness.Hook(harness.GenerationTask, &harness.GenerationHooks{
-			BeforeRequest: hideLegacyParentReport,
-		})},
+		Tools: []*durable.ToolRegistration{report},
 	}
-}
-
-func hideLegacyParentReport(ctx context.Context, request harness.GenerationRequest, api harness.HookApi) (*harness.GenerationRequest, error) {
-	if _, err := api.MemoCandidate(ctx, hideLegacyReportMemo, true); err != nil {
-		return nil, err
-	}
-	// Remove older declarations too. Some providers replay the sequence of tool changes.
-	for i, message := range request.Messages {
-		if system, ok := message.(ai.SystemMessage); ok {
-			system.ToolsAdded = slices.DeleteFunc(system.ToolsAdded, func(tool ai.ToolSchema) bool {
-				return tool.Name == LegacyParentReport
-			})
-			system.ToolsRemoved = slices.DeleteFunc(system.ToolsRemoved, func(tool ai.ToolReference) bool {
-				return tool.Name == LegacyParentReport
-			})
-			request.Messages[i] = system
-		}
-	}
-	return &request, nil
 }
 
 func truncateRunes(s string, maxRunes int) string {

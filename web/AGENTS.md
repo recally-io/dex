@@ -73,10 +73,9 @@ local, SSH, or runner environment of the run and uses its cwd. A run in an E2B
 sandbox, in an unavailable environment, or with no recorded environment stops
 before any chat is created.
 Each child session reads like a thread. The transcript shows one card at a
-`session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
-call of a parent, and one "replied · View thread" line at each result mark.
-A `session_report` call and an old `report_parent` call show as a
-"Reported to parent" step. A click opens the
+`session_new` or `session_fork` call, one line at a `session_send` call of a
+parent, and one "replied · View thread" line at each result mark.
+A `session_report` call shows as a "Reported to parent" step. A click opens the
 child as a read-only panel on the right, which covers the transcript on a narrow
 screen. Task conversations are read-only while queued or running and writable
 after they end.
@@ -100,7 +99,7 @@ in the Outbox panel.
 
 The About page (`/settings/about`) manages server operations through `/api/system/*`: switching the persisted update channel (`stable` or `prerelease`), checking releases, running an in-place upgrade with automatic `control.sqlite` backup, restarting the server gracefully (with wait-until-idle, cancel, and force-now controls), taking manual hot backups, and reading recent entries from the in-memory log ring buffer. When a restart or upgrade begins, it polls `GET /api/system/status`. A change in `startedAt` confirms the restart and refreshes health data.
 
-Execution Environments (`/settings/environment`) shows each `dex runner`'s live online state, platform, reported version, and version alignment status against `GET /api/health`'s server version (`Matches server`, auto-update on reconnect, or why manual update is needed).
+Execution Environments (`/settings/environment`) shows each Remote runner's live online state, platform, reported version, and version alignment status against `GET /api/health`'s server version (`Matches server`, auto-update on reconnect, or why manual update is needed).
 The shared environment editor lets the owner set or clear an optional plain-text
 Description for a Runner, SSH host, or E2B sandbox. The environment card shows
 it when set. The description is separate from Runner enrollment.

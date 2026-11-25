@@ -66,19 +66,6 @@ func (c ToolCall) SetCwd(ctx context.Context, path string) error {
 	return err
 }
 
-// GenerationPredatesMemo checks if the owning generation started before a compatibility hook.
-func (c ToolCall) GenerationPredatesMemo(ctx context.Context, memo string) (bool, error) {
-	task, err := c.api.GetTask(ctx, c.api.TaskId())
-	if err != nil || task == nil || task.Owner == nil {
-		return false, err
-	}
-	generation, err := c.api.GetTask(ctx, *task.Owner)
-	if err != nil || generation == nil {
-		return false, err
-	}
-	return generation.Kind == harness.GenerationTask.AnyDefinition().Name && generation.Memos[memo] == nil, nil
-}
-
 // JSONTool binds a typed operation to its source input and encodes the result.
 func JSONTool[A, R any](agentID, name, description string, schema map[string]any, present bool, invoke func(context.Context, TaskContext, A) (R, error)) *durable.ToolRegistration {
 	return &durable.ToolRegistration{

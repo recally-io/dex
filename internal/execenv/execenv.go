@@ -18,7 +18,8 @@ const (
 	KindPiEnv Kind = "pi-env"
 	// KindE2B runs tools and shell commands inside an E2B sandbox.
 	KindE2B Kind = "e2b"
-	// KindRunner runs tools on a host that connects to Dex.
+	// KindRunner identifies the Remote runner type. The host connects through dex-agent.
+	// Keep "runner" as the stored and API value.
 	KindRunner Kind = "runner"
 )
 

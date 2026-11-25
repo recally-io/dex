@@ -14,14 +14,12 @@ export type ThreadCall = {
   /** The bot that owns the child. Set when the result names it. */
   bot?: { id: string; name: string };
   thread?: ThreadRef;
-  /** The ID of a task from before child sessions. The API finds its session. */
-  turn?: string;
   status: ToolItem["status"];
   /** What the failed call returned. */
   error?: string;
 };
 
-const creates = ["session_new", "session_fork", "spawn_task"];
+const creates = ["session_new", "session_fork"];
 
 // The fields of a session tool result (engine.SessionRef) that the transcript uses.
 type SessionResult = { id?: string; title?: string; bot?: string; botId?: string };
@@ -51,7 +49,6 @@ export function threadCall(tool: ToolItem): ThreadCall | undefined {
     title: done.title || arg(tool, "title") || (send ? "session" : "New session"),
     bot: botId ? { id: botId, name: done.bot || botId } : undefined,
     thread: chatId ? { chatId, agentId: botId || undefined } : undefined,
-    turn: tool.name === "spawn_task" && id && !chatId ? id : undefined,
     status: tool.status,
     error: tool.status === "error" ? tool.output : undefined,
   };

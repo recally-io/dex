@@ -62,7 +62,7 @@ const machineAccess: readonly {
   },
   {
     kind: "runner",
-    title: "dex runner",
+    title: "Remote",
     subtitle: "The machine connects out to Dex. No sshd, no inbound port.",
   },
 ];
@@ -91,7 +91,7 @@ export function EnvironmentDialog({
   const descTooLong = Array.from(desc).length > 500;
   const [probeResult, setProbeResult] = useState<EnvironmentTestResult | null>(null);
 
-  // A dex runner environment must exist before Dex can issue its install command, so the
+  // A Remote runner must exist before Dex can issue its install command, so the
   // dialog stays open after the save and shows that command.
   const [created, setCreated] = useState<Environment | null>(null);
 

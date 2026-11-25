@@ -197,6 +197,7 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 		return "", err
 	}
 	if final {
+		// The exit_action CHECK constraint uses the original storage value.
 		for _, id := range r.RunInputIDs {
 			if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "report_parent"}); err != nil {
 				return "", err

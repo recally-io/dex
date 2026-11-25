@@ -257,12 +257,12 @@ type proc struct {
 
 func (m *Manager) executorFor(kind execenv.Kind, opener ExecEnvOpener) (executor, error) {
 	if kind == "" || kind == execenv.KindLocal {
-		return &localRunner{limits: m.limits, wg: &m.wg}, nil
+		return &localExecutor{limits: m.limits, wg: &m.wg}, nil
 	}
 	if opener == nil {
 		return nil, fmt.Errorf("%w: remote background executor is unavailable", ErrInvalid)
 	}
-	return newEnvRunner(opener, m.limits), nil
+	return newEnvExecutor(opener, m.limits), nil
 }
 
 // Start runs a command in the background and returns its row. The row exists before the process:
@@ -707,27 +707,27 @@ func (m *Manager) owned(ctx context.Context, conversationID int64, id string) (s
 	return row, err
 }
 
-// localRunner spawns OS child processes directly on the control host.
-type localRunner struct {
+// localExecutor spawns OS child processes directly on the control host.
+type localExecutor struct {
 	limits Limits
 	wg     *sync.WaitGroup
 }
 
-func (r *localRunner) ValidateDir(_ context.Context, _ StartParams, cwd string) error {
+func (r *localExecutor) ValidateDir(_ context.Context, _ StartParams, cwd string) error {
 	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
 		return fmt.Errorf("%w: %s is not a directory", ErrInvalid, cwd)
 	}
 	return nil
 }
 
-func (r *localRunner) PrepareOutput(_ context.Context, p StartParams, id string) (string, error) {
+func (r *localExecutor) PrepareOutput(_ context.Context, p StartParams, id string) (string, error) {
 	if err := os.MkdirAll(p.OutputDir, 0o700); err != nil {
 		return "", err
 	}
 	return filepath.Join(p.OutputDir, id+".log"), nil
 }
 
-func (r *localRunner) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks outputHooks) (runningProcess, error) {
+func (r *localExecutor) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks outputHooks) (runningProcess, error) {
 	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
 	if err != nil {
 		return nil, err
@@ -942,18 +942,18 @@ func (p *localProc) pump() {
 	}
 }
 
-// envRunner executes background commands over an agent's durableenv.ExecutionEnv.
-type envRunner struct {
+// envExecutor executes background commands over an agent's durableenv.ExecutionEnv.
+type envExecutor struct {
 	openEnv ExecEnvOpener
 	limits  Limits
 }
 
-// newEnvRunner starts commands through durableenv.ExecutionEnv.
-func newEnvRunner(openEnv ExecEnvOpener, limits Limits) *envRunner {
-	return &envRunner{openEnv: openEnv, limits: limits}
+// newEnvExecutor starts commands through durableenv.ExecutionEnv.
+func newEnvExecutor(openEnv ExecEnvOpener, limits Limits) *envExecutor {
+	return &envExecutor{openEnv: openEnv, limits: limits}
 }
 
-func (r *envRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
+func (r *envExecutor) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
 	execEnv, _, _, release, err := r.openEnv(ctx, p.AgentID, p.EnvironmentID, cwd, p.Env)
 	if err != nil {
 		return err
@@ -968,7 +968,7 @@ func (r *envRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) 
 	return nil
 }
 
-func (r *envRunner) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
+func (r *envExecutor) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
 	execEnv, workspace, _, release, err := r.openEnv(ctx, p.AgentID, p.EnvironmentID, p.DefaultCwd, p.Env)
 	if err != nil {
 		return "", err
@@ -987,7 +987,7 @@ func (r *envRunner) PrepareOutput(ctx context.Context, p StartParams, id string)
 	return outputPath, nil
 }
 
-func (r *envRunner) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error) {
+func (r *envExecutor) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error) {
 	baseCtx := context.WithoutCancel(ctx)
 	execEnv, _, _, release, err := r.openEnv(baseCtx, p.AgentID, p.EnvironmentID, cwd, p.Env)
 	if err != nil {

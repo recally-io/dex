@@ -3,7 +3,6 @@ package app
 import (
 	"strings"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
 )
 
@@ -35,5 +34,3 @@ func inputExtensions(input engine.Input) engine.ExtensionEdit {
 	}
 	return edit
 }
-
-func hideToolFromSearch(name string) bool { return name == chat.LegacyParentReport }
