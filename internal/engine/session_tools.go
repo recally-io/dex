@@ -20,6 +20,8 @@ type TaskContext struct {
 	SourceRequestID string
 	RunInputIDs     []string
 	Key             string
+	Isolation       InputIsolation
+	ActivationID    int64
 }
 
 type ArtifactInfo struct {

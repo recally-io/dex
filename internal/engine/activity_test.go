@@ -25,25 +25,7 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	tick := time.NewTicker(5 * time.Millisecond)
-	defer tick.Stop()
-	var activity Activity
-	for {
-		activity = a.Activity([]Ref{ref})[ref]
-		if activity.LastActivityAt != nil && activity.ToolStartedAt != nil && len(activity.RunningTools) == 1 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatalf("activity did not update: %+v", activity)
-		case <-tick.C:
-		}
-	}
-	if activity.RunningTools[0].Name != "bash" {
-		t.Fatalf("running tool: %+v", activity.RunningTools)
-	}
+	waitForRunningTool(t, a, ref, "bash")
 	// When admission retries the same request, it keeps the single running child watch.
 	replay, err := a.Submit(t.Context(), ref, Input{
 		RequestID: "activity", Content: "printf activity; while :; do sleep 1; done", Kind: "message",
@@ -55,11 +37,11 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	if running, ok := a.ChildRunning(ref); !ok || !running {
 		t.Fatalf("ChildRunning during execution = (%t, %t), want (true, true)", running, ok)
 	}
-	_ = a.Abort(t.Context(), ref)
+	if err := a.Abort(t.Context(), ref); err != nil {
+		t.Fatal(err)
+	}
 	for _, s := range []*Submission{sub, replay} {
-		if _, err := s.Wait(ctx); err != nil {
-			t.Fatal(err)
-		}
+		coreWait(t, s)
 	}
 	if got := a.Activity([]Ref{ref}); len(got) != 0 {
 		t.Fatalf("activity remained after settlement: %+v", got)
@@ -104,20 +86,29 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	waitForRunningTool(t, extAgents, extRef, "other")
+	unblock()
+	coreWait(t, extSub)
+}
+
+func waitForRunningTool(t *testing.T, a *Agents, ref Ref, name string) {
+	t.Helper()
+	// Start the deadline after admission. Setup and settlement of other runs do not count.
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	tick := time.Tick(5 * time.Millisecond)
 	for {
-		activity = extAgents.Activity([]Ref{extRef})[extRef]
-		if len(activity.RunningTools) == 1 {
-			break
+		activity := a.Activity([]Ref{ref})[ref]
+		if activity.LastActivityAt != nil && activity.ToolStartedAt != nil && len(activity.RunningTools) == 1 {
+			if got := activity.RunningTools[0].Name; got != name {
+				t.Fatalf("running tool = %q, want %q", got, name)
+			}
+			return
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("masked activity did not update: %+v", activity)
-		case <-tick.C:
+			t.Fatalf("activity for %q did not update: %+v", name, activity)
+		case <-tick:
 		}
 	}
-	if activity.RunningTools[0].Name != "other" {
-		t.Fatalf("extension tool name exposed: %+v", activity.RunningTools)
-	}
-	unblock()
-	coreWait(t, extSub)
 }

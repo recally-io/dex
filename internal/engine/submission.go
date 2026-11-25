@@ -20,11 +20,12 @@ import (
 // Submission joins one durable input and the memory commit that follows its settlement.
 // Cancelling Wait does not cancel the admitted execution.
 type Submission struct {
-	ID      int64
-	native  durable.Submission
-	done    chan struct{}
-	outcome Outcome
-	err     error
+	ID           int64
+	ActivationID int64
+	native       durable.Submission
+	done         chan struct{}
+	outcome      Outcome
+	err          error
 }
 
 // Running reports whether native execution has placed this input in an active run.
@@ -189,7 +190,11 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					return nil, err
 				}
 			}
-			if whenBusy == durable.WhenBusyFollowUp {
+			mode, err := isolatedAdmission(tx, conversation.Id(), input, whenBusy)
+			if err != nil {
+				return nil, err
+			}
+			if mode == durable.WhenBusyFollowUp {
 				inbox, err := durable.TxDoc[harness.InboxState](tx, harness.InboxDoc, conversation.Id())
 				if err != nil {
 					return nil, err
@@ -216,16 +221,22 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					return nil, fmt.Errorf("%w: monitor target or authority is no longer valid", ErrInvalidInput)
 				}
 			}
-			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
+			metadata := inputMetadata{Scope: ref.Scope, RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Isolation: input.Isolation, ReviewBypass: input.ReviewBypass}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
 			}
-			draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, inputDirectory)), WhenBusy: whenBusy, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
+			draft := durable.SubmissionDraft{Type: durable.SubmissionTypeInput, RequestId: &input.RequestID, Content: ai.UserText(inputText(input, inputDirectory)), WhenBusy: mode, InputEntry: &durable.InputEntry{Kind: kind, Data: data}}
+			if input.ReviewBypass {
+				draft.WhenIdle = durable.WhenIdleReject
+			}
 			id, err = conversation.SubmitIn(tx, draft)
 			return nil, err
 		})
 		if err != nil {
+			if _, ok := errors.AsType[*durable.ConversationIdle](err); ok {
+				return nil, ErrReviewBarrier
+			}
 			if _, ok := errors.AsType[*durable.ConversationBusy](err); ok {
 				return nil, errors.Join(ErrBusy, err)
 			}
@@ -239,12 +250,31 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			return nil, err
 		}
 	}
-	return a.settleSubmission(ctx, ref, conversation, input, native), nil
+	record := existing
+	if record == nil && input.Isolation != "" {
+		placed, err := native.Status(ctx)
+		if err != nil {
+			return nil, err
+		}
+		record = &placed
+	}
+	var activationID int64
+	if record != nil && record.Entry != nil {
+		_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
+			entry, err := tx.Entry(*record.Entry)
+			activationID = activationOf(*record, entry)
+			return nil, err
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return a.settleSubmission(ctx, ref, conversation, input, native, activationID), nil
 }
 
-func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission) *Submission {
+func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission, activationID int64) *Submission {
 	var err error
-	result := &Submission{ID: int64(native.Id()), native: native, done: make(chan struct{})}
+	result := &Submission{ID: int64(native.Id()), ActivationID: activationID, native: native, done: make(chan struct{})}
 	var stopActivity func()
 	if input.Child {
 		stopActivity, err = a.startActivityWatch(ctx, ref, conversation, input)
@@ -262,7 +292,7 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 		if err != nil {
 			result.err = err
 		} else {
-			result.outcome = Outcome{Status: string(settled.Status)}
+			result.outcome = Outcome{Status: string(settled.Status), ActivationID: activationID}
 			if settled.Reason != nil {
 				result.outcome.Reason = *settled.Reason
 			}

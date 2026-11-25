@@ -42,7 +42,7 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
   const repositoryId = randomInt(1_000_000, 1_000_000_000);
   const secret = "local browser test webhook secret only";
 
-  const settings = await fetch(`${origin}/api/settings/github-webhooks/${repositoryId}`, {
+  const settings = await fetch(`${origin}/api/plugins/github/webhooks/${repositoryId}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ secret, issueAgentId: "default" }),
@@ -88,8 +88,11 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
   await screen.getByRole("textbox", "PR number").fill("42");
   await screen.getByRole("textbox", "Commit SHA (optional)").fill("commit-a");
   await screen.getByRole("button", "Link pull request").tap();
-  await expect(screen.getByText(`PR #42 · Repository ${repositoryId}`)).toBeVisible();
-  await expect(screen.getByText("Waiting for review")).toBeVisible();
+  const link = screen.getByText(`pull_request 42 · github.com/repository/${repositoryId}`);
+  const waiting = screen.getByText("Waiting review.submitted");
+  const received = screen.getByText("Received review.submitted");
+  await expect(link).toBeVisible();
+  await expect(waiting).toBeVisible();
 
   async function review(id: number, commit: string, text: string, association = "MEMBER") {
     await deliver("pull_request_review", `review-${id}`, {
@@ -108,17 +111,17 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
 
   await review(1, "commit-b", "Review of another commit");
   await expect(screen.getByText(/Review of another commit/)).toBeVisible();
-  await expect(screen.getByText("Waiting for review")).toBeVisible();
+  await expect(waiting).toBeVisible();
   await review(3, "commit-a", "Review from outside the repository", "NONE");
   await expect(screen.getByText(/Review from outside the repository/)).toBeVisible();
-  await expect(screen.getByText("Waiting for review")).toBeVisible();
+  await expect(waiting).toBeVisible();
   await review(2, "commit-a", "Review of the selected commit");
   await expect(screen.getByText(/Review of the selected commit/)).toBeVisible();
-  await expect(screen.getByText("Review received")).toBeVisible();
+  await expect(received).toBeVisible();
 
   await app.open(new URL(await browser.url()).pathname);
   await expect(screen.getByRole("heading", title)).toBeVisible();
-  await expect(screen.getByText(`PR #42 · Repository ${repositoryId}`)).toBeVisible();
-  await expect(screen.getByText("Review received")).toBeVisible();
+  await expect(link).toBeVisible();
+  await expect(received).toBeVisible();
   await expect(screen.getByText(/Review of the selected commit/)).toBeVisible();
 });

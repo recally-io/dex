@@ -77,10 +77,26 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 		return "", err
 	}
 	if f.ResultID != "" {
-		if source.ChannelRevoked != 0 || f.State != "open" && (!final || f.State != "notified") {
+		if source.ChannelRevoked != 0 || f.ConversationID != conv.ID ||
+			(f.State != "open" || source.Status != "pending") && (!final || f.State != "notified") {
+			return "", errChannelFollowUp
+		}
+		if !f.ParentRequestID.Valid || !f.ParentSourceKey.Valid {
+			return "", errChannelFollowUp
+		}
+		original, err := q.GetSubmission(ctx, f.ParentRequestID.String)
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", errChannelFollowUp
+		}
+		if err != nil {
+			return "", err
+		}
+		if original.ConversationID != conv.ID || original.SourceKey != f.ParentSourceKey || original.ChannelRevoked != 0 ||
+			original.Origin != source.Origin || original.ChannelContext != source.ChannelContext {
 			return "", errChannelFollowUp
 		}
 		if final {
+			// A channel conclusion keeps one key per delegation and stays out of the Web timeline.
 			dedupKey = followUpFinalKey(f.DelegationID)
 			a.TopicKey = "" // Progress cannot supersede the committed conclusion.
 		}
@@ -164,31 +180,46 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a en
 	return outboxID, nil
 }
 
-// ToolReportParent runs the session_report tool. The recipient is always the direct parent,
-// and a final report keeps the stored exit action report_parent.
+// ToolReportParent stages an opted-in final for settlement. Progress and ordinary
+// final reports still write a wake for the direct parent.
 func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a engine.ReportParentArgs) (string, error) {
 	if strings.TrimSpace(a.Content) == "" {
 		return "", errors.New("session_report requires non-empty content")
 	}
-	conv, err := s.toolCaller(ctx, r)
+	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return "", err
 	}
-	if !conv.ParentID.Valid {
-		return "", errors.New("only child sessions can report to a parent")
-	}
-	if archived, err := s.q.ConversationAgentArchived(ctx, conv.ParentID.Int64); err != nil {
+	defer func() { _ = tx.Rollback() }()
+	conv, err := toolCallerIn(ctx, q, r)
+	if err != nil {
 		return "", err
-	} else if archived != 0 {
-		return "", errors.New("parent session agent is archived")
 	}
-	source, err := s.q.GetSubmission(ctx, r.SourceRequestID)
+	source, err := q.GetSubmission(ctx, r.SourceRequestID)
 	if err != nil {
 		return "", err
 	}
 	bodyText, cut := cutRunes(a.Content, textLimit)
 	if cut {
 		bodyText += fmt.Sprintf("\n[The report is cut. Read the child session with session_read: id %d.]", conv.ID)
+	}
+	final := boolPtrOrTrue(a.Final)
+	if final {
+		disposition, err := stageFinalReport(ctx, q, r, conv, source, bodyText)
+		if err != nil {
+			return "", err
+		}
+		if disposition != "" {
+			return disposition, tx.Commit()
+		}
+	}
+	if !conv.ParentID.Valid {
+		return "", errors.New("only child sessions can report to a parent")
+	}
+	if archived, err := q.ConversationAgentArchived(ctx, conv.ParentID.Int64); err != nil {
+		return "", err
+	} else if archived != 0 {
+		return "", errors.New("parent session agent is archived")
 	}
 	body := sessionResult{
 		Session: strconv.FormatInt(conv.ID, 10),
@@ -207,15 +238,6 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	// and the exit action commits in the same transaction as the report.
 	resultID := "report:" + r.Key
 	now := s.now().UnixMilli()
-	final := boolPtrOrTrue(a.Final)
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
-
 	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		ID:             resultID,
 		ConversationID: conv.ParentID.Int64,

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,11 +23,18 @@ type nativeTest struct {
 	conn    *sql.DB
 	q       *sqlc.Queries
 	dir     string
+	close   func()
 }
+
+type reportFunc = func(context.Context, engine.TaskContext, engine.ReportParentArgs) (string, error)
 
 func startNative(t *testing.T, model string, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
 	t.Helper()
-	dir := t.TempDir()
+	return openNativeTest(t, t.TempDir(), model, nil, wrap...)
+}
+
+func openNativeTest(t *testing.T, dir, model string, wrapReport func(reportFunc) reportFunc, wrap ...func(execenv.Provider) execenv.Provider) *nativeTest {
+	t.Helper()
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -42,6 +50,12 @@ func startNative(t *testing.T, model string, wrap ...func(execenv.Provider) exec
 	var provider execenv.Provider = execenv.NewManager(execenv.ManagerConfig{DataDir: dir, Queries: q})
 	for _, f := range wrap {
 		provider = f(provider)
+	}
+	report := func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
+		return service.ToolReportParent(ctx, c, a)
+	}
+	if wrapReport != nil {
+		report = wrapReport(report)
 	}
 	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, ExecEnv: provider, SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Tasks: engine.TaskTools{
 		AuthorizeMonitor: func(ctx context.Context, c engine.TaskContext) error { return service.AuthorizeMonitor(ctx, c) },
@@ -59,9 +73,7 @@ func startNative(t *testing.T, model string, wrap ...func(execenv.Provider) exec
 			NotifyUser: func(ctx context.Context, c engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
 				return service.ToolNotifyUser(ctx, c, a)
 			},
-			ReportParent: func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
-				return service.ToolReportParent(ctx, c, a)
-			},
+			ReportParent: report,
 		},
 		Sessions: engine.SessionTools{
 			New: func(ctx context.Context, c engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
@@ -82,17 +94,20 @@ func startNative(t *testing.T, model string, wrap ...func(execenv.Provider) exec
 		t.Fatal(err)
 	}
 	service = New(conn, agents, time.Now, nil, nil)
-	t.Cleanup(func() {
+	closeTest := sync.OnceFunc(func() {
 		service.cancel()
 		service.wg.Wait()
-		if err := agents.Close(context.Background()); err != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := agents.Close(closeCtx); err != nil {
 			t.Error(err)
 		}
 		if err := conn.Close(); err != nil {
 			t.Error(err)
 		}
 	})
-	return &nativeTest{service, agents, conn, q, dir}
+	t.Cleanup(closeTest)
+	return &nativeTest{service, agents, conn, q, dir, closeTest}
 }
 
 func waitFor(t *testing.T, check func() bool) {

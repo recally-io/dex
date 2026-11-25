@@ -32,10 +32,10 @@ type sessionResult struct {
 // no result: the caller of Stop knows.
 func resultOutcome(event engine.Outcome) (string, bool) {
 	switch {
-	case event.Status == "done":
-		return "done", true
 	case event.Reason == "stopped", event.Reason == "aborted", event.Reason == "withdrawn":
 		return "", false
+	case event.Status == "done":
+		return "done", true
 	case event.Reason == "interrupted":
 		return "interrupted", true
 	}
@@ -75,8 +75,29 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 		return 0, err
 	}
 	var guidance string
-	if f.State == "open" {
-		guidance = followUpPrompt
+	var revoke bool
+	var consume bool
+	if f.DelegationID != "" {
+		child, err := q.GetConversation(ctx, link.ChildID)
+		if err != nil {
+			return 0, err
+		}
+		input, err := q.GetSubmission(ctx, turn)
+		if err != nil {
+			return 0, err
+		}
+		original, err := followUpParent(ctx, q, f, child, input)
+		if err != nil {
+			return 0, err
+		}
+		revoke = f.State == "cancelled" || original.ID == "" || original.ChannelRevoked != 0
+		if f.State == "open" && !revoke {
+			guidance = followUpPrompt
+			consume = outcome == "done" && f.StagedReport.Valid && event.ActivationID != 0 && f.NativeActivationID.Int64 == event.ActivationID
+			if consume {
+				body.Answer = f.StagedReport.String
+			}
+		}
 	}
 	content, err := json.Marshal(struct {
 		Result   sessionResult `json:"task-result"`
@@ -85,9 +106,14 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 	if err != nil {
 		return 0, err
 	}
-	created, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{ID: "result:" + turn, TurnID: turn, Content: string(content), CreatedAt: s.now().UnixMilli(), NativeAnswerID: sql.NullInt64{Int64: event.AnswerID, Valid: outcome == "done"}})
+	created, err := q.CreateTurnResult(ctx, sqlc.CreateTurnResultParams{ID: "result:" + turn, TurnID: turn, Content: string(content), CreatedAt: s.now().UnixMilli(), NativeAnswerID: sql.NullInt64{Int64: event.AnswerID, Valid: outcome == "done"}, RevokeRoute: boolInt(revoke)})
 	if err != nil || created == 0 {
 		return 0, err
+	}
+	if consume {
+		if err := q.ConsumeChannelFollowUpReport(ctx, turn); err != nil {
+			return 0, err
+		}
 	}
 	return link.ParentID.Int64, nil
 }

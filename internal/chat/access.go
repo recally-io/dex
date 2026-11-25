@@ -40,14 +40,18 @@ func (s *Service) writeTransaction(ctx context.Context) (*sql.Tx, *sqlc.Queries,
 
 // toolCaller validates the execution owner of a tool call and returns its conversation.
 func (s *Service) toolCaller(ctx context.Context, r engine.TaskContext) (sqlc.Conversation, error) {
+	return toolCallerIn(ctx, s.q, r)
+}
+
+func toolCallerIn(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Conversation, error) {
 	if r.Scope != "" {
 		return sqlc.Conversation{}, errSessionInvalid
 	}
-	conv, err := s.q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: r.AgentID, ExecutionScope: r.Scope, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, err
 	}
-	source, err := s.q.GetSubmission(ctx, r.SourceRequestID)
+	source, err := q.GetSubmission(ctx, r.SourceRequestID)
 	if err != nil {
 		return conv, err
 	}

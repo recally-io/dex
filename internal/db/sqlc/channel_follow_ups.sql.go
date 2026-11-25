@@ -7,7 +7,26 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 )
+
+const bindChannelFollowUpActivation = `-- name: BindChannelFollowUpActivation :execrows
+UPDATE channel_follow_ups SET native_activation_id = ?1
+WHERE delegation_id = ?2 AND (native_activation_id IS NULL OR native_activation_id = ?1)
+`
+
+type BindChannelFollowUpActivationParams struct {
+	NativeActivationID sql.NullInt64 `json:"native_activation_id"`
+	DelegationID       string        `json:"delegation_id"`
+}
+
+func (q *Queries) BindChannelFollowUpActivation(ctx context.Context, arg BindChannelFollowUpActivationParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, bindChannelFollowUpActivation, arg.NativeActivationID, arg.DelegationID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
 
 const cancelChannelFollowUps = `-- name: CancelChannelFollowUps :many
 UPDATE channel_follow_ups SET state = 'cancelled'
@@ -42,23 +61,43 @@ func (q *Queries) CancelChannelFollowUps(ctx context.Context, chatID int64) ([]s
 	return items, nil
 }
 
+const consumeChannelFollowUpReport = `-- name: ConsumeChannelFollowUpReport :exec
+UPDATE channel_follow_ups SET staged_report = NULL WHERE delegation_id = ?
+`
+
+func (q *Queries) ConsumeChannelFollowUpReport(ctx context.Context, delegationID string) error {
+	_, err := q.db.ExecContext(ctx, consumeChannelFollowUpReport, delegationID)
+	return err
+}
+
 const createChannelFollowUp = `-- name: CreateChannelFollowUp :exec
-INSERT INTO channel_follow_ups (delegation_id, result_id, conversation_id) VALUES (?, ?, ?)
+INSERT INTO channel_follow_ups (delegation_id, result_id, conversation_id, child_id, parent_request_id, parent_source_key)
+VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateChannelFollowUpParams struct {
-	DelegationID   string `json:"delegation_id"`
-	ResultID       string `json:"result_id"`
-	ConversationID int64  `json:"conversation_id"`
+	DelegationID    string         `json:"delegation_id"`
+	ResultID        string         `json:"result_id"`
+	ConversationID  int64          `json:"conversation_id"`
+	ChildID         sql.NullInt64  `json:"child_id"`
+	ParentRequestID sql.NullString `json:"parent_request_id"`
+	ParentSourceKey sql.NullString `json:"parent_source_key"`
 }
 
 func (q *Queries) CreateChannelFollowUp(ctx context.Context, arg CreateChannelFollowUpParams) error {
-	_, err := q.db.ExecContext(ctx, createChannelFollowUp, arg.DelegationID, arg.ResultID, arg.ConversationID)
+	_, err := q.db.ExecContext(ctx, createChannelFollowUp,
+		arg.DelegationID,
+		arg.ResultID,
+		arg.ConversationID,
+		arg.ChildID,
+		arg.ParentRequestID,
+		arg.ParentSourceKey,
+	)
 	return err
 }
 
 const getChannelFollowUpByDelegation = `-- name: GetChannelFollowUpByDelegation :one
-SELECT delegation_id, result_id, conversation_id, state FROM channel_follow_ups WHERE delegation_id = ?
+SELECT delegation_id, result_id, conversation_id, state, child_id, parent_request_id, parent_source_key, native_activation_id, staged_report FROM channel_follow_ups WHERE delegation_id = ?
 `
 
 func (q *Queries) GetChannelFollowUpByDelegation(ctx context.Context, delegationID string) (ChannelFollowUp, error) {
@@ -69,12 +108,17 @@ func (q *Queries) GetChannelFollowUpByDelegation(ctx context.Context, delegation
 		&i.ResultID,
 		&i.ConversationID,
 		&i.State,
+		&i.ChildID,
+		&i.ParentRequestID,
+		&i.ParentSourceKey,
+		&i.NativeActivationID,
+		&i.StagedReport,
 	)
 	return i, err
 }
 
 const getChannelFollowUpByInput = `-- name: GetChannelFollowUpByInput :one
-SELECT delegation_id, result_id, conversation_id, state FROM channel_follow_ups WHERE result_id = ?
+SELECT delegation_id, result_id, conversation_id, state, child_id, parent_request_id, parent_source_key, native_activation_id, staged_report FROM channel_follow_ups WHERE result_id = ?
 `
 
 func (q *Queries) GetChannelFollowUpByInput(ctx context.Context, resultID string) (ChannelFollowUp, error) {
@@ -85,7 +129,38 @@ func (q *Queries) GetChannelFollowUpByInput(ctx context.Context, resultID string
 		&i.ResultID,
 		&i.ConversationID,
 		&i.State,
+		&i.ChildID,
+		&i.ParentRequestID,
+		&i.ParentSourceKey,
+		&i.NativeActivationID,
+		&i.StagedReport,
 	)
+	return i, err
+}
+
+const getFollowUpDispatchState = `-- name: GetFollowUpDispatchState :one
+SELECT o.status, EXISTS (
+    SELECT 1 FROM channel_follow_ups f
+    JOIN submissions original ON original.id = f.parent_request_id
+    JOIN submissions result ON result.id = f.result_id
+    WHERE o.source_submission_id = result.id AND o.dedup_key = 'follow-up-final:' || f.delegation_id
+      AND f.state = 'notified'
+      AND original.conversation_id = f.conversation_id AND result.conversation_id = f.conversation_id
+      AND original.source_key = f.parent_source_key AND original.channel_revoked = 0 AND result.channel_revoked = 0
+      AND original.origin = o.peer AND original.channel_context = o.channel_context
+) AS authorized
+FROM outbox_messages o WHERE o.id = ?
+`
+
+type GetFollowUpDispatchStateRow struct {
+	Status     string `json:"status"`
+	Authorized bool   `json:"authorized"`
+}
+
+func (q *Queries) GetFollowUpDispatchState(ctx context.Context, id string) (GetFollowUpDispatchStateRow, error) {
+	row := q.db.QueryRowContext(ctx, getFollowUpDispatchState, id)
+	var i GetFollowUpDispatchStateRow
+	err := row.Scan(&i.Status, &i.Authorized)
 	return i, err
 }
 
@@ -100,5 +175,19 @@ type SetOpenChannelFollowUpStateParams struct {
 
 func (q *Queries) SetOpenChannelFollowUpState(ctx context.Context, arg SetOpenChannelFollowUpStateParams) error {
 	_, err := q.db.ExecContext(ctx, setOpenChannelFollowUpState, arg.State, arg.ResultID)
+	return err
+}
+
+const stageChannelFollowUpReport = `-- name: StageChannelFollowUpReport :exec
+UPDATE channel_follow_ups SET staged_report = ?1 WHERE delegation_id = ?2 AND staged_report IS NULL
+`
+
+type StageChannelFollowUpReportParams struct {
+	StagedReport sql.NullString `json:"staged_report"`
+	DelegationID string         `json:"delegation_id"`
+}
+
+func (q *Queries) StageChannelFollowUpReport(ctx context.Context, arg StageChannelFollowUpReportParams) error {
+	_, err := q.db.ExecContext(ctx, stageChannelFollowUpReport, arg.StagedReport, arg.DelegationID)
 	return err
 }

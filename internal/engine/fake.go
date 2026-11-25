@@ -12,7 +12,7 @@ import (
 
 func fakeProvider() *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
-	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "spawn", "spawn-notify", "spawn-monitor", "think", "mixed", "files"} {
+	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "tool-report-fail", "spawn", "spawn-notify", "spawn-monitor", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
 	defs = append(defs, ai.FauxModelDefinition{ID: "section-small", ContextWindow: 36000})
@@ -66,7 +66,7 @@ func fakeProvider() *ai.ModelsProvider {
 				return fakeText("bash: " + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
 			return fakeCall("bash", map[string]any{"command": fakeBashCommand(strings.TrimSuffix(text, boundRoutineCheckSuffix))}), nil
-		case "tool", "direct", "direct-content":
+		case "tool", "tool-report-fail", "direct", "direct-content":
 			// The fixture parses the user prompt as literal arguments, not natural language.
 			text = strings.TrimSuffix(text, boundRoutineCheckSuffix)
 			if strings.HasPrefix(text, "Dex Task: ") {
@@ -79,6 +79,9 @@ func fakeProvider() *ai.ModelsProvider {
 			}
 			name, argsText, hasArgs := strings.Cut(text, " ")
 			if result, ok := last.(ai.ToolResultMessage); ok && result.ToolName == name {
+				if m.ID == "tool-report-fail" && name == "session_report" {
+					return ai.AssistantMessage{}, fmt.Errorf("faux scripted failure after session_report")
+				}
 				prefix := "tool: "
 				if result.IsError {
 					prefix = "tool error: "
@@ -90,7 +93,7 @@ func fakeProvider() *ai.ModelsProvider {
 				return fakeText(prefix + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
 			_, afterResult := last.(ai.ToolResultMessage)
-			if m.ID == "tool" && !afterResult && !fakeExposed(t, name) {
+			if (m.ID == "tool" || m.ID == "tool-report-fail") && !afterResult && !fakeExposed(t, name) {
 				return fakeCall("tool_search", map[string]any{"query": name}), nil
 			}
 			args := map[string]any{}

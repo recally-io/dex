@@ -2,6 +2,9 @@ package app_test
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json/v2"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -10,7 +13,101 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/channel"
 )
+
+func TestUserReceivesReviewedTelegramConclusionOnCanonicalCompletion(t *testing.T) {
+	t.Parallel()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	d.setModel(t, "spawn-notify")
+	main := d.mainChat(t)
+	conn := sessionDB(t, d)
+
+	// Given a Telegram request that opts in and a child that explicitly reports its findings.
+	f.message(1, 42, 7, childJSON(t, map[string]any{
+		"title": "Explicit report", "message": `session_report {"content":"private verified findings"}`,
+		"provider": "faux", "modelId": "tool", "follow_up": true,
+	}))
+	waitTaskChannelText(t, f, "spawn:")
+
+	// When Main reviews the canonical result and calls notify_user.
+	work := waitExecution(t, conn, main, "Explicit report", "done")
+	waitResultSubmission(t, conn, work.ResultID, "done")
+	final := followUpTelegramSend(t, f, "Reviewed channel conclusion")
+
+	// Then the report is the result, not a separate turn without a channel grant.
+	if n := count(t, conn, `SELECT count(*) FROM submissions WHERE conversation_id=? AND id LIKE 'report:%'`, main); n != 0 {
+		t.Fatalf("explicit child final created %d standalone report wakes, want none", n)
+	}
+	if n := count(t, conn, `SELECT count(*) FROM submissions WHERE conversation_id=? AND id LIKE 'result:%' AND json_extract(content, '$."task-result".answer')='private verified findings'`, main); n != 1 {
+		var content, disposition string
+		var activation int64
+		_ = conn.QueryRowContext(t.Context(), `SELECT s.content, f.native_activation_id FROM submissions s JOIN channel_follow_ups f ON f.result_id=s.id WHERE s.id=?`, work.ResultID).Scan(&content, &activation)
+		_ = conn.QueryRowContext(t.Context(), `SELECT result FROM routine_tool_operations WHERE source_request_id=?`, work.Turn).Scan(&disposition)
+		t.Fatalf("canonical results with staged report content = %d, want one: content=%s activation=%d disposition=%q", n, content, activation, disposition)
+	}
+	assertFollowUpTelegramReceipt(t, conn, work.ResultID, final)
+}
+
+func followUpTelegramSend(t *testing.T, f *fakeTelegram, text string) sentMessage {
+	t.Helper()
+	deadline := time.After(20 * time.Second)
+	for {
+		select {
+		case m := <-f.sent:
+			if strings.Contains(m.Text, text) {
+				return m
+			}
+		case <-deadline:
+			t.Fatalf("Telegram did not receive %q", text)
+		}
+	}
+}
+
+func assertFollowUpTelegramReceipt(t *testing.T, conn *sql.DB, resultID string, platform sentMessage) {
+	t.Helper()
+	eventually(t, "confirmed Telegram receipt for the reviewed conclusion", func() (bool, any) {
+		var state, peer, ids string
+		err := conn.QueryRowContext(t.Context(), `SELECT f.state, o.peer, o.remote_ids FROM outbox_messages o
+JOIN channel_follow_ups f ON o.dedup_key='follow-up-final:'||f.delegation_id
+WHERE o.source_submission_id=? AND o.status='delivered'`, resultID).Scan(&state, &peer, &ids)
+		var remotes []channel.RemoteMessage
+		decode := json.Unmarshal([]byte(ids), &remotes)
+		return err == nil && decode == nil && state == "notified" && peer == fmt.Sprintf("telegram:%d", platform.ChatID) &&
+			len(remotes) == 1 && remotes[0].ID == fmt.Sprint(platform.ID), []any{state, peer, ids, platform.ID, err}
+	})
+}
+
+func TestUserOptedInProgressReportStillWakesOnlyTheParent(t *testing.T) {
+	t.Parallel()
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	d.setModel(t, "spawn-notify")
+	conn := sessionDB(t, d)
+	main := d.mainChat(t)
+	// Given a promised delegation with a progress report but no explicit final report.
+	const title = "Progress keeps its wake"
+	f.message(1, 42, 42, childJSON(t, map[string]any{
+		"title": title, "message": `session_report {"content":"private progress note","final":false}`,
+		"provider": "faux", "modelId": "tool", "follow_up": true,
+	}))
+	followUpTelegramSend(t, f, "spawn:")
+	// When the scheduled progress report and native completion both reach Main, only the
+	// canonical completion carries a grant. It uses the native answer, not the progress note.
+	work := waitExecution(t, conn, main, title, "done")
+	final := waitResultSubmission(t, conn, work.ResultID, "done")
+	if body := resultBody(t, final.content); body["answer"] != work.Report || strings.Contains(final.content, "private progress note") {
+		t.Fatalf("progress changed the native answer fallback: %+v, %v", work, body)
+	}
+	assertFollowUpTelegramReceipt(t, conn, work.ResultID, followUpTelegramSend(t, f, "Reviewed channel conclusion"))
+	if n := count(t, conn, `SELECT count(*) FROM submissions WHERE conversation_id=? AND id LIKE 'report:%' AND channel_context='{}' AND instr(content,'channel-follow-up')=0 AND instr(content,'private progress note')>0`, main); n != 1 {
+		t.Fatalf("ordinary progress wakes = %d, want one without a channel grant", n)
+	}
+	if n := count(t, conn, `SELECT count(*) FROM outbox_messages WHERE source_submission_id LIKE 'report:%'`); n != 0 {
+		t.Fatalf("progress triggered %d outbound notifications", n)
+	}
+}
 
 func TestUserPromisedChannelFollowUpStaysInternalWithoutExplicitSend(t *testing.T) {
 	t.Parallel()
@@ -117,11 +214,24 @@ func TestUserSeesConfirmedFollowUpWhenStopRacesAnInFlightSend(t *testing.T) {
 		t.Fatalf("owner lost the revoked delivery record: %+v", outbox)
 	}
 	close(release)
+	sent := followUpTelegramSend(t, f, conclusion)
 	eventually(t, "platform receipt for the already in-flight conclusion", func() (bool, any) {
-		var status, remotes string
-		err := conn.QueryRowContext(t.Context(), `SELECT status, remote_ids FROM outbox_messages WHERE source_submission_id = ?`, work.ResultID).Scan(&status, &remotes)
-		return err == nil && status == "delivered" && remotes != "[]", []any{status, remotes, err}
+		var peer, remotes, state, disposition string
+		err := conn.QueryRowContext(t.Context(), `SELECT d.peer, d.remote_ids, f.state, d.disposition
+FROM outbox_delivery_diagnostics d JOIN channel_follow_ups f ON f.result_id=d.source_submission_id WHERE f.result_id=?`, work.ResultID).Scan(&peer, &remotes, &state, &disposition)
+		var receipts []channel.RemoteMessage
+		decode := json.Unmarshal([]byte(remotes), &receipts)
+		return err == nil && decode == nil && state == "cancelled" && disposition == "platform_confirmed" && peer == "telegram:7" &&
+			len(receipts) == 1 && receipts[0].ID == fmt.Sprint(sent.ID), []any{peer, remotes, state, disposition, sent.ID, err}
 	})
+	d.setModel(t, "echo")
+	f.message(3, 42, 7, "in-flight replay barrier")
+	followUpTelegramSend(t, f, "echo: in-flight replay barrier")
+	select {
+	case <-inFlight:
+		t.Fatal("already confirmed revoked conclusion entered Telegram again")
+	default:
+	}
 
 	// A later Web notice proves the live stream progressed past the Telegram send.
 	d.setModel(t, "tool")

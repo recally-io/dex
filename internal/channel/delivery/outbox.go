@@ -76,7 +76,13 @@ deliveries:
 			if err != nil {
 				return err
 			}
-			if !allowed {
+			if allowed {
+				err = m.sendReplyPart(ctx, name, bot, r, i, parts[i], &remotes)
+				if errors.Is(err, errOutboxRevoked) {
+					continue deliveries
+				}
+			}
+			if !allowed || errors.Is(err, errFollowUpNotAuthorized) {
 				if err := m.q.SetOutboxError(ctx, sqlc.SetOutboxErrorParams{ID: r.ID, Reason: "destination no longer authorized"}); err != nil {
 					return err
 				}
@@ -84,10 +90,6 @@ deliveries:
 					return err
 				}
 				break
-			}
-			err = m.sendReplyPart(ctx, name, bot, r, i, parts[i], &remotes)
-			if errors.Is(err, errOutboxRevoked) {
-				continue deliveries
 			}
 			if err != nil {
 				retryAt := time.Now().Add(5 * time.Second).UnixMilli()
@@ -129,7 +131,7 @@ func (m *Manager) rememberQuestionMessage(ctx context.Context, q *sqlc.Queries, 
 	return q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{AgentID: m.agentID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
 }
 
-func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string, index int, part channel.Part, redactError bool) (channel.Receipt, error) {
+func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string, index int, part channel.Part, redactError bool, beforeSend func() error) (channel.Receipt, error) {
 	var err error
 	if part.File != nil {
 		file := *part.File
@@ -154,6 +156,11 @@ func (m *Manager) sendPart(ctx context.Context, bot channel.Bot, peer, id string
 	}
 	var receipt channel.Receipt
 	if err == nil {
+		if beforeSend != nil {
+			if err := beforeSend(); err != nil {
+				return channel.Receipt{}, err
+			}
+		}
 		receipt, err = bot.Send(ctx, peer, id, index, part)
 	}
 	// A platform error can quote the private draft. Keep only the disposition.
@@ -247,12 +254,30 @@ func (m *Manager) replyParts(ctx context.Context, bot channel.Bot, r sqlc.ListPe
 	return parts, nil
 }
 
-var errOutboxRevoked = errors.New("outbox delivery revoked before send")
+var (
+	errOutboxRevoked         = errors.New("outbox delivery revoked before send")
+	errFollowUpNotAuthorized = errors.New("follow-up destination no longer authorized")
+)
+
+func isFinalFollowUp(row sqlc.ListPendingOutboxMessagesRow) bool {
+	return strings.HasPrefix(row.DedupKey, "follow-up-final:")
+}
 
 func (m *Manager) authorizeOutboxPart(ctx context.Context, platform string, row sqlc.ListPendingOutboxMessagesRow) (bool, error) {
 	allowed, err := m.authorizedReply(ctx, platform, row.Peer, row.ChannelContext, row.SourceSubmissionID.String)
 	if err != nil {
 		return false, err
+	}
+	if isFinalFollowUp(row) {
+		// Use one last SQLite snapshot for the original grant and Outbox status.
+		state, err := m.q.GetFollowUpDispatchState(ctx, row.ID)
+		if err != nil {
+			return false, err
+		}
+		if state.Status == "revoked" {
+			return false, errOutboxRevoked
+		}
+		return allowed && state.Status == "pending" && state.Authorized, nil
 	}
 	// Read the durable row once, after checking the source. That check can race with Stop,
 	// Clear or a settings write. An explicit revocation is not a skipped delivery.
@@ -336,6 +361,13 @@ func (m *Manager) saveDeliveryError(ctx context.Context, id string, legacySource
 }
 
 func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.ListPendingOutboxMessagesRow, receipt channel.Receipt, remotes *[]channel.RemoteMessage, member bool) error {
+	if isFinalFollowUp(r) && len(receipt.MessageIDs) != 0 {
+		// Route changes can cancel a delivery worker. Once a real receipt has
+		// returned, record it even if that worker cannot dispatch another part.
+		receiptCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		ctx = receiptCtx
+	}
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

@@ -479,18 +479,44 @@ On a direct channel request, the parent can set `follow_up: true` on
 request, session, and channel authorization. It does not change group tool
 permissions or turn an acknowledgment or progress update into a conclusion.
 
-The original child-result turn tells the parent to use `notify_user`
-or `ask_user`. Only explicit user-facing actions can enter the
-channel Outbox. A question does not complete the commitment. Plain final text
+The canonical child result starts an independent review turn for the
+same parent. Its reminder tells the parent to use `notify_user` for a reviewed
+conclusion, or `ask_user` for a decision. Only explicit user-facing actions can
+enter the channel Outbox. A question does not complete the commitment. Plain final text
 stays internal. Dex records `missed_follow_up` without creating another turn,
 retrying the omission, or forwarding any draft or child output.
 
+While a Main review waits, new queued messages stay behind it. A user steer
+can pass the waiting review to join a running user turn. If that turn ends
+before PiG takes the steer, PiG can start a separate user turn with it. That
+turn does not accept more steers ahead of the review. Once the review starts,
+it runs alone. New user inputs wait, and an input in `reject` mode returns
+busy.
+
 The control store records the commitment separately from delivery. A `notified`
 commitment means an explicit conclusion entered the Outbox, not that the channel
-accepted it. Use the linked Outbox receipt, including its skipped-part and error
-information, for delivery confirmation. Stop and Clear cancel outstanding
-commitments and revoke their pending Outbox entries in the same transaction.
-If an already-started send succeeds, Dex still records its platform receipt.
+accepted it. Legacy Stop and Clear cancel outstanding commitments and revoke
+their pending Outbox entries in the same transaction. Precise Main Web Stop
+only stops the observed turn. If an already-started send succeeds, Dex still
+records its platform receipt.
+
+For delivery diagnostics, read `control.sqlite`:
+
+```sql
+SELECT source_submission_id, disposition, peer, remote_ids
+FROM outbox_delivery_diagnostics
+WHERE id = :outbox_id;
+```
+
+- `in_app_only`: there is no platform route or receipt.
+- `platform_confirmed`: Dex saved at least one provider-returned remote ID
+  for the recorded peer. This does not confirm other parts of a multipart
+  delivery. Revocation does not erase these receipts.
+- `revoked_or_skipped_unconfirmed`: the send was revoked or skipped and
+  there is no provider receipt.
+- `unconfirmed`: there is no terminal evidence. Neither a pending send nor
+  a generic `delivered` status proves confirmation. If a provider accepts a
+  request and Dex stops before it saves the receipt, a retry can send again.
 
 Channel revocation stays on the original input even if its reply was already
 delivered. It also applies to existing and future child results, with or without

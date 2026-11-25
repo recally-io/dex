@@ -4,13 +4,14 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func followUpResult(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
+func followUpSource(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 	t.Helper()
 	ctx := t.Context()
 	parent, call := taskParent(t, r)
@@ -21,6 +22,13 @@ func followUpResult(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: call.SourceRequestID, ConversationID: parent, Content: "Please report back", Attachments: "null", SourceKey: sql.NullString{String: "telegram:123:1", Valid: true}, Origin: "telegram:42", Kind: "message", ChannelContext: `{"accountId":"123","senderId":"42"}`}); err != nil {
 		t.Fatal(err)
 	}
+	return parent, call
+}
+
+func followUpResult(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
+	t.Helper()
+	ctx := t.Context()
+	parent, call := followUpSource(t, r)
 	child, err := r.service.ToolSessionNew(ctx, call, engine.SessionNewArgs{Title: "Existing child", Message: "work"})
 	if err != nil {
 		t.Fatal(err)
@@ -59,20 +67,47 @@ func TestUserChannelFollowUpQueuesOneExplicitConclusion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call.Key += "-final"
-	finalID, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "Reviewed conclusion"})
-	if err != nil {
-		t.Fatal(err)
+	var wg sync.WaitGroup
+	var ids [2]string
+	start := make(chan struct{})
+	for i := range ids {
+		wg.Go(func() {
+			<-start
+			invocation := call
+			invocation.Key += string(rune('a' + i))
+			var err error
+			ids[i], err = r.service.ToolNotifyUser(ctx, invocation, engine.NotifyUserArgs{Content: "Reviewed conclusion"})
+			if err != nil {
+				t.Error(err)
+			}
+		})
 	}
-	call.Key += "-duplicate"
-	duplicate, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "Do not duplicate"})
-	if err != nil || duplicate != finalID || progressID == finalID {
-		t.Fatalf("duplicate final: existing=%s replay=%s err=%v", finalID, duplicate, err)
+	close(start)
+	wg.Wait()
+	finalID := ids[0]
+	if finalID == "" || ids[1] != finalID || progressID == finalID {
+		t.Fatalf("concurrent finals = %v, progress = %s", ids, progressID)
+	}
+	call.Key += "-replay"
+	if replay, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "Do not duplicate"}); err != nil || replay != finalID {
+		t.Fatalf("replay final = %s want %s, err=%v", replay, finalID, err)
 	}
 	// Then only the reviewed conclusion is queued under the stable commitment key.
 	final, err := r.q.GetOutboxMessage(ctx, finalID)
 	if err != nil || final.Status != "pending" || final.DeliveredAt.Valid || final.Peer != "telegram:42" || final.Body != "Reviewed conclusion" {
 		t.Fatalf("bad queued message: %+v, %v", final, err)
+	}
+}
+
+func TestUserLegacyChannelFollowUpWithoutParentCannotNotify(t *testing.T) {
+	r := startNative(t, "echo")
+	ctx := t.Context()
+	_, call := followUpResult(t, r)
+	if _, err := r.conn.ExecContext(ctx, `UPDATE channel_follow_ups SET parent_request_id=NULL, parent_source_key=NULL WHERE result_id=?`, call.SourceRequestID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.service.ToolNotifyUser(ctx, call, engine.NotifyUserArgs{Content: "No authorized parent"}); !errors.Is(err, errChannelFollowUp) {
+		t.Fatalf("legacy follow-up error = %v, want %v", err, errChannelFollowUp)
 	}
 }
 
