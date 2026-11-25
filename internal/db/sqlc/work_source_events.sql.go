@@ -272,6 +272,44 @@ func (q *Queries) LinkWorkTaskObject(ctx context.Context, arg LinkWorkTaskObject
 	return result.RowsAffected()
 }
 
+const listBoardTaskWaits = `-- name: ListBoardTaskWaits :many
+SELECT id, task_id, namespace, object_type, object_key, event_type, revision, after_at, resolved_by, alert FROM work_task_waits WHERE task_id = ? ORDER BY id
+`
+
+func (q *Queries) ListBoardTaskWaits(ctx context.Context, taskID string) ([]WorkTaskWait, error) {
+	rows, err := q.db.QueryContext(ctx, listBoardTaskWaits, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []WorkTaskWait{}
+	for rows.Next() {
+		var i WorkTaskWait
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Namespace,
+			&i.ObjectType,
+			&i.ObjectKey,
+			&i.EventType,
+			&i.Revision,
+			&i.AfterAt,
+			&i.ResolvedBy,
+			&i.Alert,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHeldWorkSourceEvents = `-- name: ListHeldWorkSourceEvents :many
 SELECT e.id, e.namespace, e.event_type, e.objects, e.content, e.source_url, e.occurred_at,
   e.disposition, e.author_login, e.author_association, h.held_at

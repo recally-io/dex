@@ -5,7 +5,7 @@ import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } fr
 import { expect, test } from "vite-plus/test";
 import type { Chat, Item, ToolItem } from "../../api/generated/types.gen";
 import { threadCall, threadState } from "../../lib/threads";
-import { describeTool } from "../../lib/tools";
+import { describeTool, stepTitle } from "../../lib/tools";
 import { ResultLine, ThreadContext } from "./thread";
 import { ThreadView } from "./thread-panel";
 import { Steps, Transcript } from "./transcript";
@@ -26,6 +26,19 @@ const session = (id: string, name: string, args: ToolItem["args"], output: strin
   args,
   output,
   status: "done",
+});
+
+test("Task tools show their action and Task key in transcript steps", () => {
+  for (const [name, verb, done] of [
+    ["task_read", "Read Task", "Read Task"],
+    ["task_post", "Post to Task", "Posted to Task"],
+    ["task_review", "Review Task", "Reviewed Task"],
+  ]) {
+    const tool = session("call", name, { id: "T-42" }, "{}");
+
+    expect(describeTool(tool)).toEqual({ verb, target: "T-42" });
+    expect(stepTitle([tool]).done).toBe(done);
+  }
 });
 
 const created = (id: string, child: number, title: string) =>

@@ -67,29 +67,38 @@ offline, the wake stays pending until the runner returns. Main shows a
 `Board wake` mark. The submission contains only Task keys, reasons, and an
 entry cursor. Dex links the submission to a Task only if all items refer to
 that Task and Main belongs to the Assignee Bot.
-The legacy Task tools do not let a wake create a Task or change its lifecycle.
 A quiet wait, a record-only event, an unmatched event, and a link conflict do
 not wake Main. Events on closed Tasks do not wake Main.
 
-Main and writable Chats have the `task_list`, `task_get`, `task_new`,
-`task_update`, and `task_append` tools (`internal/worktask/tools`). They record
-work and never start, steer, or stop a Session. The tools see only the Tasks of
-the caller's Bot. A child Session can access only Tasks linked to that Session.
-It cannot create a Task or use `task_update` to change a Task. A linked child
-never grants its Bot's Main access to the Task.
+Main and writable Chats have `task_list`, `task_read`, `task_new`,
+`task_update`, `task_post`, and `task_review`. Tools accept a UUID or a key
+such as `T-42`. `task_list` defaults to open Tasks and returns up to 50 Tasks
+for the Assignee or Reviewer. A child Session can only see its linked Tasks.
+It cannot create, update, or review a Task. The link does not give the child's
+Main access to the Task.
 
-`task_new` and a lifecycle change need a user turn on Main or in a top-level
-Chat. A rename or Session link needs a user turn or a Task wake on Main. A
-top-level Chat can also rename a Task or link its child on a user turn.
-Each change commits
-with a replay record under the tool key, so a replayed call does not add a
-second Task or entry. `task_get` returns the latest 20 entries, cuts each
-entry to 2000 characters, and omits the text of external entries. It gives
-only their event type, author class, and source link, so text from people
-outside the bot does not reach the model. Each entry has an author: `owner`
-(a note or a message from Task detail), `agent` (a tool call), or external (a
-source event). Entries from before the author column show as unknown.
-`task_get` and `GET /api/agents/{agentId}/inbox/tasks/{taskId}` list every
+`task_new` needs a user turn on Main or in a top-level Chat. On a user turn or
+Task wake, the Assignee's Main can change status or submit work for review.
+To cancel or reopen a Task, use the Owner controls. A top-level Chat can
+rename a Task or link its child on a user turn. `task_post` writes notes or
+artifacts only. The Bot Reviewer uses `task_review` on Main: approval must
+match the current `reviewSeq`; a request for changes needs a note and wakes
+the Assignee's Main after commit. Each write stores a replay record with the
+change. A replay does not repeat the change or wake.
+
+`task_read` gives Task details and returns entries by sequence. Use explicit
+`afterSeq: 0` to start a full scan, then use `nextCursor` for the next page.
+The default limit is 20 and the maximum is 100. Without `afterSeq` or tags,
+`task_read` selects up to 16 KiB of entries, with `brief` and `decision`
+notes first, then recent entries. This selection can omit entries below
+`nextCursor`. If `hasMore` is true, start at `afterSeq: 0` for a full scan.
+Reads do not change shared state. Owner entry bodies are plain text. Bot and
+external agent bodies are enclosed in `<task-entry>` with escaped text.
+External entries have metadata only. The model sees a key-based title for a
+Task created by a Source until an authorized rename. The Owner can still see
+the source title. Retracted entries are omitted.
+
+`task_read` and `GET /api/agents/{agentId}/inbox/tasks/{taskId}` list every
 linked object as `links`: its namespace, type, and key, with the waits on that
 object. The core does not decode these values, so links stay readable when no
 source can read them.
@@ -103,7 +112,7 @@ the caller, even if that child belongs to another Bot. Set `primary` to `true`
 to promote the child without removing other links. This does not grant tools
 access to Tasks of the child's Bot or change alert routing.
 
-`task_get` and Task detail return linked `sessions` in primary-first order.
+`task_read` and Task detail return linked `sessions` in primary-first order.
 The legacy `session` field still returns the primary Session when present.
 The Phase 1 upgrade copies each link with its original Bot, primary flag,
 and timestamp. Downgrading restores these Session links. The old schema

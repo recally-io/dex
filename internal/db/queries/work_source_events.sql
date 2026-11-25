@@ -53,6 +53,9 @@ RETURNING alert;
 SELECT w.* FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.assignee_bot_id
 WHERE w.task_id = @task_id AND t.assignee_bot_id = @agent_id AND a.archived_at IS NULL ORDER BY w.id;
 
+-- name: ListBoardTaskWaits :many
+SELECT * FROM work_task_waits WHERE task_id = ? ORDER BY id;
+
 -- name: ListUnresolvedWorkTaskWaits :many
 SELECT * FROM work_task_waits WHERE task_id = ? AND resolved_by IS NULL ORDER BY id;
 

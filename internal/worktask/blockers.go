@@ -9,15 +9,15 @@ import (
 // Blocker describes an unresolved external wait or open Task question. A queue
 // position starts at 1 on the Assignee's Main and is 0 outside that queue.
 type Blocker struct {
-	Kind          string
-	WaitID        int64
-	Namespace     string
-	ObjectType    string
-	ObjectKey     string
-	EventType     string
-	QuestionID    string
-	Question      string
-	QueuePosition int64
+	Kind          string `json:"kind"`
+	WaitID        int64  `json:"waitId,omitzero"`
+	Namespace     string `json:"namespace,omitempty"`
+	ObjectType    string `json:"objectType,omitempty"`
+	ObjectKey     string `json:"objectKey,omitempty"`
+	EventType     string `json:"eventType,omitempty"`
+	QuestionID    string `json:"questionId,omitempty"`
+	Question      string `json:"question,omitempty"`
+	QueuePosition int64  `json:"queuePosition,omitzero"`
 }
 
 // ComputeBlockers derives the current blockers without changing the Task.

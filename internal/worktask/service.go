@@ -12,7 +12,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// Authors of entries in the legacy HTTP and tool projections.
+// Authors of entries in the legacy HTTP projection.
 const (
 	AuthorOwner = "owner"
 	AuthorAgent = "agent"
@@ -159,6 +159,19 @@ func (s *Service) Detail(ctx context.Context, agentID, id string) (Detail, error
 	return Detail{Task: task, Entries: entries, Questions: questions, Objects: objects, Waits: waits, Sessions: sessions, Blockers: blockers}, tx.Commit()
 }
 
+// ModelTitle keeps source-provided titles out of model context. An explicit
+// rename records a new title separately from the source event.
+func ModelTitle(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (string, error) {
+	if task.CreatorKind != CreatorSource {
+		return task.Title, nil
+	}
+	renamed, err := q.HasWorkTaskTitleEntry(ctx, sqlc.HasWorkTaskTitleEntryParams{TaskID: task.ID, Title: task.Title})
+	if renamed {
+		return task.Title, err
+	}
+	return "Source Task " + FormatKey(task.Number), err
+}
+
 func legacyTask(ctx context.Context, q *sqlc.Queries, agentID, id string) (sqlc.WorkTask, error) {
 	return q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: id, AgentID: agentID})
 }
@@ -207,23 +220,28 @@ func (s *Service) TransitionStatus(ctx context.Context, actor Actor, origin Orig
 		if err != nil {
 			return err
 		}
-		action, valid := transition(task, status)
-		if err := authorize(ctx, l.q, actor, origin, task, action); err != nil {
-			return err
-		}
-		if expectedRevision != nil && *expectedRevision != task.Revision {
-			return ErrConflict
-		}
-		if !valid {
-			return ErrInvalid
-		}
-		result, err = l.changeStatus(ctx, actor, task, status, now)
-		if err != nil || status != StatusInReview || task.ReviewerKind != ActorBot {
-			return err
-		}
-		_, err = l.queueWake(ctx, task.ReviewerID, result, WakeReviewRequested, now)
+		result, err = l.TransitionStatus(ctx, actor, origin, task, status, expectedRevision, now)
 		return err
 	})
+	return result, err
+}
+
+// TransitionStatus applies a Board transition and records any review wake in the same transaction.
+func (l *Ledger) TransitionStatus(ctx context.Context, actor Actor, origin Origin, task sqlc.WorkTask, status string, expectedRevision *int64, now int64) (sqlc.WorkTask, error) {
+	action, valid := transition(task, status)
+	if err := authorize(ctx, l.q, actor, origin, task, action); err != nil {
+		return sqlc.WorkTask{}, err
+	}
+	if expectedRevision != nil && *expectedRevision != task.Revision {
+		return sqlc.WorkTask{}, ErrConflict
+	}
+	if !valid {
+		return sqlc.WorkTask{}, ErrInvalid
+	}
+	result, err := l.changeStatus(ctx, actor, task, status, now)
+	if err == nil && status == StatusInReview && task.ReviewerKind == ActorBot {
+		_, err = l.queueWake(ctx, task.ReviewerID, result, WakeReviewRequested, now)
+	}
 	return result, err
 }
 
@@ -251,40 +269,49 @@ func (s *Service) Review(ctx context.Context, actor Actor, origin Origin, taskID
 		if err != nil {
 			return err
 		}
-		if err := authorize(ctx, l.q, actor, origin, task, ActionReview); err != nil {
-			return err
-		}
-		if task.Status != StatusInReview || decision == ReviewApprove && reviewSeq != task.ReviewSeq {
-			return ErrConflict
-		}
-		status := StatusDone
-		switch decision {
-		case ReviewApprove:
-		case ReviewRequestChanges:
-			status = StatusInProgress
-			if feedback, err = Content(feedback); err != nil {
-				return err
-			}
-		default:
-			return ErrInvalid
-		}
-		meta, err := json.Marshal(struct {
-			Decision  string `json:"decision"`
-			ReviewSeq int64  `json:"reviewSeq"`
-			Status    string `json:"status"`
-		}{decision, task.ReviewSeq, status})
-		if err != nil {
-			return err
-		}
-		result, _, err = l.append(ctx, actor, task, status, task.Title, 0, sqlc.InsertWorkTaskEntryParams{
-			Kind: KindReview, Content: feedback, MetaJson: string(meta), CreatedAt: now,
-		})
-		if err != nil || decision != ReviewRequestChanges {
-			return err
-		}
-		_, err = l.queueWake(ctx, task.AssigneeBotID, result, WakeChangesRequested, now)
+		result, err = l.Review(ctx, actor, origin, task, decision, reviewSeq, feedback, now)
 		return err
 	})
+	return result, err
+}
+
+// Review records the decision and any Assignee wake in the same transaction.
+func (l *Ledger) Review(ctx context.Context, actor Actor, origin Origin, task sqlc.WorkTask, decision string, reviewSeq int64, feedback string, now int64) (sqlc.WorkTask, error) {
+	if err := authorize(ctx, l.q, actor, origin, task, ActionReview); err != nil {
+		return sqlc.WorkTask{}, err
+	}
+	if task.Status != StatusInReview || decision == ReviewApprove && reviewSeq != task.ReviewSeq {
+		return sqlc.WorkTask{}, ErrConflict
+	}
+	status := StatusDone
+	switch decision {
+	case ReviewApprove:
+	case ReviewRequestChanges:
+		status = StatusInProgress
+	default:
+		return sqlc.WorkTask{}, ErrInvalid
+	}
+	var err error
+	feedback = strings.TrimSpace(feedback)
+	if feedback != "" || decision == ReviewRequestChanges {
+		if feedback, err = Content(feedback); err != nil {
+			return sqlc.WorkTask{}, err
+		}
+	}
+	meta, err := json.Marshal(struct {
+		Decision  string `json:"decision"`
+		ReviewSeq int64  `json:"reviewSeq"`
+		Status    string `json:"status"`
+	}{decision, task.ReviewSeq, status})
+	if err != nil {
+		return sqlc.WorkTask{}, err
+	}
+	result, _, err := l.append(ctx, actor, task, status, task.Title, 0, sqlc.InsertWorkTaskEntryParams{
+		Kind: KindReview, Content: feedback, MetaJson: string(meta), CreatedAt: now,
+	})
+	if err == nil && decision == ReviewRequestChanges {
+		_, err = l.queueWake(ctx, task.AssigneeBotID, result, WakeChangesRequested, now)
+	}
 	return result, err
 }
 

@@ -146,7 +146,7 @@ func (l *Ledger) PostEntry(ctx context.Context, actor Actor, origin Origin, task
 	if p.Kind == "" {
 		p.Kind = KindNote
 	}
-	if p.Kind != KindNote && (p.Kind != KindArtifact || p.Tag != "") {
+	if p.Kind != KindNote && p.Kind != KindArtifact {
 		return sqlc.WorkTaskEntry{}, ErrInvalid
 	}
 	switch p.Tag {
@@ -181,8 +181,11 @@ func (l *Ledger) changeStatus(ctx context.Context, actor Actor, task sqlc.WorkTa
 	return updated, err
 }
 
-// Rename records a title change from an authorized legacy call.
-func (l *Ledger) Rename(ctx context.Context, actor Actor, task sqlc.WorkTask, title string, now int64) (sqlc.WorkTask, error) {
+// Rename changes the title without changing the Task status or review version.
+func (l *Ledger) Rename(ctx context.Context, actor Actor, origin Origin, task sqlc.WorkTask, title string, now int64) (sqlc.WorkTask, error) {
+	if err := authorize(ctx, l.q, actor, origin, task, ActionRename); err != nil {
+		return sqlc.WorkTask{}, err
+	}
 	updated, _, err := l.append(ctx, actor, task, task.Status, title, task.ReviewSeq,
 		sqlc.InsertWorkTaskEntryParams{Kind: KindStatus, MetaJson: statusMeta(task.Status), Content: title, CreatedAt: now})
 	return updated, err

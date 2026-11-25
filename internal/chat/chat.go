@@ -844,17 +844,22 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		}
 	}
 	// A Board wake carries only its own Task pointers, even when it links one Task.
-	var workTask sqlc.WorkTask
+	var modelTaskTitle string
 	if input.Main && !boardWake {
 		taskID, err := workTaskForInput(ctx, s.q, p.ID)
 		if err != nil {
 			return err
 		}
 		if taskID != "" {
-			if workTask, err = s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID}); err != nil {
+			task, err := s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID})
+			if err != nil {
 				return err
 			}
-			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", workTask.Title, workTask.ID)
+			modelTaskTitle, err = worktask.ModelTitle(ctx, s.q, task)
+			if err != nil {
+				return err
+			}
+			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", modelTaskTitle, task.ID)
 		}
 	}
 	if input.Child {
@@ -862,8 +867,8 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	}
 	if p.Kind == "task_result" {
 		input.TaskID, input.TaskTitle = resultLabel(p.Content)
-		if workTask.ID != "" {
-			input.TaskTitle = workTask.Title
+		if modelTaskTitle != "" {
+			input.TaskTitle = modelTaskTitle
 		}
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)

@@ -75,6 +75,7 @@ const (
 	ActionOwnerLifecycle Action = "owner_lifecycle"
 	ActionTombstone      Action = "tombstone"
 	ActionLinkSession    Action = "link_session"
+	ActionRename         Action = "rename"
 )
 
 func (a Actor) isBot() bool { return a.kind == ActorBot && a.botID != "" }
@@ -116,7 +117,7 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 	assigneeMain := main && actor.isAssignee(task)
 	user := origin == OriginUser
 	interactive := user || origin == OriginTaskWake
-	// A top-level Chat keeps the legacy task_update actions on user turns.
+	// A top-level Chat can rename a Task or link its own child on user turns.
 	assigneeUserChat := chat && user && actor.isAssignee(task)
 	switch action {
 	case ActionPost:
@@ -130,9 +131,9 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 			return actor.isAssignee(task) || actor.isReviewer(task), nil
 		}
 		return actor.bound(ctx, q, task.ID)
-	case ActionTransition, ActionLinkSession:
+	case ActionRename, ActionLinkSession:
 		return interactive && (owner || assigneeMain) || assigneeUserChat, nil
-	case ActionSubmitReview:
+	case ActionTransition, ActionSubmitReview:
 		return interactive && (owner || assigneeMain), nil
 	case ActionReview:
 		return owner && user || interactive && main && actor.isReviewer(task), nil

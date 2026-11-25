@@ -63,9 +63,9 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 	}
 	taskToolJSON(t, d, main.ID, "task_update", map[string]any{"id": task.Id, "session": child, "primary": true}, &updated)
 	var tool worktasktools.WorkTaskDetail
-	taskToolJSON(t, d, main.ID, "task_get", map[string]string{"id": task.Id}, &tool)
+	taskToolJSON(t, d, main.ID, "task_read", map[string]string{"id": task.Id}, &tool)
 	if len(tool.Sessions) != 3 || tool.Sessions[0].ID != child || tool.Sessions[0].BotID != coder.ID ||
 		tool.Sessions[0].BotName != "Coder" || !tool.Sessions[0].IsPrimary || tool.Sessions[1].IsPrimary || tool.Sessions[2].IsPrimary {
-		t.Fatalf("task_get must show all sessions after promotion: %+v", tool.Sessions)
+		t.Fatalf("task_read must show all sessions after promotion: %+v", tool.Sessions)
 	}
 }

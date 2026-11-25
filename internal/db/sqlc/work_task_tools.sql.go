@@ -45,6 +45,35 @@ func (q *Queries) CreateWorkTaskToolOperation(ctx context.Context, arg CreateWor
 	return err
 }
 
+const getBoardTaskByNumber = `-- name: GetBoardTaskByNumber :one
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.number = ? AND a.archived_at IS NULL
+`
+
+func (q *Queries) GetBoardTaskByNumber(ctx context.Context, number int64) (WorkTask, error) {
+	row := q.db.QueryRowContext(ctx, getBoardTaskByNumber, number)
+	var i WorkTask
+	err := row.Scan(
+		&i.ID,
+		&i.AssigneeBotID,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const getWorkTaskSession = `-- name: GetWorkTaskSession :one
 SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at FROM task_executions WHERE task_id = ? AND conversation_id = ? AND kind = 'dex_session'
 `
@@ -133,6 +162,23 @@ func (q *Queries) HasWorkTaskExternalExecution(ctx context.Context, arg HasWorkT
 	return exists, err
 }
 
+const hasWorkTaskTitleEntry = `-- name: HasWorkTaskTitleEntry :one
+SELECT EXISTS (SELECT 1 FROM work_task_entries
+  WHERE task_id = ?1 AND kind = 'status' AND trust <> 'external' AND content = ?2)
+`
+
+type HasWorkTaskTitleEntryParams struct {
+	TaskID string `json:"task_id"`
+	Title  string `json:"title"`
+}
+
+func (q *Queries) HasWorkTaskTitleEntry(ctx context.Context, arg HasWorkTaskTitleEntryParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasWorkTaskTitleEntry, arg.TaskID, arg.Title)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const linkWorkTaskSession = `-- name: LinkWorkTaskSession :one
 INSERT INTO task_executions (id, task_id, conversation_id, bot_id, kind, is_primary, started_at, turn_request_id)
 SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.agent_id, 'dex_session',
@@ -177,53 +223,35 @@ func (q *Queries) LinkWorkTaskSession(ctx context.Context, arg LinkWorkTaskSessi
 	return i, err
 }
 
-const listAgentWorkTasks = `-- name: ListAgentWorkTasks :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision, CAST(coalesce(s.conversation_id, 0) AS INTEGER) AS session_id
-FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
-LEFT JOIN task_executions s ON s.task_id = t.id AND s.kind = 'dex_session' AND s.is_primary = 1
-WHERE t.assignee_bot_id = ?1 AND a.archived_at IS NULL AND (t.status NOT IN ('done', 'cancelled') OR ?2)
-AND (CAST(?3 AS INTEGER) = 0 OR EXISTS (
-  SELECT 1 FROM task_executions e WHERE e.task_id = t.id AND e.bot_id = t.assignee_bot_id
-    AND e.kind = 'dex_session' AND e.conversation_id = ?3
-))
+const listBotWorkTasks = `-- name: ListBotWorkTasks :many
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE a.archived_at IS NULL AND (
+  (CAST(?1 AS INTEGER) = 0 AND
+    (t.assignee_bot_id = ?2 OR (t.reviewer_kind = 'bot' AND t.reviewer_id = ?2)))
+  OR EXISTS (SELECT 1 FROM task_executions e WHERE e.task_id = t.id AND e.bot_id = ?2
+    AND e.kind = 'dex_session' AND e.conversation_id = ?1)
+)
+AND (CAST(?3 AS TEXT) = 'all' OR t.status = ?3
+  OR (?3 = 'open' AND t.status NOT IN ('done', 'cancelled')))
 ORDER BY t.updated_at DESC, t.id DESC LIMIT 50
 `
 
-type ListAgentWorkTasksParams struct {
-	AgentID             string      `json:"agent_id"`
-	IncludeClosed       interface{} `json:"include_closed"`
-	ChildConversationID int64       `json:"child_conversation_id"`
+type ListBotWorkTasksParams struct {
+	ChildConversationID int64  `json:"child_conversation_id"`
+	BotID               string `json:"bot_id"`
+	StatusFilter        string `json:"status_filter"`
 }
 
-type ListAgentWorkTasksRow struct {
-	ID                 string         `json:"id"`
-	AssigneeBotID      string         `json:"assignee_bot_id"`
-	Title              string         `json:"title"`
-	CreatedAt          int64          `json:"created_at"`
-	UpdatedAt          int64          `json:"updated_at"`
-	Number             int64          `json:"number"`
-	Status             string         `json:"status"`
-	ParentTaskID       sql.NullString `json:"parent_task_id"`
-	AuthorizedByRootID sql.NullString `json:"authorized_by_root_id"`
-	CreatorKind        string         `json:"creator_kind"`
-	CreatorID          string         `json:"creator_id"`
-	ReviewerKind       string         `json:"reviewer_kind"`
-	ReviewerID         string         `json:"reviewer_id"`
-	ReviewSeq          int64          `json:"review_seq"`
-	NextEntrySeq       int64          `json:"next_entry_seq"`
-	Revision           int64          `json:"revision"`
-	SessionID          int64          `json:"session_id"`
-}
-
-func (q *Queries) ListAgentWorkTasks(ctx context.Context, arg ListAgentWorkTasksParams) ([]ListAgentWorkTasksRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAgentWorkTasks, arg.AgentID, arg.IncludeClosed, arg.ChildConversationID)
+// Match CanRead for Bot actors before applying the limit.
+func (q *Queries) ListBotWorkTasks(ctx context.Context, arg ListBotWorkTasksParams) ([]WorkTask, error) {
+	rows, err := q.db.QueryContext(ctx, listBotWorkTasks, arg.ChildConversationID, arg.BotID, arg.StatusFilter)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListAgentWorkTasksRow{}
+	items := []WorkTask{}
 	for rows.Next() {
-		var i ListAgentWorkTasksRow
+		var i WorkTask
 		if err := rows.Scan(
 			&i.ID,
 			&i.AssigneeBotID,
@@ -241,7 +269,6 @@ func (q *Queries) ListAgentWorkTasks(ctx context.Context, arg ListAgentWorkTasks
 			&i.ReviewSeq,
 			&i.NextEntrySeq,
 			&i.Revision,
-			&i.SessionID,
 		); err != nil {
 			return nil, err
 		}
@@ -302,37 +329,56 @@ func (q *Queries) ListWorkTaskSessions(ctx context.Context, taskID string) ([]Li
 }
 
 const listWorkTaskTimeline = `-- name: ListWorkTaskTimeline :many
-SELECT en.id, CAST(CASE WHEN en.trust = 'external' THEN '' ELSE en.content END AS TEXT) AS content,
-  en.created_at, en.trust, en.meta_json, CAST(coalesce(en.event_id, '') AS TEXT) AS event_id,
+SELECT en.id, en.seq, en.kind, en.tag, en.actor_kind, en.actor_bot_id, en.actor_execution_id,
+  CAST(CASE WHEN en.trust = 'external' THEN '' ELSE en.content END AS TEXT) AS content,
+  en.created_at, en.trust,
   CAST(coalesce(ev.event_type, '') AS TEXT) AS event_type, CAST(coalesce(ev.source_url, '') AS TEXT) AS source_url,
-  CAST(coalesce(ev.author_association, '') AS TEXT) AS author_association
+  CAST(coalesce(ev.author_association, '') AS TEXT) AS author_association,
+  CAST(CASE WHEN CAST(?1 AS INTEGER) = 1 AND en.kind = 'note' AND en.tag IN ('brief', 'decision') THEN 0 ELSE 1 END AS INTEGER) AS priority,
+  CAST(CASE WHEN CAST(?1 AS INTEGER) = 1 THEN -en.seq ELSE en.seq END AS INTEGER) AS sort_seq
 FROM work_task_entries en LEFT JOIN work_source_events ev ON ev.id = en.event_id
-WHERE en.task_id = ?1 AND en.kind IN ('note', 'artifact', 'external')
-AND json_extract(en.meta_json, '$.legacyHidden') IS NOT 1
+WHERE en.task_id = ?2 AND en.seq > ?3 AND en.kind <> 'tombstone'
+AND (json_array_length(CAST(?4 AS TEXT)) = 0 OR en.tag IN (SELECT value FROM json_each(?4)))
 AND NOT EXISTS (SELECT 1 FROM work_task_entries r WHERE r.task_id = en.task_id AND r.kind = 'tombstone'
   AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = en.seq)
-ORDER BY en.id DESC LIMIT ?2
+ORDER BY priority, sort_seq
+LIMIT ?5
 `
 
 type ListWorkTaskTimelineParams struct {
-	TaskID  string `json:"task_id"`
-	MaxRows int64  `json:"max_rows"`
+	Bootstrap int64  `json:"bootstrap"`
+	TaskID    string `json:"task_id"`
+	AfterSeq  int64  `json:"after_seq"`
+	Tags      string `json:"tags"`
+	MaxRows   int64  `json:"max_rows"`
 }
 
 type ListWorkTaskTimelineRow struct {
 	ID                int64  `json:"id"`
+	Seq               int64  `json:"seq"`
+	Kind              string `json:"kind"`
+	Tag               string `json:"tag"`
+	ActorKind         string `json:"actor_kind"`
+	ActorBotID        string `json:"actor_bot_id"`
+	ActorExecutionID  string `json:"actor_execution_id"`
 	Content           string `json:"content"`
 	CreatedAt         int64  `json:"created_at"`
 	Trust             string `json:"trust"`
-	MetaJson          string `json:"meta_json"`
-	EventID           string `json:"event_id"`
 	EventType         string `json:"event_type"`
 	SourceUrl         string `json:"source_url"`
 	AuthorAssociation string `json:"author_association"`
+	Priority          int64  `json:"priority"`
+	SortSeq           int64  `json:"sort_seq"`
 }
 
 func (q *Queries) ListWorkTaskTimeline(ctx context.Context, arg ListWorkTaskTimelineParams) ([]ListWorkTaskTimelineRow, error) {
-	rows, err := q.db.QueryContext(ctx, listWorkTaskTimeline, arg.TaskID, arg.MaxRows)
+	rows, err := q.db.QueryContext(ctx, listWorkTaskTimeline,
+		arg.Bootstrap,
+		arg.TaskID,
+		arg.AfterSeq,
+		arg.Tags,
+		arg.MaxRows,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -342,14 +388,20 @@ func (q *Queries) ListWorkTaskTimeline(ctx context.Context, arg ListWorkTaskTime
 		var i ListWorkTaskTimelineRow
 		if err := rows.Scan(
 			&i.ID,
+			&i.Seq,
+			&i.Kind,
+			&i.Tag,
+			&i.ActorKind,
+			&i.ActorBotID,
+			&i.ActorExecutionID,
 			&i.Content,
 			&i.CreatedAt,
 			&i.Trust,
-			&i.MetaJson,
-			&i.EventID,
 			&i.EventType,
 			&i.SourceUrl,
 			&i.AuthorAssociation,
+			&i.Priority,
+			&i.SortSeq,
 		); err != nil {
 			return nil, err
 		}

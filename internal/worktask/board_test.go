@@ -47,6 +47,7 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 		{"post", 'p', worktask.ActionPost},
 		{"transition", 't', worktask.ActionTransition},
 		{"link-session", 'k', worktask.ActionLinkSession},
+		{"rename", 'n', worktask.ActionRename},
 		{"submit-review", 's', worktask.ActionSubmitReview},
 		{"review", 'r', worktask.ActionReview},
 		{"split", 'd', worktask.ActionSplit},
@@ -69,12 +70,12 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 		read                      bool
 		user, wake, result, other string
 	}{
-		{"owner", worktask.Owner, true, "ptksrdclx", "tksd", "", ""},
-		{"assignee-main", actorAt(1), true, "ptksdc", "ptksd", "p", ""},
+		{"owner", worktask.Owner, true, "ptknsrdclx", "tknsd", "", ""},
+		{"assignee-main", actorAt(1), true, "ptknsdc", "ptknsd", "p", ""},
 		{"reviewer-main", worktask.Bot("reviewer"), true, "prc", "pr", "p", ""},
 		{"unrelated-main", actorAt(2), false, "c", "", "", ""},
 		{"linked-main", actorAt(7), false, "c", "", "", ""},
-		{"assignee-chat", actorAt(6), true, "ptkc", "p", "p", ""},
+		{"assignee-chat", actorAt(6), true, "pknc", "p", "p", ""},
 		{"linked-bot-chat", actorAt(8), false, "c", "", "", ""},
 		{"unlinked-assignee-child", actorAt(3), false, "", "", "", ""},
 		{"linked-session", actorAt(4), true, "p", "p", "p", ""},

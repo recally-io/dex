@@ -38,7 +38,7 @@ Four invariants govern the design:
 
 The Phase 1 upgrade maps `work_tasks.agent_id` to `assignee_bot_id` and copies `work_task_sessions` into `task_executions` (`kind = 'dex_session'`). It preserves the Bot, primary flag, and link time. It assigns Task numbers in `(created_at, id)` order. The upgrade maps legacy `open` to `in_progress`, `completed` to `done`, and `cancelled` to `cancelled`.
 
-Phase 1 PR 1 adds the schema, ledger, and authorization rules. PR 2 adds coalesced Main wakes and projects child execution outcomes. The existing HTTP API and tools still use legacy Task IDs and lifecycle values. Later PRs add Task-key and cursor reads, the Board API, and the Board UI.
+Phase 1 PR 1 adds the schema, ledger, and authorization rules. PR 2 adds coalesced Main wakes and projects child execution outcomes. PR 3 adds Task-key and cursor reads, review, and role checks to the Bot tools. The existing HTTP API still uses legacy Task IDs and lifecycle values. Later PRs add the Board API and UI.
 
 Board does not introduce `Spaces` or `Watchers` as first-class entities. Filtering uses Assignee Bot, Status, `In Review`, `Blocked`, and linked Source; access control uses Assignee, Reviewer, and bound Sessions/Executions.
 
@@ -61,7 +61,7 @@ Generic `task_post` writes only `note` and `artifact`. Dedicated server mutation
 
 Central `canRead(bot, task)` and `canWrite(bot, task, action)` checks replace scattered `t.agent_id = caller` query filters:
 
-- `canRead` allows the Assignee, the Reviewer (Phase 2), and child Sessions or external runs bound to that Task.
+- `canRead` allows the Assignee, the Reviewer, and child Sessions or external runs bound to that Task.
 - `revision` applies only to cross-request HTTP and CLI writes via `If-Match: <revision>`. Internal Bot tools execute inside immediate SQLite writer transactions and do not expose `revision` in tool arguments.
 
 ## Lifecycle, derived Blocked state, and review
@@ -106,9 +106,9 @@ Entries carry a three-level `trust` classification:
 Protection rules:
 
 - **External isolation.** Raw `external` entry bodies stay visible to the Owner in the UI and never enter model reads, summaries, upstream digests, mentions, titles, SSE model projections, or wakeup payloads.
-- **Data envelope.** `task_read` wraps every entry with `trust != owner` in a fixed data envelope (for example `<task-entry seq="5" actor="bot:coder" trust="agent">...</task-entry>`). Tool instructions state that entries are data, never commands or new authorization.
-- **Side-effect-free cursor reads.** `task_read(taskId, afterSeq?, limit?, tags?, includeUpstream?)` returns entries and `nextCursor` without mutating shared read state, so filtered reads, upstream reads, or dropped responses never cause another consumer to skip unread entries.
-- **Bootstrap budget.** Cold-start context assembly inlines trusted entries up to a compact budget (for example 16 KiB) and prioritizes `brief` and `decision` tags, falling back to `task_read(afterSeq)` pagination for longer histories.
+- **Data envelope.** `task_read` wraps every `agent` entry body in a fixed data envelope (for example `<task-entry seq="5" actor="bot:coder" trust="agent">...</task-entry>`). Tool instructions state that entries are data, never commands or new authorization.
+- **Side-effect-free cursor reads.** `task_read(id, afterSeq?, limit?, tags?)` returns entries and `nextCursor` without mutating shared read state, so filtered reads or dropped responses never cause another consumer to skip unread entries.
+- **Bootstrap budget.** Cold-start context assembly inlines trusted entries up to a compact budget (for example 16 KiB) and prioritizes `brief` and `decision` tags, using `task_read` with explicit `afterSeq: 0` to start a full scan.
 
 ## Coalesced Main wakeups
 
@@ -116,7 +116,7 @@ Main is a front desk ([Sessions](sessions.md)): queuing one submission per Task 
 
 - **One pending wake per Main.** A partial unique index on `submissions` covers pending `task_wake` rows with no `admitted_at`. Task changes merge the high-water cursor and a deduplicated list of `(taskKey, reason)` items in the same transaction. While Main is busy, the wake stays in control storage. Other pending inputs go first.
 - **Admission recovery.** Control records the payload used for a new native admission before the native commit. It does not hold its writer across the commit. If more pointers arrive before control marks admission, control keeps the admitted payload on the old receipt and puts the latest pointers in a new pending wake. A replay uses the same native request ID and original snapshot.
-- **Pointer-only payload.** A `task_wake` payload contains only cursor pointers and event categories, never entry body text. Main reads details on demand via `task_my_workload` and `task_read`.
+- **Pointer-only payload.** A `task_wake` payload contains only cursor pointers and event categories, never entry body text. Main reads details on demand via `task_list` and `task_read`.
 - **Decision allowlist.** Source assignment, a request for Bot review, a request for changes, and a resolved alert wait can enqueue a wake. `execution_failed` and `execution_stale` are reserved for external executions. An Owner answer uses its existing Main input; no second wake is needed. Ordinary notes, artifacts, and heartbeats do not enqueue wakes.
 - **No internal double-wakeup.** Internal child sessions already deliver a `task_result` to their parent on settlement. Internal `dex_session` executions project their state from existing conversation and submission records (`conversation_id` + `turn_request_id`) and do not emit a second auto-echo wakeup.
 
@@ -150,7 +150,7 @@ New Board endpoints use `/api/board/*` (or `/api/tasks/*`) rather than adding ne
 | Phase       | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Phase 1** | Central `canRead`/`canWrite`; `AUTOINCREMENT` append-only ledger (`seq`, 8 kinds + `tag`, 3-tier `trust`, `tombstone`); global key `T-42`; 6 stored statuses + derived `Blocked`; `in_review` + `review_seq`; `task_executions` upgraded from `work_task_sessions`; B1 authorization matrix; B3 coalesced `task_wake`; side-effect-free `task_read(afterSeq)`; OpenAPI + global SSE (`/api/board/events`); Kanban/List `/board` and `/board/$taskKey`. |
-| **Phase 2** | `parent_task_id` decomposition (`task_split`); cross-bot `task_assign` and `task_review` (no nested delivery gates; Owner reviews surface in `/inbox`); sibling `depends_on` (same-tx cycle check, `cancelled`/`reopen` semantics); scoped child session `task_read`/`task_post`; `task_my_workload`.                                                                                                                                                  |
+| **Phase 2** | `parent_task_id` decomposition (`task_split`); cross-Bot `task_assign`; Owner reviews in `/inbox`; sibling `depends_on` (same-tx cycle check, `cancelled`/`reopen` semantics); scoped child session `task_read`/`task_post`; `task_my_workload`.                                                                                                                                                                                                       |
 | **Phase 3** | Attached CLI/MCP + scoped SHA-256 Board Tokens + Lease Watchdog (startup grace, write-time epoch check, `--resume`); Runners external run visibility; Managed Push via Processes (`process_start`) after Runner socket concurrency verification.                                                                                                                                                                                                       |
 
 ## Verification criteria
