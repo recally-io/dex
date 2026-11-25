@@ -67,6 +67,7 @@ type WorkTaskSession struct {
 
 type WorkTaskInfo struct {
 	ID        string            `json:"id"`
+	Key       string            `json:"key"`
 	Title     string            `json:"title"`
 	Lifecycle string            `json:"lifecycle"`
 	UpdatedAt int64             `json:"updatedAt"`
@@ -119,7 +120,7 @@ type WorkTaskDetail struct {
 
 func WorkTaskExtension(agentID string, handlers WorkTaskTools) *durable.Extension {
 	str := map[string]any{"type": "string", "minLength": 1}
-	id := map[string]any{"type": "string", "minLength": 1, "description": "A Task ID from task_list or task_new."}
+	id := map[string]any{"type": "string", "minLength": 1, "description": "A Task ID or key (such as T-42) from task_list, task_new, or a Board wake."}
 	tools := []*durable.ToolRegistration{
 		engine.JSONTool(agentID, "task_list", "List the Tasks of this bot, most recently updated first, up to 50. A Task is a tracking record on the owner's Board. It does not run work.",
 			engine.ObjectSchema(nil, map[string]any{"lifecycle": map[string]any{"type": "string", "enum": []string{"open", "all"}, "description": "open (the default) or all, which also lists completed and cancelled Tasks."}}),

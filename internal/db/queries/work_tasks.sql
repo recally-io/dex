@@ -20,6 +20,10 @@ ORDER BY t.updated_at DESC, t.id DESC;
 SELECT t.* FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
 WHERE t.id = @id AND t.assignee_bot_id = @agent_id AND a.archived_at IS NULL;
 
+-- name: GetWorkTaskByNumber :one
+SELECT t.* FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.number = @number AND t.assignee_bot_id = @agent_id AND a.archived_at IS NULL;
+
 -- name: GetBoardTask :one
 SELECT t.* FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
 WHERE t.id = ? AND a.archived_at IS NULL;

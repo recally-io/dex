@@ -873,7 +873,13 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 			return nil
 		}
 		if boardWake && errors.Is(err, ErrNoModel) {
+			// Keep the pending wake slot so pointers survive until a model is configured.
 			return err
+		}
+		if boardWake && errors.Is(err, engine.ErrBusy) {
+			// Main is busy; leave the wake pending until settlement signals Main,
+			// without putting the session into retry backoff.
+			return nil
 		}
 		if !boardWake && p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.

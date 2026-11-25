@@ -122,7 +122,7 @@ func (s *Service) List(ctx context.Context, c engine.TaskContext, a WorkTaskList
 	}
 	out := make([]WorkTaskInfo, 0, len(rows))
 	for _, row := range rows {
-		info := WorkTaskInfo{ID: row.ID, Title: row.Title, Lifecycle: worktask.LegacyLifecycle(row.Status), UpdatedAt: row.UpdatedAt}
+		info := WorkTaskInfo{ID: row.ID, Key: worktask.FormatKey(row.Number), Title: row.Title, Lifecycle: worktask.LegacyLifecycle(row.Status), UpdatedAt: row.UpdatedAt}
 		if row.SessionID != 0 {
 			info.Session = &WorkTaskSession{ID: strconv.FormatInt(row.SessionID, 10), IsPrimary: true}
 		}
@@ -200,7 +200,7 @@ func entryInfo(e sqlc.ListWorkTaskTimelineRow) WorkTaskEntryInfo {
 }
 
 func taskInfo(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (WorkTaskInfo, error) {
-	info := WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: worktask.LegacyLifecycle(task.Status), UpdatedAt: task.UpdatedAt}
+	info := WorkTaskInfo{ID: task.ID, Key: worktask.FormatKey(task.Number), Title: task.Title, Lifecycle: worktask.LegacyLifecycle(task.Status), UpdatedAt: task.UpdatedAt}
 	sessions, err := q.ListWorkTaskSessions(ctx, task.ID)
 	if err != nil {
 		return info, err
@@ -223,8 +223,17 @@ func notFound(err error) error {
 }
 
 // readableTask applies the central ACL without widening the legacy assignee scope.
+// It accepts either a Task UUID or its stable key (such as T-42).
 func readableTask(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, id string) (sqlc.WorkTask, error) {
-	task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: id, AgentID: conv.AgentID})
+	var (
+		task sqlc.WorkTask
+		err  error
+	)
+	if number, ok := worktask.ParseKey(id); ok {
+		task, err = q.GetWorkTaskByNumber(ctx, sqlc.GetWorkTaskByNumberParams{Number: number, AgentID: conv.AgentID})
+	} else {
+		task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: id, AgentID: conv.AgentID})
+	}
 	if err != nil {
 		return task, notFound(err)
 	}
@@ -306,7 +315,7 @@ func (s *Service) New(ctx context.Context, c engine.TaskContext, a WorkTaskNewAr
 		if err != nil {
 			return WorkTaskInfo{}, err
 		}
-		return WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: worktask.LegacyLifecycle(task.Status), UpdatedAt: task.UpdatedAt}, nil
+		return WorkTaskInfo{ID: task.ID, Key: worktask.FormatKey(task.Number), Title: task.Title, Lifecycle: worktask.LegacyLifecycle(task.Status), UpdatedAt: task.UpdatedAt}, nil
 	})
 }
 

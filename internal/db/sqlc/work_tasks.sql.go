@@ -216,6 +216,40 @@ func (q *Queries) GetWorkTask(ctx context.Context, arg GetWorkTaskParams) (WorkT
 	return i, err
 }
 
+const getWorkTaskByNumber = `-- name: GetWorkTaskByNumber :one
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.number = ?1 AND t.assignee_bot_id = ?2 AND a.archived_at IS NULL
+`
+
+type GetWorkTaskByNumberParams struct {
+	Number  int64  `json:"number"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) GetWorkTaskByNumber(ctx context.Context, arg GetWorkTaskByNumberParams) (WorkTask, error) {
+	row := q.db.QueryRowContext(ctx, getWorkTaskByNumber, arg.Number, arg.AgentID)
+	var i WorkTask
+	err := row.Scan(
+		&i.ID,
+		&i.AssigneeBotID,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const getWorkTaskEntry = `-- name: GetWorkTaskEntry :one
 SELECT id, task_id, seq, kind, tag, actor_kind, actor_bot_id, actor_execution_id, trust, event_id, meta_json, content, created_at FROM work_task_entries WHERE task_id = ? AND seq = ?
 `

@@ -125,3 +125,50 @@ func TestUserAloneChangesTaskLifecycle(t *testing.T) {
 		t.Fatalf("linked child list = %+v, %v; want only %s", list, err, created.ID)
 	}
 }
+
+func TestUserWokenMainReadsAndUpdatesTaskByKey(t *testing.T) {
+	ctx := t.Context()
+	conn, err := db.Open(ctx, filepath.Join(t.TempDir(), "control.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(ctx, `INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at) VALUES (1, 'default', 'main', 7, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	tasks := worktask.New(conn, nil)
+	created, err := tasks.Create(ctx, "default", "Ship board wake")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := worktask.FormatKey(created.Number)
+	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, content, status, created_at, kind, origin, producer)
+		VALUES ('wake-1', 1, '{"highWaterEntryId":1,"items":[{"taskKey":"T-1","reason":"assigned"}]}', 'pending', 2, 'task_wake', 'web', 'plugin')`); err != nil {
+		t.Fatal(err)
+	}
+	s := New(conn)
+	s.ConfigureWorkTasks(tasks)
+	call := func(op string) engine.TaskContext {
+		return engine.TaskContext{AgentID: "default", ConversationID: 7, SourceRequestID: "wake-1", Key: "default/" + op}
+	}
+
+	// Given a Board wake naming only T-1, Main resolves and acts on the Task by key.
+	listed, err := s.List(ctx, call("list"), WorkTaskListArgs{})
+	if err != nil || len(listed) != 1 || listed[0].Key != key {
+		t.Fatalf("task_list = %+v, %v; want key %s", listed, err, key)
+	}
+	detail, err := s.Get(ctx, call("get"), key)
+	if err != nil || detail.ID != created.ID || detail.Key != key {
+		t.Fatalf("task_get(%s) = %+v, %v", key, detail, err)
+	}
+	if _, err := s.Append(ctx, call("append"), WorkTaskAppendArgs{ID: key, Content: "Checked from wake"}); err != nil {
+		t.Fatalf("task_append(%s): %v", key, err)
+	}
+	renamed, err := s.Update(ctx, call("rename"), WorkTaskUpdateArgs{ID: key, Title: "Shipped board wake"})
+	if err != nil || renamed.Title != "Shipped board wake" || renamed.Key != key {
+		t.Fatalf("task_update(%s) = %+v, %v", key, renamed, err)
+	}
+}

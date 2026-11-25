@@ -3,7 +3,6 @@ package chat
 import (
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,8 +50,17 @@ func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
 	if err := r.conn.QueryRowContext(ctx, `SELECT max(id) FROM work_task_entries`).Scan(&cursor); err != nil || cursor != payload.HighWaterEntryID {
 		t.Fatalf("ledger cursor = %d, %v; want %d", cursor, err, payload.HighWaterEntryID)
 	}
-	if err := r.service.reconcileSession(ctx, main, ""); !errors.Is(err, engine.ErrBusy) {
-		t.Fatalf("wake attempt during active turn: %v; want busy", err)
+	if err := r.service.reconcileSession(ctx, main, ""); err != nil {
+		t.Fatalf("wake attempt during active turn: %v; want nil without backoff", err)
+	}
+	if receipt(t, r, wake.ID).AdmittedAt.Valid {
+		t.Fatal("Board wake was admitted while Main was busy")
+	}
+	r.service.coordinationMu.Lock()
+	retrying := r.service.delivery[main] != nil && r.service.delivery[main].timer != nil
+	r.service.coordinationMu.Unlock()
+	if retrying {
+		t.Fatal("busy Board wake armed a session retry backoff timer")
 	}
 	if _, err := r.service.Post(ctx, "bot", MainKey, "", "owner-next", "echo owner-first"); err != nil {
 		t.Fatal(err)
@@ -67,11 +75,14 @@ func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
 		t.Fatalf("owner receipt: %+v", user)
 	}
 	waitFor(t, func() bool {
-		err := r.service.reconcileSession(ctx, main, "")
-		if err != nil && !errors.Is(err, engine.ErrBusy) {
+		if err := r.service.reconcileSession(ctx, main, ""); err != nil {
 			t.Fatal(err)
 		}
-		return err == nil
+		sub, err := r.q.GetSubmission(ctx, wake.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sub.AdmittedAt.Valid
 	})
 	if saved := awaitReceipt(t, r, wake.ID); !saved.AdmittedAt.Valid || saved.Content != wake.Content {
 		t.Fatalf("Board wake receipt: %+v", saved)
