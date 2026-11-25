@@ -18,13 +18,13 @@ import type { WorkTaskEntry, WorkTaskLifecycle } from "../api/generated/types.ge
 import { Failure, Loading } from "../components/feedback";
 import { Select } from "../components/form";
 import { Empty, FramedPage, Section } from "../components/page";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { TaskLinks } from "../components/task-links";
 import { GitHubPullForm } from "../plugins/github/pull-form";
-import { HeldEvents } from "../components/held-events";
-import { inboxOptions } from "../lib/inbox";
+import { refreshWork } from "../lib/queries";
 import { newId } from "../lib/utils";
 
 const entryAuthors: Record<WorkTaskEntry["author"], string> = {
@@ -34,7 +34,7 @@ const entryAuthors: Record<WorkTaskEntry["author"], string> = {
   unknown: "Source not recorded",
 };
 
-export function TaskInboxPage() {
+export function BoardPage() {
   const [closed, setClosed] = useState(false);
   const [title, setTitle] = useState("");
   const [selectedAgent, setSelectedAgent] = useState("");
@@ -45,7 +45,6 @@ export function TaskInboxPage() {
     refetchInterval: 3000,
   });
 
-  const routines = useQuery(inboxOptions());
   const client = useQueryClient();
   const navigate = useNavigate();
   const agentId = selectedAgent || agents.data?.agents[0]?.id || "";
@@ -59,7 +58,7 @@ export function TaskInboxPage() {
   });
 
   return (
-    <FramedPage title="Inbox" description="Track work across your bots.">
+    <FramedPage title="Board" description="Track Tasks across your bots.">
       <Section title="New task">
         <form
           className="flex flex-wrap items-end gap-2"
@@ -119,30 +118,6 @@ export function TaskInboxPage() {
           <Empty title="No tasks">Create a task to track work here.</Empty>
         )}
       </Section>
-      <HeldEvents tasks={tasks.data?.tasks ?? []} agents={agents.data?.agents ?? []} />
-      <Section title="Routine results">
-        {routines.isPending ? (
-          <Loading />
-        ) : routines.isError ? (
-          <Failure title="Could not load routine results" error={routines.error} />
-        ) : (
-          <ul className="divide-y divide-border">
-            {routines.data.items
-              .filter((item) => !item.dismissed)
-              .map((item) => (
-                <li key={item.runId}>
-                  <Link
-                    className="block px-2 py-3 hover:bg-accent"
-                    to="/inbox/$runId"
-                    params={{ runId: item.runId }}
-                  >
-                    {item.automationName}
-                  </Link>
-                </li>
-              ))}
-          </ul>
-        )}
-      </Section>
     </FramedPage>
   );
 }
@@ -160,7 +135,11 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
   const lifecycle = useMutation({
     mutationFn: (value: WorkTaskLifecycle) =>
       setWorkTaskLifecycle({ path, body: { lifecycle: value }, throwOnError: true }),
-    onSuccess: () => client.invalidateQueries({ queryKey: options.queryKey }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: options.queryKey }),
+        client.invalidateQueries({ queryKey: listWorkTasksOptions().queryKey.slice(0, 1) }),
+      ]),
   });
 
   const append = useMutation({
@@ -203,15 +182,15 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
         throwOnError: true,
       });
     },
-    onSuccess: () => client.invalidateQueries({ queryKey: options.queryKey }),
+    onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: options.queryKey }), refreshWork()]),
   });
 
   const task = detail.data?.task;
 
   return (
     <FramedPage title={task?.title ?? "Task"}>
-      <Link className="text-sm underline" to="/inbox">
-        Back to Inbox
+      <Link className="text-sm underline" to="/board">
+        Back to Board
       </Link>
       {detail.isPending ? (
         <Loading />
@@ -241,7 +220,7 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
             {lifecycle.error ? <Failure title="Could not update task" error={lifecycle.error} /> : null}
           </Section>
           {detail.data.questions.length ? (
-            <Section title="Needs you">
+            <Section title="Questions">
               <ul className="divide-y divide-border">
                 {detail.data.questions.map((question) => (
                   <li key={question.id} className="space-y-2 py-3">
@@ -265,15 +244,26 @@ export function WorkTaskPage({ agentId, taskId }: { agentId: string; taskId: str
               {answer.error ? <Failure title="Could not answer question" error={answer.error} /> : null}
             </Section>
           ) : null}
-          {detail.data.session ? (
-            <Section title="Session">
-              <Link
-                to="/a/$agentId/c/$chatId"
-                params={{ agentId: detail.data.session.agentId, chatId: String(detail.data.session.id) }}
-                className="font-medium text-foreground underline"
-              >
-                {detail.data.session.title || "Untitled session"}
-              </Link>
+          {detail.data.sessions.length ? (
+            <Section title="Sessions">
+              <ul className="divide-y divide-border">
+                {detail.data.sessions.map((session) => (
+                  <li
+                    key={session.conversationId}
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2"
+                  >
+                    <Link
+                      to="/a/$agentId/c/$chatId"
+                      params={{ agentId: session.agentId, chatId: String(session.conversationId) }}
+                      className="font-medium text-foreground underline"
+                    >
+                      {session.title || "Untitled session"}
+                    </Link>
+                    <span className="text-sm text-muted-foreground">{session.agentName}</span>
+                    {session.isPrimary ? <Badge variant="secondary">Primary</Badge> : null}
+                  </li>
+                ))}
+              </ul>
             </Section>
           ) : null}
           <TaskLinks links={detail.data.links} open={detail.data.task.lifecycle === "open"}>

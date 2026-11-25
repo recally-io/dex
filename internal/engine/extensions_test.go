@@ -103,7 +103,7 @@ func TestUserMCPConnectsCallsAndRedactsConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loaded.Close(t.Context())
-	if !loaded.HasTools || loaded.Servers[0].State != "connected" || len(loaded.Extension.Tools) != 4 {
+	if loaded.Servers[0].State != "connected" || len(loaded.Extension.Tools) != 4 {
 		t.Fatalf("MCP state: %#v", loaded.Servers)
 	}
 	index := slices.IndexFunc(loaded.Extension.Tools, func(tool *durable.ToolRegistration) bool { return tool.Name == "mcp__notes__append" })
@@ -155,7 +155,7 @@ func TestUserStdioMCPGetsOnlyExplicitEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer loaded.Close(t.Context())
-	if !loaded.HasTools || loaded.Servers[0].State != "connected" {
+	if len(loaded.Extension.Tools) == 0 || loaded.Servers[0].State != "connected" {
 		t.Fatalf("explicit environment server: %#v", loaded.Servers)
 	}
 }

@@ -11,20 +11,20 @@ import {
   Link,
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
-import { InboxResultPage } from "./routes/inbox";
-import { TaskInboxPage, WorkTaskPage } from "./routes/work-tasks";
+import { InboxPage, InboxResultPage } from "./routes/inbox";
+import { BoardPage, WorkTaskPage } from "./routes/work-tasks";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
 import { AutomationPage, AutomationsPage } from "./routes/automations";
 import { SessionsPage, TurnPage } from "./routes/sessions";
-import { AgentPage, InstructionsPage } from "./routes/agent";
+import { AgentPage } from "./routes/agent";
 import { GeneralSettingsPage } from "./routes/general-settings";
 import { ProvidersPage } from "./routes/providers";
-import { ChannelPage, ChannelsPage } from "./routes/channels";
-import { ExtensionsPage } from "./routes/extensions";
+import { BotIntegrationsPage, ChannelPage } from "./routes/channels";
+import { BotSecretsPage, SkillsPage } from "./routes/extensions";
 import { ArchivedPage } from "./routes/archived";
-import { EnvironmentPage } from "./routes/environment";
+import { GlobalIntegrationsPage, RunnersPage, SharedSecretsPage } from "./routes/environment";
 import { AboutPage } from "./routes/about";
 import { AppProvider } from "./lib/app-state";
 import { FramedPage, Section } from "./components/page";
@@ -75,13 +75,38 @@ const agentPage = <P extends string>(path: P, component: () => React.ReactNode) 
   createRoute({ getParentRoute: () => agentPages, path, component });
 
 const agent = agentPage("/agent", AgentPage);
-const instructions = agentPage("/instructions", InstructionsPage);
-const channels = agentPage("/channels", ChannelsPage);
+const skills = agentPage("/skills", SkillsPage);
+const botIntegrations = agentPage("/integrations", BotIntegrationsPage);
+const botSecrets = agentPage("/secrets", BotSecretsPage);
+
+const retiredBotSettings = (
+  path: "/instructions" | "/channels" | "/extensions",
+  to: "/a/$agentId/agent" | "/a/$agentId/integrations",
+  hash?: string,
+) =>
+  createRoute({
+    getParentRoute: () => agentPages,
+    path,
+    beforeLoad: ({ params, location }) => {
+      throw redirect({
+        to,
+        params: { agentId: params.agentId },
+        search: true,
+        hash: hash ?? location.hash,
+        replace: true,
+      });
+    },
+  });
+
+const instructions = retiredBotSettings("/instructions", "/a/$agentId/agent", "instructions");
+const channels = retiredBotSettings("/channels", "/a/$agentId/integrations");
+
+// The MCP OAuth callback still returns to this URL.
+const extensions = retiredBotSettings("/extensions", "/a/$agentId/integrations");
+
 const automations = agentPage("/automations", AutomationsPage);
 
-// Needs you, Work and Automations were global pages. Each bot now shows its own
-// items: questions in the sidebar, routines and their results under Routines. Secrets split into
-// the global Environment page and the Tools tab of each bot.
+// Keep links to retired global pages usable.
 const retired = <P extends string>(path: P, href: string) =>
   createRoute({
     getParentRoute: () => root,
@@ -92,17 +117,19 @@ const retired = <P extends string>(path: P, href: string) =>
   });
 
 const retiredRoutes = [
-  retired("/needs-you", "/a/default"),
-  retired("/work", "/a/default"),
+  retired("/needs-you", "/inbox"),
+  retired("/work", "/board"),
   retired("/automations", "/a/default/automations"),
-  retired("/secrets", "/settings/environment"),
+  retired("/secrets", "/settings/secrets"),
   retired("/providers", "/settings/providers"),
-  retired("/environment", "/settings/environment"),
+  retired("/environment", "/settings/runners"),
+  retired("/settings/environment", "/settings/runners"),
   retired("/archived", "/settings/archived"),
   retired("/about", "/settings/about"),
 ] as const;
 
-const inbox = page("/inbox", TaskInboxPage);
+const board = page("/board", BoardPage);
+const inbox = page("/inbox", InboxPage);
 
 const taskDetail = agentPage("/inbox/$taskId", () => {
   const { agentId, taskId } = taskDetail.useParams();
@@ -119,8 +146,9 @@ const inboxDetail = page("/inbox/$runId", () => {
 const generalSettings = page("/settings/general", GeneralSettingsPage);
 const providers = page("/settings/providers", ProvidersPage);
 
-const extensions = agentPage("/extensions", ExtensionsPage);
-const environment = page("/settings/environment", EnvironmentPage);
+const runners = page("/settings/runners", RunnersPage);
+const sharedSecrets = page("/settings/secrets", SharedSecretsPage);
+const globalIntegrations = page("/settings/integrations", GlobalIntegrationsPage);
 const archived = page("/settings/archived", ArchivedPage);
 const about = page("/settings/about", AboutPage);
 
@@ -244,16 +272,22 @@ const router = createRouter({
       automations,
       automation,
       agent,
+      skills,
+      botIntegrations,
+      botSecrets,
       extensions,
     ]),
     ...oldAgentRoutes,
     tasks,
     ...retiredRoutes,
+    board,
     inbox,
     inboxDetail,
     generalSettings,
     providers,
-    environment,
+    runners,
+    sharedSecrets,
+    globalIntegrations,
     archived,
     about,
     settings,

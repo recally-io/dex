@@ -25,7 +25,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // Channel starts the channel key of an automation's chats: automation:<id> for an automation
@@ -46,15 +46,15 @@ var ErrNotFound = errors.New("automation not found")
 
 // Input is what the user sets.
 type Input struct {
-	Notification         *engine.RoutineNotification `json:"notification,omitempty"`
-	Cwd                  string                      `json:"cwd"`
-	Name                 string                      `json:"name"`
-	Prompt               string                      `json:"prompt"`
-	Schedule             Schedule                    `json:"schedule"`
-	TimeZone             string                      `json:"timeZone"`
-	Session              string                      `json:"session"` // new, reuse, or session
-	TargetConversationID int64                       `json:"targetConversationId,omitzero"`
-	Enabled              bool                        `json:"enabled"`
+	Notification         *RoutineNotification `json:"notification,omitempty"`
+	Cwd                  string               `json:"cwd"`
+	Name                 string               `json:"name"`
+	Prompt               string               `json:"prompt"`
+	Schedule             Schedule             `json:"schedule"`
+	TimeZone             string               `json:"timeZone"`
+	Session              string               `json:"session"` // new, reuse, or session
+	TargetConversationID int64                `json:"targetConversationId,omitzero"`
+	Enabled              bool                 `json:"enabled"`
 	// EnvironmentID is local or an SSH environment ID. Empty follows the environment of the bot.
 	EnvironmentID string `json:"environmentId"`
 }
@@ -295,7 +295,7 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 // environment. Routines can use E2B or runner only through their bot's default environment.
 // The saved value still passes so the owner can edit or pause a routine whose environment was removed.
 func (s *Service) checkEnvironment(ctx context.Context, id, current string) error {
-	if id == "" || id == current || id == execenv.LocalID {
+	if id == "" || id == current || id == runner.LocalID {
 		return nil
 	}
 	row, err := s.q.GetEnvironment(ctx, id)
@@ -305,13 +305,13 @@ func (s *Service) checkEnvironment(ctx context.Context, id, current string) erro
 	if err != nil {
 		return err
 	}
-	if execenv.Kind(row.Kind) != execenv.KindPiEnv {
+	if runner.Kind(row.Kind) != runner.KindPiEnv {
 		return invalid(fmt.Sprintf("%s is a %s environment; select local or an SSH environment", row.Name, row.Kind))
 	}
 	return nil
 }
 
-func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *engine.RoutineNotification) error {
+func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *RoutineNotification) error {
 	if n == nil {
 		return nil
 	}
@@ -399,7 +399,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
-		Notification: &engine.RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
+		Notification: &RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
 		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID.Int64,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
@@ -570,7 +570,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 	result, err := s.enqueue(ctx, input)
 	if !due.Valid && errors.Is(err, chat.ErrAutomationChanged) {
 		// A scheduled run checks again next minute; a manual run tells the caller.
-		err = fmt.Errorf("%w: the routine changed during its check; run it again", engine.ErrBusy)
+		err = fmt.Errorf("%w: the automation changed during its check; run it again", engine.ErrBusy)
 	}
 	switch {
 	case result.Created && result.ConversationID == 0:
@@ -606,7 +606,7 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 		}
 		environmentID = conv.EnvironmentID
 	}
-	id := cmp.Or(environmentID, agent.EnvironmentID, execenv.LocalID)
+	id := cmp.Or(environmentID, agent.EnvironmentID, runner.LocalID)
 	skip, err := s.unavailable(ctx, row.AgentID, id)
 	if skip == "" && err == nil && row.Session == "session" && s.status != nil && s.status(ctx, row.AgentID, id) != "available" {
 		skip = chat.RoutineUnavailableEnvironment(id)
@@ -618,14 +618,14 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 // back to another machine. Only an SSH host is probed: local is always there, and opening an E2B
 // sandbox or a runner would start the work that the run does.
 func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, error) {
-	if id == execenv.LocalID {
+	if id == runner.LocalID {
 		return "", nil
 	}
 	env, err := s.q.GetEnvironment(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return chat.RoutineRemovedEnvironment(id), nil
 	}
-	if err != nil || execenv.Kind(env.Kind) != execenv.KindPiEnv || s.probe == nil {
+	if err != nil || runner.Kind(env.Kind) != runner.KindPiEnv || s.probe == nil {
 		return "", err
 	}
 	if err := s.probe(ctx, agentID, id); err != nil {

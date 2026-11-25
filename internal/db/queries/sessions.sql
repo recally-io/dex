@@ -1,14 +1,14 @@
 -- name: CreateChildConversation :one
 -- A child session is a Chat with a parent. Its first turn is stored in the same transaction.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: CreateParentTurn :execrows
 -- A turn that the parent session sends. The origin task keeps the turn out of user channels
 -- and routine creation. A turn whose ID exists already is not stored again.
-INSERT INTO submissions (id, conversation_id, content, attachments, origin, kind, when_busy, parent_request_id, status, created_at)
-VALUES (@id, @conversation_id, @content, 'null', 'task', 'message', @when_busy, @parent_request_id, 'pending', @created_at)
+INSERT INTO submissions (id, conversation_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
+VALUES (@id, @conversation_id, @content, 'null', 'task', 'sub_session', '', '', 'message', @when_busy, @parent_request_id, 'pending', @created_at)
 ON CONFLICT DO NOTHING;
 
 -- name: ListSessions :many
@@ -30,7 +30,7 @@ SELECT
     CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM conversations c
 JOIN agents a ON a.id = c.agent_id
-WHERE c.channel_key NOT LIKE 'dream:%'
+WHERE c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
     AND (c.parent_id = @parent_id OR (
         CAST(@all_sessions AS INTEGER) = 1
         AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
@@ -71,7 +71,8 @@ SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.con
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
-WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%'
+WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
+    AND s.id <> @excluded_turn_id
     AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
     AND (CAST(@session_id AS INTEGER) = 0 OR c.id = @session_id)
     AND s.created_at >= @since
@@ -93,35 +94,53 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ? AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL;
 
 -- name: CreateTurnResult :execrows
--- The result of a parent turn goes to the parent session with the origin of the parent request.
--- The ID follows the turn, so a replay does not store a second result.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
-SELECT @id, c.parent_id, @content, 'null', @id, source.origin, 'task_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id), source.channel_context, source.channel_revoked
+-- The result of a parent turn goes to the parent session as an internal sub_session input
+-- with no inherited channel origin. The ID follows the turn, so a replay does not store a second result.
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
+SELECT @id, c.parent_id, @content, 'null', @id, 'task', 'sub_session', '', '', 'task_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id), '{}', 0
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
-JOIN submissions source ON source.id = turn.parent_request_id
 WHERE turn.id = @turn_id AND c.parent_id IS NOT NULL
 ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 
 -- name: ListRecoveryChildren :many
 -- The child sessions with a pending parent turn. Recovery reads the native state of each pending
 -- input, because the admission receipt and the native admission are not one transaction.
-SELECT DISTINCT c.id, c.agent_id, c.execution_id, c.execution_scope
+SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
-    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL
+    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.execution_scope = ''
 ORDER BY c.id;
 
--- name: ListAudienceChildren :many
+-- name: ListChannelChildren :many
 SELECT * FROM conversations
 WHERE parent_id = @parent_id AND agent_id = @agent_id
-    AND execution_scope = @execution_scope AND scope_context = @scope_context
+    AND execution_scope = ''
 ORDER BY id DESC
 LIMIT 50;
 
 -- name: ListChildPending :many
-SELECT id, parent_request_id IS NOT NULL AS from_parent
+SELECT id, parent_request_id IS NOT NULL AS from_parent, stop_requested
 FROM submissions
 WHERE conversation_id = ? AND status = 'pending'
 ORDER BY rowid;
+
+-- name: RequestParentInputStop :exec
+UPDATE submissions SET stop_requested = 1
+WHERE conversation_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL;
+
+-- name: ListStopPendingSessions :many
+SELECT DISTINCT conversation_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
+UNION SELECT conversation_id FROM main_turn_stops;
+
+-- name: ListRecoveryParentInputStops :many
+SELECT s.id, c.agent_id, c.execution_id
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.execution_scope = '';
+
+-- name: ListParentInputStops :many
+SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid;
+
+-- name: FinishParentInputStop :exec
+UPDATE submissions SET stop_requested = 0 WHERE id = ?;

@@ -58,15 +58,15 @@ func (a *questionAction) allowed(ctx context.Context, q *sqlc.Queries, r engine.
 // ToolAskArchive asks the owner to archive a bot. It saves the question with the action and does
 // not archive. The caller resolves the bot. The model cannot archive a bot: control runs the action
 // when the owner approves the question.
-func (s *Service) ToolAskArchive(ctx context.Context, r engine.TaskContext, botID, botName, reason string) (engine.QuestionInfo, error) {
+func (s *Service) ToolAskArchive(ctx context.Context, r engine.TaskContext, botID, botName, reason string) (QuestionInfo, error) {
 	reason = strings.Join(strings.Fields(reason), " ")
 	if reason == "" || utf8.RuneCountInString(reason) > maxArchiveReason {
-		return engine.QuestionInfo{}, fmt.Errorf("%w: a reason of 1 to %d characters", ErrQuestionInvalid, maxArchiveReason)
+		return QuestionInfo{}, fmt.Errorf("%w: a reason of 1 to %d characters", ErrQuestionInvalid, maxArchiveReason)
 	}
 	name := strings.Join(strings.Fields(botName), " ")
 	approve := "Archive " + name
 	text := fmt.Sprintf("Archive bot %q? It leaves the sidebar, its channels stop, and its automations pause. You can restore it. Reason: %s", name, reason)
-	return s.askQuestion(ctx, r, engine.AskUserArgs{Question: text, Options: []string{approve, "Cancel"}}, &questionAction{kind: archiveAction, agentID: botID, approve: approve})
+	return s.askQuestion(ctx, r, AskUserArgs{Question: text, Options: []string{approve, "Cancel"}}, &questionAction{kind: archiveAction, agentID: botID, approve: approve})
 }
 
 // answerDecision is the content of an answer and what control decided for it.
@@ -125,9 +125,6 @@ func (s *Service) botArchived(agentID string) {
 // Main, a Chat, or an automation session. Changing a bot also needs a person's input in the conversation: a task result, an
 // automation run, or a dream cannot change a bot, as with routine tools.
 func (s *Service) ToolBotCaller(ctx context.Context, r engine.TaskContext, change bool) error {
-	if r.Scope != "" {
-		return errBotCaller
-	}
 	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return err

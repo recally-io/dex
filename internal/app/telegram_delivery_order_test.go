@@ -116,10 +116,10 @@ func TestUserTelegramFileRetriesKeepPeerOrderWithoutBlockingOtherPeers(t *testin
 	_ = nextTelegramMedia(t, f.mediaAttempts)
 	conn := controlWriteDB(t, data)
 	eventually(t, "first file waits for retry", func() (bool, any) {
-		n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND channel_retry_at>0")
+		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE kind='file' AND body='first.txt' AND retry_at>0")
 		return n == 1, n
 	})
-	if _, err := conn.ExecContext(t.Context(), "UPDATE submissions SET channel_retry_at=? WHERE source_key='telegram:123:1'", time.Now().Add(time.Minute).UnixMilli()); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "UPDATE outbox_messages SET retry_at=? WHERE kind='file' AND body='first.txt'", time.Now().Add(time.Minute).UnixMilli()); err != nil {
 		t.Fatal(err)
 	}
 	f.failMedia.Store(false)
@@ -134,7 +134,7 @@ func TestUserTelegramFileRetriesKeepPeerOrderWithoutBlockingOtherPeers(t *testin
 		t.Fatalf("later same-peer file bypassed retry: %+v", got)
 	}
 	// Then releasing the first retry sends both files in order to their original peer.
-	execSQL(t, conn, "UPDATE submissions SET channel_retry_at=0 WHERE source_key='telegram:123:1'")
+	execSQL(t, conn, "UPDATE outbox_messages SET retry_at=0 WHERE kind='file' AND body='first.txt'")
 	for _, name := range []string{"first.txt", "second.txt"} {
 		if got := nextTelegramMedia(t, f.mediaSent); got.Name != name || got.Chat != "42" {
 			t.Fatalf("file=%+v want=%s", got, name)

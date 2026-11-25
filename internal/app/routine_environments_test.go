@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 type routineEnvironment struct {
@@ -19,8 +19,8 @@ type routineEnvironment struct {
 // Given an SSH environment, when routines select environments, then each run uses only the
 // selected environment, a removed one skips the run, and a reused chat never changes machine.
 func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
-	sshFix := execenvtest.NewFakeSSH(t)
-	fake := execenvtest.NewFakeE2B(t, "e2b_routine_secret")
+	sshFix := runnertest.NewFakeSSH(t)
+	fake := runnertest.NewFakeE2B(t, "e2b_routine_secret")
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), Home: t.TempDir(), SSHProgram: sshFix.SSHProgram, E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
 	var remoteEnv, sandbox apiEnvironment
 	d.must(t, http.MethodPost, "/api/settings/environments", map[string]any{
@@ -124,7 +124,7 @@ func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
 	chatID := d.newSession(t).ID
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", chatID), map[string]any{"environmentId": remoteEnv.ID}, nil)
 	var created routineEnvironment
-	routineToolJSON(t, d, chatID, "create_routine", map[string]any{"name": "From chat", "prompt": marker, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
+	routineToolJSON(t, d, chatID, "automation_create", map[string]any{"name": "From chat", "prompt": marker, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
 	if created.EnvironmentID != remoteEnv.ID {
 		t.Fatalf("created routine=%+v", created)
 	}
@@ -141,11 +141,11 @@ func TestUserRunsRoutinesInSelectedEnvironments(t *testing.T) {
 	if run := d.runNow(t, dead.ID); run.Status != "skipped" || run.ChatID != 0 || !strings.Contains(run.Reason, "dead-box is unavailable") {
 		t.Fatalf("run on a dead host=%+v", run)
 	}
-	// Then run_routine skips it the same way.
+	// Then automation_run skips it the same way.
 	var toolRun runInfo
-	routineToolJSON(t, d, chatID, "run_routine", map[string]any{"id": dead.ID}, &toolRun)
+	routineToolJSON(t, d, chatID, "automation_run", map[string]any{"id": dead.ID}, &toolRun)
 	if toolRun.Status != "skipped" || toolRun.ChatID != 0 || !strings.Contains(toolRun.Reason, "dead-box is unavailable") {
-		t.Fatalf("run_routine on a dead host=%+v", toolRun)
+		t.Fatalf("automation_run on a dead host=%+v", toolRun)
 	}
 
 	// When the owner removes remote-box, then a run is skipped with a reason that names it, and

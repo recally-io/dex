@@ -85,7 +85,7 @@ Run scripts from the skill directory in the session environment. Every `bash`
 call sets `DEX_SKILL_CACHE` to `<workspace>/.dex/cache/skills`. Create
 `$DEX_SKILL_CACHE/<name>` with `mkdir -p` and put runtime files there. Keep
 secrets in the vault. Pass references in the `env` argument of `bash` or
-`monitor_set_command`.
+`process_start`.
 
 Each host store is a Git repository. dex commits changes at submission settlement
 as `Update skills from <source>`, with the same source as memory. On open, dex
@@ -99,9 +99,9 @@ start from the control host's login shell environment and configured
 and the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
-request a reload. Environment settings changes request a reload for agents
-that use the environment. A machine reconnect requests a reload for agents
-that could not load that machine as their default. Each open agent reloads
+request a reload. Runner settings changes request a reload for agents
+that use the environment. A machine reconnect requests a reload if the default
+machine was offline at cold open or the last reload could not open it. Each open agent reloads
 when it is idle. If validation fails, dex keeps the current resources and
 does not try the same configuration again automatically.
 
@@ -110,19 +110,24 @@ the next reload from another change, after an explicit reload, or when dex
 restarts. dex does not poll for changes or watch these files.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
-servers before it resumes the agent Harness. It installs prompt sections for
-the extension guide and current skills. MCP tools use the names
-`mcp__<server>__<tool>` and deferred tool discovery.
+servers before it resumes the agent Harness. This is a shared wait for all
+Sessions of a Bot, including Sessions that use another environment. MCP servers
+use control-host configuration and do not need a lease on the default environment.
+The loader installs prompt sections for the extension guide and current skills.
+MCP tools use the names
+`mcp__<server>__<tool>`. In owner sessions, `tool_search` searches the built-in
+and MCP tools available to the current model. It adds only matching deferred
+tools to the next model call. It does not expand the session's permissions.
 
 ### Secret vault
 
-Use Settings → Environment to set shared values. Use a bot's Tools page to
+Use Settings → Secrets to set shared values. Use a bot's Secrets page to
 set values for that bot. An agent entry overrides a shared entry with the same
 name. `GET /api/agents/{agentId}/vault` returns names, scopes, and last change
 times. `PUT` sets a value and `DELETE` removes it. Neither returns a value.
-The agent has only `vault_list`, which shows effective names and metadata.
+The agent has only `secret_list`, which shows effective names and metadata.
 
-`bash`, `monitor_set_command`, and `monitor_set_schedule` accept `vault:NAME`
+`bash`, `process_start`, and `monitor_set` accept `vault:NAME`
 as an `env` value. A schedule stores the reference and resolves it when the
 check runs. dex resolves values on the control host and sends only the
 requested variables to the command. Local, SSH, runner, and E2B use the same
@@ -130,9 +135,9 @@ path. Remote targets need no extra program for vault access. A missing name stop
 before it starts. A plain Bash call gets no vault values.
 
 A snapshot masks exact values of at least 8 characters as `[vault:NAME]` in final
-top-level tool results and command Monitor wake-ups. Values passed between
+top-level tool results and Process wake-ups. Values passed between
 nested Code Mode tools are not masked. A long Bash call's full output file
-and a Monitor's output file stay as written on the execution host. Masking
+and a Process's output file stay as written on the execution host. Masking
 does not hide encoded values, or block another process of the same user from
 reading a process environment. The vault is not a sandbox on the control host.
 
@@ -142,6 +147,10 @@ mode `0600` on the first write. A copy without that identity cannot decrypt
 the files. A process that can read the identity and the encrypted files can
 read the vault. Keep the identity separate from any copy that must not grant
 access to secrets.
+
+`credentials.age` uses the same identity. It holds control-service credentials,
+including the Telegram manager and managed bot tokens. Tool resolution and
+vault API routes do not read this file.
 
 At startup dex warns about old `.env` files at the dex and agent levels and
 ignores them. It does not import them. Move secrets into the vault. Put other
@@ -157,8 +166,7 @@ warning for each file at startup. It does not import the files.
 
 All owner sessions can use `mcp_server_list`, `mcp_server_get`,
 `mcp_server_set`, and `mcp_server_remove` from any execution environment.
-This includes tasks, dreams, and child sessions. Isolated Telegram group
-sessions keep their existing tool allowlist and cannot use these tools.
+This includes tasks, dreams, and child sessions.
 `mcp_server_set` replaces one declaration. A stdio server runs on the control
 host. Relative `cwd` values use the agent's control-host workspace.
 `mcp_server_remove` deletes one level's declaration and can uncover a wider
@@ -177,9 +185,54 @@ literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
 
 `GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
-The Web Extensions page uses the same server status as `mcp_server_list`.
-Before the agent opens, the API shows declarations that are not disabled as
-`idle`.
+For an open Harness, the request uses the default environment's lease to inspect
+workspace skills. If the lease has not opened, this request can open it without
+blocking admission in other environments. Bot Settings → Integrations shows
+loaded MCP server state and the current OAuth grant state. Reload is available
+from both Integrations and Skills.
+Before the agent opens, the API shows connection state `idle` for declarations
+that are not disabled.
+
+### MCP browser authorization
+
+For an HTTP declaration, set `oauth: {}` to use browser authorization instead
+of static headers. Use `oauth.clientId` for a pre-registered client. If the
+client needs a secret, set `oauth.clientSecret` to `vault:NAME`. Put the secret
+in the vault at the same level as the declaration. A bot secret cannot change
+the client of a dex-level connection. `oauth.tokenEndpointAuthMethod` can
+select `client_secret_basic` or `client_secret_post` for a confidential client.
+If the provider does not advertise a registration endpoint, dex requires a
+pre-registered client. Dex does not serve Client ID Metadata Documents.
+
+Register `<dex origin>/mcp/oauth/callback` with the provider. Open dex over
+HTTPS or on loopback HTTP. Select **Authorize** or **Reauthorize** on the
+connection in the bot's Integrations page. Dex probes the MCP endpoint without credentials. Dex
+uses the protected resource metadata and then discovers the issuer with
+RFC 8414 or OIDC. Dex uses a challenged scope when present. Otherwise dex
+uses `oauth.scope` or the scopes in the protected resource metadata, in that
+order. Dex uses the first listed issuer. Discovered endpoints on other origins
+must use public HTTPS. Discovery and token requests do not follow redirects.
+
+The authenticated start binds a 10-minute, one-time state to the initiating
+browser, effective declaration, and MCP resource. Dex holds the PKCE verifier
+in memory. The callback consumes state before exchange. Dex does not use the
+regular session cookie on the cross-site return. It uses a separate Lax,
+HttpOnly cookie that the authenticated start set for this attempt. Dex sends
+the resource indicator during authorization, exchange, and refresh.
+
+The one dex owner has one grant per declaration level and name. A dex-level
+grant is shared across bots that use that declaration. A same-name bot
+connection uses a separate grant. Dex encrypts grants in private `vault/mcp-*.age`
+files with the vault identity. Vault listing and reference resolution do not
+read these files. A declaration replacement that changes the OAuth settings
+or URL cannot use the old grant. The server reads the current pre-registered
+secret from its vault entry at exchange and refresh. To preserve grants,
+back up the private vault files with the other vault files.
+
+A successful callback returns to the bot's Integrations page through the old `/extensions` URL. It marks the affected connections for
+idle reload. Dex refreshes an expired token when a refresh token is available.
+On HTTP 401, dex attempts at most one refresh and retry. If the grant no longer
+works, Integrations shows **Reauthorize**. Dex does not fall back to static headers.
 
 ### Reload
 

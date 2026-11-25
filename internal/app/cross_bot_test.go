@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -337,6 +338,87 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	}
 }
 
+func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
+	t.Parallel()
+	// Given Main started a gated child in each bot and now has a gated turn of its own.
+	s := startBots(t)
+	main := botChat{bots: s, agent: "default", id: s.d.mainChat(t)}
+	path := fmt.Sprintf("/api/agents/default/chats/%d", main.id)
+	setModel := func(model string) {
+		s.d.must(t, http.MethodPut, path+"/settings", map[string]string{"provider": "faux", "modelId": model, "thinkingLevel": "off"}, nil)
+	}
+	setModel("spawn")
+	children := []struct {
+		bot, agent, gate string
+		id               int64
+	}{
+		{agent: "default", gate: "main-local-child"},
+		{bot: "Coder", agent: s.b.ID, gate: "main-cross-child"},
+	}
+	for i, child := range children {
+		args := map[string]any{"title": child.gate, "message": taskGate(t, s.dir, child.gate), "provider": "faux", "modelId": "bash"}
+		if child.bot != "" {
+			args["bot"] = child.bot
+		}
+		children[i].id = main.newChild(args).conversation(t)
+		waitTaskFile(t, filepath.Join(s.dir, child.gate+".pid"))
+	}
+	setModel("bash")
+	main.send(taskGate(t, s.dir, "main-turn"))
+	mainPID := filepath.Join(s.dir, "main-turn.pid")
+	waitTaskFile(t, mainPID)
+
+	// When the next input is queued, Main Stop rejects a missing or foreign target.
+	main.send(taskGate(t, s.dir, "main-next"))
+	s.d.must(t, http.MethodPost, path+"/abort", nil, nil, http.StatusBadRequest)
+	abort := func(path, target string, status int) {
+		t.Helper()
+		s.d.must(t, http.MethodPost, path+"/abort?runTarget="+url.QueryEscape(target), nil, nil, status)
+	}
+	for _, child := range children {
+		target := (botChat{bots: s, agent: child.agent, id: child.id}).watch().activeRunTarget(t)
+		abort(path, target, http.StatusConflict)
+		if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
+			t.Fatalf("foreign target stopped %s", child.gate)
+		}
+	}
+	w := main.watch()
+	first := w.activeRunTarget(t)
+	abort(fmt.Sprintf("/api/agents/%s/chats/%d", s.b.ID, main.id), first, http.StatusNotFound)
+	abort(path, first, http.StatusOK)
+	waitTaskPIDGone(t, mainPID)
+
+	// Then the next turn really runs, and a reconnect supplies its new target.
+	waitTaskFile(t, filepath.Join(s.dir, "main-next.pid"))
+	w.until(t, "successor target", func(tr *transcript) bool { return tr.running && tr.runTarget != "" && tr.runTarget != first })
+	next := main.watch().activeRunTarget(t)
+	if next != w.tr.runTarget {
+		t.Fatalf("snapshot and live target differ: %q and %q", next, w.tr.runTarget)
+	}
+	abort(path, first, http.StatusConflict)
+	abort(path, first, http.StatusConflict)
+	releaseResultGate(t, s.dir, "main-next")
+	w.until(t, "successor answer after stale Stops", answeredWith("bash: gate released"))
+	for _, child := range children {
+		if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
+			t.Fatalf("Main Stop crossed into %s", child.gate)
+		}
+	}
+	// A supplied but empty target must not turn into session cancellation.
+	child := children[0]
+	childPath := fmt.Sprintf("/api/agents/%s/chats/%d", child.agent, child.id)
+	abort(childPath, "", http.StatusConflict)
+	if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
+		t.Fatal("empty target stopped the child")
+	}
+	// An explicit session cancellation still works when the target is omitted.
+	s.d.must(t, http.MethodPost, childPath+"/abort", nil, nil)
+	waitTaskPIDGone(t, filepath.Join(s.dir, child.gate+".pid"))
+	child = children[1]
+	releaseResultGate(t, s.dir, child.gate)
+	(botChat{bots: s, agent: child.agent, id: child.id}).watch().until(t, "cross-bot child answer", answeredWith("bash: gate released"))
+}
+
 // crossBotChat is a session in the list of the web API. The bot fields are set only when the session
 // or its parent belongs to another bot than the one in the path.
 type crossBotChat struct {
@@ -364,9 +446,8 @@ func (s *bots) webList(agent string) map[int64]crossBotChat {
 
 func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	t.Parallel()
-	// Given a parent chat in each bot, each with a gated child in the other bot that also holds a
-	// queued user input and a queued parent input. Stop then calls the native queue of the other bot
-	// while it holds the control writer.
+	// Given a parent chat in each bot with a gated child in the other bot.
+	// Each child has a queued user input and a queued parent input.
 	s := startBots(t)
 	parents := []botChat{s.chat("default"), s.chat(s.b.ID)}
 	targets := []string{s.b.ID, "default"}
@@ -395,12 +476,12 @@ func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing
 	if statuses[0] != http.StatusOK || statuses[1] != http.StatusOK {
 		t.Fatalf("abort statuses: %v", statuses)
 	}
-	// Then each Stop withdrew only the queued parent input, and the parent runs go on.
+	// Then each target withdraws only the queued parent input while the child run stays active.
 	for i, child := range children {
-		turns := childTurns(t, s.conn, child)
-		if len(turns) < 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
-			t.Fatalf("child %d after Stop: %+v", i, turns)
-		}
+		eventually(t, fmt.Sprintf("child %d withdraws queued parent input", i), func() (bool, any) {
+			turns := childTurns(t, s.conn, child)
+			return len(turns) >= 3 && turns[0].status == "pending" && turns[1].status == "pending" && turns[2].status == "unanswered" && turns[2].reason == "stopped", turns
+		})
 	}
 	// And every run ends after its gate opens.
 	for i, child := range children {
@@ -510,14 +591,14 @@ func TestUserSessionSearchCoversOneBotOrAllBots(t *testing.T) {
 			t.Fatalf("%s: got %+v, want sessions %v", what, got, ids)
 		}
 	}
-	// When it searches with no bot, only the current bot answers.
-	got := searcher.search(map[string]any{"query": "zebra"})
+	// When it searches all sessions with no bot, only the current bot answers.
+	got := searcher.search(map[string]any{"query": "zebra", "session": "all"})
 	want("empty bot", got, inA)
 	if got[0].Bot != "Dex" || got[0].BotID != "default" {
 		t.Fatalf("match does not name its bot: %+v", got[0])
 	}
 	// And bot all covers every bot, and each match names its bot. A dream stays hidden.
-	got = searcher.search(map[string]any{"query": "zebra", "bot": "all"})
+	got = searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": "all"})
 	want("all bots", got, inA, inB)
 	for _, m := range got {
 		if m.Session == fmt.Sprint(inB.id) && (m.Bot != "Coder" || m.BotID != s.b.ID) {
@@ -525,21 +606,21 @@ func TestUserSessionSearchCoversOneBotOrAllBots(t *testing.T) {
 		}
 	}
 	// And a bot by name or by ID covers that bot only.
-	want("bot by name", searcher.search(map[string]any{"query": "zebra", "bot": "coder"}), inB)
-	want("bot by ID", searcher.search(map[string]any{"query": "zebra", "bot": s.b.ID}), inB)
+	want("bot by name", searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": "coder"}), inB)
+	want("bot by ID", searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": s.b.ID}), inB)
 	// And a session of another bot is found only when the search names that bot.
 	want("session of another bot, default bot", searcher.search(map[string]any{"query": "zebra", "session": fmt.Sprint(inB.id)}))
 	want("session of another bot, named bot", searcher.search(map[string]any{"query": "zebra", "session": fmt.Sprint(inB.id), "bot": "Coder"}), inB)
 	// And an unknown bot, and a name that two bots share, fail with a message.
-	if got := searcher.call("session_search", map[string]any{"query": "zebra", "bot": "Nobody"}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "no bot has") {
+	if got := searcher.call("session_search", map[string]any{"query": "zebra", "session": "all", "bot": "Nobody"}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "no bot has") {
 		t.Fatalf("unknown bot: %s", got)
 	}
 	var twin apiAgent
 	s.d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Coder", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &twin, http.StatusCreated)
-	if got := searcher.call("session_search", map[string]any{"query": "zebra", "bot": "Coder"}); !strings.Contains(got, "2 bots have the name") || !strings.Contains(got, twin.ID) || !strings.Contains(got, s.b.ID) {
+	if got := searcher.call("session_search", map[string]any{"query": "zebra", "session": "all", "bot": "Coder"}); !strings.Contains(got, "2 bots have the name") || !strings.Contains(got, twin.ID) || !strings.Contains(got, s.b.ID) {
 		t.Fatalf("ambiguous bot: %s", got)
 	}
-	want("ambiguous name by ID", searcher.search(map[string]any{"query": "zebra", "bot": twin.ID}))
+	want("ambiguous name by ID", searcher.search(map[string]any{"query": "zebra", "session": "all", "bot": twin.ID}))
 }
 
 func TestUserSessionListCoversOneBotOrAllBots(t *testing.T) {

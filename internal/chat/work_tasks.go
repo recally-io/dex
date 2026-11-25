@@ -20,6 +20,15 @@ func workTaskForInput(ctx context.Context, q *sqlc.Queries, id string) (string, 
 	return taskID, err
 }
 
+// linkTaskChild records a new child only when its source input belongs to an open Task.
+func linkTaskChild(ctx context.Context, q *sqlc.Queries, sourceID string, childID, now int64) error {
+	taskID, err := workTaskForInput(ctx, q, sourceID)
+	if err != nil || taskID == "" {
+		return err
+	}
+	return q.LinkWorkTaskSession(ctx, sqlc.LinkWorkTaskSessionParams{TaskID: taskID, ConversationID: childID, LinkedAt: now, OnlyOpen: 1})
+}
+
 func workTaskForMessage(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, m Message) (string, error) {
 	if conv.ChannelKey != MainKey {
 		if m.WorkTaskID != "" {

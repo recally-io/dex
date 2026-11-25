@@ -14,7 +14,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 type routineFixture struct {
@@ -222,7 +222,7 @@ func TestUserRoutineEditDuringRunNowCheckStartsNoRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.routines.ConfigureProbe(func(ctx context.Context, agentID, _ string) error {
-		in.EnvironmentID = execenv.LocalID
+		in.EnvironmentID = runner.LocalID
 		_, err := f.routines.Update(ctx, agentID, a.ID, in)
 		return err
 	})
@@ -250,7 +250,8 @@ func TestUserRoutineSkipsATargetInvalidatedDuringPreflight(t *testing.T) {
 			if _, err := f.chats.Main(ctx, "a"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.conn.ExecContext(ctx, `INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','fixture','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
+			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
+INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := f.conn.ExecContext(ctx, `INSERT INTO execution_environments (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','pi-env','{"host":"box.internal"}','',0,0)`); err != nil {
@@ -265,7 +266,7 @@ func TestUserRoutineSkipsATargetInvalidatedDuringPreflight(t *testing.T) {
 			}
 			in := routineInput()
 			in.Session, in.TargetConversationID = "session", conv.ID
-			in.Notification = &engine.RoutineNotification{Mode: "default"}
+			in.Notification = &automation.RoutineNotification{Mode: "default"}
 			a, err := f.routines.Create(ctx, "a", in)
 			if err != nil {
 				t.Fatal(err)

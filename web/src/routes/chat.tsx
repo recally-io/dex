@@ -22,11 +22,11 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/chat-state";
 import { useChatStream } from "../lib/chat-stream";
-import { errorText, refreshChats } from "../lib/queries";
+import { errorText, refreshChats, refreshWork } from "../lib/queries";
 import { agentModel, findModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
-import { activeSessionCount, sessionKind, sessionTime } from "../lib/sessions";
+import { sessionKind, sessionTime } from "../lib/sessions";
 import { ChatActivity } from "../components/chat-activity";
 import { SessionSettings } from "../components/session-settings";
 import { useEnvironmentSendBlock } from "../components/chat-environment";
@@ -220,7 +220,7 @@ function OriginPill({ chat }: { chat: ChatInfo }) {
   if (chat.channel === "automation") {
     const pill = (
       <Badge variant="secondary" className="h-5 shrink-0 gap-1 px-2 text-[11.5px]">
-        <Clock className="size-[11px]" /> Routine
+        <Clock className="size-[11px]" /> Automation
       </Badge>
     );
 
@@ -268,12 +268,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     refetchInterval: 3000,
   });
 
-  // Stop acts on a child only while it has input that this session sent. The server says which.
-  const activeHere = activeSessionCount(
-    (sessions.data?.chats ?? []).filter(
-      (session) => session.parentId === chatId && session.stoppedWithParent,
-    ),
-  );
+  // Main can stop only its own run. Other parents can also stop eligible children.
+  const isMain = main || chat.data?.main === true;
+
+  const activeChildren =
+    !isMain &&
+    (sessions.data?.chats.some(
+      (session) => session.parentId === chatId && session.stoppedWithParent && session.busy,
+    ) ??
+      false);
 
   const health = useQuery(getHealthOptions());
   const memory = health.data ? `${health.data.dataDir}/memory` : undefined;
@@ -351,7 +354,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
   const abort = useMutation({
     ...abortChatMutation(),
     onSuccess: async () => {
-      setQueued([]);
+      if (!isMain) setQueued([]);
       await Promise.all([refreshChats(agentId), refetchChat()]);
     },
   });
@@ -390,7 +393,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
     return () => observer.disconnect();
   }, []);
 
-  const blank = !items.length && state.historyBefore === undefined && connection === "ready";
+  const blank =
+    !items.length &&
+    !state.notifications?.entries.length &&
+    state.historyBefore === undefined &&
+    connection === "ready";
 
   const agents = useQuery(listAgentsOptions());
 
@@ -541,7 +548,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
       await refreshChats(agentId);
 
       // The question card shows the saved answer. A plain message leaves the question as it was.
-      if (answersQuestionId) await refetchChat();
+      if (answersQuestionId) await Promise.all([refetchChat(), refreshWork()]);
     } catch (cause) {
       setQueued((previous) => previous.filter((item) => item.id !== body.id));
 
@@ -607,7 +614,7 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
                 void sendText(failedMessage.current.body.text, failedMessage.current.attachments).catch(
                   () => {},
                 );
-              else if (abort.isError && chatId) abort.mutate({ path: { agentId, chatId } });
+              else if (abort.isError && abort.variables) abort.mutate(abort.variables);
             }}
           />
         </div>
@@ -655,10 +662,12 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         files={files}
         running={running}
         stoppable={
-          running ||
-          activeHere > 0 ||
-          items.some((item) => item.kind === "user" && item.queued) ||
-          (connection !== "ready" && chat.data?.busy === true)
+          isMain
+            ? connection === "ready" && running && Boolean(state.runTarget)
+            : running ||
+              activeChildren ||
+              items.some((item) => item.kind === "user" && item.queued) ||
+              (connection !== "ready" && chat.data?.busy === true)
         }
         pending={pending}
         disabledReason={reason}
@@ -666,7 +675,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         autoFocus
         onSend={(text, mode) => sendText(text, files.ready, undefined, mode)}
         onStop={() => {
-          if (chatId) abort.mutate({ path: { agentId, chatId } });
+          if (!chatId) return;
+
+          if (isMain) {
+            if (connection !== "ready" || !running || !state.runTarget) return;
+
+            abort.mutate({ path: { agentId, chatId }, query: { runTarget: state.runTarget } });
+          } else {
+            abort.mutate({ path: { agentId, chatId } });
+          }
         }}
         text={draft}
         onTextChange={setDraft}
@@ -721,11 +738,15 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
         <LoadEarlierButton
           chatId={chatId}
           before={state.historyBefore}
-          onPage={(page) => setState((previous) => mergeHistory(previous, page))}
+          beforeNotification={state.notifications?.before}
+          onPage={(page, beforeNotification) =>
+            setState((previous) => mergeHistory(previous, page, beforeNotification))
+          }
         />
         <Transcript
           chatId={chatId}
           items={items}
+          notifications={state.notifications?.entries}
           running={running}
           retry={retryText}
           canRetry={!readOnly && !reason && !pending}
@@ -757,6 +778,11 @@ function Chat({ chatId, settings, main = false }: { chatId: number; settings: Se
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+      {readOnly && chat.data ? (
+        <div className="flex shrink-0 justify-end border-b border-border px-3 py-1">
+          <ChatActivity chatId={chat.data.id} writable={false} />
+        </div>
+      ) : null}
       <ThreadContext.Provider value={threads}>
         <div className="relative flex min-h-0 flex-1">
           <div className="relative flex min-w-0 flex-1 flex-col">

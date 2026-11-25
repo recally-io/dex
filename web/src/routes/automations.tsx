@@ -89,7 +89,7 @@ function useAutomationUpdate(automation: Automation) {
             (patch.session ?? automation.session) === "session" ? automation.targetConversationId : undefined,
           enabled: automation.enabled,
           cwd: automation.cwd,
-          // A PUT replaces the routine, so an omitted environment would make it follow the bot.
+          // A PUT replaces the automation, so an omitted environment would make it follow the bot.
           environmentId: automation.environmentId,
           ...patch,
         },
@@ -111,7 +111,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
           onCheckedChange={() => update.change({ enabled: !automation.enabled })}
         />
       </span>
-      {update.isError ? <Failure title="Could not change routine" error={update.error} /> : null}
+      {update.isError ? <Failure title="Could not change automation" error={update.error} /> : null}
     </span>
   );
 }
@@ -119,7 +119,7 @@ function EnabledSwitch({ automation }: { automation: Automation }) {
 export function AutomationsPage() {
   return (
     <FramedPage
-      title="Routines"
+      title="Automations"
       description="Prompts that the bot runs on a schedule. Each run has its own record."
     >
       <AutomationsSection />
@@ -145,12 +145,12 @@ function AutomationsSection() {
   return (
     <>
       <Section
-        title="All routines"
+        title="All automations"
         caption={`${on} of ${list.length} on. Open one to see its runs.`}
         // SAFETY: ToggleGroup values come only from the two Filter items below.
         action={
           <Button disabled={noModel} onClick={() => setCreate(true)}>
-            New routine
+            New automation
           </Button>
         }
       >
@@ -158,7 +158,7 @@ function AutomationsSection() {
           <Loading />
         ) : automations.isError ? (
           <Failure
-            title="Could not load routines"
+            title="Could not load automations"
             error={automations.error}
             retry={() => void automations.refetch()}
           />
@@ -197,9 +197,9 @@ function AutomationsSection() {
             </ul>
           </Panel>
         ) : (
-          <Empty title="No routines yet">
+          <Empty title="No automations yet">
             {noModel
-              ? "Choose a bot model first. Routines use the same model as every chat."
+              ? "Choose a bot model first. Automations use the same model as every chat."
               : "Create one to run a prompt every few minutes, every day, on some weekdays, or once."}
           </Empty>
         )}
@@ -251,10 +251,10 @@ function ReplyComposer({
   });
 
   return (
-    <section aria-label="New chat" className="flex flex-col gap-2.5 border-2 border-foreground p-3.5">
+    <section aria-label="New session" className="flex flex-col gap-2.5 border-2 border-foreground p-3.5">
       <div className="flex items-center gap-2">
         <span className="flex-1 text-[11px] font-bold tracking-wide uppercase">
-          New chat with {botName}
+          New session with {botName}
           {run.cwd ? ` · ${run.cwd}` : ""}
         </span>
         <Button size="xs" variant="outline" onClick={onCancel} disabled={start.isPending}>
@@ -281,7 +281,7 @@ function ReplyComposer({
           {start.isPending ? "Starting…" : "Start chat"}
         </Button>
       </div>
-      {start.isError ? <Failure title="Could not start chat" error={start.error} /> : null}
+      {start.isError ? <Failure title="Could not start session" error={start.error} /> : null}
     </section>
   );
 }
@@ -349,7 +349,7 @@ function RunBlock({
         <div className="flex flex-wrap items-center gap-2">
           {run.chatId ? (
             <Button size="sm" variant="outline" disabled={replying} onClick={() => setReplying(true)}>
-              Reply in a new chat
+              Reply in a new session
             </Button>
           ) : null}
           {canHandle ? (
@@ -522,7 +522,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
 
   const crumb = (
     <Link to="/a/$agentId/automations" params={{ agentId }} className="hover:underline">
-      Routines
+      Automations
     </Link>
   );
 

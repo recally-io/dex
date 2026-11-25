@@ -32,10 +32,10 @@ type sessionResult struct {
 // no result: the caller of Stop knows.
 func resultOutcome(event engine.Outcome) (string, bool) {
 	switch {
-	case event.Status == "done":
-		return "done", true
 	case event.Reason == "stopped", event.Reason == "aborted", event.Reason == "withdrawn":
 		return "", false
+	case event.Status == "done":
+		return "done", true
 	case event.Reason == "interrupted":
 		return "interrupted", true
 	}
@@ -70,18 +70,9 @@ func (s *Service) sendResult(ctx context.Context, q *sqlc.Queries, turn string, 
 			body.Answer += fmt.Sprintf("\n[The answer is cut. Read the rest with session_read: id %d, turn %s, offset %d.]", link.ChildID, turn, textLimit)
 		}
 	}
-	f, err := q.GetChannelFollowUpByDelegation(ctx, turn)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
-	}
-	var guidance string
-	if f.State == "open" {
-		guidance = followUpPrompt
-	}
 	content, err := json.Marshal(struct {
-		Result   sessionResult `json:"task-result"`
-		FollowUp string        `json:"channel-follow-up,omitempty"`
-	}{body, guidance})
+		Result sessionResult `json:"task-result"`
+	}{body})
 	if err != nil {
 		return 0, err
 	}

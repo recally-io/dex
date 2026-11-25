@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
@@ -53,16 +54,6 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				}
 				return ""
 			}
-			silent := func(req ai.TranscriptContext, reason string) ai.AssistantMessage {
-				if tc.parentKey != MainKey {
-					// A Routine does not get the Main/Chat exit tools. Its final text stays internal.
-					return text(reason)
-				}
-				if got := description(req, "stay_silent"); !strings.Contains(got, "Do not use silence to skip internal work") {
-					t.Errorf("model did not receive the stay_silent prerequisite: %q", got)
-				}
-				return tool("stay_silent", map[string]any{"reason": reason})
-			}
 			const childTitle = "Local verifier"
 			report := "No further work is needed."
 			if tc.interrupted {
@@ -77,15 +68,15 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				}),
 				step(func(ai.TranscriptContext) ai.AssistantMessage { return text("Setup recorded.") }),
 				step(func(ai.TranscriptContext) ai.AssistantMessage {
-					return tool("stay_silent", map[string]any{"reason": "Wait for the local wake."})
+					return text("Waiting for the local wake.")
 				}),
 			}
 			if !tc.interrupted {
 				steps = append(steps, step(func(req ai.TranscriptContext) ai.AssistantMessage {
-					if got := description(req, "report_parent"); !strings.Contains(got, "direct parent") || !strings.Contains(got, "Routine") || !strings.Contains(got, "not a user notification") {
+					if got := description(req, "session_report"); !strings.Contains(got, "direct parent") || !strings.Contains(got, "Automation session") || !strings.Contains(got, "not a user notification") {
 						t.Errorf("model did not receive the internal report routing guidance: %q", got)
 					}
-					return tool("report_parent", map[string]any{"content": report})
+					return tool("session_report", map[string]any{"content": report})
 				}))
 			}
 			steps = append(steps, step(func(req ai.TranscriptContext) ai.AssistantMessage {
@@ -123,7 +114,7 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				if tc.action {
 					return tool("session_list", map[string]any{})
 				}
-				return silent(req, "No internal work remains.")
+				return text("No internal work remains.")
 			}))
 			if tc.action {
 				steps = append(steps, step(func(req ai.TranscriptContext) ai.AssistantMessage {
@@ -136,7 +127,7 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 					if tc.interrupted {
 						return tool("notify_user", map[string]any{"content": notice})
 					}
-					return silent(req, "Verified the delegated child; no user update needed.")
+					return text("Verified the delegated child; no user update needed.")
 				}))
 			}
 			provider.SetResponses(steps)
@@ -154,8 +145,21 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 			if err := r.service.admit(t.Context(), childTurn); err != nil {
 				t.Fatal(err)
 			}
-			if got := awaitReceipt(t, r, childTurn.ID); got.ExitAction != "stay_silent" {
-				t.Fatalf("child did not finish setup silently: %+v", got)
+			awaitReceipt(t, r, childTurn.ID)
+			setup, err := r.q.GetSubmission(t.Context(), "result:"+childTurn.ID)
+			if err != nil || setup.ConversationID != parent || !strings.Contains(setup.Content, "Waiting for the local wake.") {
+				t.Fatalf("child did not return its setup result to the parent: %+v, %v", setup, err)
+			}
+			if tc.interrupted {
+				if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := r.q.InsertRoutineNotificationTarget(t.Context(), sqlc.InsertRoutineNotificationTargetParams{ID: "target", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42"}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := r.q.SetPrimaryNotificationTarget(t.Context(), sqlc.SetPrimaryNotificationTargetParams{ID: "bot", PrimaryNotificationTargetID: sql.NullString{String: "target", Valid: true}}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			var outboxBefore, outboxAfter int
 			if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages`).Scan(&outboxBefore); err != nil {
@@ -169,7 +173,7 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				origin = "task" // The interrupted wake is internal and has no channel route.
 			}
 			if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-				ID: wakeID, ConversationID: childTurn.ConversationID, Content: "Local check finished.", Attachments: "null", Origin: origin, Kind: "task_result", CreatedAt: 1,
+				ID: wakeID, ConversationID: childTurn.ConversationID, Content: "Local check finished.", Attachments: "null", Origin: origin, Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -206,16 +210,11 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 			if tc.interrupted {
 				var kind, peer, body string
 				err := r.conn.QueryRowContext(t.Context(), `SELECT kind, peer, body FROM outbox_messages WHERE source_submission_id = ?`, reportID).Scan(&kind, &peer, &body)
-				if err != nil || got.ExitAction != "notify_user" || outboxAfter != outboxBefore+1 || kind != "proactive" || peer != "" || body != notice {
-					t.Fatalf("expected one explicit notification without adding a channel route, got exit=%q kind=%q peer=%q body=%q new rows=%d err=%v", got.ExitAction, kind, peer, body, outboxAfter-outboxBefore, err)
+				if err != nil || got.ExitAction != "notify_user" || outboxAfter != outboxBefore+1 || kind != "proactive" || peer != "telegram:42" || body != notice {
+					t.Fatalf("expected one explicit notification at the default destination, got exit=%q kind=%q peer=%q body=%q new rows=%d err=%v", got.ExitAction, kind, peer, body, outboxAfter-outboxBefore, err)
 				}
-			} else {
-				if tc.parentKey == MainKey && got.ExitAction != "stay_silent" {
-					t.Fatalf("parent did not exit silently: %+v", got)
-				}
-				if outboxAfter != outboxBefore {
-					t.Fatalf("internal report created %d Outbox entries", outboxAfter-outboxBefore)
-				}
+			} else if outboxAfter != outboxBefore {
+				t.Fatalf("internal report created %d Outbox entries", outboxAfter-outboxBefore)
 			}
 		})
 	}

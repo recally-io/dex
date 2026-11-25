@@ -4,6 +4,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -177,7 +178,7 @@ func TestUserChildResultReturnsToItsChatSession(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT conversation_id, origin FROM submissions WHERE id=?", child.ResultID).Scan(&parent, &origin); err != nil {
 		t.Fatal(err)
 	}
-	if parent != side || origin != "web" || !slices.ContainsFunc(w.tr.items, func(it item) bool {
+	if parent != side || origin != "task" || !slices.ContainsFunc(w.tr.items, func(it item) bool {
 		return it.Kind == "task" && it.TaskID == child.Turn && it.Title == "Chat report" && it.Text == "" && it.Status == "done"
 	}) {
 		t.Fatalf("Chat result routing: parent=%d origin=%s transcript=%+v", parent, origin, w.tr.items)
@@ -240,7 +241,7 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 	d.watch(t, side).until(t, "Chat clear while main is busy", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "boundary" })
 	})
-	// A later main Stop must also leave Chat's next task and foreground turn alone.
+	// A later Main Stop keeps its queued follow-up, its child, and the other Chat's work.
 	d.setModel(t, "spawn")
 	d.send(t, side, childJSON(t, map[string]any{"title": "scope-chat-next", "message": taskGate(t, dir, "scope-chat-next"), "provider": "faux", "modelId": "bash"}))
 	waitTaskFile(t, filepath.Join(dir, "scope-chat-next.pid"))
@@ -248,10 +249,14 @@ func TestUserStopAndClearRespectChatSessionScope(t *testing.T) {
 	d.setModel(t, "bash")
 	d.send(t, side, taskGate(t, dir, "scope-chat-next-turn"))
 	waitTaskFile(t, filepath.Join(dir, "scope-chat-next-turn.pid"))
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", main), nil, nil)
-	waitExecution(t, conn, main, "scope-main-task", "cancelled")
-	waitTaskPIDGone(t, filepath.Join(dir, "scope-main-task.pid"))
+	mainQueued := d.send(t, main, "echo main-kept")
+	target := d.watch(t, main).activeRunTarget(t)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort?runTarget=%s", main, url.QueryEscape(target)), nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-main-turn.pid"))
+	waitResultSubmission(t, conn, mainQueued, "done")
+	waitExecution(t, conn, main, "scope-main-task", "running")
+	releaseResultGate(t, dir, "scope-main-task")
+	waitExecution(t, conn, main, "scope-main-task", "done")
 	waitExecution(t, conn, side, "scope-chat-next", "running")
 	for _, gate := range []string{"scope-chat-next", "scope-chat-next-turn"} {
 		if taskPIDGone(t, filepath.Join(dir, gate+".pid")) {

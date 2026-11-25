@@ -34,37 +34,37 @@ func TestUserAloneChangesTaskLifecycle(t *testing.T) {
 	call := func(source, key string) engine.TaskContext {
 		return engine.TaskContext{AgentID: "default", ConversationID: 7, SourceRequestID: source, Key: "default/" + key}
 	}
-	task, err := s.New(ctx, call("owner", "1"), engine.WorkTaskNewArgs{Title: "Ship login"})
+	task, err := s.New(ctx, call("owner", "1"), WorkTaskNewArgs{Title: "Ship login"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.New(ctx, call("result", "2"), engine.WorkTaskNewArgs{Title: "From a result"}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.New(ctx, call("result", "2"), WorkTaskNewArgs{Title: "From a result"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a session result created a Task: %v", err)
 	}
-	if _, err := s.New(ctx, call("alert", "2a"), engine.WorkTaskNewArgs{Title: "From an alert"}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.New(ctx, call("alert", "2a"), WorkTaskNewArgs{Title: "From an alert"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a Task alert created a Task: %v", err)
 	}
-	if _, err := s.Update(ctx, call("alert", "2b"), engine.WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "cancelled"}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Update(ctx, call("alert", "2b"), WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "cancelled"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a Task alert cancelled the Task: %v", err)
 	}
 
 	// When a session result tries to complete the Task, the change is refused, but it can record progress.
-	if _, err := s.Update(ctx, call("result", "3"), engine.WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "completed"}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.Update(ctx, call("result", "3"), WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "completed"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a session result completed the Task: %v", err)
 	}
-	if _, err := s.Append(ctx, call("result", "4"), engine.WorkTaskAppendArgs{ID: task.ID, Content: "Child finished"}); err != nil {
+	if _, err := s.Append(ctx, call("result", "4"), WorkTaskAppendArgs{ID: task.ID, Content: "Child finished"}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Then a replayed append adds one entry, and the owner's request completes the Task.
-	if _, err := s.Append(ctx, call("result", "4"), engine.WorkTaskAppendArgs{ID: task.ID, Content: "Child finished"}); err != nil {
+	if _, err := s.Append(ctx, call("result", "4"), WorkTaskAppendArgs{ID: task.ID, Content: "Child finished"}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.Get(ctx, call("owner", "5"), task.ID)
 	if err != nil || len(got.Entries) != 1 || got.Lifecycle != "open" {
 		t.Fatalf("expected one entry on the open Task: %+v, %v", got, err)
 	}
-	done, err := s.Update(ctx, call("owner", "6"), engine.WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "completed"})
+	done, err := s.Update(ctx, call("owner", "6"), WorkTaskUpdateArgs{ID: task.ID, Lifecycle: "completed"})
 	if err != nil || done.Lifecycle != "completed" {
 		t.Fatalf("the owner could not complete the Task: %+v, %v", done, err)
 	}

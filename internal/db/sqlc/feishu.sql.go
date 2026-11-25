@@ -20,7 +20,7 @@ func (q *Queries) DeleteFeishuSettings(ctx context.Context, agentID string) erro
 }
 
 const getFeishuSettings = `-- name: GetFeishuSettings :one
-SELECT agent_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions FROM feishu_settings WHERE agent_id = ?
+SELECT agent_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions, verification_token, encrypt_key FROM feishu_settings WHERE agent_id = ?
 `
 
 func (q *Queries) GetFeishuSettings(ctx context.Context, agentID string) (FeishuSetting, error) {
@@ -35,6 +35,8 @@ func (q *Queries) GetFeishuSettings(ctx context.Context, agentID string) (Feishu
 		&i.PairingCode,
 		&i.PairingExpiresAt,
 		&i.Reactions,
+		&i.VerificationToken,
+		&i.EncryptKey,
 	)
 	return i, err
 }
@@ -65,22 +67,25 @@ func (q *Queries) PairFeishuOwner(ctx context.Context, arg PairFeishuOwnerParams
 }
 
 const setFeishuSettings = `-- name: SetFeishuSettings :exec
-INSERT INTO feishu_settings (agent_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO feishu_settings (agent_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions, verification_token, encrypt_key)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id) DO UPDATE SET app_id = excluded.app_id, app_secret = excluded.app_secret,
 brand = excluded.brand, owner_id = excluded.owner_id, pairing_code = excluded.pairing_code,
-pairing_expires_at = excluded.pairing_expires_at, reactions = excluded.reactions
+pairing_expires_at = excluded.pairing_expires_at, reactions = excluded.reactions,
+verification_token = excluded.verification_token, encrypt_key = excluded.encrypt_key
 `
 
 type SetFeishuSettingsParams struct {
-	AgentID          string        `json:"agent_id"`
-	AppID            string        `json:"app_id"`
-	AppSecret        string        `json:"app_secret"`
-	Brand            string        `json:"brand"`
-	OwnerID          string        `json:"owner_id"`
-	PairingCode      string        `json:"pairing_code"`
-	PairingExpiresAt int64         `json:"pairing_expires_at"`
-	Reactions        sql.NullInt64 `json:"reactions"`
+	AgentID           string        `json:"agent_id"`
+	AppID             string        `json:"app_id"`
+	AppSecret         string        `json:"app_secret"`
+	Brand             string        `json:"brand"`
+	OwnerID           string        `json:"owner_id"`
+	PairingCode       string        `json:"pairing_code"`
+	PairingExpiresAt  int64         `json:"pairing_expires_at"`
+	Reactions         sql.NullInt64 `json:"reactions"`
+	VerificationToken string        `json:"verification_token"`
+	EncryptKey        string        `json:"encrypt_key"`
 }
 
 func (q *Queries) SetFeishuSettings(ctx context.Context, arg SetFeishuSettingsParams) error {
@@ -93,6 +98,8 @@ func (q *Queries) SetFeishuSettings(ctx context.Context, arg SetFeishuSettingsPa
 		arg.PairingCode,
 		arg.PairingExpiresAt,
 		arg.Reactions,
+		arg.VerificationToken,
+		arg.EncryptKey,
 	)
 	return err
 }

@@ -1,5 +1,4 @@
-// Package telegram connects Telegram chats to an agent. It reads messages from the Bot API with long
-// polling and sends replies back. /clear clears the main timeline's context.
+// Package telegram connects Telegram chats to an agent through the Bot API.
 package telegram
 
 import (
@@ -31,8 +30,11 @@ const channelPrefix = "telegram:"
 // Config configures a Bot.
 type Config struct {
 	Options Options
+	Webhook WebhookConfig
 	Speech  speech.Resolve
 	Token   string
+	// CredentialRef is the stored key for a vault-backed token.
+	CredentialRef string
 	// AllowedUsers are the Telegram user IDs that can talk to the agent. The bot ignores all other
 	// users, because agent tools run on the host.
 	AllowedUsers []int64
@@ -40,14 +42,15 @@ type Config struct {
 	// Pair consumes a code and returns the new allowlist, or nil for an invalid code.
 	Pair    func(context.Context, string, int64) ([]int64, error)
 	Uploads *upload.Store
-	// Watch opens a chat's native preview stream.
-	Watch   func(context.Context, int64) (io.ReadCloser, error)
 	RetryAt int64
 }
 
 // Validate checks the token format and each allowed user ID.
 func (c Config) Validate() error {
 	if err := c.Options.Validate(); err != nil {
+		return err
+	}
+	if err := c.Webhook.validate(); err != nil {
 		return err
 	}
 	id, secret, ok := strings.Cut(c.Token, ":")
@@ -69,12 +72,13 @@ func (c Config) botID() string {
 }
 
 type inbound interface {
+	channel.WebhookInbox
 	Receive(ctx context.Context, peer, source string, msg chat.Message) error
+	QueueChannelNotice(ctx context.Context, peer, source string, identity chat.ChannelContext, body string) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
 	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
 	Report(name string, status channel.Status)
 	TelegramInputAllowed(ctx context.Context, peer string, source chat.ChannelContext) (bool, error)
-	GroupUploads(ctx context.Context, peer string, source chat.ChannelContext) (*upload.Store, error)
 	ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity chat.ChannelContext) (bool, error)
 	SetTelegramRetryAt(ctx context.Context, token string, until int64) error
 	SpeechInput(ctx context.Context, source string) (*chat.Message, bool, error)
@@ -92,8 +96,7 @@ type Bot struct {
 	cfg       Config
 	chats     inbound
 	client    *http.Client
-	previewMu sync.Mutex
-	previews  map[string]*preview
+	typing    sync.WaitGroup
 	rateMu    sync.Mutex
 	retryAt   time.Time
 	albumWake chan struct{}
@@ -105,18 +108,20 @@ func New(cfg Config, chats inbound) *Bot {
 	if cfg.APIURL == "" {
 		cfg.APIURL = "https://api.telegram.org"
 	}
+	client := &http.Client{Timeout: 90 * time.Second} // above the 30 s long poll
+	if cfg.CredentialRef != "" {
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	return &Bot{
 		cfg:       cfg,
 		chats:     chats,
-		client:    &http.Client{Timeout: 90 * time.Second}, // above the 30 s long poll
-		previews:  map[string]*preview{},
+		client:    client,
 		retryAt:   time.UnixMilli(cfg.RetryAt),
 		albumWake: make(chan struct{}, 1),
 	}
 }
 
-// Run receives messages and sends replies until ctx is done.
-func (b *Bot) Run(ctx context.Context) error {
+func (b *Bot) installCommands(ctx context.Context) {
 	if err := b.call(ctx, "setMyCommands", map[string]any{"commands": []map[string]string{
 		{"command": "menu", "description": "Open current conversation controls"},
 		{"command": "status", "description": "Show current conversation status"},
@@ -128,13 +133,28 @@ func (b *Bot) Run(ctx context.Context) error {
 		{"command": "stop", "description": "Stop the current conversation and its child work"},
 		{"command": "feedback", "description": "Prepare a public GitHub issue draft in private"},
 		{"command": "help", "description": "List commands"},
-	}}, nil); err != nil {
+	}}, nil); err != nil && ctx.Err() == nil {
 		slog.Warn("telegram: command menu", "err", err)
 	}
+}
+
+// Run receives messages and sends replies until ctx is done.
+func (b *Bot) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
-	var media sync.WaitGroup
-	media.Go(func() { b.collectAlbums(ctx) })
-	defer func() { cancel(); media.Wait(); b.closePreviews(ctx) }()
+	var workers sync.WaitGroup
+	defer func() { cancel(); workers.Wait(); b.typing.Wait() }()
+	webhook := b.cfg.Webhook.URL != ""
+	if webhook {
+		// Restart can replay committed events even when registration is unavailable.
+		config := b.cfg
+		workers.Go(func() { b.registerWebhook(ctx, config) })
+	} else {
+		b.installCommands(ctx)
+	}
+	workers.Go(func() { b.collectAlbums(ctx) })
+	if err := b.drainWebhookInbox(ctx); err != nil || webhook {
+		return err
+	}
 
 	// Telegram sends an update again until a getUpdates call with a higher offset confirms it. After
 	// a restart the offset is 0, so the last batch comes again; Receive ignores the repeats.
@@ -142,10 +162,15 @@ func (b *Bot) Run(ctx context.Context) error {
 	for {
 		var updates []update
 		err := b.call(ctx, "getUpdates", map[string]any{
-			"offset": offset, "timeout": 30, "allowed_updates": []string{"message", "edited_message", "callback_query"},
+			"offset": offset, "timeout": 30, "allowed_updates": inboundUpdateTypes(),
 		}, &updates)
 		for _, u := range updates {
-			if err = b.receive(ctx, u); err != nil {
+			var handled bool
+			handled, err = b.chats.HandledWebhook(ctx, "telegram", b.cfg.botID(), strconv.FormatInt(u.UpdateID, 10))
+			if err == nil && !handled {
+				err = b.receive(ctx, u)
+			}
+			if err != nil {
 				break // retry this update on the next poll
 			}
 			offset = u.UpdateID + 1
@@ -183,33 +208,26 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return nil
 	}
 	source := channelPrefix + b.cfg.botID() + ":" + strconv.FormatInt(u.UpdateID, 10)
-	if m.Chat.Type == "group" || m.Chat.Type == "supergroup" {
-		return b.receiveGroup(ctx, source, m, edited)
-	}
 	if m.Chat.Type != "private" {
 		return nil
 	}
+	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
+	identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
 	if code, ok := strings.CutPrefix(m.Text, "/start "); ok && b.cfg.Pair != nil {
 		if slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
-			return b.controlReply(ctx, m.Chat.ID, "Telegram is already paired. Send a message to talk to dex.")
+			return b.chats.QueueChannelNotice(ctx, peer, source, identity, "Telegram is already paired. Send a message to talk to dex.")
 		}
 		users, err := b.cfg.Pair(ctx, strings.TrimSpace(code), m.From.ID)
-		if err != nil {
+		if err != nil || users == nil {
 			return err
 		}
-		response := "This pairing code is invalid or expired. Create a new link in dex."
-		if users != nil {
-			b.cfg.AllowedUsers = users
-			response = "Telegram is paired. Send a message to talk to dex. /help lists commands."
-		}
-		return b.controlReply(ctx, m.Chat.ID, response)
+		b.cfg.AllowedUsers = users
+		return b.chats.QueueChannelNotice(ctx, peer, source, identity, "Telegram is paired. Send a message to talk to dex. /help lists commands.")
 	}
 	if !slices.Contains(b.cfg.AllowedUsers, m.From.ID) {
 		slog.Warn("telegram: ignored a message from a user who is not allowed", "user", m.From.ID)
 		return nil
 	}
-	peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-	identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(m.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10), MediaGroup: m.MediaGroupID}
 	allowed, err := b.chats.TelegramInputAllowed(ctx, peer, identity)
 	if err != nil {
 		return err
@@ -260,7 +278,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		attachments, err = b.downloadTo(ctx, m, b.cfg.Uploads)
 	}
 	if err != nil {
-		return b.rejectAttachment(ctx, peer, err)
+		return b.rejectAttachment(ctx, peer, source, identity, err)
 	}
 	incoming := m.inbound(m.body(), edited, attachments, identity)
 	content := incoming.Content
@@ -302,7 +320,7 @@ func (b *Bot) receive(ctx context.Context, u update) error {
 		return err
 	}
 	if !channel.IsCommand(content) && m.MediaGroupID == "" {
-		b.startPreview(ctx, source, m.Chat.ID)
+		b.showTyping(ctx, source, m.Chat.ID)
 	}
 	return nil
 }
@@ -314,11 +332,6 @@ type apiError struct {
 }
 
 func (e *apiError) Error() string { return fmt.Sprintf("Telegram API %d: %s", e.Code, e.Description) }
-
-// controlReply allows polling to pass a permanently rejected acknowledgement.
-func (b *Bot) controlReply(ctx context.Context, chatID int64, text string) error {
-	return b.controlPeerReply(ctx, channelPrefix+strconv.FormatInt(chatID, 10), text)
-}
 
 func (b *Bot) call(ctx context.Context, method string, params, result any) error {
 	body, err := json.Marshal(params)
@@ -376,12 +389,19 @@ func (b *Bot) requestAPI(ctx context.Context, method string, body io.Reader, con
 			}
 			b.rateMu.Unlock()
 			if b.chats != nil {
-				if err := b.chats.SetTelegramRetryAt(ctx, b.cfg.Token, until.UnixMilli()); err != nil {
+				key := b.cfg.Token
+				if b.cfg.CredentialRef != "" {
+					key = b.cfg.CredentialRef
+				}
+				if err := b.chats.SetTelegramRetryAt(ctx, key, until.UnixMilli()); err != nil {
 					return errors.Join(&apiError{Code: out.Code, Description: "Telegram flood control", RetryAfter: out.Parameters.RetryAfter}, fmt.Errorf("store Telegram retry window: %w", err))
 				}
 			}
 		}
 		return &apiError{Code: out.Code, Description: strings.ReplaceAll(out.Description, b.cfg.Token, "[redacted]"), RetryAfter: out.Parameters.RetryAfter}
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return &apiError{Code: resp.StatusCode, Description: "unexpected HTTP status"}
 	}
 	if result == nil {
 		return nil
@@ -407,21 +427,18 @@ type user struct {
 }
 
 type remoteChat struct {
-	ID      int64  `json:"id"`
-	Type    string `json:"type"`
-	Title   string `json:"title"`
-	IsForum bool   `json:"is_forum"`
+	ID    int64  `json:"id"`
+	Type  string `json:"type"`
+	Title string `json:"title"`
 }
 
 type message struct {
-	Rich     jsontext.Value `json:"rich_message,omitempty"`
-	ThreadID int64          `json:"message_thread_id"`
-	IsTopic  bool           `json:"is_topic_message"`
-	ID       int64          `json:"message_id"`
-	From     *user          `json:"from"`
-	Chat     remoteChat     `json:"chat"`
-	ReplyTo  *message       `json:"reply_to_message"`
-	Quote    *struct {
+	Rich    jsontext.Value `json:"rich_message,omitempty"`
+	ID      int64          `json:"message_id"`
+	From    *user          `json:"from"`
+	Chat    remoteChat     `json:"chat"`
+	ReplyTo *message       `json:"reply_to_message"`
+	Quote   *struct {
 		Text string `json:"text"`
 	} `json:"quote"`
 	ForwardOrigin *struct {
@@ -457,4 +474,15 @@ type message struct {
 			Votes int    `json:"voter_count"`
 		} `json:"options"`
 	} `json:"poll"`
+}
+
+func (b *Bot) botUsername(ctx context.Context) (string, error) {
+	if b.username == "" {
+		var me user
+		if err := b.call(ctx, "getMe", map[string]any{}, &me); err != nil {
+			return "", err
+		}
+		b.username = me.Username
+	}
+	return b.username, nil
 }

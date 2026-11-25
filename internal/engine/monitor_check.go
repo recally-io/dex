@@ -7,11 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"strings"
 	"time"
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 const (
@@ -23,13 +22,13 @@ const (
 // MonitorCheck uses the same environment, directory rules, shell, and variables as Bash.
 // It does not admit a model turn and it returns no raw output or diagnostics to control.
 func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string, env map[string]string, verify func(context.Context) error) (digest string, terminal bool, err error) {
-	if ref.Scope != "" || ref.ID <= 0 {
+	if ref.ID <= 0 {
 		return "", false, ErrInvalidInput
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return "", false, err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	if _, err := a.conversation(ctx, ref); err != nil {
 		return "", false, err
 	}
@@ -39,14 +38,14 @@ func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string,
 	}
 	target, err := envs.session(ctx, ref.ID)
 	if err != nil {
-		return "", false, execenv.ErrUnavailable
+		return "", false, runner.ErrUnavailable
 	}
-	if execenv.LeaseExpired(target.Handle) {
-		return "", false, execenv.ErrUnavailable
+	if runner.LeaseExpired(target.Handle) {
+		return "", false, runner.ErrUnavailable
 	}
 	exec, err := target.executionEnv(ctx, cwd)
 	if err != nil {
-		return "", false, execenv.ErrUnavailable
+		return "", false, runner.ErrUnavailable
 	}
 	if err := verify(ctx); err != nil {
 		return "", false, err
@@ -103,9 +102,4 @@ func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string,
 		return "", true, nil
 	}
 	return hex.EncodeToString(hash.Sum(nil)), result.ExitCode == MonitorTerminalExit, nil
-}
-
-// IsMonitorEvent recognizes current request IDs and frozen pre-upgrade receipts.
-func IsMonitorEvent(request string) bool {
-	return strings.HasPrefix(request, "monitor:") || strings.HasPrefix(request, "timer:")
 }

@@ -31,7 +31,6 @@ type fakeTelegram struct {
 	reactGate      *reactionGate
 	holdRich       func(context.Context, string)
 	fileGate       <-chan struct{}
-	draftGate      <-chan struct{}
 	pollStarted    chan struct{}
 	pollCanceled   chan struct{}
 	pollRelease    <-chan struct{}
@@ -39,14 +38,13 @@ type fakeTelegram struct {
 	failAfter      atomic.Int64
 	sendCount      atomic.Int64
 	pollOffset     atomic.Int64
+	webhookPolls   atomic.Int64
 	lastCallback   atomic.Int64
 	failSend       atomic.Bool
 	failMedia      atomic.Bool
 	mediaSent      chan telegramMedia
 	mediaAttempts  chan telegramMedia
 	mediaCalls     chan time.Time
-	groupAttempts  chan telegramGroup
-	groupSent      chan telegramGroup
 	mediaSuccesses atomic.Int64
 	fileRequests   atomic.Int64
 	mediaFailAfter atomic.Int64
@@ -54,16 +52,25 @@ type fakeTelegram struct {
 	srv            *httptest.Server
 	sent           chan sentMessage
 
-	mu          sync.Mutex
-	updates     []map[string]any
-	rejectDraft bool
-	failures    map[string][]platformFailure
-	files       map[string]string
-	events      chan platformEvent
-	nextID      int64
-	deliveries  []channelSend
-	requests    []platformEvent
-	keyboards   map[int64][][]telegramButton
+	mu           sync.Mutex
+	webhook      telegramRegistration
+	registerGate <-chan struct{}
+	updates      []map[string]any
+	failures     map[string][]platformFailure
+	files        map[string]string
+	events       chan platformEvent
+	nextID       int64
+	deliveries   []channelSend
+	requests     []platformEvent
+	keyboards    map[int64][][]telegramButton
+}
+
+type telegramRegistration struct {
+	URL     string   `json:"url"`
+	Secret  string   `json:"secret_token"`
+	Drop    bool     `json:"drop_pending_updates"`
+	Updates []string `json:"allowed_updates"`
+	Max     int      `json:"max_connections"`
 }
 
 type telegramButton struct {
@@ -99,7 +106,7 @@ const fakeToken = "123:secret"
 
 func newFakeTelegram(t *testing.T) *fakeTelegram {
 	t.Helper()
-	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), mediaSent: make(chan telegramMedia, 64), mediaAttempts: make(chan telegramMedia, 64), mediaCalls: make(chan time.Time, 64), groupAttempts: make(chan telegramGroup, 64), groupSent: make(chan telegramGroup, 64), keyboards: map[int64][][]telegramButton{}, failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
+	f := &fakeTelegram{sent: make(chan sentMessage, 64), attempted: make(chan struct{}, 64), mediaSent: make(chan telegramMedia, 64), mediaAttempts: make(chan telegramMedia, 64), mediaCalls: make(chan time.Time, 64), keyboards: map[int64][][]telegramButton{}, failures: map[string][]platformFailure{}, files: map[string]string{}, events: make(chan platformEvent, 512)}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -168,12 +175,7 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		failure = failures[0]
 		f.failures[method] = failures[1:]
 	}
-	rejectDraft := f.rejectDraft
 	f.mu.Unlock()
-	if method == "sendMediaGroup" {
-		f.serveMediaGroup(w, r, failure)
-		return
-	}
 	if method == "sendRichMessage" || method == "sendRichMessageDraft" || method == "editMessageText" {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -204,14 +206,6 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	if failure.Code != 0 {
 		_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": failure.Code, "description": "test platform failure", "parameters": map[string]any{"retry_after": failure.Retry}})
 		return
-	}
-	if method == "sendRichMessageDraft" && f.draftGate != nil {
-		f.events <- platformEvent{Method: "draftStarted"}
-		select {
-		case <-f.draftGate:
-		case <-r.Context().Done():
-			return
-		}
 	}
 	var result any
 	if mediaField != "" {
@@ -249,7 +243,40 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 	switch method {
 	case "getMe":
 		result = map[string]any{"id": 123, "username": "dex_test_bot"}
+	case "setWebhook", "deleteWebhook":
+		var registration telegramRegistration
+		if err := json.UnmarshalRead(r.Body, &registration); err != nil {
+			http.Error(w, "invalid registration", http.StatusBadRequest)
+			return
+		}
+		f.mu.Lock()
+		gate := f.registerGate
+		f.mu.Unlock()
+		if method == "setWebhook" && gate != nil {
+			f.events <- platformEvent{Method: "registerWaiting"}
+			select {
+			case <-gate:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		f.mu.Lock()
+		f.webhook = registration
+		if registration.Drop {
+			f.updates = nil
+		}
+		f.mu.Unlock()
+		f.events <- platformEvent{Method: method}
+		result = true
 	case "getUpdates":
+		f.mu.Lock()
+		registered := f.webhook.URL != ""
+		f.mu.Unlock()
+		if registered {
+			f.webhookPolls.Add(1)
+			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 409, "description": "webhook is active"})
+			return
+		}
 		var params struct {
 			Offset int64 `json:"offset"`
 		}
@@ -337,9 +364,32 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 				m.Text += reaction.Emoji
 			}
 		}
-		if method == "setMessageReaction" && f.reactGate != nil && !f.reactGate.handle(r, fmt.Sprint(m.MessageID), m.Text) {
-			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": 60}})
-			return
+		if method == "setMessageReaction" && f.reactGate != nil {
+			gate := f.reactGate
+			limited := m.Text == "👀" && gate.limitNextQueued.Swap(false)
+			if m.Text == "👀" && gate.queuedTimes != nil {
+				gate.queuedTimes <- time.Now()
+			}
+			if !gate.handle(r, fmt.Sprint(m.MessageID), m.Text) || limited {
+				if gate.unknownOutcome {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				after := 60
+				if limited {
+					after = gate.retryAfter
+				}
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 429, "description": "reaction limited", "parameters": map[string]int{"retry_after": after}})
+				return
+			}
+			if m.Text == "👀" && gate.holdQueuedRetry != nil {
+				select {
+				case <-gate.holdQueuedRetry:
+				case <-r.Context().Done():
+					return
+				}
+			}
 		}
 		if method == "setMyCommands" {
 			for _, command := range m.Commands {
@@ -348,10 +398,6 @@ func (f *fakeTelegram) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		if f.permanentChat.Load() == m.ChatID && m.ChatID != 0 {
 			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 403, "description": "bot was blocked by the user"})
-			return
-		}
-		if rejectDraft && method == "sendRichMessageDraft" {
-			_ = json.MarshalWrite(w, map[string]any{"ok": false, "error_code": 400, "description": "unsupported markup or draft"})
 			return
 		}
 		f.mu.Lock()
@@ -540,18 +586,12 @@ func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 	}
 	// When an unpaired user sends a bad code, then the valid code.
 	f.message(1, 99, 8, "/start wrong")
-	if got := f.next(t); !strings.Contains(got.Text, "expired") {
-		t.Fatalf("bad code reply = %+v", got)
-	}
 	f.message(2, 42, 7, "/start "+code)
 	if got := f.next(t); !strings.Contains(got.Text, "paired") {
 		t.Fatalf("pairing reply = %+v", got)
 	}
 	// Then the code cannot enroll a second user, and only the owner gets an answer.
 	f.message(3, 99, 8, "/start "+code)
-	if got := f.next(t); !strings.Contains(got.Text, "expired") {
-		t.Fatalf("reused code reply = %+v", got)
-	}
 	f.message(4, 99, 8, "ignored")
 	f.message(5, 42, 7, "hello")
 	if got := f.next(t); got.Text != "echo: hello" || got.ChatID != 7 {
@@ -559,37 +599,6 @@ func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 	}
 	if chats := d.chats(t); len(chats) != 0 {
 		t.Fatalf("channel in Sessions: %+v", chats)
-	}
-}
-
-func TestUserGetsSplitTelegramCode(t *testing.T) {
-	t.Parallel()
-	// Given a bot and a code block that cannot fit in one Telegram message.
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, t.TempDir(), 42)
-	setAnswer := useRichAnswerProvider(t, d)
-	code := strings.Repeat("😀<&", 11000)
-	// When the model returns a standalone fenced code block larger than 32768 characters.
-	setAnswer("Code:\n\n```go\n" + code + "\n```\n\nCODE-END")
-	f.message(1, 42, 7, "generate code")
-	// Then each real HTTP payload has balanced tags, and no code character is lost.
-	var plain strings.Builder
-	codeParts := 0
-	for {
-		got := f.next(t)
-		plain.WriteString(richPayloadText(t, got))
-		if strings.Contains(got.RichHTML, "<pre>") {
-			codeParts++
-			if !strings.Contains(got.RichHTML, `<pre><code class="language-go">`) {
-				t.Fatal("code language was lost")
-			}
-		}
-		if strings.Contains(got.RichHTML, "CODE-END") {
-			break
-		}
-	}
-	if codeParts < 2 || !strings.Contains(plain.String(), code) {
-		t.Fatalf("code was changed: parts=%d characters=%d", codeParts, len([]rune(plain.String())))
 	}
 }
 
@@ -607,52 +616,6 @@ func (f *fakeTelegram) nextEvent(t *testing.T, method string) platformEvent {
 			t.Fatalf("no %s in 30 s", method)
 			return platformEvent{}
 		}
-	}
-}
-
-func TestUserSeesTelegramDraft(t *testing.T) {
-	t.Parallel()
-	// Given a bot and an answer that takes several seconds to produce.
-	f := newFakeTelegram(t)
-	startTelegram(t, f, t.TempDir(), 42)
-	input := strings.Repeat("stream ", 400)
-	// When the owner sends the message.
-	f.message(1, 42, 7, input)
-	// Then a draft appears before the complete final message.
-	draft := f.nextEvent(t, "sendRichMessageDraft")
-	if draft.Text == "" || !strings.HasPrefix("echo: "+input, draft.Text) {
-		t.Fatalf("draft = %q", draft.Text)
-	}
-	if got := f.next(t); got.Text != strings.TrimSpace("echo: "+input) {
-		t.Fatalf("final length = %d", len(got.Text))
-	}
-}
-
-func TestUserSeesTelegramEditWhenDraftIsUnsupported(t *testing.T) {
-	t.Parallel()
-	// Given an older Bot API without draft support.
-	f := newFakeTelegram(t)
-	f.rejectDraft = true
-	startTelegram(t, f, t.TempDir(), 42)
-	input := strings.Repeat("stream ", 400)
-	// When the owner sends a message that streams for several seconds.
-	f.message(1, 42, 7, input)
-	// Then the bot sends one preview and updates that same message.
-	preview := f.next(t)
-	if preview.RichHTML == "" {
-		t.Fatalf("preview = %+v", preview)
-	}
-	sent := f.nextEvent(t, "sendRichMessage")
-	edit := f.nextEvent(t, "editMessageText")
-	if edit.MessageID == 0 || edit.MessageID != sent.MessageID {
-		t.Fatal("the preview edit has no message ID")
-	}
-	final := f.next(t)
-	for final.Text != strings.TrimSpace("echo: "+input) {
-		final = f.next(t)
-	}
-	if final.RichHTML == "" || final.Text != strings.TrimSpace("echo: "+input) {
-		t.Fatalf("final = rich %q, length %d", final.RichHTML, len(final.Text))
 	}
 }
 
@@ -741,10 +704,11 @@ func TestUserCannotPairTelegramWithExpiredCode(t *testing.T) {
 	}
 	// When someone sends the expired code.
 	f.message(1, 42, 7, "/start "+link.Query().Get("start"))
-	// Then the bot refuses the code and stores no allowed user or conversation.
-	if got := f.next(t); !strings.Contains(got.Text, "expired") {
-		t.Fatalf("expired reply = %+v", got)
-	}
+	// Then the bot refuses the code without a body or an input receipt.
+	eventually(t, "poller handled expired code", func() (bool, any) {
+		offset := f.pollOffset.Load()
+		return offset >= 2, offset
+	})
 	var users string
 	if err = conn.QueryRowContext(t.Context(), "SELECT allowed_users FROM telegram_settings").Scan(&users); err != nil {
 		t.Fatal(err)

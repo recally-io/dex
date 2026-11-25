@@ -32,7 +32,7 @@ import (
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // Wake modes.
@@ -141,16 +141,16 @@ type StartParams struct {
 	Env           map[string]string
 	MaskOutput    func(string) string
 	InheritEnv    bool
-	EnvKind       execenv.Kind
+	EnvKind       runner.Kind
 	// OutputDir holds the output file.
 	OutputDir string
 }
 
 // ExecEnvOpener acquires an execution environment for a non-local background command. An empty
 // environmentID selects the environment of the agent.
-type ExecEnvOpener func(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error)
+type ExecEnvOpener func(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error)
 
-// outputHooks receive live command output chunks and events from a runner.
+// outputHooks receive live command output and events from an executor.
 type outputHooks struct {
 	OnStdoutLine func(line string)
 	OnSizeLimit  func()
@@ -170,8 +170,8 @@ type runningProcess interface {
 	Abandon()
 }
 
-// runner starts and supervises background commands inside a local or remote execution environment.
-type runner interface {
+// executor starts and supervises background commands inside a local or remote execution environment.
+type executor interface {
 	ValidateDir(ctx context.Context, p StartParams, cwd string) error
 	PrepareOutput(ctx context.Context, p StartParams, id string) (string, error)
 	Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error)
@@ -255,14 +255,14 @@ type proc struct {
 	windowN      int
 }
 
-func (m *Manager) runnerFor(kind execenv.Kind, opener ExecEnvOpener) (runner, error) {
-	if kind == "" || kind == execenv.KindLocal {
-		return &localRunner{limits: m.limits, wg: &m.wg}, nil
+func (m *Manager) executorFor(kind runner.Kind, opener ExecEnvOpener) (executor, error) {
+	if kind == "" || kind == runner.KindLocal {
+		return &localExecutor{limits: m.limits, wg: &m.wg}, nil
 	}
 	if opener == nil {
-		return nil, fmt.Errorf("%w: remote background runner is unavailable", ErrInvalid)
+		return nil, fmt.Errorf("%w: remote background executor is unavailable", ErrInvalid)
 	}
-	return newEnvRunner(opener, m.limits), nil
+	return newEnvExecutor(opener, m.limits), nil
 }
 
 // Start runs a command in the background and returns its row. The row exists before the process:
@@ -288,18 +288,18 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 		p.Timeout = cmp.Or(p.Timeout, m.limits.ExitTimeout)
 	}
 	cwd := p.Cwd
-	if !execenv.IsAbsPath(cwd) {
-		cwd = execenv.JoinTargetPath(p.DefaultCwd, cwd)
+	if !runner.IsAbsPath(cwd) {
+		cwd = runner.JoinTargetPath(p.DefaultCwd, cwd)
 	}
 
 	m.mu.Lock()
 	opener := m.envOpener
 	m.mu.Unlock()
-	runner, err := m.runnerFor(p.EnvKind, opener)
+	executor, err := m.executorFor(p.EnvKind, opener)
 	if err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
-	if err := runner.ValidateDir(ctx, p, cwd); err != nil {
+	if err := executor.ValidateDir(ctx, p, cwd); err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
 
@@ -322,7 +322,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	}
 
 	id := uuid.NewV7().String()
-	output, err := runner.PrepareOutput(ctx, p, id)
+	output, err := executor.PrepareOutput(ctx, p, id)
 	if err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
@@ -341,7 +341,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	if created == 0 {
 		return sqlc.BackgroundCommand{}, fmt.Errorf("%w: the call key is in use", ErrInvalid)
 	}
-	started, err := m.launch(ctx, runner, id, p, cwd, output)
+	started, err := m.launch(ctx, executor, id, p, cwd, output)
 	if err != nil {
 		// The command never ran, so no row stays and a replayed call can try again.
 		if derr := m.q.DeleteBackgroundCommand(context.WithoutCancel(ctx), id); derr != nil {
@@ -386,7 +386,7 @@ func (m *Manager) abandon(ctx context.Context, started *proc, id string) {
 	}
 }
 
-func (m *Manager) launch(ctx context.Context, r runner, id string, p StartParams, cwd, output string) (*proc, error) {
+func (m *Manager) launch(ctx context.Context, r executor, id string, p StartParams, cwd, output string) (*proc, error) {
 	started := &proc{done: make(chan struct{}), maskOutput: p.MaskOutput}
 	run, err := r.Start(ctx, p, id, cwd, output, outputHooks{
 		OnStdoutLine: func(line string) { m.event(started, line) }, //nolint:contextcheck // line batching outlives the start tool call
@@ -707,27 +707,27 @@ func (m *Manager) owned(ctx context.Context, conversationID int64, id string) (s
 	return row, err
 }
 
-// localRunner spawns OS child processes directly on the control host.
-type localRunner struct {
+// localExecutor spawns OS child processes directly on the control host.
+type localExecutor struct {
 	limits Limits
 	wg     *sync.WaitGroup
 }
 
-func (r *localRunner) ValidateDir(_ context.Context, _ StartParams, cwd string) error {
+func (r *localExecutor) ValidateDir(_ context.Context, _ StartParams, cwd string) error {
 	if info, err := os.Stat(cwd); err != nil || !info.IsDir() {
 		return fmt.Errorf("%w: %s is not a directory", ErrInvalid, cwd)
 	}
 	return nil
 }
 
-func (r *localRunner) PrepareOutput(_ context.Context, p StartParams, id string) (string, error) {
+func (r *localExecutor) PrepareOutput(_ context.Context, p StartParams, id string) (string, error) {
 	if err := os.MkdirAll(p.OutputDir, 0o700); err != nil {
 		return "", err
 	}
 	return filepath.Join(p.OutputDir, id+".log"), nil
 }
 
-func (r *localRunner) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks outputHooks) (runningProcess, error) {
+func (r *localExecutor) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks outputHooks) (runningProcess, error) {
 	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
 	if err != nil {
 		return nil, err
@@ -942,18 +942,18 @@ func (p *localProc) pump() {
 	}
 }
 
-// envRunner executes background commands over an agent's durableenv.ExecutionEnv.
-type envRunner struct {
+// envExecutor executes background commands over an agent's durableenv.ExecutionEnv.
+type envExecutor struct {
 	openEnv ExecEnvOpener
 	limits  Limits
 }
 
-// newEnvRunner creates a runner that executes commands via durableenv.ExecutionEnv.
-func newEnvRunner(openEnv ExecEnvOpener, limits Limits) *envRunner {
-	return &envRunner{openEnv: openEnv, limits: limits}
+// newEnvExecutor starts commands through durableenv.ExecutionEnv.
+func newEnvExecutor(openEnv ExecEnvOpener, limits Limits) *envExecutor {
+	return &envExecutor{openEnv: openEnv, limits: limits}
 }
 
-func (r *envRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
+func (r *envExecutor) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
 	execEnv, _, _, release, err := r.openEnv(ctx, p.AgentID, p.EnvironmentID, cwd, p.Env)
 	if err != nil {
 		return err
@@ -961,14 +961,14 @@ func (r *envRunner) ValidateDir(ctx context.Context, p StartParams, cwd string) 
 	if release != nil {
 		defer release()
 	}
-	info, err := execenv.StatFollow(ctx, execEnv, cwd)
+	info, err := runner.StatFollow(ctx, execEnv, cwd)
 	if err != nil || info.Kind != durableenv.FileKindDirectory {
 		return fmt.Errorf("%w: %s is not a directory", ErrInvalid, cwd)
 	}
 	return nil
 }
 
-func (r *envRunner) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
+func (r *envExecutor) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
 	execEnv, workspace, _, release, err := r.openEnv(ctx, p.AgentID, p.EnvironmentID, p.DefaultCwd, p.Env)
 	if err != nil {
 		return "", err
@@ -976,18 +976,18 @@ func (r *envRunner) PrepareOutput(ctx context.Context, p StartParams, id string)
 	if release != nil {
 		defer release()
 	}
-	outDir := cmp.Or(p.OutputDir, execenv.JoinTargetPath(workspace, ".dex", "background"))
+	outDir := cmp.Or(p.OutputDir, runner.JoinTargetPath(workspace, ".dex", "background"))
 	if err := execEnv.CreateDir(ctx, outDir, &durableenv.CreateDirOptions{Recursive: new(true)}); err != nil {
 		return "", err
 	}
-	outputPath := execenv.JoinTargetPath(outDir, id+".log")
+	outputPath := runner.JoinTargetPath(outDir, id+".log")
 	if err := execEnv.WriteFile(ctx, outputPath, ""); err != nil {
 		return "", err
 	}
 	return outputPath, nil
 }
 
-func (r *envRunner) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error) {
+func (r *envExecutor) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error) {
 	baseCtx := context.WithoutCancel(ctx)
 	execEnv, _, _, release, err := r.openEnv(baseCtx, p.AgentID, p.EnvironmentID, cwd, p.Env)
 	if err != nil {

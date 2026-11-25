@@ -28,22 +28,38 @@ source, and optional turn ID and title of a result. `dex.user` and `dex.task_res
 keep display facts with the durable input. `dex.withdrawn` entries preserve
 queued inputs that Stop removed. Withdrawn entries contribute no model text.
 
-Session tools call injected typed handlers in `internal/chat`. The engine does
-not import the HTTP API package. Frontend `Item`, `Event`, `Retry`, and
-`History` types live in the engine and keep the HTTP JSON field names. JSON
-encoding occurs at the HTTP boundary.
+The engine does not import the HTTP API package. Frontend `Item`, `Event`,
+`Retry`, and `History` types live in the engine and keep the HTTP JSON field
+names. JSON encoding occurs at the HTTP boundary.
 
-## Command Monitors
+## Tool registration
 
-A session uses `monitor_set_command` for long work. The call does not wait for
+Business packages define the tool schemas, prompt sections, and handlers.
+`internal/app` supplies these extensions when the engine opens or reloads an
+agent. The engine registers them before PiG can resume work. The app selects
+optional extensions by name before native input admission. Keep the existing
+extension names because PiG saves them with sessions. Default extensions keep
+their order in the model prompt.
+
+`engine.BindTool` gives a tool its execution session and operation key. The tool
+can resolve the initiating request and the other inputs in the run. The engine
+owns the PiG lookups. Business storage and authorization stay in each handler.
+
+## Session Processes
+
+A session uses `process_start` for long work. The call does not wait for
 completion. Use foreground `bash` for work that must finish in the current
 turn. Do not detach work with `&` or `nohup`. The `monitors` extension also
 provides [schedule Monitors](architecture.md#session-monitors).
 [`internal/background`](../../internal/background/background.go) owns the
 processes. [`internal/chat/background.go`](../../internal/chat/background.go)
-binds each command to its session.
+binds each command to its session. The Local executor owns a POSIX process
+group, so it can stop and sweep the group after the shell exits. Machine and
+Sandbox executors use the selected Runner's execution lease. That interface
+supports cancellation but does not give the control host a process group
+that it can signal.
 
-- `monitor_set_command` starts the command and
+- `process_start` starts the command and
   returns the ID and the output file path at once. It runs in a new session
   (`Setsid`), so the shell leads its own process group, with the environment of
   the bash tool of the bot. `env` overrides variables for this command only.
@@ -67,9 +83,10 @@ binds each command to its session.
   Previously, an `exit` command without a timeout could run indefinitely.
   New commands that need more than 30 minutes must set a longer timeout.
 - Wake `none` sends no wake-up. Its default timeout is 1800 seconds.
-- `monitor_list` shows both kinds of Monitor in the calling session.
-  `monitor_cancel` sends SIGTERM to a running command's process group and
-  SIGKILL after 5 seconds. Cancellation sends no wake-up.
+- `process_list` shows active and recent Processes in the calling session.
+  `process_stop` accepts the `command-` ID from `process_start` or `process_list`,
+  or the raw ID from a wake-up. It sends SIGTERM to the process group and then
+  SIGKILL after 5 seconds if needed. It sends no wake-up.
 - A command owns its whole process group. When the shell leader exits, dex ends
   the rest of the group (SIGTERM, then SIGKILL after 5 s) before it stores the
   final state. Once that sweep starts, dex sends no other signal to the group, so
@@ -87,7 +104,7 @@ reason. The state is `starting`, `running`, `exited`, `stopped`, `timed_out` or
 `unknown`. The reason is `stop`, `shutdown`, `timeout`, `output_limit`,
 `rate_limit` or `start_failed`.
 
-The tool call key is unique. `monitor_set_command` stores the row in state
+The tool call key is unique. `process_start` stores the row in state
 `starting` before it starts the process, then stores the PID and `running`. A
 replay that finds any row returns it and never starts a process, so a crash
 between the process start and the row write cannot run a command twice. After
@@ -154,7 +171,8 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
   returns the full item when the user opens the step.
 - A text-only increase sends `append`. Other item changes send `item`.
   Removal, reordering, a committed partial ID change, or a new history boundary
-  sends a replacement `snapshot`. Running and retry changes send `run`.
+  sends a replacement `snapshot`. Running, foreground task target, and retry
+  changes send `run`. A reconnect receives the current target in the snapshot.
 - Each subscriber has its own native watch. Snapshot capture and subscription
   share one revision. A reconnect needs no replay. Closing one browser tab
   cannot stop another tab's subscription.
@@ -170,7 +188,7 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
   as JSON at the SSE boundary.
 
 `POST /api/agents/{agentId}/chats/{id}/messages/{messageId}/withdraw` removes one
-queued input. Under the agent delivery lock, `Agents.Withdraw` calls PiG's
+queued input. Under the Session delivery gate, `Agents.Withdraw` calls PiG's
 `Submission.Abort`. PiG decides: `aborted` means the input never runs, and
 `already_placed` means it runs, so dex answers 409. The control receipt settles
 as `unanswered` with reason `withdrawn` and keeps its request ID and source
@@ -178,7 +196,7 @@ key, so a channel redelivery does not run it. It sets `delivered_at`, so the
 reply outbox sends nothing. A repeated call returns the same message. The
 withdrawal writes no `dex.withdrawn` entry, so Edit leaves no stale bubble.
 
-`POST /api/agents/{agentId}/chats/{id}/clear` uses the agent delivery lock and a SQLite writer
+`POST /api/agents/{agentId}/chats/{id}/clear` uses the Session delivery gate and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
 engine also checks its active run and Inbox. A refused request stores no reset.
 `Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and
@@ -196,8 +214,9 @@ and `/compact` when the last non-compaction item is a plain reset or is absent.
 
 `Agents.Compact` starts a native manual compaction. It also runs during a run;
 the summary then waits in the inbox for the run's next boundary. Native abort
-keeps queued writes for a later run, so `Agents.Abort` withdraws queued
-summaries; otherwise one would wait for the next message and block maintenance.
+keeps queued writes for a later run, so legacy `Agents.Abort` withdraws queued
+summaries. Web Main Stop uses task abort instead. It keeps the Inbox and takes
+its next boundary if input waits.
 The view shows a `pending` compaction boundary for each live compaction and a
 `queued` one for each summary in the inbox. A goroutine waits for the task, and
 then for the queued summary. When no summary is placed, it writes a

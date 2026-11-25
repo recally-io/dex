@@ -2,6 +2,7 @@ package chat
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,14 +10,14 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserSystemTurnFailQuietAndErrorFallback(t *testing.T) {
+func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
 
 	// Given a done System Turn (task_result) without notify_user or ask_user.
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "sys-quiet-1", ConversationID: conv, Content: "task result payload",
-		Attachments: "null", Origin: "telegram:42", Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -38,28 +39,27 @@ func TestUserSystemTurnFailQuietAndErrorFallback(t *testing.T) {
 	// When a System Turn settles with an unhandled failure (e.g. model_error).
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "sys-fail-1", ConversationID: conv, Content: "task result payload",
-		Attachments: "null", Origin: "telegram:42", Kind: "task_result", CreatedAt: 2,
+		Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.service.settle(t.Context(), "sys-fail-1", engine.Outcome{Status: "unanswered", Reason: "model_error"}); err != nil {
 		t.Fatal(err)
 	}
-	var kind, peer, body string
-	if err := r.conn.QueryRowContext(t.Context(), `SELECT kind, peer, body FROM outbox_messages WHERE dedup_key=?`, "error:sys-fail-1").Scan(&kind, &peer, &body); err != nil {
-		t.Fatal(err)
-	}
-	if kind != "system_error" || peer != "telegram:42" || !strings.Contains(body, "model_error") {
-		t.Fatalf("unexpected system_error outbox row: kind=%q peer=%q body=%q", kind, peer, body)
+	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE source_submission_id=?`, "sys-fail-1").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("background failure wrote %d outbound messages: %v", count, err)
 	}
 }
 
 func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "sys-notify-src", ConversationID: conv, Content: "wake",
-		Attachments: "null", Origin: "telegram:42", Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -86,12 +86,12 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 		SourceRequestID: "sys-notify-src", RunInputIDs: []string{"sys-notify-src"}, Key: "bot/101",
 	}
 	nonFinal := false
-	firstID, err := r.service.ToolNotifyUser(t.Context(), call, engine.NotifyUserArgs{Content: "step 1", TopicKey: "deploy", Final: &nonFinal})
+	firstID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 1", Channel: "telegram", TopicKey: "deploy", Final: &nonFinal})
 	if err != nil {
 		t.Fatal(err)
 	}
 	call.Key = "bot/102"
-	secondID, err := r.service.ToolNotifyUser(t.Context(), call, engine.NotifyUserArgs{Content: "step 2", TopicKey: "deploy"})
+	secondID, err := r.service.ToolNotifyUser(t.Context(), call, NotifyUserArgs{Content: "step 2", Channel: "telegram", TopicKey: "deploy"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,8 +106,8 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	if firstMsg.Status != "superseded" || secondMsg.Status != "pending" {
 		t.Fatalf("expected first superseded and second pending, got %s / %s", firstMsg.Status, secondMsg.Status)
 	}
-	if err := r.q.MarkOutboxDelivered(t.Context(), sqlc.MarkOutboxDeliveredParams{
-		ID: secondID, DeliveredAt: sql.NullInt64{Int64: r.service.now().UnixMilli(), Valid: true},
+	if err := r.q.MarkOutboxSent(t.Context(), sqlc.MarkOutboxSentParams{
+		ID: secondID, RemoteIds: "[]", DeliveredAt: sql.NullInt64{Int64: r.service.now().UnixMilli(), Valid: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +120,35 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}
 }
 
-func TestUserStaySilentRejectsUnansweredUserMessageAndReportParent(t *testing.T) {
+func TestUserChildTurnKeepsSavedSilentExit(t *testing.T) {
+	r := startNative(t, "echo")
+	ctx := t.Context()
+	_, source := taskParent(t, r)
+	if _, err := r.service.ToolSessionNew(ctx, source, SessionNewArgs{Title: "Worker", Message: "Finish this turn"}); err != nil {
+		t.Fatal(err)
+	}
+	// Given a child turn with a silent exit saved by an older release.
+	turn := turnID(source.Key)
+	if err := r.q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: turn, ExitAction: "stay_silent"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// When the current release settles the turn, the parent gets no result.
+	if err := r.service.admit(ctx, taskInput(t, r, turn)); err != nil {
+		t.Fatal(err)
+	}
+	if got := awaitReceipt(t, r, turn); got.Status != "done" {
+		t.Fatalf("child did not complete: %s", got.Status)
+	}
+	if _, err := r.q.GetSubmission(ctx, "result:"+turn); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("saved silent exit must not send a child result: %v", err)
+	}
+}
+
+func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Worker", Message: "init"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Worker", Message: "init"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,23 +157,7 @@ func TestUserStaySilentRejectsUnansweredUserMessageAndReportParent(t *testing.T)
 	}
 	awaitReceipt(t, r, turnID(source.Key))
 
-	// Steered user message in RunInputIDs must reject stay_silent.
-	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "steered-user-1", "wait"); err != nil {
-		t.Fatal(err)
-	}
-	pRow, err := r.q.GetConversation(t.Context(), parent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = r.service.ToolStaySilent(t.Context(), engine.TaskContext{
-		AgentID: "bot", ConversationID: pRow.ExecutionID.Int64,
-		SourceRequestID: "steered-user-1", RunInputIDs: []string{"steered-user-1"}, Key: "bot/201",
-	}, engine.StaySilentArgs{Reason: "nothing"})
-	if err == nil || !strings.Contains(err.Error(), "unanswered user message") {
-		t.Fatalf("expected stay_silent rejection on unanswered user message, got %v", err)
-	}
-
-	// Child System Turn can explicitly escalate to parent via ToolReportParent.
+	// Child System Turn can explicitly escalate to parent via session_report (ToolReportParent).
 	var childID int64
 	if err := r.conn.QueryRowContext(t.Context(), `SELECT id FROM conversations WHERE parent_id = ?`, parent).Scan(&childID); err != nil {
 		t.Fatal(err)
@@ -159,14 +168,14 @@ func TestUserStaySilentRejectsUnansweredUserMessageAndReportParent(t *testing.T)
 	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "child-bg-wake", ConversationID: childID, Content: "bg done",
-		Attachments: "null", Origin: "web", Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "web", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	resultID, err := r.service.ToolReportParent(t.Context(), engine.TaskContext{
 		AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
 		SourceRequestID: "child-bg-wake", RunInputIDs: []string{"child-bg-wake"}, Key: "bot/202",
-	}, engine.ReportParentArgs{Content: "explicit child escalation"})
+	}, ReportParentArgs{Content: "explicit child escalation"})
 	if err != nil {
 		t.Fatal(err)
 	}

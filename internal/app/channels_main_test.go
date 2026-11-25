@@ -222,10 +222,10 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 			waitResultSubmission(t, conn, web, "done")
 			webTask := waitExecution(t, conn, main, "Web result", "done")
 			webResult := waitResultSubmission(t, conn, webTask.ResultID, "done")
-			// When the old channel work completes, its task_result keeps its source peer without auto-sending to the channel.
+			// When the old channel work completes, its task_result stays internal (origin=task) without auto-sending to the channel.
 			resultID := work.ResultID
 			result := waitResultSubmission(t, conn, resultID, "done")
-			assertSubmissionOrigin(t, conn, resultID, e.peer)
+			assertSubmissionOrigin(t, conn, resultID, "task")
 			var outboxCount int
 			if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM outbox_messages WHERE source_submission_id IN (?, ?)", resultID, webTask.ResultID).Scan(&outboxCount); err != nil {
 				t.Fatal(err)
@@ -306,7 +306,7 @@ func TestUserChannelMainBusyInputsKeepAdmissionOrder(t *testing.T) {
 	t.Logf("artifact: admission order=%q", rows)
 }
 
-func TestUserChannelMainFeishuPreviewStopsBeforeQueuedWebInput(t *testing.T) {
+func TestUserChannelMainFeishuReplyDoesNotIncludeQueuedWebInput(t *testing.T) {
 	t.Parallel()
 	// Given a channel answer that streams while a web input waits in main.
 	f := newFakeFeishu(t)
@@ -319,7 +319,6 @@ func TestUserChannelMainFeishuPreviewStopsBeforeQueuedWebInput(t *testing.T) {
 	text := strings.TrimSpace(strings.Repeat("channel-answer ", 400))
 	f.text(t, "channel-preview", "owner", "p2p", gate+"; printf '%s' '"+text+"'")
 	waitTaskFile(t, filepath.Join(dir, "feishu-preview.pid"))
-	f.waitReply(t, "Thinking")
 	web := d.send(t, main, "printf web-private")
 	d.watch(t, main).until(t, "queued web input", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == web && it.Queued })
@@ -381,7 +380,7 @@ func TestUserChannelMainClearRefusesBusyAndDeduplicates(t *testing.T) {
 	}
 	// A control restart between reset commit and command completion must reuse the reset.
 	d.stop()
-	if _, err := conn.ExecContext(t.Context(), "UPDATE channel_commands SET completed=0, delivered_at=NULL WHERE source_key='telegram:123:2'"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "DELETE FROM outbox_messages WHERE id='telegram:123:2'; UPDATE channel_commands SET completed=0, delivered_at=NULL WHERE source_key='telegram:123:2'"); err != nil {
 		t.Fatal(err)
 	}
 	startDex(t, dir, f.srv.URL)
@@ -454,7 +453,7 @@ func assertSubmissionOrigin(t *testing.T, conn *sql.DB, id, want string) {
 	}
 }
 
-func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
+func TestUserRevokedChannelStopDoesNotReplyOrAffectLaterWork(t *testing.T) {
 	t.Parallel()
 	// Given a Stop whose withdrawal commits but whose completion fails.
 	f := newFakeTelegram(t)
@@ -477,12 +476,15 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	later := d.send(t, main, taskGate(t, dir, "later-turn"))
 	waitTaskFile(t, filepath.Join(dir, "later-turn.pid"))
 
-	// When command delivery retries while the new turn and task run.
+	// When the same account reconnects while the new turn and task run.
 	if _, err := conn.ExecContext(t.Context(), "DROP TRIGGER fail_command_completion"); err != nil {
 		t.Fatal(err)
 	}
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
-	waitTaskChannelText(t, f, "Stop requested.")
+	if n := count(t, conn, `SELECT count(*) FROM channel_commands c
+WHERE c.source_key = 'telegram:123:1' AND c.delivered_at IS NOT NULL`); n != 1 {
+		t.Fatal("the old acknowledgment did not close with its binding")
+	}
 	if got := resultSubmission(t, conn, later); got.status != "pending" {
 		t.Fatalf("replayed Stop withdrew later running input: %+v", got)
 	}
@@ -502,6 +504,11 @@ func TestUserChannelMainStopReplayPreservesLaterWork(t *testing.T) {
 	result := waitResultSubmission(t, conn, task.ResultID, "done")
 	if !strings.Contains(result.answer, "gate released") {
 		t.Fatalf("later task answer missing: %+v", result)
+	}
+	d.setModel(t, "echo")
+	f.message(2, 42, 7, "new binding")
+	if got := f.next(t); got.Text != "echo: new binding" {
+		t.Fatalf("expected only the new reply: %+v", got)
 	}
 	t.Logf("artifact: later input=%s; task=%s status=%s report=%q", later, task.ID, task.Status, task.Report)
 }

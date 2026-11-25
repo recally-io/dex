@@ -17,11 +17,6 @@ on:
 permissions:
   contents: read
 
-# documd renders the diagrams of the docs; CI does not need it. mise refuses to install it,
-# because the package has fewer weekly downloads than mise's supply-chain threshold.
-env:
-  MISE_DISABLE_TOOLS: npm:@markdown-viewer/documd
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
@@ -85,7 +80,7 @@ jobs:
             git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
             git push origin "$RELEASE_TAG"
           fi
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.10
         with:
           install: true
           cache: true

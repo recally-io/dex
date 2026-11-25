@@ -3,25 +3,25 @@ package engine
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 var (
-	ErrBusy         = errors.New("conversation is busy")
-	ErrOriginBusy   = errors.New("follow-up queue holds another origin")
-	ErrMaintenance  = errors.New("engine admission is paused")
-	ErrClosed       = errors.New("engine is closed")
-	ErrInvalidInput = errors.New("invalid engine input")
-	ErrNotFound     = errors.New("conversation not found")
-	ErrItemNotFound = errors.New("transcript item not found")
-	ErrNoModel      = errors.New("the bot has no model; choose one in Settings")
+	ErrBusy                 = errors.New("conversation is busy")
+	ErrEnvironmentResetting = errors.New("environment reset in progress")
+	ErrOriginBusy           = errors.New("follow-up queue holds another origin")
+	ErrMaintenance          = errors.New("engine admission is paused")
+	ErrClosed               = errors.New("engine is closed")
+	ErrInvalidInput         = errors.New("invalid engine input")
+	ErrNotFound             = errors.New("conversation not found")
+	ErrItemNotFound         = errors.New("transcript item not found")
+	ErrNoModel              = errors.New("the bot has no model; choose one in Settings")
 )
 
 type Ref struct {
-	// Scope is the trusted resource audience. Empty selects the private bot runtime.
-	Scope   string
 	AgentID string
 	ID      int64
 }
@@ -40,8 +40,6 @@ type ModelRef struct {
 	ModelID  string `json:"modelId"`
 }
 type Options struct {
-	// Scope is selected by trusted routing, never by model arguments or message text.
-	Scope         string
 	Cwd           string
 	Model         ModelRef
 	ThinkingLevel string
@@ -56,27 +54,33 @@ type Attachment struct {
 }
 
 type Input struct {
+	// BeforeAdmission checks receipt state after environment preparation, before a new native commit.
+	BeforeAdmission func(context.Context) error
+	// ValidateAdmission runs just before a new native commit.
+	ValidateAdmission func(context.Context, Ref) error
+	// RequireEnvironment delays admission until the selected environment is online.
+	RequireEnvironment bool
 	// Changed wakes content-free execution subscribers. It must not block.
 	Changed                                  func()
 	RequestID, Content, Kind, Origin, Source string
 	Attachments                              []Attachment
 	Options
 	Automation bool
-	// Child marks an input to a conversation that has a parent. A child has no session tools and no
-	// routine tools, and it gets the child rules.
+	// Child marks an input to a conversation that has a parent.
 	Child bool
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string
 	// WorkTaskContext is model context. It is not part of the owner's message.
 	WorkTaskContext string
+	// ModelSuffix adds guidance to the model input without changing the saved message.
+	ModelSuffix string
 	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
 	// waits for the run to end, "steer" joins the run after its current tool step, and "reject"
 	// returns ErrBusy.
 	WhenBusy string
 }
 type inputMetadata struct {
-	Scope       string       `json:"scope,omitempty"`
 	RequestID   string       `json:"requestId"`
 	Content     string       `json:"content"`
 	HasWorkTask bool         `json:"hasWorkTask,omitzero"`
@@ -91,7 +95,18 @@ type inputMetadata struct {
 type Outcome struct {
 	Status, Answer, Reason string
 	AnswerID               int64
+	// RunInputIDs lists the request IDs of inputs answered by AnswerID, in PiG placement order.
+	RunInputIDs []string
 }
+
+func (o Outcome) Equal(other Outcome) bool {
+	return o.Status == other.Status &&
+		o.Answer == other.Answer &&
+		o.Reason == other.Reason &&
+		o.AnswerID == other.AnswerID &&
+		slices.Equal(o.RunInputIDs, other.RunInputIDs)
+}
+
 type Config struct {
 	MCPServers    *MCPStore
 	DataDir, Home string
@@ -101,17 +116,20 @@ type Config struct {
 	// BaseEnv.
 	LoginEnv func(ctx context.Context, base map[string]string) (map[string]string, error)
 	// ExecEnv configures agent workspace and execution backends. Nil defaults to a host-local provider.
-	ExecEnv execenv.Provider
-	// SessionEnvironment returns the explicit execution environment of an unscoped session, or
+	ExecEnv runner.Provider
+	// SessionEnvironment returns the explicit execution environment of a session, or
 	// empty when the session follows its agent. Nil makes every session follow its agent.
 	SessionEnvironment func(ctx context.Context, ref Ref) (string, error)
 	// FallbackModel returns the current fallback model for an agent, or an empty ModelRef.
 	FallbackModel func(ctx context.Context, agentID string) ModelRef
 	FakeModel     bool
-	BashTimeout   time.Duration
-	Tasks         TaskTools
-	Routines      RoutineTools
-	Bots          BotTools
-	// WorkTasks backs the task_* tools of Main and writable Chats.
-	WorkTasks WorkTaskTools
+	// FakeInputSuffix is model guidance that the faux command fixtures omit from arguments.
+	FakeInputSuffix string
+	BashTimeout     time.Duration
+	// Extensions supplies application extensions at agent open and reload.
+	Extensions func(ExtensionRuntime) ExtensionSet
+	// InputExtensions selects application extensions before each fresh admission.
+	InputExtensions func(Input) ExtensionEdit
+	// HideToolArguments omits sensitive arguments from history and live events.
+	HideToolArguments func(string) bool
 }

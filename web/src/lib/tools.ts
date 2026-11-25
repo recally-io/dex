@@ -49,6 +49,10 @@ export const arg = (tool: ToolItem, key: string) => {
   return typeof value === "string" ? value : "";
 };
 
+export function isParentReport(tool: ToolItem) {
+  return tool.name === "session_report";
+}
+
 // The memory folder is <data dir>/memory. Without the data dir, no call counts as a memory call.
 function inMemory(path: string, memory?: string) {
   return !!memory && (path === memory || path.startsWith(`${memory}/`));
@@ -75,7 +79,7 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Notify user", target: arg(tool, "topicKey") || arg(tool, "content") };
   }
 
-  if (tool.name === "report_parent") {
+  if (isParentReport(tool)) {
     return { verb: "Report parent", target: arg(tool, "content") };
   }
 
@@ -83,11 +87,19 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Stay silent", target: arg(tool, "reason") };
   }
 
-  if (tool.name === "monitor_set_command") {
-    return { verb: "Start command monitor", target: arg(tool, "label") || arg(tool, "command") };
+  if (tool.name === "process_start") {
+    return { verb: "Start process", target: arg(tool, "label") || arg(tool, "command") };
   }
 
-  if (tool.name === "monitor_set_schedule") {
+  if (tool.name === "process_list") {
+    return { verb: "List processes", target: "" };
+  }
+
+  if (tool.name === "process_stop") {
+    return { verb: "Stop process", target: arg(tool, "id") };
+  }
+
+  if (tool.name === "monitor_set") {
     return { verb: "Schedule monitor", target: arg(tool, "at") || arg(tool, "prompt") };
   }
 
@@ -124,10 +136,16 @@ export function stepTitle(steps: Step[], memory?: string, thinking = false) {
   const tools = steps.filter((step) => step.kind === "tool");
   const running = tools.find((t) => t.status === "running");
   const failed = tools.filter((t) => t.status === "error").length;
+  const reports = tools.filter((t) => t.status === "done" && isParentReport(t)).length;
   const n = tools.length;
   let done = "";
 
-  if (n && tools.every((t) => touchesMemory(t, memory)))
+  if (reports) {
+    done = reports === 1 ? "Reported to parent" : `Reported to parent ${reports} times`;
+    const other = n - reports;
+
+    if (other) done += ` · Ran ${other} ${other === 1 ? "tool" : "tools"}`;
+  } else if (n && tools.every((t) => touchesMemory(t, memory)))
     done =
       n === 1
         ? describeTool(tools[0], memory).verb.replace(/^\w+/, (verb) => pastTense.get(verb) ?? verb)

@@ -18,7 +18,7 @@ title dex: always-on agent inbox, run exit modes, outbox, and monitors
 top to bottom direction
 
 rectangle "User inputs\nWeb / Telegram / Feishu / WeChat" as user_in
-rectangle "Internal producers\nChild results + command Monitor wakes + Routines" as sys_in
+rectangle "Internal producers\nChild results + Process wakes + Routines" as sys_in
 database "monitors\nPrompt or script; bounded runs and lifetime" as monitors
 rectangle "Scheduler\nCheck target and claim due work" as sched
 
@@ -29,9 +29,9 @@ package "Native PiG session run (QueueAll boundary batching)" as run {
   rectangle "System Turn\nOnly task / Monitor / routine\nFail-quiet trace by default" as sys_turn
 }
 
-rectangle "Explicit exit tools\nnotify_user / ask_user / report_parent\nstay_silent (Terminate: true)" as tools
-database "Agent Outbox (outbox_messages)\nDeduplicated + topic superseding" as outbox
-rectangle "Channel Dispatcher + Web UI\nAt-least-once parts + Attention Inbox" as dispatch
+rectangle "Explicit exit tools\nnotify_user\nsession_report (report to parent)" as tools
+database "Agent Outbox (outbox_messages)\nOne message per destination" as outbox
+rectangle "Channel senders\nConfirm or retry one message" as dispatch
 
 monitors --> sched : Due check
 sched --> inbox : Stable follow-up ID\nPrompt due / check changed / terminal
@@ -41,15 +41,15 @@ sys_in --> inbox : task_result / wake
 inbox --> user_turn : Batch includes user message
 inbox --> sys_turn : System events only
 
-user_turn --> outbox : Auto reply or ask_user
+user_turn --> outbox : Final reply to a channel input
 sys_turn --> tools : Optional call
-tools --> outbox : notify_user / ask_user
-tools --> monitors : monitor_set_schedule (bounded)
-sys_turn ..> outbox : System error fallback only
+tools --> outbox : notify_user
+tools --> monitors : monitor_set (bounded)
 
-outbox --> dispatch : Deliver to peer + Web view
+sched --> outbox : Pure Routine alerts
+outbox --> dispatch : Deliver one platform message
 note right of sys_turn
-  Command Monitors with wake="none" send no wake-up.
+  Processes with wake="none" send no wake-up.
   Silent System Turns emit 0 channel messages.
 end note
 @enduml

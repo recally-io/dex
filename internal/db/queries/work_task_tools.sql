@@ -1,6 +1,6 @@
 -- name: ListAgentWorkTasks :many
 SELECT t.*, CAST(coalesce(s.conversation_id, 0) AS INTEGER) AS session_id
-FROM work_tasks t JOIN agents a ON a.id = t.agent_id LEFT JOIN work_task_sessions s ON s.task_id = t.id
+FROM work_tasks t JOIN agents a ON a.id = t.agent_id LEFT JOIN work_task_sessions s ON s.task_id = t.id AND s.is_primary = 1
 WHERE t.agent_id = @agent_id AND a.archived_at IS NULL AND (t.lifecycle = 'open' OR sqlc.arg(include_closed))
 ORDER BY t.updated_at DESC, t.id DESC LIMIT 50;
 
@@ -9,19 +9,25 @@ UPDATE work_tasks SET title = @title, updated_at = @updated_at
 WHERE work_tasks.id = @id AND work_tasks.agent_id = @agent_id AND EXISTS (SELECT 1 FROM agents a WHERE a.id = @agent_id AND a.archived_at IS NULL)
 RETURNING *;
 
--- name: GetWorkTaskSession :one
-SELECT c.id, c.agent_id, c.title FROM work_task_sessions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.task_id = ?;
+-- name: ListWorkTaskSessions :many
+SELECT s.conversation_id, s.agent_id, a.name AS agent_name, c.title, s.is_primary, s.linked_at
+FROM work_task_sessions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.agent_id
+WHERE s.task_id = ? ORDER BY s.is_primary DESC, s.linked_at, s.conversation_id;
 
--- name: SetWorkTaskSession :exec
-INSERT INTO work_task_sessions (task_id, conversation_id) VALUES (?, ?)
-ON CONFLICT (task_id) DO UPDATE SET conversation_id = excluded.conversation_id;
+-- name: LinkWorkTaskSession :exec
+-- Keep the original timestamp on replay. The first link becomes primary.
+INSERT INTO work_task_sessions (task_id, conversation_id, agent_id, is_primary, linked_at)
+SELECT t.id, c.id, c.agent_id,
+  NOT EXISTS (SELECT 1 FROM work_task_sessions s WHERE s.task_id = t.id AND s.is_primary = 1), @linked_at
+FROM work_tasks t JOIN conversations c ON c.id = @conversation_id
+WHERE t.id = @task_id AND (CAST(sqlc.arg(only_open) AS INTEGER) = 0 OR t.lifecycle = 'open')
+ON CONFLICT (task_id, conversation_id) DO NOTHING;
 
--- name: LinkFirstWorkTaskSession :exec
--- The first Session that a Task-linked input starts becomes primary. A later one does not replace it.
-INSERT INTO work_task_sessions (task_id, conversation_id)
-SELECT t.id, @conversation_id FROM work_tasks t WHERE t.id = @task_id AND t.lifecycle = 'open'
-ON CONFLICT (task_id) DO NOTHING;
+-- name: ClearWorkTaskPrimarySession :exec
+UPDATE work_task_sessions SET is_primary = 0 WHERE task_id = ? AND is_primary = 1;
+
+-- name: PromoteWorkTaskSession :exec
+UPDATE work_task_sessions SET is_primary = 1 WHERE task_id = ? AND conversation_id = ?;
 
 -- name: ListWorkTaskTimeline :many
 SELECT en.id, en.content, en.created_at, en.author, CAST(coalesce(en.event_id, '') AS TEXT) AS event_id,

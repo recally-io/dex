@@ -136,7 +136,7 @@ test("user sees two returned results as separate groups", async () => {
   // Each result is one line. A turn that did not finish says why on its line.
   expect(html).toContain("Access logs</span> replied");
   expect(html).toContain("Error logs</span> interrupted: Restarted");
-  expect(html.match(/View thread/g)).toHaveLength(2);
+  expect(html.match(/View session/g)).toHaveLength(2);
 });
 
 test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", async (text) => {
@@ -231,7 +231,7 @@ test("user sees message actions only where a fork can start", async () => {
   // Only the answer that ends the turn has actions. The answer that called a tool cannot start
   // a fork; the queued message has no entry yet.
   expect(html.match(/aria-label="Fork from here"/g)).toHaveLength(1);
-  expect(html.match(/aria-label="Edit in new chat"/g)).toHaveLength(1);
+  expect(html.match(/aria-label="Edit in new session"/g)).toHaveLength(1);
   expect(html.match(/aria-label="Copy answer"/g)).toHaveLength(1);
   expect(html.match(/aria-label="Copy message"/g)).toHaveLength(1);
 

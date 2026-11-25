@@ -82,12 +82,12 @@ checks, and the access token. [`agent.Service`](../../internal/agent/agent.go)
 owns agent settings, activity, and channel configuration. `chat.Service` saves
 chat settings with an injected validator. Each change stays in `control.sqlite`:
 
-| Setting                                 | Table               | Applied by                                     |
-| --------------------------------------- | ------------------- | ---------------------------------------------- |
-| Bot model, thinking level, instructions | `agents`            | the next `submit` of each chat                 |
-| Chat model, chat thinking level         | `conversations`     | the next `submit` of that chat                 |
-| Providers                               | `providers`         | the engine catalog, and again at process start |
-| Telegram token, allowed users           | `telegram_settings` | a restart of the bot                           |
+| Setting                                 | Table                                               | Applied by                                     |
+| --------------------------------------- | --------------------------------------------------- | ---------------------------------------------- |
+| Bot model, thinking level, instructions | `agents`                                            | the next `submit` of each chat                 |
+| Chat model, chat thinking level         | `conversations`                                     | the next `submit` of that chat                 |
+| Providers                               | `providers`                                         | the engine catalog, and again at process start |
+| Telegram credential, allowed users      | `telegram_settings`; managed token in private vault | a restart of the bot                           |
 
 `PUT /api/agents/{agentId}` saves the name with the other bot settings.
 The API trims spaces, then accepts 1 to 40 Unicode characters. The web uses the saved name in

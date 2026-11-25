@@ -12,19 +12,18 @@ import (
 
 const getConversationByExecution = `-- name: GetConversationByExecution :one
 
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND execution_scope = '' AND execution_id = ?
 `
 
 type GetConversationByExecutionParams struct {
-	AgentID        string        `json:"agent_id"`
-	ExecutionScope string        `json:"execution_scope"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	AgentID     string        `json:"agent_id"`
+	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
 // Stop of a conversation and of its child sessions. The file keeps its name from the
 // task layer that child sessions replaced.
 func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionScope, arg.ExecutionID)
+	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
 	var i Conversation
 	err := row.Scan(
 		&i.ID,
@@ -52,11 +51,7 @@ const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
 SELECT conversations.id FROM conversations
 JOIN conversations parent ON parent.id = conversations.parent_id
 WHERE (conversations.agent_id = ?1 OR parent.agent_id = ?1)
-AND (parent.execution_scope = '' OR (
-    conversations.agent_id = parent.agent_id
-    AND conversations.execution_scope = parent.execution_scope
-    AND conversations.scope_context = parent.scope_context
-)) AND EXISTS (
+AND conversations.execution_scope = '' AND parent.execution_scope = '' AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
 )
@@ -89,18 +84,12 @@ func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID strin
 
 const listStopConversations = `-- name: ListStopConversations :many
 SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations
-WHERE (conversations.id = ?1 AND conversations.agent_id = ?2)
-OR (conversations.parent_id = ?1 AND EXISTS (
-    SELECT 1 FROM conversations parent WHERE parent.id = conversations.parent_id
-        AND (parent.execution_scope = '' OR (
-            conversations.agent_id = parent.agent_id
-            AND conversations.execution_scope = parent.execution_scope
-            AND conversations.scope_context = parent.scope_context
-        ))
-) AND EXISTS (
+WHERE execution_scope = '' AND (
+    (conversations.id = ?1 AND conversations.agent_id = ?2)
+    OR (conversations.parent_id = ?1 AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
-))
+)))
 ORDER BY conversations.id
 `
 
@@ -110,7 +99,7 @@ type ListStopConversationsParams struct {
 }
 
 // Stop reaches the conversation and the children of it that have pending input that the parent
-// started. Private parents can stop other bots. Group parents retain their bot and audience.
+// started. The children can belong to different bots.
 // A child with only user input is not reached.
 func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConversationsParams) ([]Conversation, error) {
 	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.ChatID, arg.AgentID)

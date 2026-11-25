@@ -44,32 +44,32 @@ func turnID(key string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-func sessionRef(c sqlc.Conversation, bot string, pending int64) engine.SessionRef {
+func sessionRef(c sqlc.Conversation, bot string, pending int64) SessionRef {
 	state := "idle"
 	if pending > 0 {
 		state = "running"
 	}
-	return engine.SessionRef{ID: strconv.FormatInt(c.ID, 10), Title: c.Title, State: state, Bot: bot, BotID: c.AgentID}
+	return SessionRef{ID: strconv.FormatInt(c.ID, 10), Title: c.Title, State: state, Bot: bot, BotID: c.AgentID}
 }
 
-func (s *Service) ref(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation) (engine.SessionRef, error) {
+func (s *Service) ref(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation) (SessionRef, error) {
 	pending, err := q.PendingCount(ctx, c.ID)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	bot, err := q.GetAgent(ctx, c.AgentID)
 	return sessionRef(c, bot.Name, pending), err
 }
 
 // childOf returns the child of parent that the model named. The ownership rule is the parent
-// link for private callers. Group callers also require the same bot and audience.
+// link.
 func (s *Service) childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id string) (sqlc.Conversation, error) {
 	n, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		return sqlc.Conversation{}, ErrSessionNotFound
 	}
 	c, err := q.GetConversation(ctx, n)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!c.ParentID.Valid || c.ParentID.Int64 != parent.ID || parent.ExecutionScope != "" && (c.AgentID != parent.AgentID || c.ExecutionScope != parent.ExecutionScope || c.ScopeContext != parent.ScopeContext))) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (!c.ParentID.Valid || c.ParentID.Int64 != parent.ID)) {
 		return c, ErrSessionNotFound
 	}
 	return c, err
@@ -136,7 +136,7 @@ func repeatedTurn(ctx context.Context, q *sqlc.Queries, turn string, parent sqlc
 	if err != nil {
 		return c, false, err
 	}
-	if c.ParentID.Int64 != parent.ID || parent.ExecutionScope != "" && (c.AgentID != parent.AgentID || c.ExecutionScope != parent.ExecutionScope || c.ScopeContext != parent.ScopeContext) {
+	if c.ParentID.Int64 != parent.ID {
 		return c, false, ErrSessionNotFound
 	}
 	return c, true, nil
@@ -149,41 +149,31 @@ func checkMessage(message string) error {
 	return nil
 }
 
-func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
-	return s.newSession(ctx, r, a)
-}
-
-func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-	if r.Scope != "" && (a.Bot != "" || a.Cwd != "" || a.Environment != "" || a.Provider != "" || a.ModelID != "" || a.ThinkingLevel != "" || !strings.HasPrefix(r.Key, r.AgentID+"/"+r.Scope+"/")) {
-		return engine.SessionRef{}, errSessionInvalid
-	}
+func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a SessionNewArgs) (SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	if strings.TrimSpace(a.Title) == "" || len(a.Title) > maxTitleBytes || !strings.HasPrefix(r.Key, r.AgentID+"/") {
-		return engine.SessionRef{}, fmt.Errorf("%w: the title has 1 to %d bytes and the call needs a durable key", errSessionInvalid, maxTitleBytes)
+		return SessionRef{}, fmt.Errorf("%w: the title has 1 to %d bytes and the call needs a durable key", errSessionInvalid, maxTitleBytes)
 	}
 	if err := checkMessage(a.Message); err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	turn := turnID(r.Key)
 	if c, ok, err := repeatedTurn(ctx, s.q, turn, parent); err != nil || ok {
 		if err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 		return s.ref(ctx, s.q, c)
 	}
 	target, err := s.q.GetAgent(ctx, r.AgentID)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	if name := strings.TrimSpace(a.Bot); name != "" {
 		if target, err = resolveBot(ctx, s.q, name); err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 	}
 	// A child in the same bot starts from the settings and the project of its parent. A child in
@@ -195,16 +185,16 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	settings := Settings{Provider: cmp.Or(inherited.ModelProvider, target.ModelProvider), ModelID: cmp.Or(inherited.ModelID, target.ModelID), ThinkingLevel: cmp.Or(a.ThinkingLevel, inherited.ThinkingLevel, target.ThinkingLevel)}
 	if a.Provider != "" || a.ModelID != "" {
 		if a.Provider == "" || a.ModelID == "" {
-			return engine.SessionRef{}, fmt.Errorf("%w: give provider and modelId together", errSessionInvalid)
+			return SessionRef{}, fmt.Errorf("%w: give provider and modelId together", errSessionInvalid)
 		}
 		settings.Provider, settings.ModelID = a.Provider, a.ModelID
 	}
 	if settings.ModelID == "" {
-		return engine.SessionRef{}, ErrNoModel
+		return SessionRef{}, ErrNoModel
 	}
 	if (a.Provider != "" || a.ThinkingLevel != "") && s.checkSettings != nil {
 		if err := s.checkSettings(ctx, settings); err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 	}
 	// A child in the same bot runs in the environment of its parent unless it selects another one;
@@ -213,65 +203,55 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	environment := inherited.EnvironmentID
 	if a.Environment != "" {
 		if err := checkEnvironment(ctx, s.q, a.Environment); err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 		environment = a.Environment
 	}
 	cwd := inherited.Cwd
 	if source, err := s.q.GetAgent(ctx, r.AgentID); err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	} else if effectiveEnvironment(target, environment) != effectiveEnvironment(source, parent.EnvironmentID) {
 		cwd = ""
 	}
 	if a.Cwd != "" {
 		if cwd, err = s.resolveProjectPath(ctx, target.ID, environment, a.Cwd); err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if c, ok, err := repeatedTurn(ctx, q, turn, parent); err != nil || ok {
 		if err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 		return s.ref(ctx, q, c)
 	}
-	source, err := sessionSource(ctx, q, r)
+	source, err := liveSource(ctx, q, r)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	now := s.now().UnixMilli()
 	child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{
 		AgentID: target.ID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: a.Title,
 		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd, EnvironmentID: environment,
-		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now, ExecutionScope: parent.ExecutionScope, ScopeContext: parent.ScopeContext,
+		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now,
 	})
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now}); err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
-	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, source, turn); err != nil {
-			return engine.SessionRef{}, err
-		}
-	}
-	// Work for a Task starts here, so the first child of a Task input becomes its primary Session.
-	if taskID, err := workTaskForInput(ctx, q, source.ID); err != nil {
-		return engine.SessionRef{}, err
-	} else if taskID != "" {
-		if err := q.LinkFirstWorkTaskSession(ctx, sqlc.LinkFirstWorkTaskSessionParams{TaskID: taskID, ConversationID: child.ID}); err != nil {
-			return engine.SessionRef{}, err
-		}
+	if err := linkTaskChild(ctx, q, source.ID, child.ID, now); err != nil {
+		return SessionRef{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	s.signal(child.ID)
 	s.signal(parent.ID)
@@ -279,20 +259,13 @@ func (s *Service) newSession(ctx context.Context, r engine.TaskContext, a engine
 	return sessionRef(child, target.Name, 1), nil
 }
 
-func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
-	return s.sendSession(ctx, r, a)
-}
-
-func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
+func (s *Service) ToolSessionSend(ctx context.Context, r engine.TaskContext, a SessionSendArgs) (SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	if err := checkMessage(a.Message); err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	whenBusy := "followUp"
 	switch a.Mode {
@@ -300,44 +273,38 @@ func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engin
 	case "steer":
 		whenBusy = "steer"
 	default:
-		return engine.SessionRef{}, fmt.Errorf("%w: mode is queue or steer", errSessionInvalid)
+		return SessionRef{}, fmt.Errorf("%w: mode is queue or steer", errSessionInvalid)
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	child, err := s.childOf(ctx, q, parent, a.ID)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	turn := turnID(r.Key)
 	if _, ok, err := repeatedTurn(ctx, q, turn, parent); err != nil || ok {
 		if err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 		return s.ref(ctx, q, child)
 	}
-	source, err := sessionSource(ctx, q, r)
-	if err != nil {
-		return engine.SessionRef{}, err
+	if _, err := liveSource(ctx, q, r); err != nil {
+		return SessionRef{}, err
 	}
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: whenBusy, ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()}); err != nil {
-		return engine.SessionRef{}, err
-	}
-	if a.FollowUp {
-		if err := createChannelFollowUp(ctx, q, parent, source, turn); err != nil {
-			return engine.SessionRef{}, err
-		}
+		return SessionRef{}, err
 	}
 	bot, err := q.GetAgent(ctx, child.AgentID)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	s.signal(child.ID)
 	s.signal(parent.ID)
@@ -345,80 +312,74 @@ func (s *Service) sendSession(ctx context.Context, r engine.TaskContext, a engin
 	return sessionRef(child, bot.Name, 1), nil
 }
 
-func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id string) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
-	return s.stopSession(ctx, r, id)
-}
-
-func (s *Service) stopSession(ctx context.Context, r engine.TaskContext, id string) (engine.SessionRef, error) {
+func (s *Service) ToolSessionStop(ctx context.Context, r engine.TaskContext, id string) (SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	child, err := s.childOf(ctx, s.q, parent, id)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
-	stored, err := s.stop(ctx, child.AgentID, child.ID, nil, &stopCall{task: r, parent: parent.ID, child: child})
+	stored, err := s.cancelSession(ctx, child.AgentID, child.ID, nil, &stopCall{task: r, parent: parent.ID, child: child})
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
-	var ref engine.SessionRef
+	var ref SessionRef
 	if stored != "" {
 		return ref, json.Unmarshal([]byte(stored), &ref)
 	}
 	return s.ref(ctx, s.q, child)
 }
 
-func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a engine.SessionForkArgs) (engine.SessionRef, error) {
-	if r.Scope != "" {
-		return engine.SessionRef{}, errSessionInvalid
-	}
+func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a SessionForkArgs) (SessionRef, error) {
 	parent, err := s.sessionParent(ctx, r)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	if err := checkMessage(a.Message); err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	child, err := s.childOf(ctx, s.q, parent, a.ID)
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	turn := turnID(r.Key)
 	if c, ok, err := repeatedTurn(ctx, s.q, turn, parent); err != nil || ok {
 		if err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 		return s.ref(ctx, s.q, c)
 	}
 	if a.Environment != "" {
 		if err := checkEnvironment(ctx, s.q, a.Environment); err != nil {
-			return engine.SessionRef{}, err
+			return SessionRef{}, err
 		}
 	}
 	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.EnvironmentID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
-		if _, err := sessionSource(ctx, q, r); err != nil {
+		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
 		}
-		created, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: s.now().UnixMilli()})
-		if err == nil && created == 0 {
+		now := s.now().UnixMilli()
+		created, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: fork.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now})
+		if err != nil {
+			return err
+		}
+		if created == 0 {
 			// A concurrent call with the same key stored its fork first. Roll this fork back.
 			return errRepeatedTurn
 		}
-		return err
+		return linkTaskChild(ctx, q, r.SourceRequestID, fork.ID, now)
 	})
 	if errors.Is(err, errRepeatedTurn) {
 		c, ok, err := repeatedTurn(ctx, s.q, turn, parent)
 		if err != nil || !ok {
-			return engine.SessionRef{}, cmp.Or(err, ErrSessionNotFound)
+			return SessionRef{}, cmp.Or(err, ErrSessionNotFound)
 		}
 		return s.ref(ctx, s.q, c)
 	}
 	if err != nil {
-		return engine.SessionRef{}, err
+		return SessionRef{}, err
 	}
 	s.signal(parent.ID)
 	s.Wake()
@@ -438,7 +399,7 @@ func (s *Service) readable(ctx context.Context, id string) (sqlc.Conversation, e
 	return c, err
 }
 
-func (s *Service) ToolSessionList(ctx context.Context, r engine.TaskContext, a engine.SessionListArgs) ([]engine.SessionInfo, error) {
+func (s *Service) ToolSessionList(ctx context.Context, r engine.TaskContext, a SessionListArgs) ([]SessionInfo, error) {
 	caller, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return nil, err
@@ -456,9 +417,9 @@ func (s *Service) ToolSessionList(ctx context.Context, r engine.TaskContext, a e
 	if err != nil {
 		return nil, err
 	}
-	out := make([]engine.SessionInfo, 0, len(rows))
+	out := make([]SessionInfo, 0, len(rows))
 	for _, row := range rows {
-		info := engine.SessionInfo{
+		info := SessionInfo{
 			SessionRef: sessionRef(sqlc.Conversation{ID: row.ID, Title: row.Title, AgentID: row.AgentID}, row.AgentName, row.Pending),
 			Provider:   row.ModelProvider, ModelID: row.ModelID,
 		}
@@ -478,27 +439,27 @@ func (s *Service) ToolSessionList(ctx context.Context, r engine.TaskContext, a e
 	return out, nil
 }
 
-func (s *Service) ToolSessionRead(ctx context.Context, r engine.TaskContext, a engine.SessionReadArgs) (engine.SessionPage, error) {
+func (s *Service) ToolSessionRead(ctx context.Context, r engine.TaskContext, a SessionReadArgs) (SessionPage, error) {
 	if _, err := s.toolCaller(ctx, r); err != nil {
-		return engine.SessionPage{}, err
+		return SessionPage{}, err
 	}
 	conv, err := s.readable(ctx, a.ID)
 	if err != nil {
-		return engine.SessionPage{}, err
+		return SessionPage{}, err
 	}
 	return s.readSession(ctx, conv, a)
 }
 
-func (s *Service) readSession(ctx context.Context, conv sqlc.Conversation, a engine.SessionReadArgs) (engine.SessionPage, error) {
+func (s *Service) readSession(ctx context.Context, conv sqlc.Conversation, a SessionReadArgs) (SessionPage, error) {
 	ref, err := s.ref(ctx, s.q, conv)
 	if err != nil {
-		return engine.SessionPage{}, err
+		return SessionPage{}, err
 	}
-	page := engine.SessionPage{SessionRef: ref}
+	page := SessionPage{SessionRef: ref}
 	if ref.State == "running" {
-		page.Activity = &engine.SessionActivity{}
+		page.Activity = &SessionActivity{}
 		if conv.ExecutionID.Valid {
-			key := engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}
+			key := engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}
 			if activity, ok := s.engine.Activity([]engine.Ref{key})[key]; ok {
 				page.Activity.Available = true
 				page.Activity.LastObservedAt = activity.LastActivityAt
@@ -511,20 +472,20 @@ func (s *Service) readSession(ctx context.Context, conv sqlc.Conversation, a eng
 	}
 	limit := cmp.Or(a.Limit, 10)
 	if limit < 1 || limit > 50 {
-		return engine.SessionPage{}, fmt.Errorf("%w: limit is 1 to 50", errSessionInvalid)
+		return SessionPage{}, fmt.Errorf("%w: limit is 1 to 50", errSessionInvalid)
 	}
 	if a.Before != "" {
 		before, err := s.q.GetTurn(ctx, a.Before)
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && before.ConversationID != conv.ID) {
-			return engine.SessionPage{}, fmt.Errorf("%w: before is not a turn of this session", errSessionInvalid)
+			return SessionPage{}, fmt.Errorf("%w: before is not a turn of this session", errSessionInvalid)
 		}
 		if err != nil {
-			return engine.SessionPage{}, err
+			return SessionPage{}, err
 		}
 	}
 	rows, err := s.q.ListTurns(ctx, sqlc.ListTurnsParams{ConversationID: conv.ID, Before: a.Before, MaxRows: int64(limit) + 1})
 	if err != nil {
-		return engine.SessionPage{}, err
+		return SessionPage{}, err
 	}
 	if len(rows) > limit {
 		rows = rows[:limit]
@@ -537,13 +498,13 @@ func (s *Service) readSession(ctx context.Context, conv sqlc.Conversation, a eng
 }
 
 // readText returns one page of the text of a turn that a result or a read cut.
-func (s *Service) readText(ctx context.Context, conv sqlc.Conversation, page engine.SessionPage, a engine.SessionReadArgs) (engine.SessionPage, error) {
+func (s *Service) readText(ctx context.Context, conv sqlc.Conversation, page SessionPage, a SessionReadArgs) (SessionPage, error) {
 	turn, err := s.q.GetTurn(ctx, a.Turn)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && turn.ConversationID != conv.ID) {
-		return engine.SessionPage{}, fmt.Errorf("%w: turn is not a turn of this session", errSessionInvalid)
+		return SessionPage{}, fmt.Errorf("%w: turn is not a turn of this session", errSessionInvalid)
 	}
 	if err != nil {
-		return engine.SessionPage{}, err
+		return SessionPage{}, err
 	}
 	var text string
 	switch a.Field {
@@ -552,11 +513,11 @@ func (s *Service) readText(ctx context.Context, conv sqlc.Conversation, page eng
 	case "input":
 		text = turn.Content
 	default:
-		return engine.SessionPage{}, fmt.Errorf("%w: field is answer or input", errSessionInvalid)
+		return SessionPage{}, fmt.Errorf("%w: field is answer or input", errSessionInvalid)
 	}
 	runes := []rune(text)
 	if a.Offset < 0 || a.Offset > len(runes) {
-		return engine.SessionPage{}, fmt.Errorf("%w: offset is outside the text", errSessionInvalid)
+		return SessionPage{}, fmt.Errorf("%w: offset is outside the text", errSessionInvalid)
 	}
 	end := min(a.Offset+textLimit, len(runes))
 	page.Text, page.NextOffset, page.HasMore = string(runes[a.Offset:end]), end, end < len(runes)
@@ -587,8 +548,8 @@ func turnOutcome(status, reason string) string {
 	return "failed"
 }
 
-func turnView(id, origin, status, reason, input, answer string, createdAt int64, settledAt sql.NullInt64, limit int) engine.SessionTurn {
-	turn := engine.SessionTurn{Turn: id, At: createdAt, Origin: origin, Outcome: turnOutcome(status, reason)}
+func turnView(id, origin, status, reason, input, answer string, createdAt int64, settledAt sql.NullInt64, limit int) SessionTurn {
+	turn := SessionTurn{Turn: id, At: createdAt, Origin: origin, Outcome: turnOutcome(status, reason)}
 	if settledAt.Valid {
 		turn.EndedAt = &settledAt.Int64
 	}
@@ -615,7 +576,7 @@ func asciiLower(text string) string {
 	}, text)
 }
 
-func (s *Service) ToolSessionSearch(ctx context.Context, r engine.TaskContext, a engine.SessionSearchArgs) ([]engine.SessionMatch, error) {
+func (s *Service) ToolSessionSearch(ctx context.Context, r engine.TaskContext, a SessionSearchArgs) ([]SessionMatch, error) {
 	caller, err := s.toolCaller(ctx, r)
 	if err != nil {
 		return nil, err
@@ -631,15 +592,20 @@ func (s *Service) ToolSessionSearch(ctx context.Context, r engine.TaskContext, a
 	if err != nil {
 		return nil, err
 	}
-	params := sqlc.SearchTurnsParams{AgentID: agentID, AllBots: boolInt(all), MaxRows: int64(cmp.Or(a.Limit, 20))}
+	params := sqlc.SearchTurnsParams{AgentID: agentID, AllBots: boolInt(all), ExcludedTurnID: r.SourceRequestID, MaxRows: int64(cmp.Or(a.Limit, 20))}
 	for i, slot := range []*string{&params.W1, &params.W2, &params.W3, &params.W4, &params.W5, &params.W6} {
 		if i < len(words) {
 			*slot = words[i]
 		}
 	}
-	if a.Session != "" {
+	switch a.Session {
+	case "":
+		params.SessionID = caller.ID
+	case "all":
+		// The bot filter still applies when there is no session filter.
+	default:
 		if params.SessionID, err = strconv.ParseInt(a.Session, 10, 64); err != nil || params.SessionID <= 0 {
-			return nil, fmt.Errorf("%w: session is a session ID", errSessionInvalid)
+			return nil, fmt.Errorf("%w: session must be a session ID or all", errSessionInvalid)
 		}
 	}
 	if a.Since != "" {
@@ -655,9 +621,9 @@ func (s *Service) ToolSessionSearch(ctx context.Context, r engine.TaskContext, a
 	if err != nil {
 		return nil, err
 	}
-	matches := make([]engine.SessionMatch, 0, len(rows))
+	matches := make([]SessionMatch, 0, len(rows))
 	for _, row := range rows {
-		match := engine.SessionMatch{Session: strconv.FormatInt(row.ConversationID, 10), Title: row.Title, Bot: row.AgentName, BotID: row.AgentID, Turn: row.ID, At: row.CreatedAt}
+		match := SessionMatch{Session: strconv.FormatInt(row.ConversationID, 10), Title: row.Title, Bot: row.AgentName, BotID: row.AgentID, Turn: row.ID, At: row.CreatedAt}
 		match.Field, match.Snippet = firstMatch(words, row.Content, row.Answer.String)
 		matches = append(matches, match)
 	}

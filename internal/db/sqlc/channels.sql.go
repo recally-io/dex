@@ -10,36 +10,6 @@ import (
 	"database/sql"
 )
 
-const advanceChannelGroupMember = `-- name: AdvanceChannelGroupMember :exec
-UPDATE submissions SET channel_group_cursor = channel_group_cursor + 1,
-    channel_remote_ids = ?1, channel_retry_at = 0 WHERE id = ?2
-`
-
-type AdvanceChannelGroupMemberParams struct {
-	RemoteIds string `json:"remote_ids"`
-	ID        string `json:"id"`
-}
-
-func (q *Queries) AdvanceChannelGroupMember(ctx context.Context, arg AdvanceChannelGroupMemberParams) error {
-	_, err := q.db.ExecContext(ctx, advanceChannelGroupMember, arg.RemoteIds, arg.ID)
-	return err
-}
-
-const advanceChannelReply = `-- name: AdvanceChannelReply :exec
-UPDATE submissions SET delivered_parts = delivered_parts + 1, channel_remote_ids = ?1,
-    channel_retry_at = 0, channel_group_fallback = 0, channel_group_cursor = 0 WHERE id = ?2
-`
-
-type AdvanceChannelReplyParams struct {
-	RemoteIds string `json:"remote_ids"`
-	ID        string `json:"id"`
-}
-
-func (q *Queries) AdvanceChannelReply(ctx context.Context, arg AdvanceChannelReplyParams) error {
-	_, err := q.db.ExecContext(ctx, advanceChannelReply, arg.RemoteIds, arg.ID)
-	return err
-}
-
 const completeChannelCommand = `-- name: CompleteChannelCommand :exec
 UPDATE channel_commands SET completed = 1, answer = ? WHERE source_key = ?
 `
@@ -72,7 +42,8 @@ func (q *Queries) CountChannelPending(ctx context.Context, arg CountChannelPendi
 }
 
 const createChannelCommand = `-- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context) VALUES (?, ?, ?, ?, ?, coalesce(nullif(CAST(? AS TEXT), ''), '{}'))
+INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context)
+VALUES (?1, ?2, ?3, ?4, ?5, coalesce(nullif(CAST(?6 AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING
 `
 
@@ -99,7 +70,8 @@ func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCom
 
 const createFeedbackCommand = `-- name: CreateFeedbackCommand :exec
 INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer)
-VALUES (?, ?, ?, 'main', '/feedback', ?, 1, ?) ON CONFLICT DO NOTHING
+VALUES (?1, ?2, ?3, 'main', '/feedback', ?4, 1, ?5)
+ON CONFLICT DO NOTHING
 `
 
 type CreateFeedbackCommandParams struct {
@@ -247,8 +219,11 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE completed = 1 AND delivered_at IS NULL
-AND agent_id = ?1 AND peer LIKE ?2 || '%' ORDER BY rowid
+SELECT c.agent_id, c.source_key, c.peer, c.channel_key, c.command, c.answer, c.completed, c.delivered_at, c.channel_context, c.rendered_reply FROM channel_commands c
+WHERE c.completed = 1 AND c.delivered_at IS NULL
+AND c.agent_id = ?1 AND c.peer LIKE ?2 || '%'
+AND NOT EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = c.source_key)
+ORDER BY c.rowid
 `
 
 type ListChannelCommandRepliesParams struct {
@@ -291,7 +266,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE agent_id = ? AND completed = 0
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE agent_id = ? AND completed = 0 AND delivered_at IS NULL
 `
 
 func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]ChannelCommand, error) {
@@ -459,32 +434,24 @@ func (q *Queries) SaveChannelCommandAnswer(ctx context.Context, arg SaveChannelC
 	return err
 }
 
-const startChannelGroupFallback = `-- name: StartChannelGroupFallback :exec
-UPDATE submissions SET channel_group_fallback = 1
-WHERE id = ?1 AND delivered_parts = ?2 AND channel_group_cursor = 0
-`
-
-type StartChannelGroupFallbackParams struct {
-	ID   string `json:"id"`
-	Part int64  `json:"part"`
-}
-
-func (q *Queries) StartChannelGroupFallback(ctx context.Context, arg StartChannelGroupFallbackParams) error {
-	_, err := q.db.ExecContext(ctx, startChannelGroupFallback, arg.ID, arg.Part)
-	return err
-}
-
 const telegramCredentialOwner = `-- name: TelegramCredentialOwner :one
-SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id WHERE s.token = ?
+SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id
+WHERE substr(s.token, 1, instr(s.token, ':') - 1) = ?1 AND s.agent_id != ?2
+ORDER BY a.id LIMIT 1
 `
+
+type TelegramCredentialOwnerParams struct {
+	Account string `json:"account"`
+	AgentID string `json:"agent_id"`
+}
 
 type TelegramCredentialOwnerRow struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-func (q *Queries) TelegramCredentialOwner(ctx context.Context, token string) (TelegramCredentialOwnerRow, error) {
-	row := q.db.QueryRowContext(ctx, telegramCredentialOwner, token)
+func (q *Queries) TelegramCredentialOwner(ctx context.Context, arg TelegramCredentialOwnerParams) (TelegramCredentialOwnerRow, error) {
+	row := q.db.QueryRowContext(ctx, telegramCredentialOwner, arg.Account, arg.AgentID)
 	var i TelegramCredentialOwnerRow
 	err := row.Scan(&i.ID, &i.Name)
 	return i, err

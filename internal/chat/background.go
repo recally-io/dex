@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"maps"
+	"strings"
 	"time"
 
 	"github.com/recally-io/dex/internal/background"
@@ -24,30 +25,30 @@ func (s *Service) WakeConversation(chatID int64) {
 	s.Wake()
 }
 
-func (s *Service) ToolMonitorCommand(ctx context.Context, r engine.TaskContext, a engine.MonitorCommandArgs) (engine.MonitorInfo, error) {
+func (s *Service) ToolProcessStart(ctx context.Context, r engine.TaskContext, a ProcessStartArgs) (ProcessInfo, error) {
 	if s.background == nil {
-		return engine.MonitorInfo{}, errors.New("background commands are unavailable")
+		return ProcessInfo{}, errors.New("background commands are unavailable")
 	}
 	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
-		return engine.MonitorInfo{}, err
+		return ProcessInfo{}, err
 	}
 	s.monitorMu.Lock()
 	defer s.monitorMu.Unlock()
 	source, err := liveSource(ctx, s.q, r)
 	if err != nil {
-		return engine.MonitorInfo{}, err
+		return ProcessInfo{}, err
 	}
 	if existing, err := s.q.GetBackgroundCommandByKey(ctx, r.Key); err == nil {
-		return backgroundInfo(existing), nil
+		return processInfo(existing), nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return engine.MonitorInfo{}, err
+		return ProcessInfo{}, err
 	}
 	if _, _, err := monitorChain(ctx, s.q, source); err != nil {
-		return engine.MonitorInfo{}, err
+		return ProcessInfo{}, err
 	}
 	if err := checkMonitorCapacity(ctx, s.q, conv.ID); err != nil {
-		return engine.MonitorInfo{}, err
+		return ProcessInfo{}, err
 	}
 	env := make(map[string]string, len(a.BaseEnv)+len(a.Env))
 	maps.Copy(env, a.BaseEnv)
@@ -59,7 +60,7 @@ func (s *Service) ToolMonitorCommand(ctx context.Context, r engine.TaskContext, 
 		InheritEnv: a.InheritEnv, EnvKind: a.EnvKind, OutputDir: a.OutputDir, MaskOutput: a.MaskOutput,
 	})
 	if err != nil {
-		return engine.MonitorInfo{}, err
+		return ProcessInfo{}, err
 	}
 	// A stop can run between the check above and the stored row: it lists no command, and the new
 	// command would run on. The row exists now, so a stop that commits later lists it. If the stop
@@ -68,32 +69,55 @@ func (s *Service) ToolMonitorCommand(ctx context.Context, r engine.TaskContext, 
 		if _, stopErr := s.background.Stop(context.WithoutCancel(ctx), conv.ID, row.ID); stopErr != nil {
 			err = errors.Join(err, stopErr)
 		}
-		return engine.MonitorInfo{}, err
+		return ProcessInfo{}, err
 	}
-	return backgroundInfo(row), nil
+	return processInfo(row), nil
 }
 
-func (s *Service) cancelCommandMonitor(ctx context.Context, conversationID int64, id string) (engine.MonitorInfo, error) {
-	if s.background == nil {
-		return engine.MonitorInfo{}, ErrNotFound
-	}
-	row, err := s.background.Stop(ctx, conversationID, id)
+func (s *Service) ToolProcessList(ctx context.Context, r engine.TaskContext) ([]ProcessInfo, error) {
+	conv, err := s.toolCaller(ctx, r)
 	if err != nil {
-		return engine.MonitorInfo{}, err
+		return nil, err
 	}
-	return backgroundInfo(row), nil
+	out := []ProcessInfo{}
+	if s.background == nil {
+		return out, nil
+	}
+	rows, err := s.background.List(ctx, conv.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out = append(out, processInfo(row))
+	}
+	return out, nil
 }
 
-func backgroundInfo(row sqlc.BackgroundCommand) engine.MonitorInfo {
-	info := engine.MonitorInfo{
-		ID: "command-" + row.ID, Kind: "command", Label: row.Label, Command: row.Command, Wake: row.Wake, State: row.State, Reason: row.Reason,
+func (s *Service) ToolProcessStop(ctx context.Context, r engine.TaskContext, id string) (ProcessInfo, error) {
+	conv, err := s.toolCaller(ctx, r)
+	if err != nil {
+		return ProcessInfo{}, err
+	}
+	if s.background == nil {
+		return ProcessInfo{}, ErrNotFound
+	}
+	row, err := s.background.Stop(ctx, conv.ID, strings.TrimPrefix(id, "command-"))
+	if err != nil {
+		return ProcessInfo{}, err
+	}
+	return processInfo(row), nil
+}
+
+func processInfo(row sqlc.BackgroundCommand) ProcessInfo {
+	info := ProcessInfo{
+		ID: "command-" + row.ID, Label: row.Label, Command: row.Command, Wake: row.Wake, State: row.State, Reason: row.Reason,
 		Cwd: row.Cwd, OutputFile: row.OutputPath, StartedAt: row.ProcessStartedAt,
 	}
 	if row.ExitStatus.Valid {
 		info.ExitStatus = new(int(row.ExitStatus.Int64))
 	}
 	if row.EndedAt.Valid {
-		info.EndedAt = &row.EndedAt.Int64
+		info.EndedAt = new(row.EndedAt.Int64)
 	}
 	return info
 }

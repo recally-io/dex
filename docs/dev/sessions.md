@@ -59,23 +59,47 @@ skip `[inert]` subtrees. Instructions drafts live above the routes in a map by
 agent ID. Saving one agent cannot change another agent's draft or query data.
 A browser reload discards these drafts.
 
-Every enqueue writes `submissions.origin`. Web input in main and Chat uses `web`.
+Every enqueue writes `submissions.origin` together with explicit inbox metadata:
+`submissions.producer` (`user`, `sub_session`, `scheduler`, or `plugin`) and
+optional `reply_channel` / `reply_peer` (populated only for direct channel `user`
+inputs; Web and background inputs leave them empty). Web input in main and Chat uses `web`.
 Channel input uses the exact peer, such as `telegram:7`, and always enters main.
 Automation, parent turns to a child session, and dream input use `automation`, `task`, and `dream`.
-A child result copies the origin of the parent request in the same transaction
-that settles the child turn. A result chain thus keeps the
-first input's origin. Existing rows use `unknown`. The durable channel sender
-routes ordinary replies and task results by origin. Web input sends no channel reply.
+Retrying the same request ID with a different conversation, kind, content,
+attachments, mode, producer, or reply address is rejected as a conflict.
+A channel input also saves the account and peer that received it. Pairing is
+checked at intake. A child result can retain the origin for attribution or an
+explicit follow-up; its normal output does not enter the Outbox. An ordinary
+Web reply also stays in Web.
 The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
-The first input owns a run. Its origin selects the reply recipient, and its
-receipt is the source for tool calls. A steered input adds content only. It does
-not change the recipient or grant or remove tool authority. Web input and a
-parent's `session_send` can steer. Channel, automation and dream inputs always
-use `followUp`. Bot and routine management check the source input, not the
-steered input.
+For a completed run, Dispatcher inspects the inputs actually answered by that
+native answer in PiG placement order and selects the last `producer = user`
+input: if that input came from a channel (`reply_channel`/`reply_peer`), that
+input writes the single final Outbox reply; if it came from Web, the answer
+stays in Web with no channel Outbox row. Pure background runs (no `user` input)
+never auto-send to channels—Main must explicitly call `notify_user` to emit a
+channel notification. If run membership or order cannot be verified, no
+automatic channel Outbox row is written. Web input and a parent's
+`session_send` can steer; channel, automation, and dream inputs use `followUp`.
+
+## Web notifications
+
+Main and Chat display explicit `notify_user` output when the stored source
+submission has Web origin. The notice and source must belong to the requested
+conversation. An Automation does not get a Web timeline notification. A channel target
+on an eligible Web notification does not change its origin.
+
+The Web stream reads a recent page from `web_notifications` when it connects.
+A committed notice wakes the stream. Older notices use a notification ID cursor
+in chat history, separate from the native entry cursor. The Web client merges
+pages and live updates by notification ID. If a newer notice with the same
+`topicKey` supersedes a pending channel delivery, the timeline keeps both
+notices. Channel revocation does not hide a Web-origin notice. Neither the
+engine transcript nor the platform delivery receipt changes when the Web client
+reads an entry.
 
 ## Internal delegation
 
@@ -91,19 +115,19 @@ error and no question. The answer is a normal message with `answersQuestionId`.
 The receipt, the new `answered` status and the content wrapper `Answer to:
 <question>` commit in one transaction. A message without that field never closes
 a question. Withdrawing the answer reopens the question. The answered input's
-settlement consumes it. Stop, Clear and archive dismiss open and answered
-questions in their own writer transaction. Settlement of the asking input adds
-the question to the reply, so a channel receives it through the reply outbox.
-`Bot.Send` returns the remote message ID. After each confirmed part, the sender
-stores the ID in `question_messages` for the question. Its key contains the
+settlement consumes it. Session cancellation, Clear and archive dismiss open and answered
+questions in their own writer transaction. A direct channel input receives its
+final question through the Outbox. Questions from Web or background inputs stay
+in Web. After the platform confirms the question message, the sender stores the
+remote ID in `question_messages`. Its key contains the
 agent ID, peer, and remote message ID, because different bots can return equal
 message IDs for the same peer. Telegram reads
 `reply_to_message.message_id` and Feishu reads `parent_id` as `Message.ReplyTo`.
-`SubmitMessage` maps a quoted ID to `answersQuestionId`. A quote of any part
-answers the question. A quote of a closed question, an unknown ID or a platform
-without quoting (WeChat) is a plain message. A crash between the remote send and
-the mapping write loses the mapping of that part, so its quote is a plain message.
-The settle worker takes the agent delivery lock before it settles an aborted
+`SubmitMessage` maps a quoted ID to `answersQuestionId`. A quote of a closed
+question, an unknown ID or a platform without quoting (WeChat) is a plain
+message. A crash between the remote send and the mapping write can leave the
+quote without a match.
+The settle worker takes the Session delivery gate before it settles an aborted
 input. A withdraw holds the same lock, so a withdrawn channel message never gets
 a "no answer" reply.
 
@@ -145,15 +169,49 @@ writing child separate files or directories. The tools are:
   fail or end before settlement. It reads any session of any bot except dreams.
   `turn` with `offset` reads the rest of a cut text.
 - `session_search` finds turns whose input or answer contains every word of a
-  query, in sessions except dreams. `bot` is empty (the bot of the caller),
-  `all`, or a bot ID or name.
+  query. It searches the current session by default, including turns before
+  compaction. It skips the turn that calls the tool and excludes dreams. Pass a
+  numeric session ID to search one specific session, or `session: "all"` to
+  search all sessions in the selected bot scope. `bot` defaults to the caller's
+  bot and also accepts `all`, a bot ID, or a bot name.
 
 Each session, list row and match names its bot (`bot` and `botId`).
 
-Only a parent can send to, stop or fork a child. A child has no session tools,
-no routine tools and no `ask_user`: the engine removes them from every input of
-a conversation that has a parent, and the handlers refuse the call as well.
+Only a parent can send to, stop or fork a child. A child has no parent session
+tools, automation tools, or `ask_user`. The app selects the child extensions for
+each input, and the handlers also check the caller.
 A conversation that was a task before the upgrade is a child in the same way.
+
+### Child reports
+
+A child uses `session_report` from the `child-outbox` extension. Its only
+arguments are `content` and `final`. The recipient is always the direct parent,
+which can be an Automation session. The tool cannot name another session. The
+native validator rejects `id`, `message`, `mode` and `follow_up`. The handler
+refuses a call from a conversation without a parent.
+
+A progress report (`final: false`) is a milestone and the turn continues.
+Progress reports and ordinary final reports write an internal `task_result`
+with the ID `report:<bot>/<tool task ID>` for the direct parent. This does not
+notify the user or grant channel authority. A final report (the default) must
+be the sole tool call of its round and ends the child turn.
+
+For a [promised channel follow-up](channels.md#promised-follow-ups), the
+final report does not write a `report:` wake. The child starts its own native
+activation. Its first native entry binds that activation to the delegation.
+Only the tool operation that belongs to this activation can stage a final
+report. The control writer checks the child, direct parent, original receipt
+and native activation. A replay returns the same disposition. A second final
+cannot replace the first report. A native `done` settlement can consume that
+report as the canonical result's answer. Settlement, consumption, and result
+creation share one transaction. Revocation or unsuccessful settlement does
+not use staged content. A stage is not a send.
+
+The child edit of each input removes the `sessions` extension when it adds
+`child-outbox`, so the child can report but cannot dispatch to other sessions.
+Use `session_report` for new calls. PiG cannot resume an unfinished call
+under the retired tool name. A report committed before restart stays in the
+parent's Inbox and does not create a second wake.
 
 ## Cross-bot sessions
 
@@ -171,25 +229,22 @@ against them:
   child runs with the instructions, memory section, skills, MCP servers, and
   vault of that bot. A child still cannot create children.
 - A result goes to `conversations.parent_id` in the settlement transaction, in the
-  bot of the parent. Admission of the bot of the parent takes it from the
-  database, as for a result from the same bot.
-- Locks. No call path holds two delivery gates. A session tool runs in the run of
-  its conversation and holds no gate. `session_stop` takes the gate of the bot of
-  the child, as a Stop in that bot does. A Stop takes the gate of the stopped
-  conversation only. It withdraws the input that the parent started in the
-  children, in every bot, in one transaction, and it aborts only the executions of its own bot. The
-  abort of a child in another bot stays a durable `abort_pending` request. The
-  reconciliation of that bot, under its own gate, carries it out. Two parents
-  in two bots that stop each other's children therefore cannot wait for each
-  other's gate. `settleNative` takes the gate of the bot of the child only for an
-  aborted run, and the result for the parent is a database write without a gate.
+  bot of the parent. The parent Session takes it from the same receipt queue as its other inputs.
+- No call path holds two Session delivery gates. A session tool runs in its own
+  conversation without the delivery gate. `session_stop` takes only the target
+  child's gate. A cascading Stop records the targets in a short control
+  transaction. It does not call native execution under the writer. Each target
+  processes its cancellation under its own gate, across bots as necessary.
+  For a native abort, settlement waits for the target's gate so Withdraw can
+  finish its receipt first. The transaction that stores a result does not take
+  the parent's gate.
 - Restart recovery settles the admitted inputs of each child under the agent of
   the child, and sends the one `interrupted` result to the parent in its bot.
-- `session_read` reads any session except dreams. `session_search` reads one
-  bot, or all bots with `all`. `session_list` always shows the children of the
-  caller and takes `bot` for the other sessions. The default is the bot of the
-  caller. A name is not unique: an ambiguous name is an error that lists the
-  IDs.
+- `session_read` reads any session except dreams. With `session: "all"`,
+  `session_search` searches all sessions of the selected bot or bots.
+  `session_list` always shows the children of the caller and takes `bot` for the
+  other sessions. The default bot is the caller's bot. An ambiguous bot name is
+  an error that lists the IDs.
 - A child delivers files to its own bot's artifacts directory. Its tool result
   provides that bot's file URL. A parent can link to the URL, but its bot's
   directory does not contain or list the child's files.
@@ -201,9 +256,10 @@ tool calls take the SQLite writer before they read.
 
 A turn that a parent sends has origin `task`, so it never goes to a user
 channel. A completed run with a parent input sends one `task_result`, including
-when a user started the run. A pure user run sends none. Control uses the child
-conversation and native Answer entry as a unique key. The first parent input
-to settle owns `result:<turn ID>`. A done native input without an Answer is an
+when a user started an ordinary shared run. A pure user run sends none.
+Control uses the child conversation and native Answer entry as a unique key.
+In an ordinary shared run, the first parent input to settle owns
+`result:<turn ID>`. A done native input without an Answer is an
 error. Each failed or interrupted parent input sends its own result; user inputs
 send none. A stopped, aborted or withdrawn input sends none. Result insertion
 and receipt settlement share a control transaction. Only an Answer key conflict
@@ -211,12 +267,11 @@ is treated as already delivered.
 
 The result names the child, its title, the turn and the outcome. It has the
 final answer cut at 4,000 characters, or the failure reason. A restart adds
-the number of queued inputs it withdrew. The result copies the origin of the
-parent request, so a Chat gets its own results and a channel peer gets the
-results of work that the peer started.
-The result enters the parent's follow-up inbox even when the parent is busy.
-Control never changes a settled submission back to pending, so there is no
-retry counter and no delivery recovery state. The parent reads the child's
+the number of queued inputs it withdrew. Child results enter the parent as
+`producer = 'sub_session'` with no channel reply destination; pure background
+runs never auto-send to channels, and Main decides whether to call `notify_user`.
+An ordinary result enters the parent's follow-up Inbox while the parent is busy.
+Control never changes a settled submission back to pending. The parent reads the child's
 final answer from the result and can call `session_read` for a cut text.
 
 Control passes a trusted input kind, the turn ID and the child title to the
@@ -228,7 +283,9 @@ Neither layer uses message text or an ID pattern to hide results.
 
 The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
-line at each `session_send` call. A result mark is one line with a "View thread"
+line at each `session_send` call. A `session_report` call shows as a
+"Reported to parent" step. That step keeps a
+System Turn trace unfolded. A result mark is one line with a "View session"
 action. The card, the line and the action open a read-only side panel that
 shows the child's own transcript with the usual chat reads and stream. The web
 reads the child ID from the session tool result and finds the child of a result
@@ -250,25 +307,109 @@ Disconnect makes status unavailable. A reconnect reads the current snapshot
 and child states.
 
 A child is writable on the web at any time. A user message goes to the child
-like to any Chat and sends no result. Web Stop covers the selected session and
-its children that have pending input. Channel `/stop` calls main Stop with the
-same scope. Other Chats, automations and other agents stay outside it. The
-scope includes children in other bots. `/clear` does not
-cancel children.
-Submission, Stop, Clear and reconciliation share a delivery lock per agent.
-Stop withdraws pending input of the session and of its children in one
-transaction, then requests cancellation through the engine for each execution
-of its own bot. A child in another bot waits for the reconciliation of its bot.
-Pending cancellation intent stays in business storage until native abort
-succeeds. Reconciliation completes cancellation before it admits later input.
-Both cold recovery and ordinary Stop atomically withdraw queued input and save
-passive transcript entries that retain origin, attachments and labels without
-adding model context. A slow admission or reload for one agent does not hold
-another agent's delivery lock. The short global receipt gate orders maintenance
-confirmation, as described in [Service and updates](architecture.md#service-and-updates).
+like to any Chat and sends no result. On Main, the web composer uses Main's
+live run state. It can send while a child runs. Web Main Stop requires the
+native foreground task target from the connected snapshot or run event. The
+engine checks the task's Session and cancels only that task ID. If it has
+ended, Stop reports that it had no effect. A handoff can replace the task ID
+within one run. Stop does not follow the handoff or cancel a successor.
+
+Task Stop keeps queued and awaiting inputs, children, background commands and
+Monitors. PiG 0.7 task abort keeps the Inbox but does not start its next input.
+Dex records the intent before abort. If the Session is idle, the failure still
+belongs to the aborted task, and input is queued, Dex submits a native Continue
+with a stable ID. Recovery can finish this step after a restart.
+
+The engine has one Stop entry point with two explicit scopes: task and Session.
+An invalid task target cannot select Session cancellation. The separate
+`session_stop` tool cancels a child Session. Channel `/stop` and a Web Stop
+without a target on a writable session other than Main also request Session
+cancellation. This action withdraws pending inputs and stops eligible work. This includes background commands,
+Monitors and child work the parent started. A child with pending user input
+keeps its run. Its parent inputs can be withdrawn only if they are still queued
+or not yet admitted when the target processes the request. For a child in another
+Bot or with a busy delivery gate, Stop can return before the target checks the
+queue. A queued parent input can enter execution in this interval. If it does,
+Stop leaves it running. `/clear` does not cancel children.
+
+Admission, Clear, Withdraw and reconciliation use a delivery gate for each
+Session. Stop intents stay in business storage until the target processes them.
+Admission reconciles them before later input. Cold recovery and Session
+cancellation save passive display entries for withdrawn native
+inputs without adding model context. The shared SQLite writer runs short
+transactions. The global receipt gate orders maintenance confirmation, as
+described in [Service and updates](architecture.md#service-and-updates).
 The reply of Stop confirms the request. It does not prove process exit.
 Processes and remote work can continue. Cancellation does not undo file writes
 or remote actions.
+
+### Diagnose a slow Session input
+
+1. Use the Session ID in `session input` logs. Match `request_hash` across
+   `enqueued`, `admission_attempt`, `admitted`, and `settled`. The hash is the
+   first 16 bytes of SHA-256, in hex. These logs do not show the raw request ID or
+   payload. `admission_wait` records an observed occupied Session gate.
+   `queued_ms` is the age of the receipt at the attempt. `elapsed_ms` measures
+   the wait or attempt separately. `environment_offline`, `session_busy`,
+   `model_discovery`, `deadline`, and `canceled` come from known error types.
+   `unknown` does not identify a cause. An attempt result of `ok` does not
+   prove admission. Only `admitted` records the native ID and the receipt write.
+2. Match `admitted` to `generation_started` by agent, native namespace,
+   native conversation ID, and the native submission ID in the generation's
+   input list. The PiG `BeforeRequest` hook runs inside the native generation
+   task. It proves that the task reached request preparation, not that it sent
+   a provider request. Placement in the native Inbox or a `202` does not prove
+   the task ran. A bounded in-memory cache suppresses repeat observations of
+   the same input set across tool rounds and task handoffs. Recovery can log
+   it again. A fast native start can log before the admitted receipt commits.
+3. On a build with Runner RPC diagnostics, compare the `environment` ID and
+   timestamps with `runner RPC` logs. The Session log shows the effective
+   environment at admission. The Runner client generates `call_id` for each
+   RPC. It does not share a key with the PiG task. On a shared Runner this is
+   only a time association, not attribution to the Session. Within one
+   `call_id`, `connection_wait` is distinct from `slot_waiting` or `slot_wait`.
+   `sent` is not a start. `remote_started` or `remote_start_observed_after`
+   proves the client received a start acknowledgement. If it did not observe
+   one, the remote start can be unknown. Check the RPC result and
+   `cancel_settlement`; a deadline alone does not prove remote exit. A
+   `session execution` / `shell_timeout` event reports a typed shell deadline
+   at the execution boundary. Match its agent and native conversation ID.
+   It does not label an untyped model or tool error as a timeout.
+4. For task Stop, match `stop_recorded` to `stop_attempt` by native
+   conversation and task. The last component of the validated `target` is the
+   task ID. `stop_attempt_ended` with `deadline` describes the
+   local wait. `abort_observed` reports whether this Stop attempt confirmed cancellation.
+   A durable intent can still retry. `stop_rejected` does not cancel a successor.
+   Session cancellation can settle pending receipts in bulk. Inspect the durable status.
+
+The receipt timestamps survive restart. On the control host this query opens
+SQLite read-only and emits recent receipt metadata, with the same hash as the
+logs. It prints no input, output, raw IDs, or channel data:
+
+```sh
+python3 - /path/to/control.sqlite 123 <<'PYTHON'
+import hashlib, pathlib, sqlite3, sys
+from contextlib import closing
+
+uri = pathlib.Path(sys.argv[1]).resolve().as_uri() + "?mode=ro"
+with closing(sqlite3.connect(uri, uri=True)) as db:
+    for request, *fields in db.execute("""
+        SELECT id, rowid, created_at, admitted_at, settled_at, status
+        FROM submissions WHERE conversation_id = ? AND kind = 'message'
+        ORDER BY rowid DESC LIMIT 20
+        """, (int(sys.argv[2]),)):
+        print(hashlib.sha256(request.encode()).hexdigest()[:32], *fields)
+PYTHON
+```
+
+Times are Unix milliseconds. A null `admitted_at` means no control marker was
+saved; native admission may have committed before that write. `recovery` on
+an attempt means an earlier marker exists. It does not prove a restart, and
+absence of a marker does not rule out replay. The start and timing logs are
+not durable receipts. If earlier logs are unavailable after restart, past
+start and Runner acknowledgement times are unknown.
+
+### Child recovery
 
 At process start, control reads the native state of every pending input in a
 child with a pending parent input, including admission gaps. The engine reads
@@ -288,7 +429,7 @@ execution. An aborted MCP call ends the local wait and requests remote
 cancellation. It does not prove that the remote job stopped. Before another
 turn, the parent must check artifacts and prior actions.
 
-Tools run through [`internal/execenv`](../../internal/execenv) using the
+Tools run through [`internal/runner`](../../internal/runner) using the
 built-in `local` provider, a remote `pi-env` SSH connection, an `e2b`
 sandbox endpoint, or a machine service connection. The
 [remote machine](../remote-machines.md) opens an outbound WebSocket to Dex
@@ -300,11 +441,27 @@ its machine. Each backend owns its connections, and a `Handle` is one lease on
 them: all bots on
 one `pi-env` environment share one SSH connection until that environment changes. The socket carries JSON-RPC 2.0 calls from
 [`sourcegraph/jsonrpc2`](https://github.com/sourcegraph/jsonrpc2): one call per
-operation, one operation at a time, and a `cancel` notification for the call
-that the user stopped. Dex waits for the canceled operation to finish before it
-sends the next call. The library owns call correlation, reply routing, and
-session loss, so Dex owns only the operations. A session does not replay calls
-after connection loss. Dex reports a missing final result as unknown.
+operation. The Runner reports its connection limit in `ready`. Current peers
+allow 16 calls; older peers continue to use one slot. A call waits for a slot
+before it is sent. Responses, stdout, stderr, and `cancel` are scoped to the call.
+Dex holds a canceled call's slot until the Runner responds, or closes the session
+if it does not respond in time. A slow output consumer can fill its bounded
+buffer. Dex stops that command and reports the error without blocking other
+calls. On disconnect, the Runner cancels its calls and waits for them before
+cleaning up the execution environment. Self-update remains outside the serving
+loop. A session does not replay calls after connection loss. Dex reports a
+missing final result as unknown.
+
+The `runner RPC` control log correlates connection wait, slot wait, send,
+remote start, and completion by `call_id`, environment, and method. Slow slot
+waits, cancellations, offline calls, and unknown results are visible at Info.
+Fast successful calls and routine file errors use Debug. Completion of slow
+calls includes the send and remote-start timings when available. The
+`started` event is opt-in on both sides. It confirms the remote worker reached
+operation dispatch, not a successful shell spawn. The local receipt time can
+include network delay; Dex does not infer start for old Runners. Logs do not
+include command arguments, paths, error text, or stream data.
+
 A lease on a machine holds its enrollment, which is the digest of the machine
 token in control storage. It does not hold the socket, and the stamp does not
 change when the machine disconnects or Dex restarts. Each call takes the current
@@ -318,11 +475,11 @@ the earlier one at once, so a half-open socket does not block the reconnect.
 Each new session wakes the chats that wait, so their input runs without a new
 message. A revoke or a new enrollment changes the identity, so a lease fails at
 once and the bot reloads.
-`execenv.Manager` dispatches each kind to one backend and owns the environment
+`runner.Manager` dispatches each kind to one backend and owns the environment
 lifecycle (`Normalize`, `Probe`, `Changed`, `ForgetHostKey`) and the agent
 lifecycle (`CanResetAgent`, `ResetAgent`, `ReleaseAgent`). This keeps
 `internal/settings` independent of backend config schemas and SSH `known_hosts`
-storage. `execenv.Runners` owns machine enrollment for the HTTP routes. SSH environments default `loginShell` to
+storage. `runner.Runners` owns machine enrollment for the HTTP routes. SSH environments default `loginShell` to
 `true`: they start the daemon via `$SHELL -lc` and capture interactive login
 shell exports via `$SHELL -l -i -c '... env -0'` on open.
 At startup, a runner uses a bounded interactive login shell probe on its own
@@ -351,24 +508,25 @@ when `/connect` is unsupported, and `uname -sm` platform detection. Memory tools
 (`memory_search`, `memory_read`, `memory_write`, `memory_edit`) stay bound to
 `<data dir>/memory/` on the control host. CLI tools must be
 logged in and run in the foreground with non-interactive options. Long work
-uses [command Monitors](execution.md#command-monitors), which dex tracks. Any other
+uses [Processes](execution.md#session-processes), which dex tracks. Any other
 process must not outlive its turn. A turn can start and supervise a process,
-such as a worker in a Rex tab, but must stop it before the final answer. Bash has no default
-timeout. Its visible output keeps at most the last 2000 lines or 50 KiB,
+such as a worker in a Rex tab, but must stop it before the final answer. Bash has a default
+timeout of 600 seconds. Its visible output keeps at most the last 2000 lines or 50 KiB,
 whichever limit comes first; complete output goes to a temporary file.
 A durable checkpoint does not attach a CLI after restart or guarantee that
 external actions occurred once.
 
 ## Session environments
 
-Each unscoped session runs its command and file tools in one execution
+Each session runs its command and file tools in one execution
 environment. `conversations.environment_id` in `control.sqlite` is the source
 of truth. Empty means that the session follows the bot's environment
 (`agents.environment_id`). `local` or an environment ID is an explicit
-selection, which does not change when the bot's environment changes. An unscoped
+selection, which does not change when the bot's environment changes. A
 session can select local or any registered SSH, runner, or E2B environment in the
 same Dex instance. Bots that use the same runner share its connection, not their
-workspaces. They execute one operation at a time. SSH and runner
+workspaces. Calls on one Runner can overlap, including calls to the same files.
+Sequence dependent operations explicitly. SSH and runner
 use the same `<base>/<bot-id>/workspace` layout under their respective base
 directories. These workspaces are not permission boundaries.
 
@@ -383,13 +541,13 @@ a session that selects another environment. New input that follows an
 unavailable or offline default waits before native admission. This check does
 not wait for the machine; a running turn keeps its tool calls, which wait as
 above. Later attempts retry opening the default, and a new machine session ends
-the retry delay. The turn that opens the default uses its project files. After
-that turn, an idle reload restores any skills and MCP tools that could not load.
-A machine default that was offline at load does not need new input: when the
-machine connects again, the agent becomes stale, and the reload opens the
-default. Other kinds wait for a call that opens them, so a failing SSH or E2B
-endpoint does not rebuild the agent at each check. The resolver checks the
-environment in control storage. A removed, unselectable, or offline environment
+the retry delay. On cold open, the Harness loads the shared extensions and MCP
+servers without opening the default workspace. After it publishes, a Session
+that needs the default opens it and uses its project files. Reload still tries
+to refresh the default workspace. If the default machine is offline at cold
+open or during Reload, reconnect requests an idle reload even without new input.
+After a failed Reload, a later successful lease open can also request an idle reload.
+The resolver checks the environment in control storage. A removed, unselectable, or offline environment
 fails the call with a reason. The resolver never falls back to another
 environment, and dex does not replay an interrupted command. The stamp holds
 the configuration and identity of the environment, not its connection state.
@@ -404,7 +562,6 @@ diff; local sessions use the stores directly. Project skills stay in the
 selected environment and use the normal file tools. See [Skills](extensions.md#skills).
 MCP servers keep their bot-level configuration and transport;
 selecting an environment does not move them or grant access to new MCP tools.
-Scoped group sessions use their separate runtime and cannot select environments.
 
 An E2B default keeps its existing persisted per-bot sandbox and auto-pause
 setting. An explicit selection of that same default uses the same lease.
@@ -415,16 +572,19 @@ persistent files. Operations renew its timeout while it is in use, including
 short commands. A confirmed expiry fails the operation without replay. Later
 work opens a fresh sandbox in the same selected environment; old files do not
 carry over.
-Routines still support explicit local and SSH overrides only.
+Automations support explicit overrides for Local and SSH Machines only.
 
 A web chat selects its environment before its first message
 (`PUT /api/agents/{agentId}/chats/{chatId}/environment`); a started chat answers
 409. `session_new` takes `environment`. A child of the same bot runs in its
 parent's environment unless it selects another one. A child of another bot runs
 in that bot's environment unless it selects another one. `environment_list`
-shows local and the registered environments with ID, name, kind, and status,
-with the bot's default first. It does not show configuration or secrets. An
-offline runner remains listed.
+shows Local and the registered Runners with ID, name, kind, and status, with
+the bot's default first. The stored kind `runner` identifies an Outbound
+Machine that connects through `dex-agent`. An offline Machine remains listed. The tool includes
+`desc` when the owner sets a description on the saved environment in Settings.
+This plain text is data. It does not change selection or access and does not go
+into the system prompt. The tool does not show configuration or secrets.
 
 A fork keeps the environment selection of its source unless it selects local or a registered
 environment (`environmentId` of `POST /api/agents/{agentId}/chats/{chatId}/fork`, `environment`

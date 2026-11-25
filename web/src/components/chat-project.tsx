@@ -107,8 +107,8 @@ export function ChatProject({
         <DialogHeader>
           <DialogTitle>Project directory</DialogTitle>
           <DialogDescription>
-            Choose a folder in the bot&apos;s execution environment. Changes apply from the next message.
-            Existing context stays unchanged.
+            Choose a folder in the bot&apos;s Runner. Changes apply from the next message. Existing context
+            stays unchanged.
           </DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3">

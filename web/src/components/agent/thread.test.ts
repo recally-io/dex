@@ -5,6 +5,7 @@ import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } fr
 import { expect, test } from "vite-plus/test";
 import type { Chat, Item, ToolItem } from "../../api/generated/types.gen";
 import { threadCall, threadState } from "../../lib/threads";
+import { describeTool } from "../../lib/tools";
 import { ResultLine, ThreadContext } from "./thread";
 import { ThreadView } from "./thread-panel";
 import { Steps, Transcript } from "./transcript";
@@ -88,9 +89,9 @@ test("user sees one card with native execution status and no copied child text",
     createElement(Steps, { steps: [bash("a"), created("s1", 7, "Check logs"), bash("b")] }),
   );
 
-  expect(html.match(/Session thread: Check logs/g)).toHaveLength(1);
-  expect(html.indexOf("Ran a command")).toBeLessThan(html.indexOf("Session thread"));
-  expect(html.indexOf("Session thread")).toBeLessThan(html.lastIndexOf("Ran a command"));
+  expect(html.match(/Child session: Check logs/g)).toHaveLength(1);
+  expect(html.indexOf("Ran a command")).toBeLessThan(html.indexOf("Child session"));
+  expect(html.indexOf("Child session")).toBeLessThan(html.lastIndexOf("Ran a command"));
   expect(html).toContain('data-state="running"');
   expect(html).not.toContain("First line");
   expect(html).not.toContain("Third line");
@@ -110,7 +111,7 @@ test("user sees the bot of a child in another bot, and one card for each fork", 
 
   const html = await render(createElement(Steps, { steps: [created("s1", 7, "Check logs"), other] }));
 
-  expect(html.match(/Session thread:/g)).toHaveLength(2);
+  expect(html.match(/Child session:/g)).toHaveLength(2);
   expect(html).toContain("Ops");
   expect(html).toContain('href="/a/ops/c/9"');
   expect(html.match(/>Default</g) ?? []).toHaveLength(0);
@@ -127,7 +128,7 @@ test("user sees a send as one compact line that opens the same thread", async ()
   const html = await render(createElement(Steps, { steps: [send] }));
 
   expect(html).toContain("Sent to Check logs");
-  expect(html).not.toContain("Session thread");
+  expect(html).not.toContain("Child session");
   expect(html).toContain('href="/a/default/c/7"');
 
   // With a panel on the page, the line is a button instead of a link.
@@ -165,7 +166,7 @@ test("user sees a result as one line without the answer", async () => {
 
   expect(html).toContain("Check logs</span> replied");
   expect(html).toContain("Build</span> failed: model down");
-  expect(html.match(/View thread/g)).toHaveLength(2);
+  expect(html.match(/View session/g)).toHaveLength(2);
   expect(html).toContain('href="/a/default/tasks/t1"');
   expect(html).not.toContain("<details");
   expect(html).toContain("Main reply");
@@ -178,7 +179,7 @@ test("user sees a result as one line without the answer", async () => {
     ),
   );
 
-  expect(line).toMatch(/<button type="button"[^>]*>View thread<\/button>/);
+  expect(line).toMatch(/<button type="button"[^>]*>View session<\/button>/);
 });
 
 test("user sees the child transcript in the panel, with its title, bot and state", async () => {
@@ -205,13 +206,13 @@ test("user sees the child transcript in the panel, with its title, bot and state
     client,
   );
 
-  expect(html).toContain('aria-label="Session thread"');
+  expect(html).toContain('aria-label="Child session"');
   expect(html).toContain("Check logs");
   expect(html).toContain("Check the logs");
   expect(html).toContain("Third line");
   expect(html).toContain('data-state="idle"');
   expect(html).not.toContain('data-state="done"');
-  expect(html).toContain('aria-label="Close thread"');
+  expect(html).toContain('aria-label="Close child session"');
   expect(html).toContain('href="/a/default/c/7"');
 });
 
@@ -223,10 +224,10 @@ test("thread state is current state, and disconnect makes it unknown", () => {
   expect(threadState()).toBe("unavailable");
 });
 
-test("a legacy task call names its first input", () => {
+test("a retired task tool call does not create a thread card", () => {
   const legacy = session("l", "spawn_task", { title: "Old", goal: "Goal" }, '{"id":"task-9"}');
 
-  expect(threadCall(legacy)).toMatchObject({ kind: "card", title: "Old", turn: "task-9" });
+  expect(threadCall(legacy)).toBeUndefined();
   expect(threadCall(bash("x"))).toBeUndefined();
 });
 
@@ -275,6 +276,92 @@ test("user sees silent system turn trace folded under task mark", async () => {
 
   expect(html).toContain("<details");
   expect(html).toContain("Internal trace (silent)");
+});
+
+test("user sees a child report to its parent as a step, never as a thread line", async () => {
+  const report = (id: string, args: ToolItem["args"], status: ToolItem["status"] = "done"): ToolItem => ({
+    kind: "tool",
+    id,
+    name: "session_report",
+    args,
+    status,
+    output: "Reported to parent: report:bot/1",
+  });
+
+  const mark = (id: string): Item => ({
+    kind: "task",
+    id: `${id}-mark`,
+    taskId: id,
+    title: "Background wake",
+  });
+
+  const transcript = (...tools: ToolItem[]) =>
+    render(
+      createElement(Transcript, {
+        chatId: 2,
+        items: [mark(tools[0].id), ...tools],
+        running: false,
+        retry: () => {},
+        canRetry: false,
+      }),
+    );
+
+  const final = report("final", { content: "Checks pass" });
+  const milestone = report("milestone", { content: "Half done", final: false });
+
+  const [finalHtml, milestoneHtml, groupedHtml] = await Promise.all([
+    transcript(final),
+    transcript(milestone),
+    transcript(milestone, final),
+  ]);
+
+  expect(
+    groupedHtml.match(/<button\b[^>]*aria-expanded="false"[^>]*>.*?<\/button>/g)?.join(" ") ?? "",
+  ).toContain("Reported to parent 2 times");
+
+  for (const html of [finalHtml, milestoneHtml]) {
+    expect(html).toContain("Reported to parent");
+    expect(html).not.toContain("Sent to");
+    expect(html).not.toContain("Internal trace (silent)");
+  }
+
+  expect(threadCall(final)).toBeUndefined();
+  expect(describeTool(milestone)).toEqual({ verb: "Report parent", target: "Half done" });
+
+  // A rejected report does not claim that it reached the parent.
+  expect(await transcript(report("rejected", { content: "Batched" }, "error"))).toContain(
+    "Used session_report · 1 failed",
+  );
+
+  // A streaming call without arguments yet is still the report of a child.
+  expect(await transcript(report("pending", {}, "running"))).not.toContain("Sent to");
+
+  // A retired tool in history does not render as a session_report.
+  const legacy = await transcript({ ...report("old", { content: "Legacy" }), name: "report_parent" });
+  expect(legacy).not.toContain("Reported to parent");
+
+  // A session_send stays a thread line, even if its arguments are invalid.
+  const dispatch = session(
+    "d1",
+    "session_send",
+    { id: "7", message: "More" },
+    JSON.stringify({ id: "7", title: "Check logs" }),
+  );
+
+  const malformed = {
+    ...report("d2", { content: "Wrong form" }, "error"),
+    name: "session_send",
+    output: "content: unknown field",
+  };
+
+  const [dispatchHtml, malformedHtml] = await Promise.all([transcript(dispatch), transcript(malformed)]);
+
+  expect(threadCall(dispatch)?.kind).toBe("send");
+  expect(threadCall(malformed)?.kind).toBe("send");
+  expect(dispatchHtml).not.toContain("Reported to parent");
+  expect(malformedHtml).not.toContain("Reported to parent");
+  // A parent dispatch in a System Turn does not stop the trace from folding.
+  expect(dispatchHtml).toContain("Internal trace (silent)");
 });
 
 test("user sees a Task alert on Main with the Task title", async () => {

@@ -70,8 +70,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   const environmentList = environments.data?.environments ?? [];
   const own = environmentList.find((env) => env.default);
 
-  // A routine can select only local or an SSH environment. A saved selection that is not a choice
-  // (the bot's own environment, or a removed one) stays listed, so an edit does not move the routine.
+  // An automation can select only Local or an SSH Machine. Keep a saved Runner in the list
+  // even if it is no longer a choice, so a schedule edit does not move the automation.
   const choices = environmentList.filter(
     (env) => !env.default && (env.kind === "local" || env.kind === "pi-env"),
   );
@@ -147,8 +147,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
 
   return (
     <Modal
-      title={existing ? "Edit routine" : "New routine"}
-      description="Set a prompt and a schedule, and choose where the routine runs."
+      title={existing ? "Edit automation" : "New automation"}
+      description="Set a prompt and a schedule, and choose where the automation runs."
       pending={pending}
       onClose={onClose}
       footer={
@@ -165,7 +165,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             {pending ? (
               <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
             ) : null}
-            {pending ? "Saving…" : "Save routine"}
+            {pending ? "Saving…" : "Save automation"}
           </Button>
         </>
       }
@@ -217,8 +217,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
         </Field>
         {!bound && (choices.length > 0 || environmentId) ? (
           <Field
-            label="Environment"
-            hint="Runs use only this environment. A run is skipped when it is removed or unreachable. Changing it clears the project directory."
+            label="Runner"
+            hint="Runs use only this Runner. A run is skipped when it is removed or unreachable. Changing it clears the project directory."
           >
             {({ id, describedBy }) => (
               <Select
@@ -245,7 +245,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
         {!bound ? (
           <Field
             label="Project directory"
-            hint="Use an absolute directory in the environment of the routine. Leave empty to use its workspace."
+            hint="Use an absolute directory on the automation's Runner. Leave empty to use its workspace."
           >
             {({ id, describedBy }) => (
               <Input
@@ -373,7 +373,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               session === "reuse"
                 ? "The bot sees earlier runs. The session grows with each run. When the session is busy, the run is skipped."
                 : bound
-                  ? "Runs join the selected session as follow-ups, using its environment and project."
+                  ? "Runs join the selected session as follow-ups, using its Runner and project."
                   : "Each run starts fresh."
             }
           >
@@ -389,7 +389,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
                 }
               >
                 <option value="new">New session each run</option>
-                <option value="reuse">One session for this routine</option>
+                <option value="reuse">One session for this automation</option>
                 <option value="session">Existing session</option>
               </Select>
             )}
@@ -448,10 +448,10 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
             <p>No future runs.</p>
           )}
           {!enabled ? (
-            <p className="mt-2 text-[12px]">This routine is paused. Enable it to run on this schedule.</p>
+            <p className="mt-2 text-[12px]">This automation is paused. Enable it to run on this schedule.</p>
           ) : null}
         </section>
-        {error ? <Failure title="Could not save routine" error={error} /> : null}
+        {error ? <Failure title="Could not save automation" error={error} /> : null}
       </form>
     </Modal>
   );

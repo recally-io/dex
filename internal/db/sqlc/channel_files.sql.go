@@ -87,21 +87,20 @@ FROM submissions s JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = ?5 AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = ?6 AND c.execution_scope = ?7 AND c.execution_id = ?8
+  AND c.agent_id = ?6 AND c.execution_scope = '' AND c.execution_id = ?7
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM channel_reply_files f WHERE f.submission_id = s.id) < 10
 ON CONFLICT DO NOTHING
 `
 
 type QueueChannelReplyFileParams struct {
-	OperationKey   string        `json:"operation_key"`
-	Name           string        `json:"name"`
-	MimeType       string        `json:"mime_type"`
-	Body           []byte        `json:"body"`
-	SubmissionID   string        `json:"submission_id"`
-	AgentID        string        `json:"agent_id"`
-	ExecutionScope string        `json:"execution_scope"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	OperationKey string        `json:"operation_key"`
+	Name         string        `json:"name"`
+	MimeType     string        `json:"mime_type"`
+	Body         []byte        `json:"body"`
+	SubmissionID string        `json:"submission_id"`
+	AgentID      string        `json:"agent_id"`
+	ExecutionID  sql.NullInt64 `json:"execution_id"`
 }
 
 func (q *Queries) QueueChannelReplyFile(ctx context.Context, arg QueueChannelReplyFileParams) (int64, error) {
@@ -112,7 +111,6 @@ func (q *Queries) QueueChannelReplyFile(ctx context.Context, arg QueueChannelRep
 		arg.Body,
 		arg.SubmissionID,
 		arg.AgentID,
-		arg.ExecutionScope,
 		arg.ExecutionID,
 	)
 	if err != nil {

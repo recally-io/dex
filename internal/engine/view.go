@@ -64,6 +64,7 @@ type Event struct {
 	ID            string `json:"id,omitempty"`
 	Text          string `json:"text,omitempty"`
 	Running       bool   `json:"running,omitzero"`
+	RunTarget     string `json:"runTarget,omitempty"`
 	Retry         *Retry `json:"retry,omitzero"`
 	HistoryBefore int64  `json:"historyBefore,omitzero"`
 }
@@ -76,15 +77,17 @@ func (e Event) MarshalJSON() ([]byte, error) {
 			Type          string `json:"type"`
 			Items         []Item `json:"items"`
 			Running       bool   `json:"running"`
+			RunTarget     string `json:"runTarget,omitempty"`
 			Retry         *Retry `json:"retry,omitzero"`
 			HistoryBefore int64  `json:"historyBefore,omitzero"`
-		}{e.Type, e.Items, e.Running, e.Retry, e.HistoryBefore})
+		}{e.Type, e.Items, e.Running, e.RunTarget, e.Retry, e.HistoryBefore})
 	case "run":
 		return json.Marshal(struct {
-			Type    string `json:"type"`
-			Running bool   `json:"running"`
-			Retry   *Retry `json:"retry,omitzero"`
-		}{e.Type, e.Running, e.Retry})
+			Type      string `json:"type"`
+			Running   bool   `json:"running"`
+			RunTarget string `json:"runTarget,omitempty"`
+			Retry     *Retry `json:"retry,omitzero"`
+		}{e.Type, e.Running, e.RunTarget, e.Retry})
 	}
 	type plain Event
 	return json.Marshal(plain(e))
@@ -127,9 +130,10 @@ type History struct {
 }
 
 type projection struct {
-	entries []durable.EntryRecord
-	live    harness.LiveState
-	inbox   []harness.InboxItem
+	hideToolArguments func(string) bool
+	entries           []durable.EntryRecord
+	live              harness.LiveState
+	inbox             []harness.InboxItem
 }
 
 func (p projection) event() Event {
@@ -307,7 +311,7 @@ func (p projection) render() []Item {
 					rendered = []Item{userItem(m, key, msg.Timestamp, userText(msg.Content))}
 				}
 			case ai.AssistantMessage:
-				rendered = assistantItems(msg, key, results, tools, p.live.Run != nil && (p.live.Generation == nil || p.live.Generation.Message == nil) && index == lastAssistant, true)
+				rendered = p.assistantItems(msg, key, results, tools, p.live.Run != nil && (p.live.Generation == nil || p.live.Generation.Message == nil) && index == lastAssistant, true)
 			}
 		}
 		for _, item := range rendered {
@@ -327,7 +331,7 @@ func (p projection) render() []Item {
 		}
 	}
 	if g := p.live.Generation; g != nil && g.Message != nil {
-		items = append(items, assistantItems(*g.Message, fmt.Sprintf("partial:%d", g.Message.Timestamp), results, tools, true, false)...)
+		items = append(items, p.assistantItems(*g.Message, fmt.Sprintf("partial:%d", g.Message.Timestamp), results, tools, true, false)...)
 	}
 	for _, c := range p.live.Compactions {
 		items = append(items, Item{Kind: "boundary", ID: fmt.Sprintf("compaction:%d", c.TaskId), Boundary: "compaction", Status: "pending"})
@@ -403,7 +407,7 @@ func failureItem(f harness.RunFailure) (Item, bool) {
 	return item, true
 }
 
-func assistantItems(m ai.AssistantMessage, key string, results map[string]ai.ToolResultMessage, tools map[string]harness.ToolSlot, live, committed bool) []Item {
+func (p projection) assistantItems(m ai.AssistantMessage, key string, results map[string]ai.ToolResultMessage, tools map[string]harness.ToolSlot, live, committed bool) []Item {
 	out := []Item{}
 	lastText := -1
 	for index, block := range m.Content {
@@ -422,7 +426,10 @@ func assistantItems(m ai.AssistantMessage, key string, results map[string]ai.Too
 			item.Kind = "tool"
 			item.ID = b.ID
 			item.Name = b.Name
-			item.Args = b.Arguments
+			// The review page has validated data. Model-supplied settings arguments can contain secrets.
+			if p.hideToolArguments == nil || !p.hideToolArguments(b.Name) {
+				item.Args = b.Arguments
+			}
 			item.Status = "error"
 			slot, hasSlot := tools[b.ID]
 			if slot.Output != nil {
@@ -470,7 +477,7 @@ func assistantItems(m ai.AssistantMessage, key string, results map[string]ai.Too
 const detailLimit = 2048
 
 // sessionCalls are the tools whose result the web thread card reads (web/src/lib/threads.ts).
-var sessionCalls = []string{"session_new", "session_fork", "session_send", "spawn_task"}
+var sessionCalls = []string{"session_new", "session_fork", "session_send"}
 
 // brief leaves out long bodies that the transcript shows only in an opened step. A thought keeps
 // its first line, which titles its step. A failed call opens by itself and a session call shows

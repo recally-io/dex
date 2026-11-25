@@ -17,7 +17,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/env/node"
 	"github.com/coder/websocket"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 )
 
 // machine is one remote machine environment and the dex-agent that serves it.
@@ -88,7 +88,7 @@ func (m *machine) pair(d *dex, code string) (int, string) {
 func (m *machine) dial(d *dex, token string) (*websocket.Conn, error) {
 	u := strings.Replace(d.srv.URL+"/machine/"+m.envID+"/connect", "http://", "ws://", 1)
 	header := http.Header{"Authorization": []string{"Bearer " + token}}
-	ws, res, err := websocket.Dial(m.t.Context(), u, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{runner.Version}})
+	ws, res, err := websocket.Dial(m.t.Context(), u, &websocket.DialOptions{HTTPHeader: header, Subprotocols: []string{outbound.Version}})
 	if res != nil && res.Body != nil {
 		_ = res.Body.Close()
 	}
@@ -105,7 +105,7 @@ func (m *machine) connect(d *dex) {
 	m.ws, m.done = ws, make(chan struct{})
 	go func(done chan struct{}) {
 		defer close(done)
-		_ = runner.Serve(m.t.Context(), ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: filepath.Join(m.state, "workspace")}))
+		_ = outbound.Serve(m.t.Context(), ws, node.NewNodeExecutionEnv(node.NodeExecutionEnvOptions{Cwd: filepath.Join(m.state, "workspace")}))
 	}(m.done)
 	m.waitOnline(d, true)
 }

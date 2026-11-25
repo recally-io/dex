@@ -67,7 +67,7 @@ Typed watch events + heartbeat" as live
 }
 database "control.sqlite
 Settings, chats, input receipts
-Tasks and confirmed reply parts" as cdb
+Tasks and platform delivery receipts" as cdb
 database "agents/<id>/state.sqlite
 Native admission + Inbox
 Runs, transcripts, tool calls" as adb

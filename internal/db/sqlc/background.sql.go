@@ -86,8 +86,8 @@ func (q *Queries) CreateBackgroundCommand(ctx context.Context, arg CreateBackgro
 }
 
 const createBackgroundWake = `-- name: CreateBackgroundWake :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at)
-SELECT ?1, b.conversation_id, ?2, 'null', ?1, s.origin, 'task_result', 'pending', ?3
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
+SELECT ?1, b.conversation_id, ?2, 'null', ?1, s.origin, 'scheduler', '', '', 'task_result', 'pending', ?3, s.channel_context
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
 JOIN conversations c ON c.id = b.conversation_id

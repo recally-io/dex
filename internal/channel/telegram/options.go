@@ -12,19 +12,14 @@ import (
 
 // Options are saved channel preferences. Speech requires a separate data-sending consent.
 type Options struct {
-	RequireMention bool           `json:"requireMention"`
-	Silent         bool           `json:"silent"`
-	Preview        string         `json:"preview,omitempty"`
-	Reactions      *bool          `json:"reactions,omitempty"`
-	GroupReactions bool           `json:"groupReactions,omitzero"`
-	STT            speech.Options `json:"stt"`
-	TTS            speech.Options `json:"tts"`
+	Silent    bool           `json:"silent"`
+	Typing    *bool          `json:"typing,omitempty"`
+	Reactions *bool          `json:"reactions,omitempty"`
+	STT       speech.Options `json:"stt"`
+	TTS       speech.Options `json:"tts"`
 }
 
 func (o Options) Validate() error {
-	if !slices.Contains([]string{"", "auto", "edit", "draft", "off"}, o.Preview) {
-		return errors.New("preview must be auto, edit, draft or off")
-	}
 	for _, item := range []struct {
 		kind   string
 		config speech.Options

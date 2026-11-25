@@ -42,7 +42,7 @@ export async function refreshAutomations(agentId: string) {
   ]);
 }
 
-// Handled and read state feed Needs you, Work, the sidebar counts and the automation pages.
+// Inbox uses the same handled state as the sidebar and automation pages.
 export async function refreshWork() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: [{ _id: "getWork" }] }),

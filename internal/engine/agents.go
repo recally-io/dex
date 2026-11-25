@@ -22,8 +22,8 @@ import (
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/MichaelKinsy/PiG/durable/harness"
 	storage "github.com/MichaelKinsy/PiG/durable/storage/sqlite/node"
-	"github.com/MichaelKinsy/PiG/durable/toolsearch"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/runner/outbound"
 	"github.com/recally-io/dex/internal/vault"
 )
 
@@ -32,18 +32,17 @@ var configureReporter sync.Once
 var agentIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 type agentOpening struct {
-	done   chan struct{}
-	cancel context.CancelFunc
+	done      chan struct{}
+	cancel    context.CancelFunc
+	resetting bool
 }
 
 type agentResources struct {
-	harness        harness.Harness
-	store          durable.Storage
-	loaded         *loadedExtensions
-	execStamp      string
-	envs           *environments
-	groupRoot      *os.Root
-	groupExtension *durable.Extension
+	harness   harness.Harness
+	store     durable.Storage
+	loaded    *loadedExtensions
+	execStamp string
+	envs      *environments
 }
 
 type activityRecord struct {
@@ -76,21 +75,22 @@ func (a *Agents) Activity(refs []Ref) map[Ref]Activity {
 
 // Agents owns the native execution resources. Harnesses stay open until Close or Reload.
 type Agents struct {
-	Catalog         *Catalog
-	config          Config
-	memory          *memoryRepo
-	skillStores     map[string]*skillStore
-	codeSandbox     *codemode.Sandbox
-	env             *toolEnv
-	vault           *vault.Store
-	mu              sync.Mutex
-	resources       map[string]*agentResources
-	activity        map[Ref]*activityRecord
-	activityWatches map[Ref]*childActivityWatch // one watch shared by live submissions
-	opening         map[string]*agentOpening
-	recovering      map[string]map[durable.ConversationId]bool
-	serial          map[Ref]chan struct{}
-	paused, closed  bool
+	Catalog             *Catalog
+	config              Config
+	memory              *memoryRepo
+	skillStores         map[string]*skillStore
+	codeSandbox         *codemode.Sandbox
+	env                 *toolEnv
+	vault               *vault.Store
+	mu                  sync.Mutex
+	resources           map[string]*agentResources
+	activity            map[Ref]*activityRecord
+	activityWatches     map[Ref]*childActivityWatch // one watch shared by live submissions
+	opening             map[string]*agentOpening
+	recovering          map[string]map[durable.ConversationId]bool
+	recoveryWithdrawals map[string][]RecoveryWithdrawal
+	serial              map[Ref]chan struct{}
+	paused, closed      bool
 	// busy counts the operations and settlements of each resource key. Maintenance waits for
 	// all keys, and a Reload waits only for the key of its agent. Work that uses no agent
 	// resources counts under "".
@@ -120,7 +120,7 @@ func New(config Config) (*Agents, error) {
 	}
 	config.BaseEnv = maps.Clone(config.BaseEnv)
 	if config.ExecEnv == nil {
-		config.ExecEnv = execenv.NewLocalProvider(config.DataDir, "")
+		config.ExecEnv = runner.NewLocalProvider(config.DataDir, "")
 	}
 	// Code mode uses PiG's embedded JavaScript sandbox. It loads on the first script.
 	codeSandbox, err := codemode.NewSandbox(codemode.SandboxOptions{})
@@ -128,13 +128,12 @@ func New(config Config) (*Agents, error) {
 		return nil, err
 	}
 	warnIgnoredEnv(config.DataDir)
-	agents := &Agents{vault: vault.New(config.DataDir), Catalog: NewCatalog(config.FakeModel), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, dirty: map[string]string{}, refused: map[string]string{}, reloadWake: make(chan struct{}, 1), serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}
+	agents := &Agents{vault: vault.New(config.DataDir), Catalog: newCatalog(config.FakeModel, config.FakeInputSuffix), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, dirty: map[string]string{}, refused: map[string]string{}, reloadWake: make(chan struct{}, 1), serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}
 	agents.Catalog.onDiscoveryDone = agents.wakeReloads
 	return agents, nil
 }
 
-// begin tracks one operation on the resources of key, the resource key of an agent or of a
-// group scope.
+// begin tracks one operation on an agent. An empty key tracks global work.
 func (a *Agents) begin(key string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -143,6 +142,9 @@ func (a *Agents) begin(key string) error {
 	}
 	if a.paused {
 		return ErrMaintenance
+	}
+	if slot := a.opening[key]; slot != nil && slot.resetting {
+		return ErrEnvironmentResetting
 	}
 	a.trackLocked(key)
 	return nil
@@ -198,7 +200,13 @@ func (a *Agents) lock(ctx context.Context, ref Ref) (func(), error) {
 	}
 }
 
-func (a *Agents) Recover(ctx context.Context, refs []Ref) error {
+// RecoveryWithdrawal identifies an exact queued request to remove before resume.
+type RecoveryWithdrawal struct {
+	Ref       Ref
+	RequestID string
+}
+
+func (a *Agents) Recover(ctx context.Context, refs []Ref, withdrawals ...RecoveryWithdrawal) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if err := ctx.Err(); err != nil {
@@ -211,17 +219,24 @@ func (a *Agents) Recover(ctx context.Context, refs []Ref) error {
 		return errors.New("recovery must precede opening agents")
 	}
 	for _, ref := range refs {
-		if ref.Scope != "" {
-			if err := validateGroupScope(ref.Scope); err != nil {
-				return err
-			}
-		}
 		if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
 			return fmt.Errorf("%w: recovery reference", ErrInvalidInput)
 		}
 	}
+	for _, w := range withdrawals {
+		if !agentIDPattern.MatchString(w.Ref.AgentID) || w.Ref.ID <= 0 || w.RequestID == "" {
+			return fmt.Errorf("%w: recovery withdrawal", ErrInvalidInput)
+		}
+	}
+	if len(withdrawals) > 0 && a.recoveryWithdrawals == nil {
+		a.recoveryWithdrawals = map[string][]RecoveryWithdrawal{}
+	}
+	for _, w := range withdrawals {
+		key := w.Ref.AgentID
+		a.recoveryWithdrawals[key] = append(a.recoveryWithdrawals[key], w)
+	}
 	for _, ref := range refs {
-		key := resourceKey(ref)
+		key := ref.AgentID
 		if a.recovering[key] == nil {
 			a.recovering[key] = map[durable.ConversationId]bool{}
 		}
@@ -230,15 +245,9 @@ func (a *Agents) Recover(ctx context.Context, refs []Ref) error {
 	return nil
 }
 
-func (a *Agents) harness(ctx context.Context, agentID, scope string) (harness.Harness, error) {
+func (a *Agents) harness(ctx context.Context, agentID string) (harness.Harness, error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, fmt.Errorf("%w: agent ID", ErrInvalidInput)
-	}
-	if scope != "" {
-		if err := validateGroupScope(scope); err != nil {
-			return nil, err
-		}
-		agentID = resourceKey(Ref{AgentID: agentID, Scope: scope})
 	}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -248,6 +257,10 @@ func (a *Agents) harness(ctx context.Context, agentID, scope string) (harness.Ha
 		if a.closed {
 			a.mu.Unlock()
 			return nil, ErrClosed
+		}
+		if slot := a.opening[agentID]; slot != nil && slot.resetting {
+			a.mu.Unlock()
+			return nil, ErrEnvironmentResetting
 		}
 		if opening := a.opening[agentID]; opening != nil {
 			a.mu.Unlock()
@@ -270,7 +283,7 @@ func (a *Agents) harness(ctx context.Context, agentID, scope string) (harness.Ha
 		opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
 		a.opening[agentID] = opening
 		a.mu.Unlock()
-		h, err := a.openAndPublish(openCtx, agentID, opening)
+		h, err := a.openAndPublish(openCtx, agentID, opening, false)
 		return h, a.closedDuring(ctx, err)
 	}
 }
@@ -291,9 +304,9 @@ func (a *Agents) closedDuring(ctx context.Context, err error) error {
 }
 
 // The opening slot owns the target until recovery finishes and Resume is safe.
-func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *agentOpening) (_ harness.Harness, resultErr error) {
+func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *agentOpening, reload bool) (_ harness.Harness, resultErr error) {
 	defer a.finishOpening(agentID, opening)
-	resource, err := a.open(ctx, agentID)
+	resource, err := a.open(ctx, agentID, reload)
 	if err != nil {
 		return nil, err
 	}
@@ -303,6 +316,20 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 			resultErr = errors.Join(resultErr, resource.harness.Close(cleanup), resource.closeExtras(cleanup))
 		}
 	}()
+	a.mu.Lock()
+	withdrawals := a.recoveryWithdrawals[agentID]
+	a.mu.Unlock()
+	for _, w := range withdrawals {
+		conversation, err := resource.harness.Conversation(ctx, durable.ConversationId(w.Ref.ID))
+		if err != nil {
+			return nil, err
+		}
+		if conversation != nil {
+			if _, err := withdrawNative(ctx, resource.harness, conversation, w.RequestID); err != nil {
+				return nil, err
+			}
+		}
+	}
 	isolated := map[durable.ConversationId]bool{}
 	for {
 		a.mu.Lock()
@@ -322,9 +349,14 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 		}
 		if len(pending) == 0 {
 			delete(a.recovering, agentID)
+			delete(a.recoveryWithdrawals, agentID)
 			a.resources[agentID] = resource
 			resource.harness.Resume()
 			a.mu.Unlock()
+			// A machine can reconnect before the cold Harness is visible to OnOnline.
+			if !reload && resource.envs != nil && resource.envs.restoreDefault {
+				a.MarkRestorable(ctx, agentID)
+			}
 			return resource.harness, nil
 		}
 		a.mu.Unlock()
@@ -335,10 +367,7 @@ func (a *Agents) openAndPublish(ctx context.Context, agentID string, opening *ag
 	}
 }
 
-func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, resultErr error) {
-	if owner, scope, group := strings.Cut(agentID, "/"); group {
-		return a.openGroup(ctx, Ref{AgentID: owner, Scope: scope})
-	}
+func (a *Agents) open(ctx context.Context, agentID string, reload bool) (_ *agentResources, resultErr error) {
 	if err := a.Catalog.discoveryReady(); err != nil {
 		return nil, err
 	}
@@ -349,21 +378,29 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := a.memory.Open(ctx); err != nil {
 		return nil, err
 	}
-	execHandle, ownErr := a.config.ExecEnv.Open(ctx, agentID, "")
+	var execHandle runner.Handle
+	var ownErr error
+	// Reload refreshes the default workspace. A cold Harness leaves that work to its Sessions.
+	if reload {
+		execHandle, ownErr = a.config.ExecEnv.Open(ctx, agentID, "")
+	}
 	var execStamp string
-	if ownErr == nil {
+	if execHandle != nil {
 		execStamp = execHandle.Stamp()
 	} else {
-		// Keep the Harness available to sessions that select a different environment.
-		// Remember the stamp so a reconnect can reload the default and its MCP tools.
 		execStamp, _ = a.config.ExecEnv.Stamp(ctx, agentID, "")
 	}
 	files := a.files(agentID, execHandle)
-	files.defaultUnavailable = ownErr != nil
+	files.defaultUnavailable = execHandle == nil
 	envs := &environments{
 		agentID: agentID, provider: a.config.ExecEnv, selected: a.sessionEnvironmentID, files: files,
 		own: execHandle, ownFiles: files, ownErr: ownErr, retryStamp: execStamp, retryAfter: time.Now().Add(time.Second),
 	}
+	// Status does not dial the environment. Keep the reconnect signal without opening a lease.
+	if !reload && envs.status(ctx, "") == "offline" {
+		envs.ownErr = outbound.ErrOffline
+	}
+	envs.restoreDefault = envs.ownErr != nil
 	defer func() {
 		if resultErr != nil {
 			resultErr = errors.Join(resultErr, envs.close(context.WithoutCancel(ctx)))
@@ -377,6 +414,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 		return envs.session(ctx, int64(id))
 	}
 	files.sessionPrompts = true
+	// MCP tools are shared by all Sessions. Register them before recovery can resume.
 	loaded, err := files.Load(ctx)
 	if err != nil {
 		return nil, err
@@ -390,49 +428,27 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	background := func(ctx context.Context, id durable.ConversationId) (backgroundEnv, error) {
-		s, err := envs.session(ctx, int64(id))
-		if err != nil {
-			return backgroundEnv{}, err
-		}
-		outputDir := filepath.Join(dir, "background")
-		if s.Inherit {
-			outputDir = execenv.JoinTargetPath(s.Handle.Workspace(), ".dex", "background")
-		}
-		return backgroundEnv{EnvironmentID: s.ID, Env: s.Vars, InheritEnv: s.Inherit, Kind: s.Handle.Kind(), OutputDir: outputDir, Workspace: s.Handle.Workspace()}, nil
-	}
 	registry := harness.CreateRegistry()
-	// All unscoped extension edits inherit this tool. Its execution checks the source receipt.
-	extensions := []*durable.Extension{checkExtension(agentID, a.config.Tasks.ReportCheck), telegramExtension(agentID, a.config.Tasks.Telegram), codingTools(session, a.config.BashTimeout, loaded.Vault), routineExtension(agentID, a.config.Routines), sessionExtension(agentID, a.config.Tasks), sessionReadExtension(agentID, a.config.Tasks), monitorExtension(agentID, a.config.Tasks.Monitors, background, loaded.Vault), vaultExtension(agentID, loaded.Vault), workLoopExtension(), artifactExtension(agentID, session, a.config.Tasks.DeliverArtifact), a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
-		return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
-	}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}), loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)}}
-	if loaded.HasTools {
-		extensions = append(extensions, toolsearch.CreateExtension())
+	builtins := []*Extension{
+		sessionTraceExtension(agentID), compactionExtension(), toolSearchExtension(),
+		codingTools(session, a.config.BashTimeout, loaded.Vault), vaultExtension(agentID, loaded.Vault),
+		a.memory.Extension(agentID, func(ctx context.Context, id durable.ConversationId) (string, error) {
+			return a.source(ctx, Ref{AgentID: agentID, ID: int64(id)})
+		}), files.skillExtension(), durablecode.CreateExtension(durablecode.ToolOptions{Sandbox: a.codeSandbox, Models: new(false)}),
+		loaded.Extension, {Name: "mcp-server-admin", Tools: a.mcpServerTools(agentID, loaded)},
 	}
-	for _, extension := range extensions {
-		if err := registry.Install(extension); err != nil {
-			return nil, err
-		}
+	var app ExtensionSet
+	if a.config.Extensions != nil {
+		app = a.config.Extensions(ExtensionRuntime{
+			AgentID: agentID, AgentDir: dir, Secrets: loaded.Vault,
+			Environment: func(ctx context.Context, id int64) (ToolEnvironment, error) {
+				s, err := envs.session(ctx, id)
+				return ToolEnvironment{ID: s.ID, Vars: s.Vars, Inherit: s.Inherit, Handle: s.Handle}, err
+			},
+		})
 	}
-	if err := registry.Install(frontDeskExtension()); err != nil {
-		return nil, err
-	}
-	if err := errors.Join(registry.Install(outboxExtension(agentID, a.config.Tasks.Outbox)), registry.Install(childOutboxExtension(agentID, a.config.Tasks.Outbox))); err != nil {
-		return nil, err
-	}
-	if err := registry.Install(askUserExtension(agentID, a.config.Tasks.AskUser)); err != nil {
-		return nil, err
-	}
-	if err := errors.Join(registry.Install(botReadExtension(agentID, a.config.Bots)), registry.Install(botManageExtension(agentID, a.config.Bots))); err != nil {
-		return nil, err
-	}
-	if err := registry.Install(workTaskExtension(agentID, a.config.WorkTasks)); err != nil {
-		return nil, err
-	}
-	if err := registry.Install(childExtension()); err != nil {
-		return nil, err
-	}
-	if err := registry.Install(dreamMessageExtension(agentID, a.config.Tasks.ReadDreamMessage)); err != nil {
+	extensions, err := app.install(registry, builtins)
+	if err != nil {
 		return nil, err
 	}
 	store, err := storage.OpenNodeSqliteStorage(filepath.Join(dir, "state.sqlite"), storage.NodeSqliteStorageOptions{})
@@ -444,9 +460,6 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			resultErr = errors.Join(resultErr, store.Close(context.WithoutCancel(ctx)))
 		}
 	}()
-	if err := registry.Install(routineCheckInstructions()); err != nil {
-		return nil, err
-	}
 	h, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{
 		Models: a.modelsFor(agentID), Registry: registry,
 		Settings: func() *harness.HarnessSettings {
@@ -465,7 +478,7 @@ func (a *Agents) open(ctx context.Context, agentID string) (_ *agentResources, r
 			if err != nil {
 				return nil, err
 			}
-			return &sessionPromptEnv{ExecutionEnv: exec, files: s.Files}, nil
+			return &sessionPromptEnv{ExecutionEnv: exec, files: s.Files, agentID: agentID, conversation: target.ConversationId}, nil
 		},
 		OnReport: func(report durable.Report) {
 			slog.Error("agent execution", "agent", agentID, "type", report.Kind, "error", report.Error)
@@ -506,7 +519,7 @@ func (a *Agents) conversation(ctx context.Context, ref Ref) (harness.Conversatio
 	if ref.ID <= 0 {
 		return nil, fmt.Errorf("%w: conversation ID", ErrInvalidInput)
 	}
-	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+	h, err := a.harness(ctx, ref.AgentID)
 	if err != nil {
 		return nil, err
 	}
@@ -548,21 +561,22 @@ func (a *Agents) agentChange(ctx context.Context, ref Ref, options Options) harn
 }
 
 func (a *Agents) Create(ctx context.Context, agentID string, options Options) (Ref, error) {
-	key := resourceKey(Ref{AgentID: agentID, Scope: options.Scope})
-	if err := a.begin(key); err != nil {
+	if err := a.begin(agentID); err != nil {
 		return Ref{}, err
 	}
-	defer a.end(key)
-	h, err := a.harness(ctx, agentID, options.Scope)
+	defer a.end(agentID)
+	h, err := a.harness(ctx, agentID)
 	if err != nil {
 		return Ref{}, err
 	}
-	change := a.changeFor(ctx, Ref{AgentID: agentID, Scope: options.Scope}, options)
+	// The first input reads instructions in the Session's selected environment.
+	// At creation the Session does not yet have a native ID or an environment binding.
+	change := agentChange(options)
 	conversation, err := h.CreateConversation(ctx, harness.ConversationCreateOptions{Ownership: durable.ConversationOwnership{Kind: durable.ConversationOwnerless}, Agent: &change})
 	if err != nil {
 		return Ref{}, err
 	}
-	return Ref{AgentID: agentID, Scope: options.Scope, ID: int64(conversation.Id())}, nil
+	return Ref{AgentID: agentID, ID: int64(conversation.Id())}, nil
 }
 
 // Fork copies the committed history of ref into a new native conversation, which keeps the
@@ -573,10 +587,10 @@ func (a *Agents) Create(ctx context.Context, agentID string, options Options) (R
 // non-empty Move.Text ends the copy as a context entry, so the transcript shows it and the model
 // reads it before the next input.
 func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, move func(ranIn string) (Move, error)) (forked Ref, ok bool, err error) {
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return Ref{}, false, err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return Ref{}, false, err
@@ -655,7 +669,7 @@ func (a *Agents) Fork(ctx context.Context, ref Ref, entryID int64, before bool, 
 			return Ref{}, false, err
 		}
 	}
-	return Ref{AgentID: ref.AgentID, Scope: ref.Scope, ID: int64(copied.Id())}, true, nil
+	return Ref{AgentID: ref.AgentID, ID: int64(copied.Id())}, true, nil
 }
 
 // Move is the environment change at a fork. From is the environment that the copied history last
@@ -746,10 +760,10 @@ func (a *Agents) checkIdle(ctx context.Context, conversation harness.Conversatio
 }
 
 func (a *Agents) CheckIdle(ctx context.Context, ref Ref) error {
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -768,10 +782,10 @@ func (a *Agents) Reset(ctx context.Context, ref Ref, requestID, handoff string) 
 	if requestID == "" {
 		return fmt.Errorf("%w: reset request ID", ErrInvalidInput)
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -817,10 +831,10 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 	if options.Model.ModelID == "" {
 		return ErrNoModel
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -831,7 +845,7 @@ func (a *Agents) Continue(ctx context.Context, ref Ref, requestID string, option
 		return err
 	}
 	// The user can choose another model after a model error; the continued run uses it.
-	if err := conversation.Configure(ctx, a.changeFor(ctx, ref, options)); err != nil {
+	if err := conversation.Configure(ctx, a.agentChange(ctx, ref, options)); err != nil {
 		return err
 	}
 	_, err = conversation.Submit(ctx, durable.SubmissionDraft{Type: durable.SubmissionTypeContinue, RequestId: &requestID})
@@ -848,10 +862,10 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 	if options.Model.ModelID == "" {
 		return ErrNoModel
 	}
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -862,10 +876,10 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 		return err
 	}
 	// The summary uses the conversation model, so it must be the chat's current choice.
-	if err := conversation.Configure(ctx, a.changeFor(ctx, ref, options)); err != nil {
+	if err := conversation.Configure(ctx, a.agentChange(ctx, ref, options)); err != nil {
 		return err
 	}
-	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+	h, err := a.harness(ctx, ref.AgentID)
 	if err != nil {
 		return err
 	}
@@ -887,7 +901,7 @@ func (a *Agents) Compact(ctx context.Context, ref Ref, instructions, requestID s
 	if err != nil {
 		return err
 	}
-	a.settle(resourceKey(ref), func() {
+	a.settle(ref.AgentID, func() {
 		if err := noteCompaction(context.WithoutCancel(ctx), h, conversation, id); err != nil {
 			slog.Error("note compaction outcome", "agent", ref.AgentID, "conversation", ref.ID, "task", id, "error", err)
 		}
@@ -977,22 +991,14 @@ func waitSubmission(ctx context.Context, h harness.Harness, id durable.Submissio
 	return submission.Wait(ctx)
 }
 
-func (a *Agents) Abort(ctx context.Context, ref Ref) error {
-	if ref.Scope != "" {
-		if err := validateGroupScope(ref.Scope); err != nil {
-			return err
-		}
-	}
-	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
-		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
-	}
+func (a *Agents) beginSessionStop(ref Ref) error {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	if a.closed {
-		a.mu.Unlock()
 		return ErrClosed
 	}
 	// Stop may cancel open work while maintenance blocks new admission.
-	key := resourceKey(ref)
+	key := ref.AgentID
 	a.trackLocked(key)
 	if a.resources[key] == nil || a.opening[key] != nil {
 		if a.recovering[key] == nil {
@@ -1001,17 +1007,10 @@ func (a *Agents) Abort(ctx context.Context, ref Ref) error {
 		// Opening must isolate stored work before Harness.Resume can start it.
 		a.recovering[key][durable.ConversationId(ref.ID)] = true
 	}
-	a.mu.Unlock()
-	defer a.end(key)
-	unlock, err := a.lock(ctx, ref)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	conversation, err := a.conversation(ctx, ref)
-	if err != nil {
-		return err
-	}
+	return nil
+}
+
+func (a *Agents) stopSession(ctx context.Context, ref Ref, conversation harness.Conversation) error {
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := withdrawQueuedInputs(bounded, conversation); err != nil {
@@ -1039,7 +1038,7 @@ func (a *Agents) dropQueuedSummaries(ctx context.Context, ref Ref, conversation 
 	if err != nil {
 		return err
 	}
-	h, err := a.harness(ctx, ref.AgentID, ref.Scope)
+	h, err := a.harness(ctx, ref.AgentID)
 	if err != nil {
 		return err
 	}
@@ -1136,7 +1135,7 @@ func (a *Agents) idleLocked(ctx context.Context) error {
 }
 
 // agentIdleLocked reports ErrBusy while agentID opens, runs an operation or a settlement, or
-// has native work. Work of other agents and of group scopes does not count: Reload replaces
+// has native work. Work of other agents does not count: Reload replaces
 // only the resources of agentID. The caller holds mu so the idle check and the registration
 // of the replacement stay atomic.
 func (a *Agents) agentIdleLocked(ctx context.Context, agentID string) error {
@@ -1205,7 +1204,7 @@ func (a *Agents) close(ctx context.Context) {
 	close(a.closeDone)
 }
 
-func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
+func (a *Agents) files(agentID string, handle runner.Handle) *agentExtensions {
 	files := newAgentExtensions(a.config.Home, a.config.DataDir, agentID, handle, a.env)
 	files.mcp = a.config.MCPServers
 	files.vault = a.vault
@@ -1219,14 +1218,14 @@ func (a *Agents) files(agentID string, handle execenv.Handle) *agentExtensions {
 // ReadWorkspaceFile reads up to maxBytes of a workspace-relative regular non-symlink file in the
 // environment of the calling session.
 func (a *Agents) ReadWorkspaceFile(ctx context.Context, caller TaskContext, relPath string, maxBytes int64) ([]byte, error) {
-	environmentID, err := a.sessionEnvironmentID(ctx, Ref{AgentID: caller.AgentID, Scope: caller.Scope, ID: caller.ConversationID})
+	environmentID, err := a.sessionEnvironmentID(ctx, Ref{AgentID: caller.AgentID, ID: caller.ConversationID})
 	if err != nil {
 		return nil, err
 	}
 	var data []byte
-	err = a.withEnvironment(ctx, caller.AgentID, environmentID, func(h execenv.Handle) error {
+	err = a.withEnvironment(ctx, caller.AgentID, environmentID, func(h runner.Handle) error {
 		var readErr error
-		data, readErr = execenv.ReadWorkspaceFile(ctx, h, relPath, maxBytes)
+		data, readErr = runner.ReadWorkspaceFile(ctx, h, relPath, maxBytes)
 		return readErr
 	})
 	return data, err
@@ -1239,9 +1238,9 @@ func (a *Agents) ResolveProjectPath(ctx context.Context, agentID, environmentID,
 		return "", nil
 	}
 	var resolved string
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
 		var err error
-		resolved, err = execenv.ResolveProjectPath(ctx, h, raw)
+		resolved, err = runner.ResolveProjectPath(ctx, h, raw)
 		return err
 	})
 	return resolved, err
@@ -1253,9 +1252,9 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, environmentID 
 		return []string{}, nil
 	}
 	var existing []string
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
 		for _, p := range paths {
-			if _, resErr := execenv.ResolveProjectPath(ctx, h, p); resErr == nil {
+			if _, resErr := runner.ResolveProjectPath(ctx, h, p); resErr == nil {
 				existing = append(existing, p)
 				if len(existing) >= limit {
 					break
@@ -1271,11 +1270,11 @@ func (a *Agents) FilterProjectPaths(ctx context.Context, agentID, environmentID 
 }
 
 // ListDirectories lists browsable directories in an execution environment of the agent.
-func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID string, path *string) (execenv.DirectoryListing, error) {
-	var listing execenv.DirectoryListing
-	err := a.withEnvironment(ctx, agentID, environmentID, func(h execenv.Handle) error {
+func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID string, path *string) (runner.DirectoryListing, error) {
+	var listing runner.DirectoryListing
+	err := a.withEnvironment(ctx, agentID, environmentID, func(h runner.Handle) error {
 		var listErr error
-		listing, listErr = execenv.ListDirectories(ctx, h, path)
+		listing, listErr = runner.ListDirectories(ctx, h, path)
 		return listErr
 	})
 	return listing, err
@@ -1283,7 +1282,7 @@ func (a *Agents) ListDirectories(ctx context.Context, agentID, environmentID str
 
 // ExecEnv opens an ExecutionEnv for background or ad-hoc execution in an environment of the agent.
 // An empty environmentID selects the agent's own environment. Callers must invoke release once finished.
-func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
+func (a *Agents) ExecEnv(ctx context.Context, agentID, environmentID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error) {
 	if !agentIDPattern.MatchString(agentID) {
 		return nil, "", "", nil, ErrInvalidInput
 	}
@@ -1354,10 +1353,16 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 			// Show the stored configuration, not project skills from a stale handle.
 			files = a.files(agentID, nil)
 			files.defaultUnavailable = true
+		} else if files.defaultUnavailable && !resource.envs.restoreDefault {
+			// Info needs the default workspace even if no turn has used it yet.
+			// Use the same lease as a Session. If it cannot open, show the stored configuration.
+			if target, openErr := resource.envs.byID(ctx, ""); openErr == nil {
+				files = target.Files
+			}
 		}
 		info, err = files.Info(ctx)
 	} else {
-		err = a.withEnvironment(ctx, agentID, "", func(h execenv.Handle) error {
+		err = a.withEnvironment(ctx, agentID, "", func(h runner.Handle) error {
 			var infoErr error
 			info, infoErr = a.files(agentID, h).Info(ctx)
 			return infoErr
@@ -1367,7 +1372,17 @@ func (a *Agents) Extensions(ctx context.Context, agentID string) (ExtensionInfo,
 		return info, err
 	}
 	if resource != nil {
+		current := info.Servers
 		info.Servers = resource.loaded.serverInfo()
+		for i := range info.Servers {
+			s := &info.Servers[i]
+			for _, entry := range current {
+				if entry.Name == s.Name && entry.Scope == s.Scope {
+					s.OAuth = entry.OAuth
+					break
+				}
+			}
+		}
 		pending = pending || restoreMCP || a.files(agentID, nil).stamp() != resource.loaded.stamp || (stampErr == nil && currentExec != resource.execStamp) || resource.envs.stale(ctx)
 	}
 	info.ReloadPending = pending
@@ -1455,7 +1470,7 @@ func (a *Agents) reload(ctx context.Context, agentID string, automatic bool) (re
 			return err
 		}
 	}
-	_, err := a.openAndPublish(openCtx, agentID, opening)
+	_, err := a.openAndPublish(openCtx, agentID, opening, true)
 	return a.closedDuring(ctx, err)
 }
 
@@ -1470,55 +1485,39 @@ func (a *Agents) finishOpening(agentID string, opening *agentOpening) {
 // CloseAgent verifies agentID has no active tasks, submissions, or openings, then closes and removes
 // its open runtime resources so the next turn opens a fresh execution handle.
 func (a *Agents) CloseAgent(ctx context.Context, agentID string) error {
+	return a.ResetAgent(ctx, agentID, nil)
+}
+
+// ResetAgent keeps the resource slot closed until an explicit environment reset ends.
+func (a *Agents) ResetAgent(ctx context.Context, agentID string, reset func(context.Context) error) error {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
 	}
-	matchKey := func(key string) bool { return key == agentID || strings.HasPrefix(key, agentID+"/") }
 	a.mu.Lock()
 	if a.closed {
 		a.mu.Unlock()
 		return ErrClosed
 	}
-	for key := range a.opening {
-		if matchKey(key) {
-			a.mu.Unlock()
-			return ErrBusy
-		}
-	}
-	var keys []string
-	for key := range a.resources {
-		if matchKey(key) {
-			keys = append(keys, key)
-		}
-	}
-	if len(keys) == 0 {
+	if a.opening[agentID] != nil || a.busy[agentID] != 0 {
 		a.mu.Unlock()
-		return ctx.Err()
+		return ErrBusy
 	}
-	_, cancel := context.WithCancel(ctx)
-	closing := &agentOpening{done: make(chan struct{}), cancel: cancel}
-	openKeys := append([]string{agentID}, keys...)
-	for _, key := range openKeys {
-		a.opening[key] = closing
-	}
+	resetCtx, cancel := context.WithCancel(ctx)
+	closing := &agentOpening{done: make(chan struct{}), cancel: cancel, resetting: true}
+	a.opening[agentID] = closing
 	a.trackLocked(agentID)
-	resources := make([]*agentResources, 0, len(keys))
-	for _, key := range keys {
-		resources = append(resources, a.resources[key])
-	}
+	res := a.resources[agentID]
 	a.mu.Unlock()
 	defer a.end(agentID)
 	defer func() {
 		a.mu.Lock()
-		for _, key := range openKeys {
-			delete(a.opening, key)
-		}
+		delete(a.opening, agentID)
 		close(closing.done)
 		a.mu.Unlock()
 		closing.cancel()
 	}()
 
-	for _, res := range resources {
+	if res != nil {
 		state, err := res.harness.Inspect(ctx)
 		if err != nil {
 			return err
@@ -1528,19 +1527,21 @@ func (a *Agents) CloseAgent(ctx context.Context, agentID string) error {
 		}
 	}
 	a.mu.Lock()
-	for _, key := range keys {
-		delete(a.resources, key)
-	}
+	delete(a.resources, agentID)
 	delete(a.dirty, agentID)
 	delete(a.refused, agentID)
 	a.mu.Unlock()
 
-	cleanupCtx := context.WithoutCancel(ctx)
-	var errs []error
-	for _, res := range resources {
-		errs = append(errs, res.harness.Close(cleanupCtx), res.closeExtras(cleanupCtx))
+	if res != nil {
+		cleanupCtx := context.WithoutCancel(ctx)
+		if err := errors.Join(res.harness.Close(cleanupCtx), res.closeExtras(cleanupCtx)); err != nil {
+			return err
+		}
 	}
-	return errors.Join(errs...)
+	if reset != nil {
+		return reset(resetCtx)
+	}
+	return resetCtx.Err()
 }
 
 func (a *Agents) source(ctx context.Context, ref Ref) (string, error) {
@@ -1599,4 +1600,15 @@ func (a *Agents) Health(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (r *agentResources) closeExtras(ctx context.Context) error {
+	var errs []error
+	if r.loaded != nil {
+		errs = append(errs, r.loaded.Close(ctx))
+	}
+	if r.envs != nil {
+		errs = append(errs, r.envs.close(ctx))
+	}
+	return errors.Join(errs...)
 }

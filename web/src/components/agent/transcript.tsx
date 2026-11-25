@@ -8,6 +8,7 @@ import {
   CornerDownRight,
   FileText,
   GitBranch,
+  Bell,
   SquarePen,
 } from "lucide-react";
 import { useAgentId } from "../../lib/agent-scope";
@@ -15,10 +16,18 @@ import { createContext, memo, useContext, useEffect, useState, type ReactNode } 
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { Attachment, Item, Retry, ToolItem } from "../../api/generated/types.gen";
+import type { Attachment, Item, Retry, TimelineNotification, ToolItem } from "../../api/generated/types.gen";
 import { getChatItemOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { formatSize, isImage } from "../../lib/attachments";
-import { blocks, describeTool, seconds, stepTitle, type ContentBlock, type Step } from "../../lib/tools";
+import {
+  blocks,
+  describeTool,
+  isParentReport,
+  seconds,
+  stepTitle,
+  type ContentBlock,
+  type Step,
+} from "../../lib/tools";
 import { remarkStrong, strongText } from "../../lib/strong";
 import { retryMessage } from "../../lib/chat-state";
 import { Button } from "../ui/button";
@@ -452,9 +461,7 @@ function ForkAction({ actions, entryId }: { actions: MessageActions; entryId: nu
         <GitBranch size={14} aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        <DropdownMenuItem onClick={() => actions.fork(entryId, false)}>
-          Fork in this environment
-        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => actions.fork(entryId, false)}>Fork on this Runner</DropdownMenuItem>
         {targets.map((env) => (
           <DropdownMenuItem
             key={env.id}
@@ -621,7 +628,7 @@ function BoundaryItem({ item }: { item: Extract<Item, { kind: "boundary" }> }) {
   if (item.boundary === "environment")
     return (
       <div className="flex flex-col gap-1">
-        <Divider label="Environment changed" />
+        <Divider label="Runner changed" />
         <p className="mx-auto max-w-[560px] rounded-md bg-muted px-3 py-2 text-[12.5px] text-foreground [overflow-wrap:anywhere]">
           {item.text}
         </p>
@@ -786,7 +793,7 @@ function TranscriptItem({
                   {item.text ? <CopyText text={item.text} label="Copy message" /> : null}
                   {actions ? (
                     <MessageAction
-                      label="Edit in new chat"
+                      label="Edit in new session"
                       disabled={actions.pending}
                       onClick={() => actions.fork(item.entryId!, true, item.text)}
                     >
@@ -915,8 +922,10 @@ export function Transcript({
   memory,
   queuedActions,
   messageActions,
+  notifications,
 }: {
   chatId: number;
+  notifications?: TimelineNotification[];
   items: Item[];
   running: boolean;
   retry: (index: number) => void;
@@ -956,21 +965,54 @@ export function Transcript({
 
   const grouped = blocks(items);
 
+  // Place notices between turns so they cannot split a tool group or enter a system trace.
+  const rows: ReactNode[] = [];
+  let next = 0;
+
+  grouped.forEach((block, index) => {
+    const item = block.kind === "steps" ? undefined : block.item;
+    const at = item?.kind === "user" && item.queued ? Infinity : item && "at" in item ? item.at : undefined;
+
+    if (at !== undefined) {
+      for (let notice = notifications?.[next]; notice && notice.at < at; notice = notifications?.[++next])
+        rows.push(notificationRow(notice));
+    }
+
+    rows.push(
+      block.kind === "task" ? (
+        <TaskSection
+          key={block.item.id}
+          block={block}
+          content={content}
+          streaming={running && index === grouped.length - 1}
+        />
+      ) : (
+        content(block)
+      ),
+    );
+  });
+
+  for (const notice of notifications?.slice(next) ?? []) rows.push(notificationRow(notice));
+
+  return <TranscriptChat.Provider value={chatId}>{rows}</TranscriptChat.Provider>;
+}
+
+function notificationRow(notice: TimelineNotification) {
+  const time = new Date(notice.at);
+
   return (
-    <TranscriptChat.Provider value={chatId}>
-      {grouped.map((block, blockIndex) =>
-        block.kind === "task" ? (
-          <TaskSection
-            key={block.item.id}
-            block={block}
-            content={content}
-            streaming={running && blockIndex === grouped.length - 1}
-          />
-        ) : (
-          content(block)
-        ),
-      )}
-    </TranscriptChat.Provider>
+    <article
+      key={`outbox:${notice.id}`}
+      aria-label="Notification"
+      className="mt-5 min-w-0 space-y-2 rounded-md border border-border bg-muted/30 px-4 py-3 first:mt-0"
+    >
+      <header className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <Bell size={14} aria-hidden />
+        <span className="font-medium text-foreground">Notification</span>
+        <time dateTime={time.toISOString()}>{time.toLocaleString()}</time>
+      </header>
+      <Markdown text={notice.text} />
+    </article>
   );
 }
 
@@ -989,7 +1031,7 @@ function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
       for (const s of b.steps) {
         if (s.kind !== "tool") continue;
 
-        if (s.name === "notify_user" || s.name === "ask_user" || s.name === "report_parent") {
+        if (s.name === "notify_user" || s.name === "ask_user" || isParentReport(s)) {
           return false;
         }
 

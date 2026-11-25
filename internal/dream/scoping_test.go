@@ -153,7 +153,7 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	if _, err := q.LatestDream(t.Context(), "busy"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("parallel dream admitted: %v", err)
 	}
-	pending, err := q.ListPendingSubmissions(t.Context())
+	pending, err := q.ListPendingSubmissions(t.Context(), 0)
 	if err != nil || len(pending) != 1 || pending[0].ID != idle.ID {
 		t.Fatalf("pending dream count=%d err=%v", len(pending), err)
 	}
@@ -201,7 +201,7 @@ func TestUserDreamClipsLongMessageAndCapsBatchBytes(t *testing.T) {
 		id := fmt.Sprintf("msg-%02d", i)
 		createdAt := int64(100 + i)
 		if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: id, ConversationID: conv.ID, Content: content, Attachments: "null", Origin: "web", Kind: "message", CreatedAt: createdAt,
+			ID: id, ConversationID: conv.ID, Content: content, Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: createdAt,
 		}); err != nil {
 			t.Fatal(err)
 		}

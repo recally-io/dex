@@ -51,8 +51,7 @@ type Chat struct {
 	// asked for.
 	ParentAgentID, ParentAgentName string
 	// ExecutionID is zero until native execution creates the conversation.
-	ExecutionID    int64
-	ExecutionScope string
+	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
 	Question *Question
 	// ForkedFrom is the source of a fork. Get sets it; list rows leave it nil.
@@ -69,6 +68,7 @@ type Settings struct {
 
 // ChannelContext records the platform identity that authorized channel input.
 type ChannelContext struct {
+	// These fields identify non-private Telegram records from older releases.
 	ChatID      int64  `json:"chatId,omitzero"`
 	TopicID     int64  `json:"topicId,omitzero"`
 	TopicShared bool   `json:"topicShared,omitzero"`
@@ -143,9 +143,9 @@ type Service struct {
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
 
-	admissionMu    sync.RWMutex // receipt commits and maintenance lease confirmation only
-	delivery       map[string]deliveryGate
-	coordinationMu sync.Mutex // delivery registry, worker registration, and Run shutdown
+	admissionMu    sync.RWMutex            // receipt changes, withdrawals and maintenance lease confirmation
+	delivery       map[int64]*deliveryGate // One entry per Session that used a gate since startup.
+	coordinationMu sync.Mutex              // delivery registry, worker registration, and Run shutdown
 
 	retryMu    sync.Mutex
 	retryTimer *time.Timer
@@ -159,7 +159,7 @@ type Service struct {
 // New connects durable business receipts to native execution.
 func New(db *sql.DB, agents *engine.Agents, now func() time.Time, notify func(string), changed func(int64)) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, delivery: make(map[string]deliveryGate)}
+	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, delivery: make(map[int64]*deliveryGate)}
 }
 
 // Run reconciles receipts at startup and after a failed cross-store write.
@@ -167,6 +167,11 @@ func (s *Service) Run(ctx context.Context) {
 	defer func() {
 		s.coordinationMu.Lock()
 		s.cancel()
+		for _, gate := range s.delivery {
+			if gate.timer != nil {
+				gate.timer.Stop()
+			}
+		}
 		s.coordinationMu.Unlock()
 		s.retryMu.Lock()
 		if s.retryTimer != nil {
@@ -183,7 +188,7 @@ func (s *Service) Run(ctx context.Context) {
 	for {
 		err := s.dispatch(ctx)
 		if err != nil && ctx.Err() == nil {
-			slog.Warn("reconcile business receipts", "err", err)
+			slog.Warn("reconcile business receipts", "reason", admissionRetryReason(err))
 			s.scheduleRetry()
 		}
 		select {
@@ -213,6 +218,14 @@ func (s *Service) RetryNow() {
 	s.retryMu.Lock()
 	s.retryDelay = 0
 	s.retryMu.Unlock()
+	s.coordinationMu.Lock()
+	for _, gate := range s.delivery {
+		if gate.timer != nil && gate.timer.Stop() {
+			gate.timer = nil
+		}
+		gate.delay = 0
+	}
+	s.coordinationMu.Unlock()
 	s.Wake()
 }
 
@@ -223,48 +236,29 @@ func (s *Service) Wake() {
 	}
 }
 
-// reconcileAgent runs with the agent delivery gate held.
-func (s *Service) reconcileAgent(ctx context.Context, agentID string) error {
-	aborts, err := s.q.ListPendingExecutionAborts(ctx)
+// reconcileSession runs with only the target Session's delivery gate held.
+func (s *Service) reconcileSession(ctx context.Context, id int64, until string) error {
+	if s.leaseUntil.Load() != 0 {
+		return nil
+	}
+	if err := s.reconcileStop(ctx, id); err != nil {
+		return err
+	}
+	pending, err := s.q.ListPendingSubmissions(ctx, id)
 	if err != nil {
 		return err
 	}
-	blocked := make(map[int64]bool)
-	var errs []error
-	for _, c := range aborts {
-		if c.AgentID != agentID {
-			continue
-		}
-		completed, err := s.abort(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope})
-		blocked[c.ID] = !completed
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
-	pending, err := s.q.ListPendingSubmissions(ctx)
-	if err != nil {
-		return errors.Join(append(errs, err)...)
-	}
 	for _, p := range pending {
-		if p.AgentID != agentID {
-			continue
-		}
-		if blocked[p.ConversationID] {
-			continue
-		}
-		if _, ok := s.waiting.Load(p.ID); ok {
-			continue
-		}
-		if err := s.admit(ctx, p); err != nil {
-			blocked[p.ConversationID] = true
-			if errors.Is(err, engine.ErrOriginBusy) {
-				s.scheduleRetry()
-			} else {
-				errs = append(errs, err)
+		if _, ok := s.waiting.Load(p.ID); !ok {
+			if err := s.admit(ctx, p); err != nil {
+				return err
 			}
 		}
+		if p.ID == until {
+			break
+		}
 	}
-	return errors.Join(errs...)
+	return nil
 }
 
 // ErrMessageID means a message ID was reused for a different request.
@@ -297,7 +291,7 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 	if model == "" {
 		return 0, ErrNoModel
 	}
-	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m)
+	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m, false)
 }
 
 // ConfigureChannelReceipts connects best-effort observations before the service starts.
@@ -306,16 +300,21 @@ func (s *Service) ConfigureChannelReceipts(intake func(string, string, string, C
 	s.channelIntake, s.channelAdmission = intake, admission
 }
 
-// SubmitMessage stores a channel update with its attachments and source identity.
+// SubmitMessage stores a channel update and attempts native admission before returning.
 func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
-	channelKey := MainKey
-	if groupPeer(peer) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
-		key, _, _, err := groupTarget(peer, m.ChannelContext)
-		if err != nil {
-			return err
-		}
-		channelKey = key
-	} else if _, err := s.Main(ctx, agentID); err != nil {
+	return s.submitMessage(ctx, agentID, peer, sourceKey, m, false)
+}
+
+// AcceptMessage returns when the source receipt commits, without waiting for native admission.
+func (s *Service) AcceptMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
+	return s.submitMessage(ctx, agentID, peer, sourceKey, m, true)
+}
+
+func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message, deferAdmission bool) error {
+	if NonPrivateTelegramInput(peer, m.ChannelContext) {
+		return ErrTelegramUnauthorized
+	}
+	if _, err := s.Main(ctx, agentID); err != nil {
 		return err
 	}
 	m.ID = uuid.NewV7().String()
@@ -337,29 +336,22 @@ func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey st
 	if m.AnswersQuestion == "" {
 		addContext()
 	}
-	_, err := s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m)
+	_, err := s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m, deferAdmission)
 	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" && !m.QuestionOnly {
 		// The question closed while the user wrote. The words still reach the agent as a plain message.
 		m.AnswersQuestion = ""
 		addContext()
-		_, err = s.enqueue(ctx, agentID, channelKey, sourceKey, peer, m)
+		_, err = s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m, deferAdmission)
 	}
 	return err
 }
 
-func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message) (int64, error) {
-	scope, binding := "", "{}"
-	if groupPeer(origin) || m.ChannelContext.ChatID != 0 || m.ChannelContext.TopicID != 0 || m.ChannelContext.TopicShared {
-		key, audience, identity, err := groupTarget(origin, m.ChannelContext)
-		if err != nil || key != channelKey {
-			return 0, ErrGroupUnauthorized
-		}
-		if m.SpeechSource != "" {
-			return 0, ErrGroupUnauthorized
-		}
-		scope, binding = audience, identity
+func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message, deferAdmission bool) (int64, error) {
+	if NonPrivateTelegramInput(origin, m.ChannelContext) {
+		return 0, ErrTelegramUnauthorized
 	}
 	complete, archived := false, ""
+	createdReceipt := false
 	chatID, err := func() (int64, error) {
 		s.admissionMu.RLock()
 		defer s.admissionMu.RUnlock()
@@ -380,7 +372,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			chatTitle = title(m.Attachments[0].Name)
 		}
 		conv, err := q.EnsureConversation(ctx, sqlc.EnsureConversationParams{
-			AgentID: agentID, ChannelKey: channelKey, Title: chatTitle, ExecutionScope: scope, ScopeContext: binding,
+			AgentID: agentID, ChannelKey: channelKey, Title: chatTitle,
 			ModelProvider: m.Settings.Provider, ModelID: m.Settings.ModelID, ThinkingLevel: m.Settings.ThinkingLevel,
 			CreatedAt: createdAt,
 		})
@@ -390,15 +382,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err := checkTelegramControl(ctx, q, sourceKey, agentID, conv.ID); err != nil {
 			return 0, err
 		}
-		if conv.ExecutionScope != scope || scope != "" && conv.ScopeContext != binding {
-			return 0, ErrGroupUnauthorized
-		}
-		if scope != "" {
-			identity, err := json.Marshal(m.ChannelContext)
-			if err != nil {
-				return 0, err
-			}
-			if err := authorizeGroupSource(ctx, q, conv, sqlc.Submission{ConversationID: conv.ID, Origin: origin, ChannelContext: string(identity)}); err != nil {
+		if privateTelegramSource(origin, m.ChannelContext) {
+			if err := authorizeTelegramActor(ctx, q, agentID, m.ChannelContext.AccountID, m.ChannelContext.SenderID); err != nil {
 				return 0, err
 			}
 		}
@@ -438,7 +423,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			// A retry of an answer that is stored already must not bind or wrap it again.
 			switch _, err := q.GetSubmission(ctx, m.ID); {
 			case errors.Is(err, sql.ErrNoRows):
-				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin, m.ChannelContext); err != nil {
+				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
 					return 0, err
 				}
 				content = decision.Content
@@ -447,10 +432,16 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, err
 			}
 		}
+		if peerFromOrigin(origin) != "" && m.ChannelContext.AccountID != "" {
+			if err := RequirePairedChannel(ctx, q, agentID, origin, m.ChannelContext); err != nil {
+				return 0, err
+			}
+		}
 		channelContext, err := json.Marshal(m.ChannelContext)
 		if err != nil {
 			return 0, err
 		}
+		producer, replyChannel, replyPeer := inboxIdentity(origin)
 		created, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 			ChannelContext: string(channelContext),
 			ID:             m.ID,
@@ -459,6 +450,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			Attachments:    string(attachments),
 			SourceKey:      sql.NullString{String: sourceKey, Valid: sourceKey != ""},
 			Origin:         origin,
+			Producer:       producer,
+			ReplyChannel:   replyChannel,
+			ReplyPeer:      replyPeer,
 			Kind:           "message",
 			WhenBusy:       m.WhenBusy,
 			CreatedAt:      submittedAt,
@@ -483,26 +477,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				if err != nil {
 					return 0, err
 				}
-				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") {
+				if prior.ConversationID != conv.ID || prior.Kind != "message" || original != m.Content || prior.Attachments != string(attachments) || cmp.Or(prior.WhenBusy, "followUp") != cmp.Or(m.WhenBusy, "followUp") || prior.Producer != producer || prior.ReplyChannel != replyChannel || prior.ReplyPeer != replyPeer {
 					return 0, ErrMessageID
 				}
-			}
-		}
-		if created == 0 && scope != "" {
-			originalID := m.ID
-			if sourceKey != "" {
-				var err error
-				originalID, err = q.GetSubmissionBySource(ctx, sql.NullString{String: sourceKey, Valid: true})
-				if err != nil {
-					return 0, err
-				}
-			}
-			prior, err := q.GetSubmission(ctx, originalID)
-			if err != nil {
-				return 0, err
-			}
-			if prior.ConversationID != conv.ID || prior.ChannelContext != string(channelContext) {
-				return 0, ErrMessageID
 			}
 		}
 		if answers && created > 0 {
@@ -531,6 +508,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			return 0, err
 		}
 		if created > 0 {
+			createdReceipt = true
 			archived = decision.archive
 			if s.channelIntake != nil && sourceKey != "" && m.ChannelContext.MessageID != "" && !m.QuestionOnly {
 				s.channelIntake(agentID, origin, m.ID, m.ChannelContext)
@@ -552,6 +530,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			m.ID = prior.ID
 			if prior.Status != "pending" || prior.AdmittedAt.Valid {
 				complete = true
+				if deferAdmission {
+					return conv.ID, nil
+				}
 				return conv.ID, receiptError(prior)
 			}
 		}
@@ -559,25 +540,37 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	}()
 	// Channel runtime changes run outside the receipt gate, so a busy bot cannot block the gate.
 	s.botArchived(archived)
+	if createdReceipt {
+		receiptTrace(chatID, m.ID).InfoContext(ctx, "session input", "phase", "enqueued", "agent", agentID)
+	}
 	if err != nil || complete {
 		return chatID, err
 	}
 
 	s.signal(chatID)
-	unlock, err := s.lockAgent(ctx, agentID)
-	if err != nil {
-		s.scheduleRetry()
+	if deferAdmission {
+		s.Wake()
 		return chatID, nil
 	}
-	defer func() { unlock(); s.Wake() }()
-	admissionErr := s.reconcileAgent(ctx, agentID)
-	if admissionErr != nil {
-		s.scheduleRetry()
+	busy := len(s.sessionGate(chatID).token) != 0
+	waitingAt := time.Now()
+	if busy {
+		receiptTrace(chatID, m.ID).InfoContext(ctx, "session input", "phase", "admission_wait", "reason", "session_busy")
 	}
+	unlock, err := s.lockSession(ctx, chatID)
+	if busy || err != nil {
+		receiptTrace(chatID, m.ID).InfoContext(ctx, "session input", "phase", "admission_wait_ended", "reason", admissionRetryReason(err), "elapsed_ms", time.Since(waitingAt).Milliseconds())
+	}
+	if err != nil {
+		s.Wake()
+		return chatID, nil
+	}
+	defer unlock()
+	s.deliverSession(ctx, chatID, m.ID)
 	sub, err := s.q.GetSubmission(ctx, m.ID)
 	if err != nil {
 		// The committed intent remains ours to reconcile if this read fails.
-		s.scheduleRetry()
+		s.retrySession(ctx, chatID)
 		return chatID, nil
 	}
 	return chatID, receiptError(sub)
@@ -710,7 +703,7 @@ func (s *Service) childStoppedByParent(ctx context.Context, id int64) (bool, err
 		if !p.FromParent {
 			continue
 		}
-		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64, Scope: c.ExecutionScope}, p.ID)
+		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
 		if errors.Is(err, engine.ErrNotFound) || errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
 			return true, nil
 		}
@@ -740,7 +733,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 	c := Chat{
 		Cwd: r.Cwd, EnvironmentID: r.EnvironmentID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
-		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, ExecutionScope: r.ExecutionScope, Question: question,
+		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, Question: question,
 		ForkedFrom: forkOrigin(r),
 	}
 	c.ParentAgentID, c.ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
@@ -755,7 +748,7 @@ func forkOrigin(r sqlc.GetChatRow) *Origin {
 }
 
 // admit crosses the durable admission boundary with a stable request ID.
-func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) error {
+func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (resultErr error) {
 	if s.leaseUntil.Load() != 0 {
 		return nil
 	}
@@ -767,20 +760,27 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if err != nil {
 		return err
 	}
-	if conv.ExecutionScope != "" {
-		source, err := s.q.GetSubmission(ctx, p.ID)
-		if err != nil {
-			return err
+	var trace *slog.Logger
+	var admissionErr error
+	if p.Kind == "message" {
+		environment := effectiveEnvironment(agent, conv.EnvironmentID)
+		trace = receiptTrace(p.ConversationID, p.ID).With("agent", p.AgentID, "native_namespace", "private", "environment", environment)
+		reason := "unknown"
+		switch {
+		case p.AdmittedAt.Valid:
+			reason = "recovery"
+		case !conv.ExecutionID.Valid:
+			reason = "initialization"
 		}
-		if err := authorizeGroupSource(ctx, s.q, conv, source); err != nil {
-			if !errors.Is(err, ErrGroupUnauthorized) {
-				return err
-			}
-			if err := s.q.RevokeChannelSubmission(ctx, p.ID); err != nil {
-				return err
-			}
-			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: ErrGroupUnauthorized.Error()})
-		}
+		started := time.Now()
+		trace.InfoContext(ctx, "session input", "phase", "admission_attempt", "reason", reason, "queued_ms", max(0, s.now().UnixMilli()-p.CreatedAt))
+		defer func() {
+			err := cmp.Or(admissionErr, resultErr)
+			trace.InfoContext(ctx, "session input", "phase", "admission_attempt_ended", "reason", admissionRetryReason(err), "elapsed_ms", time.Since(started).Milliseconds())
+		}()
+	}
+	if conv.AbortPending != 0 {
+		return errStopPending
 	}
 	options := chatOptions(agent, conv)
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
@@ -797,6 +797,9 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if current.Status != "pending" {
 		return nil
 	}
+	if current.StopRequested != 0 {
+		return errStopPending
+	}
 	if p.Kind == "context_reset" {
 		if err = s.engine.Reset(ctx, ref, p.ID, p.Content); err != nil {
 			return s.admissionError(ctx, p.ID, err)
@@ -811,6 +814,20 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 		return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: err.Error()})
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
+	input.BeforeAdmission = func(ctx context.Context) error { return s.checkAdmission(ctx, p.ID) }
+	if input.Origin == "automation" && input.Kind == "message" && !input.Automation {
+		input.ModelSuffix = BoundRoutineCheckSuffix
+	}
+	if input.Kind == "task_result" && isMonitorEvent(input.RequestID) {
+		input.RequireEnvironment = true
+		input.ValidateAdmission = func(ctx context.Context, ref engine.Ref) error {
+			caller := engine.TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: p.ID}
+			if err := s.authorizeMonitor(ctx, caller); err != nil {
+				return fmt.Errorf("%w: monitor target is no longer valid", engine.ErrInvalidInput)
+			}
+			return nil
+		}
+	}
 	// An owner message or a Task alert of a Task carries the Task context.
 	var workTask sqlc.WorkTask
 	if input.Main {
@@ -836,6 +853,10 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
 	if err != nil {
+		admissionErr = err
+		if errors.Is(err, errInputSettled) {
+			return nil
+		}
 		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.
 			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
@@ -845,8 +866,11 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	if s.channelAdmission != nil {
 		s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
 	}
-	if err = s.markAdmitted(ctx, p.ID); err != nil {
+	if err := s.markAdmitted(ctx, p.ID); err != nil {
 		return err
+	}
+	if trace != nil {
+		trace.InfoContext(ctx, "session input", "phase", "admitted", "native_conversation_id", ref.ID, "native_submission_id", sub.ID, "prior_receipt", p.AdmittedAt.Valid)
 	}
 	if _, loaded := s.waiting.LoadOrStore(p.ID, struct{}{}); loaded {
 		return nil
@@ -854,24 +878,46 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) e
 	started := s.startWorker(func() {
 		outcome, err := sub.Wait(s.ctx)
 		if err == nil {
-			err = s.settleNative(p.AgentID, p.ID, outcome)
+			err = s.settleNative(p.ConversationID, p.ID, outcome)
 		}
 		s.waiting.Delete(p.ID)
 		if err != nil && s.ctx.Err() == nil {
-			slog.Error("reconcile execution receipt", "submission", p.ID, "err", err)
-			s.scheduleRetry()
+			receiptTrace(p.ConversationID, p.ID).Warn("reconcile execution receipt", "reason", admissionRetryReason(err))
+			s.retrySession(s.ctx, p.ConversationID)
 		}
 	})
 	if !started {
-		slog.Warn("input worker did not start", "submission", p.ID)
+		receiptTrace(p.ConversationID, p.ID).Warn("input worker did not start")
 		s.waiting.Delete(p.ID)
+	}
+	return nil
+}
+
+func privateTelegramSource(peer string, source ChannelContext) bool {
+	return strings.HasPrefix(peer, "telegram:") && (source.AccountID != "" || source.SenderID != "")
+}
+
+var errInputSettled = errors.New("input is no longer pending")
+
+// A cascading Stop can update this receipt during remote preparation. Check again
+// before the native commit, without holding the control writer across either store.
+func (s *Service) checkAdmission(ctx context.Context, id string) error {
+	source, err := s.q.GetSubmission(ctx, id)
+	if err != nil {
+		return err
+	}
+	if source.Status != "pending" {
+		return errInputSettled
+	}
+	if source.StopRequested != 0 {
+		return errStopPending
 	}
 	return nil
 }
 
 // chatOptions are the run settings of a chat: its own model and thinking level, else the agent's.
 func chatOptions(agent sqlc.Agent, conv sqlc.Conversation) engine.Options {
-	options := engine.Options{Scope: conv.ExecutionScope, Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
+	options := engine.Options{Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
 	if conv.ModelID != "" {
 		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
 	}
@@ -879,8 +925,13 @@ func chatOptions(agent sqlc.Agent, conv sqlc.Conversation) engine.Options {
 }
 
 func (s *Service) markAdmitted(ctx context.Context, id string) error {
-	return s.q.AdmitSubmission(ctx, sqlc.AdmitSubmissionParams{ID: id, AdmittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+	return s.recordAdmission(ctx, s.q, id)
 }
+
+func (s *Service) recordAdmission(ctx context.Context, q *sqlc.Queries, id string) error {
+	return q.AdmitSubmission(ctx, sqlc.AdmitSubmissionParams{ID: id, AdmittedAt: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}})
+}
+
 func (s *Service) admissionError(ctx context.Context, id string, err error) error {
 	if errors.Is(err, engine.ErrInvalidInput) || errors.Is(err, engine.ErrNotFound) || errors.Is(err, ErrNoModel) {
 		return s.settle(ctx, id, engine.Outcome{Status: "unanswered", Reason: err.Error()})
@@ -899,12 +950,12 @@ func source(p sqlc.ListPendingSubmissionsRow) string {
 }
 
 // settleNative records a native outcome. A native abort comes from Withdraw (Stop settles the receipt
-// first). Withdraw holds the agent delivery lock from the abort to the receipt write, so waiting for
+// first). Withdraw holds the Session delivery lock from the abort to the receipt write, so waiting for
 // the lock lets it finish first. The settlement then finds a withdrawn receipt and changes nothing,
 // so no "No answer" reply goes to the channel.
-func (s *Service) settleNative(agentID, id string, event engine.Outcome) error {
+func (s *Service) settleNative(chatID int64, id string, event engine.Outcome) error {
 	if event.Status == "unanswered" && event.Reason == "aborted" {
-		unlock, err := s.lockAgent(s.ctx, agentID)
+		unlock, err := s.lockSession(s.ctx, chatID)
 		if err != nil {
 			return err
 		}
@@ -918,7 +969,7 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if err != nil {
 		return err
 	}
-	changed, parent, err := s.settleInput(ctx, id, event)
+	changed, parent, outboxPeer, err := s.settleInput(ctx, id, event)
 	if err != nil || changed == 0 {
 		return err
 	}
@@ -926,18 +977,23 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if err != nil {
 		return err
 	}
-	s.retryMu.Lock()
-	s.retryDelay = 0
-	s.retryMu.Unlock()
+	receiptTrace(reply.ConversationID, id).InfoContext(ctx, "session input", "phase", "settled", "reason", settlementTraceReason(event))
+	s.coordinationMu.Lock()
+	if gate := s.delivery[reply.ConversationID]; gate != nil {
+		if gate.timer != nil && gate.timer.Stop() {
+			gate.timer = nil
+		}
+		gate.delay = 0
+	}
+	s.coordinationMu.Unlock()
 	s.signal(reply.ConversationID)
 	s.Wake()
 	if parent != 0 {
 		// The result is a new input of the parent session. Admission takes it from the database.
 		s.signal(parent)
 	}
-	// A parent turn has no channel to answer: its result goes to the parent session.
-	if s.notify != nil && reply.Origin != "task" {
-		s.notify(reply.Origin)
+	if s.notify != nil && outboxPeer != "" {
+		s.notify(outboxPeer)
 	}
 	s.WakeRoutineOutbox(ctx, id)
 	return nil
@@ -958,9 +1014,8 @@ func (s *Service) execution(ctx context.Context, id int64, agentID string, optio
 	if conv.AgentID != agentID {
 		return engine.Ref{}, errSessionInvalid
 	}
-	options.Scope = conv.ExecutionScope
 	if conv.ExecutionID.Valid {
-		return engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64, Scope: conv.ExecutionScope}, nil
+		return engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, nil
 	}
 	ref, err := s.engine.Create(ctx, agentID, options)
 	if err != nil {

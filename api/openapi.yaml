@@ -324,10 +324,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [task, entries, questions, links]
+                required: [task, entries, questions, links, sessions]
                 properties:
                   task: { $ref: "#/components/schemas/WorkTask" }
                   session: { $ref: "#/components/schemas/WorkTaskSession" }
+                  sessions: {
+                    type: array,
+                    items: { $ref: "#/components/schemas/WorkTaskSessionLink" },
+                    description: Linked Sessions across Bots. The primary Session comes first when present.,
+                  }
                   entries: {
                     type: array,
                     items: { $ref: "#/components/schemas/WorkTaskEntry" },
@@ -1022,6 +1027,68 @@ paths:
       responses:
         "200":
           description: Default saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/telegram/manager:
+    put:
+      operationId: setTelegramManager
+      description: Sets a dedicated manager bot. An empty token removes it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, writeOnly: true }
+      responses:
+        "200":
+          description: Manager setting saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ok" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/channels/telegram/managed:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    post:
+      operationId: beginTelegramManagedSetup
+      description: Creates a setup and a private Telegram link to verify the owner.
+      responses:
+        "200":
+          description: Setup started.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TelegramManagedSetup" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/channels/telegram/managed/{setupId}:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+      - name: setupId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getTelegramManagedSetup
+      responses:
+        "200":
+          description: Setup state and the current Telegram link, if any.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TelegramManagedSetup" }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: cancelTelegramManagedSetup
+      description: Cancels an unfinished setup. Does not change the saved channel.
+      responses:
+        "200":
+          description: Setup canceled or already closed.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
@@ -1907,7 +1974,7 @@ paths:
       description: >
         Summarizes the older context of this writable session. It also works
         while the session runs; the summary joins the context at the next
-        boundary, and Stop drops a summary that still waits. The timeline
+        boundary. Session cancellation drops a summary that still waits. The timeline
         shows a pending, then a queued compaction boundary, then the summary,
         "nothing to compact", or the failure. Without an id each call starts
         a new compaction. A retry with the same id starts at most one
@@ -1950,17 +2017,21 @@ paths:
         Reads committed items before an entry ID, oldest first. Pages can
         overlap the live snapshot. Merge by item ID. The entry limit extends
         to an assistant or input boundary to keep tool results with their call.
+        Notifications use a separate cursor and are newest first. Supply at
+        least one cursor.
       parameters:
         - in: query
           name: before
-          required: true
           schema: { type: integer, format: int64, minimum: 1 }
+        - in: query
+          name: beforeNotification
+          schema: { type: string, minLength: 1 }
         - in: query
           name: limit
           schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
       responses:
         "200":
-          description: A history page. No nextBefore means the start was reached.
+          description: A history page. An absent cursor means that source has no more entries.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HistoryPage" }
@@ -2010,18 +2081,28 @@ paths:
     post:
       operationId: abortChat
       description: >
-        Withdraws queued input and results, then requests cancellation of the
-        current turn and background execution of this session. Earlier actions are
-        not undone. Processes and remote work may continue.
+        On Main, Stop cancels only the native foreground task identified by runTarget.
+        An ended or foreign target returns 409. Stop cannot cancel a successor task.
+        It keeps queued input, child sessions, background commands and Monitors.
+        On other writable sessions, omit runTarget to cancel the session. Session
+        cancellation withdraws pending input and can stop child work. Processes
+        and remote work may continue. Cancellation does not undo prior actions.
         Automation and channel sessions return 403.
+      parameters:
+        - in: query
+          name: runTarget
+          description: Required on Main. Use the native task target from the snapshot or run event. Omit for other sessions.
+          schema: { type: string }
       responses:
         "200":
-          description: Pending input is withdrawn and cancellation is requested.
+          description: Cancellation is requested.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Ok" }
+        "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
   /api/agents/{agentId}/chats/{chatId}/monitors:
@@ -2097,8 +2178,10 @@ paths:
       operationId: watchChat
       description: >
         Server-sent events. Each event has `event: <type>` and one `data:` line
-        with a ChatEvent as JSON. The first event is a snapshot; a later
-        snapshot replaces all state. A comment line comes every 15 s. The
+        with a ChatEvent as JSON. The first event is a native snapshot. An
+        eligible Web conversation also gets an initial notifications page and
+        later notification updates. Merge notifications by Outbox ID; a native
+        snapshot does not replace them. A comment line comes every 15 s. The
         server closes the stream when the agent reloads, the engine closes, or
         the client is too slow. The client reconnects and gets a new snapshot.
       responses:
@@ -2273,6 +2356,43 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Extensions" }
         "404": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/agents/{agentId}/extensions/mcp/{name}/oauth:
+    parameters:
+      - in: path
+        name: agentId
+        required: true
+        schema: { type: string }
+      - in: path
+        name: name
+        required: true
+        schema: { type: string }
+    post:
+      operationId: startMcpOAuth
+      description: Start browser authorization for the effective MCP declaration at the given scope.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope]
+              properties:
+                scope: { $ref: "#/components/schemas/ExtensionScope" }
+      responses:
+        "200":
+          description: The authorization URL and a browser binding cookie.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorizationUrl]
+                properties:
+                  authorizationUrl: { type: string }
         default: { $ref: "#/components/responses/Error" }
 
   /api/agents/{agentId}/vault:
@@ -2595,6 +2715,20 @@ components:
         id: { type: integer, format: int64 }
         agentId: { type: string }
         title: { type: string }
+    WorkTaskSessionLink:
+      type: object
+      required: [conversationId, agentId, agentName, title, isPrimary, linkedAt]
+      properties:
+        conversationId: { type: integer, format: int64 }
+        agentId: { type: string }
+        agentName: { type: string }
+        title: { type: string }
+        isPrimary: { type: boolean }
+        linkedAt: {
+          type: integer,
+          format: int64,
+          description: Unix time in milliseconds.,
+        }
     HeldEvent:
       type: object
       required: [
@@ -2799,6 +2933,11 @@ components:
             properties:
               id: { type: string }
               name: { type: string }
+              desc: {
+                type: string,
+                maxLength: 500,
+                description: Owner-provided plain text.,
+              }
               kind: { type: string }
               default: {
                 type: boolean,
@@ -2893,7 +3032,7 @@ components:
           description: The earliest start of a tool that runs now. Only the session list sets it, and only while the session is busy and runs a tool.
         stoppedWithParent:
           type: boolean
-          description: True when Stop on the parent session would act on this child, because the child has pending input that the parent sent. Only the session list sets it.
+          description: True when a cascading Stop on the parent would act on this child. Web Stop on Main does not cascade. Only the session list sets it.
 
     ChatOrigin:
       type: object
@@ -3296,6 +3435,23 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Item" }
         nextBefore: { type: integer, format: int64 }
+        notifications:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineNotification" }
+        nextBeforeNotification: { type: string }
+
+    TimelineNotification:
+      type: object
+      description: A Web-origin notification read from the Outbox. It is not a delivery receipt.
+      required: [id, text, at]
+      properties:
+        id: { type: string, description: Outbox ID. }
+        text: { type: string }
+        at: {
+          type: integer,
+          format: int64,
+          description: Creation time in milliseconds.,
+        }
 
     BoundaryItem:
       type: object
@@ -3321,7 +3477,7 @@ components:
           enum: [pending, queued, nothing, failed]
           description: >
             Only on compaction. pending while the summary is made; queued when
-            the summary waits for the run's next boundary (Stop drops it);
+            the summary waits for the run's next boundary (session cancellation drops it);
             nothing when there was nothing to compact;
             failed with a reason. Absent on a placed summary.
         reason: { type: string, description: Why the compaction failed. }
@@ -3495,6 +3651,7 @@ components:
         - $ref: "#/components/schemas/AppendEvent"
         - $ref: "#/components/schemas/RunEvent"
         - $ref: "#/components/schemas/ChildEvent"
+        - $ref: "#/components/schemas/NotificationsEvent"
       discriminator:
         propertyName: type
         mapping:
@@ -3503,6 +3660,22 @@ components:
           append: "#/components/schemas/AppendEvent"
           run: "#/components/schemas/RunEvent"
           child: "#/components/schemas/ChildEvent"
+          notifications: "#/components/schemas/NotificationsEvent"
+
+    NotificationsEvent:
+      type: object
+      required: [type, notifications, initial]
+      properties:
+        type: { type: string, enum: [notifications] }
+        notifications:
+          type: array
+          description: Newest first. Merge by Outbox ID.
+          items: { $ref: "#/components/schemas/TimelineNotification" }
+        initial: {
+          type: boolean,
+          description: True for the first notification page of a connection.,
+        }
+        nextBeforeNotification: { type: string }
 
     ChildEvent:
       type: object
@@ -3525,6 +3698,7 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Item" }
         running: { type: boolean }
+        runTarget: { $ref: "#/components/schemas/RunTarget" }
         historyBefore: {
           type: integer,
           format: int64,
@@ -3555,7 +3729,12 @@ components:
       properties:
         type: { type: string, enum: [run] }
         running: { type: boolean }
+        runTarget: { $ref: "#/components/schemas/RunTarget" }
         retry: { $ref: "#/components/schemas/Retry" }
+
+    RunTarget:
+      type: string
+      description: The exact foreground task of this session. Absent when no task can be stopped.
 
     # Settings
 
@@ -3646,6 +3825,12 @@ components:
       properties:
         id: { type: string }
         name: { type: string }
+        desc: {
+          type: string,
+          maxLength: 500,
+          x-go-name: Description,
+          description: Owner-provided plain text.,
+        }
         kind: { $ref: "#/components/schemas/EnvironmentKind" }
         config: { $ref: "#/components/schemas/EnvironmentConfig" }
         secretSet: { type: boolean }
@@ -3666,6 +3851,11 @@ components:
       required: [name, kind]
       properties:
         name: { type: string, minLength: 1, maxLength: 60 }
+        desc:
+          type: string
+          maxLength: 500
+          x-go-name: Description
+          description: Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
         kind: { $ref: "#/components/schemas/EnvironmentKind" }
         config: { $ref: "#/components/schemas/EnvironmentConfig" }
         secret:
@@ -4052,6 +4242,10 @@ components:
           type: array
           description: The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
           items: { type: string }
+        oauth:
+          type: string
+          description: The action or status of an OAuth connection. Absent for other connections.
+          enum: [authorize, reauthorize, authorized]
         vaultReferences:
           type: object
           properties:
@@ -4095,17 +4289,44 @@ components:
         active: { type: boolean }
         reason: { type: string }
 
+    TelegramManagedSetup:
+      x-go-type: agent.TelegramManagedSetup
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/agent
+      type: object
+      required: [id, state, expiresAt]
+      properties:
+        id: { type: string }
+        state: {
+          type: string,
+          enum: [
+            verify_owner,
+            create_bot,
+            connected,
+            expired,
+            failed,
+            canceled,
+          ],
+        }
+        expiresAt: { type: integer, format: int64 }
+        url: { type: string }
+        username: { type: string }
+
     Telegram:
       type: object
       required: [enabled, allowedUsers, status]
       properties:
         enabled: { type: boolean }
         botId: { type: string }
+        transport: { type: string, enum: [polling, webhook] }
+        webhookUrl: { type: string }
         status: { $ref: "#/components/schemas/ChannelStatus" }
         allowedUsers:
           type: array
           items: { type: integer, format: int64 }
         options: { $ref: "#/components/schemas/TelegramOptions" }
+        managerConfigured: { type: boolean }
+        managedCreationAvailable: { type: boolean }
 
     ChannelStatus:
       x-go-type: channel.Status
@@ -4130,6 +4351,27 @@ components:
         options:
           $ref: "#/components/schemas/TelegramOptions"
           description: Omission preserves saved options. Speech stays off until explicitly enabled with data-sending consent.
+        transport:
+          type: string
+          enum: [polling, webhook]
+          description: Omission keeps the transport for the same bot. New bots default to polling.
+        webhook: { $ref: "#/components/schemas/TelegramWebhookInput" }
+
+    TelegramWebhookInput:
+      x-go-type: telegram.WebhookConfig
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/channel/telegram
+      type: object
+      required: [url, secretToken]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Public HTTPS callback URL.
+        secretToken:
+          type: string
+          writeOnly: true
+          description: Random secret of 1 to 256 characters using A-Z, a-z, 0-9, hyphen, or underscore.
 
     TelegramOptions:
       x-go-type: telegram.Options
@@ -4137,18 +4379,11 @@ components:
         path: github.com/recally-io/dex/internal/channel/telegram
       type: object
       properties:
-        requireMention:
-          type: boolean
-          default: false
-          description: Require a mention or reply to this bot for group input. Off by default for individually authorized senders. This does not grant access to private resources.
         silent: { type: boolean, default: false }
-        preview: { type: string, enum: ["", auto, edit, draft, "off"] }
+        typing: { type: boolean }
         reactions:
           type: boolean
           description: Private chat status reactions. On when unset; false explicitly disables them.
-        groupReactions:
-          type: boolean
-          description: Opt in to status reactions for authorized group inputs. Off when unset.
         stt: { $ref: "#/components/schemas/TelegramSpeechOptions" }
         tts: { $ref: "#/components/schemas/TelegramSpeechOptions" }
 
@@ -4202,6 +4437,7 @@ components:
         appId: { type: string }
         brand: { type: string }
         paired: { type: boolean }
+        transport: { type: string, enum: [websocket, webhook] }
         reactions:
           type: boolean
           description: Private chat status reactions. On when unset; false explicitly disables them.
@@ -4234,6 +4470,27 @@ components:
         reactions:
           type: boolean
           description: Omission preserves the saved preference. False disables private chat status reactions.
+        transport:
+          type: string
+          enum: [websocket, webhook]
+          description: Omission keeps the transport for the same app. New apps default to WebSocket.
+        webhook: { $ref: "#/components/schemas/FeishuWebhookInput" }
+
+    FeishuWebhookInput:
+      x-go-type: feishu.WebhookConfig
+      x-go-type-import:
+        path: github.com/recally-io/dex/internal/channel/feishu
+      type: object
+      required: [verificationToken]
+      properties:
+        verificationToken:
+          type: string
+          writeOnly: true
+          description: The Feishu or Lark verification token.
+        encryptKey:
+          type: string
+          writeOnly: true
+          description: Set this to require encrypted and signed events. Omit it for token verification only.
 
     FeishuBrand:
       type: object
@@ -4313,14 +4570,23 @@ components:
         id: { type: string }
         kind:
           type: string
-          enum: [reply, proactive, question, routine, system_error]
+          enum: [
+            reply,
+            proactive,
+            question,
+            routine,
+            system_error,
+            file,
+            control,
+            feedback,
+          ]
         peer: { type: string }
         topicKey: { type: string }
         body: { type: string }
         reason: { type: string }
         status:
           type: string
-          enum: [pending, delivered, superseded, revoked, failed]
+          enum: [pending, sent, superseded, failed]
         error: { type: string }
         retryAt: { type: integer, format: int64 }
         createdAt: { type: integer, format: int64 }

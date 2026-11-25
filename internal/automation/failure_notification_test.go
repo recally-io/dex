@@ -6,8 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/recally-io/dex/internal/automation"
+
 	"github.com/recally-io/dex/internal/chat"
-	"github.com/recally-io/dex/internal/engine"
 )
 
 func TestUserRoutineScheduleAndEnvironmentFailuresAlertButBusyDoesNot(t *testing.T) {
@@ -27,11 +28,12 @@ func TestUserRoutineScheduleAndEnvironmentFailuresAlertButBusyDoesNot(t *testing
 			if _, err := f.chats.Main(ctx, "a"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.conn.ExecContext(ctx, `INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','fixture','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
+			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
+INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
 				t.Fatal(err)
 			}
 			in := routineInput()
-			in.Notification = &engine.RoutineNotification{Mode: "default"}
+			in.Notification = &automation.RoutineNotification{Mode: "default"}
 			if tc.name == "missed schedule" {
 				in.Schedule.Kind = "daily"
 				in.Schedule.Time, in.Schedule.Minutes = "09:00", 0
@@ -97,11 +99,12 @@ func TestUserRoutineDoesNotCreateConversationToOwnAnAlert(t *testing.T) {
 	// Given a bot with an authorized destination but no conversation.
 	f := newRoutineFixture(t)
 	ctx := t.Context()
-	if _, err := f.conn.ExecContext(ctx, `INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','fixture','telegram:42'); UPDATE agents SET primary_notification_target_id='primary', model_id='' WHERE id='a'`); err != nil {
+	if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
+INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary', model_id='' WHERE id='a'`); err != nil {
 		t.Fatal(err)
 	}
 	in := routineInput()
-	in.Notification = &engine.RoutineNotification{Mode: "default"}
+	in.Notification = &automation.RoutineNotification{Mode: "default"}
 	a, err := f.routines.Create(ctx, "a", in)
 	if err != nil {
 		t.Fatal(err)

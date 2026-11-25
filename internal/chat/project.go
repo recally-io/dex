@@ -11,12 +11,12 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 var (
 	ErrProjectForbidden = errors.New("only writable sessions can set a project directory")
-	ErrProjectInvalid   = execenv.ErrInvalidPath
+	ErrProjectInvalid   = runner.ErrInvalidPath
 )
 
 // ProjectPath validates paths at the API and tool boundary. Empty restores the workspace.

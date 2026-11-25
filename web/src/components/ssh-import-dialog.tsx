@@ -54,7 +54,7 @@ export function ImportSshConfigDialog({
       await refreshEnvironments();
       onClose();
       notify(
-        selected.length === 1 ? `Imported ${selected[0]}.` : `Imported ${selected.length} SSH environments.`,
+        selected.length === 1 ? `Imported ${selected[0]}.` : `Imported ${selected.length} SSH Machines.`,
       );
     } catch (cause) {
       await refreshEnvironments();

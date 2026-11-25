@@ -69,8 +69,8 @@ func (q *Queries) ClaimWorkSourceReceipt(ctx context.Context, arg ClaimWorkSourc
 }
 
 const createWorkTaskAlert = `-- name: CreateWorkTaskAlert :one
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, channel_context)
-SELECT ?1, c.id, ?2, 'null', ?1, 'web', 'task_result', 'pending', ?3, '{}'
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
+SELECT ?1, c.id, ?2, 'null', ?1, 'web', 'plugin', '', '', 'task_result', 'pending', ?3, '{}'
 FROM conversations c WHERE c.agent_id = ?4 AND c.channel_key = 'main' AND c.archived_at IS NULL
 ON CONFLICT DO NOTHING
 RETURNING conversation_id

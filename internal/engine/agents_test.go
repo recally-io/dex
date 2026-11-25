@@ -114,7 +114,7 @@ func TestUserNativeSubmissionSurvivesReopen(t *testing.T) {
 	if duplicate.ID != submission.ID {
 		t.Fatalf("submission changed: %d != %d", duplicate.ID, submission.ID)
 	}
-	if got := coreWait(t, duplicate); got != first {
+	if got := coreWait(t, duplicate); !got.Equal(first) {
 		t.Fatalf("replayed outcome %+v != %+v", got, first)
 	}
 	conversation, err := reopened.conversation(t.Context(), ref)
@@ -167,7 +167,7 @@ func TestUserStopWithdrawsQueuedInputWithoutModelContext(t *testing.T) {
 		t.Fatalf("reload of beta waited for alpha: %v", err)
 	}
 	// When Stop cancels the run and withdraws the queue.
-	if err := a.Abort(t.Context(), ref); err != nil {
+	if err := a.StopSession(t.Context(), ref); err != nil {
 		t.Fatal(err)
 	}
 	if outcome := coreWait(t, running); outcome.Status != "unanswered" {
@@ -382,28 +382,6 @@ func TestUserQueuedInputContinuesAfterModelFailure(t *testing.T) {
 	}
 	if outcome := coreWait(t, queued); outcome.Status != "done" || outcome.Answer != "next input answered" {
 		t.Fatalf("next outcome: %+v", outcome)
-	}
-}
-
-func TestUserChildSubmitStripsForegroundTools(t *testing.T) {
-	a := coreEngine(t, Config{})
-	ref := coreCreate(t, a, "alpha", coreOptions("direct"))
-	for _, tool := range []string{"session_new", "ask_user", "create_routine"} {
-		sub, err := a.Submit(t.Context(), ref, Input{
-			RequestID: "child-" + tool,
-			Content:   tool + " {}",
-			Kind:      "message",
-			Origin:    "task",
-			Source:    "dex:alpha/task/1",
-			Child:     true,
-			Options:   coreOptions("direct"),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if outcome := coreWait(t, sub); !strings.HasPrefix(outcome.Answer, "tool error:") {
-			t.Fatalf("child tool %s was unexpectedly available: %+v", tool, outcome)
-		}
 	}
 }
 

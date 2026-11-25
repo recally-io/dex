@@ -1,20 +1,17 @@
 package app_test
 
 import (
-	"encoding/json/v2"
-	"fmt"
-	"html"
 	"net/http"
 	"strings"
 	"testing"
 )
 
-func TestUserTelegramSilentPreviewAndReactionPreferencesAffectDelivery(t *testing.T) {
+func TestUserTelegramSilentTypingAndReactionPreferencesAffectDelivery(t *testing.T) {
 	t.Parallel()
 	// Given explicit silent delivery and no streaming preview.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "preview": "off", "reactions": true}}, nil)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "typing": false, "reactions": true}}, nil)
 	f.message(1, 42, 42, "https://example.invalid/hello")
 	got := f.next(t)
 	if !got.Silent || got.RichHTML == "" {
@@ -65,166 +62,13 @@ func TestUserTelegramEditedMessageIsANewCorrection(t *testing.T) {
 	}
 }
 
-func TestUserTelegramMessageToolsUseOnlyCurrentPeerDeliveries(t *testing.T) {
-	t.Parallel()
-	// Given a confirmed bot reply and the same sender's later Telegram tool turn.
-	data := t.TempDir()
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, data, 42)
-	// Manual reactions are independent from inbound status reactions.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false}}, nil)
-	f.message(1, 42, 42, "original")
-	original := f.next(t)
-	conn := controlWriteDB(t, data)
-	var delivery string
-	eventually(t, "original delivery confirmed", func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT id FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL").Scan(&delivery)
-		return err == nil, delivery
-	})
-	d.setModel(t, "tool")
-	actions := []struct{ action, text, emoji, method string }{{"edit", "replacement", "", "editMessageText"}, {"react", "", "👍", "setMessageReaction"}, {"copy", "", "", "copyMessage"}, {"forward", "", "", "forwardMessage"}, {"delete", "", "", "deleteMessage"}}
-	var copied struct {
-		MessageKind string   `json:"messageKind"`
-		DeliveryID  string   `json:"deliveryId"`
-		MessageIDs  []string `json:"messageIds"`
-	}
-	for i, action := range actions {
-		args, _ := json.Marshal(map[string]any{"action": action.action, "deliveryId": delivery, "index": 0, "text": action.text, "emoji": action.emoji})
-		f.message(int64(i+2), 42, 42, "telegram_message "+string(args))
-		if action.action == "edit" {
-			edited := f.next(t)
-			if edited.RichHTML != "<p>"+action.text+"</p>" {
-				t.Fatalf("rich edit payload=%+v", edited)
-			}
-		}
-		answer := html.UnescapeString(f.next(t).Text)
-		if !strings.Contains(answer, `"status":"done"`) {
-			t.Fatalf("%s result=%q", action.action, answer)
-		}
-		if action.action == "copy" {
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(answer, "tool: ")), &copied); err != nil {
-				t.Fatal(err)
-			}
-		}
-		event := f.nextEvent(t, action.method)
-		if event.MessageID != original.ID {
-			t.Fatalf("%s changed target: %d != %d", action.action, event.MessageID, original.ID)
-		}
-	}
-	f.message(30, 42, 42, `telegram_message {"action":"list"}`)
-	if got := html.UnescapeString(f.next(t).Text); !strings.Contains(got, copied.DeliveryID) || copied.DeliveryID == "" {
-		t.Fatalf("copied delivery missing from list: %q", got)
-	}
-	if copied.MessageKind != "rich-v1" {
-		t.Fatalf("copy lost actual rich kind: %+v", copied)
-	}
-	editArgs, _ := json.Marshal(map[string]any{"action": "edit", "deliveryId": copied.DeliveryID, "index": 0, "text": "**copied**"})
-	f.message(31, 42, 42, "telegram_message "+string(editArgs))
-	if edited := f.next(t); edited.RichHTML != "<p><b>copied</b></p>" {
-		t.Fatalf("copied rich edit=%+v", edited)
-	}
-	if answer := f.next(t); !strings.Contains(answer.Text, "done") {
-		t.Fatalf("copied edit result=%+v", answer)
-	}
-	editEvent := f.nextEvent(t, "editMessageText")
-	if fmt.Sprint(editEvent.MessageID) != copied.MessageIDs[0] || editEvent.RichHTML != "<p><b>copied</b></p>" {
-		t.Fatalf("copied edit target/payload=%+v", editEvent)
-	}
-	copiedArgs, _ := json.Marshal(map[string]any{"action": "delete", "deliveryId": copied.DeliveryID, "index": 0})
-	f.message(32, 42, 42, "telegram_message "+string(copiedArgs))
-	if got := f.next(t).Text; !strings.Contains(got, "done") {
-		t.Fatalf("copied message delete=%q", got)
-	}
-	copiedEvent := f.nextEvent(t, "deleteMessage")
-	if fmt.Sprint(copiedEvent.MessageID) != copied.MessageIDs[0] {
-		t.Fatalf("copied delete target=%+v", copiedEvent)
-	}
-	// A user-supplied delivery ID cannot select another peer, even under the same bot.
-	args, _ := json.Marshal(map[string]any{"action": "delete", "deliveryId": delivery, "index": 0})
-	f.message(99, 42, 99, "telegram_message "+string(args))
-	if got := f.next(t).Text; !strings.Contains(got, "outside the current sender and peer") {
-		t.Fatalf("foreign peer action=%q", got)
-	}
-	if n := count(t, conn, "SELECT count(*) FROM telegram_effects WHERE kind IN ('edit','react','copy','forward','delete') AND state='done'"); n != len(actions)+2 {
-		t.Fatalf("operation receipts=%d", n)
-	}
-}
-
-func TestUserTelegramCaptionEditSelectsConfirmedFileMessage(t *testing.T) {
-	t.Parallel()
-	// Given a native file with a confirmed document message ID.
-	data := t.TempDir()
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, data, 42)
-	d.setModel(t, "tool")
-	telegramSource(t, data, "report.txt", []byte("synthetic report"))
-	f.message(1, 42, 42, `deliver_file {"path":"report.txt"}`)
-	_ = nextTelegramMedia(t, f.mediaSent)
-	_ = f.next(t)
-	conn := controlWriteDB(t, data)
-	var delivery string
-	eventually(t, "native document delivery confirmed", func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT id FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL").Scan(&delivery)
-		return err == nil, delivery
-	})
-	args, _ := json.Marshal(map[string]any{"action": "edit_caption", "deliveryId": delivery, "index": 1, "text": "revised caption"})
-	f.message(2, 42, 42, "telegram_message "+string(args))
-	if got := f.next(t).Text; !strings.Contains(got, "done") {
-		t.Fatalf("caption tool=%q", got)
-	}
-	event := f.nextEvent(t, "editMessageCaption")
-	if event.Text != "revised caption" {
-		t.Fatalf("caption=%+v", event)
-	}
-	args, _ = json.Marshal(map[string]any{"action": "edit_caption", "deliveryId": delivery, "index": 1, "text": ""})
-	f.message(3, 42, 42, "telegram_message "+string(args))
-	if got := f.next(t).Text; !strings.Contains(got, "done") {
-		t.Fatalf("caption clear=%q", got)
-	}
-	if got := f.nextEvent(t, "editMessageCaption"); got.Text != "" {
-		t.Fatalf("caption not cleared: %+v", got)
-	}
-	// Editing a media message with text action is rejected without calling editMessageText.
-	args, _ = json.Marshal(map[string]any{"action": "edit", "deliveryId": delivery, "index": 1, "text": "invalid text edit"})
-	f.message(4, 42, 42, "telegram_message "+string(args))
-	if got := f.next(t).Text; !strings.Contains(got, "telegram text edits require a rich message") {
-		t.Fatalf("media edit=%q", got)
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, request := range f.requests {
-		if request.Method == "editMessageText" {
-			t.Fatalf("media text edit reached platform: %+v", request)
-		}
-	}
-}
-
-func TestUserWebCannotUseTelegramMessageTools(t *testing.T) {
-	t.Parallel()
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, t.TempDir(), 42)
-	d.setModel(t, "tool")
-	id := d.newSession(t).ID
-	d.send(t, id, `telegram_message {"action":"list"}`)
-	// A tool schema is not authority to use a Telegram connection from Web.
-	watch := d.watch(t, id)
-	watch.until(t, "Web Telegram tool refused", func(tr *transcript) bool {
-		for _, item := range tr.items {
-			if item.Kind == "assistant" && strings.Contains(item.Text, "active Telegram Main input") {
-				return true
-			}
-		}
-		return false
-	})
-}
-
 func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
 	t.Parallel()
 	// Given a configured bot whose default presentation has not been changed.
 	data := t.TempDir()
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, data, 42)
-	options := map[string]any{"silent": true, "preview": "off", "reactions": true}
+	options := map[string]any{"silent": true, "typing": false, "reactions": true}
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
 	// When the process restarts, presentation preferences remain separate from the token and allowlist.
 	d.stop()
@@ -232,15 +76,15 @@ func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
 	var view struct {
 		Telegram struct {
 			Options struct {
-				Silent    bool   `json:"silent"`
-				Preview   string `json:"preview"`
-				Reactions bool   `json:"reactions"`
+				Silent    bool  `json:"silent"`
+				Typing    *bool `json:"typing"`
+				Reactions bool  `json:"reactions"`
 			} `json:"options"`
 		} `json:"telegram"`
 	}
 	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &view)
 	got := view.Telegram.Options
-	if !got.Silent || got.Preview != "off" || !got.Reactions {
+	if !got.Silent || got.Typing == nil || *got.Typing || !got.Reactions {
 		t.Fatalf("lost Telegram preferences: %+v", got)
 	}
 	// Existing clients that omit options must not reset the saved preferences.
@@ -248,36 +92,5 @@ func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
 	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &view)
 	if !view.Telegram.Options.Silent {
 		t.Fatal("omitted options reset presentation")
-	}
-}
-
-func TestUserRichTelegramEditCannotCreateMultipleMessages(t *testing.T) {
-	t.Parallel()
-	// Given a confirmed rich reply selected by its owned delivery ID.
-	data := t.TempDir()
-	f := newFakeTelegram(t)
-	d := startTelegram(t, f, data, 42)
-	f.message(1, 42, 42, "original")
-	_ = f.next(t)
-	conn := controlWriteDB(t, data)
-	var delivery string
-	eventually(t, "confirmed rich message", func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT id FROM submissions WHERE source_key='telegram:123:1' AND delivered_at IS NOT NULL").Scan(&delivery)
-		return err == nil, delivery
-	})
-	d.setModel(t, "tool")
-	// When an edit would exceed 500 blocks, no remote edit or extra split send is performed.
-	args, _ := json.Marshal(map[string]any{"action": "edit", "deliveryId": delivery, "index": 0, "text": strings.Repeat("a\n\n", 501)})
-	f.message(2, 42, 42, "telegram_message "+string(args))
-	answer := f.next(t)
-	if !strings.Contains(answer.Text, "rich edit must fit one message") {
-		t.Fatalf("oversized edit=%+v", answer)
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, request := range f.requests {
-		if request.Method == "editMessageText" {
-			t.Fatalf("oversized edit reached platform: %+v", request)
-		}
 	}
 }

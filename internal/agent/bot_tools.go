@@ -117,8 +117,8 @@ type BotTools struct {
 	Extensions func(ctx context.Context, agentID string) (engine.ExtensionInfo, error)
 }
 
-func botInfo(a Agent) engine.BotInfo {
-	return engine.BotInfo{
+func botInfo(a Agent) BotInfo {
+	return BotInfo{
 		ID: a.ID, Name: a.Name, Provider: a.Provider, ModelID: a.ModelID, ThinkingLevel: a.ThinkingLevel,
 		FallbackProvider: a.FallbackProvider, FallbackModelID: a.FallbackModelID,
 		Instructions: a.Instructions, EnvironmentID: a.EnvironmentID,
@@ -126,11 +126,11 @@ func botInfo(a Agent) engine.BotInfo {
 }
 
 // Handlers returns the engine callbacks.
-func (t *BotTools) Handlers() engine.BotTools {
-	return engine.BotTools{List: t.list, Get: t.get, Create: t.create, Update: t.update, Archive: t.archive}
+func (t *BotTools) Handlers() BotHandlers {
+	return BotHandlers{List: t.list, Get: t.get, Create: t.create, Update: t.update, Archive: t.archive}
 }
 
-func (t *BotTools) list(ctx context.Context, c engine.TaskContext) ([]engine.BotInfo, error) {
+func (t *BotTools) list(ctx context.Context, c engine.TaskContext) ([]BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, false); err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func (t *BotTools) list(ctx context.Context, c engine.TaskContext) ([]engine.Bot
 	for _, row := range rows {
 		running[row.AgentID] = row.Sessions
 	}
-	out := make([]engine.BotInfo, len(agents))
+	out := make([]BotInfo, len(agents))
 	for i, a := range agents {
 		out[i] = botInfo(a)
 		out[i].Instructions, _, _ = strings.Cut(strings.TrimSpace(a.Instructions), "\n")
@@ -158,17 +158,17 @@ func (t *BotTools) list(ctx context.Context, c engine.TaskContext) ([]engine.Bot
 	return out, nil
 }
 
-func (t *BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (engine.BotInfo, error) {
+func (t *BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, false); err != nil {
-		return engine.BotInfo{}, err
+		return BotInfo{}, err
 	}
 	a, err := t.Agents.resolveBot(ctx, ref)
 	if err != nil {
-		return engine.BotInfo{}, err
+		return BotInfo{}, err
 	}
 	info, err := t.Extensions(ctx, a.ID)
 	if err != nil {
-		return engine.BotInfo{}, err
+		return BotInfo{}, err
 	}
 	out := botInfo(a)
 	for _, skill := range info.Skills {
@@ -180,9 +180,9 @@ func (t *BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (e
 	return out, nil
 }
 
-func (t *BotTools) create(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
+func (t *BotTools) create(ctx context.Context, c engine.TaskContext, p BotPatch) (BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
-		return engine.BotInfo{}, err
+		return BotInfo{}, err
 	}
 	created, err := t.Agents.CreateAgent(ctx, Patch{
 		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
@@ -192,13 +192,13 @@ func (t *BotTools) create(ctx context.Context, c engine.TaskContext, p engine.Bo
 	return botInfo(created), err
 }
 
-func (t *BotTools) update(ctx context.Context, c engine.TaskContext, p engine.BotPatch) (engine.BotInfo, error) {
+func (t *BotTools) update(ctx context.Context, c engine.TaskContext, p BotPatch) (BotInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
-		return engine.BotInfo{}, err
+		return BotInfo{}, err
 	}
 	target, err := t.Agents.resolveBot(ctx, p.Bot)
 	if err != nil {
-		return engine.BotInfo{}, err
+		return BotInfo{}, err
 	}
 	updated, err := t.Agents.patchAgent(ctx, target.ID, Patch{
 		Name: p.Name, Instructions: p.Instructions, Provider: p.Provider, ModelID: p.ModelID,
@@ -208,13 +208,13 @@ func (t *BotTools) update(ctx context.Context, c engine.TaskContext, p engine.Bo
 	return botInfo(updated), err
 }
 
-func (t *BotTools) archive(ctx context.Context, c engine.TaskContext, a engine.BotDeleteArgs) (engine.QuestionInfo, error) {
+func (t *BotTools) archive(ctx context.Context, c engine.TaskContext, a BotDeleteArgs) (chat.QuestionInfo, error) {
 	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
-		return engine.QuestionInfo{}, err
+		return chat.QuestionInfo{}, err
 	}
 	target, err := t.Agents.resolveBot(ctx, a.Bot)
 	if err != nil {
-		return engine.QuestionInfo{}, err
+		return chat.QuestionInfo{}, err
 	}
 	return t.Chats.ToolAskArchive(ctx, c, target.ID, target.Name, a.Reason)
 }

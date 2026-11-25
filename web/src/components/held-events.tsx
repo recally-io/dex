@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listHeldEventsOptions, listWorkTasksOptions } from "../api/generated/@tanstack/react-query.gen";
+import { listAgentsOptions, listWorkTasksOptions } from "../api/generated/@tanstack/react-query.gen";
+import { heldEventsOptions } from "../lib/inbox";
 import { attachHeldEvent, dismissHeldEvent } from "../api/generated/sdk.gen";
 import type { Agent, HeldEvent, WorkTask } from "../api/generated/types.gen";
 import { Failure, Loading } from "./feedback";
@@ -19,9 +20,16 @@ function sourceHref(url: string) {
   return /^https?:\/\//i.test(url) ? url : undefined;
 }
 
-export function HeldEvents({ tasks, agents }: { tasks: WorkTask[]; agents: Agent[] }) {
-  const held = useQuery({ ...listHeldEventsOptions(), refetchInterval: 10_000 });
-  const open = tasks.filter((task) => task.lifecycle === "open");
+export function HeldEvents() {
+  const held = useQuery(heldEventsOptions());
+  const agents = useQuery(listAgentsOptions());
+
+  const tasks = useQuery({
+    ...listWorkTasksOptions({ query: { includeClosed: false } }),
+    enabled: !!held.data?.events.length,
+  });
+
+  const open = tasks.data?.tasks.filter((task) => task.lifecycle === "open") ?? [];
 
   return (
     <Section title="Held events">
@@ -30,11 +38,14 @@ export function HeldEvents({ tasks, agents }: { tasks: WorkTask[]; agents: Agent
       ) : held.isError ? (
         <Failure title="Could not load held events" error={held.error} />
       ) : held.data.events.length ? (
-        <ul className="divide-y divide-border">
-          {held.data.events.map((event) => (
-            <HeldEventItem key={event.id} event={event} tasks={open} agents={agents} />
-          ))}
-        </ul>
+        <>
+          {tasks.isError ? <Failure title="Could not load Tasks for attachment" error={tasks.error} /> : null}
+          <ul className="divide-y divide-border">
+            {held.data.events.map((event) => (
+              <HeldEventItem key={event.id} event={event} tasks={open} agents={agents.data?.agents ?? []} />
+            ))}
+          </ul>
+        </>
       ) : (
         <p className="px-2 py-3 text-sm text-muted-foreground">No held events.</p>
       )}
@@ -50,7 +61,7 @@ function HeldEventItem({ event, tasks, agents }: { event: HeldEvent; tasks: Work
   const href = sourceHref(event.sourceUrl);
 
   const refresh = async () => {
-    await client.invalidateQueries({ queryKey: listHeldEventsOptions().queryKey });
+    await client.invalidateQueries({ queryKey: heldEventsOptions().queryKey });
     await client.invalidateQueries({ queryKey: listWorkTasksOptions().queryKey.slice(0, 1) });
   };
 

@@ -159,7 +159,7 @@ func TestUserBackgroundRecoverySkipsOtherAgentLoading(t *testing.T) {
 	}
 }
 
-func TestUserCancelledSameAgentWaitKeepsOrderedDurableInputs(t *testing.T) {
+func TestUserCancelledWaitForSharedReloadKeepsOrderedDurableInputs(t *testing.T) {
 	// Given an agent whose reload is held at a real MCP handshake.
 	r := startNative(t, "context")
 	entered, release := holdAgentMCP(t, r)
@@ -201,25 +201,12 @@ func TestUserCancelledSameAgentWaitKeepsOrderedDurableInputs(t *testing.T) {
 			t.Fatalf("waiting input: %+v", sub)
 		}
 	}
-	// Non-durable operations also stop waiting when their request is cancelled.
-	for _, operation := range []func(context.Context) error{
-		func(ctx context.Context) error { return r.service.Stop(ctx, "bot", c.ID) },
-		func(ctx context.Context) error { return r.service.Clear(ctx, "bot", c.ID, "reset", "web", "") },
-		func(ctx context.Context) error { return r.service.ReloadExtensions(ctx, "bot") },
-	} {
-		callCtx, stop := context.WithTimeout(t.Context(), 100*time.Millisecond)
-		done := make(chan error, 1)
-		go func() { done <- operation(callCtx) }()
-		select {
-		case err := <-done:
-			if !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatalf("cancelled operation: %v", err)
-			}
-		case <-time.After(2 * time.Second):
-			stop()
-			t.Fatal("cancelled operation did not return")
-		}
-		stop()
+	// Clear cannot skip the accepted inputs, and a concurrent reload cannot replace the open slot.
+	if err := r.service.Clear(ctx, "bot", c.ID, "reset", "web", ""); !errors.Is(err, ErrConversationBusy) {
+		t.Fatalf("Clear during pending input: %v", err)
+	}
+	if err := r.service.ReloadExtensions(ctx, "bot"); !errors.Is(err, engine.ErrBusy) {
+		t.Fatalf("second Reload during open: %v", err)
 	}
 	// Then recovery admits both inputs in receipt order after reload releases.
 	release()
@@ -394,12 +381,12 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: parent.ID, Content: "delegate", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: parent.ID, Content: "delegate", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	marker, taskRelease := filepath.Join(r.dir, "task-started"), filepath.Join(r.dir, "task-release")
 	defer func() { _ = os.WriteFile(taskRelease, nil, 0600) }()
-	_, err = r.service.ToolSessionNew(t.Context(), engine.TaskContext{AgentID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, engine.SessionNewArgs{
+	_, err = r.service.ToolSessionNew(t.Context(), engine.TaskContext{AgentID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, SessionNewArgs{
 		Title: "Result", Message: "touch " + marker + "; while [ ! -f " + taskRelease + " ]; do sleep 0.01; done; printf 'saved report'", Provider: "faux", ModelID: "bash",
 	})
 	if err != nil {
@@ -417,7 +404,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "cold", ConversationID: cold.ID, Content: "cold", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 2}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "cold", ConversationID: cold.ID, Content: "cold", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 2}); err != nil {
 		t.Fatal(err)
 	}
 	entered, release := holdAgentMCP(t, r)

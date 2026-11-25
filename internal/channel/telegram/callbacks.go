@@ -57,6 +57,9 @@ func (b *Bot) receiveCallback(ctx context.Context, query *callbackQuery) error {
 		return nil
 	}
 	m := query.Message
+	if m.Chat.Type != "private" {
+		return nil
+	}
 	botID, _ := strconv.ParseInt(b.cfg.botID(), 10, 64)
 	if m.From == nil || m.From.ID != botID {
 		return nil
@@ -66,16 +69,6 @@ func (b *Bot) receiveCallback(ctx context.Context, query *callbackQuery) error {
 	if valid {
 		identity := chat.ChannelContext{AccountID: b.cfg.botID(), SenderID: strconv.FormatInt(query.From.ID, 10), MessageID: strconv.FormatInt(m.ID, 10)}
 		peer := channelPrefix + strconv.FormatInt(m.Chat.ID, 10)
-		if m.Chat.Type == "group" || m.Chat.Type == "supergroup" {
-			identity.ChatID = m.Chat.ID
-			identity.TopicID = m.ThreadID
-			identity.TopicShared = m.Chat.IsForum || m.IsTopic
-			if m.ThreadID > 0 {
-				peer += ":" + strconv.FormatInt(m.ThreadID, 10)
-			}
-		} else if m.Chat.Type != "private" {
-			return nil
-		}
 		var err error
 		accepted, err = b.chats.ClaimTelegramCallback(ctx, id, peer, strconv.FormatInt(m.ID, 10), identity)
 		if err != nil {

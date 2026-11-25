@@ -103,6 +103,11 @@ type BackgroundCommand struct {
 	EndedAt          sql.NullInt64 `json:"ended_at"`
 }
 
+type CancelUnpairedChannelWork struct {
+	AgentID  string `json:"agent_id"`
+	Platform string `json:"platform"`
+}
+
 type ChannelCommand struct {
 	AgentID        string        `json:"agent_id"`
 	SourceKey      string        `json:"source_key"`
@@ -114,13 +119,6 @@ type ChannelCommand struct {
 	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
 	ChannelContext string        `json:"channel_context"`
 	RenderedReply  string        `json:"rendered_reply"`
-}
-
-type ChannelFollowUp struct {
-	DelegationID   string `json:"delegation_id"`
-	ResultID       string `json:"result_id"`
-	ConversationID int64  `json:"conversation_id"`
-	State          string `json:"state"`
 }
 
 type ChannelPeer struct {
@@ -136,10 +134,27 @@ type ChannelReplyFile struct {
 	Body         []byte `json:"body"`
 }
 
+type ChannelWebhookInbox struct {
+	ID         int64  `json:"id"`
+	Platform   string `json:"platform"`
+	Account    string `json:"account"`
+	EventID    string `json:"event_id"`
+	AgentID    string `json:"agent_id"`
+	ReceivedAt int64  `json:"received_at"`
+	Payload    []byte `json:"payload"`
+}
+
 type CompactReceipt struct {
 	ID             string `json:"id"`
 	ConversationID int64  `json:"conversation_id"`
 	Instructions   string `json:"instructions"`
+}
+
+type ConfiguredChannelAddress struct {
+	AgentID   string      `json:"agent_id"`
+	Platform  string      `json:"platform"`
+	AccountID string      `json:"account_id"`
+	Peer      interface{} `json:"peer"`
 }
 
 type Conversation struct {
@@ -175,24 +190,27 @@ type EnabledPlugin struct {
 }
 
 type ExecutionEnvironment struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	Config    string `json:"config"`
-	Secret    string `json:"secret"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Config      string `json:"config"`
+	Secret      string `json:"secret"`
+	CreatedAt   int64  `json:"created_at"`
+	UpdatedAt   int64  `json:"updated_at"`
+	Description string `json:"description"`
 }
 
 type FeishuSetting struct {
-	AgentID          string        `json:"agent_id"`
-	AppID            string        `json:"app_id"`
-	AppSecret        string        `json:"app_secret"`
-	Brand            string        `json:"brand"`
-	OwnerID          string        `json:"owner_id"`
-	PairingCode      string        `json:"pairing_code"`
-	PairingExpiresAt int64         `json:"pairing_expires_at"`
-	Reactions        sql.NullInt64 `json:"reactions"`
+	AgentID           string        `json:"agent_id"`
+	AppID             string        `json:"app_id"`
+	AppSecret         string        `json:"app_secret"`
+	Brand             string        `json:"brand"`
+	OwnerID           string        `json:"owner_id"`
+	PairingCode       string        `json:"pairing_code"`
+	PairingExpiresAt  int64         `json:"pairing_expires_at"`
+	Reactions         sql.NullInt64 `json:"reactions"`
+	VerificationToken string        `json:"verification_token"`
+	EncryptKey        string        `json:"encrypt_key"`
 }
 
 type ForkReceipt struct {
@@ -201,6 +219,11 @@ type ForkReceipt struct {
 	EntryID     int64  `json:"entry_id"`
 	BeforeEntry int64  `json:"before_entry"`
 	ForkID      int64  `json:"fork_id"`
+}
+
+type MainTurnStop struct {
+	ConversationID int64  `json:"conversation_id"`
+	Target         string `json:"target"`
 }
 
 type McpServer struct {
@@ -249,6 +272,14 @@ type OnePassword struct {
 	ServiceAccountToken string `json:"service_account_token"`
 }
 
+type OutboxDeliveryDiagnostic struct {
+	ID                 string         `json:"id"`
+	SourceSubmissionID sql.NullString `json:"source_submission_id"`
+	Peer               string         `json:"peer"`
+	RemoteIds          string         `json:"remote_ids"`
+	Disposition        string         `json:"disposition"`
+}
+
 type OutboxFile struct {
 	ID           string         `json:"id"`
 	AgentID      string         `json:"agent_id"`
@@ -262,29 +293,26 @@ type OutboxFile struct {
 
 type OutboxMessage struct {
 	ID                 string         `json:"id"`
-	DedupKey           string         `json:"dedup_key"`
+	EventID            string         `json:"event_id"`
 	AgentID            string         `json:"agent_id"`
 	ConversationID     int64          `json:"conversation_id"`
 	SourceSubmissionID sql.NullString `json:"source_submission_id"`
 	Kind               string         `json:"kind"`
 	Peer               string         `json:"peer"`
+	Channel            sql.NullString `json:"channel"`
+	Target             sql.NullString `json:"target"`
 	ChannelContext     string         `json:"channel_context"`
 	TopicKey           string         `json:"topic_key"`
 	Body               string         `json:"body"`
 	Reason             string         `json:"reason"`
-	RenderedParts      string         `json:"rendered_parts"`
-	DeliveredParts     int64          `json:"delivered_parts"`
-	GroupFallback      int64          `json:"group_fallback"`
-	GroupCursor        int64          `json:"group_cursor"`
+	RenderedMessage    string         `json:"rendered_message"`
 	RemoteIds          string         `json:"remote_ids"`
 	Status             string         `json:"status"`
 	RetryAt            int64          `json:"retry_at"`
+	Attempts           int64          `json:"attempts"`
 	Error              string         `json:"error"`
-	ReadAt             sql.NullInt64  `json:"read_at"`
-	DismissedAt        sql.NullInt64  `json:"dismissed_at"`
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
-	SkippedPart        int64          `json:"skipped_part"`
 }
 
 type Provider struct {
@@ -391,6 +419,10 @@ type Submission struct {
 	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
 	ExitAction           string         `json:"exit_action"`
 	RequiredReplyID      string         `json:"required_reply_id"`
+	StopRequested        int64          `json:"stop_requested"`
+	Producer             string         `json:"producer"`
+	ReplyChannel         string         `json:"reply_channel"`
+	ReplyPeer            string         `json:"reply_peer"`
 }
 
 type SystemSetting struct {
@@ -449,6 +481,28 @@ type TelegramEffect struct {
 	CreatedAt    int64  `json:"created_at"`
 }
 
+type TelegramManagedSetup struct {
+	ID        string        `json:"id"`
+	AgentID   string        `json:"agent_id"`
+	ManagerID int64         `json:"manager_id"`
+	Username  string        `json:"username"`
+	ExpiresAt int64         `json:"expires_at"`
+	OwnerID   int64         `json:"owner_id"`
+	BotID     sql.NullInt64 `json:"bot_id"`
+	State     string        `json:"state"`
+}
+
+type TelegramManager struct {
+	ID            int64  `json:"id"`
+	CredentialRef string `json:"credential_ref"`
+}
+
+type TelegramQueueAcknowledgement struct {
+	SubmissionID string `json:"submission_id"`
+	Outcome      string `json:"outcome"`
+	UpdatedAt    int64  `json:"updated_at"`
+}
+
 type TelegramSetting struct {
 	AgentID        string `json:"agent_id"`
 	Token          string `json:"token"`
@@ -457,6 +511,18 @@ type TelegramSetting struct {
 	PairingExpires int64  `json:"pairing_expires"`
 	RetryAt        int64  `json:"retry_at"`
 	Options        string `json:"options"`
+	WebhookUrl     string `json:"webhook_url"`
+	WebhookSecret  string `json:"webhook_secret"`
+}
+
+type WebNotification struct {
+	ID                 string `json:"id"`
+	EventID            string `json:"event_id"`
+	AgentID            string `json:"agent_id"`
+	ConversationID     int64  `json:"conversation_id"`
+	SourceSubmissionID string `json:"source_submission_id"`
+	Body               string `json:"body"`
+	CreatedAt          int64  `json:"created_at"`
 }
 
 type WechatRuntime struct {
@@ -539,6 +605,9 @@ type WorkTaskObject struct {
 type WorkTaskSession struct {
 	TaskID         string `json:"task_id"`
 	ConversationID int64  `json:"conversation_id"`
+	AgentID        string `json:"agent_id"`
+	IsPrimary      int64  `json:"is_primary"`
+	LinkedAt       int64  `json:"linked_at"`
 }
 
 type WorkTaskToolOperation struct {

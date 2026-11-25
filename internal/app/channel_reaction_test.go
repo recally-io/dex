@@ -3,7 +3,7 @@ package app_test
 import (
 	"net/http"
 	"path/filepath"
-	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -11,9 +11,14 @@ import (
 type reactionCall struct{ message, status string }
 
 type reactionGate struct {
-	calls      chan reactionCall
-	release    <-chan struct{}
-	failStatus string
+	calls           chan reactionCall
+	release         <-chan struct{}
+	failStatus      string
+	limitNextQueued atomic.Bool
+	retryAfter      int
+	queuedTimes     chan time.Time
+	holdQueuedRetry <-chan struct{}
+	unknownOutcome  bool
 }
 
 func (g *reactionGate) handle(r *http.Request, message, status string) bool {
@@ -47,11 +52,12 @@ func (g *reactionGate) expect(t *testing.T, message, status string) {
 func TestUserTelegramSlowRejectedReactionDoesNotBlockReply(t *testing.T) {
 	t.Parallel()
 	// Given an authorized private chat with no explicit reaction option.
+	data := t.TempDir()
 	release := make(chan struct{})
 	gate := &reactionGate{calls: make(chan reactionCall, 10), release: release, failStatus: "👀"}
 	f := newFakeTelegram(t)
 	f.reactGate = gate
-	_ = startTelegram(t, f, t.TempDir(), 42)
+	_ = startTelegram(t, f, data, 42)
 	// When the first status call stalls and then hits a rate limit.
 	f.message(1, 42, 42, "telegram status receipt")
 	gate.expect(t, "1", "👀")
@@ -59,8 +65,30 @@ func TestUserTelegramSlowRejectedReactionDoesNotBlockReply(t *testing.T) {
 	if got := f.next(t).Text; got != "echo: telegram status receipt" {
 		t.Fatalf("reply = %q", got)
 	}
+	// A later update also commits and gets a reply while the first call waits.
+	f.message(2, 42, 42, "later input")
+	gate.expect(t, "2", "👀")
+	if got := f.next(t).Text; got != "echo: later input" {
+		t.Fatalf("later reply = %q", got)
+	}
+	conn := controlWriteDB(t, data)
+	waitTelegramQueueAck(t, conn, 1, "unknown")
+	waitTelegramQueueAck(t, conn, 2, "unknown")
 	close(release)
-	gate.expect(t, "1", "👍")
+	seen := make(map[string]bool)
+	for range 2 {
+		select {
+		case got := <-gate.calls:
+			if got.status != "👍" || seen[got.message] {
+				t.Fatalf("unexpected reaction after releasing requests: %+v", got)
+			}
+			seen[got.message] = true
+		case <-time.After(12 * time.Second):
+			t.Fatal("missing terminal reaction")
+		}
+	}
+	waitTelegramQueueAck(t, conn, 1, "failed")
+	waitTelegramQueueAck(t, conn, 2, "failed")
 }
 
 func TestUserFeishuSlowRejectedReactionDoesNotBlockReply(t *testing.T) {
@@ -107,7 +135,7 @@ func TestUserTelegramStatusWaitsForNativeRunAndConfirmation(t *testing.T) {
 	gate.expect(t, "1", "🔥")
 	releaseResultGate(t, data, "incoming")
 	eventually(t, "first reply awaiting retry", func() (bool, any) {
-		return count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND status='done' AND channel_retry_at>0") == 1, nil
+		return count(t, conn, "SELECT count(*) FROM outbox_messages o JOIN submissions s ON s.id=o.source_submission_id WHERE s.source_key='telegram:123:1' AND o.status='pending' AND o.retry_at>0") == 1, nil
 	})
 	select {
 	case got := <-gate.calls:
@@ -134,45 +162,6 @@ func TestUserTelegramStatusWaitsForNativeRunAndConfirmation(t *testing.T) {
 	}
 }
 
-func TestUserTelegramStatusWaitsForFinalPart(t *testing.T) {
-	t.Parallel()
-	// Given a multi-part answer whose second part temporarily fails.
-	gate := &reactionGate{calls: make(chan reactionCall, 10)}
-	f := newFakeTelegram(t)
-	f.reactGate = gate
-	f.failAfter.Store(1)
-	data := t.TempDir()
-	d := startTelegram(t, f, data, 42)
-	setAnswer := useRichAnswerProvider(t, d)
-	setAnswer(strings.Repeat("😀x", 20000) + "REACTION-END")
-	f.message(1, 42, 42, "multipart reply")
-	gate.expect(t, "1", "👀")
-	_ = f.next(t)
-	conn := controlWriteDB(t, data)
-	eventually(t, "second part awaiting retry", func() (bool, any) {
-		return count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND status='done' AND delivered_parts=1 AND channel_retry_at>0") == 1, nil
-	})
-	// When the second part is retried, no success can precede its confirmation.
-	f.failAfter.Store(0)
-	for {
-		select {
-		case got := <-gate.calls:
-			if got.status == "🔥" {
-				continue
-			}
-			if got != (reactionCall{"1", "👍"}) {
-				t.Fatalf("unexpected terminal reaction: %+v", got)
-			}
-			if n := count(t, conn, "SELECT count(*) FROM submissions WHERE source_key='telegram:123:1' AND delivered_parts=2 AND delivered_at IS NOT NULL"); n != 1 {
-				t.Fatal("success became visible before the final part was confirmed")
-			}
-			return
-		case <-time.After(12 * time.Second):
-			t.Fatal("missing multipart success")
-		}
-	}
-}
-
 func TestUserFeishuStatusReplacesReactionByReturnedIDOnStop(t *testing.T) {
 	t.Parallel()
 	// Given a native run held in its shell tool.
@@ -194,24 +183,15 @@ func TestUserFeishuStatusReplacesReactionByReturnedIDOnStop(t *testing.T) {
 	gate.expect(t, "om_running", "MinusOne")
 }
 
-func TestUserTelegramStatusRespectsPrivateOffAndGroupOptIn(t *testing.T) {
+func TestUserTelegramStatusRespectsPrivateOff(t *testing.T) {
 	t.Parallel()
-	// Given a Telegram bot that did not opt its groups in.
-	gate := &reactionGate{calls: make(chan reactionCall, 12)}
 	f := newFakeTelegram(t)
-	f.reactGate = gate
-	d := startTelegram(t, f, t.TempDir(), 42)
-	f.groupText(1, 42, -100, 7, "default group")
+	data := t.TempDir()
+	d := startTelegram(t, f, data, 42)
+	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false}}, nil)
+	f.message(1, 42, 42, "private off")
 	_ = f.next(t)
-	// When the owner opts in for groups but turns off the private setting.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false, "groupReactions": true}}, nil)
-	f.message(2, 42, 42, "private off")
-	_ = f.next(t)
-	f.groupText(3, 99, -100, 7, "unauthorized")
-	f.groupText(4, 42, -100, 7, "authorized group opt-in")
-	// Then only the authorized, opted-in group input can cause a reaction.
-	gate.expect(t, "4", "👀")
-	_ = f.next(t)
+	waitTelegramQueueAck(t, controlWriteDB(t, data), 1, "not_attempted")
 }
 
 func TestUserFeishuStatusPreservesExplicitOffAcrossSettingsReload(t *testing.T) {
@@ -246,20 +226,17 @@ func TestUserFeishuStatusPreservesExplicitOffAcrossSettingsReload(t *testing.T) 
 	gate.expect(t, "om_on", "OneSecond")
 }
 
-func TestUserTelegramStatusShowsFailureWhenAReplyPartIsRejected(t *testing.T) {
+func TestUserTelegramStatusShowsFailureWhenTheReplyIsRejected(t *testing.T) {
 	t.Parallel()
-	// Given a two-part reply and a permanent rejection of its second part.
+	// Given a permanent rejection of the final reply.
 	gate := &reactionGate{calls: make(chan reactionCall, 10)}
 	f := newFakeTelegram(t)
 	f.reactGate = gate
-	f.failures["sendRichMessage"] = []platformFailure{{}, {Code: 400}}
-	d := startTelegram(t, f, t.TempDir(), 42)
-	setAnswer := useRichAnswerProvider(t, d)
-	setAnswer(strings.Repeat("😀x", 20000))
-	f.message(1, 42, 42, "rejected reply part")
+	f.failures["sendRichMessage"] = []platformFailure{{Code: 400}}
+	startTelegram(t, f, t.TempDir(), 42)
+	f.message(1, 42, 42, "rejected reply")
 	gate.expect(t, "1", "👀")
-	_ = f.next(t)
-	// Then a skipped part does not masquerade as successful delivery.
+	// Then rejection appears as a delivery failure.
 	for {
 		select {
 		case got := <-gate.calls:

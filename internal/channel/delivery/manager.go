@@ -16,12 +16,19 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
+// TelegramHooks provides optional Telegram operations used by the durable sender.
+type TelegramHooks interface {
+	WakeMedia()
+}
+
 type runtime struct {
 	ctx             context.Context
 	bot             channel.Bot
 	cancel          context.CancelFunc
 	done            chan struct{}
 	wake            chan struct{}
+	inboundWake     chan struct{}
+	webhook         *channel.Webhook
 	status          channel.Status
 	reactions       map[string]*reactionWatch // guarded by Manager.mu
 	reactionWorkers sync.WaitGroup
@@ -29,20 +36,21 @@ type runtime struct {
 
 // Manager runs bots and sends replies from durable storage.
 type Manager struct {
-	ctx       context.Context
-	q         *sqlc.Queries
-	db        *sql.DB
-	chats     *chat.Service
-	agentID   string
-	setMu     sync.Mutex
-	receiveMu sync.Mutex // command receipts; per peer if throughput matters
-	mu        sync.Mutex
-	bots      map[string]*runtime
+	ctx      context.Context
+	q        *sqlc.Queries
+	db       *sql.DB
+	chats    *chat.Service
+	agentID  string
+	setMu    sync.Mutex
+	intakeMu sync.Mutex // Orders callback commits with runtime removal.
+	mu       sync.Mutex
+	commands map[string]chan struct{} // source key to active command owner
+	bots     map[string]*runtime
 }
 
 // New creates a manager. Close it before closing the database.
 func New(ctx context.Context, db *sql.DB, chats *chat.Service, agentID string) *Manager {
-	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), chats: chats, agentID: agentID, bots: make(map[string]*runtime)}
+	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), chats: chats, agentID: agentID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime)}
 }
 
 // Set stops the old bot and waits for it before starting its replacement.
@@ -50,10 +58,12 @@ func New(ctx context.Context, db *sql.DB, chats *chat.Service, agentID string) *
 func (m *Manager) Set(name string, bot channel.Bot) {
 	m.setMu.Lock()
 	defer m.setMu.Unlock()
+	m.intakeMu.Lock()
 	m.mu.Lock()
 	old := m.bots[name]
 	delete(m.bots, name)
 	m.mu.Unlock()
+	m.intakeMu.Unlock()
 	if old != nil {
 		old.cancel()
 		<-old.done
@@ -62,7 +72,10 @@ func (m *Manager) Set(name string, bot channel.Bot) {
 		return
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
-	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), reactions: make(map[string]*reactionWatch), status: channel.Status{State: "running"}}
+	r := &runtime{ctx: ctx, bot: bot, cancel: cancel, done: make(chan struct{}), wake: make(chan struct{}, 1), inboundWake: make(chan struct{}, 1), reactions: make(map[string]*reactionWatch), status: channel.Status{State: "running"}}
+	if receiver, ok := bot.(interface{ InboundWebhook() *channel.Webhook }); ok {
+		r.webhook = receiver.InboundWebhook()
+	}
 	m.mu.Lock()
 	m.bots[name] = r
 	m.mu.Unlock()
@@ -144,7 +157,7 @@ func (m *Manager) ReceivedSource(ctx context.Context, source string) (bool, erro
 	return m.chats.ReceivedSource(ctx, source)
 }
 
-// Source returns the stored input and preview state for this manager's agent.
+// Source returns the stored input and typing state for this manager's agent.
 func (m *Manager) Source(ctx context.Context, source string) (chat.SourceReceipt, error) {
 	return m.chats.LookupSource(ctx, m.agentID, source)
 }

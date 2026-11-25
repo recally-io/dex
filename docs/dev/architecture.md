@@ -23,13 +23,20 @@ for the web UI; the installed service needs neither runtime.
 The [module index](../../.agents/rules/implementation.md#modules) defines
 package ownership. `internal/app` connects the services. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
-`internal/channel/delivery` owns commands and
-durable reply delivery. The engine does not import dex business packages.
+`internal/channel/delivery` owns commands, the durable webhook inbox, and
+reply delivery. Telegram accepts only private chats. The engine uses one
+native store per agent. Startup [seals legacy Telegram group data](channels.md#upgrade-from-group-support)
+without opening its native stores.
+Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
+acknowledging them and use the same platform receive functions. The engine does
+not import dex business packages. Each business package defines its model tools.
+`internal/app` registers those [extensions](execution.md#tool-registration)
+and selects which sessions can use them.
 
 Tools and stdio MCP servers can start child processes. Bash has a default
 120-second timeout. An omitted or null `timeout` uses the default. An explicit
 `timeout` in seconds replaces it. PiG stops the shell process group and waits for it on timeout or cancellation.
-Use `monitor_set_command` for supervised long work. It has its own timeout defaults.
+Use `process_start` for supervised long work. It has its own timeout defaults.
 Other tools do not receive the bash or background timeout defaults. MCP calls have
 a 600-second timeout, but remote work can continue after cancellation. A generic
 deadline cannot safely stop a tool that ignores cancellation.
@@ -58,11 +65,12 @@ shutting down HTTP/App cleanly and re-execing the binary in place via
 `syscall.Exec`. `chat.Service` owns a two-minute maintenance lease.
 The engine closes admission and checks active operations, durable work, and
 pending settlement and memory commits. A busy check releases the gate and
-refuses maintenance. A short global receipt gate orders receipt commits and
-lease confirmation. After lease confirmation, web input returns `409` before
-the service writes a receipt. A web receipt committed before confirmation can
-return `202` and remain pending until release. Channel input can also retain
-a pending business receipt. Reconciliation resumes admission after maintenance.
+refuses maintenance. A global gate orders receipt commits, message withdrawal,
+and Monitor cancellation with lease confirmation. After lease confirmation,
+web input returns `409` before the service writes a receipt. A web receipt
+committed before confirmation can return `202` and remain pending until release.
+Channel input can also retain a pending business receipt. Reconciliation resumes
+admission after maintenance.
 The client keeps the same request ID when it retries.
 A process restart clears the in-memory lease.
 
@@ -92,7 +100,8 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, the channel outbox, Tasks, and plugin tables. Core migrations own
+receipts, channel pairings, the channel webhook inbox and Outbox, Tasks,
+and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
 start ([plugins](plugins.md#plugin-migrations)). Each agent has
 `agents/<id>/state.sqlite`, which holds native admission, runs, transcripts,
@@ -118,22 +127,45 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    does the chat service set `admitted_at` on the business receipt.
 3. If admission or the receipt write fails, reconciliation retries the same
    request ID. A pending receipt alone does not prove native admission and
-   must not suppress that retry. Reconciliation scans receipts in insertion
-   order. It stops later input of the same chat after a retryable failure.
+   must not suppress that retry. Each Session has an independent delivery gate
+   and retry delay. SQLite receipt insertion order defines FIFO in that Session.
+   A blocked input does not hold the delivery gate of another Session of the same Bot.
+   Cold Harness initialization still waits for shared model discovery, extension
+   and MCP loading, and recovery. It publishes the Harness without opening the
+   default execution environment. A Session opens the lease it needs after that
+   shared barrier. Sessions that select the same environment can share its lease.
+   The engine does not hold its lease registry lock during remote preparation.
+   Receipt creation and native admission have distinct timestamps. Structured
+   logs correlate Session waits, native start, and settlement without logging
+   message content or remote errors. See the [slow input procedure](sessions.md#diagnose-a-slow-session-input).
 4. The engine runs the model and tools. Each browser subscription receives
    typed transcript events through `live.Hub`. Queued input comes from the
    native Inbox, not from a second control transcript.
 5. The chat service waits on the native handle and stores the outcome in the
-   business receipt. The channel outbox reads settled receipts and records
-   confirmed reply parts. A restart reacquires native outcomes by request ID;
-   it does not restart a second execution loop in control.
+   business receipt. The same transaction queues eligible final replies for the
+   channel input's destination. Each Outbox row delivers one platform message.
+   `notify_user` and pure Routine alerts queue messages without waiting for a
+   model outcome. A restart reacquires native outcomes by request ID; it does
+   not restart a second execution loop in control.
    Telegram and Feishu/Lark status reactions observe these facts independently
    of the outbox. See [Channels](channels.md#shared-channels).
+
+HTTP requests and paired channels authenticate at their entry points. Both
+represent the same Owner. Disconnecting a channel ends its reply route. It
+does not remove the authority of an input that Dex already accepted. See
+[Pairing and pending deliveries](channels.md#pairing-and-pending-deliveries).
 
 A fork request can carry a UUID. Control commits its receipt with the new Chat.
 A retry with the same source and boundary returns that Chat; a mismatch returns
 `409`. A concurrent retry can create an extra native conversation before control
 rejects its receipt. That conversation has no control reference and is invisible.
+
+Manual and automatic compaction use the native range selection and keep recent
+context unchanged. Dex supplies a local view of older context instead of calling
+a model for a summary. The view contains selected user and assistant text, with
+native entry IDs. It is limited to 4 KiB, including up to 1 KiB of manual compact
+instructions. It does not copy tool output, thinking, or attachments. Compaction
+does not delete entries from session history or change who can read them.
 
 Manual compact with a UUID runs at most once per ID. Control records the chat and
 instructions before the native call. The native transaction commits a request
@@ -156,7 +188,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
 | ----------------------------- | -------------------------------------------------------------------------- |
 | [Agents](agents.md)           | Agents and the HTTP API, settings, memory, and bot tools                   |
 | [Sessions](sessions.md)       | Main, Chats, child sessions, internal delegation, and session environments |
-| [Tasks](tasks.md)             | The Task Inbox, the event store, holds, Task alerts, and Task tools        |
+| [Tasks](tasks.md)             | Board, Task Session links, the event store, holds, alerts, and Task tools  |
 | [Task Board](task-board.md)   | Target Bot-centric append-only Task Board design, auth, and rollout (#291) |
 | [Plugins](plugins.md)         | Optional Task sources: GitHub, Webhook, email, and the plugin boundary     |
 | [Execution](execution.md)     | The native engine boundary, background commands, and transcripts           |
@@ -193,15 +225,13 @@ Each subsystem has its own document. This overview gives only the boundaries.
   missed time when it is at most 1 h old; otherwise it records that time as
   skipped. It ignores the older missed times.
 - **Telegram API error.** The bot retries `getUpdates` after 5 s, from the
-  first update that it did not store. A failed reply part stays undelivered.
-  The channel sender retries it with a delay from 5 s to 60 s and after a
-  restart. Confirmed parts are skipped. Telegram errors 400 and 403 skip the
-  rejected part, so an unreachable peer does not block other peers. A crash
-  after remote success but before the local commit can duplicate one part.
+  first update that it did not store. The Outbox retries temporary send errors
+  with backoff and resumes after restart. A permanent error marks the delivery
+  failed and does not block other peers. Telegram does not provide an idempotency
+  key, so a crash before the local receipt commit can duplicate the message.
 - **WeChat API error.** A temporary receive or runtime read error retries after
-  5 s without a settings change or cursor advance. Failed reply parts stay in
-  durable delivery storage.
-  A permanent destination rejection skips the part. Either `ret == -14` or
+  5 s without a settings change or cursor advance. A permanent destination
+  rejection marks the delivery failed. Either `ret == -14` or
   `errcode == -14` pauses API calls for 1 h and sets status to `needs_login`.
   A fresh QR login clears the pause and wakes the sender. Pending replies
   remain available for delivery.
@@ -221,12 +251,15 @@ Telegram bot without allowed users. WeChat captures the owner ID from QR
 confirmation and rejects a login without that ID. Other WeChat senders never
 reach the agent. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
-cannot send messages or change settings.
+cannot send messages or change settings. [Channel approval pages](channels.md#owner-channel-tools)
+use the same cross-origin check. When dex requires sign-in, channel approval
+pages require a web session cookie.
 
-`control.sqlite` holds provider keys, channel tokens, WeChat context tokens,
-plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain text. WeChat logs exclude credentials and remote error text. The
-data directory is created with mode 0700. The API never returns a key or a
-token.
+`control.sqlite` holds provider keys, manual channel tokens, WeChat context
+tokens, plugin source secrets, GitHub Pull tokens, and IMAP passwords as plain
+text. Telegram manager and managed bot tokens stay in the private [vault](extensions.md#secret-vault).
+WeChat logs exclude credentials and remote error text. Dex creates the data
+directory with mode 0700. The API never returns a key or a token.
 
 Uploads: a file name with a path, a control character, or more than 255
 bytes is refused. An upload ID must be a UUID in its normal form, so it
@@ -244,7 +277,10 @@ in `env` and `headers`. The Extensions API and `mcp_server_list` show status,
 tool names, and the unresolved references. `mcp_server_get` hides plain
 environment and header values and URL queries. A failed server shows a safe
 error, such as an HTTP status or the name of a missing secret. To see the full
-error, run the server by hand.
+error, run the server by hand. Remote HTTP MCP connections can use
+[browser OAuth](extensions.md#mcp-browser-authorization). Dex stores those
+grants in private vault files and sends bearer tokens only to the authorized
+MCP endpoint.
 
 Every chat reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to
@@ -261,7 +297,7 @@ such as `DEX_TOKEN` do not reach tools unless a shell rc file exports them.
 The [vault](extensions.md#secret-vault) encrypts shared and agent-level
 secrets with age. Only the control host resolves references. It passes values
 in the process environment, not in command arguments. It masks exact values
-in final tool results and command Monitor wake-ups. Local tools run as the dex
+in final tool results and Process wake-ups. Local tools run as the dex
 user and have the same access to the control files as that user.
 
 ## Limits
@@ -301,6 +337,8 @@ it is not the source of execution state.
 Keep one transcript projection in the engine. History, snapshots, and live
 events use durable entries and the native Inbox. The live hub owns transport
 and empty-chat attachment, with no second transcript or execution model.
+The Web client also displays [explicit Web notifications](sessions.md#web-notifications)
+for explicit Web notifications. That projection does not write native entries.
 
 The tests cover separate behavior and failure cases. Keep restart, duplicate
 message, multiple browser streams, model errors, tool results, and DST cases.
@@ -313,21 +351,21 @@ renames the original Timer table in place and treats its rows as one-run
 prompt Monitors. The existing due time, submission IDs, deduplication key,
 and one-hour grace rule stay. There are no old tool or API aliases.
 
-Main, Chat, child sessions, and tasks can use both kinds of Monitor from any
-turn. Dreams have no Monitor tools. `monitor_list` and `monitor_cancel` act
-only on Monitors in the calling session. Tool results add `schedule-` or
-`command-` to the stored ID. Use the prefixed ID to cancel a Monitor. The
-session can have at most 32 active Monitors across both kinds. Each Monitor in a chain of wake-ups advances the
-depth. After six steps, wait for user input before setting another Monitor.
+Main, Chat, child sessions, and tasks can set Monitors and start Processes.
+Dreams have neither tool group. Both groups use the same `monitors` extension.
+`monitor_list` lists only scheduled and check Monitors in the calling session.
+`monitor_cancel` accepts the `schedule-` ID from the tool or the raw ID from
+HTTP. The session shares a cap of 32 active Monitors and Processes. Both types
+of wake-up count toward the same depth limit of six.
 
-`monitor_set_schedule` takes `at` or `delaySeconds`, and a prompt. Use
+`monitor_set` takes `at` or `delaySeconds`, and a prompt. Use
 `maxRuns` (1–100), `intervalSeconds` (at least 60 for multiple runs), and an
 optional `expiresAt` for repeated checks. A check Monitor takes `checkCommand`.
 Repeated and check Monitors have a maximum lifetime of seven days. `env` is
 valid only with `checkCommand`. It overrides environment variables for that
 check. Use non-secret values: dex stores these arguments.
 
-`monitor_set_command` starts a [command Monitor](execution.md#command-monitors).
+`process_start` starts a [Process](execution.md#session-processes).
 It can wake the session on exit or in batches of stdout lines. Use `wake: none`
 for a command that sends no wake-up. A bot can run at most eight commands.
 
@@ -345,9 +383,15 @@ A script claim is durable. On restart an unfinished claim stops with an
 interrupted outcome, rather than rerunning a command whose effect is not
 known. A committed baseline and the next due time survive restart. Dex
 commits the result and any follow-up intent together with a stable request
-ID. The normal session dispatcher admits that intent as a follow-up, not a
-steer. Stop, Clear, cancellation, archive, and changed target authority block
-stale results. Dex rechecks the target before native admission. Cancellation
+ID. The scheduler still checks due Monitors in one serial batch. A finish can
+wait for its own Session gate so it cannot race explicit Monitor cancellation.
+Ordinary inputs do not use the scheduler. The normal Session dispatcher admits
+the Monitor intent as a follow-up. Session cancellation, Clear, Monitor
+cancellation, archive, and changed target authority block stale results.
+The engine's Stop entry point applies task or Session cancellation. A task
+Stop uses the exact native task ID and leaves Monitors alone. See
+[Sessions](sessions.md) for the task handoff and Inbox recovery rules. Monitor
+cancellation is a separate action. Dex rechecks the target before native admission. Cancellation
 withdraws any Monitor inputs that are still queued. It does not interrupt a
 prompt that already started. An in-flight check can finish within its time
 limit, but it cannot queue a new prompt after cancellation. Dex does not move

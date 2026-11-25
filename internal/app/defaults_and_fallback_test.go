@@ -11,13 +11,13 @@ import (
 
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 	t.Parallel()
 	// Given a fresh installation with an E2B environment.
-	fake := execenvtest.NewFakeE2B(t, "e2b_live_secret")
+	fake := runnertest.NewFakeE2B(t, "e2b_live_secret")
 	d := startDexWith(t, app.Config{
 		DataDir:    t.TempDir(),
 		E2BAPIURL:  fake.APIURL(),

@@ -157,6 +157,10 @@ func (s *Service) activateWechat(ctx context.Context, agentID string, cfg *wecha
 func (s *Service) DeleteWechat(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.deleteWechat(ctx, agentID)
+}
+
+func (s *Service) deleteWechat(ctx context.Context, agentID string) error {
 	s.channelSession(agentID).login = nil
 	s.channelSession(agentID).loginID = ""
 	previous, err := s.WechatConfig(ctx, agentID)

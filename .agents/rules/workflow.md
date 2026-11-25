@@ -22,8 +22,9 @@ Read this for every task.
 - Make each commit one logical change. Commit formatter output separately from
   behavior changes.
 - Before each push, the pre-push hook runs `mise run check:quick`, and a push
-  stops when it fails. It runs the static checks and the tests of the changed
-  Go packages, in about one minute. Commits run no check.
+  stops when it fails. It runs only the checks whose inputs changed, and the
+  tests of the changed Go packages without `-race`, in under one minute. Commits
+  run no check.
 - CI runs the full `mise run check`, including the `internal/app` tests
   without the race detector.
   Mark a PR ready or merge it only when CI passes.

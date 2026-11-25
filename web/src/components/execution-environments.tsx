@@ -66,10 +66,10 @@ export function ExecutionEnvironments() {
 
   return (
     <Section
-      title="Execution environments"
+      title="Available Runners"
       caption={
         envs.length
-          ? `${envs.length + 1} available (1 built-in, ${envs.length} remote)`
+          ? `${envs.length + 1} total, including the built-in Local Runner`
           : "Where bots run commands and store workspaces."
       }
       action={
@@ -80,7 +80,7 @@ export function ExecutionEnvironments() {
             </Button>
           ) : null}
           <Button size="sm" onClick={() => setDialog("new")}>
-            Add environment
+            Add Runner
           </Button>
         </div>
       }
@@ -88,16 +88,12 @@ export function ExecutionEnvironments() {
       {query.isPending ? (
         <Loading />
       ) : query.isError ? (
-        <Failure
-          title="Could not load execution environments"
-          error={query.error}
-          retry={() => void query.refetch()}
-        />
+        <Failure title="Could not load Runners" error={query.error} retry={() => void query.refetch()} />
       ) : (
         <div className="flex flex-col gap-3">
           <Panel>
             <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-              <h3 className="text-[14px] font-medium text-foreground">This computer</h3>
+              <h3 className="text-[14px] font-medium text-foreground">Local</h3>
               <Badge variant="secondary" className="h-5 px-2 text-[11px]">
                 Built-in
               </Badge>
@@ -354,6 +350,9 @@ function EnvironmentCard({
         </Button>
       </div>
 
+      {env.desc ? (
+        <p className="px-4 pt-3 text-sm break-words whitespace-pre-wrap text-muted-foreground">{env.desc}</p>
+      ) : null}
       <Facts rows={rows} />
 
       {isRunner ? (
@@ -458,8 +457,8 @@ function DeleteEnvironmentDialog({
   return (
     <Confirm
       title={`Remove ${env.name}?`}
-      description="dex deletes this environment configuration."
-      confirmLabel={current ? "Reassign bots and remove" : "Remove environment"}
+      description="dex deletes this Runner configuration."
+      confirmLabel={current ? "Reassign bots and remove" : "Remove Runner"}
       pending={pending}
       error={reassign.error ?? remove.error}
       onCancel={onClose}
@@ -468,7 +467,7 @@ function DeleteEnvironmentDialog({
       {current ? (
         <div className="flex flex-col gap-3 rounded-md bg-orange-tint p-3">
           <p className="text-[13px] font-medium text-foreground">
-            {names} {users.length === 1 ? "uses" : "use"} this environment now.
+            {names} {users.length === 1 ? "uses" : "use"} this Runner now.
           </p>
           <Field
             label={users.length === 1 ? "Before removal, move the bot to" : "Before removal, move bots to"}
@@ -480,7 +479,7 @@ function DeleteEnvironmentDialog({
                 disabled={pending}
                 onChange={(event) => setTargetEnvId(event.target.value)}
               >
-                <option value="">This computer</option>
+                <option value="">Local</option>
                 {others.map((item) => (
                   <option key={item.id} value={item.id}>
                     {environmentOptionLabel(item)}

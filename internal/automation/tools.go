@@ -25,39 +25,36 @@ func NewToolService(db *sql.DB, service *Service, wake func(int64)) *ToolService
 }
 
 func routineCaller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
-	if c.Scope != "" {
-		return sqlc.Conversation{}, sqlc.Submission{}, ErrInvalid
-	}
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionScope: c.Scope, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
+	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err
 	}
 	if !chat.Writable(conv.ChannelKey) {
-		return conv, sqlc.Submission{}, fmt.Errorf("%w: routines require main or a writable Chat", ErrInvalid)
+		return conv, sqlc.Submission{}, fmt.Errorf("%w: automations require Main or a writable session", ErrInvalid)
 	}
 	source, err := q.GetSubmission(ctx, c.SourceRequestID)
 	if err != nil {
 		return conv, source, err
 	}
 	if source.ConversationID != conv.ID || source.Kind != "message" || source.Origin == "automation" || source.Origin == "task" || source.Origin == "dream" {
-		return conv, source, fmt.Errorf("%w: routine tools require a user input in this conversation", ErrInvalid)
+		return conv, source, fmt.Errorf("%w: automation tools require a user input in this conversation", ErrInvalid)
 	}
 	return conv, source, nil
 }
 
-func toolRun(r Run) engine.RoutineRun {
-	return engine.RoutineRun{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate, ID: r.ID, DueAt: r.DueAt, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason, ChatID: r.ChatID}
+func toolRun(r Run) RoutineRun {
+	return RoutineRun{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate, ID: r.ID, DueAt: r.DueAt, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason, ChatID: r.ChatID}
 }
 
-func routineView(a Automation) engine.RoutineInfo {
-	out := engine.RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: engine.RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, TargetConversationID: a.TargetConversationID, Enabled: a.Enabled, Cwd: a.Cwd, EnvironmentID: a.EnvironmentID, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
+func routineView(a Automation) RoutineInfo {
+	out := RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, TargetConversationID: a.TargetConversationID, Enabled: a.Enabled, Cwd: a.Cwd, EnvironmentID: a.EnvironmentID, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	if a.LastRun != nil {
 		out.LastRun = new(toolRun(*a.LastRun))
 	}
 	return out
 }
 
-func (s *ToolService) List(ctx context.Context, c engine.TaskContext) ([]engine.RoutineInfo, error) {
+func (s *ToolService) List(ctx context.Context, c engine.TaskContext) ([]RoutineInfo, error) {
 	if _, _, err := routineCaller(ctx, s.service.q, c); err != nil {
 		return nil, err
 	}
@@ -65,7 +62,7 @@ func (s *ToolService) List(ctx context.Context, c engine.TaskContext) ([]engine.
 	if err != nil {
 		return nil, err
 	}
-	out := make([]engine.RoutineInfo, len(rows))
+	out := make([]RoutineInfo, len(rows))
 	for i, a := range rows {
 		out[i] = routineView(a)
 		out[i].Prompt = ""
@@ -73,20 +70,20 @@ func (s *ToolService) List(ctx context.Context, c engine.TaskContext) ([]engine.
 	return out, nil
 }
 
-func (s *ToolService) Get(ctx context.Context, c engine.TaskContext, id string) (engine.RoutineInfo, error) {
+func (s *ToolService) Get(ctx context.Context, c engine.TaskContext, id string) (RoutineInfo, error) {
 	if _, _, err := routineCaller(ctx, s.service.q, c); err != nil {
-		return engine.RoutineInfo{}, err
+		return RoutineInfo{}, err
 	}
 	a, err := s.service.Get(ctx, c.AgentID, id)
 	if err != nil {
-		return engine.RoutineInfo{}, err
+		return RoutineInfo{}, err
 	}
 	runs, err := s.service.Runs(ctx, c.AgentID, id, 10)
 	if err != nil {
-		return engine.RoutineInfo{}, err
+		return RoutineInfo{}, err
 	}
 	out := routineView(a)
-	out.Runs = make([]engine.RoutineRun, len(runs))
+	out.Runs = make([]RoutineRun, len(runs))
 	for i, r := range runs {
 		out.Runs[i] = toolRun(r)
 	}
@@ -146,7 +143,7 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	if err = tx.Commit(); err != nil {
 		return err
 	}
-	if run, ok := result.(engine.RoutineRun); ok {
+	if run, ok := result.(RoutineRun); ok {
 		if run.ChatID != 0 {
 			s.wake(run.ChatID)
 		} else if s.service.wakeOutbox != nil {
@@ -156,7 +153,7 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	return json.Unmarshal(data, out)
 }
 
-func applyPatch(in *Input, p engine.RoutinePatch) {
+func applyPatch(in *Input, p RoutinePatch) {
 	if p.Notification != nil {
 		in.Notification = p.Notification
 	}
@@ -196,14 +193,14 @@ func applyPatch(in *Input, p engine.RoutinePatch) {
 	}
 }
 
-func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p engine.RoutinePatch) (engine.RoutineInfo, error) {
-	var out engine.RoutineInfo
+func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p RoutinePatch) (RoutineInfo, error) {
+	var out RoutineInfo
 	err := s.mutate(ctx, c, "create", func(local *Service, conv sqlc.Conversation) (any, error) {
 		if p.ID != "" || p.Name == nil || p.Prompt == nil || p.Schedule == nil || p.TimeZone == nil {
 			return nil, invalid("name, prompt, schedule and explicit timeZone are required")
 		}
 		// The routine runs where this conversation runs, with its cwd.
-		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, EnvironmentID: conv.EnvironmentID, Notification: &engine.RoutineNotification{Mode: "default"}}
+		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, EnvironmentID: conv.EnvironmentID, Notification: &RoutineNotification{Mode: "default"}}
 		applyPatch(&in, p)
 		a, err := local.Create(ctx, c.AgentID, in)
 		return routineView(a), err
@@ -211,8 +208,8 @@ func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p engine
 	return out, err
 }
 
-func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p engine.RoutinePatch) (engine.RoutineInfo, error) {
-	var out engine.RoutineInfo
+func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p RoutinePatch) (RoutineInfo, error) {
+	var out RoutineInfo
 	err := s.mutate(ctx, c, "update", func(local *Service, _ sqlc.Conversation) (any, error) {
 		a, err := local.Get(ctx, c.AgentID, p.ID)
 		if err != nil {
@@ -266,8 +263,8 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p engine
 	return out, err
 }
 
-func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) (engine.RoutineRun, error) {
-	var out engine.RoutineRun
+func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) (RoutineRun, error) {
+	var out RoutineRun
 	// The environment check does network I/O, so it comes before the tool transaction. The input
 	// transaction compares the environment again.
 	// A missing routine is left to the transaction, so a retry of a stored call still replays.
@@ -288,7 +285,7 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 		// The writer can confirm the environment, but two sessions can share it. Do not
 		// redirect a tool run to a replacement target selected during preflight.
 		if row.Session == "session" && pre != nil && row.TargetConversationID.Valid && (preRow.Session != row.Session || preRow.TargetConversationID != row.TargetConversationID) {
-			return nil, fmt.Errorf("%w: the routine target changed during its check; run it again", engine.ErrBusy)
+			return nil, fmt.Errorf("%w: the automation target changed during its check; run it again", engine.ErrBusy)
 		}
 		r, err := local.admit(ctx, row, sql.NullInt64{}, "", pre)
 		return toolRun(r), err

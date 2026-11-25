@@ -77,9 +77,10 @@ RETURNING *;
 
 -- name: EnsureConversation :one
 -- The title and the settings are set only when the conversation is created.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, @execution_scope, coalesce(nullif(CAST(@scope_context AS TEXT), ''), '{}'))
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+    WHERE conversations.execution_scope = ''
 RETURNING *;
 
 -- name: EnsureEmptyChat :one
@@ -102,28 +103,28 @@ RETURNING *;
 -- name: CreateFork :one
 -- A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
 -- the fork starts empty, so the first message creates the native conversation.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
 -- Keeps the first archive time when the chat is archived already. A child session from before
 -- child sessions has a task: key, and it archives too.
 UPDATE conversations SET archived_at = coalesce(archived_at, @archived_at)
-WHERE id = @id AND agent_id = @agent_id AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND agent_id = @agent_id AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: UnarchiveChat :exec
 UPDATE conversations SET archived_at = NULL
-WHERE id = @id AND agent_id = @agent_id AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND agent_id = @agent_id AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: SetFirstChatTitle :exec
 UPDATE conversations SET title = ? WHERE id = ? AND title = '';
 
 -- name: GetConversation :one
-SELECT * FROM conversations WHERE id = ?;
+SELECT * FROM conversations WHERE id = ? AND execution_scope = '';
 
 -- name: GetConversationByKey :one
-SELECT * FROM conversations WHERE agent_id = ? AND channel_key = ?;
+SELECT * FROM conversations WHERE agent_id = ? AND channel_key = ? AND execution_scope = '';
 
 -- name: SetConversationSettings :exec
 UPDATE conversations SET model_provider = ?, model_id = ?, thinking_level = ?
@@ -135,8 +136,23 @@ UPDATE conversations SET execution_id = ? WHERE id = ?;
 -- name: CreateSubmission :execrows
 -- A message whose ID or source key exists already is not stored again. An empty when_busy
 -- keeps the column default, so only callers that choose a mode name one.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, when_busy, status, created_at, channel_context)
-VALUES (@id, @conversation_id, @content, @attachments, @source_key, @origin, @kind, coalesce(nullif(CAST(@when_busy AS TEXT), ''), 'followUp'), 'pending', @created_at, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'))
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, when_busy, status, created_at, channel_context)
+VALUES (
+    @id,
+    @conversation_id,
+    @content,
+    @attachments,
+    @source_key,
+    @origin,
+    @producer,
+    coalesce(CAST(@reply_channel AS TEXT), ''),
+    coalesce(CAST(@reply_peer AS TEXT), ''),
+    @kind,
+    coalesce(nullif(CAST(@when_busy AS TEXT), ''), 'followUp'),
+    'pending',
+    @created_at,
+    coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}')
+)
 ON CONFLICT DO NOTHING;
 
 -- name: GetSubmission :one
@@ -171,6 +187,10 @@ SELECT
     s.attachments,
     s.kind,
     s.origin,
+    s.producer,
+    s.reply_channel,
+    s.reply_peer,
+    s.created_at,
     s.admitted_at,
     s.when_busy,
     s.conversation_id,
@@ -178,7 +198,7 @@ SELECT
     c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending'
+WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(@conversation_id AS INTEGER) = 0 OR s.conversation_id = @conversation_id)
 ORDER BY s.rowid;
 
 -- name: ListChats :many
@@ -210,7 +230,7 @@ JOIN agents a ON a.id = c.agent_id
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id)
+WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id) AND c.execution_scope = ''
     AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
@@ -234,7 +254,6 @@ SELECT
     c.archived_at,
     c.parent_id,
     c.execution_id,
-    c.execution_scope,
     c.forked_from,
     f.title AS forked_from_title,
     f.channel_key AS forked_from_key,
@@ -249,7 +268,7 @@ LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.execution_scope = '' AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 
 -- name: ListProviders :many
@@ -275,9 +294,10 @@ DELETE FROM providers WHERE id = ?;
 SELECT * FROM telegram_settings WHERE agent_id = ?;
 
 -- name: SetTelegramSettings :one
-INSERT INTO telegram_settings (agent_id, token, allowed_users, options)
-VALUES (?, ?, ?, ?)
+INSERT INTO telegram_settings (agent_id, token, allowed_users, options, webhook_url, webhook_secret)
+VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, options = excluded.options, pairing_code = '', pairing_expires = 0,
+webhook_url = excluded.webhook_url, webhook_secret = excluded.webhook_secret,
 retry_at = CASE WHEN substr(token, 1, instr(token, ':') - 1) = substr(excluded.token, 1, instr(excluded.token, ':') - 1) THEN retry_at ELSE 0 END
 RETURNING retry_at;
 
@@ -411,7 +431,7 @@ WHERE
         OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');
 
 -- name: ListRoutineTargetCandidates :many
-SELECT * FROM conversations WHERE agent_id = ? ORDER BY created_at DESC, id DESC;
+SELECT * FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC;
 
 -- name: CountBoundAutomationPending :one
 SELECT count(*) FROM automation_runs r
@@ -436,13 +456,21 @@ SELECT count(*) FROM submissions WHERE conversation_id = ? AND status = 'pending
 UPDATE submissions SET admitted_at = ? WHERE id = ? AND admitted_at IS NULL;
 
 -- name: RequestExecutionAbort :exec
-UPDATE conversations SET abort_pending = 1 WHERE id = ? AND execution_id IS NOT NULL;
+UPDATE conversations SET abort_pending = 1 WHERE id = ?;
 
 -- name: FinishExecutionAbort :exec
-UPDATE conversations SET abort_pending = 0 WHERE agent_id = ? AND execution_scope = ? AND execution_id = ?;
+UPDATE conversations SET abort_pending = 0 WHERE id = ?;
 
 -- name: ListPendingExecutionAborts :many
-SELECT id, agent_id, execution_id, execution_scope FROM conversations WHERE abort_pending = 1;
+-- Retired peer-keyed groups used the agent store. Isolate them before it resumes.
+-- Do not pass IDs from the separate group stores to the agent Harness.
+SELECT c.id, c.agent_id, c.execution_id FROM conversations c
+WHERE (c.abort_pending = 1 AND c.execution_scope = '')
+    OR (c.execution_scope = 'retired-telegram-legacy' AND c.execution_id IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM conversations active WHERE active.agent_id = c.agent_id
+                AND active.execution_scope = '' AND active.execution_id = c.execution_id
+        ));
 
 -- name: SetConversationCwd :exec
 UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?;
@@ -491,12 +519,12 @@ UPDATE automation_runs SET
     outcome = CASE WHEN NOT (CAST(@execution_status AS TEXT) = 'done') OR outcome = '' THEN 'failed' ELSE outcome END,
     summary = CASE
         WHEN NOT (CAST(@execution_status AS TEXT) = 'done') THEN @failure
-        WHEN outcome = '' THEN 'run ended without report_check'
+        WHEN outcome = '' THEN 'run ended without automation_report'
         ELSE summary END,
     status = CASE WHEN NOT (CAST(@execution_status AS TEXT) = 'done') OR outcome IN ('', 'failed') THEN 'failed' ELSE status END,
     reason = CASE
         WHEN NOT (CAST(@execution_status AS TEXT) = 'done') THEN @failure
-        WHEN outcome = '' THEN 'run ended without report_check'
+        WHEN outcome = '' THEN 'run ended without automation_report'
         WHEN outcome = 'failed' THEN summary
         ELSE reason END,
     duplicate = CASE WHEN (CAST(@execution_status AS TEXT) = 'done') AND outcome <> '' AND change_key <> '' AND EXISTS (

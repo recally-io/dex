@@ -34,7 +34,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 				ai.FauxAssistantMessage(ai.FauxContentString("one batch answer"), ai.FauxAssistantMessageOptions{}),
 			})
 			r.agents.Catalog.Models.SetProvider(provider.Provider())
-			child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Batch", Message: "root", Provider: "review-boundary", ModelID: "model"})
+			child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Batch", Message: "root", Provider: "review-boundary", ModelID: "model"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -50,7 +50,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 			for i, mode := range []string{"steer", "steer", "queue"} {
 				call := source
 				call.Key = fmt.Sprintf("bot/batch-%d", i)
-				if _, err := r.service.ToolSessionSend(t.Context(), call, engine.SessionSendArgs{ID: child.ID, Message: fmt.Sprintf("input %d", i), Mode: mode}); err != nil {
+				if _, err := r.service.ToolSessionSend(t.Context(), call, SessionSendArgs{ID: child.ID, Message: fmt.Sprintf("input %d", i), Mode: mode}); err != nil {
 					t.Fatal(err)
 				}
 				id := turnID(call.Key)
@@ -102,7 +102,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Maintenance", Message: "first"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Maintenance", Message: "first"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,18 +112,18 @@ func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 	awaitReceipt(t, r, turnID(source.Key))
 	call := source
 	call.Key = "bot/queued-parent"
-	if _, err := r.service.ToolSessionSend(t.Context(), call, engine.SessionSendArgs{ID: child.ID, Message: "parent queued"}); err != nil {
+	if _, err := r.service.ToolSessionSend(t.Context(), call, SessionSendArgs{ID: child.ID, Message: "parent queued"}); err != nil {
 		t.Fatal(err)
 	}
 	childID, _ := strconv.ParseInt(child.ID, 10, 64)
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "queued-user", ConversationID: childID, Content: "user queued", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 2}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "queued-user", ConversationID: childID, Content: "user queued", Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = r.service.ReleaseMaintenance(context.Background()) })
-	err = r.service.Stop(t.Context(), "bot", parent)
+	err = r.service.CancelSession(t.Context(), "bot", parent)
 	if !errors.Is(err, engine.ErrMaintenance) {
 		t.Fatalf("expected an explicit maintenance error: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.Stop(t.Context(), "bot", parent); err != nil {
+	if err := r.service.CancelSession(t.Context(), "bot", parent); err != nil {
 		t.Fatal(err)
 	}
 	if got := receipt(t, r, turnID(call.Key)); got.Reason.String != "stopped" {
@@ -151,7 +151,7 @@ func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
 	r := startNative(t, "bash")
 	parent, source := taskParent(t, r)
 	marker := filepath.Join(r.dir, "root-started")
-	child, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Race", Message: "touch " + marker + "; sleep 60"})
+	child, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Race", Message: "touch " + marker + "; sleep 60"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
 		}
 	}
 	stopDone := make(chan error, 1)
-	go func() { stopDone <- r.service.Stop(t.Context(), "bot", parent) }()
+	go func() { stopDone <- r.service.CancelSession(t.Context(), "bot", parent) }()
 	<-snapshot
 	c, err := r.q.GetConversation(t.Context(), childID)
 	if err != nil {
@@ -244,7 +244,7 @@ func TestUserFollowUpQueueAllBatchesSameOriginWakes(t *testing.T) {
 		wakeIDs = append(wakeIDs, id)
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 			ID: id, ConversationID: parent, Content: fmt.Sprintf("wake %d", i),
-			Attachments: "null", Origin: "web", Kind: "task_result", CreatedAt: int64(i + 1),
+			Attachments: "null", Origin: "web", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: int64(i + 1),
 		}); err != nil {
 			t.Fatal(err)
 		}

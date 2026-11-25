@@ -56,8 +56,8 @@ func vaultExtension(agentID string, secrets vault.Snapshot) *durable.Extension {
 	return &durable.Extension{
 		Name: "vault",
 		Tools: []*durable.ToolRegistration{
-			sessionTool(agentID, "vault_list", "List the available vault secrets by name, level, and last change. Values are not returned. Use vault:NAME to refer to a secret.",
-				objectSchema([]string{}, map[string]any{}), true, func(context.Context, TaskContext, struct{}) ([]vault.Metadata, error) {
+			JSONTool(agentID, "secret_list", "List the available vault secrets by name, level, and last change. Values are not returned. Use vault:NAME to refer to a secret.",
+				ObjectSchema([]string{}, map[string]any{}), true, func(context.Context, TaskContext, struct{}) ([]vault.Metadata, error) {
 					return secrets.List(), nil
 				}),
 		},

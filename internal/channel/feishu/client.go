@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +20,7 @@ import (
 
 // Config holds credentials. APIURL is a test boundary; an empty URL selects Brand.
 type Config struct {
+	Webhook   WebhookConfig
 	AppID     string
 	AppSecret string
 	OwnerID   string
@@ -276,16 +276,6 @@ func (c *client) Send(ctx context.Context, receiver, kind, content, deliveryID s
 }
 
 // Patch replaces an interactive card.
-func (c *client) Patch(ctx context.Context, id, content string) error {
-	_, err := authorized(ctx, c, func(token string) (*larkim.PatchMessageResp, error) {
-		req := larkim.NewPatchMessageReqBuilder().MessageId(id).Body(&larkim.PatchMessageReqBody{Content: new(content)}).Build()
-		return rest(ctx, c, func(ctx context.Context) (*larkim.PatchMessageResp, error) {
-			return c.im.Message.Patch(ctx, req, larkcore.WithTenantAccessToken(token))
-		})
-	})
-	return err
-}
-
 // Download streams one message resource to the caller. The caller closes the body.
 func (c *client) Download(ctx context.Context, messageID, key, kind string) (io.ReadCloser, error) {
 	// The SDK buffers file responses before returning them. Dex enforces the
@@ -331,25 +321,4 @@ func (b *resourceBody) Close() error {
 func textContent(text string) string {
 	b, _ := json.Marshal(map[string]string{"text": text})
 	return string(b)
-}
-
-// parts splits UTF-8 text below the platform content limit.
-func parts(text string) []string {
-	const limit = 4000
-	var parts []string
-	for len(text) > limit {
-		end := limit
-		for end > 0 && text[end]&0xc0 == 0x80 {
-			end--
-		}
-		if line := strings.LastIndexByte(text[:end], '\n'); line > limit/2 {
-			end = line + 1
-		}
-		parts = append(parts, text[:end])
-		text = text[end:]
-	}
-	if text != "" {
-		parts = append(parts, text)
-	}
-	return parts
 }

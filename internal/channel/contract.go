@@ -14,9 +14,6 @@ import (
 // Other errors keep the part for retry.
 var ErrPermanent = errors.New("permanent channel delivery failure")
 
-// ErrGroupRejected permits a durable switch to single-file delivery after a definitive rejection.
-var ErrGroupRejected = errors.New("media group was rejected")
-
 // Status is the public runtime state. Reason must contain no credentials.
 type Status struct {
 	State  string `json:"state"`
@@ -41,7 +38,7 @@ type Bot interface {
 	// message ID for that part. ErrPermanent rejects the part; other errors keep
 	// it for retry. A Part variant that this adapter cannot deliver is the
 	// adapter's own decision; it does not change what other platforms support.
-	Send(ctx context.Context, peer, deliveryID string, part int, content Part) (Receipt, error)
+	Send(ctx context.Context, peer, deliveryID string, content Part) (Receipt, error)
 }
 
 // Reply is the settled answer or the reason no answer is available.

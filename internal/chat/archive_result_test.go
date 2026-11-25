@@ -23,7 +23,7 @@ func TestUserArchivedBotRejectsClear(t *testing.T) {
 
 func TestUserArchivedParentReceivesNoChildResult(t *testing.T) {
 	r, _, source := archiveFixture(t)
-	ref, err := r.service.ToolSessionNew(t.Context(), source, engine.SessionNewArgs{Title: "Child", Message: "work"})
+	ref, err := r.service.ToolSessionNew(t.Context(), source, SessionNewArgs{Title: "Child", Message: "work"})
 	if err != nil {
 		t.Fatal(err)
 	}

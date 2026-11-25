@@ -9,7 +9,7 @@ import (
 	"uuid"
 )
 
-func TestUserSteerKeepsChannelRunRecipient(t *testing.T) {
+func TestUserWebSteerMovesChannelRunReplyToWeb(t *testing.T) {
 	t.Parallel()
 	e := newMainEntry(t, "telegram")
 	d := e.d
@@ -28,7 +28,6 @@ func TestUserSteerKeepsChannelRunRecipient(t *testing.T) {
 	w := d.watch(t, main)
 	w.until(t, "steer queued", queuedSteer(steer))
 	run.open()
-	e.wait(t, "bash: steered")
 	for _, id := range []string{first, steer} {
 		waitResultSubmission(t, conn, id, "done")
 	}
@@ -38,7 +37,7 @@ func TestUserSteerKeepsChannelRunRecipient(t *testing.T) {
 	}
 	e.send("echo delivery-barrier")
 	e.wait(t, "bash: delivery-barrier")
-	if got := e.sends(); !slices.Equal(got, []channelSend{{Peer: e.peer, Text: "bash: steered"}, {Peer: e.peer, Text: "bash: delivery-barrier"}}) {
+	if got := e.sends(); !slices.Equal(got, []channelSend{{Peer: e.peer, Text: "bash: delivery-barrier"}}) {
 		t.Fatalf("channel replies = %+v", got)
 	}
 }
@@ -71,7 +70,7 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT id, origin, kind FROM submissions WHERE conversation_id=? AND kind='task_result'", main).Scan(&resultID, &origin, &kind); err != nil {
 		t.Fatal(err)
 	}
-	if origin != "web" || kind != "task_result" {
+	if origin != "task" || kind != "task_result" {
 		t.Fatalf("child result = %s %s", origin, kind)
 	}
 	steer := uuid.NewV7().String()

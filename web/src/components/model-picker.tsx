@@ -128,7 +128,7 @@ export function ModelPicker({
         align={anchor ? "end" : "start"}
         side={side}
         sideOffset={6}
-        aria-label={override ? "Chat model" : "Bot model"}
+        aria-label={override ? "Session model" : "Bot model"}
         className="z-[60] flex max-h-[min(320px,var(--available-height))] w-[560px] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden rounded-window bg-card p-0 shadow-raised outline-none"
       >
         <ModelList

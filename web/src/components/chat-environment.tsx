@@ -26,9 +26,9 @@ export function useEnvironmentSendBlock(chatId: number | undefined): string | un
 
   const latest = states.filter((s) => s.chatId === chatId).at(-1);
 
-  if (latest?.status === "pending") return "Saving the environment…";
+  if (latest?.status === "pending") return "Saving the Runner…";
 
-  if (latest?.status === "error") return "The environment was not saved. Choose it again before you send.";
+  if (latest?.status === "error") return "The Runner was not saved. Choose it again before you send.";
 
   return undefined;
 }
@@ -53,7 +53,7 @@ export function ChatEnvironment({ chat, started }: { chat: Chat; started: boolea
     return selected ? (
       <span
         className="min-w-0 max-w-32 shrink truncate px-1.5 text-[12.5px] text-muted-foreground sm:max-w-40"
-        title={`Environment: ${name ?? selected}`}
+        title={`Runner: ${name ?? selected}`}
       >
         {name ?? selected}
       </span>
@@ -65,7 +65,7 @@ export function ChatEnvironment({ chat, started }: { chat: Chat; started: boolea
   return (
     <>
       <Select
-        aria-label="Environment"
+        aria-label="Runner"
         className="h-8 w-auto max-w-40 min-w-0 shrink bg-transparent px-1.5 text-[12.5px] shadow-none"
         value={selected}
         disabled={save.isPending}

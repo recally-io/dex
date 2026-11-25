@@ -1,6 +1,6 @@
 # Connect a remote machine
 
-dex runner runs tools on a machine that Dex cannot reach over SSH. The machine opens an
+An Outbound Machine runs tools on a host that Dex cannot reach over SSH. The machine opens an
 outbound HTTPS connection to Dex, so it needs no `sshd` and no inbound port.
 
 Dex does not terminate TLS itself. Put it behind the same HTTPS front that serves the web UI:
@@ -42,7 +42,7 @@ can read the traffic can read that token.
 
 ## Install a machine
 
-1. In Dex, open **Settings → Execution environments** and add a **dex runner**.
+1. In Dex, open **Settings → Runners**. Select **Add Runner**, then **Machine → Outbound**.
 2. Select **Get install command**. Dex issues a one-time code and shows the command that uses
    the address of the page. The code expires after ten minutes and works once.
 3. Copy the command and run it in a terminal on the target machine, as the account that will
@@ -65,6 +65,11 @@ If the service does not start, run `dex-agent status` as that account, then
 `journalctl --user -u dex-agent -n 30` on Linux or read `~/Library/Logs/dex-agent.log` on macOS.
 `status` prints the mode of the machine, the account and home that it runs as, the state
 directory, the workspace root, and the `PATH` that its tools use.
+
+If the machine reconnects with a different workspace or home, Dex rejects
+calls from the old lease before it sends them. In the `runner RPC` log, match
+`finished` with `reason=workspace_mismatch` to `connection_wait` by `call_id`.
+The event shows the elapsed time and does not include either path.
 
 ## The account that runs the work
 
@@ -221,5 +226,7 @@ token, Dex replaces the earlier session at once. A command that starts while the
 offline waits up to 10 seconds for it. A revoke or a new enrollment ends the leases on the
 machine, and each bot that uses it reloads.
 
-One machine runs one operation at a time. A file transfer is limited to 16 MiB. Use an SSH
-environment when you need concurrent commands or larger transfers.
+A current Dex and Runner can execute up to 16 operations at a time per connection. If either
+peer is older, it still uses one slot. These operations share the target filesystem. Wait for a
+write or rename to finish before starting work that depends on it. A file transfer is limited to
+16 MiB. Use an SSH environment when you need larger transfers.

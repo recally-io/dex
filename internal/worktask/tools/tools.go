@@ -40,15 +40,15 @@ func New(conn *sql.DB) *Service {
 }
 
 // Handlers binds the engine tools to this service. links are the tools of the enabled plugins.
-func (s *Service) Handlers(links []worktask.LinkTool) engine.WorkTaskTools {
-	tools := engine.WorkTaskTools{List: s.List, Get: s.Get, New: s.New, Update: s.Update, Append: s.Append}
+func (s *Service) Handlers(links []worktask.LinkTool) WorkTaskTools {
+	tools := WorkTaskTools{List: s.List, Get: s.Get, New: s.New, Update: s.Update, Append: s.Append}
 	for _, link := range links {
-		tools.Links = append(tools.Links, engine.WorkTaskLinkTool{
+		tools.Links = append(tools.Links, WorkTaskLinkTool{
 			Name: link.Name, Description: link.Description, Rules: link.Rules, Properties: link.Properties, Required: link.Required,
-			Invoke: func(ctx context.Context, c engine.TaskContext, taskID string, args []byte) (engine.WorkTaskInfo, error) {
+			Invoke: func(ctx context.Context, c engine.TaskContext, taskID string, args []byte) (WorkTaskInfo, error) {
 				l, err := link.Parse(args)
 				if err != nil {
-					return engine.WorkTaskInfo{}, invalid("%v", err)
+					return WorkTaskInfo{}, invalid("%v", err)
 				}
 				return s.Link(ctx, c, link.Name, taskID, l)
 			},
@@ -63,9 +63,6 @@ func invalid(format string, args ...any) error {
 
 // caller returns the conversation and the input of the run. Only Main and writable Chats have the tools.
 func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
-	if c.Scope != "" {
-		return sqlc.Conversation{}, sqlc.Submission{}, invalid("Tasks are not available in a group")
-	}
 	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err
@@ -89,7 +86,7 @@ func fromUser(source sqlc.Submission) bool {
 	return source.Kind == "message" && chat.UserOrigin(source.Origin)
 }
 
-func (s *Service) List(ctx context.Context, c engine.TaskContext, a engine.WorkTaskListArgs) ([]engine.WorkTaskInfo, error) {
+func (s *Service) List(ctx context.Context, c engine.TaskContext, a WorkTaskListArgs) ([]WorkTaskInfo, error) {
 	if a.Lifecycle != "" && a.Lifecycle != "open" && a.Lifecycle != "all" {
 		return nil, invalid("lifecycle is open or all")
 	}
@@ -100,63 +97,63 @@ func (s *Service) List(ctx context.Context, c engine.TaskContext, a engine.WorkT
 	if err != nil {
 		return nil, err
 	}
-	out := make([]engine.WorkTaskInfo, 0, len(rows))
+	out := make([]WorkTaskInfo, 0, len(rows))
 	for _, row := range rows {
-		info := engine.WorkTaskInfo{ID: row.ID, Title: row.Title, Lifecycle: row.Lifecycle, UpdatedAt: row.UpdatedAt}
+		info := WorkTaskInfo{ID: row.ID, Title: row.Title, Lifecycle: row.Lifecycle, UpdatedAt: row.UpdatedAt}
 		if row.SessionID != 0 {
-			info.Session = &engine.WorkTaskSession{ID: strconv.FormatInt(row.SessionID, 10)}
+			info.Session = &WorkTaskSession{ID: strconv.FormatInt(row.SessionID, 10), IsPrimary: true}
 		}
 		out = append(out, info)
 	}
 	return out, nil
 }
 
-func (s *Service) Get(ctx context.Context, c engine.TaskContext, id string) (engine.WorkTaskDetail, error) {
+func (s *Service) Get(ctx context.Context, c engine.TaskContext, id string) (WorkTaskDetail, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return engine.WorkTaskDetail{}, err
+		return WorkTaskDetail{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
 	if _, _, err := caller(ctx, q, c); err != nil {
-		return engine.WorkTaskDetail{}, err
+		return WorkTaskDetail{}, err
 	}
 	task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: id, AgentID: c.AgentID})
 	if err != nil {
-		return engine.WorkTaskDetail{}, notFound(err)
+		return WorkTaskDetail{}, notFound(err)
 	}
 	info, err := taskInfo(ctx, q, task)
 	if err != nil {
-		return engine.WorkTaskDetail{}, err
+		return WorkTaskDetail{}, err
 	}
-	detail := engine.WorkTaskDetail{WorkTaskInfo: info, Entries: []engine.WorkTaskEntryInfo{}, Questions: []engine.WorkTaskQuestionInfo{}, Links: []engine.WorkTaskLinkInfo{}}
+	detail := WorkTaskDetail{WorkTaskInfo: info, Entries: []WorkTaskEntryInfo{}, Questions: []WorkTaskQuestionInfo{}, Links: []WorkTaskLinkInfo{}}
 	entries, err := q.ListWorkTaskTimeline(ctx, sqlc.ListWorkTaskTimelineParams{TaskID: task.ID, MaxRows: timelineEntries})
 	if err != nil {
-		return engine.WorkTaskDetail{}, err
+		return WorkTaskDetail{}, err
 	}
 	for _, e := range entries {
 		detail.Entries = append(detail.Entries, entryInfo(e))
 	}
 	questions, err := q.ListWorkTaskQuestions(ctx, task.ID)
 	if err != nil {
-		return engine.WorkTaskDetail{}, err
+		return WorkTaskDetail{}, err
 	}
 	for _, question := range questions {
-		detail.Questions = append(detail.Questions, engine.WorkTaskQuestionInfo{ID: question.ID, Text: question.Text, Queued: question.Queued != 0})
+		detail.Questions = append(detail.Questions, WorkTaskQuestionInfo{ID: question.ID, Text: question.Text, Queued: question.Queued != 0})
 	}
 	objects, err := q.ListWorkTaskObjects(ctx, task.ID)
 	if err != nil {
-		return engine.WorkTaskDetail{}, err
+		return WorkTaskDetail{}, err
 	}
 	waits, err := q.ListWorkTaskWaits(ctx, sqlc.ListWorkTaskWaitsParams{AgentID: c.AgentID, TaskID: task.ID})
 	if err != nil {
-		return engine.WorkTaskDetail{}, err
+		return WorkTaskDetail{}, err
 	}
 	for _, object := range objects {
-		link := engine.WorkTaskLinkInfo{Namespace: object.Namespace, Type: object.ObjectType, Key: object.ObjectKey, Waits: []engine.WorkTaskWaitInfo{}}
+		link := WorkTaskLinkInfo{Namespace: object.Namespace, Type: object.ObjectType, Key: object.ObjectKey, Waits: []WorkTaskWaitInfo{}}
 		for _, w := range waits {
 			if w.Namespace == object.Namespace && w.ObjectType == object.ObjectType && w.ObjectKey == object.ObjectKey {
-				link.Waits = append(link.Waits, engine.WorkTaskWaitInfo{Event: w.EventType, Revision: w.Revision, Resolved: w.ResolvedBy.Valid, AlertMain: w.Alert == 1})
+				link.Waits = append(link.Waits, WorkTaskWaitInfo{Event: w.EventType, Revision: w.Revision, Resolved: w.ResolvedBy.Valid, AlertMain: w.Alert == 1})
 			}
 		}
 		detail.Links = append(detail.Links, link)
@@ -164,8 +161,8 @@ func (s *Service) Get(ctx context.Context, c engine.TaskContext, id string) (eng
 	return detail, tx.Commit()
 }
 
-func entryInfo(e sqlc.ListWorkTaskTimelineRow) engine.WorkTaskEntryInfo {
-	info := engine.WorkTaskEntryInfo{ID: e.ID, CreatedAt: e.CreatedAt}
+func entryInfo(e sqlc.ListWorkTaskTimelineRow) WorkTaskEntryInfo {
+	info := WorkTaskEntryInfo{ID: e.ID, CreatedAt: e.CreatedAt}
 	if e.EventID != "" {
 		// External text stays out of the model context. The owner reads it in the Inbox.
 		info.Author, info.EventType, info.SourceURL, info.AuthorClass = "external", e.EventType, e.SourceUrl, e.AuthorAssociation
@@ -182,16 +179,19 @@ func entryInfo(e sqlc.ListWorkTaskTimelineRow) engine.WorkTaskEntryInfo {
 	return info
 }
 
-func taskInfo(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (engine.WorkTaskInfo, error) {
-	info := engine.WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: task.Lifecycle, UpdatedAt: task.UpdatedAt}
-	session, err := q.GetWorkTaskSession(ctx, task.ID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return info, nil
-	}
+func taskInfo(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask) (WorkTaskInfo, error) {
+	info := WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: task.Lifecycle, UpdatedAt: task.UpdatedAt}
+	sessions, err := q.ListWorkTaskSessions(ctx, task.ID)
 	if err != nil {
 		return info, err
 	}
-	info.Session = &engine.WorkTaskSession{ID: strconv.FormatInt(session.ID, 10), Title: session.Title, BotID: session.AgentID}
+	for _, s := range sessions {
+		link := WorkTaskSession{ID: strconv.FormatInt(s.ConversationID, 10), Title: s.Title, BotID: s.AgentID, BotName: s.AgentName, IsPrimary: s.IsPrimary == 1, LinkedAt: s.LinkedAt}
+		info.Sessions = append(info.Sessions, link)
+		if link.IsPrimary {
+			info.Session = new(link)
+		}
+	}
 	return info, nil
 }
 
@@ -244,99 +244,110 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	return result, tx.Commit()
 }
 
-func (s *Service) New(ctx context.Context, c engine.TaskContext, a engine.WorkTaskNewArgs) (engine.WorkTaskInfo, error) {
+func (s *Service) New(ctx context.Context, c engine.TaskContext, a WorkTaskNewArgs) (WorkTaskInfo, error) {
 	title, err := worktask.Title(a.Title)
 	if err != nil {
-		return engine.WorkTaskInfo{}, invalid("the title has 1 to 160 characters")
+		return WorkTaskInfo{}, invalid("the title has 1 to 160 characters")
 	}
 	note := strings.TrimSpace(a.Note)
 	if note != "" {
 		if note, err = worktask.Content(note); err != nil {
-			return engine.WorkTaskInfo{}, invalid("the note has at most 32000 characters")
+			return WorkTaskInfo{}, invalid("the note has at most 32000 characters")
 		}
 	}
-	return mutate(ctx, s, c, "new", func(q *sqlc.Queries, _ sqlc.Conversation, source sqlc.Submission, now int64) (engine.WorkTaskInfo, error) {
+	return mutate(ctx, s, c, "new", func(q *sqlc.Queries, _ sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskInfo, error) {
 		if !fromUser(source) {
-			return engine.WorkTaskInfo{}, invalid("create a Task only for a user request; this run started from %s", source.Kind)
+			return WorkTaskInfo{}, invalid("create a Task only for a user request; this run started from %s", source.Kind)
 		}
 		task, err := q.CreateWorkTask(ctx, sqlc.CreateWorkTaskParams{ID: uuid.NewV7().String(), AgentID: c.AgentID, Title: title, At: now})
 		if err != nil {
-			return engine.WorkTaskInfo{}, err
+			return WorkTaskInfo{}, err
 		}
 		if note != "" {
 			if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: task.ID, AgentID: c.AgentID, Content: note, CreatedAt: now, Author: worktask.AuthorAgent}); err != nil {
-				return engine.WorkTaskInfo{}, err
+				return WorkTaskInfo{}, err
 			}
 		}
-		return engine.WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: task.Lifecycle, UpdatedAt: task.UpdatedAt}, nil
+		return WorkTaskInfo{ID: task.ID, Title: task.Title, Lifecycle: task.Lifecycle, UpdatedAt: task.UpdatedAt}, nil
 	})
 }
 
-func (s *Service) Append(ctx context.Context, c engine.TaskContext, a engine.WorkTaskAppendArgs) (engine.WorkTaskEntryInfo, error) {
+func (s *Service) Append(ctx context.Context, c engine.TaskContext, a WorkTaskAppendArgs) (WorkTaskEntryInfo, error) {
 	content, err := worktask.Content(a.Content)
 	if err != nil {
-		return engine.WorkTaskEntryInfo{}, invalid("the content has 1 to 32000 characters")
+		return WorkTaskEntryInfo{}, invalid("the content has 1 to 32000 characters")
 	}
-	return mutate(ctx, s, c, "append", func(q *sqlc.Queries, _ sqlc.Conversation, _ sqlc.Submission, now int64) (engine.WorkTaskEntryInfo, error) {
+	return mutate(ctx, s, c, "append", func(q *sqlc.Queries, _ sqlc.Conversation, _ sqlc.Submission, now int64) (WorkTaskEntryInfo, error) {
 		entry, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: a.ID, AgentID: c.AgentID, Content: content, CreatedAt: now, Author: worktask.AuthorAgent})
 		if err != nil {
-			return engine.WorkTaskEntryInfo{}, notFound(err)
+			return WorkTaskEntryInfo{}, notFound(err)
 		}
 		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: a.ID, At: now}); err != nil {
-			return engine.WorkTaskEntryInfo{}, err
+			return WorkTaskEntryInfo{}, err
 		}
-		return engine.WorkTaskEntryInfo{ID: entry.ID, Author: worktask.AuthorAgent, CreatedAt: entry.CreatedAt}, nil
+		return WorkTaskEntryInfo{ID: entry.ID, Author: worktask.AuthorAgent, CreatedAt: entry.CreatedAt}, nil
 	})
 }
 
-func (s *Service) Update(ctx context.Context, c engine.TaskContext, a engine.WorkTaskUpdateArgs) (engine.WorkTaskInfo, error) {
+func (s *Service) Update(ctx context.Context, c engine.TaskContext, a WorkTaskUpdateArgs) (WorkTaskInfo, error) {
 	var title string
 	if a.Title != "" {
 		var err error
 		if title, err = worktask.Title(a.Title); err != nil {
-			return engine.WorkTaskInfo{}, invalid("the title has 1 to 160 characters")
+			return WorkTaskInfo{}, invalid("the title has 1 to 160 characters")
 		}
 	}
 	switch a.Lifecycle {
 	case "", "open", "completed", "cancelled":
 	default:
-		return engine.WorkTaskInfo{}, invalid("lifecycle is open, completed, or cancelled")
+		return WorkTaskInfo{}, invalid("lifecycle is open, completed, or cancelled")
+	}
+	if a.Primary && a.Session == "" {
+		return WorkTaskInfo{}, invalid("primary requires a session")
 	}
 	if title == "" && a.Lifecycle == "" && a.Session == "" {
-		return engine.WorkTaskInfo{}, invalid("give at least one field to change")
+		return WorkTaskInfo{}, invalid("give at least one field to change")
 	}
-	return mutate(ctx, s, c, "update", func(q *sqlc.Queries, conv sqlc.Conversation, source sqlc.Submission, now int64) (engine.WorkTaskInfo, error) {
+	return mutate(ctx, s, c, "update", func(q *sqlc.Queries, conv sqlc.Conversation, source sqlc.Submission, now int64) (WorkTaskInfo, error) {
 		task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: a.ID, AgentID: c.AgentID})
 		if err != nil {
-			return engine.WorkTaskInfo{}, notFound(err)
+			return WorkTaskInfo{}, notFound(err)
 		}
 		if a.Lifecycle != "" && a.Lifecycle != task.Lifecycle {
 			if !fromUser(source) {
-				return engine.WorkTaskInfo{}, invalid("only the user can complete, cancel, or reopen a Task; this run started from %s", source.Kind)
+				return WorkTaskInfo{}, invalid("only the user can complete, cancel, or reopen a Task; this run started from %s", source.Kind)
 			}
 			if task, err = q.SetWorkTaskLifecycle(ctx, sqlc.SetWorkTaskLifecycleParams{ID: task.ID, AgentID: c.AgentID, Lifecycle: a.Lifecycle, UpdatedAt: now}); err != nil {
-				return engine.WorkTaskInfo{}, err
+				return WorkTaskInfo{}, err
 			}
 		}
 		if title != "" && title != task.Title {
 			if task, err = q.RenameWorkTask(ctx, sqlc.RenameWorkTaskParams{ID: task.ID, AgentID: c.AgentID, Title: title, UpdatedAt: now}); err != nil {
-				return engine.WorkTaskInfo{}, err
+				return WorkTaskInfo{}, err
 			}
 		}
 		if a.Session != "" {
 			child, err := childOf(ctx, q, conv, a.Session)
 			if err != nil {
-				return engine.WorkTaskInfo{}, err
+				return WorkTaskInfo{}, err
 			}
-			if err := q.SetWorkTaskSession(ctx, sqlc.SetWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID}); err != nil {
-				return engine.WorkTaskInfo{}, err
+			if err := q.LinkWorkTaskSession(ctx, sqlc.LinkWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID, LinkedAt: now}); err != nil {
+				return WorkTaskInfo{}, err
+			}
+			if a.Primary {
+				if err := q.ClearWorkTaskPrimarySession(ctx, task.ID); err != nil {
+					return WorkTaskInfo{}, err
+				}
+				if err := q.PromoteWorkTaskSession(ctx, sqlc.PromoteWorkTaskSessionParams{TaskID: task.ID, ConversationID: child.ID}); err != nil {
+					return WorkTaskInfo{}, err
+				}
 			}
 		}
 		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
-			return engine.WorkTaskInfo{}, err
+			return WorkTaskInfo{}, err
 		}
 		if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {
-			return engine.WorkTaskInfo{}, err
+			return WorkTaskInfo{}, err
 		}
 		return taskInfo(ctx, q, task)
 	})
@@ -356,36 +367,36 @@ func childOf(ctx context.Context, q *sqlc.Queries, parent sqlc.Conversation, id 
 }
 
 // Link writes the link of one plugin tool call with its replay record. A wait starts at the call time.
-func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID string, l worktask.Link) (engine.WorkTaskInfo, error) {
-	return mutate(ctx, s, c, tool, func(q *sqlc.Queries, _ sqlc.Conversation, _ sqlc.Submission, now int64) (engine.WorkTaskInfo, error) {
+func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID string, l worktask.Link) (WorkTaskInfo, error) {
+	return mutate(ctx, s, c, tool, func(q *sqlc.Queries, _ sqlc.Conversation, _ sqlc.Submission, now int64) (WorkTaskInfo, error) {
 		task, err := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: c.AgentID})
 		if err != nil {
-			return engine.WorkTaskInfo{}, notFound(err)
+			return WorkTaskInfo{}, notFound(err)
 		}
 		n, err := q.LinkWorkTaskObject(ctx, sqlc.LinkWorkTaskObjectParams{AgentID: c.AgentID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key})
 		if err != nil {
-			return engine.WorkTaskInfo{}, err
+			return WorkTaskInfo{}, err
 		}
 		if n == 0 {
-			return engine.WorkTaskInfo{}, invalid("%s is linked to another Task", l.Name)
+			return WorkTaskInfo{}, invalid("%s is linked to another Task", l.Name)
 		}
 		if l.WaitEvent != "" {
 			if task.Lifecycle != "open" {
-				return engine.WorkTaskInfo{}, invalid("a closed Task cannot wait for %s", l.Name)
+				return WorkTaskInfo{}, invalid("a closed Task cannot wait for %s", l.Name)
 			}
 			var alert int64
 			if l.Alert {
 				alert = 1
 			}
 			if _, err := q.AddWorkTaskWait(ctx, sqlc.AddWorkTaskWaitParams{AgentID: c.AgentID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key, EventType: l.WaitEvent, Revision: l.WaitRevision, AfterAt: now, Alert: alert}); err != nil {
-				return engine.WorkTaskInfo{}, err
+				return WorkTaskInfo{}, err
 			}
 		}
 		if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
-			return engine.WorkTaskInfo{}, err
+			return WorkTaskInfo{}, err
 		}
 		if task, err = q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: task.ID, AgentID: c.AgentID}); err != nil {
-			return engine.WorkTaskInfo{}, err
+			return WorkTaskInfo{}, err
 		}
 		return taskInfo(ctx, q, task)
 	})

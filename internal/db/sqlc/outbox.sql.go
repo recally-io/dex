@@ -10,91 +10,107 @@ import (
 	"database/sql"
 )
 
-const advanceOutboxGroupMember = `-- name: AdvanceOutboxGroupMember :exec
-UPDATE outbox_messages
-SET group_cursor = group_cursor + 1,
-    remote_ids = ?1,
-    retry_at = 0
-WHERE id = ?2
+const bindFileDeliveries = `-- name: BindFileDeliveries :exec
+UPDATE outbox_files SET outbox_id = 'file:' || id
+WHERE submission_id = ?1 AND outbox_id IS NULL
+  AND EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = 'file:' || outbox_files.id AND o.status = 'pending')
 `
 
-type AdvanceOutboxGroupMemberParams struct {
-	RemoteIds string `json:"remote_ids"`
-	ID        string `json:"id"`
-}
-
-func (q *Queries) AdvanceOutboxGroupMember(ctx context.Context, arg AdvanceOutboxGroupMemberParams) error {
-	_, err := q.db.ExecContext(ctx, advanceOutboxGroupMember, arg.RemoteIds, arg.ID)
+func (q *Queries) BindFileDeliveries(ctx context.Context, submissionID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, bindFileDeliveries, submissionID)
 	return err
 }
 
-const advanceOutboxMessage = `-- name: AdvanceOutboxMessage :exec
-UPDATE outbox_messages
-SET delivered_parts = delivered_parts + 1,
-    remote_ids = ?1,
-    retry_at = 0,
-    group_fallback = 0,
-    group_cursor = 0
-WHERE id = ?2
+const createFileDeliveries = `-- name: CreateFileDeliveries :exec
+INSERT INTO outbox_messages (id, event_id, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, body, created_at)
+SELECT 'file:' || f.id, 'file:' || f.agent_id || ':' || f.operation_key,
+    o.agent_id, o.conversation_id, o.source_submission_id,
+    'file', o.peer, o.channel_context, f.name, o.created_at
+FROM outbox_files f JOIN outbox_messages o ON o.id = ?1
+WHERE f.submission_id = ?2 AND f.outbox_id IS NULL AND o.status = 'pending'
+ORDER BY f.rowid
+ON CONFLICT (event_id, channel, target) DO NOTHING
 `
 
-type AdvanceOutboxMessageParams struct {
-	RemoteIds string `json:"remote_ids"`
-	ID        string `json:"id"`
-}
-
-func (q *Queries) AdvanceOutboxMessage(ctx context.Context, arg AdvanceOutboxMessageParams) error {
-	_, err := q.db.ExecContext(ctx, advanceOutboxMessage, arg.RemoteIds, arg.ID)
-	return err
-}
-
-const bindOutboxFilesToOutbox = `-- name: BindOutboxFilesToOutbox :execrows
-UPDATE outbox_files
-SET outbox_id = ?1
-WHERE submission_id = ?2 AND outbox_id IS NULL
-`
-
-type BindOutboxFilesToOutboxParams struct {
-	OutboxID     sql.NullString `json:"outbox_id"`
+type CreateFileDeliveriesParams struct {
+	OutboxID     string         `json:"outbox_id"`
 	SubmissionID sql.NullString `json:"submission_id"`
 }
 
-func (q *Queries) BindOutboxFilesToOutbox(ctx context.Context, arg BindOutboxFilesToOutboxParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, bindOutboxFilesToOutbox, arg.OutboxID, arg.SubmissionID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+func (q *Queries) CreateFileDeliveries(ctx context.Context, arg CreateFileDeliveriesParams) error {
+	_, err := q.db.ExecContext(ctx, createFileDeliveries, arg.OutboxID, arg.SubmissionID)
+	return err
+}
+
+const deleteUnboundOutboxFiles = `-- name: DeleteUnboundOutboxFiles :exec
+DELETE FROM outbox_files WHERE submission_id = ? AND outbox_id IS NULL
+`
+
+func (q *Queries) DeleteUnboundOutboxFiles(ctx context.Context, submissionID sql.NullString) error {
+	_, err := q.db.ExecContext(ctx, deleteUnboundOutboxFiles, submissionID)
+	return err
+}
+
+const failOutboxMessage = `-- name: FailOutboxMessage :exec
+UPDATE outbox_messages SET status = 'failed', retry_at = 0, error = ?1
+WHERE id = ?2 AND status = 'pending'
+`
+
+type FailOutboxMessageParams struct {
+	Reason string `json:"reason"`
+	ID     string `json:"id"`
+}
+
+func (q *Queries) FailOutboxMessage(ctx context.Context, arg FailOutboxMessageParams) error {
+	_, err := q.db.ExecContext(ctx, failOutboxMessage, arg.Reason, arg.ID)
+	return err
+}
+
+const findNotificationReceipt = `-- name: FindNotificationReceipt :one
+SELECT o.id FROM outbox_messages o WHERE o.event_id = ?1 AND o.kind = 'proactive'
+UNION ALL
+SELECT n.id FROM web_notifications n WHERE n.event_id = ?1
+LIMIT 1
+`
+
+// A tool invocation chooses its destination once, even if settings change before replay.
+func (q *Queries) FindNotificationReceipt(ctx context.Context, eventID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, findNotificationReceipt, eventID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
 }
 
 const freezeOutboxMessage = `-- name: FreezeOutboxMessage :exec
-UPDATE outbox_messages SET rendered_parts = ? WHERE id = ? AND rendered_parts = ''
+UPDATE outbox_messages SET rendered_message = ?1
+WHERE id = ?2 AND status = 'pending' AND rendered_message = ''
 `
 
 type FreezeOutboxMessageParams struct {
-	RenderedParts string `json:"rendered_parts"`
-	ID            string `json:"id"`
+	RenderedMessage string `json:"rendered_message"`
+	ID              string `json:"id"`
 }
 
 func (q *Queries) FreezeOutboxMessage(ctx context.Context, arg FreezeOutboxMessageParams) error {
-	_, err := q.db.ExecContext(ctx, freezeOutboxMessage, arg.RenderedParts, arg.ID)
+	_, err := q.db.ExecContext(ctx, freezeOutboxMessage, arg.RenderedMessage, arg.ID)
 	return err
 }
 
 const getChannelReactionReceipt = `-- name: GetChannelReactionReceipt :one
-SELECT s.status, s.reason, s.exit_action, s.required_reply_id,
-       coalesce(o.status, '') AS reply_status, coalesce(o.skipped_part, 0) AS skipped_part
+SELECT s.status, s.stop_requested, s.reason, s.exit_action, s.required_reply_id,
+       coalesce(o.status, '') AS reply_status
 FROM submissions s LEFT JOIN outbox_messages o ON o.id = s.required_reply_id
 WHERE s.id = ?
 `
 
 type GetChannelReactionReceiptRow struct {
 	Status          string         `json:"status"`
+	StopRequested   int64          `json:"stop_requested"`
 	Reason          sql.NullString `json:"reason"`
 	ExitAction      string         `json:"exit_action"`
 	RequiredReplyID string         `json:"required_reply_id"`
 	ReplyStatus     string         `json:"reply_status"`
-	SkippedPart     int64          `json:"skipped_part"`
 }
 
 func (q *Queries) GetChannelReactionReceipt(ctx context.Context, id string) (GetChannelReactionReceiptRow, error) {
@@ -102,65 +118,76 @@ func (q *Queries) GetChannelReactionReceipt(ctx context.Context, id string) (Get
 	var i GetChannelReactionReceiptRow
 	err := row.Scan(
 		&i.Status,
+		&i.StopRequested,
 		&i.Reason,
 		&i.ExitAction,
 		&i.RequiredReplyID,
 		&i.ReplyStatus,
-		&i.SkippedPart,
 	)
 	return i, err
 }
 
-const getOutboxByDedupKey = `-- name: GetOutboxByDedupKey :one
-SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part FROM outbox_messages WHERE dedup_key = ?
+const getOutboxByEvent = `-- name: GetOutboxByEvent :one
+SELECT id, event_id, agent_id, conversation_id, source_submission_id, kind, peer, channel, target, channel_context, topic_key, body, reason, rendered_message, remote_ids, status, retry_at, attempts, error, created_at, delivered_at FROM outbox_messages WHERE event_id = ?1 AND peer = ?2
 `
 
-func (q *Queries) GetOutboxByDedupKey(ctx context.Context, dedupKey string) (OutboxMessage, error) {
-	row := q.db.QueryRowContext(ctx, getOutboxByDedupKey, dedupKey)
+type GetOutboxByEventParams struct {
+	EventID string `json:"event_id"`
+	Peer    string `json:"peer"`
+}
+
+func (q *Queries) GetOutboxByEvent(ctx context.Context, arg GetOutboxByEventParams) (OutboxMessage, error) {
+	row := q.db.QueryRowContext(ctx, getOutboxByEvent, arg.EventID, arg.Peer)
 	var i OutboxMessage
 	err := row.Scan(
 		&i.ID,
-		&i.DedupKey,
+		&i.EventID,
 		&i.AgentID,
 		&i.ConversationID,
 		&i.SourceSubmissionID,
 		&i.Kind,
 		&i.Peer,
+		&i.Channel,
+		&i.Target,
 		&i.ChannelContext,
 		&i.TopicKey,
 		&i.Body,
 		&i.Reason,
-		&i.RenderedParts,
-		&i.DeliveredParts,
-		&i.GroupFallback,
-		&i.GroupCursor,
+		&i.RenderedMessage,
 		&i.RemoteIds,
 		&i.Status,
 		&i.RetryAt,
+		&i.Attempts,
 		&i.Error,
-		&i.ReadAt,
-		&i.DismissedAt,
 		&i.CreatedAt,
 		&i.DeliveredAt,
-		&i.SkippedPart,
 	)
 	return i, err
 }
 
 const getOutboxFile = `-- name: GetOutboxFile :one
-SELECT body FROM outbox_files WHERE operation_key = ? AND outbox_id = ?
+SELECT operation_key, name, mime_type, length(body) AS size, body FROM outbox_files WHERE outbox_id = ?
 `
 
-type GetOutboxFileParams struct {
-	OperationKey string         `json:"operation_key"`
-	OutboxID     sql.NullString `json:"outbox_id"`
+type GetOutboxFileRow struct {
+	OperationKey string        `json:"operation_key"`
+	Name         string        `json:"name"`
+	MimeType     string        `json:"mime_type"`
+	Size         sql.NullInt64 `json:"size"`
+	Body         []byte        `json:"body"`
 }
 
-func (q *Queries) GetOutboxFile(ctx context.Context, arg GetOutboxFileParams) ([]byte, error) {
-	row := q.db.QueryRowContext(ctx, getOutboxFile, arg.OperationKey, arg.OutboxID)
-	var body []byte
-	err := row.Scan(&body)
-	return body, err
+func (q *Queries) GetOutboxFile(ctx context.Context, outboxID sql.NullString) (GetOutboxFileRow, error) {
+	row := q.db.QueryRowContext(ctx, getOutboxFile, outboxID)
+	var i GetOutboxFileRow
+	err := row.Scan(
+		&i.OperationKey,
+		&i.Name,
+		&i.MimeType,
+		&i.Size,
+		&i.Body,
+	)
+	return i, err
 }
 
 const getOutboxFileBySubmission = `-- name: GetOutboxFileBySubmission :one
@@ -180,7 +207,7 @@ func (q *Queries) GetOutboxFileBySubmission(ctx context.Context, arg GetOutboxFi
 }
 
 const getOutboxMessage = `-- name: GetOutboxMessage :one
-SELECT id, dedup_key, agent_id, conversation_id, source_submission_id, kind, peer, channel_context, topic_key, body, reason, rendered_parts, delivered_parts, group_fallback, group_cursor, remote_ids, status, retry_at, error, read_at, dismissed_at, created_at, delivered_at, skipped_part FROM outbox_messages WHERE id = ?
+SELECT id, event_id, agent_id, conversation_id, source_submission_id, kind, peer, channel, target, channel_context, topic_key, body, reason, rendered_message, remote_ids, status, retry_at, attempts, error, created_at, delivered_at FROM outbox_messages WHERE id = ?
 `
 
 func (q *Queries) GetOutboxMessage(ctx context.Context, id string) (OutboxMessage, error) {
@@ -188,36 +215,33 @@ func (q *Queries) GetOutboxMessage(ctx context.Context, id string) (OutboxMessag
 	var i OutboxMessage
 	err := row.Scan(
 		&i.ID,
-		&i.DedupKey,
+		&i.EventID,
 		&i.AgentID,
 		&i.ConversationID,
 		&i.SourceSubmissionID,
 		&i.Kind,
 		&i.Peer,
+		&i.Channel,
+		&i.Target,
 		&i.ChannelContext,
 		&i.TopicKey,
 		&i.Body,
 		&i.Reason,
-		&i.RenderedParts,
-		&i.DeliveredParts,
-		&i.GroupFallback,
-		&i.GroupCursor,
+		&i.RenderedMessage,
 		&i.RemoteIds,
 		&i.Status,
 		&i.RetryAt,
+		&i.Attempts,
 		&i.Error,
-		&i.ReadAt,
-		&i.DismissedAt,
 		&i.CreatedAt,
 		&i.DeliveredAt,
-		&i.SkippedPart,
 	)
 	return i, err
 }
 
 const hasOutboxForSource = `-- name: HasOutboxForSource :one
 SELECT EXISTS (
-    SELECT 1 FROM outbox_messages WHERE source_submission_id = ? AND status IN ('pending', 'delivered')
+    SELECT 1 FROM outbox_messages WHERE source_submission_id = ? AND status IN ('pending', 'sent')
 )
 `
 
@@ -230,19 +254,19 @@ func (q *Queries) HasOutboxForSource(ctx context.Context, sourceSubmissionID sql
 
 const insertOutboxMessage = `-- name: InsertOutboxMessage :execrows
 INSERT INTO outbox_messages (
-    id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at
+    id, event_id, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at, rendered_message
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5,
     ?6, ?7, coalesce(nullif(CAST(?8 AS TEXT), ''), '{}'),
-    ?9, ?10, ?11, ?12, ?13, ?14
+    ?9, ?10, ?11, ?12, ?13, ?14, ?15
 )
-ON CONFLICT (dedup_key) DO NOTHING
+ON CONFLICT (event_id, channel, target) DO NOTHING
 `
 
 type InsertOutboxMessageParams struct {
 	ID                 string         `json:"id"`
-	DedupKey           string         `json:"dedup_key"`
+	EventID            string         `json:"event_id"`
 	AgentID            string         `json:"agent_id"`
 	ConversationID     int64          `json:"conversation_id"`
 	SourceSubmissionID sql.NullString `json:"source_submission_id"`
@@ -255,12 +279,13 @@ type InsertOutboxMessageParams struct {
 	Status             string         `json:"status"`
 	CreatedAt          int64          `json:"created_at"`
 	DeliveredAt        sql.NullInt64  `json:"delivered_at"`
+	RenderedMessage    string         `json:"rendered_message"`
 }
 
 func (q *Queries) InsertOutboxMessage(ctx context.Context, arg InsertOutboxMessageParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, insertOutboxMessage,
 		arg.ID,
-		arg.DedupKey,
+		arg.EventID,
 		arg.AgentID,
 		arg.ConversationID,
 		arg.SourceSubmissionID,
@@ -273,6 +298,7 @@ func (q *Queries) InsertOutboxMessage(ctx context.Context, arg InsertOutboxMessa
 		arg.Status,
 		arg.CreatedAt,
 		arg.DeliveredAt,
+		arg.RenderedMessage,
 	)
 	if err != nil {
 		return 0, err
@@ -282,29 +308,16 @@ func (q *Queries) InsertOutboxMessage(ctx context.Context, arg InsertOutboxMessa
 
 const insertStoppedOutboxForConversation = `-- name: InsertStoppedOutboxForConversation :exec
 INSERT INTO outbox_messages (
-    id, dedup_key, agent_id, conversation_id, source_submission_id,
-    kind, peer, channel_context, topic_key, body, reason, status, created_at
+    id, event_id, agent_id, conversation_id, source_submission_id,
+    kind, peer, channel_context, reason, status, created_at
 )
-SELECT
-    s.id,
-    'reply:' || s.id,
-    ?1,
-    s.conversation_id,
-    s.id,
-    'reply',
-    s.origin,
-    s.channel_context,
-    '',
-    '',
-    'stopped',
-    CASE WHEN s.channel_revoked != 0 THEN 'revoked' ELSE 'pending' END,
-    ?2
+SELECT s.id, 'reply:' || ?1 || ':' || s.id, ?1, s.conversation_id, s.id,
+    'reply', s.origin, s.channel_context, 'stopped', 'pending', ?2
 FROM submissions s
-WHERE s.conversation_id = ?3
-  AND s.status = 'pending'
-  AND s.kind = 'message'
-  AND s.origin LIKE '%:%'
-ON CONFLICT(dedup_key) DO NOTHING
+WHERE s.conversation_id = ?3 AND s.status = 'pending' AND s.kind = 'message'
+  AND (s.origin LIKE 'telegram:%' OR s.origin LIKE 'feishu:%' OR s.origin LIKE 'wechat:%')
+  AND s.channel_revoked = 0
+ON CONFLICT DO NOTHING
 `
 
 type InsertStoppedOutboxForConversationParams struct {
@@ -318,10 +331,39 @@ func (q *Queries) InsertStoppedOutboxForConversation(ctx context.Context, arg In
 	return err
 }
 
+const insertWebNotification = `-- name: InsertWebNotification :exec
+INSERT INTO web_notifications (id, event_id, agent_id, conversation_id, source_submission_id, body, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT (event_id) DO NOTHING
+`
+
+type InsertWebNotificationParams struct {
+	ID                 string `json:"id"`
+	EventID            string `json:"event_id"`
+	AgentID            string `json:"agent_id"`
+	ConversationID     int64  `json:"conversation_id"`
+	SourceSubmissionID string `json:"source_submission_id"`
+	Body               string `json:"body"`
+	CreatedAt          int64  `json:"created_at"`
+}
+
+func (q *Queries) InsertWebNotification(ctx context.Context, arg InsertWebNotificationParams) error {
+	_, err := q.db.ExecContext(ctx, insertWebNotification,
+		arg.ID,
+		arg.EventID,
+		arg.AgentID,
+		arg.ConversationID,
+		arg.SourceSubmissionID,
+		arg.Body,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const listOutboxByConversation = `-- name: ListOutboxByConversation :many
 SELECT id, kind, peer, topic_key, body, reason, status, error, retry_at, created_at, delivered_at
 FROM outbox_messages
-WHERE conversation_id = ?1
+WHERE conversation_id = ?1 AND (kind NOT IN ('control', 'feedback') OR status = 'failed')
 ORDER BY created_at DESC, rowid DESC
 LIMIT 30
 `
@@ -375,56 +417,13 @@ func (q *Queries) ListOutboxByConversation(ctx context.Context, conversationID i
 	return items, nil
 }
 
-const listOutboxFiles = `-- name: ListOutboxFiles :many
-SELECT operation_key, name, mime_type, length(body) AS size FROM outbox_files
-WHERE outbox_id = ? ORDER BY rowid
-`
-
-type ListOutboxFilesRow struct {
-	OperationKey string        `json:"operation_key"`
-	Name         string        `json:"name"`
-	MimeType     string        `json:"mime_type"`
-	Size         sql.NullInt64 `json:"size"`
-}
-
-func (q *Queries) ListOutboxFiles(ctx context.Context, outboxID sql.NullString) ([]ListOutboxFilesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listOutboxFiles, outboxID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListOutboxFilesRow{}
-	for rows.Next() {
-		var i ListOutboxFilesRow
-		if err := rows.Scan(
-			&i.OperationKey,
-			&i.Name,
-			&i.MimeType,
-			&i.Size,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listPendingOutboxMessages = `-- name: ListPendingOutboxMessages :many
-SELECT o.id, o.dedup_key, o.agent_id, o.conversation_id, o.source_submission_id,
-       o.kind, o.peer, o.channel_context, o.topic_key, o.body, o.reason,
-       o.rendered_parts, o.delivered_parts, o.group_fallback, o.group_cursor, o.remote_ids,
-       o.status, o.retry_at, o.error, o.created_at
+SELECT o.id, o.event_id, o.agent_id, o.conversation_id, o.source_submission_id, o.kind, o.peer, o.channel, o.target, o.channel_context, o.topic_key, o.body, o.reason, o.rendered_message, o.remote_ids, o.status, o.retry_at, o.attempts, o.error, o.created_at, o.delivered_at
 FROM outbox_messages o
+JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
-WHERE o.status = 'pending'
-  AND o.agent_id = ?1
-  AND o.peer >= ?2 AND o.peer < ?3
+WHERE o.status = 'pending' AND c.execution_scope = ''
+  AND o.agent_id = ?1 AND o.channel = ?2
   AND (
       o.kind != 'reply'
       OR NOT EXISTS (
@@ -435,68 +434,45 @@ WHERE o.status = 'pending'
             AND pc.agent_id = o.agent_id
       )
   )
-ORDER BY coalesce(src.rowid, o.rowid), o.rowid
+ORDER BY (o.kind IN ('control', 'feedback')) DESC, coalesce(src.rowid, o.rowid), o.rowid
 `
 
 type ListPendingOutboxMessagesParams struct {
-	AgentID     string `json:"agent_id"`
-	OriginStart string `json:"origin_start"`
-	OriginEnd   string `json:"origin_end"`
+	AgentID string         `json:"agent_id"`
+	Channel sql.NullString `json:"channel"`
 }
 
-type ListPendingOutboxMessagesRow struct {
-	ID                 string         `json:"id"`
-	DedupKey           string         `json:"dedup_key"`
-	AgentID            string         `json:"agent_id"`
-	ConversationID     int64          `json:"conversation_id"`
-	SourceSubmissionID sql.NullString `json:"source_submission_id"`
-	Kind               string         `json:"kind"`
-	Peer               string         `json:"peer"`
-	ChannelContext     string         `json:"channel_context"`
-	TopicKey           string         `json:"topic_key"`
-	Body               string         `json:"body"`
-	Reason             string         `json:"reason"`
-	RenderedParts      string         `json:"rendered_parts"`
-	DeliveredParts     int64          `json:"delivered_parts"`
-	GroupFallback      int64          `json:"group_fallback"`
-	GroupCursor        int64          `json:"group_cursor"`
-	RemoteIds          string         `json:"remote_ids"`
-	Status             string         `json:"status"`
-	RetryAt            int64          `json:"retry_at"`
-	Error              string         `json:"error"`
-	CreatedAt          int64          `json:"created_at"`
-}
-
-func (q *Queries) ListPendingOutboxMessages(ctx context.Context, arg ListPendingOutboxMessagesParams) ([]ListPendingOutboxMessagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listPendingOutboxMessages, arg.AgentID, arg.OriginStart, arg.OriginEnd)
+func (q *Queries) ListPendingOutboxMessages(ctx context.Context, arg ListPendingOutboxMessagesParams) ([]OutboxMessage, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingOutboxMessages, arg.AgentID, arg.Channel)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListPendingOutboxMessagesRow{}
+	items := []OutboxMessage{}
 	for rows.Next() {
-		var i ListPendingOutboxMessagesRow
+		var i OutboxMessage
 		if err := rows.Scan(
 			&i.ID,
-			&i.DedupKey,
+			&i.EventID,
 			&i.AgentID,
 			&i.ConversationID,
 			&i.SourceSubmissionID,
 			&i.Kind,
 			&i.Peer,
+			&i.Channel,
+			&i.Target,
 			&i.ChannelContext,
 			&i.TopicKey,
 			&i.Body,
 			&i.Reason,
-			&i.RenderedParts,
-			&i.DeliveredParts,
-			&i.GroupFallback,
-			&i.GroupCursor,
+			&i.RenderedMessage,
 			&i.RemoteIds,
 			&i.Status,
 			&i.RetryAt,
+			&i.Attempts,
 			&i.Error,
 			&i.CreatedAt,
+			&i.DeliveredAt,
 		); err != nil {
 			return nil, err
 		}
@@ -514,9 +490,7 @@ func (q *Queries) ListPendingOutboxMessages(ctx context.Context, arg ListPending
 const listRecentDeliveredOutbox = `-- name: ListRecentDeliveredOutbox :many
 SELECT id, kind, peer, topic_key, body, reason, delivered_at, created_at
 FROM outbox_messages
-WHERE conversation_id = ?1
-  AND status = 'delivered'
-  AND kind != 'reply'
+WHERE conversation_id = ?1 AND status = 'sent' AND kind NOT IN ('reply', 'control', 'feedback', 'file')
 ORDER BY coalesce(delivered_at, created_at) DESC, rowid DESC
 LIMIT 5
 `
@@ -564,26 +538,87 @@ func (q *Queries) ListRecentDeliveredOutbox(ctx context.Context, conversationID 
 	return items, nil
 }
 
-const markOutboxDelivered = `-- name: MarkOutboxDelivered :exec
-UPDATE outbox_messages SET status = 'delivered', delivered_at = ?1 WHERE id = ?2
+const listTimelineNotifications = `-- name: ListTimelineNotifications :many
+SELECT CAST(o.rowid AS INTEGER) AS position, o.id, o.body, o.created_at
+FROM web_notifications o
+JOIN submissions s ON s.id = o.source_submission_id AND s.conversation_id = o.conversation_id
+JOIN conversations c ON c.id = o.conversation_id AND c.agent_id = o.agent_id
+JOIN agents a ON a.id = c.agent_id
+WHERE o.conversation_id = ?1 AND o.agent_id = ?2
+  AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
+  AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
+  AND (s.origin = 'web' OR s.producer <> 'user')
+  AND o.rowid > CAST(?3 AS INTEGER)
+  AND (CAST(?4 AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM web_notifications prior
+      WHERE prior.id = ?4 AND prior.conversation_id = ?1 AND prior.agent_id = ?2))
+ORDER BY o.rowid DESC
+LIMIT ?5
 `
 
-type MarkOutboxDeliveredParams struct {
+type ListTimelineNotificationsParams struct {
+	ConversationID int64  `json:"conversation_id"`
+	AgentID        string `json:"agent_id"`
+	AfterPosition  int64  `json:"after_position"`
+	BeforeID       string `json:"before_id"`
+	PageSize       int64  `json:"page_size"`
+}
+
+type ListTimelineNotificationsRow struct {
+	Position  int64  `json:"position"`
+	ID        string `json:"id"`
+	Body      string `json:"body"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+// The submission is the trusted origin even when a Web task also has a channel target.
+// rowid is only a live read position; history sends the durable ID as its cursor.
+func (q *Queries) ListTimelineNotifications(ctx context.Context, arg ListTimelineNotificationsParams) ([]ListTimelineNotificationsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTimelineNotifications,
+		arg.ConversationID,
+		arg.AgentID,
+		arg.AfterPosition,
+		arg.BeforeID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTimelineNotificationsRow{}
+	for rows.Next() {
+		var i ListTimelineNotificationsRow
+		if err := rows.Scan(
+			&i.Position,
+			&i.ID,
+			&i.Body,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markOutboxSent = `-- name: MarkOutboxSent :exec
+UPDATE outbox_messages SET status = 'sent', delivered_at = ?1, remote_ids = ?2, retry_at = 0, error = ''
+WHERE id = ?3 AND status IN ('pending', 'failed')
+`
+
+type MarkOutboxSentParams struct {
 	DeliveredAt sql.NullInt64 `json:"delivered_at"`
+	RemoteIds   string        `json:"remote_ids"`
 	ID          string        `json:"id"`
 }
 
-func (q *Queries) MarkOutboxDelivered(ctx context.Context, arg MarkOutboxDeliveredParams) error {
-	_, err := q.db.ExecContext(ctx, markOutboxDelivered, arg.DeliveredAt, arg.ID)
-	return err
-}
-
-const markOutboxPartSkipped = `-- name: MarkOutboxPartSkipped :exec
-UPDATE outbox_messages SET skipped_part = 1 WHERE id = ?
-`
-
-func (q *Queries) MarkOutboxPartSkipped(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, markOutboxPartSkipped, id)
+func (q *Queries) MarkOutboxSent(ctx context.Context, arg MarkOutboxSentParams) error {
+	_, err := q.db.ExecContext(ctx, markOutboxSent, arg.DeliveredAt, arg.RemoteIds, arg.ID)
 	return err
 }
 
@@ -595,22 +630,21 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = ?6 AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = ?7 AND c.execution_scope = ?8 AND c.execution_id = ?9
+  AND c.agent_id = ?7 AND c.execution_scope = '' AND c.execution_id = ?8
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
 ON CONFLICT DO NOTHING
 `
 
 type QueueOutboxFileParams struct {
-	ID             string        `json:"id"`
-	OperationKey   string        `json:"operation_key"`
-	Name           string        `json:"name"`
-	MimeType       string        `json:"mime_type"`
-	Body           []byte        `json:"body"`
-	SubmissionID   string        `json:"submission_id"`
-	AgentID        string        `json:"agent_id"`
-	ExecutionScope string        `json:"execution_scope"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
+	ID           string        `json:"id"`
+	OperationKey string        `json:"operation_key"`
+	Name         string        `json:"name"`
+	MimeType     string        `json:"mime_type"`
+	Body         []byte        `json:"body"`
+	SubmissionID string        `json:"submission_id"`
+	AgentID      string        `json:"agent_id"`
+	ExecutionID  sql.NullInt64 `json:"execution_id"`
 }
 
 func (q *Queries) QueueOutboxFile(ctx context.Context, arg QueueOutboxFileParams) (int64, error) {
@@ -622,7 +656,6 @@ func (q *Queries) QueueOutboxFile(ctx context.Context, arg QueueOutboxFileParams
 		arg.Body,
 		arg.SubmissionID,
 		arg.AgentID,
-		arg.ExecutionScope,
 		arg.ExecutionID,
 	)
 	if err != nil {
@@ -632,7 +665,8 @@ func (q *Queries) QueueOutboxFile(ctx context.Context, arg QueueOutboxFileParams
 }
 
 const revokeOutboxBySubmission = `-- name: RevokeOutboxBySubmission :exec
-UPDATE outbox_messages SET status = 'revoked' WHERE source_submission_id = ? AND status = 'pending'
+UPDATE outbox_messages SET status = 'failed', error = 'source delivery cancelled', retry_at = 0
+WHERE source_submission_id = ? AND status = 'pending'
 `
 
 func (q *Queries) RevokeOutboxBySubmission(ctx context.Context, sourceSubmissionID sql.NullString) error {
@@ -641,7 +675,8 @@ func (q *Queries) RevokeOutboxBySubmission(ctx context.Context, sourceSubmission
 }
 
 const setOutboxError = `-- name: SetOutboxError :exec
-UPDATE outbox_messages SET retry_at = ?1, error = ?2 WHERE id = ?3
+UPDATE outbox_messages SET retry_at = ?1, error = ?2, attempts = attempts + 1
+WHERE id = ?3 AND status = 'pending'
 `
 
 type SetOutboxErrorParams struct {
@@ -672,9 +707,7 @@ func (q *Queries) SetRequiredChannelReply(ctx context.Context, arg SetRequiredCh
 }
 
 const setSubmissionExitAction = `-- name: SetSubmissionExitAction :exec
-UPDATE submissions
-SET exit_action = ?1
-WHERE id = ?2 AND status = 'pending'
+UPDATE submissions SET exit_action = ?1 WHERE id = ?2 AND status = 'pending'
 `
 
 type SetSubmissionExitActionParams struct {
@@ -687,30 +720,12 @@ func (q *Queries) SetSubmissionExitAction(ctx context.Context, arg SetSubmission
 	return err
 }
 
-const startOutboxGroupFallback = `-- name: StartOutboxGroupFallback :exec
-UPDATE outbox_messages SET group_fallback = 1
-WHERE id = ?1 AND delivered_parts = ?2 AND group_cursor = 0
-`
-
-type StartOutboxGroupFallbackParams struct {
-	ID   string `json:"id"`
-	Part int64  `json:"part"`
-}
-
-func (q *Queries) StartOutboxGroupFallback(ctx context.Context, arg StartOutboxGroupFallbackParams) error {
-	_, err := q.db.ExecContext(ctx, startOutboxGroupFallback, arg.ID, arg.Part)
-	return err
-}
-
 const supersedeOutboxTopic = `-- name: SupersedeOutboxTopic :execrows
 UPDATE outbox_messages
 SET status = 'superseded'
-WHERE conversation_id = ?1
-  AND peer = ?2
-  AND topic_key = ?3
-  AND ?3 != ''
-  AND status = 'pending'
-  AND delivered_parts = 0
+WHERE conversation_id = ?1 AND peer = ?2
+  AND topic_key = ?3 AND ?3 != ''
+  AND status = 'pending' AND rendered_message = ''
 `
 
 type SupersedeOutboxTopicParams struct {

@@ -62,7 +62,7 @@ func TestUserFeishuReactionDoesNotReplayOnRedirect(t *testing.T) {
 		}
 	}))
 	t.Cleanup(server.Close)
-	bot := New(Config{AppID: "cli_fake", AppSecret: "fake", APIURL: server.URL}, nil, nil, nil, nil)
+	bot := New(Config{AppID: "cli_fake", AppSecret: "fake", APIURL: server.URL}, nil, nil, nil)
 
 	// When Dex adds a status reaction.
 	id, err := bot.React(t.Context(), "feishu:owner", "om_original", "", channel.ReactionQueued)

@@ -18,7 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 func routineToolJSON(t *testing.T, d *dex, chatID int64, name string, args any, out any) {
@@ -41,19 +41,19 @@ func TestUserManagesRoutinesThroughChat(t *testing.T) {
 	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": project}, nil)
 	// When the user creates a routine, omitted cwd inherits the Chat project.
 	var created automation.Automation
-	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Morning check", "prompt": "report_check {\"outcome\":\"changed\",\"summary\":\"New result\",\"changeKey\":\"same-result\"}", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
+	routineToolJSON(t, d, id, "automation_create", map[string]any{"name": "Morning check", "prompt": "automation_report {\"outcome\":\"changed\",\"summary\":\"New result\",\"changeKey\":\"same-result\"}", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
 	if created.ID == "" || !created.Enabled || created.Cwd != project || created.TimeZone != "UTC" || len(created.NextRuns) == 0 {
 		t.Fatalf("created: %+v", created)
 	}
 	// Then partial updates keep the saved prompt and change only requested state.
 	var renamed automation.Automation
-	routineToolJSON(t, d, id, "update_routine", map[string]any{"id": created.ID, "name": "Renamed check", "prompt": created.Prompt}, &renamed)
+	routineToolJSON(t, d, id, "automation_update", map[string]any{"id": created.ID, "name": "Renamed check", "prompt": created.Prompt}, &renamed)
 	if renamed.Name != "Renamed check" || !slices.Equal(renamed.NextRuns, created.NextRuns) || renamed.UpdatedAt <= created.UpdatedAt {
 		t.Fatalf("non-scheduling edit: before=%+v after=%+v", created, renamed)
 	}
 	for _, enabled := range []bool{false, true} {
 		var updated automation.Automation
-		routineToolJSON(t, d, id, "update_routine", map[string]any{"id": created.ID, "enabled": enabled}, &updated)
+		routineToolJSON(t, d, id, "automation_update", map[string]any{"id": created.ID, "enabled": enabled}, &updated)
 		if updated.Enabled != enabled || updated.Prompt != created.Prompt {
 			t.Fatalf("updated: %+v", updated)
 		}
@@ -62,14 +62,14 @@ func TestUserManagesRoutinesThroughChat(t *testing.T) {
 		}
 	}
 	var updated automation.Automation
-	routineToolJSON(t, d, id, "update_routine", map[string]any{"id": created.ID, "schedule": map[string]any{"kind": "weekly", "days": []int{1, 5}, "time": "09:00"}, "timeZone": "Asia/Shanghai"}, &updated)
+	routineToolJSON(t, d, id, "automation_update", map[string]any{"id": created.ID, "schedule": map[string]any{"kind": "weekly", "days": []int{1, 5}, "time": "09:00"}, "timeZone": "Asia/Shanghai"}, &updated)
 	if updated.Schedule.Kind != "weekly" || updated.TimeZone != "Asia/Shanghai" || updated.Prompt != created.Prompt {
 		t.Fatalf("schedule update: %+v", updated)
 	}
 	// When the user runs a paused routine now, get exposes the saved outcome and transcript reference.
-	routineToolJSON(t, d, id, "update_routine", map[string]any{"id": created.ID, "enabled": false}, &updated)
+	routineToolJSON(t, d, id, "automation_update", map[string]any{"id": created.ID, "enabled": false}, &updated)
 	var run automation.Run
-	routineToolJSON(t, d, id, "run_routine", map[string]string{"id": created.ID}, &run)
+	routineToolJSON(t, d, id, "automation_run", map[string]string{"id": created.ID}, &run)
 	if run.ID == "" || run.ChatID == 0 {
 		t.Fatalf("run: %+v", run)
 	}
@@ -84,7 +84,7 @@ func TestUserManagesRoutinesThroughChat(t *testing.T) {
 		automation.Automation
 		Runs []automation.Run `json:"runs"`
 	}
-	routineToolJSON(t, d, id, "get_routine", map[string]string{"id": created.ID}, &detail)
+	routineToolJSON(t, d, id, "automation_get", map[string]string{"id": created.ID}, &detail)
 	if len(detail.Runs) != 1 || detail.Runs[0].ID != run.ID || detail.Runs[0].ChatID != run.ChatID || detail.Runs[0].Summary != "New result" {
 		t.Fatalf("detail: %+v", detail)
 	}
@@ -92,13 +92,13 @@ func TestUserManagesRoutinesThroughChat(t *testing.T) {
 	var listed struct {
 		Routines []automation.Automation `json:"routines"`
 	}
-	routineToolJSON(t, d, d.mainChat(t), "list_routines", map[string]any{}, &listed)
+	routineToolJSON(t, d, d.mainChat(t), "automation_list", map[string]any{}, &listed)
 	if len(listed.Routines) != 1 || listed.Routines[0].ID != created.ID || listed.Routines[0].LastRun == nil {
 		t.Fatalf("list: %+v", listed)
 	}
 	// A second requested execution can report the same finding.
 	var second automation.Run
-	routineToolJSON(t, d, id, "run_routine", map[string]string{"id": created.ID}, &second)
+	routineToolJSON(t, d, id, "automation_run", map[string]string{"id": created.ID}, &second)
 	settledRoutine(t, d, created.ID, second.ID)
 	var findings struct {
 		Runs []struct {
@@ -106,7 +106,7 @@ func TestUserManagesRoutinesThroughChat(t *testing.T) {
 			RepeatedFinding bool   `json:"repeatedFinding"`
 		} `json:"runs"`
 	}
-	routineToolJSON(t, d, id, "get_routine", map[string]string{"id": created.ID}, &findings)
+	routineToolJSON(t, d, id, "automation_get", map[string]string{"id": created.ID}, &findings)
 	if len(findings.Runs) != 2 || findings.Runs[0].ID != second.ID || second.ID == run.ID || !findings.Runs[0].RepeatedFinding || findings.Runs[1].RepeatedFinding {
 		t.Fatalf("execution count and repeated finding: %+v", findings)
 	}
@@ -131,11 +131,11 @@ func TestUserRoutineToolReplayReturnsCommittedMutationsAfterRestart(t *testing.T
 	d := startDex(t, data, "")
 	id := d.mainChat(t)
 	var created, updated automation.Automation
-	args := map[string]any{"name": "Replay check", "prompt": "report_check {\"outcome\":\"unchanged\",\"summary\":\"Checked\"}", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}
-	routineToolJSON(t, d, id, "create_routine", args, &created)
-	routineToolJSON(t, d, id, "update_routine", map[string]any{"id": created.ID, "schedule": map[string]any{"kind": "every", "minutes": 45}}, &updated)
+	args := map[string]any{"name": "Replay check", "prompt": "automation_report {\"outcome\":\"unchanged\",\"summary\":\"Checked\"}", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}
+	routineToolJSON(t, d, id, "automation_create", args, &created)
+	routineToolJSON(t, d, id, "automation_update", map[string]any{"id": created.ID, "schedule": map[string]any{"kind": "every", "minutes": 45}}, &updated)
 	var run automation.Run
-	routineToolJSON(t, d, id, "run_routine", map[string]string{"id": created.ID}, &run)
+	routineToolJSON(t, d, id, "automation_run", map[string]string{"id": created.ID}, &run)
 	settledRoutine(t, d, created.ID, run.ID)
 	conn := sessionDB(t, d)
 	createSource := savedRoutineCaller(t, conn, "create")
@@ -148,11 +148,11 @@ func TestUserRoutineToolReplayReturnsCommittedMutationsAfterRestart(t *testing.T
 	service := automation.New(sqlc.New(conn), nil, time.Now) // Read service; mutations bind the real transactional input writer.
 	tools := automation.NewToolService(conn, service, func(int64) {})
 	for range 2 {
-		replay, err := tools.Create(t.Context(), createSource, engine.RoutinePatch{})
+		replay, err := tools.Create(t.Context(), createSource, automation.RoutinePatch{})
 		if err != nil || replay.ID != created.ID {
 			t.Fatalf("create replay: %+v %v", replay, err)
 		}
-		edit, err := tools.Update(t.Context(), updateSource, engine.RoutinePatch{ID: created.ID, Schedule: &engine.RoutineSchedule{Kind: "every", Minutes: 45}})
+		edit, err := tools.Update(t.Context(), updateSource, automation.RoutinePatch{ID: created.ID, Schedule: &automation.RoutineSchedule{Kind: "every", Minutes: 45}})
 		if err != nil || !slices.Equal(edit.NextRuns, updated.NextRuns) || edit.UpdatedAt != updated.UpdatedAt {
 			t.Fatalf("update replay: %+v %v", edit, err)
 		}
@@ -178,7 +178,7 @@ func TestUserRoutineBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 	d := startDex(t, data, "")
 	id := d.mainChat(t)
 	var a automation.Automation
-	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Scoped", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
+	routineToolJSON(t, d, id, "automation_create", map[string]any{"name": "Scoped", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
 	conn := sessionDB(t, d)
 	source := savedRoutineCaller(t, conn, "create")
 	tools := automation.NewToolService(conn, automation.New(sqlc.New(conn), nil, time.Now), func(int64) {})
@@ -192,10 +192,10 @@ func TestUserRoutineBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 		if _, err := tools.Get(t.Context(), c, a.ID); err == nil {
 			t.Fatal("get accepted untrusted source")
 		}
-		if _, err := tools.Create(t.Context(), c, engine.RoutinePatch{}); err == nil {
+		if _, err := tools.Create(t.Context(), c, automation.RoutinePatch{}); err == nil {
 			t.Fatal("create accepted untrusted source")
 		}
-		if _, err := tools.Update(t.Context(), c, engine.RoutinePatch{ID: a.ID, Enabled: new(false)}); err == nil {
+		if _, err := tools.Update(t.Context(), c, automation.RoutinePatch{ID: a.ID, Enabled: new(false)}); err == nil {
 			t.Fatal("update accepted untrusted source")
 		}
 		if _, err := tools.Run(t.Context(), c, a.ID); err == nil {
@@ -255,7 +255,7 @@ func TestUserRoutineMutationFailurePreservesCauseAndRollsBack(t *testing.T) {
 		}
 	}
 	fail("create")
-	got := taskTool(t, d, id, "create_routine", args)
+	got := taskTool(t, d, id, "automation_create", args)
 	if !strings.Contains(got, "routine receipt write failed") {
 		t.Fatalf("cause lost: %s", got)
 	}
@@ -265,10 +265,10 @@ func TestUserRoutineMutationFailurePreservesCauseAndRollsBack(t *testing.T) {
 	}
 	dropFailure()
 	var a automation.Automation
-	routineToolJSON(t, d, id, "create_routine", args, &a)
+	routineToolJSON(t, d, id, "automation_create", args, &a)
 	// When a run receipt fails, neither the run nor its durable input can survive.
 	fail("run")
-	got = taskTool(t, d, id, "run_routine", map[string]string{"id": a.ID})
+	got = taskTool(t, d, id, "automation_run", map[string]string{"id": a.ID})
 	if !strings.Contains(got, "routine receipt write failed") {
 		t.Fatalf("run cause lost: %s", got)
 	}
@@ -281,12 +281,12 @@ func TestUserRoutineMutationFailurePreservesCauseAndRollsBack(t *testing.T) {
 	dropFailure()
 	// Then an update receipt failure also leaves the original scheduling state intact.
 	fail("update")
-	got = taskTool(t, d, id, "update_routine", map[string]any{"id": a.ID, "enabled": false})
+	got = taskTool(t, d, id, "automation_update", map[string]any{"id": a.ID, "enabled": false})
 	if !strings.Contains(got, "routine receipt write failed") {
 		t.Fatalf("update cause lost: %s", got)
 	}
 	var detail automation.Automation
-	routineToolJSON(t, d, id, "get_routine", map[string]string{"id": a.ID}, &detail)
+	routineToolJSON(t, d, id, "automation_get", map[string]string{"id": a.ID}, &detail)
 	if !detail.Enabled || !slices.Equal(detail.NextRuns, a.NextRuns) {
 		t.Fatalf("partial update: %+v", detail)
 	}
@@ -298,19 +298,19 @@ func TestUserRoutineOtherBotCannotReadOrChangeRoutine(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	id := d.mainChat(t)
 	var a automation.Automation
-	routineToolJSON(t, d, id, "create_routine", map[string]any{"name": "Private routine", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
+	routineToolJSON(t, d, id, "automation_create", map[string]any{"name": "Private routine", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
 	var beta apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Beta", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &beta, http.StatusCreated)
 	var main chatInfo
 	d.must(t, http.MethodGet, "/api/agents/"+beta.ID+"/chats/main", nil, &main)
 	conn := sessionDB(t, d)
 	// When Beta attempts to inspect or mutate the first bot's ID, ownership remains enforced.
-	for _, name := range []string{"list_routines", "get_routine", "update_routine", "run_routine"} {
+	for _, name := range []string{"automation_list", "automation_get", "automation_update", "automation_run"} {
 		args := map[string]any{"id": a.ID}
-		if name == "list_routines" {
+		if name == "automation_list" {
 			delete(args, "id")
 		}
-		if name == "update_routine" {
+		if name == "automation_update" {
 			args["enabled"] = false
 		}
 		request := uuid.NewV7().String()
@@ -320,7 +320,7 @@ func TestUserRoutineOtherBotCannotReadOrChangeRoutine(t *testing.T) {
 			err := conn.QueryRowContext(t.Context(), "SELECT status,answer FROM submissions WHERE id=?", request).Scan(&status, &answer)
 			return err == nil && status == "done", fmt.Sprintf("status=%s answer=%s err=%v", status, answer, err)
 		})
-		if name == "list_routines" {
+		if name == "automation_list" {
 			if strings.Contains(answer, a.ID) || !strings.Contains(answer, `"routines":[]`) {
 				t.Fatalf("leaked list: %s", answer)
 			}
@@ -329,7 +329,7 @@ func TestUserRoutineOtherBotCannotReadOrChangeRoutine(t *testing.T) {
 		}
 	}
 	var detail automation.Automation
-	routineToolJSON(t, d, id, "get_routine", map[string]string{"id": a.ID}, &detail)
+	routineToolJSON(t, d, id, "automation_get", map[string]string{"id": a.ID}, &detail)
 	if !detail.Enabled {
 		t.Fatal("other bot paused routine")
 	}
@@ -338,7 +338,7 @@ func TestUserRoutineOtherBotCannotReadOrChangeRoutine(t *testing.T) {
 func TestUserRoutineToolDoesNotRunInASessionSelectedDuringPreflight(t *testing.T) {
 	t.Parallel()
 	// Given a Routine and two eligible sessions on the same synthetic SSH environment.
-	ssh := execenvtest.NewFakeSSH(t)
+	ssh := runnertest.NewFakeSSH(t)
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), SSHProgram: ssh.SSHProgram})
 	d.setModel(t, "bash")
 	main := d.mainChat(t)

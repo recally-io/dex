@@ -1,4 +1,4 @@
-package engine
+package engine_test
 
 import (
 	"encoding/json"
@@ -6,13 +6,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MichaelKinsy/PiG/durable"
-	"github.com/recally-io/dex/internal/vault"
+	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/artifact"
+	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/engine"
+	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 func TestObjectSchemaWithoutRequiredEncodesEmptyArray(t *testing.T) {
-	data, err := json.Marshal(objectSchema(nil, map[string]any{}))
+	data, err := json.Marshal(engine.ObjectSchema(nil, map[string]any{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,19 +27,19 @@ func TestObjectSchemaWithoutRequiredEncodesEmptyArray(t *testing.T) {
 
 // Providers reject the whole request when one tool schema is invalid, so check every built-in tool.
 func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
-	a := &Agents{}
-	ref := Ref{AgentID: "bot"}
-	link := WorkTaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
-	extensions := []*durable.Extension{
-		checkExtension("bot", nil), telegramExtension("bot", nil), codingTools(nil, 0, vault.Snapshot{}), routineExtension("bot", RoutineTools{}),
-		sessionExtension("bot", TaskTools{}), sessionReadExtension("bot", TaskTools{}),
-		workLoopExtension(), artifactExtension("bot", nil, nil), (&memoryRepo{}).Extension("bot", nil), frontDeskExtension(),
-		outboxExtension("bot", OutboxTools{}), childOutboxExtension("bot", OutboxTools{}), monitorExtension("bot", MonitorTools{}, nil, vault.Snapshot{}),
-		askUserExtension("bot", nil), botReadExtension("bot", BotTools{}), botManageExtension("bot", BotTools{}),
-		workTaskExtension("bot", WorkTaskTools{Links: []WorkTaskLinkTool{link}}), childExtension(), dreamMessageExtension("bot", nil),
-		routineCheckInstructions(), groupExtension(nil),
-		{Name: "group-tools", Tools: []*durable.ToolRegistration{a.groupQuestionTool(ref), a.groupSessionTool(ref), a.groupDeliveryTool(ref, nil)}},
-	}
+	link := worktasktools.WorkTaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
+	const id = "bot"
+	runtime := engine.ExtensionRuntime{AgentID: id}
+	extensions := append(engine.BuiltInSchemaExtensions(),
+		chat.CheckExtension(id, nil), automation.RoutineExtension(id, automation.RoutineTools{}),
+		chat.SessionExtension(id, chat.SessionHandlers{}), chat.SessionReadExtension(id, chat.SessionHandlers{}),
+		chat.WorkLoopExtension(), artifact.Extension(runtime, nil), chat.FrontDeskExtension(),
+		chat.OutboxExtension(id, chat.OutboxTools{}), chat.ChildOutboxExtension(id, chat.OutboxTools{}), chat.MonitorExtension(runtime, chat.MonitorTools{}),
+		chat.AskUserExtension(id, nil), agent.BotReadExtension(id, agent.BotHandlers{}), agent.BotManageExtension(id, agent.BotHandlers{}),
+		worktasktools.WorkTaskExtension(id, worktasktools.WorkTaskTools{Links: []worktasktools.WorkTaskLinkTool{link}}),
+		chat.ChildExtension(), chat.DreamMessageExtension(id, nil), chat.RoutineCheckInstructions(),
+	)
+	extensions = append(extensions, agent.ChannelExtensions(id, agent.ChannelTools{})...)
 	count := 0
 	for _, extension := range extensions {
 		for _, tool := range extension.Tools {

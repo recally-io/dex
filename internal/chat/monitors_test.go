@@ -34,10 +34,10 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 		SourceRequestID: "user-root-1", Key: "bot/t-invalid-1",
 	}
 	// Rejects delay < 60s and > 7 days.
-	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 30, Prompt: "too soon"}); err == nil {
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 30, Prompt: "too soon"}); err == nil {
 		t.Fatal("expected error for delay < 60s")
 	}
-	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 8 * 24 * 3600, Prompt: "too far"}); err == nil {
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 8 * 24 * 3600, Prompt: "too far"}); err == nil {
 		t.Fatal("expected error for delay > 7d")
 	}
 
@@ -45,7 +45,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 	var firstMonitorID string
 	for i := range maxActiveMonitors {
 		call.Key = fmt.Sprintf("bot/t-cap-%d", i)
-		info, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("check %d", i)})
+		info, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("check %d", i)})
 		if err != nil {
 			t.Fatalf("monitor %d failed: %v", i, err)
 		}
@@ -57,7 +57,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 		}
 	}
 	call.Key = "bot/t-cap-overflow"
-	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: "overflow"}); err == nil {
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 120, Prompt: "overflow"}); err == nil {
 		t.Fatal("expected active monitor cap error")
 	}
 	cancelled, err := r.service.ToolMonitorCancel(t.Context(), call, firstMonitorID)
@@ -70,7 +70,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 	for depth := range maxMonitorChainDepth + 1 {
 		call.Key = fmt.Sprintf("bot/t-chain-%d", depth)
 		call.SourceRequestID = sourceReq
-		info, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("depth %d", depth)})
+		info, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 120, Prompt: fmt.Sprintf("depth %d", depth)})
 		if err != nil {
 			t.Fatalf("chain depth %d failed: %v", depth, err)
 		}
@@ -89,7 +89,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 	}
 	call.Key = "bot/t-chain-exceeded"
 	call.SourceRequestID = sourceReq
-	if _, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: "depth 7"}); err == nil || !strings.Contains(err.Error(), "depth limit") {
+	if _, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 120, Prompt: "depth 7"}); err == nil || !strings.Contains(err.Error(), "depth limit") {
 		t.Fatalf("expected chain depth limit error, got %v", err)
 	}
 }
@@ -115,7 +115,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 		AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
 		SourceRequestID: "user-root-2", Key: "bot/t-expire",
 	}
-	expInfo, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 60, Prompt: "missed check"})
+	expInfo, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 60, Prompt: "missed check"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,11 +134,11 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 
 	// Monitor cancels on Stop, Clear, and Archive.
 	call.Key = "bot/t-stop"
-	stopMonitor, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 300, Prompt: "stop me"})
+	stopMonitor, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 300, Prompt: "stop me"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.Stop(t.Context(), "bot", conv); err != nil {
+	if err := r.service.CancelSession(t.Context(), "bot", conv); err != nil {
 		t.Fatal(err)
 	}
 	if row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(stopMonitor.ID, "schedule-")); err != nil || row.State != "cancelled" {
@@ -146,7 +146,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	}
 
 	call.Key = "bot/t-clear"
-	clearMonitor, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 300, Prompt: "clear me"})
+	clearMonitor, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 300, Prompt: "clear me"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	awaitReceipt(t, r, "reset-monitors")
 
 	call.Key = "bot/t-archive"
-	archMonitor, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 300, Prompt: "archive me"})
+	archMonitor, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 300, Prompt: "archive me"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,6 +176,9 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := r.q.InsertRoutineNotificationTarget(t.Context(), sqlc.InsertRoutineNotificationTargetParams{
 		ID: "tgt-1", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {
@@ -201,7 +204,7 @@ func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
 		{"run-changed", "changed", 1},
 	} {
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: tc.id, ConversationID: conv, Content: "routine", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 1,
+			ID: tc.id, ConversationID: conv, Content: "routine", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -215,7 +218,7 @@ func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
 			t.Fatal(err)
 		}
 		var n int
-		if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE dedup_key = ?`, "routine:"+tc.id).Scan(&n); err != nil {
+		if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE id = ?`, "routine:"+tc.id).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		if n != tc.wantRows {

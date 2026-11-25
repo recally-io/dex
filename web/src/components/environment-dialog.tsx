@@ -23,6 +23,7 @@ import { ProbeResultPanel } from "./probe-result-panel";
 import { RunnerInstall } from "./runner-install";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Textarea } from "./ui/textarea";
 import { Field } from "./form";
 
 // A place is what the user picks first: where the bot runs. The access method is a
@@ -37,14 +38,14 @@ const environmentPlaces: readonly {
 }[] = [
   {
     place: "machine",
-    title: "Another machine",
+    title: "Machine",
     subtitle: "A Linux or macOS machine that you own",
     traits: "Persistent disk · Your files",
   },
   {
     place: "sandbox",
     title: "Sandbox",
-    subtitle: "An isolated cloud VM that Dex creates for one bot",
+    subtitle: "An isolated workspace in E2B, Local Docker / VM, or a custom sandbox",
     traits: "Isolated disk · Disposable",
   },
 ];
@@ -56,12 +57,12 @@ const machineAccess: readonly {
 }[] = [
   {
     kind: "pi-env",
-    title: "Over SSH",
+    title: "SSH",
     subtitle: "The machine runs sshd and Dex can reach it",
   },
   {
     kind: "runner",
-    title: "dex runner",
+    title: "Outbound",
     subtitle: "The machine connects out to Dex. No sshd, no inbound port.",
   },
 ];
@@ -86,9 +87,11 @@ export function EnvironmentDialog({
 
   const [tried, setTried] = useState(false);
   const [serviceName, setServiceName] = useState(existing?.kind === "runner" ? existing.name : "");
+  const [desc, setDesc] = useState(existing?.desc ?? "");
+  const descTooLong = Array.from(desc).length > 500;
   const [probeResult, setProbeResult] = useState<EnvironmentTestResult | null>(null);
 
-  // A dex runner environment must exist before Dex can issue its install command, so the
+  // An Outbound Machine must exist before Dex can issue its install command, so the
   // dialog stays open after the save and shows that command.
   const [created, setCreated] = useState<Environment | null>(null);
 
@@ -149,6 +152,7 @@ export function EnvironmentDialog({
   const place: Place = kind === "e2b" ? "sandbox" : "machine";
 
   const showSsh = (key: keyof typeof ssh.errors) => (tried ? ssh.errors[key] : undefined);
+
   const showSandbox = (key: keyof typeof sandbox.errors) => (tried ? sandbox.errors[key] : undefined);
 
   function runProbe() {
@@ -162,9 +166,11 @@ export function EnvironmentDialog({
   function submit() {
     setTried(true);
 
-    if (pending || (kind === "runner" ? !serviceName.trim() : active.hasErrors)) return;
+    if (pending || descTooLong || (kind === "runner" ? !serviceName.trim() : active.hasErrors)) return;
 
-    const body = kind === "runner" ? { name: serviceName.trim(), kind, config: {} } : active.submitBody();
+    const fields = kind === "runner" ? { name: serviceName.trim(), kind, config: {} } : active.submitBody();
+
+    const body = { ...fields, desc };
 
     if (existing) {
       update.mutate({ path: { environmentId: existing.id }, body });
@@ -175,8 +181,12 @@ export function EnvironmentDialog({
 
   return (
     <Modal
-      title={existing ? `Edit ${existing.name}` : "Add execution environment"}
-      description="Choose where a bot runs shell commands and stores its workspace."
+      title={existing ? `Edit ${existing.name}` : "Add Runner"}
+      description={
+        existing
+          ? "Manage this Runner's connection and workspace."
+          : "Add a Machine or Sandbox. Local is built in and needs no setup."
+      }
       pending={pending}
       onClose={onClose}
       footer={
@@ -204,7 +214,7 @@ export function EnvironmentDialog({
                 {pending ? (
                   <Spinner className="border-primary-foreground/40 border-t-primary-foreground" />
                 ) : null}
-                {pending ? "Saving…" : existing ? "Save changes" : "Add environment"}
+                {pending ? "Saving…" : existing ? "Save changes" : "Add Runner"}
               </Button>
             )}
           </>
@@ -257,11 +267,7 @@ export function EnvironmentDialog({
         ) : null}
 
         {!existing && place === "machine" ? (
-          <div
-            role="radiogroup"
-            aria-label="How Dex reaches the machine"
-            className="grid gap-2 sm:grid-cols-2"
-          >
+          <div role="radiogroup" aria-label="Connection method" className="grid gap-2 sm:grid-cols-2">
             {machineAccess.map((choice) => {
               const selected = kind === choice.kind;
 
@@ -305,34 +311,50 @@ export function EnvironmentDialog({
         ) : kind === "e2b" ? (
           <SandboxEnvironmentFields controller={sandbox} show={showSandbox} />
         ) : (
-          <>
-            <Field label="Name" error={tried && !serviceName.trim() ? "Enter a name." : undefined}>
-              {(ids) => (
-                <Input
-                  {...ids}
-                  maxLength={60}
-                  value={created?.name ?? serviceName}
-                  disabled={!!created}
-                  onChange={(event) => setServiceName(event.target.value)}
-                />
-              )}
-            </Field>
-            {created ? (
-              <RunnerInstall environmentId={created.id} autoIssue />
-            ) : (
-              <Button
-                type="button"
-                size="xs"
-                variant="outline"
-                disabled={pending || !serviceName.trim()}
-                onClick={submit}
-              >
-                {pending ? <Spinner /> : null}
-                Get install command
-              </Button>
+          <Field label="Name" error={tried && !serviceName.trim() ? "Enter a name." : undefined}>
+            {(ids) => (
+              <Input
+                {...ids}
+                maxLength={60}
+                value={created?.name ?? serviceName}
+                disabled={!!created}
+                onChange={(event) => setServiceName(event.target.value)}
+              />
             )}
-          </>
+          </Field>
         )}
+
+        <Field
+          label="Description"
+          hint="Optional"
+          error={descTooLong ? "Use 500 characters or fewer." : undefined}
+        >
+          {(ids) => (
+            <Textarea
+              {...ids}
+              value={created ? (created.desc ?? "") : desc}
+              disabled={pending || !!created}
+              onChange={(event) => setDesc(event.target.value)}
+            />
+          )}
+        </Field>
+
+        {kind === "runner" ? (
+          created ? (
+            <RunnerInstall environmentId={created.id} autoIssue />
+          ) : (
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={pending || descTooLong || !serviceName.trim()}
+              onClick={submit}
+            >
+              {pending ? <Spinner /> : null}
+              Get install command
+            </Button>
+          )
+        ) : null}
 
         <button type="submit" hidden />
       </form>
@@ -349,7 +371,7 @@ export function EnvironmentDialog({
           }
         />
       ) : null}
-      {mutationError ? <Failure title="Could not save environment" error={mutationError} /> : null}
+      {mutationError ? <Failure title="Could not save Runner" error={mutationError} /> : null}
     </Modal>
   );
 }

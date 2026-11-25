@@ -12,7 +12,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-var askArgs = engine.AskUserArgs{Question: "Which one?", Options: []string{"first", "second"}}
+var askArgs = AskUserArgs{Question: "Which one?", Options: []string{"first", "second"}}
 
 func TestUserQuestionReplayReturnsTheStoredQuestion(t *testing.T) {
 	// Given a question that the tool saved.
@@ -24,7 +24,7 @@ func TestUserQuestionReplayReturnsTheStoredQuestion(t *testing.T) {
 	}
 
 	// When PiG replays the same tool call with different arguments, then it gets the saved question.
-	replay, err := r.service.ToolAskUser(t.Context(), source, engine.AskUserArgs{Question: "Changed?", Options: []string{"x", "y", "z"}})
+	replay, err := r.service.ToolAskUser(t.Context(), source, AskUserArgs{Question: "Changed?", Options: []string{"x", "y", "z"}})
 	if err != nil || replay.ID != first.ID || replay.Text != "Which one?" || len(replay.Options) != 2 {
 		t.Fatalf("replay: %+v %v", replay, err)
 	}
@@ -49,7 +49,7 @@ func TestUserQuestionIsRefusedWhenItCannotBeAnswered(t *testing.T) {
 
 	// Given invalid options, then the tool reports the limits.
 	source.Key = "bot/spawn-3"
-	if _, err := r.service.ToolAskUser(t.Context(), source, engine.AskUserArgs{Question: "One option?", Options: []string{"only"}}); !errors.Is(err, ErrQuestionInvalid) {
+	if _, err := r.service.ToolAskUser(t.Context(), source, AskUserArgs{Question: "One option?", Options: []string{"only"}}); !errors.Is(err, ErrQuestionInvalid) {
 		t.Fatalf("one option: %v", err)
 	}
 
@@ -87,7 +87,7 @@ func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer", ConversationID: chatID, Content: "Answer to: Which one?\nfirst", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 2}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer", ConversationID: chatID, Content: "Answer to: Which one?\nfirst", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE questions SET status='answered', answer_submission_id='answer'"); err != nil {
@@ -110,7 +110,7 @@ func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
 	}
 
 	// When a later answer runs and ends with a reply, then the question is consumed.
-	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer-2", ConversationID: chatID, Content: "Answer to: Which one?\nsecond", Attachments: "null", Origin: "web", Kind: "message", CreatedAt: 3}); err != nil {
+	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "answer-2", ConversationID: chatID, Content: "Answer to: Which one?\nsecond", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 3}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE questions SET status='answered', answer_submission_id='answer-2'"); err != nil {
@@ -150,7 +150,7 @@ func TestUserWithdrawnMessageIsNotSettledByTheWorkerBeforeTheWithdrawal(t *testi
 	}
 
 	// When the native abort has happened but the receipt write has not, then the receipt stays pending.
-	unlock, err := r.service.lockAgent(t.Context(), "bot")
+	unlock, err := r.service.lockSession(t.Context(), main.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

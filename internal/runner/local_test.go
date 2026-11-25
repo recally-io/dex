@@ -1,0 +1,243 @@
+package runner_test
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+
+	durableenv "github.com/MichaelKinsy/PiG/durable/env"
+	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/runner/runnertest"
+)
+
+func TestUserLocalProviderManagesWorkspaceAndEnv(t *testing.T) {
+	t.Parallel()
+	dataDir := t.TempDir()
+	homeDir := t.TempDir()
+	provider := runner.NewLocalProvider(dataDir, homeDir)
+	t.Cleanup(func() { _ = provider.Close(context.Background()) })
+
+	h, err := provider.Open(t.Context(), "default", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = h.Close(context.Background()) }()
+
+	if h.Kind() != runner.KindLocal {
+		t.Fatalf("unexpected handle metadata: kind=%q", h.Kind())
+	}
+	wantWS := filepath.Join(dataDir, "agents", "default", "workspace")
+	if h.Workspace() != wantWS {
+		t.Fatalf("workspace=%q want=%q", h.Workspace(), wantWS)
+	}
+	info, err := os.Stat(wantWS)
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+		t.Fatalf("workspace stat err=%v mode=%v", err, info.Mode())
+	}
+	if h.Home() != homeDir || h.Stamp() != "local" {
+		t.Fatalf("home=%q stamp=%q want home=%q stamp=local", h.Home(), h.Stamp(), homeDir)
+	}
+	env, err := h.Env(t.Context(), "", map[string]string{"DEX_FROM_HANDLE": "h1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout strings.Builder
+	res, err := env.Exec(t.Context(), `printf "%s|%s" "$DEX_TEST_LOCAL" "${DEX_FROM_HANDLE:-}"`, &durableenv.ShellExecOptions{
+		InheritEnv: new(false),
+		Env:        map[string]string{"DEX_TEST_LOCAL": "1", "PATH": os.Getenv("PATH")},
+		OnOutput: func(_ context.Context, text string, _ durableenv.ShellOutputInfo) {
+			stdout.WriteString(text)
+		},
+	})
+	if err != nil || res.ExitCode != 0 || stdout.String() != "1|" {
+		t.Fatalf("local exec res=%+v err=%v out=%q", res, err, stdout.String())
+	}
+}
+
+func TestUserWorkspaceHelpersStageReadSyncAndListDirectories(t *testing.T) {
+	t.Parallel()
+	remoteHome := t.TempDir()
+	remoteRoot := t.TempDir()
+	localWS := t.TempDir()
+	provider := runnertest.NewProvider(runner.KindPiEnv, remoteRoot, remoteHome, nil)
+
+	h, err := provider.Open(t.Context(), "bot1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = h.Close(context.Background()) }()
+	env, err := h.Env(t.Context(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// StageUpload + ReadWorkspaceFile + symlink/traversal confinement.
+	uploadFile := filepath.Join(localWS, "uploads", "u1", "note.txt")
+	if err := os.MkdirAll(filepath.Dir(uploadFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(uploadFile, []byte("hello remote upload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.StageUpload(t.Context(), env, localWS, h.Workspace(), "uploads/u1/note.txt"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := runner.ReadWorkspaceFile(t.Context(), h, "uploads/u1/note.txt", 1024)
+	if err != nil || string(data) != "hello remote upload" {
+		t.Fatalf("read staged upload=%q err=%v", data, err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(h.Workspace(), "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.ReadWorkspaceFile(t.Context(), h, "link.txt", 1024); err == nil {
+		t.Fatal("expected final symlink rejection")
+	}
+	if err := os.Symlink(filepath.Dir(outside), filepath.Join(h.Workspace(), "dirlink")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.ReadWorkspaceFile(t.Context(), h, "dirlink/secret.txt", 1024); err == nil {
+		t.Fatal("expected parent dir symlink escape rejection")
+	}
+	if _, err := runner.ReadWorkspaceFile(t.Context(), h, "uploads/u1/note.txt", 5); err == nil {
+		t.Fatal("expected maxBytes rejection")
+	}
+	if _, err := runner.ReadWorkspaceFile(t.Context(), h, "../outside", 1024); err == nil {
+		t.Fatal("expected path traversal rejection")
+	}
+
+	// Managed skill copies retain nested files and executable modes.
+	levelDir := filepath.Join(t.TempDir(), ".agents")
+	skillsDir := filepath.Join(levelDir, "skills")
+	for p, body := range map[string]string{
+		filepath.Join(levelDir, ".env"):                         "SECRET=level\n",
+		filepath.Join(levelDir, "mcp.json"):                     `{"mcpServers":{}}`,
+		filepath.Join(skillsDir, "deploy", "SKILL.md"):          "---\nname: deploy\ndescription: Deploy\n---\nRun deploy\n",
+		filepath.Join(skillsDir, "deploy", "scripts", "run.sh"): "#!/bin/sh\necho ok\n",
+		filepath.Join(skillsDir, "deploy", ".env"):              "SECRET=nested\n",
+		filepath.Join(skillsDir, "deploy", "mcp.json"):          `{"mcpServers":{"bad":{}}}`,
+		filepath.Join(skillsDir, ".hidden", "SKILL.md"):         "hidden",
+		filepath.Join(skillsDir, "node_modules", "pkg", "a.js"): "ignored",
+	} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(outside, filepath.Join(skillsDir, "deploy", "leak.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(skillsDir, "deploy", "scripts", "run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	remoteSkills := filepath.Join(h.Workspace(), ".dex", "skills", "agent")
+	t.Cleanup(func() {
+		_ = filepath.WalkDir(remoteSkills, func(p string, d os.DirEntry, err error) error {
+			if err == nil && d.IsDir() {
+				return os.Chmod(p, 0o700)
+			}
+			return err
+		})
+	})
+	if err := env.WriteFile(t.Context(), filepath.Join(remoteSkills, "stale", "SKILL.md"), "stale"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.SyncSkills(t.Context(), env, levelDir, remoteSkills); err != nil {
+		t.Fatal(err)
+	}
+	gotSkill, err := env.ReadTextFile(t.Context(), filepath.Join(remoteSkills, "deploy", "SKILL.md"))
+	if err != nil || !strings.Contains(gotSkill, "Run deploy") {
+		t.Fatalf("SKILL.md=%q err=%v", gotSkill, err)
+	}
+	script := filepath.Join(remoteSkills, "deploy", "scripts", "run.sh")
+	if info, err := os.Stat(script); err != nil || info.Mode().Perm() != 0o555 {
+		t.Fatalf("mirrored script must be executable and read-only: %v, %v", info, err)
+	}
+	for _, retained := range []string{"deploy/.env", "deploy/mcp.json", ".hidden/SKILL.md", "node_modules/pkg/a.js", "stale/SKILL.md"} {
+		if exists, err := env.Exists(t.Context(), filepath.Join(remoteSkills, retained)); err != nil || !exists {
+			t.Fatalf("file missing: %s (err=%v)", retained, err)
+		}
+	}
+	for _, forbidden := range []string{
+		filepath.Join(remoteSkills, ".env"),
+		filepath.Join(remoteSkills, "mcp.json"),
+		filepath.Join(remoteSkills, "deploy", "leak.txt"),
+	} {
+		if exists, err := env.Exists(t.Context(), forbidden); err != nil || exists {
+			t.Fatalf("forbidden file copied/kept: %s (err=%v)", forbidden, err)
+		}
+	}
+
+	// Changing one file leaves the other managed files and unmanaged files in place.
+	same, err := os.Stat(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillsDir, "deploy", "SKILL.md"), []byte("changed deploy description"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(skillsDir, "deploy", "mcp.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.SyncSkills(t.Context(), env, levelDir, remoteSkills); err != nil {
+		t.Fatal(err)
+	}
+	if after, err := os.Stat(script); err != nil || !os.SameFile(same, after) || !same.ModTime().Equal(after.ModTime()) {
+		t.Fatalf("unchanged script was rewritten: %v, %v", after, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(remoteSkills, "deploy", "SKILL.md")); err != nil || string(data) != "changed deploy description" {
+		t.Fatalf("updated skill document = %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(remoteSkills, "deploy", "mcp.json")); !os.IsNotExist(err) {
+		t.Fatalf("deleted file still mirrored: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(remoteSkills, "stale", "SKILL.md")); err != nil {
+		t.Fatalf("unmanaged file removed: %v", err)
+	}
+
+	// ListDirectories & ResolveProjectPath.
+	for _, dir := range []string{"Zulu", "alpha/.git", "Beta", ".hidden"} {
+		if err := os.MkdirAll(filepath.Join(remoteHome, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(remoteHome, "Beta", ".git"), []byte("gitdir: elsewhere"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(remoteHome, "file"), []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(remoteHome, "Zulu"), filepath.Join(remoteHome, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	tilde := "~/./"
+	listing, err := runner.ListDirectories(t.Context(), h, &tilde)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range listing.Entries {
+		names = append(names, entry.Name)
+		if entry.Git != (entry.Name == "alpha" || entry.Name == "Beta") {
+			t.Fatalf("unexpected git flag for %+v", entry)
+		}
+	}
+	if !slices.Equal(names, []string{"alpha", "Beta", "linked", "Zulu"}) || listing.Path != remoteHome || listing.Home != remoteHome {
+		t.Fatalf("unexpected remote listing: %+v", listing)
+	}
+	for _, bad := range []string{"relative", filepath.Join(remoteHome, "missing"), filepath.Join(remoteHome, "file")} {
+		if _, err := runner.ResolveProjectPath(t.Context(), h, bad); !errors.Is(err, runner.ErrInvalidPath) {
+			t.Fatalf("bad path %q err=%v", bad, err)
+		}
+	}
+}

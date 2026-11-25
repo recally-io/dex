@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { CalendarClock, ChevronDown, CircleAlert, List, Plus, Settings } from "lucide-react";
+import { CalendarClock, ChevronDown, List, Plus, Settings } from "lucide-react";
 import type { Agent, Chat } from "../api/generated/types.gen";
 import { createChat, setChatProject } from "../api/generated/sdk.gen";
 import { listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
@@ -9,13 +9,12 @@ import { useAgentId } from "../lib/agent-scope";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
 import { errorText, refreshChats } from "../lib/queries";
-import { needsItems, workOptions } from "../lib/work";
 import { cn } from "../lib/utils";
 import { ChatProject } from "./chat-project";
 import { Button, buttonVariants } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
-const settingsSegments = ["agent", "instructions", "channels", "extensions"];
+const settingsSegments = ["agent", "skills", "integrations", "secrets", "channels"];
 
 /** Opens a session with the current project. The server reuses the newest empty session. */
 function useNewChat(cwd: string, created: (chat: Chat) => void) {
@@ -43,9 +42,6 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
   const agentId = agent.id!;
   const { draft } = useApp();
   const dirty = instructionsDirty(draft, agent.instructions);
-  const work = useQuery(workOptions());
-  const needs = needsItems(agentId, work.data);
-  const attention = needs.questions.length + needs.results.length + needs.setup.length;
   const [created, setCreated] = useState<Chat>();
   const newSession = useNewChat(cwd, setCreated);
   const agents = useQuery(listAgentsOptions());
@@ -53,7 +49,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
   const routines = activity?.enabledAutomations ?? 0;
   const failed = activity?.routineFailed ?? false;
 
-  const routineLabel = ["Routines", routines ? `${routines} on` : "", failed ? "latest run failed" : ""]
+  const routineLabel = ["Automations", routines ? `${routines} on` : "", failed ? "latest run failed" : ""]
     .filter(Boolean)
     .join(", ");
 
@@ -76,78 +72,27 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
         render={<Link to="/a/$agentId/automations" params={{ agentId }} />}
         aria-label={routineLabel}
       >
-        <CalendarClock size={15} /> Routines
+        <CalendarClock size={15} /> Automations
         {routines ? <span className="text-xs tabular-nums">{routines}</span> : null}
         {failed ? (
-          <span role="img" aria-label="Latest routine run failed" className="size-1.5 rounded-full bg-red" />
+          <span
+            role="img"
+            aria-label="Latest automation run failed"
+            className="size-1.5 rounded-full bg-red"
+          />
         ) : null}
       </DropdownMenuItem>
       <DropdownMenuItem
         render={<Link to="/a/$agentId/agent" params={{ agentId }} />}
         aria-label={settingsLabel}
       >
-        <Settings size={15} /> Bot settings
+        <Settings size={15} /> Settings
         {dirty ? (
           <span aria-label="Unsaved instructions draft" className="text-orange">
             Draft
           </span>
         ) : null}
       </DropdownMenuItem>
-    </>
-  );
-
-  const attentionItems = (
-    <>
-      {needs.questions.map((chat) => (
-        <DropdownMenuItem
-          key={`question-${chat.id}`}
-          render={
-            chat.main ? (
-              <Link to="/a/$agentId" params={{ agentId }} />
-            ) : (
-              <Link to="/a/$agentId/c/$chatId" params={{ agentId, chatId: String(chat.id) }} />
-            )
-          }
-          className="h-auto"
-        >
-          <CircleAlert size={15} className="shrink-0 text-orange" />
-          <span className="min-w-0 flex-1 overflow-hidden">
-            <span className="block truncate">{chat.main ? "Main" : chat.title}</span>
-            <span className="block text-xs text-muted-foreground">Asks you a question</span>
-          </span>
-        </DropdownMenuItem>
-      ))}
-      {needs.results.map((item) => (
-        <DropdownMenuItem
-          key={`result-${item.runId}`}
-          render={<Link to="/inbox/$runId" params={{ runId: item.runId }} />}
-          className="h-auto"
-        >
-          <CircleAlert size={15} className="shrink-0 text-orange" />
-          <span className="min-w-0 flex-1 overflow-hidden">
-            <span className="block truncate">{item.automationName}</span>
-            <span className="block text-xs text-muted-foreground">Routine run failed</span>
-          </span>
-        </DropdownMenuItem>
-      ))}
-      {needs.setup.map((automation) => (
-        <DropdownMenuItem
-          key={`setup-${automation.id}`}
-          render={
-            <Link
-              to="/a/$agentId/automations/$automationId"
-              params={{ agentId, automationId: automation.id }}
-            />
-          }
-          className="h-auto"
-        >
-          <CircleAlert size={15} className="shrink-0 text-orange" />
-          <span className="min-w-0 flex-1 overflow-hidden">
-            <span className="block truncate">{automation.name}</span>
-            <span className="block text-xs text-muted-foreground">Routine needs an available model</span>
-          </span>
-        </DropdownMenuItem>
-      ))}
     </>
   );
 
@@ -187,7 +132,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           {failed ? (
             <span
               role="img"
-              aria-label="Latest routine run failed"
+              aria-label="Latest automation run failed"
               className="size-1.5 rounded-full bg-red"
             />
           ) : null}
@@ -209,18 +154,6 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
             />
           ) : null}
         </Link>
-        {attention ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-sm" aria-label="Needs you" title="Needs you" />}
-            >
-              <CircleAlert className="text-orange" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60 max-w-[calc(100vw-1rem)]">
-              {attentionItems}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
       </nav>
       <DropdownMenu>
         <DropdownMenuTrigger
@@ -234,16 +167,15 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           }
         >
           Menu <ChevronDown />
-          {dirty || attention ? (
+          {dirty ? (
             <span
-              aria-label={dirty ? "Unsaved instructions draft" : "Needs you"}
+              aria-label="Unsaved instructions draft"
               className="absolute top-1 right-1 size-1.5 rounded-full bg-orange"
             />
           ) : null}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60 max-w-[calc(100vw-1rem)]">
           {items}
-          {attentionItems}
         </DropdownMenuContent>
       </DropdownMenu>
       {created ? (

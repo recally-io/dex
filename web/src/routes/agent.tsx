@@ -69,27 +69,6 @@ export function AgentPage() {
   );
 }
 
-export function InstructionsPage() {
-  const agentId = useAgentId();
-  const saved = useAgentSettings(agentId);
-
-  return (
-    <FramedPage
-      title="Instructions"
-      description={`Added to the system prompt of every run of ${saved.data?.agent.name ?? "dex"}. A change applies from the next message.`}
-      toolbar={<BotSettingsSwitcher segment="instructions" />}
-    >
-      <WithSettings>
-        {(settings) => (
-          <Panel className="p-1">
-            <InstructionsEditor saved={settings.agent.instructions} rows={18} />
-          </Panel>
-        )}
-      </WithSettings>
-    </FramedPage>
-  );
-}
-
 function Agent({ settings }: { settings: Settings }) {
   const agentId = useAgentId();
   const { notify } = useApp();
@@ -289,6 +268,33 @@ function Agent({ settings }: { settings: Settings }) {
           <ExecutionEnvironmentRow environmentId={settings.agent.environmentId} />
         </Panel>
       </Section>
+      <div id="instructions">
+        <Section
+          title="Instructions"
+          caption="Adds to this bot's system prompt. Changes apply from the next message."
+        >
+          <Panel className="p-1">
+            <InstructionsEditor saved={settings.agent.instructions} rows={18} />
+          </Panel>
+        </Section>
+      </div>
+      <Section title="Archive" caption="Archived bots keep their sessions and settings.">
+        <p className="text-sm text-muted-foreground">
+          {agentId === "default"
+            ? "The default bot cannot be archived."
+            : "To archive this bot, ask in Main and approve its confirmation question."}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-4 text-sm">
+          {agentId !== "default" ? (
+            <Link className="underline" to="/a/$agentId" params={{ agentId }}>
+              Open Main
+            </Link>
+          ) : null}
+          <Link className="underline" to="/settings/archived">
+            Archived bots
+          </Link>
+        </div>
+      </Section>
     </>
   );
 }
@@ -394,8 +400,8 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
 
       notify(
         target
-          ? `Execution environment is now ${target.name}. Open sessions reload when idle.`
-          : "Execution environment is now Local. Open sessions reload when idle.",
+          ? `Runner is now ${target.name}. Open sessions reload when idle.`
+          : "Runner is now Local. Open sessions reload when idle.",
       );
     },
   });
@@ -413,16 +419,16 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <label htmlFor="bot-environment" className="text-[14px] font-medium text-foreground">
-            Execution environment
+            Default Runner
           </label>
           <p id="bot-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
             {current
               ? environmentBotHint(current)
               : missingSelection
-                ? `Configured environment (${environmentId}) is missing.`
+                ? `Configured Runner (${environmentId}) is missing.`
                 : "Runs tools and workspaces on this computer."}{" "}
-            <Link className="font-medium text-primary underline" to="/settings/environment">
-              Manage environments
+            <Link className="font-medium text-primary underline" to="/settings/runners">
+              Manage Runners
             </Link>
           </p>
         </div>
@@ -440,7 +446,7 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
           ) : null}
           <Select
             id="bot-environment"
-            aria-label="Execution environment"
+            aria-label="Default Runner"
             aria-describedby="bot-environment-hint"
             aria-invalid={save.isError || missingSelection}
             className="w-full sm:w-[220px]"
@@ -448,7 +454,7 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
             disabled={save.isPending || environments.isPending}
             onChange={(event) => save.mutate(event.target.value)}
           >
-            <option value="">This computer</option>
+            <option value="">Local</option>
             {missingSelection ? <option value={environmentId}>Missing ({environmentId})</option> : null}
             {list.map((env) => (
               <option key={env.id} value={env.id}>
@@ -460,12 +466,12 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
       </div>
       {environments.isError ? (
         <div className="mt-3">
-          <Failure title="Could not load environments" error={environments.error} />
+          <Failure title="Could not load Runners" error={environments.error} />
         </div>
       ) : null}
       {save.isError ? (
         <div className="mt-3">
-          <Failure title="Could not save execution environment" error={save.error} />
+          <Failure title="Could not save Runner" error={save.error} />
         </div>
       ) : null}
       {resetSandbox.isError ? (

@@ -28,9 +28,9 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/plugin"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 	"github.com/recally-io/dex/internal/upload"
@@ -52,11 +52,11 @@ type Config struct {
 	ReleaseBase string
 	// Engine owns native execution and extensions.
 	Engine *engine.Agents
-	Envs   *execenv.Manager
+	Envs   *runner.Manager
 	// EnvironmentChanged requests a reload after a saved environment change.
 	EnvironmentChanged func(context.Context, string)
 	// Runners enrolls remote machines and serves their sessions.
-	Runners *execenv.Runners
+	Runners *runner.Runners
 	// System owns server upgrades, restarts, backups, and recent logs.
 	System *sysops.Manager
 
@@ -66,6 +66,9 @@ type Config struct {
 	// PluginErrors maps an enabled plugin that does not run to the reason, for example a failed
 	// migration.
 	PluginErrors map[string]string
+
+	// ChannelWebhooks authenticates provider callbacks independently of the admin token.
+	ChannelWebhooks http.Handler
 
 	// Token is the access token that the API requires, or empty for no authentication.
 	Token string
@@ -98,7 +101,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if strings.HasSuffix(r.URL.Path, "/vault") {
+			if strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}
@@ -123,7 +126,7 @@ func New(cfg Config) http.Handler {
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrWorkTaskConflict), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrMaintenance):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrWorkTaskConflict), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrEnvironmentResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -143,7 +146,10 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
+	mux.HandleFunc("GET "+agent.ChannelApprovalPath+"{id}", h.channelApproval)
+	mux.HandleFunc("POST "+agent.ChannelApprovalPath+"{id}", h.channelApproval)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
+	mux.HandleFunc("GET "+mcpCallbackPath, h.finishMcpOAuth)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
 	for _, p := range cfg.Plugins {
 		if p.Hooks != nil {
@@ -152,6 +158,9 @@ func New(cfg Config) http.Handler {
 		if p.API != nil {
 			mux.Handle("/api/plugins/"+p.Name+"/", p.API)
 		}
+	}
+	if cfg.ChannelWebhooks != nil {
+		mux.Handle("POST /hooks/channels/{platform}/{agentId}", http.MaxBytesHandler(cfg.ChannelWebhooks, 4<<20))
 	}
 	mux.HandleFunc("/hooks/", http.NotFound)
 	mux.Handle("/", web.Handler())
@@ -163,7 +172,7 @@ func New(cfg Config) http.Handler {
 		parts := strings.Split(r.URL.Path, "/")
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/hooks/"):
-			// Each plugin limits the body of its own hooks.
+			// Each hook sets its own body limit.
 			mux.ServeHTTP(w, r)
 		case len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads":
 			uploads.ServeHTTP(w, r)
@@ -171,7 +180,14 @@ func New(cfg Config) http.Handler {
 			small.ServeHTTP(w, r)
 		}
 	})
-	return http.NewCrossOriginProtection().Handler(requireToken(cfg.Token, limited))
+	origins := http.NewCrossOriginProtection()
+	origins.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, agent.ChannelApprovalPath) {
+			auditDeniedChannelApproval()
+		}
+		http.Error(w, origins.Check(r).Error(), http.StatusForbidden)
+	}))
+	return origins.Handler(requireToken(cfg.Token, limited))
 }
 
 type responseWriter struct {
@@ -213,6 +229,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 type handler struct {
 	Config
 	runnerReleaseMu sync.Mutex
+	mcpOAuth        mcpOAuthRequests
 }
 
 type agentKey struct{}
@@ -243,7 +260,12 @@ func (h *handler) withAgent(next http.Handler) http.Handler {
 				writeError(w, status, err.Error())
 				return
 			}
-			r = r.WithContext(context.WithValue(r.Context(), agentKey{}, id))
+			ctx := context.WithValue(r.Context(), agentKey{}, id)
+			if strings.HasSuffix(r.URL.Path, "/oauth") {
+				w.Header().Set("Cache-Control", "no-store")
+				ctx = context.WithValue(ctx, mcpOAuthRequestKey{}, mcpOAuthOrigin{origin: r.Header.Get("Origin"), host: r.Host})
+			}
+			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -427,7 +449,7 @@ func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats2
 			return api.ListChats200JSONResponse{}, err
 		}
 		if full.ExecutionID > 0 {
-			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID, Scope: full.ExecutionScope}
+			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID}
 			refs = append(refs, refOf[i])
 		}
 	}
@@ -711,7 +733,7 @@ func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject)
 	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Stop(ctx, agentID(ctx), req.ChatId); err != nil {
+	if err := h.Chats.Stop(ctx, agentID(ctx), req.ChatId, req.Params.RunTarget); err != nil {
 		return nil, err
 	}
 	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
@@ -740,7 +762,7 @@ func (h *handler) CancelChatMonitor(ctx context.Context, req api.CancelChatMonit
 	return api.CancelChatMonitor200JSONResponse(monitorResponse(t)), nil
 }
 
-func monitorResponse(t engine.MonitorInfo) api.Monitor {
+func monitorResponse(t chat.MonitorInfo) api.Monitor {
 	// This endpoint serves schedules only and keeps their existing IDs.
 	return api.Monitor{Id: strings.TrimPrefix(t.ID, "schedule-"), DueAt: t.DueAt, TimeZone: t.TimeZone, Prompt: t.Prompt, State: api.MonitorState(t.State), ChainDepth: t.ChainDepth, CreatedAt: t.CreatedAt, Mode: api.MonitorMode(t.Mode), MaxRuns: t.MaxRuns, Runs: t.Runs, ExpiresAt: t.ExpiresAt, Outcome: t.Outcome}
 }
@@ -770,7 +792,7 @@ func (h *handler) ListChatOutbox(ctx context.Context, req api.ListChatOutboxRequ
 }
 
 func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {
-	body, err := h.Live.Open(ctx, agentID(ctx), req.ChatId)
+	body, err := h.Live.OpenWeb(ctx, agentID(ctx), req.ChatId)
 	if err != nil {
 		return nil, err
 	}
@@ -918,7 +940,11 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options); err != nil {
+	var transport string
+	if req.Body.Transport != nil {
+		transport = string(*req.Body.Transport)
+	}
+	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options, transport, req.Body.Webhook); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
@@ -1080,20 +1106,43 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 	if req.Params.Limit != nil {
 		limit = *req.Params.Limit
 	}
-	if req.Params.Before < 1 || limit < 1 || limit > 200 {
+	before, beforeNotice := req.Params.Before, req.Params.BeforeNotification
+	if (before == nil && beforeNotice == nil) || (before != nil && *before < 1) ||
+		(beforeNotice != nil && *beforeNotice == "") || limit < 1 || limit > 200 {
 		return nil, errInvalid
 	}
-	page, err := h.Live.History(ctx, agentID(ctx), req.ChatId, req.Params.Before, limit)
-	if err != nil {
+	agent := agentID(ctx)
+	out := api.GetChatHistory200JSONResponse{Items: []api.Item{}}
+	if before != nil {
+		page, err := h.Live.History(ctx, agent, req.ChatId, *before, limit)
+		if err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(page)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return nil, err
+		}
+	} else if _, err := h.Chats.Get(ctx, agent, req.ChatId); err != nil {
 		return nil, err
 	}
-	var out api.GetChatHistory200JSONResponse
-	// Native projection provides the same items for history and live events.
-	raw, err := json.Marshal(page)
-	if err == nil {
-		err = json.Unmarshal(raw, &out)
+	if beforeNotice != nil {
+		page, err := h.Chats.TimelineNotifications(ctx, agent, req.ChatId, *beforeNotice, 0, limit)
+		if err != nil {
+			return nil, err
+		}
+		notices := make([]api.TimelineNotification, len(page.Notifications))
+		for i, notice := range page.Notifications {
+			notices[i] = api.TimelineNotification{Id: notice.ID, Text: notice.Text, At: notice.At}
+		}
+		out.Notifications = &notices
+		if page.NextBeforeNotification != "" {
+			out.NextBeforeNotification = &page.NextBeforeNotification
+		}
 	}
-	return out, err
+	return out, nil
 }
 
 func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRequestObject) (api.ListDirectoriesResponseObject, error) {

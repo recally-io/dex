@@ -12,15 +12,15 @@ import (
 
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/recally-io/dex/internal/background"
-	"github.com/recally-io/dex/internal/execenv"
-	"github.com/recally-io/dex/internal/execenv/execenvtest"
+	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
 func TestUserRunsBackgroundCommandsInRemoteEnv(t *testing.T) {
 	t.Setenv("CONTROL_BG_SECRET", "host-secret")
 	remoteHome := t.TempDir()
 	remoteRoot := t.TempDir()
-	provider := execenvtest.NewProvider(execenv.KindPiEnv, remoteRoot, remoteHome, map[string]string{
+	provider := runnertest.NewProvider(runner.KindPiEnv, remoteRoot, remoteHome, map[string]string{
 		"REMOTE_BG_MARKER": "remote-bg-ok",
 	})
 	handle, err := provider.Open(t.Context(), "bot", "")
@@ -30,7 +30,7 @@ func TestUserRunsBackgroundCommandsInRemoteEnv(t *testing.T) {
 	t.Cleanup(func() { _ = handle.Close(context.Background()) })
 
 	f := newFixture(t, background.Limits{Batch: 50 * time.Millisecond})
-	f.m.ConfigureEnvOpener(func(ctx context.Context, _, _ string, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, execenv.Kind, func(), error) {
+	f.m.ConfigureEnvOpener(func(ctx context.Context, _, _ string, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error) {
 		env, err := handle.Env(ctx, cwd, extraEnv)
 		if err != nil {
 			return nil, "", "", nil, err
@@ -51,7 +51,7 @@ func TestUserRunsBackgroundCommandsInRemoteEnv(t *testing.T) {
 			DefaultCwd:      handle.Workspace(),
 			Env:             map[string]string{"EXPLICIT_BG": "exp-ok"},
 			InheritEnv:      true,
-			EnvKind:         execenv.KindPiEnv,
+			EnvKind:         runner.KindPiEnv,
 		})
 		if err != nil {
 			t.Fatal(err)

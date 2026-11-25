@@ -47,28 +47,31 @@ func (h *Hub) Changed(chatID int64) {
 }
 
 func (h *Hub) Open(ctx context.Context, agentID string, chatID int64) (io.ReadCloser, error) {
+	return h.open(ctx, agentID, chatID, false)
+}
+
+func (h *Hub) OpenWeb(ctx context.Context, agentID string, chatID int64) (io.ReadCloser, error) {
+	return h.open(ctx, agentID, chatID, true)
+}
+
+func (h *Hub) open(ctx context.Context, agentID string, chatID int64, web bool) (io.ReadCloser, error) {
 	c, err := h.chats.Get(ctx, agentID, chatID)
 	if err != nil {
 		return nil, err
 	}
-	return h.open(ctx, agentID, c), nil
-}
-
-// open accepts only a chat that the caller has authorized.
-func (h *Hub) open(ctx context.Context, agentID string, c chat.Chat) io.ReadCloser {
 	ctx, cancel := context.WithCancel(ctx)
 	sub := &subscriber{signal: make(chan struct{}, 1), pending: map[int64]struct{}{}}
 	h.subscribe(c.ID, sub)
 	reader, writer := io.Pipe()
 	stop := context.AfterFunc(ctx, func() { _ = writer.CloseWithError(ctx.Err()) })
 	go func() {
-		err := h.serve(ctx, agentID, c, sub, writer)
+		err := h.serve(ctx, agentID, c, sub, writer, web)
 		h.unsubscribe(c.ID, sub)
 		stop()
 		cancel()
 		_ = writer.CloseWithError(err)
 	}()
-	return &streamReader{PipeReader: reader, cancel: cancel}
+	return &streamReader{PipeReader: reader, cancel: cancel}, nil
 }
 
 type streamReader struct {
@@ -78,7 +81,7 @@ type streamReader struct {
 
 func (r *streamReader) Close() error { r.cancel(); return r.PipeReader.Close() }
 
-func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subscriber, writer io.Writer) error {
+func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subscriber, writer io.Writer, web bool) error {
 	children := map[int64]string{}
 	states := map[int64]string{}
 	defer func() {
@@ -90,11 +93,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 		if states[event.ChatID] == event.State {
 			return nil
 		}
-		raw, err := json.Marshal(event)
-		if err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintf(writer, "event: child\ndata: %s\n\n", raw); err != nil {
+		if err := writeJSONEvent(writer, "child", event); err != nil {
 			return err
 		}
 		states[event.ChatID] = event.State
@@ -176,7 +175,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 		if latest.ExecutionID == 0 {
 			return nil
 		}
-		watch, err = h.agents.Watch(ctx, engine.Ref{AgentID: agentID, ID: latest.ExecutionID, Scope: latest.ExecutionScope})
+		watch, err = h.agents.Watch(ctx, engine.Ref{AgentID: agentID, ID: latest.ExecutionID})
 		if err != nil {
 			return err
 		}
@@ -194,6 +193,32 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 		if err := writeEvent(writer, engine.Event{Type: "snapshot", Items: []engine.Item{}}); err != nil {
 			return err
 		}
+	}
+	var noticePosition int64
+	notifications := func(initial bool) error {
+		if !web || !chat.Writable(c.ChannelKey) || c.ParentID != 0 {
+			return nil
+		}
+		limit := -1
+		if initial {
+			limit = 30
+		}
+		page, err := h.chats.TimelineNotifications(ctx, agentID, c.ID, "", noticePosition, limit)
+		if err != nil {
+			return err
+		}
+		if !initial && len(page.Notifications) == 0 {
+			return nil
+		}
+		noticePosition = page.Position
+		return writeJSONEvent(writer, "notifications", struct {
+			Type    string `json:"type"`
+			Initial bool   `json:"initial"`
+			chat.NotificationPage
+		}{"notifications", initial, page})
+	}
+	if err := notifications(true); err != nil {
+		return err
 	}
 	if err := ownState(); err != nil {
 		return err
@@ -216,6 +241,9 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 			for id := range pending {
 				if id == c.ID {
 					if err := attach(); err != nil {
+						return err
+					}
+					if err := notifications(false); err != nil {
 						return err
 					}
 					if err := ownState(); err != nil {
@@ -256,11 +284,15 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 }
 
 func writeEvent(w io.Writer, event engine.Event) error {
+	return writeJSONEvent(w, event.Type, event)
+}
+
+func writeJSONEvent(w io.Writer, kind string, event any) error {
 	raw, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, raw)
+	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, raw)
 	return err
 }
 
@@ -273,7 +305,7 @@ func (h *Hub) Detail(ctx context.Context, agentID string, chatID, entryID int64,
 	if c.ExecutionID == 0 {
 		return engine.Item{}, engine.ErrItemNotFound
 	}
-	return h.agents.Detail(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}, entryID, itemID)
+	return h.agents.Detail(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, entryID, itemID)
 }
 
 func (h *Hub) History(ctx context.Context, agentID string, chatID, before int64, limit int) (engine.History, error) {
@@ -284,5 +316,5 @@ func (h *Hub) History(ctx context.Context, agentID string, chatID, before int64,
 	if c.ExecutionID == 0 {
 		return engine.History{Items: []engine.Item{}}, nil
 	}
-	return h.agents.History(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}, before, limit)
+	return h.agents.History(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, before, limit)
 }

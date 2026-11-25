@@ -53,6 +53,45 @@ func TestUserCannotOpenCopiedVaultWithoutIdentity(t *testing.T) {
 	}
 }
 
+func TestUserCredentialsStayOutsideToolVault(t *testing.T) {
+	// Given a new data directory and two services that write their first entries concurrently.
+	data := t.TempDir()
+	tools, control := vault.New(data), vault.New(data)
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		<-start
+		if err := tools.Edit("bot", "dex", "TOOL_TOKEN", new("tool-value")); err != nil {
+			t.Error(err)
+		}
+	})
+	wg.Go(func() {
+		<-start
+		if err := control.EditCredential("SERVICE_TOKEN", new("service-value")); err != nil {
+			t.Error(err)
+		}
+	})
+	close(start)
+	wg.Wait()
+
+	// When both services open their scopes again, they decrypt with the same identity.
+	value, err := vault.New(data).Credential("SERVICE_TOKEN")
+	if err != nil || value != "service-value" {
+		t.Fatalf("control credential did not decrypt: %v", err)
+	}
+	snapshot, err := vault.New(data).Load("bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Then tools can list and resolve only the tool entry.
+	if list := snapshot.List(); len(list) != 1 || list[0].Name != "TOOL_TOKEN" {
+		t.Fatalf("tool vault metadata: %+v", list)
+	}
+	if _, err := snapshot.Resolve(map[string]string{"VALUE": "vault:SERVICE_TOKEN"}, false); err == nil {
+		t.Fatal("the tool scope resolved the control credential")
+	}
+}
+
 func TestUserConcurrentVaultEditsDoNotLoseEntries(t *testing.T) {
 	store := vault.New(t.TempDir())
 	var wg sync.WaitGroup

@@ -23,6 +23,7 @@ type Feishu struct {
 	Enabled   bool   `json:"enabled"`
 	AppID     string `json:"appId"`
 	Brand     string `json:"brand"`
+	Transport string `json:"transport"`
 	Paired    bool   `json:"paired"`
 	Reactions *bool  `json:"reactions,omitempty"`
 }
@@ -62,7 +63,8 @@ func (s *Service) FeishuConfig(ctx context.Context, agentID string) (*feishu.Con
 	if row.Reactions.Valid {
 		reactions = new(row.Reactions.Int64 == 1)
 	}
-	return &feishu.Config{Reactions: reactions, AppID: row.AppID, AppSecret: row.AppSecret, Brand: row.Brand, OwnerID: row.OwnerID, APIURL: s.feishuAPIURL}, nil
+	return &feishu.Config{Reactions: reactions, AppID: row.AppID, AppSecret: row.AppSecret, Brand: row.Brand, OwnerID: row.OwnerID, APIURL: s.feishuAPIURL,
+		Webhook: feishu.WebhookConfig{VerificationToken: row.VerificationToken, EncryptKey: row.EncryptKey}}, nil
 }
 
 // GetFeishu returns the saved public configuration.
@@ -72,16 +74,20 @@ func (s *Service) GetFeishu(ctx context.Context, agentID string) (Feishu, error)
 		return Feishu{}, err
 	}
 	if cfg == nil {
-		return Feishu{Brand: "feishu", Status: "off"}, nil
+		return Feishu{Brand: "feishu", Status: "off", Transport: "websocket"}, nil
 	}
 	runtime := s.ChannelStatus(agentID, "feishu")
-	return Feishu{Enabled: true, Reactions: cfg.Reactions, AppID: cfg.AppID, Brand: cfg.Brand, Paired: cfg.OwnerID != "", Status: runtime.State, Error: runtime.Reason}, nil
+	transport := "websocket"
+	if cfg.Webhook.VerificationToken != "" {
+		transport = "webhook"
+	}
+	return Feishu{Enabled: true, Reactions: cfg.Reactions, AppID: cfg.AppID, Brand: cfg.Brand, Transport: transport, Paired: cfg.OwnerID != "", Status: runtime.State, Error: runtime.Reason}, nil
 }
 
 func validBrand(brand string) bool { return brand == "feishu" || brand == "lark" }
 
 // SetFeishu saves manual credentials and resets owner authorization on a credential change.
-func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, brand string, reactions *bool) (FeishuSetup, error) {
+func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, brand string, reactions *bool, transport string, webhook *feishu.WebhookConfig) (FeishuSetup, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	appID = strings.TrimSpace(appID)
@@ -98,14 +104,8 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 	if saved != nil && cfg.Reactions == nil {
 		cfg.Reactions = saved.Reactions
 	}
-	s.onFeishu(agentID, nil)
-	savedNew := false
-	defer func() {
-		if !savedNew && saved != nil {
-			s.onFeishu(agentID, saved)
-		}
-	}()
 	if saved != nil && saved.AppID == appID && saved.Brand == brand {
+		cfg.Webhook = saved.Webhook
 		if cfg.AppSecret == "" {
 			cfg.AppSecret = saved.AppSecret
 		}
@@ -116,6 +116,20 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 	if cfg.AppSecret == "" {
 		return FeishuSetup{}, fmt.Errorf("%w: enter an App Secret", ErrInvalid)
 	}
+	switch {
+	case transport == "websocket" && webhook == nil:
+		cfg.Webhook = feishu.WebhookConfig{}
+	case transport == "webhook":
+		if webhook != nil {
+			cfg.Webhook = *webhook
+		}
+		if strings.TrimSpace(cfg.Webhook.VerificationToken) == "" {
+			return FeishuSetup{}, fmt.Errorf("%w: enter the Feishu webhook verification token", ErrInvalid)
+		}
+	case transport == "" && webhook == nil:
+	default:
+		return FeishuSetup{}, fmt.Errorf("%w: choose webhook transport to set Feishu webhook credentials", ErrInvalid)
+	}
 	var pairing string
 	if cfg.OwnerID == "" {
 		b := make([]byte, 16)
@@ -124,6 +138,13 @@ func (s *Service) SetFeishu(ctx context.Context, agentID string, appID, secret, 
 		}
 		pairing = hex.EncodeToString(b)
 	}
+	s.onFeishu(agentID, nil)
+	savedNew := false
+	defer func() {
+		if !savedNew && saved != nil {
+			s.onFeishu(agentID, saved)
+		}
+	}()
 	if err := s.saveFeishu(ctx, agentID, cfg, pairing); err != nil {
 		return FeishuSetup{}, err
 	}
@@ -148,7 +169,16 @@ func (s *Service) saveFeishu(ctx context.Context, agentID string, cfg feishu.Con
 			reactions.Int64 = 1
 		}
 	}
-	if err := s.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{Reactions: reactions, AgentID: agentID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()}); err != nil {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
+	if err := q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{Reactions: reactions, AgentID: agentID, AppID: cfg.AppID, AppSecret: cfg.AppSecret, Brand: cfg.Brand, OwnerID: cfg.OwnerID, PairingCode: pairing, PairingExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli(), VerificationToken: cfg.Webhook.VerificationToken, EncryptKey: cfg.Webhook.EncryptKey}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	s.onFeishu(agentID, &cfg)
@@ -170,10 +200,33 @@ func (s *Service) PairFeishu(ctx context.Context, agentID string, owner, code st
 	return rows == 1, err
 }
 
+// revokeFeishuPairing keeps the app credentials. A new code must come from Settings.
+func (s *Service) revokeFeishuPairing(ctx context.Context, agentID string) error {
+	saved, err := s.FeishuConfig(ctx, agentID)
+	if err != nil {
+		return err
+	}
+	if saved == nil {
+		return ErrChannelApproval
+	}
+	cfg := *saved
+	cfg.OwnerID = ""
+	s.onFeishu(agentID, nil)
+	if err := s.saveFeishu(ctx, agentID, cfg, ""); err != nil {
+		s.onFeishu(agentID, saved)
+		return err
+	}
+	return nil
+}
+
 // DeleteFeishu removes credentials and cancels a pending registration.
 func (s *Service) DeleteFeishu(ctx context.Context, agentID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.deleteFeishu(ctx, agentID)
+}
+
+func (s *Service) deleteFeishu(ctx context.Context, agentID string) error {
 	saved, err := s.FeishuConfig(ctx, agentID)
 	if err != nil {
 		return err

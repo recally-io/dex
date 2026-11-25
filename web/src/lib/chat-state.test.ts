@@ -3,6 +3,31 @@ import { applyChatEvent, emptyChatState, mergeHistory, retryMessage } from "./ch
 import type { ChatEvent, Item } from "../api/generated/types.gen";
 import controlOnlyHistory from "./testdata/control-only-history.json";
 
+test("keeps one notice per Outbox ID across live replay, reconnect and history overlap", () => {
+  const older = { id: "old", text: "Old notice", at: 1 };
+  const current = { id: "current", text: "Current notice", at: 2 };
+  const newer = { id: "new", text: "New notice", at: 3 };
+
+  const initial: ChatEvent = {
+    type: "notifications",
+    initial: true,
+    notifications: [current],
+    nextBeforeNotification: current.id,
+  };
+
+  const live: ChatEvent = { type: "notifications", initial: false, notifications: [newer] };
+  let state = applyChatEvent(applyChatEvent(emptyChatState, initial), live);
+  state = applyChatEvent(state, live);
+  state = applyChatEvent(state, { type: "snapshot", items: [], running: false });
+  state = applyChatEvent(state, { ...initial, notifications: [newer, current] });
+  state = mergeHistory(state, { items: [], notifications: [current, older] }, current.id);
+  state = mergeHistory(state, { items: [], notifications: [current, older] }, current.id);
+
+  expect(state.notifications?.entries).toEqual([older, current, newer]);
+  expect(state.notifications?.before).toBeUndefined();
+  expect(state.items).toEqual([]);
+});
+
 describe("chat retry", () => {
   const message: Item = {
     kind: "user",
@@ -325,6 +350,23 @@ describe("chat transcript", () => {
       historyBefore: undefined,
     });
   });
+  test("a run handoff and a reconnect replace the exact Stop target", () => {
+    const first = applyChatEvent(emptyChatState, {
+      type: "snapshot",
+      running: true,
+      runTarget: "bot/1/8",
+      items: [],
+    });
+
+    expect(first.runTarget).toBe("bot/1/8");
+
+    const next = applyChatEvent(first, { type: "run", running: true, runTarget: "bot/1/9" });
+
+    expect(next.runTarget).toBe("bot/1/9");
+    expect(applyChatEvent(next, { type: "run", running: false }).runTarget).toBeUndefined();
+    expect(applyChatEvent(next, { type: "snapshot", running: false, items: [] }).runTarget).toBeUndefined();
+  });
+
   test("user sees replaced text and one tool result in the original order", () => {
     const state = applyChatEvent(emptyChatState, {
       type: "snapshot",

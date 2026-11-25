@@ -17,6 +17,7 @@ Set `DEX_API_URL` when the backend uses another address.
 
 After an API change, run `mise run generate:api`.
 Run `mise run check:web` to check types, lint, format, and the event reducer.
+Set `DEX_E2E_DATA_DIR` to an empty directory to run browser tests with fresh data.
 Git does not track `dist/`. Build and Go check tasks generate the embedded UI.
 Run `mise run build:web` to build it separately.
 
@@ -25,7 +26,7 @@ Run `mise run build:web` to build it separately.
 Each page in `src/routes/` reads the API only. The app keeps no settings in
 `localStorage`. It stores only browser choices there: the theme (`dex-theme`),
 the open or closed Context panel of a chat (`dex-context`), the bot rail
-(`dex-sidebar`), and the Chats sidebar (`dex-chats`). Inbox read and dismissed
+(`dex-sidebar`), and the Sessions sidebar (`dex-chats`). Inbox read and dismissed
 state live in `control.sqlite`, not browser storage. The unsaved agent instructions are in
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
 `src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
@@ -33,63 +34,96 @@ agent first, so a model change does not overwrite the instructions.
 Main and ordinary Chat sessions default to the agent's model and thinking level.
 Saved session overrides apply from the next input, including channel input on Main.
 Ended task conversations can also use model and project overrides.
-New chat sends `POST /api/agents/{agentId}/chats` with no request body.
-When a registered environment exists, a chat that has no message yet shows
-local and the registered environments (`listAgentEnvironments`). Offline
-runners are visible but disabled. The project
-picker lists folders in the chosen environment. After the first message the
-header shows the environment name. With other available environments, Fork from here
-opens a menu that forks in the current environment or to another one.
+New session sends `POST /api/agents/{agentId}/chats` with no request body.
+When a registered Runner exists, a session with no messages shows Local and
+the registered Runners (`listAgentEnvironments`). Offline Runners are visible
+but disabled. The project picker lists folders on the chosen Runner. After
+the first message, the header shows its name. With other available Runners,
+Fork from here offers a fork on the current Runner or another one.
 See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 
-The bot workspace has exactly four tabs: Chat, Routines, Extensions, Settings.
-Bot links open Main. The right Chats sidebar starts closed. The global sidebar
-links to `/inbox`, which lists Tasks, held events, and Routine results across bots.
+Bot links open Main. The bot header offers New session, Sessions, Automations,
+and Settings. Settings has General, Skills, Integrations, and Secrets. Old
+`/instructions`, `/channels`, and `/extensions` bot URLs still open the relevant
+settings page. The right Sessions sidebar starts closed. The global sidebar
+links to Board (`/board`) for Tasks and Inbox (`/inbox`) for owner actions.
+Inbox reads active questions, unhandled failed or changed automation results,
+and missing models from `/api/work`, and reads held events from the held events
+endpoint. The Inbox link counts those items. One-way notifications stay in
+transcripts and channels. `/work` redirects to Board; `/needs-you` redirects to
+Inbox. Queued Task questions remain answerable from Task detail.
 A held event shows its type, reason, author, source link, and text. The owner
 chooses an open Task before Attach is enabled, because no API removes the object
 links of an attach. The owner can also dismiss the event.
-`/a/{agentId}/inbox/{taskId}` opens a Task only under the bot that owns it.
-General settings lists the plugins with a switch for each. A note asks for a
+`/a/{agentId}/inbox/{taskId}` still opens a Task under its owner bot.
+Global Integrations lists Sources with a switch for each. A note asks for a
 restart while a stored choice differs from what runs. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
 components in `src/plugins/<name>/`, and a page renders them only when the
 plugin is on.
 An optional commit SHA sets a wait for a review submitted after the form is
-submitted. The Task shows its primary Session link, then its links and
-wait states, above the timeline. A link shows its type, key, and namespace as
+submitted. The Task shows all linked Sessions above its external links, wait
+states, and timeline. Each Session link uses the Session's Bot ID in its URL,
+shows the Bot name, and marks the primary Session. A link shows its type, key, and namespace as
 stored, for example `pull_request 7` in `github.com/repository/10`. Each timeline entry shows its author.
-Routine history links to run transcripts and saved results.
-The routine dialog can bind to a writable, unarchived session of the same bot.
+Automation history links to run transcripts and saved results.
+The automation dialog can bind to a writable, unarchived session of the same bot.
 It reads the eligible sessions from `listAutomationTargets`. In this mode it
-shows the target picker instead of the routine environment and project fields.
-The routine dialog offers "Follow bot", `local`, and the SSH environments. It
-keeps a saved environment that the list no longer shows, and a change of the
-environment clears the project directory. A routine update sends
-`environmentId`, because a PUT replaces the routine. Routines and Inbox continue
-a result through `continueResult` (`lib/inbox.ts`): the new chat pins the available
-local, SSH, or runner environment of the run and uses its cwd. A run in an E2B
-sandbox, in an unavailable environment, or with no recorded environment stops
-before any chat is created.
+shows the target picker instead of the Runner and project fields.
+The automation dialog offers "Follow bot", Local, and SSH Machines. It keeps a
+saved Runner that the list no longer shows. A change of Runner clears the
+project directory. An automation update sends `environmentId`, because a PUT
+replaces the automation. Automations and Inbox use `continueResult`
+(`lib/inbox.ts`). The new session pins the run's Local or Machine Runner and
+uses its cwd. A run in a Sandbox, on an unavailable Runner, or with no recorded
+Runner stops before it creates a session.
 Each child session reads like a thread. The transcript shows one card at a
-`session_new`, `session_fork` or `spawn_task` call, one line at a `session_send`
-call, and one "replied · View thread" line at each result mark. A click opens the
+`session_new` or `session_fork` call, one line at a `session_send` call of a
+parent, and one "replied · View session" line at each result mark.
+A `session_report` call shows as a "Reported to parent" step. A click opens the
 child as a read-only panel on the right, which covers the transcript on a narrow
 screen. Task conversations are read-only while queued or running and writable
 after they end.
 The bot header opens the Sessions page and creates new sessions. Legacy Sessions and transcript URLs remain readable.
+Main shows Stop only for its own native run target on a connected stream. A
+retry sends the original target. A child can be active while Main sends an
+ordinary input. Non-Main Stop keeps its legacy behavior.
 
-The chat activity panel lists the session's Monitors and Outbox entries. It
-shows the Monitor mode, attempt limit, and latest outcome. The user can cancel
-an active Monitor here. Monitor creation uses the session tool, not this panel.
+Session activity lists scheduled and check Monitors and 30 recent Outbox
+entries. A writable session manages Processes with `process_start`,
+`process_list`, and `process_stop`. The panel does not list Processes. Read-only transcripts, including Automation runs, show the panel above
+the transcript. The panel shows channel delivery status, not Web read status.
+The panel shows the Monitor mode, attempt limit, and latest outcome. The user
+can cancel an active Monitor in a writable session. Monitor creation uses the
+session tool, not this panel.
+
+Main and Chat display explicit Web-origin notifications in their
+transcripts. The client merges the live notification pages and older pages by
+notification ID. The native transcript and notifications have separate cursors;
+**Show earlier messages** loads both. Channel and Automation delivery records stay
+in the Outbox panel.
 
 The About page (`/settings/about`) manages server operations through `/api/system/*`: switching the persisted update channel (`stable` or `prerelease`), checking releases, running an in-place upgrade with automatic `control.sqlite` backup, restarting the server gracefully (with wait-until-idle, cancel, and force-now controls), taking manual hot backups, and reading recent entries from the in-memory log ring buffer. When a restart or upgrade begins, it polls `GET /api/system/status`. A change in `startedAt` confirms the restart and refreshes health data.
 
-Execution Environments (`/settings/environment`) shows each `dex runner`'s live online state, platform, reported version, and version alignment status against `GET /api/health`'s server version (`Matches server`, auto-update on reconnect, or why manual update is needed).
-The Environment page also edits shared vault secrets. A bot's Tools page
-edits that bot's secrets. The vault API returns metadata only. The editor
-clears the secret value after submit and does not store it in the browser.
+Runners (`/settings/runners`) shows the built-in Local Runner, Machines, and
+Sandboxes. Machines use SSH or Outbound. The page shows each Outbound Machine's
+online state, platform, and version alignment against `GET /api/health`.
+The Runner editor lets the owner set or clear an optional plain-text description.
+Global Secrets (`/settings/secrets`) edits shared Vault entries and 1Password.
+A bot's Secrets page edits its own Vault entries. The vault API returns metadata
+only. The editor clears the value after submit and does not store it in the browser.
+Skills and Integrations both offer Reload. In Integrations, an OAuth MCP row starts authorization with an
+authenticated POST. The browser follows the returned URL in the same tab. The
+server callback still returns to the old `/extensions` URL, which redirects
+to Integrations. The browser does not receive provider tokens.
+
+The Telegram page under Integrations uses the existing token form. It also offers
+managed creation when the API confirms Bot Management Mode for the saved manager.
+The managed dialog polls its setup state. It shows a private owner verification
+link first and the Telegram bot creation link second. Cancel calls the API.
+Neither the managed dialog nor the Channels response receives the created token.
 
 The old `/settings/<section>` addresses redirect to the new pages.
 

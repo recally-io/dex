@@ -42,6 +42,7 @@ func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
 			Content:        "system event",
 			Attachments:    "null",
 			Origin:         tc.origin,
+			Producer:       ProducerPlugin,
 			Kind:           tc.kind,
 			CreatedAt:      r.service.now().UnixMilli(),
 		}); err != nil {
@@ -82,7 +83,7 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 		SourceRequestID: "u-monitor-rec",
 		Key:             "bot/t-rec-1",
 	}
-	info, err := r.service.ToolMonitorSet(t.Context(), call, engine.MonitorSetArgs{DelaySeconds: 120, Prompt: "recover once"})
+	info, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 120, Prompt: "recover once"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +107,7 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 
 	// Simulate crash before native admission settled by checking that reconcile settles it exactly once,
 	// and produces zero unsolicited outbox rows (fail-quiet System Turn).
-	if err := r.service.reconcileAgent(t.Context(), "bot"); err != nil {
+	if err := r.service.reconcileSession(t.Context(), row.ConversationID, ""); err != nil {
 		t.Fatal(err)
 	}
 	sub := awaitReceipt(t, r, row.FireSubmissionID.String)
@@ -124,17 +125,18 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 
 func TestUserTopLevelLostAdmissionReceiptReconcilesWithoutDuplicateOutbox(t *testing.T) {
 	r := startNative(t, "echo")
-	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-lost-admit", "ping"); err != nil {
+	chatID, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-lost-admit", "ping")
+	if err != nil {
 		t.Fatal(err)
 	}
 	awaitReceipt(t, r, "u-lost-admit")
 
 	// Simulate a crash between engine.Submit and markAdmitted by resetting admitted_at=NULL and status='pending'
-	// on an already-settled native submission, then running reconcileAgent.
+	// on an already-settled native submission, then reconciling its Session.
 	if _, err := r.conn.ExecContext(t.Context(), `UPDATE submissions SET status = 'pending', admitted_at = NULL, settled_at = NULL, answer = NULL WHERE id = 'u-lost-admit'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.reconcileAgent(t.Context(), "bot"); err != nil {
+	if err := r.service.reconcileSession(t.Context(), chatID, ""); err != nil {
 		t.Fatal(err)
 	}
 	sub := awaitReceipt(t, r, "u-lost-admit")
@@ -145,7 +147,7 @@ func TestUserTopLevelLostAdmissionReceiptReconcilesWithoutDuplicateOutbox(t *tes
 	if err := r.conn.QueryRowContext(t.Context(), `SELECT count(*) FROM outbox_messages WHERE source_submission_id = 'u-lost-admit'`).Scan(&outboxCount); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal(err)
 	}
-	if outboxCount != 1 {
-		t.Fatalf("expected exactly 1 deduplicated outbox row after lost admission reconcile, got %d", outboxCount)
+	if outboxCount != 0 {
+		t.Fatalf("Web input must not write outbox rows after lost admission reconcile, got %d", outboxCount)
 	}
 }

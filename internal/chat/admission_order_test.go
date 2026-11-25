@@ -7,13 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 type nativeTest struct {
@@ -22,11 +23,16 @@ type nativeTest struct {
 	conn    *sql.DB
 	q       *sqlc.Queries
 	dir     string
+	close   func()
 }
 
-func startNative(t *testing.T, model string) *nativeTest {
+func startNative(t *testing.T, model string, wrap ...func(runner.Provider) runner.Provider) *nativeTest {
 	t.Helper()
-	dir := t.TempDir()
+	return openNativeTest(t, t.TempDir(), model, wrap...)
+}
+
+func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provider) runner.Provider) *nativeTest {
+	t.Helper()
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -39,59 +45,53 @@ func startNative(t *testing.T, model string) *nativeTest {
 		t.Fatal(err)
 	}
 	var service *Service
-	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, ExecEnv: execenv.NewManager(execenv.ManagerConfig{DataDir: dir, Queries: q}), SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Tasks: engine.TaskTools{
-		AuthorizeMonitor: func(ctx context.Context, c engine.TaskContext) error { return service.AuthorizeMonitor(ctx, c) },
-		AuthorizeGroup:   func(ctx context.Context, c engine.TaskContext) error { return service.AuthorizeGroup(ctx, c) },
-		GroupQuestion: func(ctx context.Context, c engine.TaskContext, args engine.AskUserArgs) (engine.QuestionInfo, error) {
-			return service.ToolGroupQuestion(ctx, c, args)
-		},
-		GroupSession: func(ctx context.Context, c engine.TaskContext, args engine.GroupSessionArgs) (engine.GroupSessionResult, error) {
-			return service.ToolGroupSession(ctx, c, args)
-		},
-		ReadDreamMessage: func(ctx context.Context, c engine.TaskContext, request engine.DreamMessageRequest) (engine.DreamMessagePage, error) {
-			return service.ToolReadDreamMessage(ctx, c, request)
-		},
-		Outbox: engine.OutboxTools{
-			NotifyUser: func(ctx context.Context, c engine.TaskContext, a engine.NotifyUserArgs) (string, error) {
-				return service.ToolNotifyUser(ctx, c, a)
-			},
-			ReportParent: func(ctx context.Context, c engine.TaskContext, a engine.ReportParentArgs) (string, error) {
-				return service.ToolReportParent(ctx, c, a)
-			},
-			StaySilent: func(ctx context.Context, c engine.TaskContext, a engine.StaySilentArgs) error {
-				return service.ToolStaySilent(ctx, c, a)
-			},
-		},
-		Sessions: engine.SessionTools{
-			New: func(ctx context.Context, c engine.TaskContext, a engine.SessionNewArgs) (engine.SessionRef, error) {
-				return service.ToolSessionNew(ctx, c, a)
-			},
-			Send: func(ctx context.Context, c engine.TaskContext, a engine.SessionSendArgs) (engine.SessionRef, error) {
-				return service.ToolSessionSend(ctx, c, a)
-			},
-			Stop: func(ctx context.Context, c engine.TaskContext, id string) (engine.SessionRef, error) {
-				return service.ToolSessionStop(ctx, c, id)
-			},
-			List: func(ctx context.Context, c engine.TaskContext, a engine.SessionListArgs) ([]engine.SessionInfo, error) {
-				return service.ToolSessionList(ctx, c, a)
-			},
-		},
+	var provider runner.Provider = runner.NewManager(runner.ManagerConfig{DataDir: dir, Queries: q})
+	for _, f := range wrap {
+		provider = f(provider)
+	}
+	report := func(ctx context.Context, c engine.TaskContext, a ReportParentArgs) (string, error) {
+		return service.ToolReportParent(ctx, c, a)
+	}
+	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, FakeInputSuffix: BoundRoutineCheckSuffix, ExecEnv: provider, SessionEnvironment: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionEnvironment(ctx, ref) }, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
+		id := rt.AgentID
+		handlers := SessionHandlers{Sessions: SessionTools{
+			New: service.ToolSessionNew, Send: service.ToolSessionSend, Stop: service.ToolSessionStop, List: service.ToolSessionList,
+		}}
+		outbox := OutboxTools{NotifyUser: service.ToolNotifyUser, ReportParent: report}
+		return engine.ExtensionSet{
+			Before:   map[string][]*engine.Extension{"vault": {SessionExtension(id, handlers), SessionReadExtension(id, handlers)}},
+			Optional: []*engine.Extension{OutboxExtension(id, outbox), ChildOutboxExtension(id, outbox), DreamMessageExtension(id, service.ToolReadDreamMessage)},
+		}
+	}, InputExtensions: func(input engine.Input) engine.ExtensionEdit {
+		switch {
+		case input.Child:
+			return engine.ExtensionEdit{Remove: []string{"sessions", "outbox"}, Add: []string{"child-outbox"}}
+		case input.Origin == "dream":
+			return engine.ExtensionEdit{Remove: []string{"sessions", "session-reading"}, Add: []string{"dream-message"}}
+		case !input.Automation:
+			return engine.ExtensionEdit{Add: []string{"outbox"}}
+		default:
+			return engine.ExtensionEdit{}
+		}
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	service = New(conn, agents, time.Now, nil, nil)
-	t.Cleanup(func() {
+	closeTest := sync.OnceFunc(func() {
 		service.cancel()
 		service.wg.Wait()
-		if err := agents.Close(context.Background()); err != nil {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := agents.Close(closeCtx); err != nil {
 			t.Error(err)
 		}
 		if err := conn.Close(); err != nil {
 			t.Error(err)
 		}
 	})
-	return &nativeTest{service, agents, conn, q, dir}
+	t.Cleanup(closeTest)
+	return &nativeTest{service, agents, conn, q, dir, closeTest}
 }
 
 func waitFor(t *testing.T, check func() bool) {
@@ -300,7 +300,7 @@ func TestUserCancellationFailureDoesNotBlockOtherConversations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = r.service.Stop(t.Context(), "bot", id); err == nil {
+	if err = r.service.CancelSession(t.Context(), "bot", id); err == nil {
 		t.Fatal("expected cancellation acknowledgement failure")
 	}
 	// When users send to another conversation and another agent, both can run.
@@ -368,7 +368,7 @@ func TestUserStoppingMissingExecutionCompletesCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the user stops it, absence already satisfies cancellation.
-	if err = r.service.Stop(t.Context(), "bot", c.ID); err != nil {
+	if err = r.service.CancelSession(t.Context(), "bot", c.ID); err != nil {
 		t.Fatalf("missing execution cancellation: %v", err)
 	}
 	saved, err := r.q.GetConversation(t.Context(), c.ID)

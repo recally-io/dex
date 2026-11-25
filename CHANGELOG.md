@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Tool discovery**: Enable `tool_search` in owner sessions without MCP. Search built-in tools and available MCP tools without changing session permissions.
+- **Memory**: Rename `read_dream_message` to `memory_source_read`. It still reads only the sources supplied for the current consolidation run.
+- **Child sessions**: Rename `report_parent` to `session_report`. It takes only `content` and `final` and reports to the direct parent as an internal result. The parent `session_send` is unchanged. The retired tool name does not resume pending calls. Reports already sent stay in the parent's history.
+
+### Removed
+
+- **Telegram**: Remove the `telegram_message` tool and agent speech output. Normal replies, previews, status reactions, and incoming audio transcription are unchanged.
+- **System turns**: Remove `stay_silent`. Top-level system turns still finish without sending a message by default. Delegated child turns return their results, and an unmet channel commitment is recorded as a missed follow-up.
+
 ### Fixed
 
 - **Remote Machines**: Allow multiple bots to share a runner. Each bot starts in `workspaces/<bot-id>/workspace` under the runner state directory. Dex leaves files in the old `workspace/` directory in place (#230).

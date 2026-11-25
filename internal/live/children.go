@@ -27,7 +27,7 @@ func (h *Hub) childState(ctx context.Context, parentID, chatID int64, agentID st
 		return childEvent{}, chat.ErrNotFound
 	}
 	if running == nil && c.ExecutionID != 0 {
-		if run, available := h.agents.ChildRunning(engine.Ref{AgentID: agentID, ID: c.ExecutionID, Scope: c.ExecutionScope}); available {
+		if run, available := h.agents.ChildRunning(engine.Ref{AgentID: agentID, ID: c.ExecutionID}); available {
 			running = &run
 		}
 	}
@@ -50,7 +50,7 @@ func childRef(item engine.Item, agentID string) (int64, string) {
 		return 0, ""
 	}
 	switch item.Name {
-	case "session_new", "session_fork", "session_send", "spawn_task":
+	case "session_new", "session_fork", "session_send":
 	default:
 		return 0, ""
 	}

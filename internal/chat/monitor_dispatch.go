@@ -10,7 +10,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 )
 
 // FireDueMonitors uses the scheduler's single job. A persisted script claim with no
@@ -144,7 +144,7 @@ func monitorResultParams(row sqlc.Monitor, now time.Time) sqlc.FinishMonitorPara
 
 func (s *Service) finishMonitor(ctx context.Context, row sqlc.Monitor, result monitorResult) error {
 	// Order event insertion with admission and native withdrawal. The shell never holds this gate.
-	unlock, err := s.lockAgent(ctx, row.AgentID)
+	unlock, err := s.lockSession(ctx, row.ConversationID)
 	if err != nil {
 		return err
 	}
@@ -234,7 +234,7 @@ func monitorFailure(err error) string {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
 		return "check failed: timed out"
-	case errors.Is(err, execenv.ErrUnavailable):
+	case errors.Is(err, runner.ErrUnavailable):
 		return "check failed: target environment unavailable or offline"
 	case errors.Is(err, context.Canceled):
 		return "check failed: interrupted"

@@ -373,12 +373,12 @@ func TestUserFirstSettledParentInputOwnsSharedAnswer(t *testing.T) {
 			if rows[0].id != "result:"+winner || body["turn"] != winner {
 				t.Fatalf("wrong result owner: %+v, turns=%+v", rows[0], turns)
 			}
-			var resultOrigin, sourceOrigin string
-			if err := conn.QueryRowContext(t.Context(), `SELECT result.origin, source.origin FROM submissions result JOIN submissions turn ON turn.id = ? JOIN submissions source ON source.id = turn.parent_request_id WHERE result.id = ?`, winner, rows[0].id).Scan(&resultOrigin, &sourceOrigin); err != nil {
+			var resultOrigin string
+			if err := conn.QueryRowContext(t.Context(), `SELECT origin FROM submissions WHERE id = ?`, rows[0].id).Scan(&resultOrigin); err != nil {
 				t.Fatal(err)
 			}
-			if resultOrigin != sourceOrigin {
-				t.Fatalf("winner origin %q, result origin %q", sourceOrigin, resultOrigin)
+			if resultOrigin != "task" {
+				t.Fatalf("result origin = %q, want task", resultOrigin)
 			}
 			answer, _ := body["answer"].(string)
 			if !strings.Contains(answer, "turn "+winner+", offset 4000") {

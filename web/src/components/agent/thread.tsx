@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, MessagesSquare } from "lucide-react";
 import type { TaskItem, ToolItem } from "../../api/generated/types.gen";
@@ -59,17 +59,8 @@ function ThreadOpen({
 
 /** Cards consume only the parent's content-free execution stream. */
 function useThreadData(call: ThreadCall) {
-  const current = useAgentId();
   const context = useContext(ThreadContext);
-
-  const found = useQuery({
-    ...getTurnChatOptions({ path: { agentId: current, turnId: call.turn ?? "" } }),
-    enabled: !!call.turn,
-  });
-
-  const thread =
-    call.thread ??
-    (found.data ? { chatId: found.data.id, agentId: sessionAgentId(found.data, current) } : undefined);
+  const thread = call.thread;
 
   return {
     thread,
@@ -111,7 +102,7 @@ function ThreadCard({ call }: { call: ThreadCall }) {
   const title = call.title;
 
   return (
-    <section aria-label={`Session thread: ${title}`} className="my-2 min-w-0 rounded-md border text-sm">
+    <section aria-label={`Child session: ${title}`} className="my-2 min-w-0 rounded-md border text-sm">
       <ThreadOpen
         thread={data.thread}
         className={cn("block w-full rounded-md p-3 text-left", data.thread && "hover:bg-accent")}
@@ -211,14 +202,14 @@ export function ResultLine({ item }: { item: TaskItem }) {
                 .catch(() => setFailed(true));
             }}
           >
-            View thread
+            View session
           </button>
         ) : (
           <Link to="/a/$agentId/tasks/$turnId" params={{ agentId, turnId: item.taskId }} className={link}>
-            View thread
+            View session
           </Link>
         )}
-        {failed ? <span role="alert"> · Could not open the thread.</span> : null}
+        {failed ? <span role="alert"> · Could not open the child session.</span> : null}
       </h3>
     </header>
   );

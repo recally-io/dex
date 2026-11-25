@@ -19,7 +19,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 	"github.com/MichaelKinsy/PiG/mcp"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/vault"
 	"go.yaml.in/yaml/v3"
 )
@@ -44,6 +44,7 @@ type McpServerInfo struct {
 	State           string              `json:"state"`
 	Tools           []string            `json:"tools"`
 	Error           string              `json:"error,omitempty"`
+	OAuth           string              `json:"oauth,omitempty"`
 	VaultReferences *mcpVaultReferences `json:"vaultReferences,omitempty"`
 }
 type ExtensionInfo struct {
@@ -69,7 +70,7 @@ type agentExtensions struct {
 	// home only expands ~/ in AGENTS.md imports; it is not an extension level.
 	home            string
 	env             *toolEnv
-	execHandle      execenv.Handle
+	execHandle      runner.Handle
 	stores          map[string]*skillStore
 	onSkillChange   func(scope string)
 	skillsMu        sync.Mutex
@@ -84,7 +85,9 @@ type agentExtensions struct {
 // same lease even if another request replaces an expired sandbox.
 type sessionPromptEnv struct {
 	durableenv.ExecutionEnv
-	files *agentExtensions
+	files        *agentExtensions
+	agentID      string
+	conversation durable.ConversationId
 }
 
 type loadedExtensions struct {
@@ -92,7 +95,6 @@ type loadedExtensions struct {
 	Env         map[string]string
 	ExplicitEnv map[string]string
 	Vault       vault.Snapshot
-	HasTools    bool
 	Servers     []McpServerInfo
 	clients     []*mcp.Client
 	mu          sync.Mutex
@@ -122,10 +124,13 @@ type serverConfig struct {
 	URL      string            `json:"url"`
 	Headers  map[string]string `json:"headers"`
 	Disabled bool              `json:"disabled"`
+	OAuth    *mcpOAuthConfig   `json:"oauth,omitempty"`
+	OAuthID  string            `json:"oauthId,omitempty"`
 }
 type serverEntry struct {
-	info   McpServerInfo
-	config serverConfig
+	info    McpServerInfo
+	config  serverConfig
+	scopeID string
 }
 type extensionScan struct {
 	info    ExtensionInfo
@@ -137,7 +142,7 @@ var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 var toolName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 var headerVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, env *toolEnv) *agentExtensions {
+func newAgentExtensions(home, dataDir, agentID string, handle runner.Handle, env *toolEnv) *agentExtensions {
 	agentDir := filepath.Join(dataDir, "agents", agentID)
 	workspace := filepath.Join(agentDir, "workspace")
 	if handle != nil {
@@ -152,16 +157,16 @@ func newAgentExtensions(home, dataDir, agentID string, handle execenv.Handle, en
 	return a
 }
 
-func (a *agentExtensions) forHandle(h execenv.Handle) *agentExtensions {
+func (a *agentExtensions) forHandle(h runner.Handle) *agentExtensions {
 	return &agentExtensions{levels: a.levels, agentID: a.agentID, agentDir: a.agentDir, mcp: a.mcp, vault: a.vault, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h, stores: a.stores}
 }
 
 func (a *agentExtensions) isRemote() bool {
-	return a.execHandle != nil && a.execHandle.Kind() != execenv.KindLocal
+	return a.execHandle != nil && a.execHandle.Kind() != runner.KindLocal
 }
 
 func (a *agentExtensions) remoteSkillsRoot() string {
-	return execenv.JoinTargetPath(a.workspace, ".dex", "skills")
+	return runner.JoinTargetPath(a.workspace, ".dex", "skills")
 }
 func canonicalExtensionPath(path string) string {
 	if resolved, err := filepath.EvalSymlinks(path); err == nil {
@@ -194,7 +199,7 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 	}
 	projectDir := canonicalExtensionPath(filepath.Join(cwd, ".agents"))
 	if a.isRemote() {
-		projectDir = execenv.JoinTargetPath(cwd, ".agents")
+		projectDir = runner.JoinTargetPath(cwd, ".agents")
 		if remoteEnv != nil {
 			if canon, err := remoteEnv.CanonicalPath(ctx, projectDir); err == nil {
 				projectDir = canon
@@ -223,8 +228,8 @@ func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableen
 					continue
 				}
 			}
-			dir = execenv.JoinTargetPath(l.Dir, "skills")
-			info, err := execenv.StatFollow(ctx, env, dir)
+			dir = runner.JoinTargetPath(l.Dir, "skills")
+			info, err := runner.StatFollow(ctx, env, dir)
 			if err != nil {
 				if fe, ok := errors.AsType[*durableenv.FileError](err); !ok || fe.Code != durableenv.FileErrorNotFound {
 					*errs = append(*errs, dir+": cannot read skills")
@@ -270,8 +275,8 @@ func findSkillsRemote(ctx context.Context, env durableenv.ExecutionEnv, dir stri
 		return nil
 	}
 	seen[resolved] = true
-	skillPath := execenv.JoinTargetPath(dir, "SKILL.md")
-	if info, err := execenv.StatFollow(ctx, env, skillPath); err == nil && info.Kind == durableenv.FileKindFile {
+	skillPath := runner.JoinTargetPath(dir, "SKILL.md")
+	if info, err := runner.StatFollow(ctx, env, skillPath); err == nil && info.Kind == durableenv.FileKindFile {
 		name := filepath.Base(dir)
 		if strings.HasPrefix(dir, "/") {
 			name = path.Base(dir)
@@ -297,7 +302,7 @@ func findSkillsRemote(ctx context.Context, env durableenv.ExecutionEnv, dir stri
 		}
 		isDir := entry.Kind == durableenv.FileKindDirectory
 		if entry.Kind == durableenv.FileKindSymlink {
-			target, statErr := execenv.StatFollow(ctx, env, entry.Path)
+			target, statErr := runner.StatFollow(ctx, env, entry.Path)
 			isDir = statErr == nil && target.Kind == durableenv.FileKindDirectory
 		}
 		if isDir {
@@ -399,6 +404,7 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 	if mcpErr == nil {
 		s.servers = servers
 		for _, entry := range servers {
+			entry.info.OAuth = entry.oauthStatus(a.vault)
 			s.info.Servers = append(s.info.Servers, entry.info)
 		}
 	}
@@ -537,14 +543,25 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 			loaded.Servers[index].Error = "the server closed the connection; reload to connect again"
 		})
 	}
-	loaded.HasTools = len(loaded.Extension.Tools) > 0
 	return loaded, nil
 }
 func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env map[string]string, secrets vault.Snapshot) (*mcp.Client, []*durable.ToolRegistration, error) {
 	c := entry.config
 	client := mcp.NewClient(mcp.ClientOptions{Name: "dex", Version: "1", RequestTimeoutMs: 30000})
 	var transport mcp.Transport
-	if c.Type == "http" {
+	var auth *mcpOAuthConnection
+	switch {
+	case c.OAuth != nil:
+		if err := validateMCPOAuth(c); err != nil {
+			return nil, nil, err
+		}
+		auth = &mcpOAuthConnection{entry: entry, vault: a.vault, store: a.mcp}
+		t, err := mcp.NewStreamableHTTPTransport(mcp.StreamableHTTPTransportOptions{URL: c.URL, Fetch: auth})
+		if err != nil {
+			return nil, nil, &privateError{message: "invalid MCP URL", cause: err}
+		}
+		transport = t
+	case c.Type == "http":
 		headers := maps.Clone(c.Headers)
 		missing := false
 		for key, value := range headers {
@@ -569,7 +586,7 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 			return nil, nil, &privateError{message: "invalid MCP URL", cause: err}
 		}
 		transport = t
-	} else {
+	default:
 		vars := maps.Clone(env)
 		if vars == nil {
 			vars = map[string]string{}
@@ -600,6 +617,9 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 	}
 	tools := []*durable.ToolRegistration{}
 	for _, tool := range listed {
+		if auth != nil && auth.mask(tool.Name) != tool.Name {
+			continue
+		}
 		name := "mcp__" + entry.info.Name + "__" + tool.Name
 		if !toolName.MatchString(name) {
 			continue
@@ -621,19 +641,31 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 			delete(schema, "required")
 		}
 		description := tool.Description
+		if auth != nil {
+			description = auth.mask(description)
+			schema = auth.maskJSON(schema).(map[string]any) //nolint:forcetypeassert // The mask preserves JSON value types.
+		}
 		if description == "" {
 			description = tool.Name
 		}
 		tools = append(tools, &durable.ToolRegistration{Name: name, Description: description, Parameters: schema, Deferred: true, Execute: func(ctx context.Context, args any, _ durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 			result, err := client.CallTool(ctx, tool.Name, args, mcp.RequestOptions{TimeoutMs: 600000})
 			if err != nil {
+				if errors.Is(err, errMCPAuthorize) || errors.Is(err, errMCPReauthorize) {
+					return durable.ToolExecutionResult{}, errMCPReauthorize
+				}
 				return durable.ToolExecutionResult{}, &privateError{message: "MCP tool call failed", cause: err}
 			}
 			output := []ai.ToolResultMessageContent{}
 			for _, block := range mcp.ToLLMContent(*result) {
 				if block.Type == "image" {
-					output = append(output, ai.ImageContent{Data: block.Data, MimeType: block.MimeType})
+					if auth == nil || (auth.mask(block.Data) == block.Data && auth.mask(block.MimeType) == block.MimeType) {
+						output = append(output, ai.ImageContent{Data: block.Data, MimeType: block.MimeType})
+					}
 				} else {
+					if auth != nil {
+						block.Text = auth.mask(block.Text)
+					}
 					output = append(output, ai.TextContent{Text: block.Text})
 				}
 			}
@@ -643,6 +675,12 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 	return client, tools, nil
 }
 func mcpFailure(err error) string {
+	if errors.Is(err, errMCPAuthorize) {
+		return errMCPAuthorize.Error()
+	}
+	if errors.Is(err, errMCPReauthorize) {
+		return errMCPReauthorize.Error()
+	}
 	if e, ok := errors.AsType[*vault.MissingError](err); ok {
 		return e.Error()
 	}
@@ -677,9 +715,10 @@ func extensionGuide(levels []ExtensionLevel, secrets string) string {
 		"Skills: dex and agent skills live on the control host. Change them only with skill_write, skill_edit, skill_delete, or skill_import. Use skill_list and skill_read to inspect them. Skill file paths use <dex|agent>/<name>/<file>. To install a skill, run the installer in a temporary directory, then use skill_import on the skill directory.",
 		"Start SKILL.md with the YAML front matter fields name and description. The name defaults to the directory name. Project skills in <cwd>/.agents/skills override the other levels. Use the normal file tools for project skills.",
 		"Run a managed skill's scripts from its directory in the session environment. Use the returned path from a skill tool, or the path in the skills list. Bash sets DEX_SKILL_CACHE to <workspace>/.dex/cache/skills. Put runtime files in $DEX_SKILL_CACHE/<name> and create that directory with mkdir -p. Remote skill copies are read-only.",
-		"Keep secrets in the vault. Use vault_list to find names and pass vault:NAME references in the env argument of bash or a Monitor. Ask the user to add missing values in Settings. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
+		"Keep secrets in the vault. Use secret_list to find names and pass vault:NAME references in the env argument of bash, process_start, or a monitor_set check. Ask the user to add missing values in Settings. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
 		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or agent level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the agent finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,
+		`For browser OAuth, set type to http and add oauth: {}. If the provider requires a registered client, set oauth.clientId and use vault:NAME in oauth.clientSecret. Ask the owner to authorize the connection in Tools. Never ask for OAuth tokens or codes.`,
 		"",
 		"The tool environment starts from the user's login shell environment.",
 		secrets,

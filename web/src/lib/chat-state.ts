@@ -1,13 +1,26 @@
-import type { ChatEvent, ChildEvent, HistoryPage, Item, Retry } from "../api/generated/types.gen";
+import type {
+  ChatEvent,
+  ChildEvent,
+  HistoryPage,
+  Item,
+  Retry,
+  TimelineNotification,
+} from "../api/generated/types.gen";
 
 type ChatState = {
   items: Item[];
   running: boolean;
+  runTarget?: string;
   children?: Record<number, ChildEvent["state"]>;
   retry?: Retry;
   history?: Item[];
   historyBefore?: number;
   headBefore?: number;
+  notifications?: {
+    entries: TimelineNotification[];
+    head?: string;
+    before?: string;
+  };
 };
 
 export const emptyChatState: ChatState = { items: [], running: false };
@@ -22,6 +35,20 @@ export function retryMessage(items: Item[], index: number) {
 
 export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
   switch (event.type) {
+    case "notifications": {
+      const head = event.notifications[0]?.id;
+      const previous = state.notifications;
+
+      return {
+        ...state,
+        notifications: {
+          entries: mergeNotifications(previous?.entries, event.notifications),
+          head: head ?? previous?.head,
+          before: event.initial && head !== previous?.head ? event.nextBeforeNotification : previous?.before,
+        },
+      };
+    }
+
     case "child": {
       const children = { ...state.children };
 
@@ -39,7 +66,9 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
       return {
         items: mergeItems(history, event.items),
         running: event.running,
+        runTarget: event.running ? event.runTarget : undefined,
         children: state.children,
+        notifications: state.notifications,
         retry: event.retry,
         history,
         headBefore: event.historyBefore,
@@ -77,7 +106,12 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
         ),
       };
     case "run":
-      return { ...state, running: event.running, retry: event.retry };
+      return {
+        ...state,
+        running: event.running,
+        runTarget: event.running ? event.runTarget : undefined,
+        retry: event.retry,
+      };
   }
 }
 
@@ -120,11 +154,37 @@ function mergeItems(earlier: Item[], current: Item[]): Item[] {
   return items;
 }
 
-export function mergeHistory(state: ChatState, page: HistoryPage): ChatState {
+function mergeNotifications(earlier: TimelineNotification[] = [], current: TimelineNotification[]) {
+  const byId = new Map(earlier.map((notice) => [notice.id, notice]));
+
+  for (const notice of current) byId.set(notice.id, notice);
+
+  return [...byId.values()].sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+}
+
+export function mergeHistory(state: ChatState, page: HistoryPage, beforeNotification?: string): ChatState {
   const archived = new Set(state.history?.map((item) => item.id));
   const live = state.items.filter((item) => !archived.has(item.id));
   const liveIDs = new Set(live.map((item) => item.id));
   const history = mergeItems(state.history ?? [], page.items).filter((item) => !liveIDs.has(item.id));
 
-  return { ...state, history, items: mergeItems(history, live), historyBefore: page.nextBefore };
+  const notifications = state.notifications;
+
+  return {
+    ...state,
+    history,
+    items: mergeItems(history, live),
+    historyBefore: page.nextBefore,
+    notifications:
+      notifications && page.notifications
+        ? {
+            ...notifications,
+            entries: mergeNotifications(notifications.entries, page.notifications),
+            before:
+              notifications.before === beforeNotification
+                ? page.nextBeforeNotification
+                : notifications.before,
+          }
+        : notifications,
+  };
 }

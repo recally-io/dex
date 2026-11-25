@@ -3,6 +3,7 @@ package vault
 
 import (
 	"cmp"
+	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -78,6 +79,25 @@ func (s *Store) Edit(agentID, scope, name string, value *string) error {
 	if scope == "agent" {
 		path = paths[1]
 	}
+	return s.edit(path, name, value)
+}
+
+// Credential reads a control-service credential. Tools and the vault UI cannot resolve these entries.
+func (s *Store) Credential(name string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := s.read(filepath.Join(s.dir, "credentials.age"))
+	return entries[name].Value, err
+}
+
+// EditCredential changes a control-service credential outside the tool vault scopes.
+func (s *Store) EditCredential(name string, value *string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.edit(filepath.Join(s.dir, "credentials.age"), name, value)
+}
+
+func (s *Store) edit(path, name string, value *string) error {
 	entries, err := s.read(path)
 	if err != nil {
 		return err
@@ -90,6 +110,46 @@ func (s *Store) Edit(agentID, scope, name string, value *string) error {
 	} else {
 		entries[name] = entry{Value: *value, UpdatedAt: time.Now().UTC()}
 	}
+	return s.write(path, entries)
+}
+
+// MCPGrant stores credentials apart from the user vault and its reference resolver.
+func (s *Store) MCPGrant(key [32]byte) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entries, err := s.read(s.mcpPath(key))
+	return entries["grant"].Value, err
+}
+
+func (s *Store) SaveMCPGrant(key [32]byte, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.write(s.mcpPath(key), map[string]entry{"grant": {Value: value, UpdatedAt: time.Now().UTC()}})
+}
+
+func (s *Store) mcpPath(key [32]byte) string {
+	return filepath.Join(s.dir, "mcp-"+hex.EncodeToString(key[:])+".age")
+}
+
+// Exact reads a secret at one level. Agent entries cannot change shared clients.
+func (s *Store) Exact(agentID, name string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	path := s.Paths(agentID)[0]
+	if agentID != "" {
+		path = s.Paths(agentID)[1]
+	}
+	entries, err := s.read(path)
+	if err != nil {
+		return "", err
+	}
+	if e, ok := entries[name]; ok && e.Value != "" {
+		return e.Value, nil
+	}
+	return "", &MissingError{Name: name}
+}
+
+func (s *Store) write(path string, entries map[string]entry) error {
 	identity, err := s.identity(true)
 	if err != nil {
 		return err
@@ -150,23 +210,28 @@ func (s *Store) identity(create bool) (*age.X25519Identity, error) {
 	}
 	for _, file := range files {
 		if strings.HasSuffix(file.Name(), ".age") {
-			return nil, errors.New("vault identity is missing")
+			return s.identity(false)
 		}
 	}
 	identity, err := age.GenerateX25519Identity()
 	if err != nil {
 		return nil, err
 	}
-	if err := atomicFile(path, func(w io.Writer) error {
+	err = writeTempFile(path, func(w io.Writer) error {
 		_, err := io.WriteString(w, identity.String()+"\n")
 		return err
-	}); err != nil {
-		return nil, err
+	}, os.Link)
+	if errors.Is(err, os.ErrExist) {
+		return s.identity(false)
 	}
-	return identity, nil
+	return identity, err
 }
 
 func atomicFile(path string, write func(io.Writer) error) error {
+	return writeTempFile(path, write, os.Rename)
+}
+
+func writeTempFile(path string, write func(io.Writer) error, publish func(string, string) error) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -179,7 +244,7 @@ func atomicFile(path string, write func(io.Writer) error) error {
 	if err := errors.Join(write(file), file.Close()); err != nil {
 		return err
 	}
-	return os.Rename(file.Name(), path)
+	return publish(file.Name(), path)
 }
 
 type Snapshot struct {

@@ -5,16 +5,18 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/MichaelKinsy/PiG/ai"
 )
 
-func fakeProvider() *ai.ModelsProvider {
+func fakeProvider(inputSuffix string) *ai.ModelsProvider {
 	defs := []ai.FauxModelDefinition{}
-	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "spawn", "spawn-notify", "spawn-monitor", "think", "mixed", "files"} {
+	for _, id := range []string{"echo", "context", "prompt", "direct", "direct-content", "shout", "bash", "memory", "section", "tool", "tool-report-fail", "spawn", "spawn-notify", "spawn-monitor", "think", "mixed", "files"} {
 		defs = append(defs, ai.FauxModelDefinition{ID: id, Reasoning: id == "think"})
 	}
+	defs = append(defs, ai.FauxModelDefinition{ID: "section-small", ContextWindow: 36000})
 	faux := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "faux", Models: defs, TokensPerSecond: 200})
 	reply := ai.FauxResponseFactory(func(t ai.TranscriptContext, o ai.StreamOptions, _ *ai.FauxProviderState, m *ai.Model) (ai.AssistantMessage, error) {
 		text := lastUserText(t)
@@ -52,7 +54,7 @@ func fakeProvider() *ai.ModelsProvider {
 			return fakeText("context: " + string(data)), err
 		case "memory":
 			return fakeText("memory: " + fakeSection(t, "memory")), nil
-		case "section":
+		case "section", "section-small":
 			return fakeText("section: " + fakeSection(t, text)), nil
 		case "think":
 			level := string(o.Thinking)
@@ -64,17 +66,23 @@ func fakeProvider() *ai.ModelsProvider {
 			if result, ok := last.(ai.ToolResultMessage); ok {
 				return fakeText("bash: " + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
-			return fakeCall("bash", map[string]any{"command": fakeBashCommand(strings.TrimSuffix(text, boundRoutineCheckSuffix))}), nil
-		case "tool", "direct", "direct-content":
+			return fakeCall("bash", map[string]any{"command": fakeBashCommand(strings.TrimSuffix(text, inputSuffix))}), nil
+		case "tool", "tool-report-fail", "direct", "direct-content":
 			// The fixture parses the user prompt as literal arguments, not natural language.
-			text = strings.TrimSuffix(text, boundRoutineCheckSuffix)
+			text = strings.TrimSuffix(text, inputSuffix)
 			if strings.HasPrefix(text, "Dex Task: ") {
 				if _, body, ok := strings.Cut(text, "\n\n"); ok {
 					text = body
 				}
 			}
+			if strings.HasPrefix(text, "[Monitor due: ") || strings.HasPrefix(text, "[Monitor terminal check: ") {
+				_, text, _ = strings.Cut(text, "\n")
+			}
 			name, argsText, hasArgs := strings.Cut(text, " ")
 			if result, ok := last.(ai.ToolResultMessage); ok && result.ToolName == name {
+				if m.ID == "tool-report-fail" && name == "session_report" {
+					return ai.AssistantMessage{}, fmt.Errorf("faux scripted failure after session_report")
+				}
 				prefix := "tool: "
 				if result.IsError {
 					prefix = "tool error: "
@@ -86,7 +94,7 @@ func fakeProvider() *ai.ModelsProvider {
 				return fakeText(prefix + strings.TrimSpace(ai.ContentText(result.Content, ""))), nil
 			}
 			_, afterResult := last.(ai.ToolResultMessage)
-			if m.ID == "tool" && !afterResult && !fakeExposed(t, name) {
+			if (m.ID == "tool" || m.ID == "tool-report-fail") && !afterResult && !fakeExposed(t, name) {
 				return fakeCall("tool_search", map[string]any{"query": name}), nil
 			}
 			args := map[string]any{}
@@ -138,22 +146,25 @@ func fakeProvider() *ai.ModelsProvider {
 				return ai.AssistantMessage{}, fmt.Errorf("faux/spawn requires a JSON object")
 			}
 			if result, ok := args["task-result"]; ok {
-				if m.ID == "spawn-notify" && args["channel-follow-up"] != nil {
+				if result, ok := result.(map[string]any); m.ID == "spawn-notify" && ok && result["title"] == "Web notification fixture" {
 					if !fakeExposed(t, "notify_user") {
 						return fakeCall("tool_search", map[string]any{"query": "notify_user"}), nil
 					}
-					return fakeCall("notify_user", map[string]any{"content": "Reviewed channel conclusion"}), nil
+					return fakeCall("notify_user", map[string]any{"content": "Reviewed child conclusion"}), nil
 				}
 				data, err := json.Marshal(result, json.Deterministic(true))
 				return fakeText("task-result: " + string(data)), err
 			}
 			if result, ok := args["background-result"]; ok {
 				if wake, ok := result.(map[string]any); m.ID == "spawn-monitor" && ok && wake["event"] == "exited" {
-					switch wake["label"] {
-					case "chain fixture":
-						return fakeCall("monitor_set_command", map[string]any{"command": "printf ready", "wake": "exit", "label": "chain fixture"}), nil
-					case "check fixture":
-						return fakeCall("monitor_set_schedule", map[string]any{"delaySeconds": 60, "maxRuns": 2, "intervalSeconds": 60, "prompt": "fixture ready", "checkCommand": "exit 10"}), nil
+					label, _ := wake["label"].(string)
+					if step, ok := strings.CutPrefix(label, "chain fixture "); ok {
+						if remaining, err := strconv.Atoi(step); err == nil && remaining > 1 {
+							return fakeCall("process_start", map[string]any{"command": "printf ready", "wake": "exit", "label": fmt.Sprintf("chain fixture %d", remaining-1)}), nil
+						}
+					}
+					if label == "check fixture" || label == "chain fixture 1" {
+						return fakeCall("monitor_set", map[string]any{"delaySeconds": 60, "maxRuns": 2, "intervalSeconds": 60, "prompt": "fixture ready", "checkCommand": "exit 10"}), nil
 					}
 				}
 				data, err := json.Marshal(result, json.Deterministic(true))
@@ -233,6 +244,7 @@ func fakeExposed(t ai.TranscriptContext, name string) bool {
 	}
 	return exposed
 }
+
 func fakeBashCommand(text string) string {
 	if !strings.HasPrefix(text, "Chats since the previous dream") {
 		return text

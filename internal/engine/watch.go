@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"sync"
 
 	"github.com/MichaelKinsy/PiG/chord"
@@ -27,10 +28,10 @@ func (w *Watch) Close() { w.cancel(); <-w.done }
 
 // Watch captures the snapshot and subscription at the same native revision.
 func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
-	if err := a.begin(resourceKey(ref)); err != nil {
+	if err := a.begin(ref.AgentID); err != nil {
 		return nil, err
 	}
-	defer a.end(resourceKey(ref))
+	defer a.end(ref.AgentID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -47,7 +48,7 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 		cancel()
 		return nil, err
 	}
-	var active activeContext
+	active := activeContext{ref: ref, hideToolArguments: a.config.HideToolArguments}
 	current, err := active.project(ctx, conversation, native.Value())
 	if err != nil {
 		cancel()
@@ -76,8 +77,8 @@ func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
 		changes, ok := diff(current.Items, next.Items)
 		if !ok || current.HistoryBefore != next.HistoryBefore {
 			changes = []Event{next}
-		} else if current.Running != next.Running || !reflect.DeepEqual(current.Retry, next.Retry) {
-			changes = append(changes, Event{Type: "run", Running: next.Running, Retry: next.Retry})
+		} else if current.Running != next.Running || current.RunTarget != next.RunTarget || !reflect.DeepEqual(current.Retry, next.Retry) {
+			changes = append(changes, Event{Type: "run", Running: next.Running, RunTarget: next.RunTarget, Retry: next.Retry})
 		}
 		current = next
 		for _, event := range changes {
@@ -119,8 +120,10 @@ const snapshotEntries = 300
 // Entries are immutable, so a read pinned to the view's tail matches that revision's docs.
 // Refresh on entry changes only; streamed tokens reuse the same entries.
 type activeContext struct {
-	tail    durable.EntryId
-	entries []durable.EntryRecord
+	hideToolArguments func(string) bool
+	ref               Ref
+	tail              durable.EntryId
+	entries           []durable.EntryRecord
 	// from is the first entry of the window, or 0 for the full context. It is fixed for the
 	// subscription, so a later snapshot keeps the history cursor of the client.
 	from durable.EntryId
@@ -145,7 +148,7 @@ func (active *activeContext) project(ctx context.Context, conversation harness.C
 		}
 	}
 	view.Entries = active.entries
-	event, err := projectView(view)
+	event, err := projectView(view, active.ref, active.hideToolArguments)
 	event.HistoryBefore = max(event.HistoryBefore, int64(active.from))
 	return event, err
 }
@@ -176,8 +179,8 @@ func windowStart(entries []durable.EntryRecord) durable.EntryId {
 	return sorted[start].Id
 }
 
-func projectView(view harness.ConversationView) (Event, error) {
-	p := projection{entries: view.Entries}
+func projectView(view harness.ConversationView, ref Ref, hideToolArguments func(string) bool) (Event, error) {
+	p := projection{entries: view.Entries, hideToolArguments: hideToolArguments}
 	if doc, ok := view.Docs.Get("pi.live"); ok {
 		live, err := durable.FromJsonValue[harness.LiveState](doc)
 		if err != nil {
@@ -192,5 +195,9 @@ func projectView(view harness.ConversationView) (Event, error) {
 		}
 		p.inbox = inbox.Items
 	}
-	return p.event(), nil
+	event := p.event()
+	if ref.ID != 0 && p.live.Run != nil {
+		event.RunTarget = runTargetPrefix(ref) + strconv.FormatInt(int64(p.live.Run.TaskId), 10)
+	}
+	return event, nil
 }

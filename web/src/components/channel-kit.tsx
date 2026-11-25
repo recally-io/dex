@@ -72,17 +72,17 @@ export function ChannelFrame({
     <FramedPage
       eyebrow={
         <Link
-          to="/a/$agentId/channels"
+          to="/a/$agentId/integrations"
           params={{ agentId }}
           className="hover:text-foreground hover:underline"
         >
-          Channels
+          Integrations
         </Link>
       }
       title={channelInfo[channel].name}
       badge={state ? <ChannelState channel={channel} state={state} /> : null}
       description={description}
-      toolbar={<BotSettingsSwitcher segment="channels" />}
+      toolbar={<BotSettingsSwitcher segment="integrations" />}
     >
       {children}
     </FramedPage>
@@ -98,7 +98,7 @@ export function Steps({ children }: { children: ReactNode }) {
   );
 }
 
-/** Lets this channel's owner receive routine results. */
+/** Lets this channel's owner receive automation results. */
 export function Notifications({ channel }: { channel: ChannelId }) {
   const agentId = useAgentId();
 
@@ -115,7 +115,7 @@ export function Notifications({ channel }: { channel: ChannelId }) {
   const own = targets.data?.targets.filter((target) => target.platform === channel) ?? [];
 
   return (
-    <Section title="Notifications" caption="Routines send results to the primary channel.">
+    <Section title="Notifications" caption="Automations send results to the primary channel.">
       <Panel>
         {own.length ? (
           <ul className="divide-y divide-border">
@@ -179,7 +179,7 @@ export function HowToUse({ channel, children }: { channel: ChannelId; children?:
             </li>
             <li>
               {channel === "telegram"
-                ? "Private Telegram chats share Main. Groups and topics keep isolated resources."
+                ? "Paired private Telegram chats share Main."
                 : `${name} and the web share the main timeline.`}{" "}
               dex replies where the input came from. The web shows all main input and tool calls.
             </li>

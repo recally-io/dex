@@ -11,24 +11,22 @@ import (
 )
 
 const createChildConversation = `-- name: CreateChildConversation :one
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at, execution_scope, scope_context)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, parent_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id
 `
 
 type CreateChildConversationParams struct {
-	AgentID        string        `json:"agent_id"`
-	ChannelKey     string        `json:"channel_key"`
-	Title          string        `json:"title"`
-	ModelProvider  string        `json:"model_provider"`
-	ModelID        string        `json:"model_id"`
-	ThinkingLevel  string        `json:"thinking_level"`
-	Cwd            string        `json:"cwd"`
-	EnvironmentID  string        `json:"environment_id"`
-	ParentID       sql.NullInt64 `json:"parent_id"`
-	CreatedAt      int64         `json:"created_at"`
-	ExecutionScope string        `json:"execution_scope"`
-	ScopeContext   string        `json:"scope_context"`
+	AgentID       string        `json:"agent_id"`
+	ChannelKey    string        `json:"channel_key"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	Cwd           string        `json:"cwd"`
+	EnvironmentID string        `json:"environment_id"`
+	ParentID      sql.NullInt64 `json:"parent_id"`
+	CreatedAt     int64         `json:"created_at"`
 }
 
 // A child session is a Chat with a parent. Its first turn is stored in the same transaction.
@@ -44,8 +42,6 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 		arg.EnvironmentID,
 		arg.ParentID,
 		arg.CreatedAt,
-		arg.ExecutionScope,
-		arg.ScopeContext,
 	)
 	var i Conversation
 	err := row.Scan(
@@ -71,8 +67,8 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 }
 
 const createParentTurn = `-- name: CreateParentTurn :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, origin, kind, when_busy, parent_request_id, status, created_at)
-VALUES (?1, ?2, ?3, 'null', 'task', 'message', ?4, ?5, 'pending', ?6)
+INSERT INTO submissions (id, conversation_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
+VALUES (?1, ?2, ?3, 'null', 'task', 'sub_session', '', '', 'message', ?4, ?5, 'pending', ?6)
 ON CONFLICT DO NOTHING
 `
 
@@ -103,11 +99,10 @@ func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnPara
 }
 
 const createTurnResult = `-- name: CreateTurnResult :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
-SELECT ?1, c.parent_id, ?2, 'null', ?1, source.origin, 'task_result', 'pending', ?3, c.id, ?4, source.channel_context, source.channel_revoked
+INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
+SELECT ?1, c.parent_id, ?2, 'null', ?1, 'task', 'sub_session', '', '', 'task_result', 'pending', ?3, c.id, ?4, '{}', 0
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
-JOIN submissions source ON source.id = turn.parent_request_id
 WHERE turn.id = ?5 AND c.parent_id IS NOT NULL
 ON CONFLICT (result_child_id, native_answer_id) DO NOTHING
 `
@@ -120,8 +115,8 @@ type CreateTurnResultParams struct {
 	TurnID         string        `json:"turn_id"`
 }
 
-// The result of a parent turn goes to the parent session with the origin of the parent request.
-// The ID follows the turn, so a replay does not store a second result.
+// The result of a parent turn goes to the parent session as an internal sub_session input
+// with no inherited channel origin. The ID follows the turn, so a replay does not store a second result.
 func (q *Queries) CreateTurnResult(ctx context.Context, arg CreateTurnResultParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, createTurnResult,
 		arg.ID,
@@ -134,6 +129,15 @@ func (q *Queries) CreateTurnResult(ctx context.Context, arg CreateTurnResultPara
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const finishParentInputStop = `-- name: FinishParentInputStop :exec
+UPDATE submissions SET stop_requested = 0 WHERE id = ?
+`
+
+func (q *Queries) FinishParentInputStop(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, finishParentInputStop, id)
+	return err
 }
 
 const getTurn = `-- name: GetTurn :one
@@ -236,28 +240,21 @@ func (q *Queries) LatestTurn(ctx context.Context, conversationID int64) (LatestT
 	return i, err
 }
 
-const listAudienceChildren = `-- name: ListAudienceChildren :many
+const listChannelChildren = `-- name: ListChannelChildren :many
 SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations
 WHERE parent_id = ?1 AND agent_id = ?2
-    AND execution_scope = ?3 AND scope_context = ?4
+    AND execution_scope = ''
 ORDER BY id DESC
 LIMIT 50
 `
 
-type ListAudienceChildrenParams struct {
-	ParentID       sql.NullInt64 `json:"parent_id"`
-	AgentID        string        `json:"agent_id"`
-	ExecutionScope string        `json:"execution_scope"`
-	ScopeContext   string        `json:"scope_context"`
+type ListChannelChildrenParams struct {
+	ParentID sql.NullInt64 `json:"parent_id"`
+	AgentID  string        `json:"agent_id"`
 }
 
-func (q *Queries) ListAudienceChildren(ctx context.Context, arg ListAudienceChildrenParams) ([]Conversation, error) {
-	rows, err := q.db.QueryContext(ctx, listAudienceChildren,
-		arg.ParentID,
-		arg.AgentID,
-		arg.ExecutionScope,
-		arg.ScopeContext,
-	)
+func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildrenParams) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, listChannelChildren, arg.ParentID, arg.AgentID)
 	if err != nil {
 		return nil, err
 	}
@@ -298,15 +295,16 @@ func (q *Queries) ListAudienceChildren(ctx context.Context, arg ListAudienceChil
 }
 
 const listChildPending = `-- name: ListChildPending :many
-SELECT id, parent_request_id IS NOT NULL AS from_parent
+SELECT id, parent_request_id IS NOT NULL AS from_parent, stop_requested
 FROM submissions
 WHERE conversation_id = ? AND status = 'pending'
 ORDER BY rowid
 `
 
 type ListChildPendingRow struct {
-	ID         string `json:"id"`
-	FromParent bool   `json:"from_parent"`
+	ID            string `json:"id"`
+	FromParent    bool   `json:"from_parent"`
+	StopRequested int64  `json:"stop_requested"`
 }
 
 func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([]ListChildPendingRow, error) {
@@ -318,7 +316,7 @@ func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([
 	items := []ListChildPendingRow{}
 	for rows.Next() {
 		var i ListChildPendingRow
-		if err := rows.Scan(&i.ID, &i.FromParent); err != nil {
+		if err := rows.Scan(&i.ID, &i.FromParent, &i.StopRequested); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -332,20 +330,46 @@ func (q *Queries) ListChildPending(ctx context.Context, conversationID int64) ([
 	return items, nil
 }
 
+const listParentInputStops = `-- name: ListParentInputStops :many
+SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid
+`
+
+func (q *Queries) ListParentInputStops(ctx context.Context, conversationID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listParentInputStops, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecoveryChildren = `-- name: ListRecoveryChildren :many
-SELECT DISTINCT c.id, c.agent_id, c.execution_id, c.execution_scope
+SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
-    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL
+    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.execution_scope = ''
 ORDER BY c.id
 `
 
 type ListRecoveryChildrenRow struct {
-	ID             int64         `json:"id"`
-	AgentID        string        `json:"agent_id"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
-	ExecutionScope string        `json:"execution_scope"`
+	ID          int64         `json:"id"`
+	AgentID     string        `json:"agent_id"`
+	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
 // The child sessions with a pending parent turn. Recovery reads the native state of each pending
@@ -359,12 +383,42 @@ func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChild
 	items := []ListRecoveryChildrenRow{}
 	for rows.Next() {
 		var i ListRecoveryChildrenRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.AgentID,
-			&i.ExecutionID,
-			&i.ExecutionScope,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRecoveryParentInputStops = `-- name: ListRecoveryParentInputStops :many
+SELECT s.id, c.agent_id, c.execution_id
+FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.execution_scope = ''
+`
+
+type ListRecoveryParentInputStopsRow struct {
+	ID          string        `json:"id"`
+	AgentID     string        `json:"agent_id"`
+	ExecutionID sql.NullInt64 `json:"execution_id"`
+}
+
+func (q *Queries) ListRecoveryParentInputStops(ctx context.Context) ([]ListRecoveryParentInputStopsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRecoveryParentInputStops)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRecoveryParentInputStopsRow{}
+	for rows.Next() {
+		var i ListRecoveryParentInputStopsRow
+		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -395,7 +449,7 @@ SELECT
     CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM conversations c
 JOIN agents a ON a.id = c.agent_id
-WHERE c.channel_key NOT LIKE 'dream:%'
+WHERE c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
     AND (c.parent_id = ?1 OR (
         CAST(?2 AS INTEGER) = 1
         AND (CAST(?3 AS INTEGER) = 1 OR c.agent_id = ?4)
@@ -455,6 +509,34 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listStopPendingSessions = `-- name: ListStopPendingSessions :many
+SELECT DISTINCT conversation_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
+UNION SELECT conversation_id FROM main_turn_stops
+`
+
+func (q *Queries) ListStopPendingSessions(ctx context.Context) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listStopPendingSessions)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var conversation_id int64
+		if err := rows.Scan(&conversation_id); err != nil {
+			return nil, err
+		}
+		items = append(items, conversation_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -535,37 +617,49 @@ func (q *Queries) PendingCount(ctx context.Context, conversationID int64) (int64
 	return column_1, err
 }
 
+const requestParentInputStop = `-- name: RequestParentInputStop :exec
+UPDATE submissions SET stop_requested = 1
+WHERE conversation_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL
+`
+
+func (q *Queries) RequestParentInputStop(ctx context.Context, conversationID int64) error {
+	_, err := q.db.ExecContext(ctx, requestParentInputStop, conversationID)
+	return err
+}
+
 const searchTurns = `-- name: SearchTurns :many
 SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
-WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%'
-    AND (CAST(?1 AS INTEGER) = 1 OR c.agent_id = ?2)
-    AND (CAST(?3 AS INTEGER) = 0 OR c.id = ?3)
-    AND s.created_at >= ?4
-    AND (CAST(?5 AS TEXT) = '' OR instr(lower(s.content), CAST(?5 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?5 AS TEXT)) > 0)
+WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
+    AND s.id <> ?1
+    AND (CAST(?2 AS INTEGER) = 1 OR c.agent_id = ?3)
+    AND (CAST(?4 AS INTEGER) = 0 OR c.id = ?4)
+    AND s.created_at >= ?5
     AND (CAST(?6 AS TEXT) = '' OR instr(lower(s.content), CAST(?6 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?6 AS TEXT)) > 0)
     AND (CAST(?7 AS TEXT) = '' OR instr(lower(s.content), CAST(?7 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?7 AS TEXT)) > 0)
     AND (CAST(?8 AS TEXT) = '' OR instr(lower(s.content), CAST(?8 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?8 AS TEXT)) > 0)
     AND (CAST(?9 AS TEXT) = '' OR instr(lower(s.content), CAST(?9 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?9 AS TEXT)) > 0)
     AND (CAST(?10 AS TEXT) = '' OR instr(lower(s.content), CAST(?10 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?10 AS TEXT)) > 0)
+    AND (CAST(?11 AS TEXT) = '' OR instr(lower(s.content), CAST(?11 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?11 AS TEXT)) > 0)
 ORDER BY s.rowid DESC
-LIMIT ?11
+LIMIT ?12
 `
 
 type SearchTurnsParams struct {
-	AllBots   int64  `json:"all_bots"`
-	AgentID   string `json:"agent_id"`
-	SessionID int64  `json:"session_id"`
-	Since     int64  `json:"since"`
-	W1        string `json:"w1"`
-	W2        string `json:"w2"`
-	W3        string `json:"w3"`
-	W4        string `json:"w4"`
-	W5        string `json:"w5"`
-	W6        string `json:"w6"`
-	MaxRows   int64  `json:"max_rows"`
+	ExcludedTurnID string `json:"excluded_turn_id"`
+	AllBots        int64  `json:"all_bots"`
+	AgentID        string `json:"agent_id"`
+	SessionID      int64  `json:"session_id"`
+	Since          int64  `json:"since"`
+	W1             string `json:"w1"`
+	W2             string `json:"w2"`
+	W3             string `json:"w3"`
+	W4             string `json:"w4"`
+	W5             string `json:"w5"`
+	W6             string `json:"w6"`
+	MaxRows        int64  `json:"max_rows"`
 }
 
 type SearchTurnsRow struct {
@@ -583,6 +677,7 @@ type SearchTurnsRow struct {
 // lowercases ASCII letters of the words, and lower() does the same for the text.
 func (q *Queries) SearchTurns(ctx context.Context, arg SearchTurnsParams) ([]SearchTurnsRow, error) {
 	rows, err := q.db.QueryContext(ctx, searchTurns,
+		arg.ExcludedTurnID,
 		arg.AllBots,
 		arg.AgentID,
 		arg.SessionID,

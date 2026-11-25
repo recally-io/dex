@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -34,11 +35,6 @@ type Recovered struct {
 
 // RecoveryOutcome reads a committed input before any Harness can resume. It never admits work.
 func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string) (_ Recovered, resultErr error) {
-	if ref.Scope != "" {
-		if err := validateGroupScope(ref.Scope); err != nil {
-			return Recovered{}, err
-		}
-	}
 	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 || requestID == "" {
 		return Recovered{}, fmt.Errorf("%w: recovery input", ErrInvalidInput)
 	}
@@ -53,17 +49,10 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 	}
 	readCtx, cancel := context.WithCancel(ctx)
 	opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
-	a.opening[resourceKey(ref)] = opening
+	a.opening[ref.AgentID] = opening
 	a.mu.Unlock()
-	defer a.finishOpening(resourceKey(ref), opening)
-	dir := a.executionDir(ref)
-	if ref.Scope != "" {
-		var err error
-		dir, err = a.groupDirectory(ref)
-		if err != nil {
-			return Recovered{}, err
-		}
-	}
+	defer a.finishOpening(ref.AgentID, opening)
+	dir := filepath.Join(a.config.DataDir, "agents", ref.AgentID)
 	path := filepath.Join(dir, "state.sqlite")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return Recovered{State: RecoveryAbsent}, nil
@@ -105,6 +94,25 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 			return Recovered{}, errors.New("completed native input has no answer entry")
 		}
 		outcome.Answer = answerText(entry.Entry.Model)
+		runInputs, err := runInputIDsForAnswer(storeEntryScanner{ctx: readCtx, store: store}, durable.ConversationId(ref.ID), *record.Answer)
+		if err != nil {
+			slog.Warn("resolve recovered run input membership", "agent", ref.AgentID, "conversation", ref.ID, "answer_id", *record.Answer, "error", err)
+			runInputs = nil
+		}
+		outcome.RunInputIDs = runInputs
 	}
 	return Recovered{State: RecoverySettled, Outcome: outcome}, nil
+}
+
+type storeEntryScanner struct {
+	ctx   context.Context
+	store durable.Storage
+}
+
+func (s storeEntryScanner) ScanEntries(q durable.EntryQuery, limit int, cursor durable.Cursor) (durable.Page[durable.EntryRecord, durable.Cursor], error) {
+	return s.store.ScanEntries(s.ctx, q, limit, cursor)
+}
+
+func (s storeEntryScanner) SubmissionByRequest(convID durable.ConversationId, reqID string) (*durable.SubmissionRecord, error) {
+	return s.store.SubmissionByRequest(s.ctx, convID, reqID)
 }

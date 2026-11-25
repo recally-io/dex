@@ -17,7 +17,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/execenv"
+	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/speech"
 )
 
@@ -69,13 +69,13 @@ type Service struct {
 	q       *sqlc.Queries
 	catalog *engine.Catalog
 	agents  *engine.Agents
-	envs    *execenv.Manager
+	envs    *runner.Manager
 	// Serializes provider save and apply. Agent and channel changes have their own lock.
 	mu sync.Mutex
 }
 
 // New returns the global settings service.
-func New(q *sqlc.Queries, catalog *engine.Catalog, agents *engine.Agents, envs *execenv.Manager) *Service {
+func New(q *sqlc.Queries, catalog *engine.Catalog, agents *engine.Agents, envs *runner.Manager) *Service {
 	return &Service{q: q, catalog: catalog, agents: agents, envs: envs}
 }
 

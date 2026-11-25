@@ -23,6 +23,8 @@ JOIN automations a ON a.id = r.automation_id
 JOIN agents agent ON agent.id = a.agent_id
 JOIN routine_notification_targets t ON t.agent_id = a.agent_id AND t.id =
     CASE a.notification_route WHEN 'default' THEN agent.primary_notification_target_id WHEN 'target' THEN a.notification_target_id END
+JOIN configured_channel_addresses b ON b.agent_id = t.agent_id AND b.platform = t.platform
+    AND b.account_id = t.account_id AND b.peer = t.peer
 WHERE r.id = ? AND agent.archived_at IS NULL;
 
 -- name: GetRoutineOutboxConversation :one

@@ -6,15 +6,17 @@
 pull request. Its jobs run the steps of `mise run check` in parallel: lint and
 drift, web, Go lint and tests, and native checks and cross-builds.
 
-One app-test job runs `mise run check:app`: all `internal/app` tests without
-the race detector, because it made them several times slower for little gain.
-Two chat jobs partition the `internal/chat` tests and run them with the race
+Three app jobs partition the `internal/app` tests and run them without the
+race detector, because it made them several times slower for little gain.
+Four chat jobs partition the `internal/chat` tests and run them with the race
 detector. The Go job uses `check:go without-integration` for all other
 packages; local `check:go` still runs every package. Run
-`mise run check:go-shard ./internal/chat 0 2` to repeat the first chat
-partition locally. The app and chat jobs save their JSON timings as a
-seven-day artifact. The jobs share the main Go cache without saving duplicate
-archives.
+`mise run check:go-shard ./internal/chat 0 4` to repeat the first chat
+partition locally, or `mise run check:app` for all app tests. The app and chat
+jobs save their JSON timings as a seven-day artifact. The jobs share the main
+Go cache without saving duplicate archives. Before the save on `main`, the Go
+and native jobs delete the cache entries that they did not use, so the cache
+does not grow on each run.
 The native job builds darwin and linux for amd64 and arm64 without cgo.
 When you add a step to `check` in `mise.toml`, add it to the workflow too.
 
