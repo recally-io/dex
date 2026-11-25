@@ -1,0 +1,82 @@
+@startuml
+skinparam RectangleBackgroundColor #eef2fb
+skinparam RectangleBorderColor #5b6b8c
+skinparam RectangleFontColor #1f2937
+skinparam ComponentBackgroundColor #eef2fb
+skinparam ComponentBorderColor #5b6b8c
+skinparam ComponentFontColor #1f2937
+skinparam ClassBackgroundColor #eef2fb
+skinparam ClassBorderColor #5b6b8c
+skinparam ClassFontColor #1f2937
+skinparam UsecaseBackgroundColor #eef2fb
+skinparam UsecaseBorderColor #5b6b8c
+skinparam UsecaseFontColor #1f2937
+skinparam DatabaseBackgroundColor #eef2fb
+skinparam DatabaseBorderColor #5b6b8c
+skinparam DatabaseFontColor #1f2937
+skinparam NodeBackgroundColor #eef2fb
+skinparam NodeBorderColor #5b6b8c
+skinparam NodeFontColor #1f2937
+skinparam ActorBackgroundColor #eef2fb
+skinparam ActorBorderColor #5b6b8c
+skinparam ActorFontColor #1f2937
+skinparam StateBackgroundColor #eef2fb
+skinparam StateBorderColor #5b6b8c
+skinparam StateFontColor #1f2937
+skinparam ArtifactBackgroundColor #eef2fb
+skinparam ArtifactBorderColor #5b6b8c
+skinparam ArtifactFontColor #1f2937
+skinparam CloudBackgroundColor #eef2fb
+skinparam CloudBorderColor #5b6b8c
+skinparam CloudFontColor #1f2937
+skinparam FolderBackgroundColor #eef2fb
+skinparam FolderBorderColor #5b6b8c
+skinparam FolderFontColor #1f2937
+skinparam PackageBackgroundColor #eef2fb
+skinparam PackageBorderColor #5b6b8c
+skinparam DefaultFontColor #1f2937
+skinparam ArrowColor #5b6b8c
+skinparam ArrowFontColor #1f2937
+skinparam NoteBackgroundColor #dfe5fb
+skinparam NoteBorderColor #5b6b8c
+skinparam NoteFontColor #1f2937
+skinparam stereotypeABackgroundColor #d9e3f4
+skinparam stereotypeABorderColor #5b6b8c
+skinparam stereotypeCBackgroundColor #d9e3f4
+skinparam stereotypeCBorderColor #5b6b8c
+skinparam stereotypeEBackgroundColor #d9e3f4
+skinparam stereotypeEBorderColor #5b6b8c
+skinparam stereotypeIBackgroundColor #d9e3f4
+skinparam stereotypeIBorderColor #5b6b8c
+skinparam BackgroundColor #ffffff
+title dex Task Board: Bot-centric append-only coordination
+top to bottom direction
+rectangle "Web UI\nBoard (/board) / Inbox (/inbox)" as ui
+rectangle "Bot Tools\nMain, Chat, scoped Child" as tools
+rectangle "Sources (Plugins)\nGitHub / Email / Webhook" as plugins
+rectangle "External Agents (Phase 3)\nAttached CLI / Process" as ext
+package "dex control plane" as ctrl {
+  rectangle "SSE Event Stream\n/api/board/events (Last-Event-ID)" as sse
+  rectangle "internal/worktask\nCentral ACL + Auth Matrix\n6 states + derived Blocked + Review" as core
+  rectangle "Coalesced Wakeup Router\n<=1 unadmitted task_wake / Main\n+ External Lease Watchdog" as wake
+  rectangle "internal/chat + internal/engine\nPer-session delivery gate + PiG Harness" as runtime
+}
+database "control.sqlite\nwork_tasks (T-N)\nwork_task_entries (AUTOINCREMENT)\ntask_executions, task_dependencies" as cdb
+database "agents/<id>/state.sqlite\nNative PiG runs & transcripts" as adb
+ui --> core : HTTP API + If-Match
+ui <-- sse : Live board updates
+tools --> core : Replay-safe tools
+plugins --> core : Accept / AcceptCreating
+ext --> core : Scoped Board Token\n(epoch + TTL check)
+core --> cdb : Single-tx ledger +\nstate projection
+core --> sse : Global entry id
+core --> wake : Post-commit wake\n(pointer only, no body)
+wake --> runtime : Wake target Main\n(no nested gates)
+runtime --> adb : Native execution
+note bottom of cdb
+  Every Board state change writes one
+  append-only ledger row in the same
+  transaction. External text stays out
+  of model context and wakeups.
+end note
+@enduml

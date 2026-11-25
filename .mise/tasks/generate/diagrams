@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-#MISE description="Render the architecture, message-flow, always-on-flow, and plugins figures from PlantUML"
+#MISE description="Render the architecture, message-flow, always-on-flow, plugins, and task-board figures from PlantUML"
 set -euo pipefail
 
 mise run documd docs/assets/src/architecture.puml docs/assets/architecture.png
 mise run documd docs/assets/src/message-flow.puml docs/assets/message-flow.png
 mise run documd docs/assets/src/always-on-flow.puml docs/assets/always-on-flow.png
 mise run documd docs/assets/src/plugins.puml docs/assets/plugins.png
+mise run documd docs/assets/src/task-board.puml docs/assets/task-board.png

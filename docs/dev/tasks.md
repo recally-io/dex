@@ -2,7 +2,8 @@
 
 This document describes Board, the Task event store, holds, Task
 alerts, and the Task tools. Optional sources that send Task events are in
-[Plugins](plugins.md).
+[Plugins](plugins.md). For the planned Bot-centric, append-only Task Board
+redesign, see [Task Board Architecture](task-board.md).
 
 ## Board and event store
 
