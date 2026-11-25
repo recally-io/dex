@@ -114,7 +114,7 @@ func TestUserNativeSubmissionSurvivesReopen(t *testing.T) {
 	if duplicate.ID != submission.ID {
 		t.Fatalf("submission changed: %d != %d", duplicate.ID, submission.ID)
 	}
-	if got := coreWait(t, duplicate); got != first {
+	if got := coreWait(t, duplicate); !got.Equal(first) {
 		t.Fatalf("replayed outcome %+v != %+v", got, first)
 	}
 	conversation, err := reopened.conversation(t.Context(), ref)

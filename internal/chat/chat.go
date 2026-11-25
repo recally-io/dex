@@ -1024,7 +1024,7 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if err != nil {
 		return err
 	}
-	changed, parent, err := s.settleInput(ctx, id, event)
+	changed, parent, outboxPeer, err := s.settleInput(ctx, id, event)
 	if err != nil || changed == 0 {
 		return err
 	}
@@ -1047,9 +1047,8 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 		// The result is a new input of the parent session. Admission takes it from the database.
 		s.signal(parent)
 	}
-	// A parent turn has no channel to answer: its result goes to the parent session.
-	if s.notify != nil && reply.Origin != "task" {
-		s.notify(reply.Origin)
+	if s.notify != nil && outboxPeer != "" {
+		s.notify(outboxPeer)
 	}
 	s.WakeRoutineOutbox(ctx, id)
 	return nil

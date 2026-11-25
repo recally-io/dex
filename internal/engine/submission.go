@@ -174,7 +174,9 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					}
 					data, _ := item.Entry.Get("data")
 					// Each bound Routine needs its own source and report, even when
-					// different routines use the same busy session.
+					// different routines use the same busy session. Rejecting foreign
+					// follow-up origins also preserves the QueueAll routing invariant
+					// that inputs from different channels never merge into one run.
 					if m := metadata(data); m.Origin != input.Origin || (input.Origin == "automation" && !input.Automation) {
 						return nil, ErrOriginBusy
 					}
@@ -265,10 +267,20 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 			} else if settled.Status == durable.SubmissionDone {
 				result.outcome.AnswerID = int64(*settled.Answer)
 				var entry *durable.EntryRecord
+				var runInputs []string
 				_, err := conversation.Commit(settlementCtx, func(tx durable.Tx) (any, error) {
 					var err error
 					entry, err = tx.Entry(*settled.Answer)
-					return nil, err
+					if err != nil || entry == nil {
+						return nil, err
+					}
+					var scanErr error
+					runInputs, scanErr = runInputIDsForAnswer(tx, conversation.Id(), *settled.Answer)
+					if scanErr != nil {
+						slog.Warn("resolve run input membership", "agent", ref.AgentID, "conversation", ref.ID, "answer_id", *settled.Answer, "error", scanErr)
+						runInputs = nil
+					}
+					return nil, nil
 				})
 				switch {
 				case err != nil:
@@ -277,6 +289,7 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 					result.err = errors.New("completed native input has no answer entry")
 				default:
 					result.outcome.Answer = answerText(entry.Model)
+					result.outcome.RunInputIDs = runInputs
 				}
 			}
 		}
@@ -333,4 +346,62 @@ func inputEntryKind(input Input) string {
 		return "dex.task_result"
 	}
 	return "dex.user"
+}
+
+type entryScanner interface {
+	ScanEntries(durable.EntryQuery, int, durable.Cursor) (durable.Page[durable.EntryRecord, durable.Cursor], error)
+	SubmissionByRequest(durable.ConversationId, string) (*durable.SubmissionRecord, error)
+}
+
+func runInputIDsForAnswer(scanner entryScanner, convID durable.ConversationId, answerID durable.EntryId) ([]string, error) {
+	maxID := answerID
+	var cursor durable.Cursor
+	var reversed []string
+	for {
+		page, err := scanner.ScanEntries(durable.EntryQuery{
+			ConversationId: convID,
+			MaxEntryId:     &maxID,
+			Order:          new(durable.ScanDescending),
+		}, 64, cursor)
+		if err != nil {
+			return nil, err
+		}
+		stop := false
+		for _, e := range page.Items {
+			if e.Id == answerID {
+				continue
+			}
+			if e.Kind == "pi.reset" || e.Kind == "dex.reset" {
+				stop = true
+				break
+			}
+			if e.Kind != "dex.user" && e.Kind != "dex.task_result" {
+				continue
+			}
+			reqID := metadata(e.Data).RequestID
+			if reqID == "" {
+				continue
+			}
+			sub, err := scanner.SubmissionByRequest(convID, reqID)
+			if err != nil {
+				return nil, err
+			}
+			if sub != nil && sub.Answer != nil {
+				if *sub.Answer == answerID {
+					reversed = append(reversed, reqID)
+				} else if *sub.Answer < answerID {
+					stop = true
+					break
+				}
+			}
+		}
+		if stop || page.Next == nil {
+			break
+		}
+		cursor = *page.Next
+	}
+	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
+		reversed[i], reversed[j] = reversed[j], reversed[i]
+	}
+	return reversed, nil
 }

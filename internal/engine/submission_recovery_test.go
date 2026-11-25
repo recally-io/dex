@@ -29,7 +29,7 @@ func TestUserSubmissionReplayNeedsNoCurrentModel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := coreWait(t, sub); sub.ID != first.ID || got != want {
+		if got := coreWait(t, sub); sub.ID != first.ID || !got.Equal(want) {
 			t.Fatalf("replayed id=%d outcome=%+v; want id=%d outcome=%+v", sub.ID, got, first.ID, want)
 		}
 	}

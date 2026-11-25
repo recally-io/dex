@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -93,6 +94,12 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 			return Recovered{}, errors.New("completed native input has no answer entry")
 		}
 		outcome.Answer = answerText(entry.Entry.Model)
+		runInputs, err := runInputIDsForAnswer(storeEntryScanner{ctx: readCtx, store: store}, durable.ConversationId(ref.ID), *record.Answer)
+		if err != nil {
+			slog.Warn("resolve recovered run input membership", "agent", ref.AgentID, "conversation", ref.ID, "answer_id", *record.Answer, "error", err)
+			runInputs = nil
+		}
+		outcome.RunInputIDs = runInputs
 		if record.Entry != nil {
 			start, err := store.Entry(readCtx, *record.Entry)
 			if err != nil {
@@ -104,4 +111,17 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 		}
 	}
 	return Recovered{State: RecoverySettled, Outcome: outcome}, nil
+}
+
+type storeEntryScanner struct {
+	ctx   context.Context
+	store durable.Storage
+}
+
+func (s storeEntryScanner) ScanEntries(q durable.EntryQuery, limit int, cursor durable.Cursor) (durable.Page[durable.EntryRecord, durable.Cursor], error) {
+	return s.store.ScanEntries(s.ctx, q, limit, cursor)
+}
+
+func (s storeEntryScanner) SubmissionByRequest(convID durable.ConversationId, reqID string) (*durable.SubmissionRecord, error) {
+	return s.store.SubmissionByRequest(s.ctx, convID, reqID)
 }

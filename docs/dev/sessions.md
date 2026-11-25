@@ -75,12 +75,15 @@ The engine stores origin with native input metadata. One projection exposes it
 in queued input, snapshots, live events, and history pages. The web shows the
 channel name beside each channel input.
 
-The first input owns a run. Its saved channel address selects the reply recipient, and its
-receipt is the source for tool calls. A steered input adds content only. It does
-not change the recipient or grant or remove tool authority. Web input and a
-parent's `session_send` can steer. Channel, automation and dream inputs always
-use `followUp`. Bot and routine management check the source input, not the
-steered input.
+For a completed run, Dispatcher inspects the inputs actually answered by that
+native answer in PiG placement order and selects the last `producer = user`
+input: if that input came from a channel (`reply_channel`/`reply_peer`), that
+input writes the single final Outbox reply; if it came from Web, the answer
+stays in Web with no channel Outbox row. Pure background runs (no `user` input)
+never auto-send to channels—Main must explicitly call `notify_user` to emit a
+channel notification. If run membership or order cannot be verified, no
+automatic channel Outbox row is written. Web input and a parent's
+`session_send` can steer; channel, automation, and dream inputs use `followUp`.
 
 ## Web notifications
 
@@ -268,9 +271,9 @@ is treated as already delivered.
 
 The result names the child, its title, the turn and the outcome. It has the
 final answer cut at 4,000 characters, or the failure reason. A restart adds
-the number of queued inputs it withdrew. The result copies the origin of the
-parent request, so a Chat gets its own results and a channel peer gets the
-results of work that the peer started.
+the number of queued inputs it withdrew. Child results enter the parent as
+`producer = 'sub_session'` with no channel reply destination; pure background
+runs never auto-send to channels, and Main decides whether to call `notify_user`.
 An ordinary result can enter the parent's follow-up Inbox while the parent
 is busy. A result with a usable channel commitment waits in control until it
 can start a native review with no other inputs. The guard checks the live run
