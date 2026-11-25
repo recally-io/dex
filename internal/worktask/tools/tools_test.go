@@ -127,7 +127,7 @@ func TestUserTaskToolsEnforceActorAndOrigin(t *testing.T) {
 			t.Errorf("post %s: %v", kind, err)
 		}
 	}
-	if info, err := s.Update(ctx, main("wake", "start"), WorkTaskUpdateArgs{ID: task.Key, Status: "in_progress"}); err != nil || info.Status != "in_progress" {
+	if info, err := s.Update(ctx, main("wake", "start"), WorkTaskUpdateArgs{ID: task.Key, Status: "in_progress", Title: "Ship login now"}); err != nil || info.Status != "in_progress" || info.Title != "Ship login now" {
 		t.Fatalf("start from wake: %+v, %v", info, err)
 	}
 	entry, err := s.Post(ctx, main("result", "post"), WorkTaskPostArgs{ID: task.Key, Kind: "artifact", Tag: "handoff", Content: "Child finished"})
@@ -144,7 +144,10 @@ func TestUserTaskToolsEnforceActorAndOrigin(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].Key != task.Key || !list[0].Blocked || list[0].Session == nil || list[0].Session.ID != "4" {
 		t.Fatalf("child list: %+v, %v", list, err)
 	}
-	got, err := s.Read(ctx, main("user", "read"), WorkTaskReadArgs{ID: task.Key, Tags: []string{"handoff"}})
+	if _, err := s.Post(ctx, main("wake", "post-wake"), WorkTaskPostArgs{ID: task.Key, Content: "Checked from wake"}); err != nil {
+		t.Fatalf("post from wake: %v", err)
+	}
+	got, err := s.Read(ctx, main("wake", "read"), WorkTaskReadArgs{ID: task.Key, Tags: []string{"handoff"}})
 	if err != nil || len(got.Entries) != 1 || got.Entries[0].Seq != entry.Seq || len(got.Blockers) != 1 || got.Blockers[0].Kind != "wait" {
 		t.Fatalf("filtered detail or replay: %+v, %v", got, err)
 	}
