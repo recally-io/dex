@@ -1346,6 +1346,51 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 	return items, nil
 }
 
+const listAutomationTargetCandidates = `-- name: ListAutomationTargetCandidates :many
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, agentID string) ([]Conversation, error) {
+	rows, err := q.db.QueryContext(ctx, listAutomationTargetCandidates, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Conversation{}
+	for rows.Next() {
+		var i Conversation
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentID,
+			&i.ChannelKey,
+			&i.ExecutionID,
+			&i.CreatedAt,
+			&i.Title,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.ThinkingLevel,
+			&i.AbortPending,
+			&i.ArchivedAt,
+			&i.Cwd,
+			&i.ForkedFrom,
+			&i.ParentID,
+			&i.ExecutionScope,
+			&i.ScopeContext,
+			&i.RunnerID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAutomations = `-- name: ListAutomations :many
 SELECT id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_conversation_id FROM automations WHERE agent_id = ? ORDER BY created_at, id
 `
@@ -1800,51 +1845,6 @@ func (q *Queries) ListRecentProjects(ctx context.Context, agentID string) ([]str
 			return nil, err
 		}
 		items = append(items, cwd)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listRoutineTargetCandidates = `-- name: ListRoutineTargetCandidates :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC
-`
-
-func (q *Queries) ListRoutineTargetCandidates(ctx context.Context, agentID string) ([]Conversation, error) {
-	rows, err := q.db.QueryContext(ctx, listRoutineTargetCandidates, agentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Conversation{}
-	for rows.Next() {
-		var i Conversation
-		if err := rows.Scan(
-			&i.ID,
-			&i.AgentID,
-			&i.ChannelKey,
-			&i.ExecutionID,
-			&i.CreatedAt,
-			&i.Title,
-			&i.ModelProvider,
-			&i.ModelID,
-			&i.ThinkingLevel,
-			&i.AbortPending,
-			&i.ArchivedAt,
-			&i.Cwd,
-			&i.ForkedFrom,
-			&i.ParentID,
-			&i.ExecutionScope,
-			&i.ScopeContext,
-			&i.RunnerID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

@@ -481,7 +481,7 @@ export const getInboxSummaryOptions = (options?: Options<GetInboxSummaryData>) =
 export const listInboxQueryKey = (options?: Options<ListInboxData>) => createQueryKey('listInbox', options);
 
 /**
- * Actionable routine results across all bots, newest first.
+ * Actionable automation results across all bots, newest first.
  */
 export const listInboxOptions = (options?: Options<ListInboxData>) => queryOptions<ListInboxResponse, ListInboxError, ListInboxResponse, ReturnType<typeof listInboxQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -870,7 +870,7 @@ export const setOnePasswordMutation = (options?: Partial<Options<SetOnePasswordD
 export const listRunnersQueryKey = (options?: Options<ListRunnersData>) => createQueryKey('listRunners', options);
 
 /**
- * Saved execution environments, without secrets. Built-in local is implicit when a bot has empty runnerId.
+ * Lists saved Runners without secrets. An empty runnerId selects the built-in Local Runner for a bot.
  */
 export const listRunnersOptions = (options?: Options<ListRunnersData>) => queryOptions<ListRunnersResponse, ListRunnersError, ListRunnersResponse, ReturnType<typeof listRunnersQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -886,7 +886,7 @@ export const listRunnersOptions = (options?: Options<ListRunnersData>) => queryO
 });
 
 /**
- * Creates a new execution environment.
+ * Creates a Runner.
  */
 export const createRunnerMutation = (options?: Partial<Options<CreateRunnerData>>): UseMutationOptions<CreateRunnerResponse, CreateRunnerError, Options<CreateRunnerData>> => {
     const mutationOptions: UseMutationOptions<CreateRunnerResponse, CreateRunnerError, Options<CreateRunnerData>> = {
@@ -921,7 +921,7 @@ export const discoverSshConfigOptions = (options?: Options<DiscoverSshConfigData
 });
 
 /**
- * Probes connectivity for an unsaved or edited execution environment configuration.
+ * Probes connectivity for a new or edited Runner configuration.
  */
 export const probeRunnerMutation = (options?: Partial<Options<ProbeRunnerData>>): UseMutationOptions<ProbeRunnerResponse, ProbeRunnerError, Options<ProbeRunnerData>> => {
     const mutationOptions: UseMutationOptions<ProbeRunnerResponse, ProbeRunnerError, Options<ProbeRunnerData>> = {
@@ -938,7 +938,7 @@ export const probeRunnerMutation = (options?: Partial<Options<ProbeRunnerData>>)
 };
 
 /**
- * Deletes an execution environment if no active bot uses it (409 when in use).
+ * Deletes a Runner if no active bot uses it (409 when in use).
  */
 export const deleteRunnerMutation = (options?: Partial<Options<DeleteRunnerData>>): UseMutationOptions<DeleteRunnerResponse, DeleteRunnerError, Options<DeleteRunnerData>> => {
     const mutationOptions: UseMutationOptions<DeleteRunnerResponse, DeleteRunnerError, Options<DeleteRunnerData>> = {
@@ -955,7 +955,7 @@ export const deleteRunnerMutation = (options?: Partial<Options<DeleteRunnerData>
 };
 
 /**
- * Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
+ * Updates a Runner. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
  */
 export const updateRunnerMutation = (options?: Partial<Options<UpdateRunnerData>>): UseMutationOptions<UpdateRunnerResponse, UpdateRunnerError, Options<UpdateRunnerData>> => {
     const mutationOptions: UseMutationOptions<UpdateRunnerResponse, UpdateRunnerError, Options<UpdateRunnerData>> = {
@@ -989,7 +989,7 @@ export const testRunnerMutation = (options?: Partial<Options<TestRunnerData>>): 
 };
 
 /**
- * Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
+ * Removes stored SSH host key entries for an SSH Runner so the next test or open re-trusts the host key via TOFU.
  */
 export const forgetRunnerHostKeyMutation = (options?: Partial<Options<ForgetRunnerHostKeyData>>): UseMutationOptions<ForgetRunnerHostKeyResponse, ForgetRunnerHostKeyError, Options<ForgetRunnerHostKeyData>> => {
     const mutationOptions: UseMutationOptions<ForgetRunnerHostKeyResponse, ForgetRunnerHostKeyError, Options<ForgetRunnerHostKeyData>> = {
@@ -1513,7 +1513,7 @@ export const restoreAgentMutation = (options?: Partial<Options<RestoreAgentData>
 export const listAgentRunnersQueryKey = (options: Options<ListAgentRunnersData>) => createQueryKey('listAgentRunners', options);
 
 /**
- * Lists the execution environments for the sessions of the agent: the environment of the agent first (default), then local and the other registered environments. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
+ * Lists the Runners that the agent's sessions can use. The default comes first, followed by Local and the other registered Runners. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
  *
  */
 export const listAgentRunnersOptions = (options: Options<ListAgentRunnersData>) => queryOptions<ListAgentRunnersResponse, ListAgentRunnersError, ListAgentRunnersResponse, ReturnType<typeof listAgentRunnersQueryKey>>({
@@ -1655,7 +1655,7 @@ export const archiveChatMutation = (options?: Partial<Options<ArchiveChatData>>)
 export const listDirectoriesQueryKey = (options?: Options<ListDirectoriesData>) => createQueryKey('listDirectories', options);
 
 /**
- * Lists visible directories in the selected agent's execution environment, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
+ * Lists visible directories on the selected Runner of the agent, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
  *
  */
 export const listDirectoriesOptions = (options?: Options<ListDirectoriesData>) => queryOptions<ListDirectoriesResponse, ListDirectoriesError, ListDirectoriesResponse, ReturnType<typeof listDirectoriesQueryKey>>({
@@ -1674,7 +1674,7 @@ export const listDirectoriesOptions = (options?: Options<ListDirectoriesData>) =
 export const listRecentProjectsQueryKey = (options: Options<ListRecentProjectsData>) => createQueryKey('listRecentProjects', options);
 
 /**
- * Returns up to eight distinct project directories that exist in the execution environment, newest activity first.
+ * Returns up to eight distinct project directories that exist on the selected Runner, newest activity first.
  *
  */
 export const listRecentProjectsOptions = (options: Options<ListRecentProjectsData>) => queryOptions<ListRecentProjectsResponse, ListRecentProjectsError, ListRecentProjectsResponse, ReturnType<typeof listRecentProjectsQueryKey>>({
@@ -1691,7 +1691,7 @@ export const listRecentProjectsOptions = (options: Options<ListRecentProjectsDat
 });
 
 /**
- * Selects the execution environment of a Chat session before its first message. The command and file tools of the chat run there. Empty runnerId makes the chat follow the environment of the agent. The selection clears the project directory. The environment must be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers 409: fork it instead. Read-only conversations return 403.
+ * Selects the Runner of a Chat session before its first message. Its command and file tools use that Runner. An empty runnerId follows the agent's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Chat returns 409. A read-only Chat returns 403.
  *
  */
 export const setChatRunnerMutation = (options?: Partial<Options<SetChatRunnerData>>): UseMutationOptions<SetChatRunnerResponse, SetChatRunnerError, Options<SetChatRunnerData>> => {
@@ -1817,7 +1817,7 @@ export const continueChatMutation = (options?: Partial<Options<ContinueChatData>
 };
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered environment ID), the new Chat runs in that environment. When that moves the Chat to another environment, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without runnerId, the new Chat keeps the environment selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the environment does not exist or is not local or SSH. A scoped session with runnerId, and automation and channel sessions, return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered Runner ID), the new Chat runs on that Runner. When that moves the Chat to another Runner, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without runnerId, the new Chat keeps the Runner selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the Runner does not exist or is not Local or an SSH Machine. A scoped session with runnerId, and automation and channel sessions, return 403.
  *
  */
 export const forkChatMutation = (options?: Partial<Options<ForkChatData>>): UseMutationOptions<ForkChatResponse, ForkChatError, Options<ForkChatData>> => {

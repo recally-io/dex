@@ -144,7 +144,7 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
 5. The chat service waits on the native handle and stores the outcome in the
    business receipt. The same transaction queues eligible final replies for the
    channel input's destination. Each Outbox row delivers one platform message.
-   `notify_user` and pure Routine alerts queue messages without waiting for a
+   `notify_user` and Automation alerts queue messages without waiting for a
    model outcome. A restart reacquires native outcomes by request ID; it does
    not restart a second execution loop in control.
    Telegram and Feishu/Lark status reactions observe these facts independently
@@ -194,7 +194,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
 | [Execution](execution.md)     | The native engine boundary, background commands, and transcripts          |
 | [Files](files.md)             | Artifacts, file results, channel file delivery, and attachments           |
 | [Channels](channels.md)       | Telegram, shared channels, Feishu and Lark, and WeChat                    |
-| [Extensions](extensions.md)   | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload            |
+| [Integrations](extensions.md) | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload            |
 | [Automations](automations.md) | Routines, schedules, and results                                          |
 
 ## Failure behavior
@@ -273,7 +273,7 @@ A stdio MCP server runs on the control host as the dex user, without a
 sandbox. It gets the explicit agent environment plus its own `env`.
 `control.sqlite` stores any plain MCP credentials in declarations as plain
 text, within the same trust boundary as provider keys. Use vault references
-in `env` and `headers`. The Extensions API and `mcp_server_list` show status,
+in `env` and `headers`. The Integrations API and `mcp_server_list` show status,
 tool names, and the unresolved references. `mcp_server_get` hides plain
 environment and header values and URL queries. A failed server shows a safe
 error, such as an HTTP status or the name of a missing secret. To see the full

@@ -65,20 +65,6 @@ type Automation struct {
 	TargetConversationID sql.NullInt64  `json:"target_conversation_id"`
 }
 
-type AutomationNotificationDelivery struct {
-	RunID         string `json:"run_id"`
-	AgentID       string `json:"agent_id"`
-	TargetID      string `json:"target_id"`
-	Platform      string `json:"platform"`
-	AccountID     string `json:"account_id"`
-	Peer          string `json:"peer"`
-	Body          string `json:"body"`
-	RenderedParts string `json:"rendered_parts"`
-	Parts         int64  `json:"parts"`
-	Status        string `json:"status"`
-	Reason        string `json:"reason"`
-}
-
 type AutomationNotificationTarget struct {
 	ID        string `json:"id"`
 	AgentID   string `json:"agent_id"`
@@ -155,14 +141,6 @@ type ChannelCommand struct {
 type ChannelPeer struct {
 	Peer       string `json:"peer"`
 	ChannelKey string `json:"channel_key"`
-}
-
-type ChannelReplyFile struct {
-	OperationKey string `json:"operation_key"`
-	SubmissionID string `json:"submission_id"`
-	Name         string `json:"name"`
-	MimeType     string `json:"mime_type"`
-	Body         []byte `json:"body"`
 }
 
 type ChannelWebhookInbox struct {

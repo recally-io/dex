@@ -33,7 +33,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 				t.Fatal(err)
 			}
 			in := routineInput()
-			in.Notification = &automation.RoutineNotification{Mode: "default"}
+			in.Notification = &automation.Notification{Mode: "default"}
 			if tc.name == "missed schedule" {
 				in.Schedule.Kind = "daily"
 				in.Schedule.Time, in.Schedule.Minutes = "09:00", 0
@@ -104,7 +104,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 		t.Fatal(err)
 	}
 	in := routineInput()
-	in.Notification = &automation.RoutineNotification{Mode: "default"}
+	in.Notification = &automation.Notification{Mode: "default"}
 	a, err := f.routines.Create(ctx, "a", in)
 	if err != nil {
 		t.Fatal(err)

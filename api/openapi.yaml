@@ -649,7 +649,7 @@ paths:
   /api/inbox:
     get:
       operationId: listInbox
-      description: Actionable routine results across all bots, newest first.
+      description: Actionable automation results across all bots, newest first.
       parameters:
         - in: query
           name: includeDismissed
@@ -1022,17 +1022,17 @@ paths:
   /api/settings/runners:
     get:
       operationId: listRunners
-      description: Saved execution environments, without secrets. Built-in local is implicit when a bot has empty runnerId.
+      description: Lists saved Runners without secrets. An empty runnerId selects the built-in Local Runner for a bot.
       responses:
         "200":
-          description: Execution environments.
+          description: The registered Runners.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RunnerList" }
         default: { $ref: "#/components/responses/Error" }
     post:
       operationId: createRunner
-      description: Creates a new execution environment.
+      description: Creates a Runner.
       requestBody:
         required: true
         content:
@@ -1062,7 +1062,7 @@ paths:
   /api/settings/runners/probe:
     post:
       operationId: probeRunner
-      description: Probes connectivity for an unsaved or edited execution environment configuration.
+      description: Probes connectivity for a new or edited Runner configuration.
       requestBody:
         required: true
         content:
@@ -1083,7 +1083,7 @@ paths:
       - $ref: "#/components/parameters/RunnerId"
     put:
       operationId: updateRunner
-      description: Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
+      description: Updates a Runner. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
       requestBody:
         required: true
         content:
@@ -1100,7 +1100,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteRunner
-      description: Deletes an execution environment if no active bot uses it (409 when in use).
+      description: Deletes a Runner if no active bot uses it (409 when in use).
       responses:
         "200":
           description: Removed.
@@ -1132,7 +1132,7 @@ paths:
       - $ref: "#/components/parameters/RunnerId"
     post:
       operationId: forgetRunnerHostKey
-      description: Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
+      description: Removes stored SSH host key entries for an SSH Runner so the next test or open re-trusts the host key via TOFU.
       responses:
         "200":
           description: Host key cleared.
@@ -1658,12 +1658,12 @@ paths:
     get:
       operationId: listAgentRunners
       description: >
-        Lists the execution environments for the sessions of the agent: the environment of the
-        agent first (default), then local and the other registered environments. Each entry
+        Lists the Runners that the agent's sessions can use. The default comes first,
+        followed by Local and the other registered Runners. Each entry
         has a status, but no configuration or secrets. Registration does not guarantee connectivity.
       responses:
         "200":
-          description: The session environments.
+          description: The session Runners.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AgentRunners" }
@@ -1803,7 +1803,7 @@ paths:
     get:
       operationId: listDirectories
       description: >
-        Lists visible directories in the selected agent's execution environment, including symlinks
+        Lists visible directories on the selected Runner of the agent, including symlinks
         to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/.
         Entries are sorted by name without case and capped at 500.
       parameters:
@@ -1815,7 +1815,7 @@ paths:
           schema: { type: string }
         - in: query
           name: runnerId
-          description: An execution environment of the agent. Absent selects the environment of the agent.
+          description: A Runner ID. Omit to use the default Runner of the agent.
           schema: { type: string }
       responses:
         "200":
@@ -1854,12 +1854,12 @@ paths:
     get:
       operationId: listRecentProjects
       description: >
-        Returns up to eight distinct project directories that exist in the execution environment,
+        Returns up to eight distinct project directories that exist on the selected Runner,
         newest activity first.
       parameters:
         - in: query
           name: runnerId
-          description: An execution environment of the agent. Absent selects the environment of the agent.
+          description: A Runner ID. Omit to use the default Runner of the agent.
           schema: { type: string }
       responses:
         "200":
@@ -1886,11 +1886,10 @@ paths:
     put:
       operationId: setChatRunner
       description: >
-        Selects the execution environment of a Chat session before its first message. The command
-        and file tools of the chat run there. Empty runnerId makes the chat follow the
-        environment of the agent. The selection clears the project directory. The environment must
-        be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers
-        409: fork it instead. Read-only conversations return 403.
+        Selects the Runner of a Chat session before its first message. Its command and file tools
+        use that Runner. An empty runnerId follows the agent's default. The selection clears
+        the project directory. Specify Local or a registered Machine or Sandbox. An invalid
+        selection returns 400. A started Chat returns 409. A read-only Chat returns 403.
       requestBody:
         required: true
         content:
@@ -1902,7 +1901,7 @@ paths:
                 runnerId: { type: string }
       responses:
         "200":
-          description: The Chat session with its environment.
+          description: The Chat session with its Runner selection.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Chat" }
@@ -2143,16 +2142,16 @@ paths:
         takes the model, thinking level and project of this session and does
         not run. A running session contributes only its committed entries.
         Files on disk are not rolled back. With runnerId (local or a
-        registered environment ID), the new Chat runs in that environment. When that
-        moves the Chat to another environment, it has no project, and its
+        registered Runner ID), the new Chat runs on that Runner. When that
+        moves the Chat to another Runner, it has no project, and its
         history ends with a notice that the user and the bot see. Files,
         background tasks, and queued input stay where they are. A new Chat
         with no history gets no notice. Without runnerId, the new Chat
-        keeps the environment selection of this session. Without an id, each
+        keeps the Runner selection of this session. Without an id, each
         call creates another Chat. A retry with the same id and parameters
         returns the same Chat. A different source or parameters return 409.
         400 when the entry is not in this session or cannot start a fork, or
-        when the environment does not exist or is not local or SSH. A scoped
+        when the Runner does not exist or is not Local or an SSH Machine. A scoped
         session with runnerId, and automation and channel sessions,
         return 403.
       requestBody:
@@ -2173,7 +2172,7 @@ paths:
                   description: End the history just before the entry.
                 runnerId:
                   type: string
-                  description: The execution environment of the new Chat.
+                  description: The Runner of the new Chat.
       responses:
         "201":
           description: The new Chat.
@@ -2578,7 +2577,7 @@ paths:
         Before the agent starts, the servers are idle.
       responses:
         "200":
-          description: The extensions.
+          description: The integrations.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BotIntegrations" }
@@ -2702,7 +2701,7 @@ paths:
         is not valid and keeps the current resources. Returns 503 while model discovery is pending.
       responses:
         "200":
-          description: The loaded extensions.
+          description: The loaded integrations.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BotIntegrations" }
@@ -3452,7 +3451,7 @@ components:
               kind: { type: string }
               default: {
                 type: boolean,
-                description: This is the environment of the agent.,
+                description: This is the default Runner of the agent.,
               }
               status:
                 type: string
@@ -3487,12 +3486,12 @@ components:
           description: The automation that created the chat.
         cwd:
           type: string
-          description: The saved project directory. Empty means the workspace of the environment.
+          description: The saved project directory. Empty means the workspace of the Runner.
         runnerId:
           type: string
           description: >-
-            The execution environment that the chat selects: "local" or an environment ID. Empty
-            means the environment of the agent.
+            The Runner that the Chat selects: "local" or a registered Runner ID. An empty value
+            follows the default Runner of the agent.
         title: { type: string }
         createdAt: { type: integer, format: int64 }
         updatedAt:
@@ -3771,7 +3770,7 @@ components:
           enum: [new, reuse, session]
           description: >-
             New starts a new chat each run. Reuse uses one dedicated chat.
-            Session sends a follow-up to an existing chat and uses its environment and directory.
+            Session sends a follow-up to an existing chat and uses its Runner and directory.
         targetConversationId:
           type: integer
           format: int64
@@ -3781,14 +3780,14 @@ components:
         runnerId:
           type: string
           description: >
-            local or an SSH environment ID for the runs. Empty follows the
-            bot's environment. A run never uses another environment: when
+            Local or an SSH Machine ID for the runs. An empty value follows the
+            bot's Runner. A run never uses another Runner: when
             this one was removed, the run is skipped with a reason. A reused
-            chat that ran in another environment stays readable, and the
-            run starts a new chat. An update can keep a removed environment.
+            chat that ran on another Runner stays readable, and the
+            run starts a new chat. An update can keep a removed Runner.
         notification:
           type: object
-          description: Omit on update to retain the current route. New routines default to none.
+          description: Omit on update to retain the current route. New automations default to none.
           required: [mode]
           properties:
             mode: { type: string, enum: [none, default, target] }
@@ -3886,10 +3885,10 @@ components:
         dismissed: { type: boolean }
         runnerId:
           type: string
-          description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+          description: The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
         cwd:
           type: string
-          description: The cwd that the run started with, in its environment.
+          description: The cwd on the Runner when the run started.
 
     AutomationRun:
       x-go-type: automation.Run
@@ -3926,10 +3925,10 @@ components:
         chatId: { type: integer, format: int64 }
         runnerId:
           type: string
-          description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+          description: The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
         cwd:
           type: string
-          description: The cwd that the run started with, in its environment.
+          description: The cwd on the Runner when the run started.
 
     AutomationRunList:
       type: object
@@ -3984,7 +3983,7 @@ components:
           type: string
           description: >
             The handoff of a reset, the summary of a compaction, or the
-            notice of a fork to another environment. Absent when there is
+            notice of a fork to another Runner. Absent when there is
             none.
         status:
           type: string
@@ -4386,7 +4385,7 @@ components:
       properties:
         runnerId:
           type: string
-          description: Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
+          description: Optional existing Runner ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
         kind: { $ref: "#/components/schemas/RunnerKind" }
         config: { $ref: "#/components/schemas/RunnerConfig" }
         secret:
@@ -4497,7 +4496,7 @@ components:
         instructions: { type: string }
         runnerId: {
           type: string,
-          description: Empty means the built-in local host environment.,
+          description: Empty means the built-in Local Runner.,
         }
         archivedAt:
           type: integer
@@ -4529,7 +4528,7 @@ components:
         instructions: { type: string }
         runnerId: {
           type: string,
-          description: Empty or "local" selects the built-in local host environment.,
+          description: Empty or "local" selects the built-in Local Runner.,
         }
 
     CreateAgentInput:
@@ -4556,7 +4555,7 @@ components:
         instructions: { type: string }
         runnerId: {
           type: string,
-          description: Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.,
+          description: Omitted copies the default bot's Runner. Empty or "local" selects the built-in Local Runner.,
         }
 
     ThinkingLevel:

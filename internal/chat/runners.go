@@ -14,9 +14,9 @@ import (
 var (
 	// ErrRunnerInvalid is a session environment that does not exist or that a session cannot
 	// select.
-	ErrRunnerInvalid = errors.New("invalid session environment")
+	ErrRunnerInvalid = errors.New("invalid session Runner")
 	// ErrRunnerLocked is an environment change of a chat that has started. Use Fork.
-	ErrRunnerLocked = errors.New("the environment of a chat is set before its first message")
+	ErrRunnerLocked = errors.New("the Runner of a chat is set before its first message")
 )
 
 // SessionRunner returns the explicit execution environment of the session ref, or empty when
@@ -41,13 +41,13 @@ func checkRunner(ctx context.Context, q *sqlc.Queries, runnerID string) error {
 	}
 	row, err := q.GetRunner(ctx, runnerID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: %s does not exist; call environment_list", ErrRunnerInvalid, runnerID)
+		return fmt.Errorf("%w: %s does not exist; call runner_list", ErrRunnerInvalid, runnerID)
 	}
 	if err != nil {
 		return err
 	}
 	if !runner.IsRegisteredKind(runner.Kind(row.Kind)) {
-		return fmt.Errorf("%w: %s has unsupported environment kind %s", ErrRunnerInvalid, row.Name, row.Kind)
+		return fmt.Errorf("%w: %s has unsupported Runner kind %s", ErrRunnerInvalid, row.Name, row.Kind)
 	}
 	return nil
 }

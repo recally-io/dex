@@ -9,7 +9,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-func TestUserRoutineNotificationUpgradeDefaultsOffAndIsAgentScoped(t *testing.T) {
+func TestUserAutomationNotificationUpgradeDefaultsOffAndIsAgentScoped(t *testing.T) {
 	// Given a routine created before notification routing existed.
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	old, err := sql.Open("sqlite", "file:"+path)
@@ -49,7 +49,7 @@ func TestUserRoutineNotificationUpgradeDefaultsOffAndIsAgentScoped(t *testing.T)
 		t.Fatal(err)
 	}
 	if route != "none" {
-		t.Fatalf("old routine route = %q, want none", route)
+		t.Fatalf("old automation route = %q, want none", route)
 	}
 	// A target explicitly authorized for one agent cannot be selected by another.
 	if _, err = conn.ExecContext(t.Context(), `INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('t','b','feishu','app','feishu:owner')`); err != nil {
@@ -72,8 +72,8 @@ func TestUserRevokingAChannelPermanentlyRejectsPendingNotifications(t *testing.T
 		`INSERT INTO telegram_settings (agent_id,token,allowed_users) VALUES ('a','123:secret','42')`,
 		`INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('t','a','telegram','123','telegram:42')`,
 		`INSERT INTO automations (id,agent_id,name,prompt,schedule,time_zone,session,enabled,created_at,updated_at,notification_route,notification_target_id) VALUES ('r','a','R','p','{}','UTC','reuse',1,1,1,'target','t')`,
-		`INSERT INTO automation_runs (id,automation_id,status,created_at) VALUES ('run','r','started',1)`,
-		`INSERT INTO automation_notification_deliveries (run_id,agent_id,target_id,platform,account_id,peer,body) VALUES ('run','a','t','telegram','123','telegram:42','text')`,
+		`INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (1,'a','automation:r',1)`,
+		`INSERT INTO outbox_messages (id,event_id,agent_id,conversation_id,kind,peer,channel_context,body,created_at) VALUES ('result','run','a',1,'automation','telegram:42','{"accountId":"123"}','text',1)`,
 	} {
 		if _, err = conn.ExecContext(t.Context(), stmt); err != nil {
 			t.Fatal(err)
@@ -86,10 +86,10 @@ func TestUserRevokingAChannelPermanentlyRejectsPendingNotifications(t *testing.T
 	if _, err = conn.ExecContext(t.Context(), `UPDATE telegram_settings SET allowed_users='42' WHERE agent_id='a'`); err != nil {
 		t.Fatal(err)
 	}
-	// Then the original target is retired and the pending result stays rejected.
+	// Then the original target is retired and the pending result stays failed.
 	var status string
 	var targets int
-	if err = conn.QueryRowContext(t.Context(), `SELECT status FROM automation_notification_deliveries WHERE run_id='run'`).Scan(&status); err != nil {
+	if err = conn.QueryRowContext(t.Context(), `SELECT status FROM outbox_messages WHERE id='result'`).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
 	if err = conn.QueryRowContext(t.Context(), `SELECT count(*) FROM automation_notification_targets WHERE id='t'`).Scan(&targets); err != nil {
@@ -99,7 +99,7 @@ func TestUserRevokingAChannelPermanentlyRejectsPendingNotifications(t *testing.T
 	if err = conn.QueryRowContext(t.Context(), `SELECT notification_route FROM automations WHERE id='r'`).Scan(&route); err != nil {
 		t.Fatal(err)
 	}
-	if status != "rejected" || targets != 0 || route != "none" {
+	if status != "failed" || targets != 0 || route != "none" {
 		t.Fatalf("status=%s targets=%d route=%s", status, targets, route)
 	}
 }

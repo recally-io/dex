@@ -523,7 +523,7 @@ export const getInboxSummary = <ThrowOnError extends boolean = false>(options?: 
 });
 
 /**
- * Actionable routine results across all bots, newest first.
+ * Actionable automation results across all bots, newest first.
  */
 export const listInbox = <ThrowOnError extends boolean = false>(options?: Options<ListInboxData, ThrowOnError>): RequestResult<ListInboxResponses, ListInboxErrors, ThrowOnError> => (options?.client ?? client).get<ListInboxResponses, ListInboxErrors, ThrowOnError>({
     security: [{
@@ -923,7 +923,7 @@ export const setOnePassword = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * Saved execution environments, without secrets. Built-in local is implicit when a bot has empty runnerId.
+ * Lists saved Runners without secrets. An empty runnerId selects the built-in Local Runner for a bot.
  */
 export const listRunners = <ThrowOnError extends boolean = false>(options?: Options<ListRunnersData, ThrowOnError>): RequestResult<ListRunnersResponses, ListRunnersErrors, ThrowOnError> => (options?.client ?? client).get<ListRunnersResponses, ListRunnersErrors, ThrowOnError>({
     security: [{
@@ -940,7 +940,7 @@ export const listRunners = <ThrowOnError extends boolean = false>(options?: Opti
 });
 
 /**
- * Creates a new execution environment.
+ * Creates a Runner.
  */
 export const createRunner = <ThrowOnError extends boolean = false>(options: Options<CreateRunnerData, ThrowOnError>): RequestResult<CreateRunnerResponses, CreateRunnerErrors, ThrowOnError> => (options.client ?? client).post<CreateRunnerResponses, CreateRunnerErrors, ThrowOnError>({
     security: [{
@@ -978,7 +978,7 @@ export const discoverSshConfig = <ThrowOnError extends boolean = false>(options?
 });
 
 /**
- * Probes connectivity for an unsaved or edited execution environment configuration.
+ * Probes connectivity for a new or edited Runner configuration.
  */
 export const probeRunner = <ThrowOnError extends boolean = false>(options: Options<ProbeRunnerData, ThrowOnError>): RequestResult<ProbeRunnerResponses, ProbeRunnerErrors, ThrowOnError> => (options.client ?? client).post<ProbeRunnerResponses, ProbeRunnerErrors, ThrowOnError>({
     security: [{
@@ -999,7 +999,7 @@ export const probeRunner = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Deletes an execution environment if no active bot uses it (409 when in use).
+ * Deletes a Runner if no active bot uses it (409 when in use).
  */
 export const deleteRunner = <ThrowOnError extends boolean = false>(options: Options<DeleteRunnerData, ThrowOnError>): RequestResult<DeleteRunnerResponses, DeleteRunnerErrors, ThrowOnError> => (options.client ?? client).delete<DeleteRunnerResponses, DeleteRunnerErrors, ThrowOnError>({
     security: [{
@@ -1016,7 +1016,7 @@ export const deleteRunner = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
+ * Updates a Runner. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
  */
 export const updateRunner = <ThrowOnError extends boolean = false>(options: Options<UpdateRunnerData, ThrowOnError>): RequestResult<UpdateRunnerResponses, UpdateRunnerErrors, ThrowOnError> => (options.client ?? client).put<UpdateRunnerResponses, UpdateRunnerErrors, ThrowOnError>({
     security: [{
@@ -1054,7 +1054,7 @@ export const testRunner = <ThrowOnError extends boolean = false>(options: Option
 });
 
 /**
- * Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
+ * Removes stored SSH host key entries for an SSH Runner so the next test or open re-trusts the host key via TOFU.
  */
 export const forgetRunnerHostKey = <ThrowOnError extends boolean = false>(options: Options<ForgetRunnerHostKeyData, ThrowOnError>): RequestResult<ForgetRunnerHostKeyResponses, ForgetRunnerHostKeyErrors, ThrowOnError> => (options.client ?? client).post<ForgetRunnerHostKeyResponses, ForgetRunnerHostKeyErrors, ThrowOnError>({
     security: [{
@@ -1616,7 +1616,7 @@ export const restoreAgent = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Lists the execution environments for the sessions of the agent: the environment of the agent first (default), then local and the other registered environments. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
+ * Lists the Runners that the agent's sessions can use. The default comes first, followed by Local and the other registered Runners. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
  *
  */
 export const listAgentRunners = <ThrowOnError extends boolean = false>(options: Options<ListAgentRunnersData, ThrowOnError>): RequestResult<ListAgentRunnersResponses, ListAgentRunnersErrors, ThrowOnError> => (options.client ?? client).get<ListAgentRunnersResponses, ListAgentRunnersErrors, ThrowOnError>({
@@ -1754,7 +1754,7 @@ export const archiveChat = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * Lists visible directories in the selected agent's execution environment, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
+ * Lists visible directories on the selected Runner of the agent, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
  *
  */
 export const listDirectories = <ThrowOnError extends boolean = false>(options?: Options<ListDirectoriesData, ThrowOnError>): RequestResult<ListDirectoriesResponses, ListDirectoriesErrors, ThrowOnError> => (options?.client ?? client).get<ListDirectoriesResponses, ListDirectoriesErrors, ThrowOnError>({
@@ -1772,7 +1772,7 @@ export const listDirectories = <ThrowOnError extends boolean = false>(options?: 
 });
 
 /**
- * Returns up to eight distinct project directories that exist in the execution environment, newest activity first.
+ * Returns up to eight distinct project directories that exist on the selected Runner, newest activity first.
  *
  */
 export const listRecentProjects = <ThrowOnError extends boolean = false>(options: Options<ListRecentProjectsData, ThrowOnError>): RequestResult<ListRecentProjectsResponses, ListRecentProjectsErrors, ThrowOnError> => (options.client ?? client).get<ListRecentProjectsResponses, ListRecentProjectsErrors, ThrowOnError>({
@@ -1790,7 +1790,7 @@ export const listRecentProjects = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Selects the execution environment of a Chat session before its first message. The command and file tools of the chat run there. Empty runnerId makes the chat follow the environment of the agent. The selection clears the project directory. The environment must be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers 409: fork it instead. Read-only conversations return 403.
+ * Selects the Runner of a Chat session before its first message. Its command and file tools use that Runner. An empty runnerId follows the agent's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Chat returns 409. A read-only Chat returns 403.
  *
  */
 export const setChatRunner = <ThrowOnError extends boolean = false>(options: Options<SetChatRunnerData, ThrowOnError>): RequestResult<SetChatRunnerResponses, SetChatRunnerErrors, ThrowOnError> => (options.client ?? client).put<SetChatRunnerResponses, SetChatRunnerErrors, ThrowOnError>({
@@ -1940,7 +1940,7 @@ export const continueChat = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered environment ID), the new Chat runs in that environment. When that moves the Chat to another environment, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without runnerId, the new Chat keeps the environment selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the environment does not exist or is not local or SSH. A scoped session with runnerId, and automation and channel sessions, return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered Runner ID), the new Chat runs on that Runner. When that moves the Chat to another Runner, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without runnerId, the new Chat keeps the Runner selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the Runner does not exist or is not Local or an SSH Machine. A scoped session with runnerId, and automation and channel sessions, return 403.
  *
  */
 export const forkChat = <ThrowOnError extends boolean = false>(options: Options<ForkChatData, ThrowOnError>): RequestResult<ForkChatResponses, ForkChatErrors, ThrowOnError> => (options.client ?? client).post<ForkChatResponses, ForkChatErrors, ThrowOnError>({

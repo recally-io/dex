@@ -90,10 +90,10 @@ func TestUserManagesAutomationsThroughChat(t *testing.T) {
 	}
 	// And main can list routines created in Chat for the same bot.
 	var listed struct {
-		Routines []automation.Automation `json:"routines"`
+		Automations []automation.Automation `json:"automations"`
 	}
 	routineToolJSON(t, d, d.mainChat(t), "automation_list", map[string]any{}, &listed)
-	if len(listed.Routines) != 1 || listed.Routines[0].ID != created.ID || listed.Routines[0].LastRun == nil {
+	if len(listed.Automations) != 1 || listed.Automations[0].ID != created.ID || listed.Automations[0].LastRun == nil {
 		t.Fatalf("list: %+v", listed)
 	}
 	// A second requested execution can report the same finding.
@@ -148,11 +148,11 @@ func TestUserAutomationToolReplayReturnsCommittedMutationsAfterRestart(t *testin
 	service := automation.New(sqlc.New(conn), nil, time.Now) // Read service; mutations bind the real transactional input writer.
 	tools := automation.NewToolService(conn, service, func(int64) {})
 	for range 2 {
-		replay, err := tools.Create(t.Context(), createSource, automation.RoutinePatch{})
+		replay, err := tools.Create(t.Context(), createSource, automation.ToolPatch{})
 		if err != nil || replay.ID != created.ID {
 			t.Fatalf("create replay: %+v %v", replay, err)
 		}
-		edit, err := tools.Update(t.Context(), updateSource, automation.RoutinePatch{ID: created.ID, Schedule: &automation.RoutineSchedule{Kind: "every", Minutes: 45}})
+		edit, err := tools.Update(t.Context(), updateSource, automation.ToolPatch{ID: created.ID, Schedule: &automation.ToolSchedule{Kind: "every", Minutes: 45}})
 		if err != nil || !slices.Equal(edit.NextRuns, updated.NextRuns) || edit.UpdatedAt != updated.UpdatedAt {
 			t.Fatalf("update replay: %+v %v", edit, err)
 		}
@@ -192,10 +192,10 @@ func TestUserAutomationBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 		if _, err := tools.Get(t.Context(), c, a.ID); err == nil {
 			t.Fatal("get accepted untrusted source")
 		}
-		if _, err := tools.Create(t.Context(), c, automation.RoutinePatch{}); err == nil {
+		if _, err := tools.Create(t.Context(), c, automation.ToolPatch{}); err == nil {
 			t.Fatal("create accepted untrusted source")
 		}
-		if _, err := tools.Update(t.Context(), c, automation.RoutinePatch{ID: a.ID, Enabled: new(false)}); err == nil {
+		if _, err := tools.Update(t.Context(), c, automation.ToolPatch{ID: a.ID, Enabled: new(false)}); err == nil {
 			t.Fatal("update accepted untrusted source")
 		}
 		if _, err := tools.Run(t.Context(), c, a.ID); err == nil {
@@ -321,7 +321,7 @@ func TestUserAutomationOtherBotCannotReadOrChangeAutomation(t *testing.T) {
 			return err == nil && status == "done", fmt.Sprintf("status=%s answer=%s err=%v", status, answer, err)
 		})
 		if name == "automation_list" {
-			if strings.Contains(answer, a.ID) || !strings.Contains(answer, `"routines":[]`) {
+			if strings.Contains(answer, a.ID) || !strings.Contains(answer, `"automations":[]`) {
 				t.Fatalf("leaked list: %s", answer)
 			}
 		} else if !strings.Contains(answer, "not found") {

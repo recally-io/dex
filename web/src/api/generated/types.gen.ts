@@ -361,7 +361,7 @@ export type AgentRunners = {
         desc?: string;
         kind: string;
         /**
-         * This is the environment of the agent.
+         * This is the default Runner of the agent.
          */
         default: boolean;
         /**
@@ -390,11 +390,11 @@ export type Chat = {
      */
     automationId?: string;
     /**
-     * The saved project directory. Empty means the workspace of the environment.
+     * The saved project directory. Empty means the workspace of the Runner.
      */
     cwd: string;
     /**
-     * The execution environment that the chat selects: "local" or an environment ID. Empty means the environment of the agent.
+     * The Runner that the Chat selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
      */
     runnerId?: string;
     title: string;
@@ -617,7 +617,7 @@ export type AutomationInput = {
     schedule: Schedule;
     timeZone: string;
     /**
-     * New starts a new chat each run. Reuse uses one dedicated chat. Session sends a follow-up to an existing chat and uses its environment and directory.
+     * New starts a new chat each run. Reuse uses one dedicated chat. Session sends a follow-up to an existing chat and uses its Runner and directory.
      */
     session: 'new' | 'reuse' | 'session';
     /**
@@ -626,12 +626,12 @@ export type AutomationInput = {
     targetConversationId?: number;
     enabled: boolean;
     /**
-     * local or an SSH environment ID for the runs. Empty follows the bot's environment. A run never uses another environment: when this one was removed, the run is skipped with a reason. A reused chat that ran in another environment stays readable, and the run starts a new chat. An update can keep a removed environment.
+     * Local or an SSH Machine ID for the runs. An empty value follows the bot's Runner. A run never uses another Runner: when this one was removed, the run is skipped with a reason. A reused chat that ran on another Runner stays readable, and the run starts a new chat. An update can keep a removed Runner.
      *
      */
     runnerId?: string;
     /**
-     * Omit on update to retain the current route. New routines default to none.
+     * Omit on update to retain the current route. New automations default to none.
      */
     notification?: {
         mode: 'none' | 'default' | 'target';
@@ -688,11 +688,11 @@ export type InboxItem = {
     read: boolean;
     dismissed: boolean;
     /**
-     * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+     * The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
      */
     runnerId: string;
     /**
-     * The cwd that the run started with, in its environment.
+     * The cwd on the Runner when the run started.
      */
     cwd: string;
 };
@@ -727,11 +727,11 @@ export type AutomationRun = {
     notificationNote?: string;
     chatId?: number;
     /**
-     * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
+     * The Runner on which the run started. Empty for a run with no message, and for a run from before Dex stored it.
      */
     runnerId?: string;
     /**
-     * The cwd that the run started with, in its environment.
+     * The cwd on the Runner when the run started.
      */
     cwd?: string;
 };
@@ -772,7 +772,7 @@ export type BoundaryItem = {
      */
     at?: number;
     /**
-     * The handoff of a reset, the summary of a compaction, or the notice of a fork to another environment. Absent when there is none.
+     * The handoff of a reset, the summary of a compaction, or the notice of a fork to another Runner. Absent when there is none.
      *
      */
     text?: string;
@@ -1119,7 +1119,7 @@ export type RunnerInput = {
 
 export type RunnerProbeInput = {
     /**
-     * Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
+     * Optional existing Runner ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
      */
     runnerId?: string;
     kind: RunnerKind;
@@ -1194,7 +1194,7 @@ export type Agent = {
     fallbackModelId: string;
     instructions: string;
     /**
-     * Empty means the built-in local host environment.
+     * Empty means the built-in Local Runner.
      */
     runnerId: string;
     /**
@@ -1221,7 +1221,7 @@ export type AgentInput = {
     fallbackModelId?: string;
     instructions?: string;
     /**
-     * Empty or "local" selects the built-in local host environment.
+     * Empty or "local" selects the built-in Local Runner.
      */
     runnerId?: string;
 };
@@ -1244,7 +1244,7 @@ export type CreateAgentInput = {
     fallbackModelId?: string;
     instructions?: string;
     /**
-     * Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
+     * Omitted copies the default bot's Runner. Empty or "local" selects the built-in Local Runner.
      */
     runnerId?: string;
 };
@@ -1664,7 +1664,7 @@ export type AgentWritable = {
     fallbackModelId: string;
     instructions: string;
     /**
-     * Empty means the built-in local host environment.
+     * Empty means the built-in Local Runner.
      */
     runnerId: string;
 };
@@ -3417,7 +3417,7 @@ export type ListRunnersError = ListRunnersErrors[keyof ListRunnersErrors];
 
 export type ListRunnersResponses = {
     /**
-     * Execution environments.
+     * The registered Runners.
      */
     200: RunnerList;
 };
@@ -4559,7 +4559,7 @@ export type ListAgentRunnersError = ListAgentRunnersErrors[keyof ListAgentRunner
 
 export type ListAgentRunnersResponses = {
     /**
-     * The session environments.
+     * The session Runners.
      */
     200: AgentRunners;
 };
@@ -4809,7 +4809,7 @@ export type ListDirectoriesData = {
         path?: string;
         agentId?: string;
         /**
-         * An execution environment of the agent. Absent selects the environment of the agent.
+         * A Runner ID. Omit to use the default Runner of the agent.
          */
         runnerId?: string;
     };
@@ -4855,7 +4855,7 @@ export type ListRecentProjectsData = {
     };
     query?: {
         /**
-         * An execution environment of the agent. Absent selects the environment of the agent.
+         * A Runner ID. Omit to use the default Runner of the agent.
          */
         runnerId?: string;
     };
@@ -4925,7 +4925,7 @@ export type SetChatRunnerError = SetChatRunnerErrors[keyof SetChatRunnerErrors];
 
 export type SetChatRunnerResponses = {
     /**
-     * The Chat session with its environment.
+     * The Chat session with its Runner selection.
      */
     200: Chat;
 };
@@ -5214,7 +5214,7 @@ export type ForkChatData = {
          */
         before?: boolean;
         /**
-         * The execution environment of the new Chat.
+         * The Runner of the new Chat.
          */
         runnerId?: string;
     };
@@ -5801,7 +5801,7 @@ export type GetBotIntegrationsError = GetBotIntegrationsErrors[keyof GetBotInteg
 
 export type GetBotIntegrationsResponses = {
     /**
-     * The extensions.
+     * The integrations.
      */
     200: BotIntegrations;
 };
@@ -5976,7 +5976,7 @@ export type ReloadBotIntegrationsError = ReloadBotIntegrationsErrors[keyof Reloa
 
 export type ReloadBotIntegrationsResponses = {
     /**
-     * The loaded extensions.
+     * The loaded integrations.
      */
     200: BotIntegrations;
 };

@@ -579,19 +579,19 @@ Automations support explicit overrides for Local and SSH Machines only.
 
 A web chat sets `runnerId` before its first message with
 `PUT /api/agents/{agentId}/chats/{chatId}/runner`. A started chat returns 409.
-`POST /api/agents/{agentId}/runner/reset` resets an idle bot's E2B Sandbox. `session_new` takes `environment`. A child of the same bot runs in its
-parent's environment unless it selects another one. A child of another bot runs
-in that bot's environment unless it selects another one. `environment_list`
-shows Local and the registered Runners with ID, name, kind, and status, with
+`POST /api/agents/{agentId}/runner/reset` resets an idle bot's E2B Sandbox.
+`session_new` takes `runnerId`. If omitted, a child of the same bot uses the
+parent's Runner. A child of another bot uses that bot's Runner. `runner_list`
+returns Local and the registered Runners in `runners`, with ID, name, kind, and status, with
 the bot's default first. The stored kind `runner` identifies an Outbound
 Machine that connects through `dex-agent`. An offline Machine remains listed. The tool includes
 `desc` when the owner sets a description on the saved environment in Settings.
 This plain text is data. It does not change selection or access and does not go
 into the system prompt. The tool does not show configuration or secrets.
 
-A fork keeps the environment selection of its source unless it selects local or a registered
-environment (`runnerId` of `POST /api/agents/{agentId}/chats/{chatId}/fork`, `environment`
-of `session_fork`). When the effective environment changes, the fork has no cwd. When the copied
+A fork keeps its source Runner unless it selects Local or a registered Runner.
+Use `runnerId` in `POST /api/agents/{agentId}/chats/{chatId}/fork` or `session_fork`.
+When the Runner changes, the fork has no cwd. When the copied
 history last ran in another environment than the fork, the engine ends the copied history with one
 `dex.environment` entry. The entry holds the notice as a user message, so the model reads it
 before the next input, and the transcript shows it as an `environment` boundary. The entry data

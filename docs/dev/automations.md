@@ -45,8 +45,9 @@ An Automation does not create or fall back to another session. Its prompt queues
 a follow-up if the session is busy. Only a pending input of the same Automation
 counts as overlap. Stop and Clear work on the session as usual.
 
-An automation selects its Runner with the HTTP field `runnerId`. An empty value
-follows the bot. The existing automation tools use `environmentId`. `local` or an SSH Machine ID pins the Runner. The owner cannot select
+The Automation API and tools select a Runner with `runnerId`. An empty value
+follows the bot. `local` or an SSH Machine ID from `runner_list` pins the Runner.
+The owner cannot select
 a Sandbox or Outbound Machine as an explicit override. `automation_create`
 uses the calling session's Runner and cwd by default. A run never falls back to
 another machine. Before a run, outside any transaction, `Preflight` resolves the

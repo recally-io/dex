@@ -266,7 +266,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 			}
 			in := routineInput()
 			in.Session, in.TargetConversationID = "session", conv.ID
-			in.Notification = &automation.RoutineNotification{Mode: "default"}
+			in.Notification = &automation.Notification{Mode: "default"}
 			a, err := f.routines.Create(ctx, "a", in)
 			if err != nil {
 				t.Fatal(err)

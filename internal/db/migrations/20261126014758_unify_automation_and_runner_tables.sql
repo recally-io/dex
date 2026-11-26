@@ -1,10 +1,16 @@
 -- +goose Up
+-- The outbox already owns delivery. Down restores only the retired schema.
+DROP TRIGGER reject_revoked_notification_target;
+DROP TABLE routine_notification_deliveries;
+DROP TRIGGER release_channel_reply_files;
+DROP INDEX channel_reply_files_submission;
+DROP TABLE channel_reply_files;
+
 DROP TRIGGER routine_notification_target_identity;
 DROP TRIGGER routine_notification_target_insert;
 DROP TRIGGER routine_notification_target_update;
 ALTER TABLE routine_tool_operations RENAME TO automation_tool_operations;
 ALTER TABLE routine_notification_targets RENAME TO automation_notification_targets;
-ALTER TABLE routine_notification_deliveries RENAME TO automation_notification_deliveries;
 ALTER TABLE execution_environments RENAME TO runners;
 ALTER TABLE agents RENAME COLUMN environment_id TO runner_id;
 ALTER TABLE agents RENAME COLUMN environment_sandbox_id TO runner_sandbox_id;
@@ -29,6 +35,19 @@ CREATE TRIGGER automation_notification_target_update BEFORE UPDATE OF notificati
 WHEN NEW.notification_target_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM automation_notification_targets t WHERE t.id = NEW.notification_target_id AND t.agent_id = NEW.agent_id)
 BEGIN SELECT RAISE(ABORT, 'notification target belongs to another agent'); END;
 -- +goose StatementEnd
+
+-- +goose StatementBegin
+CREATE TRIGGER clear_revoked_automation_target BEFORE DELETE ON automation_notification_targets
+BEGIN
+    UPDATE automations SET notification_route = 'none', notification_target_id = NULL
+    WHERE agent_id = OLD.agent_id AND notification_target_id = OLD.id;
+END;
+-- +goose StatementEnd
+
+-- Keep the pinned Runner in saved tool results that the service can replay.
+UPDATE automation_tool_operations
+SET result = json_remove(json_set(result, '$.runnerId', result ->> '$.environmentId'), '$.environmentId')
+WHERE action IN ('create', 'update') AND json_type(result, '$.environmentId') = 'text';
 
 -- Copy both tables before dropping the old parent to avoid cascading file deletes.
 -- Recreate delivery triggers after the copy so saved delivery state does not change.
@@ -180,12 +199,17 @@ END;
 -- +goose StatementEnd
 
 -- +goose Down
+DROP TRIGGER clear_revoked_automation_target;
+
+UPDATE automation_tool_operations
+SET result = json_remove(json_set(result, '$.environmentId', result ->> '$.runnerId'), '$.runnerId')
+WHERE action IN ('create', 'update') AND json_type(result, '$.runnerId') = 'text';
+
 DROP TRIGGER automation_notification_target_identity;
 DROP TRIGGER automation_notification_target_insert;
 DROP TRIGGER automation_notification_target_update;
 ALTER TABLE automation_tool_operations RENAME TO routine_tool_operations;
 ALTER TABLE automation_notification_targets RENAME TO routine_notification_targets;
-ALTER TABLE automation_notification_deliveries RENAME TO routine_notification_deliveries;
 ALTER TABLE runners RENAME TO execution_environments;
 ALTER TABLE agents RENAME COLUMN runner_id TO environment_id;
 ALTER TABLE agents RENAME COLUMN runner_sandbox_id TO environment_sandbox_id;
@@ -195,6 +219,48 @@ ALTER TABLE automation_runs RENAME COLUMN runner_id TO environment_id;
 ALTER TABLE runner_pairing RENAME COLUMN runner_id TO environment_id;
 ALTER TABLE monitors RENAME COLUMN target_runner_id TO target_environment;
 ALTER TABLE monitors RENAME COLUMN target_runner_revision TO target_environment_revision;
+
+CREATE TABLE routine_notification_deliveries (
+    run_id TEXT PRIMARY KEY REFERENCES automation_runs(id) ON DELETE CASCADE,
+    agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+    target_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    peer TEXT NOT NULL,
+    body TEXT NOT NULL,
+    rendered_parts TEXT NOT NULL DEFAULT '',
+    parts INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'rejected')),
+    reason TEXT NOT NULL DEFAULT ''
+) STRICT;
+
+-- Revoked destinations cannot be revived by reconnecting the same account later.
+-- +goose StatementBegin
+CREATE TRIGGER reject_revoked_notification_target BEFORE DELETE ON routine_notification_targets
+BEGIN
+    UPDATE routine_notification_deliveries SET status = 'rejected', reason = 'destination no longer authorized'
+    WHERE target_id = OLD.id AND status = 'pending';
+    UPDATE automations SET notification_route = 'none', notification_target_id = NULL
+    WHERE agent_id = OLD.agent_id AND notification_target_id = OLD.id;
+END;
+-- +goose StatementEnd
+
+CREATE TABLE channel_reply_files (
+    operation_key TEXT PRIMARY KEY,
+    submission_id TEXT NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    body BLOB NOT NULL CHECK (length(body) <= 20971520)
+) STRICT;
+CREATE INDEX channel_reply_files_submission ON channel_reply_files(submission_id);
+
+-- +goose StatementBegin
+CREATE TRIGGER release_channel_reply_files AFTER UPDATE OF delivered_at, channel_revoked, status ON submissions
+WHEN NEW.delivered_at IS NOT NULL OR NEW.channel_revoked = 1 OR NEW.status = 'unanswered'
+BEGIN
+    DELETE FROM channel_reply_files WHERE submission_id = NEW.id;
+END;
+-- +goose StatementEnd
 
 -- +goose StatementBegin
 CREATE TRIGGER routine_notification_target_identity BEFORE UPDATE ON routine_notification_targets

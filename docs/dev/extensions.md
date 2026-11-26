@@ -1,4 +1,4 @@
-# Extensions
+# Skills and Integrations
 
 This document describes how dex loads skills, MCP servers, vault secrets, and
 `AGENTS.md` for an agent, and how it reloads them.
@@ -178,7 +178,7 @@ open agents for reload.
 dex resolves `vault:NAME` and inline `${vault:NAME}` in `env` and `headers`
 when it starts the server. For example, an HTTP header can use
 `Authorization: Bearer ${vault:NOTION_TOKEN}`. The declarations keep references,
-not resolved values. `mcp_server_get`, `mcp_server_list`, and the Extensions
+not resolved values. `mcp_server_get`, `mcp_server_list`, and the Integrations
 API show those references as written. To keep a hidden `env` or `headers`
 value, include `[hidden]` for that key in `mcp_server_set`. Do not paste
 literal secrets into a declaration. A snippet can enter the transcript.

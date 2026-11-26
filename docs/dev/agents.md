@@ -63,7 +63,7 @@ The lock order is agent, then settings. Settings never takes the agent
 lock. Each service writes separate rows. Creating or selecting an agent does
 not configure providers.
 One scheduler job checks automations across all agents and posts each prompt
-with the saved agent ID. See [Extensions](extensions.md#extensions) for the reload lifecycle.
+with the saved agent ID. See [Integrations](extensions.md) for the reload lifecycle.
 
 The web UI uses the nested agent routes, including live events and upload
 links. Agent resources require an explicit ID, including the default agent.

@@ -430,7 +430,7 @@ WHERE
     AND (c.channel_key = 'automation:' || CAST(@automation_id AS TEXT)
         OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');
 
--- name: ListRoutineTargetCandidates :many
+-- name: ListAutomationTargetCandidates :many
 SELECT * FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC;
 
 -- name: CountBoundAutomationPending :one

@@ -202,11 +202,11 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	// a child in another bot runs in the environment of that bot. The cwd of the parent stays in
 	// the environment of the parent.
 	environment := inherited.RunnerID
-	if a.Environment != "" {
-		if err := checkRunner(ctx, s.q, a.Environment); err != nil {
+	if a.RunnerID != "" {
+		if err := checkRunner(ctx, s.q, a.RunnerID); err != nil {
 			return SessionRef{}, err
 		}
-		environment = a.Environment
+		environment = a.RunnerID
 	}
 	cwd := inherited.Cwd
 	if source, err := s.q.GetAgent(ctx, r.AgentID); err != nil {
@@ -360,13 +360,13 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 		}
 		return s.ref(ctx, s.q, c)
 	}
-	if a.Environment != "" {
-		if err := checkRunner(ctx, s.q, a.Environment); err != nil {
+	if a.RunnerID != "" {
+		if err := checkRunner(ctx, s.q, a.RunnerID); err != nil {
 			return SessionRef{}, err
 		}
 	}
 	var ledger *tasksvc.Ledger
-	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.RunnerID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
+	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.RunnerID, child.RunnerID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
 		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
 		}

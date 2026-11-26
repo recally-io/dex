@@ -46,15 +46,15 @@ var ErrNotFound = errors.New("automation not found")
 
 // Input is what the user sets.
 type Input struct {
-	Notification         *RoutineNotification `json:"notification,omitempty"`
-	Cwd                  string               `json:"cwd"`
-	Name                 string               `json:"name"`
-	Prompt               string               `json:"prompt"`
-	Schedule             Schedule             `json:"schedule"`
-	TimeZone             string               `json:"timeZone"`
-	Session              string               `json:"session"` // new, reuse, or session
-	TargetConversationID int64                `json:"targetConversationId,omitzero"`
-	Enabled              bool                 `json:"enabled"`
+	Notification         *Notification `json:"notification,omitempty"`
+	Cwd                  string        `json:"cwd"`
+	Name                 string        `json:"name"`
+	Prompt               string        `json:"prompt"`
+	Schedule             Schedule      `json:"schedule"`
+	TimeZone             string        `json:"timeZone"`
+	Session              string        `json:"session"` // new, reuse, or session
+	TargetConversationID int64         `json:"targetConversationId,omitzero"`
+	Enabled              bool          `json:"enabled"`
 	// RunnerID is local or an SSH environment ID. Empty follows the environment of the bot.
 	RunnerID string `json:"runnerId"`
 }
@@ -311,7 +311,7 @@ func (s *Service) checkRunner(ctx context.Context, id, current string) error {
 	return nil
 }
 
-func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *RoutineNotification) error {
+func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n *Notification) error {
 	if n == nil {
 		return nil
 	}
@@ -379,7 +379,7 @@ func (s *Service) get(ctx context.Context, agentID string, id string) (sqlc.Auto
 
 // ListTargetCandidates returns the bot's existing conversations for the Routine picker.
 func (s *Service) ListTargetCandidates(ctx context.Context, agentID string) ([]sqlc.Conversation, error) {
-	return s.q.ListRoutineTargetCandidates(ctx, agentID)
+	return s.q.ListAutomationTargetCandidates(ctx, agentID)
 }
 
 // List returns all automations, oldest first.
@@ -399,7 +399,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
-		Notification: &RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
+		Notification: &Notification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
 		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, RunnerID: row.RunnerID, TargetConversationID: row.TargetConversationID.Int64,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}

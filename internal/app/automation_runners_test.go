@@ -124,7 +124,7 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 	chatID := d.newSession(t).ID
 	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", chatID), map[string]any{"runnerId": remoteEnv.ID}, nil)
 	var created struct {
-		RunnerID string `json:"environmentId"`
+		RunnerID string `json:"runnerId"`
 	}
 	routineToolJSON(t, d, chatID, "automation_create", map[string]any{"name": "From chat", "prompt": marker, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "enabled": true, "session": "new"}, &created)
 	if created.RunnerID != remoteEnv.ID {

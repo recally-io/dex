@@ -244,7 +244,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				Before: map[string][]*engine.Extension{
 					"tool-search": {chat.CheckExtension(id, chats.ToolReportCheck)},
 					"vault": {
-						automation.RoutineExtension(id, automation.RoutineTools{
+						automation.ToolExtension(id, automation.ToolHandlers{
 							List: routineTools.List, Get: routineTools.Get, Create: routineTools.Create, Update: routineTools.Update, Run: routineTools.Run,
 						}),
 						chat.SessionExtension(id, sessions), chat.SessionReadExtension(id, sessions),

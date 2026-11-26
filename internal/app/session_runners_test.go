@@ -114,19 +114,19 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 	}
 
 	// When the bot lists environments, then it sees both environments without secrets.
-	tool := taskTool(t, d, local, "environment_list", map[string]any{})
+	tool := taskTool(t, d, local, "runner_list", map[string]any{})
 	if !strings.Contains(tool, remoteEnv.ID) || !strings.Contains(tool, sandbox.ID) || strings.Contains(tool, apiKey) {
-		t.Fatalf("environment_list=%q", tool)
+		t.Fatalf("runner_list=%q", tool)
 	}
 
 	// When the local chat creates a child on remote-box, then the child runs there.
 	var child childRef
-	toolJSON(t, callSessionTool(t, d, local, "session_new", map[string]any{"title": "Remote", "message": `printf %s "${REMOTE_SSH_MARKER:-local}"`, "provider": "faux", "modelId": "bash", "environment": remoteEnv.ID}), &child)
+	toolJSON(t, callSessionTool(t, d, local, "session_new", map[string]any{"title": "Remote", "message": `printf %s "${REMOTE_SSH_MARKER:-local}"`, "provider": "faux", "modelId": "bash", "runnerId": remoteEnv.ID}), &child)
 	results := waitResults(t, sessionDB(t, d), local, 1)
 	if !strings.Contains(results[0].content, "ssh-fake-ok") {
 		t.Fatalf("child result=%+v", results[0])
 	}
-	toolJSON(t, callSessionTool(t, d, local, "session_new", map[string]any{"title": "Sandbox", "message": `printf %s "$REMOTE_E2B_MARKER"`, "provider": "faux", "modelId": "bash", "environment": sandbox.ID}), &child)
+	toolJSON(t, callSessionTool(t, d, local, "session_new", map[string]any{"title": "Sandbox", "message": `printf %s "$REMOTE_E2B_MARKER"`, "provider": "faux", "modelId": "bash", "runnerId": sandbox.ID}), &child)
 	if results := waitResults(t, sessionDB(t, d), local, 2); !strings.Contains(results[1].content, "e2b-fake-ok") {
 		t.Fatalf("sandbox child result=%+v", results[1])
 	}
@@ -254,7 +254,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	if results := waitResults(t, sessionDB(t, d), src, 1); !strings.Contains(results[0].content, "bash: local") {
 		t.Fatalf("child result=%+v", results[0])
 	}
-	toolJSON(t, callSessionTool(t, d, src, "session_fork", map[string]any{"id": child.ID, "message": marker, "environment": remoteEnv.ID}), &child)
+	toolJSON(t, callSessionTool(t, d, src, "session_fork", map[string]any{"id": child.ID, "message": marker, "runnerId": remoteEnv.ID}), &child)
 	if results := waitResults(t, sessionDB(t, d), src, 2); !strings.Contains(results[1].content, "ssh-fake-ok") {
 		t.Fatalf("forked child result=%+v", results[1])
 	}

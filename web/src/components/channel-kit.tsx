@@ -141,7 +141,7 @@ export function Notifications({ channel }: { channel: ChannelId }) {
           </ul>
         ) : (
           <p className="px-4 py-3.5 text-[13px] text-muted-foreground">
-            {targets.isPending ? "Loading…" : "After an owner pairs, routines can send results here."}
+            {targets.isPending ? "Loading…" : "After an owner pairs, automations can send results here."}
           </p>
         )}
       </Panel>

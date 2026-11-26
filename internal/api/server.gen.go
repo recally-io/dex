@@ -1392,7 +1392,7 @@ type BoundaryItem struct {
 	// Status Only on compaction. pending while the summary is made; queued when the summary waits for the run's next boundary (session cancellation drops it); nothing when there was nothing to compact; failed with a reason. Absent on a placed summary.
 	Status *BoundaryItemStatus `json:"status,omitempty"`
 
-	// Text The handoff of a reset, the summary of a compaction, or the notice of a fork to another environment. Absent when there is none.
+	// Text The handoff of a reset, the summary of a compaction, or the notice of a fork to another Runner. Absent when there is none.
 	Text *string `json:"text,omitempty"`
 }
 
@@ -1432,7 +1432,7 @@ type Chat struct {
 	Channel   ChatChannel `json:"channel"`
 	CreatedAt int64       `json:"createdAt"`
 
-	// Cwd The saved project directory. Empty means the workspace of the environment.
+	// Cwd The saved project directory. Empty means the workspace of the Runner.
 	Cwd string `json:"cwd"`
 
 	// ForkedFrom The session that a Chat was forked from. Only on a single chat.
@@ -1460,7 +1460,7 @@ type Chat struct {
 	// ReadOnly The web cannot send messages to this chat now. A child session is writable at any time.
 	ReadOnly bool `json:"readOnly"`
 
-	// RunnerId The execution environment that the chat selects: "local" or an environment ID. Empty means the environment of the agent.
+	// RunnerId The Runner that the Chat selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
 	RunnerId *string `json:"runnerId,omitempty"`
 
 	// Settings The settings that a chat overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
@@ -1552,7 +1552,7 @@ type CreateAgentInput struct {
 	Name     string  `json:"name"`
 	Provider *string `json:"provider,omitempty"`
 
-	// RunnerId Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
+	// RunnerId Omitted copies the default bot's Runner. Empty or "local" selects the built-in Local Runner.
 	RunnerId *string `json:"runnerId,omitempty"`
 
 	// ThinkingLevel pi-ai's ModelThinkingLevel. pi-ai sends the nearest level that the model supports.
@@ -2047,7 +2047,7 @@ type RunnerProbeInput struct {
 	Config *RunnerConfig `json:"config,omitempty"`
 	Kind   RunnerKind    `json:"kind"`
 
-	// RunnerId Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
+	// RunnerId Optional existing Runner ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
 	RunnerId *string `json:"runnerId,omitempty"`
 
 	// Secret Optional write-only secret. When runnerId is set and secret is omitted or empty, uses the saved secret.
@@ -2799,7 +2799,7 @@ type ForkChatJSONBody struct {
 	// Id Optional client UUID for safe retries.
 	Id *string `json:"id,omitempty"`
 
-	// RunnerId The execution environment of the new Chat.
+	// RunnerId The Runner of the new Chat.
 	RunnerId *string `json:"runnerId,omitempty"`
 }
 
@@ -2840,7 +2840,7 @@ type SetPrimaryNotificationTargetJSONBody struct {
 
 // ListRecentProjectsParams defines parameters for ListRecentProjects.
 type ListRecentProjectsParams struct {
-	// RunnerId An execution environment of the agent. Absent selects the environment of the agent.
+	// RunnerId A Runner ID. Omit to use the default Runner of the agent.
 	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
 }
 
@@ -2869,7 +2869,7 @@ type ListDirectoriesParams struct {
 	Path    *string `form:"path,omitempty" json:"path,omitempty"`
 	AgentId *string `form:"agentId,omitempty" json:"agentId,omitempty"`
 
-	// RunnerId An execution environment of the agent. Absent selects the environment of the agent.
+	// RunnerId A Runner ID. Omit to use the default Runner of the agent.
 	RunnerId *string `form:"runnerId,omitempty" json:"runnerId,omitempty"`
 }
 
