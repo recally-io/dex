@@ -122,7 +122,7 @@ func (q *Queries) ArchiveAgent(ctx context.Context, arg ArchiveAgentParams) (int
 
 const archiveChat = `-- name: ArchiveChat :exec
 UPDATE conversations SET archived_at = coalesce(archived_at, ?1)
-WHERE id = ?2 AND agent_id = ?3 AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
+WHERE id = ?2 AND agent_id = ?3 AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
 `
 
 type ArchiveChatParams struct {
@@ -131,8 +131,7 @@ type ArchiveChatParams struct {
 	AgentID    string        `json:"agent_id"`
 }
 
-// Keeps the first archive time when the chat is archived already. A child session from before
-// child sessions has a task: key, and it archives too.
+// Keep the first archive time. The owner can archive Chats and child sessions.
 func (q *Queries) ArchiveChat(ctx context.Context, arg ArchiveChatParams) error {
 	_, err := q.db.ExecContext(ctx, archiveChat, arg.ArchivedAt, arg.ID, arg.AgentID)
 	return err
@@ -378,7 +377,7 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 const createFork = `-- name: CreateFork :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, execution_id, forked_from, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type CreateForkParams struct {
@@ -429,8 +428,6 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Convers
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
 		&i.RunnerID,
 	)
 	return i, err
@@ -566,8 +563,8 @@ const ensureConversation = `-- name: EnsureConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-    WHERE conversations.execution_scope = ''
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
+    WHERE conversations.channel_key NOT LIKE 'retired-telegram:%'
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type EnsureConversationParams struct {
@@ -607,8 +604,6 @@ func (q *Queries) EnsureConversation(ctx context.Context, arg EnsureConversation
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
 		&i.RunnerID,
 	)
 	return i, err
@@ -620,7 +615,7 @@ VALUES (
     ?1,
     coalesce((
         SELECT c.channel_key FROM conversations c
-        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.execution_scope = '' AND c.archived_at IS NULL
+        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
             AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
@@ -628,7 +623,7 @@ VALUES (
     '', ?3
 )
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type EnsureEmptyChatParams struct {
@@ -656,8 +651,6 @@ func (q *Queries) EnsureEmptyChat(ctx context.Context, arg EnsureEmptyChatParams
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
 		&i.RunnerID,
 	)
 	return i, err
@@ -831,7 +824,7 @@ LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
-WHERE c.id = ? AND c.agent_id = ? AND c.execution_scope = '' AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
 
@@ -890,7 +883,7 @@ func (q *Queries) GetChat(ctx context.Context, arg GetChatParams) (GetChatRow, e
 }
 
 const getConversation = `-- name: GetConversation :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE id = ? AND execution_scope = ''
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations WHERE id = ? AND channel_key NOT LIKE 'retired-telegram:%'
 `
 
 func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, error) {
@@ -911,15 +904,13 @@ func (q *Queries) GetConversation(ctx context.Context, id int64) (Conversation, 
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
 		&i.RunnerID,
 	)
 	return i, err
 }
 
 const getConversationByKey = `-- name: GetConversationByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE agent_id = ? AND channel_key = ? AND execution_scope = ''
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations WHERE agent_id = ? AND channel_key = ? AND channel_key NOT LIKE 'retired-telegram:%'
 `
 
 type GetConversationByKeyParams struct {
@@ -945,8 +936,34 @@ func (q *Queries) GetConversationByKey(ctx context.Context, arg GetConversationB
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
+		&i.RunnerID,
+	)
+	return i, err
+}
+
+const getConversationForStop = `-- name: GetConversationForStop :one
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations WHERE id = ?
+`
+
+// Startup also stops retired sessions that still have a native execution.
+func (q *Queries) GetConversationForStop(ctx context.Context, id int64) (Conversation, error) {
+	row := q.db.QueryRowContext(ctx, getConversationForStop, id)
+	var i Conversation
+	err := row.Scan(
+		&i.ID,
+		&i.AgentID,
+		&i.ChannelKey,
+		&i.ExecutionID,
+		&i.CreatedAt,
+		&i.Title,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.ThinkingLevel,
+		&i.AbortPending,
+		&i.ArchivedAt,
+		&i.Cwd,
+		&i.ForkedFrom,
+		&i.ParentID,
 		&i.RunnerID,
 	)
 	return i, err
@@ -1039,7 +1056,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_delivery_error, channel_revoked, exit_action, required_reply_id, stop_requested, producer, reply_channel, reply_peer, kind FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_revoked, required_reply_id, stop_requested, producer, reply_channel, reply_peer, kind, exit_action FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -1064,15 +1081,14 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.ResultChildID,
 		&i.NativeAnswerID,
 		&i.ChannelContext,
-		&i.ChannelDeliveryError,
 		&i.ChannelRevoked,
-		&i.ExitAction,
 		&i.RequiredReplyID,
 		&i.StopRequested,
 		&i.Producer,
 		&i.ReplyChannel,
 		&i.ReplyPeer,
 		&i.Kind,
+		&i.ExitAction,
 	)
 	return i, err
 }
@@ -1341,7 +1357,7 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 }
 
 const listAutomationTargetCandidates = `-- name: ListAutomationTargetCandidates :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, agentID string) ([]Conversation, error) {
@@ -1368,8 +1384,6 @@ func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, agentID st
 			&i.Cwd,
 			&i.ForkedFrom,
 			&i.ParentID,
-			&i.ExecutionScope,
-			&i.ScopeContext,
 			&i.RunnerID,
 		); err != nil {
 			return nil, err
@@ -1457,9 +1471,9 @@ JOIN agents a ON a.id = c.agent_id
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE (c.agent_id = ?1 OR p.agent_id = ?1) AND c.execution_scope = ''
-    AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
-    AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
+WHERE (c.agent_id = ?1 OR p.agent_id = ?1) AND c.channel_key NOT LIKE 'retired-telegram:%'
+    AND (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
+    AND (c.channel_key NOT LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
     ))
 GROUP BY c.id
@@ -1544,7 +1558,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = ?1
     AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
-    AND c.execution_scope = ''
+    AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > ?2 OR (s.settled_at = ?2 AND s.id > ?3))
@@ -1657,7 +1671,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 
 const listPendingExecutionAborts = `-- name: ListPendingExecutionAborts :many
 SELECT c.id, c.agent_id, c.execution_id FROM conversations c
-WHERE c.abort_pending = 1 AND c.execution_scope = ''
+WHERE c.abort_pending = 1
 `
 
 type ListPendingExecutionAbortsRow struct {
@@ -1707,7 +1721,7 @@ SELECT
     c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(?1 AS INTEGER) = 0 OR s.conversation_id = ?1)
+WHERE s.status = 'pending' AND c.channel_key NOT LIKE 'retired-telegram:%' AND (CAST(?1 AS INTEGER) = 0 OR s.conversation_id = ?1)
 ORDER BY (s.kind = 'task_wake'), s.rowid
 `
 
@@ -2130,7 +2144,7 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 
 const unarchiveChat = `-- name: UnarchiveChat :exec
 UPDATE conversations SET archived_at = NULL
-WHERE id = ?1 AND agent_id = ?2 AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
+WHERE id = ?1 AND agent_id = ?2 AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
 `
 
 type UnarchiveChatParams struct {

@@ -21,7 +21,6 @@ const (
 	KindReview    = "review"
 	KindExecution = "execution"
 	KindExternal  = "external"
-	KindTombstone = "tombstone"
 
 	TagBrief    = "brief"
 	TagDecision = "decision"

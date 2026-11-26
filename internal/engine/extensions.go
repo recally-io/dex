@@ -409,10 +409,6 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 		}
 	}
 	s.info.Warnings = append(s.info.Warnings, a.agentsMDContext(ctx, "").warnings...)
-	path := filepath.Join(a.agentDir, "skills")
-	if _, err := os.Lstat(path); err == nil {
-		s.info.Warnings = append(s.info.Warnings, path+": dex no longer reads this; move it to "+filepath.Join(a.agentDir, ".agents", "skills"))
-	}
 	return s
 }
 func (a *agentExtensions) Info(ctx context.Context) (ExtensionInfo, error) {

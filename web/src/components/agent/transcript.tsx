@@ -625,7 +625,7 @@ function Divider({ label }: { label: string }) {
 }
 
 function BoundaryItem({ item }: { item: Extract<Item, { kind: "boundary" }> }) {
-  if (item.boundary === "environment")
+  if (item.boundary === "runner")
     return (
       <div className="flex flex-col gap-1">
         <Divider label="Runner changed" />
@@ -1017,7 +1017,6 @@ function notificationRow(notice: TimelineNotification) {
 }
 
 function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
-  let hasStaySilent = false;
   let hasAssistant = false;
 
   for (const b of taskBlocks) {
@@ -1034,13 +1033,11 @@ function isSilentSystemTask(taskBlocks: ContentBlock[]): boolean {
         if (s.name === "notify_user" || s.name === "ask_user" || isParentReport(s)) {
           return false;
         }
-
-        if (s.name === "stay_silent") hasStaySilent = true;
       }
     }
   }
 
-  return taskBlocks.length > 0 && (hasStaySilent || !hasAssistant);
+  return taskBlocks.length > 0 && !hasAssistant;
 }
 
 function TaskSection({

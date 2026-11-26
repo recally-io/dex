@@ -173,7 +173,7 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				origin = "task" // The interrupted wake is internal and has no channel route.
 			}
 			if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-				ID: wakeID, ConversationID: childTurn.ConversationID, Content: "Local check finished.", Attachments: "null", Origin: origin, Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
+				ID: wakeID, ConversationID: childTurn.ConversationID, Content: "Local check finished.", Attachments: "null", Origin: origin, Producer: "plugin", Kind: "task_result", CreatedAt: 1,
 			}); err != nil {
 				t.Fatal(err)
 			}
@@ -188,9 +188,7 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				if err := r.service.admit(t.Context(), taskInput(t, r, wakeID)); err != nil {
 					t.Fatal(err)
 				}
-				if got := awaitReceipt(t, r, wakeID); got.ExitAction != "report_parent" {
-					t.Fatalf("child did not report: %+v", got)
-				}
+				awaitReceipt(t, r, wakeID)
 				if err := r.conn.QueryRowContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id = ? AND id LIKE 'report:%' AND kind = 'task_result'`, parent).Scan(&reportID); err != nil {
 					t.Fatal(err)
 				}

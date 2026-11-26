@@ -147,7 +147,7 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 		t.Helper()
 		provider.SetResponses(steps)
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: id, ConversationID: childID, Content: "Local check finished.", Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
+			ID: id, ConversationID: childID, Content: "Local check finished.", Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -197,9 +197,9 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 			}),
 		)
 
-		// Then the direct parent gets both reports as internal task results, and the turn records the report exit.
-		if got.Status != "done" || got.ExitAction != "report_parent" {
-			t.Fatalf("child turn = status %q exit %q", got.Status, got.ExitAction)
+		// Then the direct parent gets both reports as internal task results.
+		if got.Status != "done" {
+			t.Fatalf("child turn = %q", got.Status)
 		}
 		sent := reports(parent)
 		if len(sent) != 2 || !strings.Contains(sent[0].Content, "Half of the checks pass.") || !strings.Contains(sent[1].Content, "All checks pass.") {
@@ -225,8 +225,8 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 		)
 
 		// Then the call fails and the parent gets no report.
-		if got.ExitAction == "report_parent" || len(reports(parent)) != before {
-			t.Fatalf("batched final report was sent: exit %q, reports %+v", got.ExitAction, reports(parent))
+		if got.Status != "done" || len(reports(parent)) != before {
+			t.Fatalf("child turn = %q, reports = %+v", got.Status, reports(parent))
 		}
 	})
 

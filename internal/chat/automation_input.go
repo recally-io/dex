@@ -20,11 +20,11 @@ const (
 	RoutineSkipNoModel       = "the bot has no model"
 	RoutineSkipMissed        = "dex did not run at the scheduled time"
 	RoutineSkipBusy          = "the chat of the automation is busy"
-	routineSkipTargetSession = "the target session is missing or cannot accept routine inputs"
+	routineSkipTargetSession = "the target session is missing or cannot accept Automation inputs"
 )
 
 const (
-	routineRunnerPrefix      = "the environment "
+	routineRunnerPrefix      = "the Runner "
 	routineUnavailableSuffix = " is unavailable"
 	routineRemovedSuffix     = " was removed"
 )
@@ -34,7 +34,7 @@ func RoutineUnavailableRunner(name string) string {
 	return routineRunnerPrefix + name + routineUnavailableSuffix
 }
 
-// RoutineRemovedRunner describes a deleted environment by its saved ID.
+// RoutineRemovedRunner describes a deleted Runner by its saved ID.
 func RoutineRemovedRunner(id string) string {
 	return routineRunnerPrefix + id + routineRemovedSuffix
 }
@@ -44,10 +44,10 @@ type AutomationInput struct {
 	Expected                                 *sqlc.Automation
 	Run                                      sqlc.CreateAutomationRunParams
 	AgentID, ChannelKey, Title, Content, Cwd string
-	// RunnerID is the environment of the routine: empty follows the bot.
+	// RunnerID is the Runner of the Automation: empty follows the bot.
 	RunnerID string
-	// Target is the effective environment that the preflight checked, and Skip is its reason to
-	// skip the run. The input is stored only when the environment is still Target.
+	// Target is the effective Runner that the preflight checked, and Skip is its reason to
+	// skip the run. The input is stored only when the Runner is still Target.
 	Target, Skip string
 }
 
@@ -102,15 +102,15 @@ func (s *Service) EnqueueAutomation(ctx context.Context, in AutomationInput) (Au
 	return out, nil
 }
 
-// bindAutomationRunner selects the environment of the routine for its chat. A reused chat
-// continues only in the effective environment (ranIn) of its last run, because its history, paths,
-// and tool results belong to that machine. A chat cannot change its environment after its first
-// message, so a reused chat from another environment moves to the key of this run, where it stays
-// readable, and the run starts a new chat. This also covers a routine that follows the bot after
-// the bot's environment changed.
+// bindAutomationRunner selects the Runner of the Automation for its chat. A reused chat
+// continues only in the effective Runner (ranIn) of its last run, because its history, paths,
+// and tool results belong to that machine. A chat cannot change its Runner after its first
+// message, so a reused chat from another Runner moves to the key of this run, where it stays
+// readable, and the run starts a new chat. This also covers an Automation that follows the bot after
+// the bot's Runner changed.
 func bindAutomationRunner(ctx context.Context, q *sqlc.Queries, conv sqlc.Conversation, in AutomationInput, ranIn string) (sqlc.Conversation, error) {
 	// A chat with no run stays. A last run with an empty binding is from before runs stored their
-	// environment, so where it ran is not known, and the chat starts again.
+	// Runner, so where it ran is not known, and the chat starts again.
 	last, err := q.LastAutomationRunRunner(ctx, conv.ID)
 	moved := err == nil && last != ranIn
 	if errors.Is(err, sql.ErrNoRows) {
@@ -137,7 +137,7 @@ func bindAutomationRunner(ctx context.Context, q *sqlc.Queries, conv sqlc.Conver
 	}
 	n, err := q.SetChatRunner(ctx, sqlc.SetChatRunnerParams{RunnerID: in.RunnerID, ID: conv.ID, AgentID: in.AgentID})
 	if err == nil && n != 1 {
-		err = fmt.Errorf("routine chat %d did not take environment %q", conv.ID, in.RunnerID)
+		err = fmt.Errorf("could not set Runner %q for Automation chat %d", in.RunnerID, conv.ID)
 	}
 	return conv, err
 }
@@ -198,7 +198,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		}
 	}
 	if in.Target != "" && ranIn != in.Target {
-		return AutomationInputResult{}, fmt.Errorf("%w: the environment of the routine changed during its check; run it again", engine.ErrBusy)
+		return AutomationInputResult{}, fmt.Errorf("%w: the Automation Runner changed during its check; run it again", engine.ErrBusy)
 	}
 	if in.Skip != "" {
 		in.Run.Status, in.Run.Reason = "skipped", sql.NullString{String: in.Skip, Valid: true}

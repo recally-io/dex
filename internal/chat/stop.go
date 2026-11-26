@@ -214,7 +214,7 @@ var errStopPending = errors.New("session cancellation is pending")
 
 // reconcileStop owns only the target gate. All native calls run outside the control writer.
 func (s *Service) reconcileStop(ctx context.Context, id int64) error {
-	c, err := s.q.GetConversation(ctx, id)
+	c, err := s.q.GetConversationForStop(ctx, id)
 	if err != nil {
 		return err
 	}

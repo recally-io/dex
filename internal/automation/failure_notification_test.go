@@ -18,7 +18,7 @@ func TestUserRoutineScheduleAndRunnerFailuresAlertButBusyDoesNot(t *testing.T) {
 		alert        bool
 	}{
 		{"missed schedule", chat.RoutineSkipMissed, true},
-		{"unavailable environment", "the environment Box is unavailable", true},
+		{"unavailable Runner", "the Runner Box is unavailable", true},
 		{"busy overlap", chat.RoutineSkipBusy, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -38,7 +38,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 				in.Schedule.Kind = "daily"
 				in.Schedule.Time, in.Schedule.Minutes = "09:00", 0
 			}
-			if tc.name == "unavailable environment" {
+			if tc.name == "unavailable Runner" {
 				if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','Box','pi-env','{"host":"fixture.invalid"}','',0,0)`); err != nil {
 					t.Fatal(err)
 				}
@@ -60,7 +60,7 @@ INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,pee
 					t.Fatal(err)
 				}
 				f.routines.Check(ctx)
-			case "unavailable environment":
+			case "unavailable Runner":
 				if _, err = f.routines.RunNow(ctx, "a", a.ID); err != nil {
 					t.Fatal(err)
 				}

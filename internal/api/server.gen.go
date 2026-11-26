@@ -60,19 +60,19 @@ func (e AssistantItemKind) Valid() bool {
 
 // Defines values for BoundaryItemBoundary.
 const (
-	Compaction  BoundaryItemBoundary = "compaction"
-	Environment BoundaryItemBoundary = "environment"
-	Reset       BoundaryItemBoundary = "reset"
+	BoundaryItemBoundaryCompaction BoundaryItemBoundary = "compaction"
+	BoundaryItemBoundaryReset      BoundaryItemBoundary = "reset"
+	BoundaryItemBoundaryRunner     BoundaryItemBoundary = "runner"
 )
 
 // Valid indicates whether the value is a known member of the BoundaryItemBoundary enum.
 func (e BoundaryItemBoundary) Valid() bool {
 	switch e {
-	case Compaction:
+	case BoundaryItemBoundaryCompaction:
 		return true
-	case Environment:
+	case BoundaryItemBoundaryReset:
 		return true
-	case Reset:
+	case BoundaryItemBoundaryRunner:
 		return true
 	default:
 		return false
@@ -513,14 +513,13 @@ func (e OnePasswordMode) Valid() bool {
 
 // Defines values for OutboxMessageKind.
 const (
-	OutboxMessageKindAutomation  OutboxMessageKind = "automation"
-	OutboxMessageKindControl     OutboxMessageKind = "control"
-	OutboxMessageKindFeedback    OutboxMessageKind = "feedback"
-	OutboxMessageKindFile        OutboxMessageKind = "file"
-	OutboxMessageKindProactive   OutboxMessageKind = "proactive"
-	OutboxMessageKindQuestion    OutboxMessageKind = "question"
-	OutboxMessageKindReply       OutboxMessageKind = "reply"
-	OutboxMessageKindSystemError OutboxMessageKind = "system_error"
+	OutboxMessageKindAutomation OutboxMessageKind = "automation"
+	OutboxMessageKindControl    OutboxMessageKind = "control"
+	OutboxMessageKindFeedback   OutboxMessageKind = "feedback"
+	OutboxMessageKindFile       OutboxMessageKind = "file"
+	OutboxMessageKindProactive  OutboxMessageKind = "proactive"
+	OutboxMessageKindQuestion   OutboxMessageKind = "question"
+	OutboxMessageKindReply      OutboxMessageKind = "reply"
 )
 
 // Valid indicates whether the value is a known member of the OutboxMessageKind enum.
@@ -539,8 +538,6 @@ func (e OutboxMessageKind) Valid() bool {
 	case OutboxMessageKindQuestion:
 		return true
 	case OutboxMessageKindReply:
-		return true
-	case OutboxMessageKindSystemError:
 		return true
 	default:
 		return false
@@ -885,13 +882,11 @@ func (e TaskExecutionKind) Valid() bool {
 
 // Defines values for TaskExecutionState.
 const (
-	TaskExecutionStateCancelled  TaskExecutionState = "cancelled"
-	TaskExecutionStateCompleted  TaskExecutionState = "completed"
-	TaskExecutionStateDispatched TaskExecutionState = "dispatched"
-	TaskExecutionStateFailed     TaskExecutionState = "failed"
-	TaskExecutionStateIdle       TaskExecutionState = "idle"
-	TaskExecutionStateRunning    TaskExecutionState = "running"
-	TaskExecutionStateStale      TaskExecutionState = "stale"
+	TaskExecutionStateCancelled TaskExecutionState = "cancelled"
+	TaskExecutionStateCompleted TaskExecutionState = "completed"
+	TaskExecutionStateFailed    TaskExecutionState = "failed"
+	TaskExecutionStateRunning   TaskExecutionState = "running"
+	TaskExecutionStateStale     TaskExecutionState = "stale"
 )
 
 // Valid indicates whether the value is a known member of the TaskExecutionState enum.
@@ -901,11 +896,7 @@ func (e TaskExecutionState) Valid() bool {
 		return true
 	case TaskExecutionStateCompleted:
 		return true
-	case TaskExecutionStateDispatched:
-		return true
 	case TaskExecutionStateFailed:
-		return true
-	case TaskExecutionStateIdle:
 		return true
 	case TaskExecutionStateRunning:
 		return true
@@ -1014,13 +1005,11 @@ func (e TaskReviewerKind) Valid() bool {
 
 // Defines values for TaskSessionState.
 const (
-	TaskSessionStateCancelled  TaskSessionState = "cancelled"
-	TaskSessionStateCompleted  TaskSessionState = "completed"
-	TaskSessionStateDispatched TaskSessionState = "dispatched"
-	TaskSessionStateFailed     TaskSessionState = "failed"
-	TaskSessionStateIdle       TaskSessionState = "idle"
-	TaskSessionStateRunning    TaskSessionState = "running"
-	TaskSessionStateStale      TaskSessionState = "stale"
+	TaskSessionStateCancelled TaskSessionState = "cancelled"
+	TaskSessionStateCompleted TaskSessionState = "completed"
+	TaskSessionStateFailed    TaskSessionState = "failed"
+	TaskSessionStateRunning   TaskSessionState = "running"
+	TaskSessionStateStale     TaskSessionState = "stale"
 )
 
 // Valid indicates whether the value is a known member of the TaskSessionState enum.
@@ -1030,11 +1019,7 @@ func (e TaskSessionState) Valid() bool {
 		return true
 	case TaskSessionStateCompleted:
 		return true
-	case TaskSessionStateDispatched:
-		return true
 	case TaskSessionStateFailed:
-		return true
-	case TaskSessionStateIdle:
 		return true
 	case TaskSessionStateRunning:
 		return true

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
-	"strconv"
 	"uuid"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
@@ -255,5 +254,3 @@ func (l *Ledger) LinkSession(ctx context.Context, actor Actor, task sqlc.Task, c
 	_, err = l.record(ctx, actor, task, sqlc.InsertTaskEntryParams{Kind: KindExecution, MetaJson: string(meta), CreatedAt: now})
 	return err
 }
-
-func tombstoneMeta(seq int64) string { return `{"targetSeq":` + strconv.FormatInt(seq, 10) + `}` }

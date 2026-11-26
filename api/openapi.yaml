@@ -2994,9 +2994,7 @@ components:
         state: {
           type: string,
           enum: [
-            dispatched,
             running,
-            idle,
             completed,
             failed,
             stale,
@@ -3106,9 +3104,7 @@ components:
         state: {
           type: string,
           enum: [
-            dispatched,
             running,
-            idle,
             completed,
             failed,
             stale,
@@ -3973,7 +3969,7 @@ components:
         kind: { type: string, enum: [boundary] }
         id: { type: string }
         entryId: { type: integer, format: int64 }
-        boundary: { type: string, enum: [reset, compaction, environment] }
+        boundary: { type: string, enum: [reset, compaction, runner] }
         at: {
           type: integer,
           format: int64,
@@ -5083,7 +5079,6 @@ components:
             proactive,
             question,
             automation,
-            system_error,
             file,
             control,
             feedback,

@@ -26,7 +26,7 @@ func (m *Manager) CommandReceived(ctx context.Context, source string) (bool, err
 
 // Receive stores one update or executes a shared command. A repeated source has no effect.
 func (m *Manager) Receive(ctx context.Context, peer, source string, msg chat.Message) error {
-	if chat.NonPrivateTelegramInput(peer, msg.ChannelContext) {
+	if chat.NonPrivateTelegramPeer(peer) {
 		return chat.ErrTelegramUnauthorized
 	}
 	if !strings.Contains(peer, ":") || strings.Contains(peer, "/") || source == "" || msg.ChannelContext.AccountID == "" {
@@ -226,19 +226,21 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 	if r.Command == channel.FeedbackCommand {
 		kind = "feedback"
 	}
-	parts := finalMessage(bot, r.Answer, "")
+	var part channel.Part
 	if kind == "feedback" {
 		// The private draft is not part of Web history. Never send an extract of it.
-		parts = bot.Parts(channel.Reply{Status: "done", Answer: r.Answer})
-		if len(parts) != 1 {
-			parts = finalMessage(bot, feedbackTooLong, "")
+		if parts := bot.Parts(channel.Reply{Status: "done", Answer: r.Answer}); len(parts) == 1 {
+			part = parts[0]
+		} else {
+			part, err = finalMessage(bot, feedbackTooLong, "")
 		}
+	} else {
+		part, err = finalMessage(bot, r.Answer, "")
 	}
-	if r.RenderedReply != "" {
-		if err := json.Unmarshal([]byte(r.RenderedReply), &parts); err != nil {
-			return err
-		}
-	} else if strings.HasPrefix(r.Peer, "telegram:") && kind == "control" {
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(r.Peer, "telegram:") && kind == "control" {
 		var identity chat.ChannelContext
 		if err := json.Unmarshal([]byte(r.ChannelContext), &identity); err != nil {
 			return err
@@ -247,16 +249,11 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 		if err != nil {
 			return err
 		}
-		parts, err = m.addButtons(ctx, parts, r.SourceKey, r.Peer, identity, target, actions)
-		if err != nil {
+		if err := m.addButtons(ctx, &part, r.SourceKey, r.Peer, identity, target, actions); err != nil {
 			return err
 		}
 	}
-	// An old multipart command could have sent a prefix without a receipt.
-	if len(parts) != 1 {
-		return m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}})
-	}
-	encoded, err := json.Marshal(parts[0])
+	encoded, err := json.Marshal(part)
 	if err != nil {
 		return err
 	}

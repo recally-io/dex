@@ -409,7 +409,7 @@ SELECT o.id, o.event_id, o.agent_id, o.conversation_id, o.source_submission_id, 
 FROM outbox_messages o
 JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
-WHERE o.status = 'pending' AND c.execution_scope = ''
+WHERE o.status = 'pending' AND c.channel_key NOT LIKE 'retired-telegram:%'
   AND o.agent_id = ?1 AND o.channel = ?2
   AND (
       o.kind != 'reply'
@@ -532,7 +532,7 @@ JOIN submissions s ON s.id = o.source_submission_id AND s.conversation_id = o.co
 JOIN conversations c ON c.id = o.conversation_id AND c.agent_id = o.agent_id
 JOIN agents a ON a.id = c.agent_id
 WHERE o.conversation_id = ?1 AND o.agent_id = ?2
-  AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
+  AND a.archived_at IS NULL AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.parent_id IS NULL
   AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
   AND (s.origin = 'web' OR s.producer <> 'user')
   AND o.rowid > CAST(?3 AS INTEGER)
@@ -617,7 +617,7 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = ?6 AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = ?7 AND c.execution_scope = '' AND c.execution_id = ?8
+  AND c.agent_id = ?7 AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.execution_id = ?8
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
 ON CONFLICT DO NOTHING
@@ -649,16 +649,6 @@ func (q *Queries) QueueOutboxFile(ctx context.Context, arg QueueOutboxFileParams
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const revokeOutboxBySubmission = `-- name: RevokeOutboxBySubmission :exec
-UPDATE outbox_messages SET status = 'failed', error = 'source delivery cancelled', retry_at = 0
-WHERE source_submission_id = ? AND status = 'pending'
-`
-
-func (q *Queries) RevokeOutboxBySubmission(ctx context.Context, sourceSubmissionID sql.NullString) error {
-	_, err := q.db.ExecContext(ctx, revokeOutboxBySubmission, sourceSubmissionID)
-	return err
 }
 
 const setOutboxError = `-- name: SetOutboxError :exec

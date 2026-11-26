@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -44,9 +45,12 @@ func TestUserModelChecksDistinguishPendingDiscoveryFromInvalidModels(t *testing.
 			t.Fatal(err)
 		}
 	}
-	catalog := engine.NewCatalog(true)
-	defer catalog.Close()
-	service := New(q, catalog, nil, nil)
+	agents, err := engine.New(engine.Config{DataDir: t.TempDir(), Home: t.TempDir(), FakeModel: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = agents.Close(context.WithoutCancel(t.Context())) })
+	service := New(q, agents.Catalog, nil, nil)
 	discovery, err := service.RegisterProviders(t.Context())
 	if err != nil {
 		t.Fatal(err)

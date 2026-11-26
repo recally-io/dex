@@ -1,4 +1,4 @@
-import type { TaskStatus, TaskCreate } from "../api/generated/types.gen";
+import type { TaskStatus } from "../api/generated/types.gen";
 
 export const statusLabel: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -8,12 +8,6 @@ export const statusLabel: Record<TaskStatus, string> = {
   done: "Done",
   cancelled: "Cancelled",
 };
-
-export const initialStatuses = [
-  "backlog",
-  "ready",
-  "in_progress",
-] as const satisfies readonly TaskCreate["status"][];
 
 export function nextStatuses(status: TaskStatus, hasReviewer: boolean): TaskStatus[] {
   switch (status) {

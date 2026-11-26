@@ -69,16 +69,12 @@ type Settings struct {
 
 // ChannelContext records the platform identity that authorized channel input.
 type ChannelContext struct {
-	// These fields identify non-private Telegram records from older releases.
-	ChatID      int64  `json:"chatId,omitzero"`
-	TopicID     int64  `json:"topicId,omitzero"`
-	TopicShared bool   `json:"topicShared,omitzero"`
-	AccountID   string `json:"accountId,omitempty"`
-	SenderID    string `json:"senderId,omitempty"`
-	MessageID   string `json:"messageId,omitempty"`
-	Edited      bool   `json:"edited,omitzero"`
-	MediaKind   string `json:"mediaKind,omitempty"`
-	MediaGroup  string `json:"mediaGroup,omitempty"`
+	AccountID  string `json:"accountId,omitempty"`
+	SenderID   string `json:"senderId,omitempty"`
+	MessageID  string `json:"messageId,omitempty"`
+	Edited     bool   `json:"edited,omitzero"`
+	MediaKind  string `json:"mediaKind,omitempty"`
+	MediaGroup string `json:"mediaGroup,omitempty"`
 }
 
 // Message is a message to post. Title is the title of a new chat; empty uses the start of Content,
@@ -313,7 +309,7 @@ func (s *Service) AcceptMessage(ctx context.Context, agentID, peer, sourceKey st
 }
 
 func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message, deferAdmission bool) error {
-	if NonPrivateTelegramInput(peer, m.ChannelContext) {
+	if NonPrivateTelegramPeer(peer) {
 		return ErrTelegramUnauthorized
 	}
 	if _, err := s.Main(ctx, agentID); err != nil {
@@ -349,7 +345,7 @@ func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey st
 }
 
 func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message, deferAdmission bool) (int64, error) {
-	if NonPrivateTelegramInput(origin, m.ChannelContext) {
+	if NonPrivateTelegramPeer(origin) {
 		return 0, ErrTelegramUnauthorized
 	}
 	complete, archived := false, ""

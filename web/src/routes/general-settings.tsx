@@ -216,10 +216,10 @@ export function GeneralSettingsPage() {
             <div className="border-t border-border px-4 py-3.5">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <label htmlFor="default-environment" className="text-[14px] font-medium text-foreground">
+                  <label htmlFor="default-runner" className="text-[14px] font-medium text-foreground">
                     Default Runner
                   </label>
-                  <p id="default-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
+                  <p id="default-runner-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
                     {currentEnv
                       ? `${runnerOptionLabel(currentEnv)}.`
                       : missingEnv
@@ -231,9 +231,9 @@ export function GeneralSettingsPage() {
                   </p>
                 </div>
                 <Select
-                  id="default-environment"
+                  id="default-runner"
                   aria-label="Default Runner"
-                  aria-describedby="default-environment-hint"
+                  aria-describedby="default-runner-hint"
                   aria-invalid={save.isError || missingEnv}
                   className="w-full sm:w-[220px]"
                   value={defaults.runnerId}

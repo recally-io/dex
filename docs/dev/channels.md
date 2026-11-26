@@ -10,7 +10,9 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
 
 - Paired private chats share Main. The adapter ignores all non-private messages,
   edits, and callbacks before it handles commands or downloads files. A saved
-  token without allowed users waits for pairing.
+  token without allowed users waits for pairing. After an upgrade, old group
+  sessions stay hidden. Dex stops their saved work in the shared agent store
+  before it resumes that store. Dex does not open separate group stores.
 - The Telegram channel page creates a link with the bot username from `getMe` and a
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite

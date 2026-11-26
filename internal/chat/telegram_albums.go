@@ -40,7 +40,7 @@ func (s *Service) KnownTelegramAlbum(ctx context.Context, agentID, peer string, 
 // StoreTelegramAlbum commits upload ownership before the transport may ACK the member.
 func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source string, msg Message) error {
 	actor, err := strconv.ParseInt(msg.ChannelContext.SenderID, 10, 64)
-	if NonPrivateTelegramInput(peer, msg.ChannelContext) || err != nil || actor <= 0 || msg.ChannelContext.AccountID == "" || msg.ChannelContext.MediaGroup == "" || len(msg.Attachments) != 1 {
+	if NonPrivateTelegramPeer(peer) || err != nil || actor <= 0 || msg.ChannelContext.AccountID == "" || msg.ChannelContext.MediaGroup == "" || len(msg.Attachments) != 1 {
 		return fmt.Errorf("%w: invalid Telegram album member", errSessionInvalid)
 	}
 	group, err := telegramAlbumKey(peer, msg.ChannelContext)

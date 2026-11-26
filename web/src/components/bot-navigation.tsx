@@ -46,10 +46,14 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
   const newSession = useNewChat(cwd, setCreated);
   const agents = useQuery(listAgentsOptions());
   const activity = agents.data?.agents.find((item) => item.id === agentId)?.activity;
-  const routines = activity?.enabledAutomations ?? 0;
+  const automations = activity?.enabledAutomations ?? 0;
   const failed = activity?.automationFailed ?? false;
 
-  const routineLabel = ["Automations", routines ? `${routines} on` : "", failed ? "latest run failed" : ""]
+  const automationLabel = [
+    "Automations",
+    automations ? `${automations} on` : "",
+    failed ? "latest run failed" : "",
+  ]
     .filter(Boolean)
     .join(", ");
 
@@ -70,10 +74,10 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
       </DropdownMenuItem>
       <DropdownMenuItem
         render={<Link to="/a/$agentId/automations" params={{ agentId }} />}
-        aria-label={routineLabel}
+        aria-label={automationLabel}
       >
         <CalendarClock size={15} /> Automations
-        {routines ? <span className="text-xs tabular-nums">{routines}</span> : null}
+        {automations ? <span className="text-xs tabular-nums">{automations}</span> : null}
         {failed ? (
           <span
             role="img"
@@ -124,8 +128,8 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           to="/a/$agentId/automations"
           params={{ agentId }}
           aria-current={segment === "automations" ? "page" : undefined}
-          aria-label={routineLabel}
-          title={routineLabel}
+          aria-label={automationLabel}
+          title={automationLabel}
           className={linkClass}
         >
           <CalendarClock aria-hidden="true" />

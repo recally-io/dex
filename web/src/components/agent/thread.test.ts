@@ -288,12 +288,11 @@ test("user sees silent system turn trace folded under task mark", async () => {
     {
       kind: "tool",
       id: "tool-1",
-      name: "stay_silent",
-      args: { reason: "already reported" },
+      name: "bash",
+      args: { command: "ls" },
       status: "done",
-      output: "Staying silent",
+      output: "notes.txt",
     },
-    { kind: "assistant", id: "a1", text: "Internal thinking note" },
   ];
 
   const html = await render(

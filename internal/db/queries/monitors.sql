@@ -18,9 +18,6 @@ SELECT * FROM monitors WHERE id = ?;
 -- name: GetMonitorByOperationKey :one
 SELECT * FROM monitors WHERE operation_key = ?;
 
--- name: GetMonitorByFireSubmission :one
-SELECT * FROM monitors WHERE fire_submission_id = ?;
-
 -- name: CountScheduledMonitors :one
 SELECT count(*) FROM monitors WHERE conversation_id = ? AND state = 'scheduled';
 

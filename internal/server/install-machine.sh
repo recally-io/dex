@@ -17,7 +17,7 @@ note() {
 main() {
 	[ "$#" -ge 3 ] || fail 'copy the complete install command from Dex'
 	origin=$1
-	environment=$2
+	runner=$2
 	code=$3
 	shift 3
 	mode=user
@@ -31,7 +31,7 @@ main() {
 	repo=https://github.com/recally-io/dex
 
 	case $origin in https://?*) ;; *) fail 'the Dex address must start with https://' ;; esac
-	case $environment in '' | *[!a-zA-Z0-9-]*) fail 'invalid environment ID' ;; esac
+	case $runner in '' | *[!a-zA-Z0-9-]*) fail 'invalid Runner ID' ;; esac
 	case $(uname -s) in
 		Linux) os=linux ;;
 		Darwin) os=darwin ;;
@@ -108,7 +108,7 @@ install_linux_user() {
 	# A machine that a dedicated account already serves stays as it is: a second install of the
 	# same host would connect twice, and the existing machine is not migrated without saying so.
 	if systemctl list-unit-files dex-agent.service 2>/dev/null | grep -q '^dex-agent\.service'; then
-		fail 'this host already runs the machine as the dedicated account dex-agent. Keep it, or move it: sudo systemctl disable --now dex-agent.service, remove /var/lib/dex-agent, /usr/local/bin/dex-agent, and /etc/systemd/system/dex-agent.service, then run this command again. See the machine section of the Dex docs for the whole procedure.'
+		fail 'this host already runs the machine as the dedicated account dex-agent. Keep it, or move it: sudo systemctl disable --now dex-agent.service, remove /var/lib/dex-agent (including /var/lib/dex-agent/bin/dex-agent) and /etc/systemd/system/dex-agent.service, then run this command again. See the machine section of the Dex docs for the whole procedure.'
 	fi
 	tar -xzf "$tmp/$archive" -C "$tmp" dex-agent dex-agent-user.service
 	install -d -m 0700 "$state"
@@ -117,7 +117,7 @@ install_linux_user() {
 	sed -e "s|__BINARY__|$binary|g" -e "s|__STATE__|$state|g" "$tmp/dex-agent-user.service" >"$tmp/dex-agent-user.service.final"
 	install -m 0644 "$tmp/dex-agent-user.service.final" "$unit"
 	# The code goes through stdin, so it stays out of the process list.
-	printf '%s\n' "$code" | "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode user || fail 'Dex refused the enrollment; get a fresh install command'
+	printf '%s\n' "$code" | "$binary" enroll -state "$state" -url "$origin" -id "$runner" -mode user || fail 'Dex refused the enrollment; get a fresh install command'
 	systemctl --user daemon-reload
 	systemctl --user enable --now dex-agent.service || fail "the machine service did not start; read its log with: journalctl --user -u dex-agent"
 	# A user service stops with the last session of the account unless the account lingers.
@@ -171,7 +171,7 @@ install_linux_dedicated() {
 		mv -fT "$stage" "$1"
 	' sh "$binary" <"$tmp/dex-agent"
 	as_root install -m 0644 "$tmp/dex-agent.service" "$unit"
-	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode dedicated || fail 'Dex refused the enrollment; get a fresh install command'
+	printf '%s\n' "$code" | as_root runuser -u dex-agent -- "$binary" enroll -state "$state" -url "$origin" -id "$runner" -mode dedicated || fail 'Dex refused the enrollment; get a fresh install command'
 	as_root systemctl daemon-reload
 	as_root systemctl enable --now dex-agent.service || fail 'the machine service did not start; read its log with: sudo journalctl -u dex-agent'
 	note 'the machine runs as the dedicated account dex-agent'
@@ -198,7 +198,7 @@ install_darwin() {
 	install -m 0755 "$tmp/dex-agent" "$binary"
 	sed -e "s|__BINARY__|$binary|g" -e "s|__STATE__|$state|g" -e "s|__LOG__|$log|g" "$tmp/com.recally.dex-agent.plist" >"$tmp/com.recally.dex-agent.plist.final"
 	install -m 0644 "$tmp/com.recally.dex-agent.plist.final" "$plist"
-	printf '%s\n' "$code" | "$binary" enroll -state "$state" -url "$origin" -id "$environment" -mode user || fail 'Dex refused the enrollment; get a fresh install command'
+	printf '%s\n' "$code" | "$binary" enroll -state "$state" -url "$origin" -id "$runner" -mode user || fail 'Dex refused the enrollment; get a fresh install command'
 	# bootstrap refuses a label that is already loaded, so unload it first.
 	launchctl bootout "gui/$target_uid/$label" 2>/dev/null || true
 	launchctl bootstrap "gui/$target_uid" "$plist" || fail "the agent did not start; read $log"

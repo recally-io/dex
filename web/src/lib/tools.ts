@@ -89,10 +89,6 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Report parent", target: arg(tool, "content") };
   }
 
-  if (tool.name === "stay_silent") {
-    return { verb: "Stay silent", target: arg(tool, "reason") };
-  }
-
   if (tool.name === "process_start") {
     return { verb: "Start process", target: arg(tool, "label") || arg(tool, "command") };
   }

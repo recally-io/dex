@@ -131,11 +131,8 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 			return 0, 0, "", err
 		}
 	}
-	// An older run can have a saved exit action when dex resumes after an upgrade.
-	if sub.ExitAction != "stay_silent" {
-		if parent, err = s.sendResult(ctx, q, id, event, withdrawn); err != nil {
-			return 0, 0, "", err
-		}
+	if parent, err = s.sendResult(ctx, q, id, event, withdrawn); err != nil {
+		return 0, 0, "", err
 	}
 	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && sub.Origin != "automation" && !isUserOrigin(sub.Origin) && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
 		if archived, aerr := q.ConversationAgentArchived(ctx, conv.ParentID.Int64); aerr != nil {

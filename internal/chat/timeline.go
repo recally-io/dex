@@ -42,7 +42,6 @@ func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, arc
 	if err != nil {
 		return Chat{}, err
 	}
-	// A child session from before child sessions has a task: key. It is a child, so the user can archive it.
 	if !strings.HasPrefix(c.ChannelKey, chatPrefix) && c.ParentID == 0 {
 		return Chat{}, ErrNotArchivable
 	}
@@ -221,13 +220,10 @@ func (s *Service) Clear(ctx context.Context, agentID string, chatID int64, reque
 
 func inputOrigin(key string) string {
 	switch {
-	case Writable(key), strings.HasPrefix(key, "web:"):
+	case Writable(key):
 		return "web"
 	case strings.HasPrefix(key, "automation:"):
 		return "automation"
-	case strings.HasPrefix(key, "task:"):
-		// A conversation from before child sessions. A person writes to it, as to a child session.
-		return "web"
 	case strings.HasPrefix(key, "dream:"):
 		return "dream"
 	default:

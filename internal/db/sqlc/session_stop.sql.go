@@ -11,7 +11,7 @@ import (
 )
 
 const getConversationByExecution = `-- name: GetConversationByExecution :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations WHERE agent_id = ? AND execution_scope = '' AND execution_id = ?
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' AND execution_id = ?
 `
 
 type GetConversationByExecutionParams struct {
@@ -37,8 +37,6 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
 		&i.RunnerID,
 	)
 	return i, err
@@ -48,7 +46,7 @@ const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
 SELECT conversations.id FROM conversations
 JOIN conversations parent ON parent.id = conversations.parent_id
 WHERE (conversations.agent_id = ?1 OR parent.agent_id = ?1)
-AND conversations.execution_scope = '' AND parent.execution_scope = '' AND EXISTS (
+AND conversations.channel_key NOT LIKE 'retired-telegram:%' AND parent.channel_key NOT LIKE 'retired-telegram:%' AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
 )
@@ -80,8 +78,8 @@ func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID strin
 }
 
 const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations
-WHERE execution_scope = '' AND (
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations
+WHERE channel_key NOT LIKE 'retired-telegram:%' AND (
     (conversations.id = ?1 AND conversations.agent_id = ?2)
     OR (conversations.parent_id = ?1 AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
@@ -122,8 +120,6 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 			&i.Cwd,
 			&i.ForkedFrom,
 			&i.ParentID,
-			&i.ExecutionScope,
-			&i.ScopeContext,
 			&i.RunnerID,
 		); err != nil {
 			return nil, err

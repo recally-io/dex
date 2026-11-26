@@ -42,7 +42,7 @@ func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
 			Content:        "system event",
 			Attachments:    "null",
 			Origin:         tc.origin,
-			Producer:       ProducerPlugin,
+			Producer:       "plugin",
 			Kind:           tc.kind,
 			CreatedAt:      r.service.now().UnixMilli(),
 		}); err != nil {

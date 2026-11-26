@@ -19,7 +19,7 @@ type CheckReport struct {
 }
 
 const routineCheckRules = "Before this automation run ends, call automation_report once with changed, unchanged, or failed, a short summary, and an optional stable change key. Report unchanged only after the required checks succeeded and found no change. Missing reports and execution errors fail the run. A repeated change key marks a duplicate; it does not undo or prevent actions."
-const BoundRoutineCheckSuffix = "\n\nRoutine reporting instructions (for this input only): " + routineCheckRules
+const BoundRoutineCheckSuffix = "\n\nAutomation reporting instructions (for this input only): " + routineCheckRules
 
 // Keep the existing section and extension name for dedicated Automation sessions.
 func RoutineCheckInstructions() *engine.Extension {

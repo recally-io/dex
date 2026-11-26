@@ -77,15 +77,16 @@ func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agent
 	if err := json.Unmarshal([]byte(row.ChannelContext), &original); err != nil {
 		return err
 	}
-	if actor.AccountID != original.AccountID || actor.SenderID != original.SenderID || actor.ChatID != original.ChatID || actor.TopicID != original.TopicID || actor.TopicShared != original.TopicShared || actor.MessageID != row.MessageID {
+	if !strings.HasPrefix(row.Peer, "telegram:") || NonPrivateTelegramPeer(row.Peer) || actor.AccountID != original.AccountID || actor.SenderID != original.SenderID || actor.MessageID != row.MessageID {
 		return ErrTelegramUnauthorized
 	}
 	return authorizeTelegramActor(ctx, q, agentID, actor.AccountID, actor.SenderID)
 }
 
-// NonPrivateTelegramInput rejects non-private group routes and actor metadata.
-func NonPrivateTelegramInput(peer string, source ChannelContext) bool {
-	return strings.HasPrefix(peer, "telegram:-") || source.ChatID != 0 || source.TopicID != 0 || source.TopicShared
+// NonPrivateTelegramPeer checks only Telegram routes. A private peer has a positive ID.
+func NonPrivateTelegramPeer(peer string) bool {
+	id, telegram := strings.CutPrefix(peer, "telegram:")
+	return telegram && !positiveTelegramID(id)
 }
 
 func positiveTelegramID(value string) bool {
@@ -129,7 +130,7 @@ func (s *Service) TelegramInputAllowed(ctx context.Context, agentID, peer string
 
 // TelegramInputAllowed also serves writer transactions that commit Telegram control intents.
 func TelegramInputAllowed(ctx context.Context, q *sqlc.Queries, agentID, peer string, source ChannelContext) (bool, error) {
-	if !strings.HasPrefix(peer, "telegram:") || !positiveTelegramID(strings.TrimPrefix(peer, "telegram:")) || NonPrivateTelegramInput(peer, source) {
+	if !strings.HasPrefix(peer, "telegram:") || NonPrivateTelegramPeer(peer) {
 		return false, nil
 	}
 	err := authorizeTelegramActor(ctx, q, agentID, source.AccountID, source.SenderID)

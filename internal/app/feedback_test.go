@@ -37,7 +37,9 @@ func TestUserPreviewsFeedbackInPairedPrivateChannelsWithoutModel(t *testing.T) {
 			assertNoStoredInput(t, e.d)
 			eventually(t, "delivered feedback receipts have no draft text", func() (bool, any) {
 				var total, pending, retained int
-				err := sessionDB(t, e.d).QueryRowContext(t.Context(), `SELECT count(*), coalesce(sum(delivered_at IS NULL), 0), coalesce(sum(answer != '' OR rendered_reply != ''), 0) FROM channel_commands WHERE command = '/feedback'`).Scan(&total, &pending, &retained)
+				err := sessionDB(t, e.d).QueryRowContext(t.Context(), `SELECT count(*), coalesce(sum(c.delivered_at IS NULL), 0),
+					coalesce(sum(c.answer != '' OR coalesce(o.rendered_message, '') != ''), 0)
+					FROM channel_commands c LEFT JOIN outbox_messages o ON o.id = c.source_key WHERE c.command = '/feedback'`).Scan(&total, &pending, &retained)
 				return err == nil && total == 2 && pending == 0 && retained == 0, fmt.Sprintf("total=%d pending=%d retained=%d err=%v", total, pending, retained, err)
 			})
 		})
@@ -73,7 +75,8 @@ func TestUserTelegramPrivateFeedbackRetryDoesNotCreateASecondDraft(t *testing.T)
 	}
 	eventually(t, "one delivered feedback receipt with no reply content", func() (bool, any) {
 		var total, clean int
-		err := sessionDB(t, d).QueryRowContext(t.Context(), `SELECT count(*), coalesce(sum(delivered_at IS NOT NULL AND answer = '' AND rendered_reply = ''), 0) FROM channel_commands WHERE command = '/feedback'`).Scan(&total, &clean)
+		err := sessionDB(t, d).QueryRowContext(t.Context(), `SELECT count(*), coalesce(sum(c.delivered_at IS NOT NULL AND c.answer = '' AND o.rendered_message = ''), 0)
+			FROM channel_commands c JOIN outbox_messages o ON o.id = c.source_key WHERE c.command = '/feedback'`).Scan(&total, &clean)
 		return err == nil && total == 1 && clean == 1, fmt.Sprintf("total=%d clean=%d err=%v", total, clean, err)
 	})
 	assertNoStoredInput(t, d)

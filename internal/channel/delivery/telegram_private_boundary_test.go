@@ -14,7 +14,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func TestUserGroupIdentityCannotAcquireMainThroughCommandPeer(t *testing.T) {
+func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 	// Given real business services and native execution, without an exposed owner-control route.
 	directory := t.TempDir()
 	conn, err := db.Open(t.Context(), filepath.Join(directory, "control.sqlite"))
@@ -42,10 +42,12 @@ func TestUserGroupIdentityCannotAcquireMainThroughCommandPeer(t *testing.T) {
 	defer func() { cancel(); <-done }()
 	manager := delivery.New(ctx, conn, service, "bot")
 	defer manager.Close()
-	// When group identity is mislabeled as a positive private command peer, reject before Main is touched.
-	err = manager.Receive(ctx, "telegram:42", "mismatched-group-command", chat.Message{Content: "/clear", ChannelContext: chat.ChannelContext{AccountID: "123", SenderID: "42", ChatID: -100, TopicID: 7}})
-	if err == nil {
-		t.Fatal("group metadata acquired Main through a private command peer")
+	// When a group or malformed peer sends a command with valid-looking actor IDs.
+	for _, peer := range []string{"telegram:-100", "telegram:042", "telegram:0"} {
+		err := manager.Receive(ctx, peer, "group-command", chat.Message{Content: "/clear", ChannelContext: chat.ChannelContext{AccountID: "123", SenderID: "42"}})
+		if err == nil {
+			t.Fatalf("non-private peer %q reached Main", peer)
+		}
 	}
 	// Then no command receipt or private conversation can be created by that request.
 	var commands, conversations int

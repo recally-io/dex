@@ -63,7 +63,7 @@ export type TaskSession = {
     title: string;
     isPrimary: boolean;
     linkedAt: number;
-    state: 'dispatched' | 'running' | 'idle' | 'completed' | 'failed' | 'stale' | 'cancelled';
+    state: 'running' | 'completed' | 'failed' | 'stale' | 'cancelled';
     endedAt?: number;
 };
 
@@ -146,7 +146,7 @@ export type TaskExecution = {
     taskKey?: string;
     botId: string;
     kind: 'dex_session' | 'external_agent';
-    state: 'dispatched' | 'running' | 'idle' | 'completed' | 'failed' | 'stale' | 'cancelled';
+    state: 'running' | 'completed' | 'failed' | 'stale' | 'cancelled';
     harness?: string;
     machineId?: string;
     runnerName?: string;
@@ -766,7 +766,7 @@ export type BoundaryItem = {
     kind: 'boundary';
     id: string;
     entryId?: number;
-    boundary: 'reset' | 'compaction' | 'environment';
+    boundary: 'reset' | 'compaction' | 'runner';
     /**
      * The boundary time in milliseconds.
      */
@@ -1623,7 +1623,7 @@ export type MonitorList = {
 
 export type OutboxMessage = {
     id: string;
-    kind: 'reply' | 'proactive' | 'question' | 'automation' | 'system_error' | 'file' | 'control' | 'feedback';
+    kind: 'reply' | 'proactive' | 'question' | 'automation' | 'file' | 'control' | 'feedback';
     peer: string;
     topicKey: string;
     body: string;

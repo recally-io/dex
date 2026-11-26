@@ -4,13 +4,11 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  getMainChatOptions,
   listRunnersOptions,
   listModelsOptions,
   resetAgentRunnerMutation,
-  setChatSettingsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { errorText, refreshChats, refreshRunners } from "../lib/queries";
+import { errorText, refreshRunners } from "../lib/queries";
 
 import { findModel, saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
@@ -88,7 +86,6 @@ function Agent({ settings }: { settings: Settings }) {
       <Section title="Profile" caption="A change applies from the next message.">
         <Panel>
           <NameRow name={settings.agent.name} />
-          <MainDefaults />
           <div className="flex flex-wrap items-center gap-3 border-t border-border px-4 py-3.5">
             <div className="min-w-0 flex-1">
               <p
@@ -299,37 +296,6 @@ function Agent({ settings }: { settings: Settings }) {
   );
 }
 
-// Older versions let Main keep session overrides. Keep the reset next to the Bot defaults.
-function MainDefaults() {
-  const agentId = useAgentId();
-  const main = useQuery(getMainChatOptions({ path: { agentId } }));
-
-  const reset = useMutation({
-    ...setChatSettingsMutation(),
-    onSuccess: () => refreshChats(agentId),
-  });
-
-  if (!main.data || !(main.data.settings.modelId || main.data.settings.thinkingLevel)) return null;
-
-  return (
-    <div className="space-y-2 border-t border-border px-4 py-3">
-      <Note tone="warn">
-        Main has saved model or thinking overrides. It does not follow all Bot defaults.
-      </Note>
-      <Button
-        variant="outline"
-        size="sm"
-        aria-label="Use Bot defaults for Main"
-        disabled={reset.isPending}
-        onClick={() => reset.mutate({ path: { agentId, chatId: main.data!.id }, body: {} })}
-      >
-        Use Bot defaults for Main
-      </Button>
-      {reset.isError ? <Failure title="Could not reset Main settings" error={reset.error} /> : null}
-    </div>
-  );
-}
-
 function NameRow({ name }: { name: string }) {
   const agentId = useAgentId();
   const [draft, setDraft] = useState<string | null>(null);
@@ -418,10 +384,10 @@ function RunnerRow({ runnerId }: { runnerId: string }) {
     <div className="border-t border-border px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
-          <label htmlFor="bot-environment" className="text-[14px] font-medium text-foreground">
+          <label htmlFor="bot-runner" className="text-[14px] font-medium text-foreground">
             Default Runner
           </label>
-          <p id="bot-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
+          <p id="bot-runner-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
             {current
               ? runnerBotHint(current)
               : missingSelection
@@ -445,9 +411,9 @@ function RunnerRow({ runnerId }: { runnerId: string }) {
             </Button>
           ) : null}
           <Select
-            id="bot-environment"
+            id="bot-runner"
             aria-label="Default Runner"
-            aria-describedby="bot-environment-hint"
+            aria-describedby="bot-runner-hint"
             aria-invalid={save.isError || missingSelection}
             className="w-full sm:w-[220px]"
             value={runnerId}

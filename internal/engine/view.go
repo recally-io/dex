@@ -296,7 +296,7 @@ func (p projection) render() []Item {
 				break
 			}
 			if user, ok := e.Model[0].(ai.UserMessage); ok {
-				rendered = []Item{{Kind: "boundary", ID: key, Boundary: "environment", At: user.Timestamp, Text: userText(user.Content)}}
+				rendered = []Item{{Kind: "boundary", ID: key, Boundary: "runner", At: user.Timestamp, Text: userText(user.Content)}}
 			}
 		case compactionNoteKind:
 			note, err := durable.FromJsonValue[compactionNote](e.Data)

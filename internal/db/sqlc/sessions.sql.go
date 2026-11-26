@@ -13,7 +13,7 @@ import (
 const createChildConversation = `-- name: CreateChildConversation :one
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id
+RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type CreateChildConversationParams struct {
@@ -59,8 +59,6 @@ func (q *Queries) CreateChildConversation(ctx context.Context, arg CreateChildCo
 		&i.Cwd,
 		&i.ForkedFrom,
 		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
 		&i.RunnerID,
 	)
 	return i, err
@@ -241,9 +239,9 @@ func (q *Queries) LatestTurn(ctx context.Context, conversationID int64) (LatestT
 }
 
 const listChannelChildren = `-- name: ListChannelChildren :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, runner_id FROM conversations
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations
 WHERE parent_id = ?1 AND agent_id = ?2
-    AND execution_scope = ''
+    AND channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY id DESC
 LIMIT 50
 `
@@ -277,8 +275,6 @@ func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildr
 			&i.Cwd,
 			&i.ForkedFrom,
 			&i.ParentID,
-			&i.ExecutionScope,
-			&i.ScopeContext,
 			&i.RunnerID,
 		); err != nil {
 			return nil, err
@@ -362,7 +358,7 @@ SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
-    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.execution_scope = ''
+    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY c.id
 `
 
@@ -400,7 +396,7 @@ func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChild
 const listRecoveryParentInputStops = `-- name: ListRecoveryParentInputStops :many
 SELECT s.id, c.agent_id, c.execution_id
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.execution_scope = ''
+WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%'
 `
 
 type ListRecoveryParentInputStopsRow struct {
@@ -449,7 +445,7 @@ SELECT
     CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM conversations c
 JOIN agents a ON a.id = c.agent_id
-WHERE c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
+WHERE c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.parent_id = ?1 OR (
         CAST(?2 AS INTEGER) = 1
         AND (CAST(?3 AS INTEGER) = 1 OR c.agent_id = ?4)
@@ -632,7 +628,7 @@ SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.con
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
-WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
+WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.id <> ?1
     AND (CAST(?2 AS INTEGER) = 1 OR c.agent_id = ?3)
     AND (CAST(?4 AS INTEGER) = 0 OR c.id = ?4)

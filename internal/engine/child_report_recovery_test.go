@@ -158,10 +158,6 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 			if err != nil || result.ConversationID != parent.ID || result.Status != "pending" || !strings.Contains(result.Content, content) {
 				t.Fatalf("direct parent report = %+v, %v", result, err)
 			}
-			source, err := q.GetSubmission(ctx, request)
-			if err != nil || source.ExitAction != "report_parent" {
-				t.Fatalf("child exit = %q, %v", source.ExitAction, err)
-			}
 		})
 	}
 }

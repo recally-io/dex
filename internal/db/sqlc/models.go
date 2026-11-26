@@ -124,7 +124,6 @@ type ChannelCommand struct {
 	Completed      int64         `json:"completed"`
 	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
 	ChannelContext string        `json:"channel_context"`
-	RenderedReply  string        `json:"rendered_reply"`
 }
 
 type ChannelWebhookInbox struct {
@@ -151,23 +150,21 @@ type ConfiguredChannelAddress struct {
 }
 
 type Conversation struct {
-	ID             int64         `json:"id"`
-	AgentID        string        `json:"agent_id"`
-	ChannelKey     string        `json:"channel_key"`
-	ExecutionID    sql.NullInt64 `json:"execution_id"`
-	CreatedAt      int64         `json:"created_at"`
-	Title          string        `json:"title"`
-	ModelProvider  string        `json:"model_provider"`
-	ModelID        string        `json:"model_id"`
-	ThinkingLevel  string        `json:"thinking_level"`
-	AbortPending   int64         `json:"abort_pending"`
-	ArchivedAt     sql.NullInt64 `json:"archived_at"`
-	Cwd            string        `json:"cwd"`
-	ForkedFrom     sql.NullInt64 `json:"forked_from"`
-	ParentID       sql.NullInt64 `json:"parent_id"`
-	ExecutionScope string        `json:"execution_scope"`
-	ScopeContext   string        `json:"scope_context"`
-	RunnerID       string        `json:"runner_id"`
+	ID            int64         `json:"id"`
+	AgentID       string        `json:"agent_id"`
+	ChannelKey    string        `json:"channel_key"`
+	ExecutionID   sql.NullInt64 `json:"execution_id"`
+	CreatedAt     int64         `json:"created_at"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	AbortPending  int64         `json:"abort_pending"`
+	ArchivedAt    sql.NullInt64 `json:"archived_at"`
+	Cwd           string        `json:"cwd"`
+	ForkedFrom    sql.NullInt64 `json:"forked_from"`
+	ParentID      sql.NullInt64 `json:"parent_id"`
+	RunnerID      string        `json:"runner_id"`
 }
 
 type Dream struct {
@@ -352,33 +349,32 @@ type RunnerPairing struct {
 }
 
 type Submission struct {
-	ID                   string         `json:"id"`
-	ConversationID       int64          `json:"conversation_id"`
-	Content              string         `json:"content"`
-	Status               string         `json:"status"`
-	Answer               sql.NullString `json:"answer"`
-	Reason               sql.NullString `json:"reason"`
-	CreatedAt            int64          `json:"created_at"`
-	SettledAt            sql.NullInt64  `json:"settled_at"`
-	SourceKey            sql.NullString `json:"source_key"`
-	Attachments          string         `json:"attachments"`
-	DeliveredAt          sql.NullInt64  `json:"delivered_at"`
-	Origin               string         `json:"origin"`
-	AdmittedAt           sql.NullInt64  `json:"admitted_at"`
-	WhenBusy             string         `json:"when_busy"`
-	ParentRequestID      sql.NullString `json:"parent_request_id"`
-	ResultChildID        sql.NullInt64  `json:"result_child_id"`
-	NativeAnswerID       sql.NullInt64  `json:"native_answer_id"`
-	ChannelContext       string         `json:"channel_context"`
-	ChannelDeliveryError string         `json:"channel_delivery_error"`
-	ChannelRevoked       int64          `json:"channel_revoked"`
-	ExitAction           string         `json:"exit_action"`
-	RequiredReplyID      string         `json:"required_reply_id"`
-	StopRequested        int64          `json:"stop_requested"`
-	Producer             string         `json:"producer"`
-	ReplyChannel         string         `json:"reply_channel"`
-	ReplyPeer            string         `json:"reply_peer"`
-	Kind                 string         `json:"kind"`
+	ID              string         `json:"id"`
+	ConversationID  int64          `json:"conversation_id"`
+	Content         string         `json:"content"`
+	Status          string         `json:"status"`
+	Answer          sql.NullString `json:"answer"`
+	Reason          sql.NullString `json:"reason"`
+	CreatedAt       int64          `json:"created_at"`
+	SettledAt       sql.NullInt64  `json:"settled_at"`
+	SourceKey       sql.NullString `json:"source_key"`
+	Attachments     string         `json:"attachments"`
+	DeliveredAt     sql.NullInt64  `json:"delivered_at"`
+	Origin          string         `json:"origin"`
+	AdmittedAt      sql.NullInt64  `json:"admitted_at"`
+	WhenBusy        string         `json:"when_busy"`
+	ParentRequestID sql.NullString `json:"parent_request_id"`
+	ResultChildID   sql.NullInt64  `json:"result_child_id"`
+	NativeAnswerID  sql.NullInt64  `json:"native_answer_id"`
+	ChannelContext  string         `json:"channel_context"`
+	ChannelRevoked  int64          `json:"channel_revoked"`
+	RequiredReplyID string         `json:"required_reply_id"`
+	StopRequested   int64          `json:"stop_requested"`
+	Producer        string         `json:"producer"`
+	ReplyChannel    string         `json:"reply_channel"`
+	ReplyPeer       string         `json:"reply_peer"`
+	Kind            string         `json:"kind"`
+	ExitAction      string         `json:"exit_action"`
 }
 
 type SystemSetting struct {
@@ -441,7 +437,6 @@ type TaskExecution struct {
 	WorkspacePath     string        `json:"workspace_path"`
 	GitBranch         string        `json:"git_branch"`
 	ExternalSessionID string        `json:"external_session_id"`
-	State             string        `json:"state"`
 	LeaseEpoch        int64         `json:"lease_epoch"`
 	LeaseExpiresAt    sql.NullInt64 `json:"lease_expires_at"`
 	LastHeartbeatAt   sql.NullInt64 `json:"last_heartbeat_at"`
@@ -450,6 +445,7 @@ type TaskExecution struct {
 	DispatchID        string        `json:"dispatch_id"`
 	LeaseTtlMs        int64         `json:"lease_ttl_ms"`
 	RunnerEnrollment  string        `json:"runner_enrollment"`
+	State             string        `json:"state"`
 }
 
 type TaskExecutionToken struct {
@@ -553,12 +549,10 @@ type TelegramCallback struct {
 	ID              string        `json:"id"`
 	AgentID         string        `json:"agent_id"`
 	SourceID        string        `json:"source_id"`
-	Part            int64         `json:"part"`
 	Ordinal         int64         `json:"ordinal"`
 	Peer            string        `json:"peer"`
 	ChannelContext  string        `json:"channel_context"`
 	ConversationID  int64         `json:"conversation_id"`
-	ExecutionScope  string        `json:"execution_scope"`
 	ExecutionID     int64         `json:"execution_id"`
 	ContextRevision string        `json:"context_revision"`
 	Label           string        `json:"label"`

@@ -80,7 +80,7 @@ RETURNING *;
 INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-    WHERE conversations.execution_scope = ''
+    WHERE conversations.channel_key NOT LIKE 'retired-telegram:%'
 RETURNING *;
 
 -- name: EnsureEmptyChat :one
@@ -90,7 +90,7 @@ VALUES (
     @agent_id,
     coalesce((
         SELECT c.channel_key FROM conversations c
-        WHERE c.agent_id = @agent_id AND c.channel_key LIKE 'chat:%' AND c.execution_scope = '' AND c.archived_at IS NULL
+        WHERE c.agent_id = @agent_id AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
             AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
@@ -108,23 +108,26 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveChat :exec
--- Keeps the first archive time when the chat is archived already. A child session from before
--- child sessions has a task: key, and it archives too.
+-- Keep the first archive time. The owner can archive Chats and child sessions.
 UPDATE conversations SET archived_at = coalesce(archived_at, @archived_at)
-WHERE id = @id AND agent_id = @agent_id AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND agent_id = @agent_id AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: UnarchiveChat :exec
 UPDATE conversations SET archived_at = NULL
-WHERE id = @id AND agent_id = @agent_id AND execution_scope = '' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND agent_id = @agent_id AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: SetFirstChatTitle :exec
 UPDATE conversations SET title = ? WHERE id = ? AND title = '';
 
 -- name: GetConversation :one
-SELECT * FROM conversations WHERE id = ? AND execution_scope = '';
+SELECT * FROM conversations WHERE id = ? AND channel_key NOT LIKE 'retired-telegram:%';
+
+-- name: GetConversationForStop :one
+-- Startup also stops retired sessions that still have a native execution.
+SELECT * FROM conversations WHERE id = ?;
 
 -- name: GetConversationByKey :one
-SELECT * FROM conversations WHERE agent_id = ? AND channel_key = ? AND execution_scope = '';
+SELECT * FROM conversations WHERE agent_id = ? AND channel_key = ? AND channel_key NOT LIKE 'retired-telegram:%';
 
 -- name: SetConversationSettings :exec
 UPDATE conversations SET model_provider = ?, model_id = ?, thinking_level = ?
@@ -198,7 +201,7 @@ SELECT
     c.channel_key
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(@conversation_id AS INTEGER) = 0 OR s.conversation_id = @conversation_id)
+WHERE s.status = 'pending' AND c.channel_key NOT LIKE 'retired-telegram:%' AND (CAST(@conversation_id AS INTEGER) = 0 OR s.conversation_id = @conversation_id)
 ORDER BY (s.kind = 'task_wake'), s.rowid;
 
 -- name: ListChats :many
@@ -230,9 +233,9 @@ JOIN agents a ON a.id = c.agent_id
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
 LEFT JOIN submissions s ON s.conversation_id = c.id
-WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id) AND c.execution_scope = ''
-    AND (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
-    AND (c.channel_key NOT LIKE 'chat:%' OR c.forked_from IS NOT NULL OR EXISTS (
+WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id) AND c.channel_key NOT LIKE 'retired-telegram:%'
+    AND (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
+    AND (c.channel_key NOT LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
     ))
 GROUP BY c.id
@@ -268,7 +271,7 @@ LEFT JOIN submissions s ON s.conversation_id = c.id
 LEFT JOIN conversations f ON f.id = c.forked_from
 LEFT JOIN conversations p ON p.id = c.parent_id
 LEFT JOIN agents pa ON pa.id = p.agent_id
-WHERE c.id = ? AND c.agent_id = ? AND c.execution_scope = '' AND c.channel_key NOT LIKE 'dream:%'
+WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 
 -- name: ListProviders :many
@@ -354,7 +357,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE
     c.agent_id = @agent_id
     AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
-    AND c.execution_scope = ''
+    AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.kind = 'message'
     AND s.status != 'pending'
     AND (s.settled_at > @after_settled_at OR (s.settled_at = @after_settled_at AND s.id > @after_id))
@@ -431,7 +434,7 @@ WHERE
         OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');
 
 -- name: ListAutomationTargetCandidates :many
-SELECT * FROM conversations WHERE agent_id = ? AND execution_scope = '' ORDER BY created_at DESC, id DESC;
+SELECT * FROM conversations WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' ORDER BY created_at DESC, id DESC;
 
 -- name: CountBoundAutomationPending :one
 SELECT count(*) FROM automation_runs r
@@ -463,7 +466,7 @@ UPDATE conversations SET abort_pending = 0 WHERE id = ?;
 
 -- name: ListPendingExecutionAborts :many
 SELECT c.id, c.agent_id, c.execution_id FROM conversations c
-WHERE c.abort_pending = 1 AND c.execution_scope = '';
+WHERE c.abort_pending = 1;
 
 -- name: SetConversationCwd :exec
 UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?;

@@ -158,7 +158,6 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	if cut {
 		bodyText += fmt.Sprintf("\n[The report is cut. Read the child session with session_read: id %d.]", conv.ID)
 	}
-	final := boolPtrOrTrue(a.Final)
 	if !conv.ParentID.Valid {
 		return "", errors.New("only child sessions can report to a parent")
 	}
@@ -180,8 +179,7 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	if err != nil {
 		return "", err
 	}
-	// A replay uses the original tool task key. The insert ignores that same ID,
-	// and the exit action commits in the same transaction as the report.
+	// A replay uses the original tool task key. The insert ignores that same ID.
 	resultID := "report:" + r.Key
 	now := s.now().UnixMilli()
 	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
@@ -195,14 +193,6 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 		CreatedAt:      now,
 	}); err != nil {
 		return "", err
-	}
-	if final {
-		// The exit_action CHECK constraint uses the original storage value.
-		for _, id := range r.RunInputIDs {
-			if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: id, ExitAction: "report_parent"}); err != nil {
-				return "", err
-			}
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return "", err
