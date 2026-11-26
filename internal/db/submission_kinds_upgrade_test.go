@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserKeepsSubmissionHistoryWhenSystemInputsSplit(t *testing.T) {
+	t.Parallel()
 	const previous = 20261126063445
 	const split = 20261126071600
 	ctx := t.Context()

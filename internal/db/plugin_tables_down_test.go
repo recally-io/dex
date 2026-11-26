@@ -10,6 +10,7 @@ import (
 )
 
 func TestOwnerRollsBackPluginTablesOnlyBeforeAPluginMigrates(t *testing.T) {
+	t.Parallel()
 	// Given a database at the core migration that adds enabled_plugins and applied_plugin_migrations.
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	raw, err := sql.Open("sqlite", "file:"+path)

@@ -55,6 +55,7 @@ func readRows(t *testing.T, conn *sql.DB, query string, each func(scan func(...a
 }
 
 func TestUserUpgradesTaskConversationsToChildSessions(t *testing.T) {
+	t.Parallel()
 	// Given a database with the task schema: a parent chat, a finished task with its result, and a
 	// message that the user wrote to the task conversation after it ended.
 	path := filepath.Join(t.TempDir(), "control.sqlite")

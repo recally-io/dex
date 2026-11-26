@@ -19,6 +19,7 @@ import (
 )
 
 func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
+	t.Parallel()
 	for _, version := range []string{"20261015113034", "20261015120000"} {
 		t.Run(version, func(t *testing.T) {
 			// Given a main database before Telegram pairing, with saved channel data.

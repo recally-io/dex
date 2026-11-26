@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserSourceReceiptBelongsToItsBotBeforeAdmission(t *testing.T) {
+	t.Parallel()
 	// Given a bot whose native admission is held for maintenance.
 	r := startNative(t, "echo")
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {

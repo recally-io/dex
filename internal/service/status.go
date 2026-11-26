@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/recally-io/dex/internal/settings"
@@ -159,8 +160,22 @@ func (m Manager) Status(ctx context.Context) (Status, error) {
 func BinaryVersion(ctx context.Context, path string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	//nolint:gosec // G204: execute the user's installed dex, without a shell.
-	b, err := exec.CommandContext(ctx, path, "version").Output()
+	var (
+		b   []byte
+		err error
+	)
+	for attempt := range 5 {
+		//nolint:gosec // G204: execute the user's installed dex, without a shell.
+		b, err = exec.CommandContext(ctx, path, "version").Output()
+		if !errors.Is(err, syscall.ETXTBSY) || attempt == 4 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
 	if err != nil {
 		return "", err
 	}

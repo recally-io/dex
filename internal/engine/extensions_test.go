@@ -32,6 +32,7 @@ func extensionFile(t *testing.T, path, text string) {
 	}
 }
 func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
+	t.Parallel()
 	// Given skills at dex and bot levels.
 	a, _, data := extensionFixture(t)
 	bot := filepath.Join(data, "agents", "a")
@@ -63,6 +64,7 @@ func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
 	}
 }
 func TestUserProjectSkillsFollowTheConversationCwd(t *testing.T) {
+	t.Parallel()
 	// Given a project skill in the bot workspace and another in a repository
 	a, _, data := extensionFixture(t)
 	repo := t.TempDir()
@@ -89,6 +91,7 @@ func TestUserProjectSkillsFollowTheConversationCwd(t *testing.T) {
 	}
 }
 func TestUserMCPConnectsCallsAndRedactsConfiguration(t *testing.T) {
+	t.Parallel()
 	a, _, data := extensionFixture(t)
 	dir := t.TempDir()
 	server := httptest.NewServer(&mcptest.Server{Dir: dir, Twice: true})
@@ -161,6 +164,7 @@ func TestUserStdioMCPGetsOnlyExplicitEnvironment(t *testing.T) {
 }
 
 func TestUserDisabledMCPOverrideSurvivesInvalidWrite(t *testing.T) {
+	t.Parallel()
 	a, home, data := extensionFixture(t)
 	a.mcp = testMCPStore(t, data)
 	testSetMCP(t, a.mcp, "", "notes", serverConfig{Command: "not-started"})
@@ -184,6 +188,7 @@ func TestUserDisabledMCPOverrideSurvivesInvalidWrite(t *testing.T) {
 	}
 }
 func TestUserSkillMetadataMustBeText(t *testing.T) {
+	t.Parallel()
 	for _, front := range []string{"description: true", "description: 42", "name: 42\ndescription: valid", "description: valid\n---invalid"} {
 		t.Run(front, func(t *testing.T) {
 			a, _, data := extensionFixture(t)

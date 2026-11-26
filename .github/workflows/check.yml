@@ -18,8 +18,9 @@ concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# The jobs run every step of `mise run check`. App tests run in one job without the race detector,
-# session race tests use separate partitions, and the Go job runs lint, builds, and all other packages. Keep coverage equal to mise.toml.
+# The jobs run every step of `mise run check`. App tests run without the race detector,
+# engine and session race tests use separate jobs, and the Go job runs lint, builds, internal/db,
+# and all other packages. Keep coverage equal to mise.toml.
 jobs:
   lint:
     name: Lint and drift
@@ -55,7 +56,7 @@ jobs:
   go:
     name: Go lint and tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jdx/mise-action@v5.3.0
@@ -129,15 +130,11 @@ jobs:
           include-hidden-files: true
           retention-days: 7
 
-  # A package-wide timeout must not cut off later session tests during native/SQLite-heavy runs.
-  session:
-    name: Session race tests (${{ matrix.shard }})
+  # Engine and session race tests do not embed the web UI, so they only download Go modules.
+  engine:
+    name: Engine race tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: jdx/mise-action@v5.3.0
@@ -155,7 +152,43 @@ jobs:
           restore-keys: |
             go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-test-${{ runner.os }}-
-      - run: mise run install
+      - run: go mod download
+      - run: mise run check:go-shard ./internal/engine 0 1
+      - if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: engine-tests
+          path: .local/ci/
+          include-hidden-files: true
+          retention-days: 7
+
+  # A package-wide timeout must not cut off later session tests during native/SQLite-heavy runs.
+  session:
+    name: Session race tests (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.3.0
+        with:
+          install: true
+          cache: true
+      # The same paths as the Go job, as in the app job.
+      - uses: actions/cache/restore@v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+            ~/go/pkg/mod
+          key: go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-test-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-test-${{ runner.os }}-
+      - run: go mod download
       - run: mise run check:go-shard ./internal/session ${{ strategy.job-index }} ${{ strategy.job-total }}
       - if: always()
         uses: actions/upload-artifact@v7.0.2

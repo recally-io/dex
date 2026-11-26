@@ -12,6 +12,7 @@ import (
 )
 
 func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	main, err := r.service.Main(t.Context(), "bot")
 	if err != nil {
@@ -61,6 +62,7 @@ func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
 }
 
 func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	main, err := r.service.Main(t.Context(), "bot")
 	if err != nil {
@@ -124,6 +126,7 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 }
 
 func TestUserTopLevelLostAdmissionReceiptReconcilesWithoutDuplicateOutbox(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	sessionID, err := r.service.Post(t.Context(), "bot", MainKey, "", "u-lost-admit", "ping")
 	if err != nil {

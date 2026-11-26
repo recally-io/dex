@@ -37,6 +37,7 @@ func submitInstructions(t *testing.T, home, data, cwd, own string) (string, Exte
 }
 
 func TestUserAgentsMDMissingFileChangesNothing(t *testing.T) {
+	t.Parallel()
 	home, data, _ := mdEngineFixture(t)
 	if got, _ := submitInstructions(t, home, data, "", "own"); got != "<instructions>\nown\n</instructions>" {
 		t.Fatalf("instructions: %q", got)
@@ -47,6 +48,7 @@ func TestUserAgentsMDMissingFileChangesNothing(t *testing.T) {
 }
 
 func TestUserAgentsMDPlainFile(t *testing.T) {
+	t.Parallel()
 	home, data, project := mdEngineFixture(t)
 	extensionFile(t, filepath.Join(project, "AGENTS.md"), "plain rules\n")
 	got, info := submitInstructions(t, home, data, project, "")
@@ -56,6 +58,7 @@ func TestUserAgentsMDPlainFile(t *testing.T) {
 }
 
 func TestUserAgentsMDSymlinkResolvesImportsFromTheRealFile(t *testing.T) {
+	t.Parallel()
 	home, data, project := mdEngineFixture(t)
 	realDir := filepath.Join(project, "config")
 	extensionFile(t, filepath.Join(realDir, "AGENTS.md"), "main\n@rules/style.md\n")
@@ -79,6 +82,7 @@ func TestUserAgentsMDSymlinkResolvesImportsFromTheRealFile(t *testing.T) {
 }
 
 func TestUserAgentsMDHomeAndAbsoluteImports(t *testing.T) {
+	t.Parallel()
 	_, data, project := mdEngineFixture(t)
 	home := project
 	extensionFile(t, filepath.Join(home, "notes", "me.md"), "FROM-HOME\n")
@@ -92,6 +96,7 @@ func TestUserAgentsMDHomeAndAbsoluteImports(t *testing.T) {
 }
 
 func TestUserAgentsMDIgnoresTokensInCodeAndMidWord(t *testing.T) {
+	t.Parallel()
 	home, data, project := mdEngineFixture(t)
 	extensionFile(t, filepath.Join(project, "secret.md"), "SECRET\n")
 	extensionFile(t, filepath.Join(project, "AGENTS.md"), "```\n@secret.md\n```\n~~~sh\n@secret.md\n~~~\nuse `@secret.md` or ``@secret.md`` or mail a@secret.md\n")
@@ -107,6 +112,7 @@ func TestUserAgentsMDIgnoresTokensInCodeAndMidWord(t *testing.T) {
 }
 
 func TestUserAgentsMDMissingFileWarnsOnlyForFileLikeTokens(t *testing.T) {
+	t.Parallel()
 	home, data, _ := mdEngineFixture(t)
 	ws := filepath.Join(data, "agents", "a", "workspace")
 	extensionFile(t, filepath.Join(ws, "AGENTS.md"), "@name and @docs/gone.txt and @gone.md and @plain\n")
@@ -120,6 +126,7 @@ func TestUserAgentsMDMissingFileWarnsOnlyForFileLikeTokens(t *testing.T) {
 }
 
 func TestUserAgentsMDCycleReadsEachFileOnce(t *testing.T) {
+	t.Parallel()
 	home, data, _ := mdEngineFixture(t)
 	ws := filepath.Join(data, "agents", "a", "workspace")
 	extensionFile(t, filepath.Join(ws, "AGENTS.md"), "root\n@a.md\n")
@@ -132,6 +139,7 @@ func TestUserAgentsMDCycleReadsEachFileOnce(t *testing.T) {
 }
 
 func TestUserAgentsMDDepthLimit(t *testing.T) {
+	t.Parallel()
 	home, data, _ := mdEngineFixture(t)
 	// AGENTS.md is depth 0; f1 to f5 load; f6 is deeper than the limit.
 	ws := filepath.Join(data, "agents", "a", "workspace")
@@ -149,6 +157,7 @@ func TestUserAgentsMDDepthLimit(t *testing.T) {
 }
 
 func TestUserProjectAgentsMDImportsStayInsideTheProject(t *testing.T) {
+	t.Parallel()
 	home, data, project := mdEngineFixture(t)
 	outside := t.TempDir()
 	extensionFile(t, filepath.Join(outside, "out.md"), "OUTSIDE\n")
@@ -184,6 +193,7 @@ func TestUserProjectAgentsMDImportsStayInsideTheProject(t *testing.T) {
 }
 
 func TestUserAgentsMDSourcesAndOrder(t *testing.T) {
+	t.Parallel()
 	home, data, project := mdEngineFixture(t)
 	extensionFile(t, filepath.Join(home, ".agents", "AGENTS.md"), "R-HOME\n")
 	extensionFile(t, filepath.Join(project, "AGENTS.md"), "R-PROJECT\n")

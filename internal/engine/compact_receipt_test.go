@@ -7,6 +7,7 @@ import (
 )
 
 func TestUserNativeCompactReceiptRunsAndReplaysOnce(t *testing.T) {
+	t.Parallel()
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	a := coreEngine(t, config)
 	ref := coreCreate(t, a, "alpha", coreOptions("echo"))

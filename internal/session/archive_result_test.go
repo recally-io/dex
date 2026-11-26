@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserArchivedBotRejectsClear(t *testing.T) {
+	t.Parallel()
 	r, sessionID, _ := archiveFixture(t)
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE submissions SET status='done'"); err != nil {
 		t.Fatal(err)
@@ -22,6 +23,7 @@ func TestUserArchivedBotRejectsClear(t *testing.T) {
 }
 
 func TestUserArchivedParentReceivesNoChildResult(t *testing.T) {
+	t.Parallel()
 	r, _, source := archiveFixture(t)
 	ref, err := r.service.ToolSessionNew(t.Context(), source, NewArgs{Title: "Child", Message: "work"})
 	if err != nil {

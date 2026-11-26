@@ -17,6 +17,7 @@ import (
 )
 
 func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
+	t.Parallel()
 	// Given two independent subscribers to one real SQLite execution.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
@@ -150,6 +151,7 @@ func appendEntry(tx durable.Tx, conversation harness.Conversation, kind string, 
 }
 
 func TestUserWatchShowsRecentTurnsAndPagesTheRest(t *testing.T) {
+	t.Parallel()
 	// Given 25 turns, and a last turn with 60 tool calls that fold into one row.
 	ctx := t.Context()
 	bots, ref, conversation := transcriptBots(t)
@@ -224,6 +226,7 @@ func TestUserWatchShowsRecentTurnsAndPagesTheRest(t *testing.T) {
 }
 
 func TestUserWatchCapsALongTurn(t *testing.T) {
+	t.Parallel()
 	// Given one input that ran 200 tool calls, as a child session can.
 	ctx := t.Context()
 	bots, ref, conversation := transcriptBots(t)
@@ -274,6 +277,7 @@ func TestUserWatchCapsALongTurn(t *testing.T) {
 }
 
 func TestUserOpensLongToolOutputAndThought(t *testing.T) {
+	t.Parallel()
 	// Given a turn with a long thought and long outputs of a done call, a failed call and a session call.
 	ctx := t.Context()
 	bots, ref, conversation := transcriptBots(t)
@@ -383,6 +387,7 @@ func TestUserOpensLongToolOutputAndThought(t *testing.T) {
 }
 
 func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
+	t.Parallel()
 	for _, withdrawn := range []int{20, 320} {
 		t.Run(fmt.Sprintf("withdrawn-%d", withdrawn), func(t *testing.T) {
 			// Given finished turns and a tool result after withdrawn queued inputs.

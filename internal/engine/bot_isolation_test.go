@@ -58,13 +58,14 @@ func lifecycleResult(t *testing.T, result <-chan error, label string) error {
 	select {
 	case err := <-result:
 		return err
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatalf("%s did not complete while alpha MCP was held", label)
 		return nil
 	}
 }
 
 func TestUserHeldBotMCPDoesNotBlockOtherBot(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"cold_open", "reload"} {
 		t.Run(mode, func(t *testing.T) {
 			// Given a warm beta and alpha held at a real MCP initialization request.
@@ -135,6 +136,7 @@ func TestUserHeldBotMCPDoesNotBlockOtherBot(t *testing.T) {
 }
 
 func TestUserLateStopDuringBotOpenIsolatesBeforeResume(t *testing.T) {
+	t.Parallel()
 	// Given stored running and queued work whose next tool start is observable.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	first := coreEngine(t, config)
@@ -202,6 +204,7 @@ func TestUserLateStopDuringBotOpenIsolatesBeforeResume(t *testing.T) {
 }
 
 func TestUserCancelledSubmissionFollowerStopsWaitingForSameRef(t *testing.T) {
+	t.Parallel()
 	// Given one saved conversation and a first submission held during bot opening.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	first := coreEngine(t, config)
@@ -246,6 +249,7 @@ func TestUserCancelledSubmissionFollowerStopsWaitingForSameRef(t *testing.T) {
 }
 
 func TestUserCancelledBotOpenFollowerStopsWaiting(t *testing.T) {
+	t.Parallel()
 	// Given alpha is opening exactly one real MCP connection.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	entered, release, starts := heldBotMCP(t, &config)
@@ -277,6 +281,7 @@ func TestUserCancelledBotOpenFollowerStopsWaiting(t *testing.T) {
 }
 
 func TestUserCloseCancelsHeldBotOpenAndReload(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"cold_open", "reload"} {
 		t.Run(mode, func(t *testing.T) {
 			// Given alpha is held during a real MCP connection.

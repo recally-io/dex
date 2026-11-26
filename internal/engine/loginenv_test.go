@@ -12,6 +12,7 @@ import (
 )
 
 func TestUserSeesAWarningWhenTheLoginShellFails(t *testing.T) {
+	t.Parallel()
 	// Given a capture that fails.
 	home, data := t.TempDir(), t.TempDir()
 	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin:/bin"}, func(context.Context, map[string]string) (map[string]string, error) {
@@ -34,6 +35,7 @@ func TestUserSeesAWarningWhenTheLoginShellFails(t *testing.T) {
 }
 
 func TestUserLoginShellIsCapturedAgainAfterAnRcEdit(t *testing.T) {
+	t.Parallel()
 	// Given a loaded bot with a captured environment.
 	home, data := t.TempDir(), t.TempDir()
 	value := "first"
@@ -64,6 +66,7 @@ func TestUserLoginShellIsCapturedAgainAfterAnRcEdit(t *testing.T) {
 }
 
 func TestUserBotUsesOnePasswordThroughTheCLI(t *testing.T) {
+	t.Parallel()
 	// Given an op executable in PATH, and shell credentials of the other mode.
 	home, data, bin := t.TempDir(), t.TempDir(), t.TempDir()
 	extensionFile(t, filepath.Join(bin, "op"), "#!/bin/sh\n")
@@ -108,6 +111,7 @@ func TestUserBotUsesOnePasswordThroughTheCLI(t *testing.T) {
 }
 
 func TestUserBrokenShellIsNotRetriedOnEveryOpen(t *testing.T) {
+	t.Parallel()
 	// Given a login shell that fails.
 	home := t.TempDir()
 	calls := 0
@@ -130,6 +134,7 @@ func TestUserBrokenShellIsNotRetriedOnEveryOpen(t *testing.T) {
 }
 
 func TestUserFailedRecaptureKeepsTheLastEnvironment(t *testing.T) {
+	t.Parallel()
 	// Given tools that have the captured login shell PATH.
 	home := t.TempDir()
 	var fail error

@@ -12,6 +12,7 @@ import (
 func executionRef(c Session) engine.Ref { return engine.Ref{BotID: "bot", ID: c.ExecutionID} }
 
 func TestUserStopWithdrawsQueuedInputAndClearRefusesBusy(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "bash")
 	marker := filepath.Join(r.dir, "started")
 	id, err := r.service.Post(t.Context(), "bot", MainKey, "", "first", "touch "+marker+"; sleep 60")

@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserMainStopIntentRecoversWithoutNewInput(t *testing.T) {
+	t.Parallel()
 	// Given Main is running, all its pending inputs already have native waiters.
 	r := startNative(t, "bash")
 	marker := filepath.Join(r.dir, "started")
@@ -46,6 +47,7 @@ func TestUserMainStopIntentRecoversWithoutNewInput(t *testing.T) {
 }
 
 func TestUserStaleMainStopIntentDoesNotBlockFollowingInput(t *testing.T) {
+	t.Parallel()
 	// Given Main has a persisted Stop intent whose target can no longer match its execution.
 	r := startNative(t, "echo")
 	id, err := r.service.Post(t.Context(), "bot", MainKey, "", "first", "hello")

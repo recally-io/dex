@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserMemoryGitIgnoresBotRepositoryCommands(t *testing.T) {
+	t.Parallel()
 	for _, command := range []string{"hook", "fsmonitor"} {
 		t.Run(command, func(t *testing.T) {
 			// Given a memory repository with a bot-controlled Git command.

@@ -14,6 +14,7 @@ import (
 )
 
 func TestUserBashTimeoutEndsItsProcess(t *testing.T) {
+	t.Parallel()
 	// Given a real shell with a child process that would write after the timeout.
 	for _, tc := range []struct {
 		name, timeout string

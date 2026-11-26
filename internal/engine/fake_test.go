@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserFauxTaskResultKeepsStableMetadata(t *testing.T) {
+	t.Parallel()
 	// Given a task result with the native follow-up metadata.
 	bots := coreEngine(t, Config{})
 	ref := coreCreate(t, bots, "alpha", coreOptions("spawn"))
@@ -24,6 +25,7 @@ func TestUserFauxTaskResultKeepsStableMetadata(t *testing.T) {
 }
 
 func TestUserFauxAnswersConcurrentRequests(t *testing.T) {
+	t.Parallel()
 	// Given a first request paused before the faux response factory runs.
 	provider := fakeProvider("")
 	models, err := provider.GetModels()

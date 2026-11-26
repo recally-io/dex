@@ -55,6 +55,7 @@ type gatedHandle struct{ runner.Handle }
 func (gatedHandle) Stamp() string { return gatedRunner }
 
 func TestUserRejectModeInputWaitsForEnvironmentReset(t *testing.T) {
+	t.Parallel()
 	// Given an idle Session with an existing execution and an environment reset in progress.
 	r := startNative(t, "echo")
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -108,6 +109,7 @@ func TestUserRejectModeInputWaitsForEnvironmentReset(t *testing.T) {
 }
 
 func TestUserColdBotAdmitsLocalSessionWhileDefaultOpenWaits(t *testing.T) {
+	t.Parallel()
 	// Given a cold Bot with a default environment that stalls on its first open.
 	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{})}
 	r := startNative(t, "echo", func(p runner.Provider) runner.Provider { gate.Provider = p; return gate })
@@ -159,6 +161,7 @@ func TestUserColdBotAdmitsLocalSessionWhileDefaultOpenWaits(t *testing.T) {
 }
 
 func TestUserSameBotSessionsAdmitWhileChildWaitsForEnvironment(t *testing.T) {
+	t.Parallel()
 	// Given a warm bot and a child whose first admission waits on its environment.
 	gate := &gatedOpen{entered: make(chan struct{}), release: make(chan struct{}), id: gatedRunner}
 	r := startNative(t, "context", func(p runner.Provider) runner.Provider { gate.Provider = p; return gate })

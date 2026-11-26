@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserReceiptRecoveryKeepsNativeAnswerAfterModelChange(t *testing.T) {
+	t.Parallel()
 	for _, column := range []string{"admitted_at", "status"} {
 		for _, model := range []string{"", "shout"} {
 			t.Run(column+"/model="+model, func(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserAutomationNotificationUpgradeDefaultsOffAndIsAgentScoped(t *testing.T) {
+	t.Parallel()
 	// Given a routine created before notification routing existed.
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	old, err := sql.Open("sqlite", "file:"+path)
@@ -61,6 +62,7 @@ func TestUserAutomationNotificationUpgradeDefaultsOffAndIsAgentScoped(t *testing
 }
 
 func TestUserRevokingAChannelPermanentlyRejectsPendingNotifications(t *testing.T) {
+	t.Parallel()
 	// Given an authorized destination with a queued result.
 	conn, err := Open(t.Context(), filepath.Join(t.TempDir(), "control.sqlite"))
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 )
 
 func TestUserProviderEditRejectsOldCatalogAndLateDiscovery(t *testing.T) {
+	t.Parallel()
 	// Given a successful discovery whose SDK store contains models from the old URL.
 	staleEntered, newEntered := make(chan struct{}), make(chan struct{})
 	staleRelease, newRelease := make(chan struct{}), make(chan struct{})
@@ -84,6 +85,7 @@ func TestUserProviderEditRejectsOldCatalogAndLateDiscovery(t *testing.T) {
 }
 
 func TestUserUnrelatedSaveKeepsCatalogAndOpenBotUsable(t *testing.T) {
+	t.Parallel()
 	// Given a discovered provider and an already open native bot.
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })

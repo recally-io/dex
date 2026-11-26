@@ -58,6 +58,7 @@ func resultText(result ai.ToolResultMessage) string {
 }
 
 func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
+	t.Parallel()
 	// Given a Routine parent, which is not Main, with one delegated child, and a scripted model.
 	r := startNative(t, "echo")
 	provider := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "child-send-fixture", Models: []ai.FauxModelDefinition{{ID: "script"}}, TokensPerSecond: 10000})

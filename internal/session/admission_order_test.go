@@ -135,6 +135,7 @@ func runReconciler(t *testing.T, r *nativeTest) {
 }
 
 func TestUserInputIsDurablyAdmittedBeforeSendReturns(t *testing.T) {
+	t.Parallel()
 	// Given native execution and a real receipt database.
 	r := startNative(t, "echo")
 	// When the caller sends a message, native admission precedes the return.
@@ -153,6 +154,7 @@ func TestUserInputIsDurablyAdmittedBeforeSendReturns(t *testing.T) {
 }
 
 func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "context")
 	id, err := r.service.Post(t.Context(), "bot", MainKey, "", "before", "old input")
 	if err != nil {
@@ -180,6 +182,7 @@ func TestUserKeepsInputAdmittedAfterClear(t *testing.T) {
 }
 
 func TestUserRetryCompletesReceiptWithoutAdmission(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
@@ -216,6 +219,7 @@ func TestUserRetryCompletesReceiptWithoutAdmission(t *testing.T) {
 }
 
 func TestUserReceiptReconcilesAfterAdmissionMarkerWriteFails(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "bash")
 	// Fail the control write after native admission, using a real SQLite trigger.
 	_, err := r.conn.ExecContext(t.Context(), `CREATE TRIGGER fail_admission BEFORE UPDATE OF admitted_at ON submissions BEGIN SELECT RAISE(FAIL, 'admission write failed'); END`)
@@ -245,6 +249,7 @@ func TestUserReceiptReconcilesAfterAdmissionMarkerWriteFails(t *testing.T) {
 }
 
 func TestUserSettlementWriteFailureRetriesWithoutAnotherInput(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	_, err := r.conn.ExecContext(t.Context(), `CREATE TRIGGER fail_settlement BEFORE UPDATE OF status ON submissions BEGIN SELECT RAISE(FAIL, 'settlement write failed'); END`)
 	if err != nil {
@@ -268,6 +273,7 @@ func TestUserSettlementWriteFailureRetriesWithoutAnotherInput(t *testing.T) {
 }
 
 func TestUserDuplicateDeterministicRejectionReturnsSavedFailure(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "")
 	err := r.service.SubmitMessage(t.Context(), "bot", "telegram:7", "rejected", Message{Content: "no configured model"})
 	if !errors.Is(err, ErrRejected) {
@@ -289,6 +295,7 @@ func TestUserDuplicateDeterministicRejectionReturnsSavedFailure(t *testing.T) {
 }
 
 func TestUserCancellationFailureDoesNotBlockOtherSessions(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	// Given one conversation whose durable cancellation cannot be acknowledged.
 	id, err := r.service.Post(t.Context(), "bot", MainKey, "", "first", "first")
@@ -325,6 +332,7 @@ func TestUserCancellationFailureDoesNotBlockOtherSessions(t *testing.T) {
 }
 
 func TestUserClearAcceptsDurableResetAfterAdmissionWriteFailure(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "context")
 	id, err := r.service.Post(t.Context(), "bot", MainKey, "", "before", "old input")
 	if err != nil {
@@ -358,6 +366,7 @@ func TestUserClearAcceptsDurableResetAfterAdmissionWriteFailure(t *testing.T) {
 }
 
 func TestUserStoppingMissingExecutionCompletesCancellation(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	c, err := r.service.Main(t.Context(), "bot")
 	if err != nil {

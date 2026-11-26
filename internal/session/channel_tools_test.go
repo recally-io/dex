@@ -7,6 +7,7 @@ import (
 )
 
 func TestUserCanManageChannelsFromWebAndPairedPrivateSession(t *testing.T) {
+	t.Parallel()
 	// Given a live web input on Main.
 	r := startNative(t, "echo")
 	id, caller := taskParent(t, r)

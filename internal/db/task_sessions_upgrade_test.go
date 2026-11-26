@@ -11,6 +11,7 @@ import (
 )
 
 func TestUserKeepsPrimarySessionWhenBoardSupportsMultipleSessions(t *testing.T) {
+	t.Parallel()
 	// Given an existing Task that links a child of another Bot.
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	old, err := sql.Open("sqlite", "file:"+path)

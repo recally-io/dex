@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
+	t.Parallel()
 	const legacyMigration = "20261125125254_work_task_multi_sessions.sql"
 	const legacyVersion = 20261125125254
 	schema := migrationFS(t, func(name string) bool { return name <= "20261125171516_task_board_phase3.sql" })

@@ -15,6 +15,7 @@ import (
 )
 
 func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.service.engine.VaultEdit("bot", "agent", "MONITOR_FIXTURE", new("monitor-vault-fixture")); err != nil {
 		t.Fatal(err)
@@ -86,6 +87,7 @@ func TestUserMonitorScriptWakeOnlyOnChangeAndTerminal(t *testing.T) {
 }
 
 func TestUserMonitorStopsAtEitherLimitAndShowsCheckFailures(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	id, source := taskParent(t, r)
 	now := r.service.now()
@@ -127,6 +129,7 @@ func TestUserMonitorStopsAtEitherLimitAndShowsCheckFailures(t *testing.T) {
 }
 
 func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	id, source := taskParent(t, r)
 	now := r.service.now()
@@ -149,7 +152,7 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(2 * time.Second):
+		case <-time.After(10 * time.Second):
 			t.Error("monitor did not stop")
 		}
 	})
@@ -167,7 +170,7 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("bounded check did not finish after fixture release")
 	}
 	if _, err := r.q.GetSubmission(t.Context(), fmt.Sprintf("monitor:%s:1", strings.TrimPrefix(info.ID, "schedule-"))); !errors.Is(err, sql.ErrNoRows) {
@@ -176,6 +179,7 @@ func TestUserCancelsMonitorDuringSyntheticCheck(t *testing.T) {
 }
 
 func TestUserMonitorOfflineEnvironmentDoesNotRunLocally(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	id, source := taskParent(t, r)
 	now := r.service.now()
@@ -216,6 +220,7 @@ func listedMonitor(t *testing.T, r *nativeTest, id int64, monitor string) Monito
 }
 
 func TestUserMonitorQueuesWithoutSteeringAndWithdrawsOnCancel(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "bash")
 	id, source := taskParent(t, r)
 	now := r.service.now()
@@ -275,6 +280,7 @@ func TestUserMonitorQueuesWithoutSteeringAndWithdrawsOnCancel(t *testing.T) {
 }
 
 func TestUserMonitorDoesNotFollowAChangedProject(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	id, source := taskParent(t, r)
 	now := r.service.now()

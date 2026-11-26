@@ -521,6 +521,7 @@ func TestUserWebRunSteeredByTelegramRoutesReplyToTelegram(t *testing.T) {
 }
 
 func TestCrashBeforeControlSettleHelper(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("DEX_CRASH_HELPER") != "1" {
 		t.Skip("helper process only")
 	}

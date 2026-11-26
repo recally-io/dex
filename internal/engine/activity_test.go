@@ -15,6 +15,7 @@ import (
 )
 
 func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
+	t.Parallel()
 	// Given a background execution with a real faux bash tool and no transcript subscriber.
 	a := coreEngine(t, Config{})
 	ref := coreCreate(t, a, "alpha", coreOptions("bash"))

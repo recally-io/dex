@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserKeepsToolResultsAcrossNativeHistoryWindow(t *testing.T) {
+	t.Parallel()
 	// Given a call and its result separated by more entries than the native window holds.
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()

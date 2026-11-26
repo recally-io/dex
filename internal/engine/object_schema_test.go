@@ -16,6 +16,7 @@ import (
 )
 
 func TestObjectSchemaWithoutRequiredEncodesEmptyArray(t *testing.T) {
+	t.Parallel()
 	data, err := json.Marshal(engine.ObjectSchema(nil, map[string]any{}))
 	if err != nil {
 		t.Fatal(err)
@@ -27,6 +28,7 @@ func TestObjectSchemaWithoutRequiredEncodesEmptyArray(t *testing.T) {
 
 // Providers reject the whole request when one tool schema is invalid, so check every built-in tool.
 func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
+	t.Parallel()
 	link := tasktools.TaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
 	const id = "bot"
 	runtime := engine.ExtensionRuntime{BotID: id}
@@ -119,6 +121,7 @@ func checkSchemaNode(node any, path string) error {
 }
 
 func TestCheckToolSchemaRejectsInvalidSchemas(t *testing.T) {
+	t.Parallel()
 	for name, schema := range map[string]map[string]any{
 		"required null":    {"type": "object", "properties": map[string]any{}, "required": nil},
 		"unknown type":     {"type": "object", "properties": map[string]any{"a": map[string]any{"type": "strin"}}},

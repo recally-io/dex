@@ -16,6 +16,7 @@ import (
 )
 
 func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"open", "cold_stop", "startup_recovery"} {
 		for _, kind := range []string{"message", "session_result"} {
 			t.Run(mode+"/"+kind, func(t *testing.T) {
@@ -172,6 +173,7 @@ func assertWithdrawnInput(t *testing.T, items []Item, input Input) {
 }
 
 func TestUserReloadOpensUnopenedBotAndReportsMCPResults(t *testing.T) {
+	t.Parallel()
 	// Given an unopened bot with a real MCP server and an unavailable command.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	binary, err := os.Executable()
@@ -210,6 +212,7 @@ func TestUserReloadOpensUnopenedBotAndReportsMCPResults(t *testing.T) {
 }
 
 func TestUserConcurrentCloseAndReloadLeavesNoOpenResources(t *testing.T) {
+	t.Parallel()
 	// Given an idle engine; race shutdown against reload at the public boundary.
 	for range 20 {
 		bots := coreEngine(t, Config{})
@@ -244,6 +247,7 @@ func TestUserConcurrentCloseAndReloadLeavesNoOpenResources(t *testing.T) {
 }
 
 func TestUserCloseDuringReloadReportsClosed(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("DEX_CORE_SILENT_CHILD") == "1" {
 		// An MCP server that starts and never answers, so Reload stays in its open step.
 		if err := os.WriteFile(os.Getenv("MCP_STARTS"), []byte("start\n"), 0600); err != nil {

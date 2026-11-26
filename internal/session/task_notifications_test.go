@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	convID, _ := taskParent(t, r)

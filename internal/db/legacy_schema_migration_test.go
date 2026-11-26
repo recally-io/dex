@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserKeepsCurrentReceiptsAndHistoryDuringLegacySchemaCleanup(t *testing.T) {
+	t.Parallel()
 	// Given saved Session links, delivery data, callback receipts, and a Task execution token.
 	ctx := t.Context()
 	conn, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "control.sqlite")+"?_pragma=foreign_keys(1)")

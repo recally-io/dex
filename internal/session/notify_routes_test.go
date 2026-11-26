@@ -8,6 +8,7 @@ import (
 )
 
 func TestUserReceivesDistinctNotificationsFromTheSameRun(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	_, call := taskParent(t, r)

@@ -14,6 +14,7 @@ import (
 )
 
 func TestUserCanStopOpenConversationDuringMaintenance(t *testing.T) {
+	t.Parallel()
 	// Given an idle open conversation whose engine holds the maintenance gate.
 	bots := coreEngine(t, Config{})
 	ref := coreCreate(t, bots, "alpha", coreOptions("echo"))
@@ -41,6 +42,7 @@ func TestUserCanStopOpenConversationDuringMaintenance(t *testing.T) {
 }
 
 func TestRecoveryReferencesRemainUntilBotOpens(t *testing.T) {
+	t.Parallel()
 	bots := coreEngine(t, Config{})
 	refs := []Ref{{BotID: "alpha", ID: 1}, {BotID: "beta", ID: 2}}
 	if err := bots.Recover(t.Context(), refs); err != nil {
@@ -66,6 +68,7 @@ func TestRecoveryReferencesRemainUntilBotOpens(t *testing.T) {
 }
 
 func TestUserStopDuringMaintenanceDoesNotResumeUnopenedExecution(t *testing.T) {
+	t.Parallel()
 	// Given an unfinished tool whose next start would create another external action.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	first := coreEngine(t, config)
@@ -120,6 +123,7 @@ func TestUserStopDuringMaintenanceDoesNotResumeUnopenedExecution(t *testing.T) {
 }
 
 func TestUserReloadStartsOnlyOneReplacementMCP(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("DEX_CORE_RELOAD_CHILD") == "1" {
 		file, err := os.OpenFile(os.Getenv("MCP_STARTS"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 		if err != nil {

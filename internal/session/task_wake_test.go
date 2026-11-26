@@ -16,6 +16,7 @@ import (
 )
 
 func TestUserTaskWakeCoalescesWhileMainIsBusy(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "bash")
 	ctx := t.Context()
 	started, release := filepath.Join(r.dir, "hold.started"), filepath.Join(r.dir, "hold.release")
@@ -91,6 +92,7 @@ func TestUserTaskWakeCoalescesWhileMainIsBusy(t *testing.T) {
 }
 
 func TestUserTaskWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	tasks := tasksvc.New(r.conn, nil)
