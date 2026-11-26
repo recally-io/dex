@@ -25,8 +25,7 @@ package ownership. `internal/app` connects the services. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
 `internal/channel/delivery` owns commands, the durable webhook inbox, and
 reply delivery. Telegram accepts only private chats. The engine uses one
-native store per agent. Startup [seals legacy Telegram group data](channels.md#upgrade-from-group-support)
-without opening its native stores.
+native store per agent.
 Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
 acknowledging them and use the same platform receive functions. The engine does
 not import dex business packages. Each business package defines its model tools.

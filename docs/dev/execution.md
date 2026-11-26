@@ -232,10 +232,9 @@ same request ID for a retry with the same handoff. The menu greys out `/clear`
 and `/compact` when the last non-compaction item is a plain reset or is absent.
 
 `Agents.Compact` starts a native manual compaction. It also runs during a run;
-the summary then waits in the inbox for the run's next boundary. Native abort
-keeps queued writes for a later run, so legacy `Agents.Abort` withdraws queued
-summaries. Web Main Stop uses task abort instead. It keeps the Inbox and takes
-its next boundary if input waits.
+the summary then waits in the Inbox for the run's next boundary. A conversation
+abort withdraws queued summaries. Main Stop aborts only the targeted run. It
+keeps the Inbox and takes the next boundary if input waits.
 The view shows a `pending` compaction boundary for each live compaction and a
 `queued` one for each summary in the inbox. A goroutine waits for the task, and
 then for the queued summary. When no summary is placed, it writes a

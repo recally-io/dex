@@ -462,15 +462,8 @@ UPDATE conversations SET abort_pending = 1 WHERE id = ?;
 UPDATE conversations SET abort_pending = 0 WHERE id = ?;
 
 -- name: ListPendingExecutionAborts :many
--- Retired peer-keyed groups used the agent store. Isolate them before it resumes.
--- Do not pass IDs from the separate group stores to the agent Harness.
 SELECT c.id, c.agent_id, c.execution_id FROM conversations c
-WHERE (c.abort_pending = 1 AND c.execution_scope = '')
-    OR (c.execution_scope = 'retired-telegram-legacy' AND c.execution_id IS NOT NULL
-        AND NOT EXISTS (
-            SELECT 1 FROM conversations active WHERE active.agent_id = c.agent_id
-                AND active.execution_scope = '' AND active.execution_id = c.execution_id
-        ));
+WHERE c.abort_pending = 1 AND c.execution_scope = '';
 
 -- name: SetConversationCwd :exec
 UPDATE conversations SET cwd = ? WHERE id = ? AND agent_id = ?;

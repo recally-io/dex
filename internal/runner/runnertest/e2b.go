@@ -48,6 +48,7 @@ type FakeE2BServer struct {
 	counts             FakeE2BCounts
 	lastAutoPause      bool
 	lastAutoResume     bool
+	lastRunnerID       string
 	connectUnsupported bool
 	sandboxes          map[string]*fakeSandbox
 	procs              map[uint32]*exec.Cmd
@@ -65,7 +66,8 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 	apiMux := http.NewServeMux()
 	apiMux.HandleFunc("POST /v2/sandboxes", s.withAPIKey(func(w http.ResponseWriter, r *http.Request) {
 		var createReq struct {
-			AutoPause  bool `json:"autoPause"`
+			AutoPause  bool              `json:"autoPause"`
+			Metadata   map[string]string `json:"metadata"`
 			AutoResume *struct {
 				Enabled bool `json:"enabled"`
 			} `json:"autoResume"`
@@ -83,6 +85,7 @@ func NewFakeE2B(t *testing.T, apiKey string) *FakeE2BServer {
 		s.sandboxes[id] = &fakeSandbox{id: id, token: tok, root: root}
 		s.counts.Created++
 		s.lastAutoPause = createReq.AutoPause
+		s.lastRunnerID = createReq.Metadata["dex_runner_id"]
 		s.lastAutoResume = createReq.AutoResume != nil && createReq.AutoResume.Enabled
 		s.mu.Unlock()
 		writeTestJSON(w, http.StatusCreated, map[string]any{"sandboxID": id, "envdAccessToken": tok})
@@ -212,6 +215,12 @@ func (s *FakeE2BServer) LastCreateAutoPause() (autoPause, autoResume bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastAutoPause, s.lastAutoResume
+}
+
+func (s *FakeE2BServer) LastCreateRunnerID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastRunnerID
 }
 
 func (s *FakeE2BServer) Counts() FakeE2BCounts {

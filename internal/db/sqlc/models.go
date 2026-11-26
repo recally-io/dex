@@ -379,7 +379,6 @@ type Submission struct {
 	SourceKey            sql.NullString `json:"source_key"`
 	Attachments          string         `json:"attachments"`
 	DeliveredAt          sql.NullInt64  `json:"delivered_at"`
-	DeliveredParts       int64          `json:"delivered_parts"`
 	Origin               string         `json:"origin"`
 	AdmittedAt           sql.NullInt64  `json:"admitted_at"`
 	WhenBusy             string         `json:"when_busy"`
@@ -387,13 +386,8 @@ type Submission struct {
 	ResultChildID        sql.NullInt64  `json:"result_child_id"`
 	NativeAnswerID       sql.NullInt64  `json:"native_answer_id"`
 	ChannelContext       string         `json:"channel_context"`
-	RenderedReply        string         `json:"rendered_reply"`
-	ChannelRetryAt       int64          `json:"channel_retry_at"`
 	ChannelDeliveryError string         `json:"channel_delivery_error"`
-	ChannelRemoteIds     string         `json:"channel_remote_ids"`
 	ChannelRevoked       int64          `json:"channel_revoked"`
-	ChannelGroupFallback int64          `json:"channel_group_fallback"`
-	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
 	ExitAction           string         `json:"exit_action"`
 	RequiredReplyID      string         `json:"required_reply_id"`
 	StopRequested        int64          `json:"stop_requested"`

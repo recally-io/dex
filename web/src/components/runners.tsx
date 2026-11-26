@@ -170,7 +170,7 @@ function runnerSyncHint(
 
   if (!runner.version) {
     return {
-      label: "Legacy runner (update manually once to enable auto-sync)",
+      label: "Version unavailable",
       warn: true,
     };
   }

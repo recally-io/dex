@@ -303,84 +303,6 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 	return items, nil
 }
 
-const listChannelReplies = `-- name: ListChannelReplies :many
-SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts,
-       s.rendered_reply, s.channel_context, s.channel_remote_ids, s.channel_revoked, s.channel_retry_at,
-       s.channel_group_fallback, s.channel_group_cursor
-FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status != 'pending' AND s.delivered_at IS NULL
-AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
-AND c.agent_id = ?1 AND s.origin >= ?2 AND s.origin < ?3
-AND NOT EXISTS (
-    SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
-    WHERE p.status = 'pending' AND p.origin = s.origin AND p.rowid < s.rowid
-    AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0 AND pc.agent_id = c.agent_id
-)
-ORDER BY s.rowid
-`
-
-type ListChannelRepliesParams struct {
-	AgentID     string `json:"agent_id"`
-	OriginStart string `json:"origin_start"`
-	OriginEnd   string `json:"origin_end"`
-}
-
-type ListChannelRepliesRow struct {
-	ID                   string         `json:"id"`
-	Origin               string         `json:"origin"`
-	Status               string         `json:"status"`
-	Answer               sql.NullString `json:"answer"`
-	Reason               sql.NullString `json:"reason"`
-	DeliveredParts       int64          `json:"delivered_parts"`
-	RenderedReply        string         `json:"rendered_reply"`
-	ChannelContext       string         `json:"channel_context"`
-	ChannelRemoteIds     string         `json:"channel_remote_ids"`
-	ChannelRevoked       int64          `json:"channel_revoked"`
-	ChannelRetryAt       int64          `json:"channel_retry_at"`
-	ChannelGroupFallback int64          `json:"channel_group_fallback"`
-	ChannelGroupCursor   int64          `json:"channel_group_cursor"`
-}
-
-// A reply waits for every earlier unrevoked pending message of the same agent and origin, so a
-// later answer cannot pass an earlier one whose outcome is not written yet. Settled, delivered,
-// revoked and non-message rows do not hold the barrier. Its origin lookup uses submissions_channel_pending.
-func (q *Queries) ListChannelReplies(ctx context.Context, arg ListChannelRepliesParams) ([]ListChannelRepliesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listChannelReplies, arg.AgentID, arg.OriginStart, arg.OriginEnd)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListChannelRepliesRow{}
-	for rows.Next() {
-		var i ListChannelRepliesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Origin,
-			&i.Status,
-			&i.Answer,
-			&i.Reason,
-			&i.DeliveredParts,
-			&i.RenderedReply,
-			&i.ChannelContext,
-			&i.ChannelRemoteIds,
-			&i.ChannelRevoked,
-			&i.ChannelRetryAt,
-			&i.ChannelGroupFallback,
-			&i.ChannelGroupCursor,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const markChannelCommandDelivered = `-- name: MarkChannelCommandDelivered :exec
 UPDATE channel_commands SET delivered_at = ?1,
     answer = CASE WHEN command = '/feedback' THEN '' ELSE answer END
@@ -408,15 +330,6 @@ type MarkChannelReplyDeliveredParams struct {
 
 func (q *Queries) MarkChannelReplyDelivered(ctx context.Context, arg MarkChannelReplyDeliveredParams) error {
 	_, err := q.db.ExecContext(ctx, markChannelReplyDelivered, arg.DeliveredAt, arg.ID)
-	return err
-}
-
-const revokeChannelSubmission = `-- name: RevokeChannelSubmission :exec
-UPDATE submissions SET channel_revoked = 1 WHERE id = ?
-`
-
-func (q *Queries) RevokeChannelSubmission(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, revokeChannelSubmission, id)
 	return err
 }
 

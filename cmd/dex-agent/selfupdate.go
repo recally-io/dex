@@ -87,11 +87,11 @@ func selfUpdateTo(ctx context.Context, client *http.Client, cfg device, executab
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	archiveName := fmt.Sprintf("dex-agent_%s_%s_%s.tar.gz", targetVersion, runtime.GOOS, runtime.GOARCH)
-	checksumURL, err := endpoint(cfg.Origin, cfg.Environment, "release", "checksums.txt")
+	checksumURL, err := endpoint(cfg.Origin, cfg.RunnerID, "release", "checksums.txt")
 	if err != nil {
 		return err
 	}
-	archiveURL, err := endpoint(cfg.Origin, cfg.Environment, "release", archiveName)
+	archiveURL, err := endpoint(cfg.Origin, cfg.RunnerID, "release", archiveName)
 	if err != nil {
 		return err
 	}

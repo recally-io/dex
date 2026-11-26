@@ -223,10 +223,6 @@ func taskEntry(e sqlc.TaskEntry) (api.TaskEntry, error) {
 	if e.EventID.Valid {
 		out.EventId = new(e.EventID.String)
 	}
-	// Entries imported before authors were recorded must not be attributed to the Owner.
-	if e.Trust == tasksvc.TrustOwner && e.MetaJson == `{"legacyAuthor":"unknown"}` {
-		out.ActorKind = "unknown"
-	}
 	if e.Kind == tasksvc.KindStatus || e.Kind == tasksvc.KindReview {
 		var meta struct {
 			Status   *api.TaskStatus        `json:"status"`

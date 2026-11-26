@@ -24,12 +24,6 @@ SELECT * FROM monitors WHERE fire_submission_id = ?;
 -- name: CountScheduledMonitors :one
 SELECT count(*) FROM monitors WHERE conversation_id = ? AND state = 'scheduled';
 
--- name: LatestUserSubmissionInConversation :one
-SELECT id FROM submissions
-WHERE conversation_id = ? AND kind = 'message' AND origin != 'task'
-ORDER BY rowid DESC
-LIMIT 1;
-
 -- name: ListMonitorsByConversation :many
 SELECT * FROM monitors
 WHERE conversation_id = ?

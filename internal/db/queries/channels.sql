@@ -28,27 +28,6 @@ UPDATE channel_commands SET answer = ? WHERE source_key = ?;
 -- name: ListChannelCommands :many
 SELECT * FROM channel_commands WHERE agent_id = ? AND completed = 0 AND delivered_at IS NULL;
 
--- name: ListChannelReplies :many
--- A reply waits for every earlier unrevoked pending message of the same agent and origin, so a
--- later answer cannot pass an earlier one whose outcome is not written yet. Settled, delivered,
--- revoked and non-message rows do not hold the barrier. Its origin lookup uses submissions_channel_pending.
-SELECT s.id, s.origin, s.status, s.answer, s.reason, s.delivered_parts,
-       s.rendered_reply, s.channel_context, s.channel_remote_ids, s.channel_revoked, s.channel_retry_at,
-       s.channel_group_fallback, s.channel_group_cursor
-FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.status != 'pending' AND s.delivered_at IS NULL
-AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.status = 'done'))
-AND c.agent_id = @agent_id AND s.origin >= @origin_start AND s.origin < @origin_end
-AND NOT EXISTS (
-    SELECT 1 FROM submissions p JOIN conversations pc ON pc.id = p.conversation_id
-    WHERE p.status = 'pending' AND p.origin = s.origin AND p.rowid < s.rowid
-    AND p.kind = 'message' AND p.delivered_at IS NULL AND p.channel_revoked = 0 AND pc.agent_id = c.agent_id
-)
-ORDER BY s.rowid;
-
--- name: RevokeChannelSubmission :exec
-UPDATE submissions SET channel_revoked = 1 WHERE id = ?;
-
 -- name: MarkChannelReplyDelivered :exec
 UPDATE submissions SET delivered_at = ? WHERE id = ?;
 

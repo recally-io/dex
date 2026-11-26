@@ -53,7 +53,7 @@ func currentAccount() account {
 
 // describeMode reports the current account and the mode recorded at install time.
 func describeMode(mode string, a account) string {
-	label := "legacy install"
+	label := "unknown mode"
 	switch mode {
 	case modeUser:
 		label = "user account"

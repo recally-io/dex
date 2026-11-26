@@ -99,14 +99,9 @@ test("user sees the saved Lark app and can replace it", async () => {
   expect(html).toContain(">Paired<");
 });
 
-test("user sees that old Telegram speech output settings do not enable transcription", async () => {
-  // Given a saved speech output setting without transcription.
-  const html = await render("telegram", {
-    ...connected,
-    telegram: { ...connected.telegram, options: { tts: { enabled: true } } },
-  });
+test("user sees when Telegram transcription is off", async () => {
+  const html = await render("telegram");
 
-  // Then the page shows the active transcription setting and the data-sending boundary.
   expect(html).toContain("Transcription is off");
   expect(html).toContain("selected provider");
 });

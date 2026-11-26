@@ -2,10 +2,7 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -31,7 +28,7 @@ type agentsMDReader struct {
 	ctx  context.Context
 	env  durableenv.ExecutionEnv
 	home string
-	// confine is the real project directory; only the legacy import has no limit.
+	// confine is the real project directory.
 	confine  string
 	seen     map[string]bool
 	out      strings.Builder
@@ -53,39 +50,8 @@ func readAgentsMDEnv(ctx context.Context, env durableenv.ExecutionEnv, targetPat
 		r.warnings = append(r.warnings, targetPath+": the file is outside the project directory and dex skips it")
 		return agentsMD{warnings: r.warnings}
 	}
-	_ = r.load(resolved, 0)
+	r.load(resolved, 0)
 	return agentsMD{text: strings.TrimSpace(r.out.String()), path: resolved, warnings: r.warnings}
-}
-
-// ReadLegacyAgentsMD snapshots a retired local file with the imports it used at runtime.
-// A non-regular file or a missing symlink target did not supply instructions.
-func ReadLegacyAgentsMD(ctx context.Context, file, home string) (text string, found bool, err error) {
-	resolved, err := filepath.EvalSymlinks(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", false, nil
-	}
-	if err != nil {
-		return "", false, err
-	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return "", false, err
-	}
-	if !info.Mode().IsRegular() {
-		return "", false, nil
-	}
-	if home == "" {
-		home, err = os.UserHomeDir()
-		if err != nil {
-			return "", false, err
-		}
-	}
-	env := envnode.NewNodeExecutionEnv(envnode.NodeExecutionEnvOptions{Cwd: filepath.Dir(resolved)})
-	r := &agentsMDReader{ctx: ctx, env: env, home: home, seen: map[string]bool{}}
-	if err := r.load(resolved, 0); err != nil {
-		return "", false, err
-	}
-	return strings.TrimSpace(r.out.String()), true, nil
 }
 
 func (r *agentsMDReader) regularFile(target string) (string, bool) {
@@ -98,9 +64,6 @@ func (r *agentsMDReader) regularFile(target string) (string, bool) {
 }
 
 func (r *agentsMDReader) allowed(resolved string) bool {
-	if r.confine == "" {
-		return true
-	}
 	if strings.HasPrefix(r.confine, "/") && strings.HasPrefix(resolved, "/") {
 		cleanConfine := path.Clean(r.confine)
 		cleanResolved := path.Clean(resolved)
@@ -113,12 +76,12 @@ func (r *agentsMDReader) allowed(resolved string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func (r *agentsMDReader) load(resolved string, depth int) error {
+func (r *agentsMDReader) load(resolved string, depth int) {
 	r.seen[resolved] = true
 	data, err := r.env.ReadBinaryFile(r.ctx, resolved)
 	if err != nil {
 		r.warnings = append(r.warnings, resolved+": cannot read the file")
-		return err
+		return
 	}
 	text := strings.ReplaceAll(string(data), "\r\n", "\n")
 	if depth > 0 {
@@ -142,10 +105,9 @@ func (r *agentsMDReader) load(resolved string, depth int) error {
 		case depth >= agentsMDDepth:
 			r.warnings = append(r.warnings, fmt.Sprintf("%s: the import @%s is deeper than %d levels and dex skips it", resolved, token, agentsMDDepth))
 		default:
-			_ = r.load(target, depth+1)
+			r.load(target, depth+1)
 		}
 	}
-	return nil
 }
 
 func (r *agentsMDReader) resolve(dir, token string) (string, bool) {

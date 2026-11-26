@@ -71,8 +71,7 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
 - Transcription is off by default. `options.stt` requires a saved custom
   provider, an audio model, and consent to send audio. The provider must have
   an explicit base URL and support OpenAI-compatible `/audio/transcriptions`.
-  Its chat model does not prove audio support. Agent speech output is not
-  available; dex keeps the old `options.tts` field for API compatibility. Provider credentials use the existing catalog
+  Its chat model does not prove audio support. Provider credentials use the catalog
   resolver; explicit `op://` provider keys use the configured 1Password CLI and
   stay references in storage. Channel settings contain no second API key. HTTPS is required except
   for loopback HTTP. Redirects, provider fallback, and automatic provider retries
@@ -114,15 +113,6 @@ Clear does not change the native conversation ID, so callbacks also bind the lat
 button permanently. Command parts and button labels stay frozen across delivery retries.
 Message delivery stays at least once; only the bound confirmed remote message accepts its
 buttons. A stale Question button cannot become ordinary model input.
-
-### Upgrade from group support
-
-Startup seals old group and topic conversations in `control.sqlite`. It ends
-pending group inputs and revokes pending group deliveries. It also closes old
-commands and discards unfinished group albums. The server does not open the old
-`agents/<id>/telegram-groups/` stores or move their files or history into Main.
-Older group sessions in the agent store are isolated before that store resumes.
-Back up the agent stores, group directories, and `control.sqlite` to keep the archive.
 
 ## Inbound webhooks
 

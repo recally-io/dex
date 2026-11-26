@@ -104,7 +104,7 @@ after they end.
 The bot header opens the Sessions page and creates new sessions.
 Main shows Stop only for its own native run target on a connected stream. A
 retry sends the original target. A child can be active while Main sends an
-ordinary input. Non-Main Stop keeps its legacy behavior.
+ordinary input. In other writable sessions, Stop also withdraws queued input.
 
 Session activity lists scheduled and check Monitors and 30 recent Outbox
 entries. A writable session manages Processes with `process_start`,

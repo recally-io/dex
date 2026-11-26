@@ -127,7 +127,6 @@ func New(config Config) (*Agents, error) {
 	if err != nil {
 		return nil, err
 	}
-	warnIgnoredEnv(config.DataDir)
 	agents := &Agents{vault: vault.New(config.DataDir), Catalog: newCatalog(config.FakeModel, config.FakeInputSuffix), config: config, codeSandbox: codeSandbox, skillStores: map[string]*skillStore{}, memory: newMemoryRepo(filepath.Join(config.DataDir, "memory"), config.BaseEnv), env: newToolEnv(config.Home, config.BaseEnv, config.LoginEnv), resources: map[string]*agentResources{}, activity: map[Ref]*activityRecord{}, activityWatches: map[Ref]*childActivityWatch{}, recovering: map[string]map[durable.ConversationId]bool{}, opening: map[string]*agentOpening{}, busy: map[string]int{}, dirty: map[string]string{}, refused: map[string]string{}, reloadWake: make(chan struct{}, 1), serial: map[Ref]chan struct{}{}, closeDone: make(chan struct{})}
 	agents.Catalog.onDiscoveryDone = agents.wakeReloads
 	return agents, nil
@@ -680,7 +679,7 @@ type Move struct {
 
 // runnerNoticeKind is the context entry that tells the user and the model that a fork runs
 // in another execution environment than its source.
-const runnerNoticeKind = "dex.environment"
+const runnerNoticeKind = "dex.runner"
 
 // runnerMove is the data of an environment notice.
 type runnerMove struct {

@@ -73,6 +73,9 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if got := fake.LastCreateRunnerID(); got != envRow.ID {
+		t.Fatalf("sandbox Runner ID = %q, want %q", got, envRow.ID)
+	}
 	env, err := h.Env(t.Context(), "", map[string]string{"EXPLICIT_E2B": "ok"})
 	if err != nil {
 		t.Fatal(err)

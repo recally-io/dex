@@ -58,7 +58,7 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 	defer conn.Close()
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO task_entries (task_id,seq,kind,trust,actor_kind,content,meta_json,created_at) VALUES
 		(?1,1000,'external','external','external','Hidden source body','{}',1),
-		(?1,1001,'artifact','owner','owner','Saved association','{"legacyHidden":true}',1)`, first.Id); err != nil {
+		(?1,1001,'artifact','owner','owner','Saved association','{}',1)`, first.Id); err != nil {
 		t.Fatal(err)
 	}
 	firstPath, secondPath := "/api/tasks/"+first.Key, "/api/tasks/"+second.Key

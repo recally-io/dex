@@ -36,7 +36,7 @@ func CheckExtension(agentID string, report func(context.Context, engine.TaskCont
 		"summary":   map[string]any{"type": "string", "minLength": 1, "maxLength": 1000},
 		"changeKey": map[string]any{"type": "string", "maxLength": 200},
 	}}
-	return &engine.Extension{Name: "routine-reporting", Tools: []*durable.ToolRegistration{{Name: "automation_report", Description: "Report the outcome of the current Automation run. This tool only works during an Automation run. Use a stable change key to identify the same change across runs.", Replay: durable.ReplaySafe, Parameters: schema,
+	return &engine.Extension{Name: "automation-reporting", Tools: []*durable.ToolRegistration{{Name: "automation_report", Description: "Report the outcome of the current Automation run. This tool only works during an Automation run. Use a stable change key to identify the same change across runs.", Replay: durable.ReplaySafe, Parameters: schema,
 		Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 			if report == nil {
 				return durable.ToolExecutionResult{}, errors.New("automation_report reporting is unavailable")

@@ -31,11 +31,10 @@ import (
 // device is the enrolled state. Dex identifies this machine by the token that enrollment
 // returned, and stores only its digest. Mode describes the local install.
 type device struct {
-	Origin string `json:"origin"`
-	// Keep environmentId so enrolled machines can still read device.json.
-	Environment string `json:"environmentId"`
-	Token       string `json:"token"`
-	Mode        string `json:"mode,omitempty"`
+	Origin   string `json:"origin"`
+	RunnerID string `json:"runnerId"`
+	Token    string `json:"token"`
+	Mode     string `json:"mode,omitempty"`
 }
 
 func main() {
@@ -184,7 +183,7 @@ func enroll(ctx context.Context, state, origin, id, code, mode string) error {
 	if err := json.UnmarshalRead(io.LimitReader(res.Body, 4096), &issued); err != nil || issued.Token == "" {
 		return errors.New("the enrollment returned no machine token")
 	}
-	if err := json.MarshalWrite(file, device{Origin: origin, Environment: id, Token: issued.Token, Mode: mode}); err != nil {
+	if err := json.MarshalWrite(file, device{Origin: origin, RunnerID: id, Token: issued.Token, Mode: mode}); err != nil {
 		return err
 	}
 	if err := file.Close(); err != nil {
@@ -224,11 +223,11 @@ func run(ctx context.Context, state string, noAutoUpdate bool) error {
 	if err := json.UnmarshalRead(io.LimitReader(file, 1<<16), &cfg); err != nil {
 		return errors.New("invalid machine state file")
 	}
-	if cfg.Token == "" {
+	if cfg.Token == "" || cfg.RunnerID == "" {
 		return errors.New("the machine state is incomplete; run the install command again")
 	}
-	log.Printf("machine %s: %s", cfg.Environment, describeMode(cfg.Mode, currentAccount()))
-	address, err := endpoint(cfg.Origin, cfg.Environment, "connect")
+	log.Printf("machine %s: %s", cfg.RunnerID, describeMode(cfg.Mode, currentAccount()))
+	address, err := endpoint(cfg.Origin, cfg.RunnerID, "connect")
 	if err != nil {
 		return err
 	}

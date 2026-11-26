@@ -593,7 +593,7 @@ A fork keeps its source Runner unless it selects Local or a registered Runner.
 Use `runnerId` in `POST /api/agents/{agentId}/chats/{chatId}/fork` or `session_fork`.
 When the Runner changes, the fork has no cwd. When the copied
 history last ran in another environment than the fork, the engine ends the copied history with one
-`dex.environment` entry. The entry holds the notice as a user message, so the model reads it
+`dex.runner` entry. The entry holds the notice as a user message, so the model reads it
 before the next input, and the transcript shows it as an `environment` boundary. The entry data
 keeps the environment that the history left. A fork that ends before such an entry of its source
 uses that environment, so a fork of a moved chat from before the move gets its own notice. Files,

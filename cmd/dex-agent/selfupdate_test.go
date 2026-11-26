@@ -48,7 +48,7 @@ func buildAgentArchive(t *testing.T, tag string) []byte {
 func TestUserRunnerSelfUpdatesToMatchServerVersion(t *testing.T) {
 	const token = "machine-token-0123456789abcdefghijklmnopqrstuvwxyz"
 	if origin := os.Getenv("DEX_TEST_UPDATE_ORIGIN"); origin != "" {
-		cfg := device{Origin: origin, Environment: "env-1", Token: token}
+		cfg := device{Origin: origin, RunnerID: "env-1", Token: token}
 		t.Fatalf("self-update returned instead of re-execing: %v", selfUpdateTo(t.Context(), nil, cfg, os.Getenv("DEX_TEST_UPDATE_BINARY"), "v2.0.0"))
 	}
 	// Given a writable dex-agent binary on v1.0.0 and a Dex server serving v2.0.0 assets under machine auth.
@@ -119,7 +119,7 @@ func TestUserRunnerSelfUpdateRejectsCorruptChecksumWithoutReplacingBinary(t *tes
 	}))
 	defer srv.Close()
 
-	cfg := device{Origin: srv.URL, Environment: "env-1", Token: "tok-0123456789abcdefghijklmnopqrstuvwxyz"}
+	cfg := device{Origin: srv.URL, RunnerID: "env-1", Token: "tok-0123456789abcdefghijklmnopqrstuvwxyz"}
 	if err := selfUpdateTo(t.Context(), srv.Client(), cfg, exe, "v2.0.0"); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 		t.Fatalf("expected checksum mismatch error, got %v", err)
 	}

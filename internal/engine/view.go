@@ -158,7 +158,7 @@ func metadata(value any) inputMetadata {
 	}
 	text := func(key string) string { v, _ := obj.Get(key); s, _ := v.(string); return s }
 	m := inputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), TaskID: text("taskId"), TaskTitle: text("taskTitle")}
-	flag, _ := obj.Get("hasWorkTask")
+	flag, _ := obj.Get("hasTask")
 	m.HasTask, _ = flag.(bool)
 	raw, _ := obj.Get("attachments")
 	if list, ok := raw.([]any); ok {

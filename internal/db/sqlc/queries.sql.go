@@ -1039,7 +1039,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested, producer, reply_channel, reply_peer, kind FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_delivery_error, channel_revoked, exit_action, required_reply_id, stop_requested, producer, reply_channel, reply_peer, kind FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -1057,7 +1057,6 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.SourceKey,
 		&i.Attachments,
 		&i.DeliveredAt,
-		&i.DeliveredParts,
 		&i.Origin,
 		&i.AdmittedAt,
 		&i.WhenBusy,
@@ -1065,13 +1064,8 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.ResultChildID,
 		&i.NativeAnswerID,
 		&i.ChannelContext,
-		&i.RenderedReply,
-		&i.ChannelRetryAt,
 		&i.ChannelDeliveryError,
-		&i.ChannelRemoteIds,
 		&i.ChannelRevoked,
-		&i.ChannelGroupFallback,
-		&i.ChannelGroupCursor,
 		&i.ExitAction,
 		&i.RequiredReplyID,
 		&i.StopRequested,
@@ -1663,12 +1657,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 
 const listPendingExecutionAborts = `-- name: ListPendingExecutionAborts :many
 SELECT c.id, c.agent_id, c.execution_id FROM conversations c
-WHERE (c.abort_pending = 1 AND c.execution_scope = '')
-    OR (c.execution_scope = 'retired-telegram-legacy' AND c.execution_id IS NOT NULL
-        AND NOT EXISTS (
-            SELECT 1 FROM conversations active WHERE active.agent_id = c.agent_id
-                AND active.execution_scope = '' AND active.execution_id = c.execution_id
-        ))
+WHERE c.abort_pending = 1 AND c.execution_scope = ''
 `
 
 type ListPendingExecutionAbortsRow struct {
@@ -1677,8 +1666,6 @@ type ListPendingExecutionAbortsRow struct {
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
-// Retired peer-keyed groups used the agent store. Isolate them before it resumes.
-// Do not pass IDs from the separate group stores to the agent Harness.
 func (q *Queries) ListPendingExecutionAborts(ctx context.Context) ([]ListPendingExecutionAbortsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingExecutionAborts)
 	if err != nil {

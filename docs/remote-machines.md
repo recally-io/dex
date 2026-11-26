@@ -204,6 +204,9 @@ server (`/machine/{id}/release/*`) and verifies the SHA-256 checksum and `versio
 It retains `dex-agent.previous` before it replaces itself and re-execs in place. If re-exec
 fails, it restores the previous binary.
 
+A machine state file must contain `runnerId`. If the file does not have it,
+revoke the machine in Dex and enroll it again with the current install command.
+
 Pass `-no-auto-update` to `dex-agent run` to opt out of automatic version alignment. Linux hosts
 installed under the legacy `/usr/local/bin/dex-agent` path show as not writable in Dex.
 To migrate, revoke the machine in Dex, stop `dex-agent.service`, and remove

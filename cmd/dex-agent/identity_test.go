@@ -70,7 +70,7 @@ func deviceState(t *testing.T, home, body string) string {
 // inherits, without the token.
 func TestUserSeesTheAccountAndTheToolsOfTheMachineThatRunsTheWork(t *testing.T) {
 	home := fixtureAccount(t)
-	state := deviceState(t, home, `{"origin":"https://dex.example.com","environmentId":"01JRUN","token":"machine-token-that-must-stay-private","mode":"user"}`)
+	state := deviceState(t, home, `{"origin":"https://dex.example.com","runnerId":"01JRUN","token":"machine-token-that-must-stay-private","mode":"user"}`)
 	var out bytes.Buffer
 	if err := status(t.Context(), state, &out); err != nil {
 		t.Fatalf("status of an installed machine: %v", err)
@@ -79,7 +79,7 @@ func TestUserSeesTheAccountAndTheToolsOfTheMachineThatRunsTheWork(t *testing.T) 
 	for _, want := range []string{
 		fmt.Sprintf("mode: user account: %s (uid %d, home %s)", currentAccount().Name, os.Geteuid(), home),
 		"state: " + state,
-		"dex: https://dex.example.com (environment 01JRUN)",
+		"dex: https://dex.example.com (runner 01JRUN)",
 		"workspace: " + filepath.Join(state, "workspace"),
 		"path: " + filepath.Join(home, "bin") + ":",
 	} {
@@ -138,15 +138,15 @@ func TestUserSeesWhyTheMachineCannotReadItsState(t *testing.T) {
 	})
 }
 
-func TestUserSeesLegacyInstallWithoutGuessingItsMode(t *testing.T) {
+func TestUserSeesAnUnknownInstallMode(t *testing.T) {
 	home := fixtureAccount(t)
-	state := deviceState(t, home, `{"origin":"https://dex.example.com","environmentId":"01JRUN","token":"`+strings.Repeat("t", 32)+`"}`)
+	state := deviceState(t, home, `{"origin":"https://dex.example.com","runnerId":"01JRUN","token":"`+strings.Repeat("t", 32)+`","mode":"invalid"}`)
 	var out bytes.Buffer
 	if err := status(t.Context(), state, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "mode: legacy install") {
-		t.Fatalf("an older state did not report a legacy install:\n%s", out.String())
+	if !strings.Contains(out.String(), "mode: unknown mode") {
+		t.Fatalf("status did not report an unknown mode:\n%s", out.String())
 	}
 }
 
@@ -176,6 +176,9 @@ func TestUserEnrollsTheMachineWithTheModeThatTheInstallerChose(t *testing.T) {
 			}
 			if err := json.Unmarshal(raw, &stored); err != nil {
 				t.Fatal(err)
+			}
+			if stored.RunnerID != "01JRUN" {
+				t.Fatalf("state records Runner ID %q, want 01JRUN", stored.RunnerID)
 			}
 			if stored.Mode != mode {
 				t.Fatalf("state records mode %q, want %q", stored.Mode, mode)
