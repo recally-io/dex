@@ -1,4 +1,4 @@
-import type { EnvironmentTestResult } from "../api/generated/types.gen";
+import type { RunnerTestResult } from "../api/generated/types.gen";
 import { Failure, Spinner } from "./feedback";
 import { Mono } from "./page";
 import { Button } from "./ui/button";
@@ -8,7 +8,7 @@ export function ProbeResultPanel({
   forgetting,
   onForgetHostKey,
 }: {
-  probe: EnvironmentTestResult;
+  probe: RunnerTestResult;
   forgetting?: boolean;
   onForgetHostKey?: () => void;
 }) {

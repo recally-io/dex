@@ -35,7 +35,7 @@ import {
   type ChannelId,
 } from "../components/channel-kit";
 import { FeishuChannel } from "./feishu";
-import { ExtensionCatalog } from "./extensions";
+import { IntegrationCatalog } from "./skills";
 import { TelegramOptionsFields } from "../components/telegram-options";
 import { TelegramManagedCreation, TelegramManagerSettings } from "../components/telegram-managed";
 
@@ -137,7 +137,7 @@ export function BotIntegrationsPage() {
       toolbar={<BotSettingsSwitcher segment="integrations" />}
     >
       <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
-      <ExtensionCatalog section="integrations" />
+      <IntegrationCatalog section="integrations" />
     </FramedPage>
   );
 }

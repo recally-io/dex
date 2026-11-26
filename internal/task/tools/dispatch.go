@@ -60,7 +60,7 @@ func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a 
 	cmd := `/bin/bash -c '` + strings.ReplaceAll(a.Command, `'`, `'\''`) + `' >/dev/null 2>&1`
 	p, err := start(runner.RequireEnrollment(ctx, e.RunnerEnrollment), c, chat.ProcessStartArgs{
 		Command: cmd, Cwd: a.Workspace, Label: "External Task run", Wake: background.WakeNone,
-		EnvironmentID: machine, EnvKind: runner.KindRunner, Workspace: settings.Handle.Workspace(), InheritEnv: settings.Inherit, BaseEnv: settings.Vars,
+		RunnerID: machine, EnvKind: runner.KindRunner, Workspace: settings.Handle.Workspace(), InheritEnv: settings.Inherit, BaseEnv: settings.Vars,
 		Env:        map[string]string{"DEX_TASK_TOKEN": issue.TaskToken, "DEX_TASK_SERVER": a.Server, "DEX_TOKEN": "", "DEX_TASK_EXTERNAL_SESSION_ID": e.ExternalSessionID},
 		MaskOutput: func(output string) string { return strings.ReplaceAll(output, issue.TaskToken, "[redacted]") },
 	})

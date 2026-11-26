@@ -83,7 +83,7 @@ INSERT INTO monitors (
     id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id,
     chain_depth, due_at, time_zone, prompt, state, created_at, updated_at,
     check_command, check_env, interval_seconds, max_runs, expires_at,
-    target_execution_id, target_environment, target_environment_revision, target_cwd
+    target_execution_id, target_runner_id, target_runner_revision, target_cwd
 ) VALUES (
     ?1, ?2, ?3, ?4, ?5, ?6,
     ?7, ?8, ?9, ?10, 'scheduled', ?11, ?12,
@@ -94,27 +94,27 @@ ON CONFLICT (operation_key) DO NOTHING
 `
 
 type CreateMonitorParams struct {
-	ID                        string `json:"id"`
-	OperationKey              string `json:"operation_key"`
-	AgentID                   string `json:"agent_id"`
-	ConversationID            int64  `json:"conversation_id"`
-	RootRequestID             string `json:"root_request_id"`
-	SourceSubmissionID        string `json:"source_submission_id"`
-	ChainDepth                int64  `json:"chain_depth"`
-	DueAt                     int64  `json:"due_at"`
-	TimeZone                  string `json:"time_zone"`
-	Prompt                    string `json:"prompt"`
-	CreatedAt                 int64  `json:"created_at"`
-	UpdatedAt                 int64  `json:"updated_at"`
-	CheckCommand              string `json:"check_command"`
-	CheckEnv                  string `json:"check_env"`
-	IntervalSeconds           int64  `json:"interval_seconds"`
-	MaxRuns                   int64  `json:"max_runs"`
-	ExpiresAt                 int64  `json:"expires_at"`
-	TargetExecutionID         int64  `json:"target_execution_id"`
-	TargetEnvironment         string `json:"target_environment"`
-	TargetEnvironmentRevision int64  `json:"target_environment_revision"`
-	TargetCwd                 string `json:"target_cwd"`
+	ID                   string `json:"id"`
+	OperationKey         string `json:"operation_key"`
+	AgentID              string `json:"agent_id"`
+	ConversationID       int64  `json:"conversation_id"`
+	RootRequestID        string `json:"root_request_id"`
+	SourceSubmissionID   string `json:"source_submission_id"`
+	ChainDepth           int64  `json:"chain_depth"`
+	DueAt                int64  `json:"due_at"`
+	TimeZone             string `json:"time_zone"`
+	Prompt               string `json:"prompt"`
+	CreatedAt            int64  `json:"created_at"`
+	UpdatedAt            int64  `json:"updated_at"`
+	CheckCommand         string `json:"check_command"`
+	CheckEnv             string `json:"check_env"`
+	IntervalSeconds      int64  `json:"interval_seconds"`
+	MaxRuns              int64  `json:"max_runs"`
+	ExpiresAt            int64  `json:"expires_at"`
+	TargetExecutionID    int64  `json:"target_execution_id"`
+	TargetRunnerID       string `json:"target_runner_id"`
+	TargetRunnerRevision int64  `json:"target_runner_revision"`
+	TargetCwd            string `json:"target_cwd"`
 }
 
 func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (int64, error) {
@@ -137,8 +137,8 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (i
 		arg.MaxRuns,
 		arg.ExpiresAt,
 		arg.TargetExecutionID,
-		arg.TargetEnvironment,
-		arg.TargetEnvironmentRevision,
+		arg.TargetRunnerID,
+		arg.TargetRunnerRevision,
 		arg.TargetCwd,
 	)
 	if err != nil {
@@ -213,7 +213,7 @@ func (q *Queries) FinishMonitor(ctx context.Context, arg FinishMonitorParams) (i
 }
 
 const getMonitor = `-- name: GetMonitor :one
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_environment, target_environment_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE id = ?
+SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE id = ?
 `
 
 func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
@@ -240,8 +240,8 @@ func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
 		&i.Runs,
 		&i.ExpiresAt,
 		&i.TargetExecutionID,
-		&i.TargetEnvironment,
-		&i.TargetEnvironmentRevision,
+		&i.TargetRunnerID,
+		&i.TargetRunnerRevision,
 		&i.TargetCwd,
 		&i.OutputHash,
 		&i.Outcome,
@@ -252,7 +252,7 @@ func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
 }
 
 const getMonitorByFireSubmission = `-- name: GetMonitorByFireSubmission :one
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_environment, target_environment_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE fire_submission_id = ?
+SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE fire_submission_id = ?
 `
 
 func (q *Queries) GetMonitorByFireSubmission(ctx context.Context, fireSubmissionID sql.NullString) (Monitor, error) {
@@ -279,8 +279,8 @@ func (q *Queries) GetMonitorByFireSubmission(ctx context.Context, fireSubmission
 		&i.Runs,
 		&i.ExpiresAt,
 		&i.TargetExecutionID,
-		&i.TargetEnvironment,
-		&i.TargetEnvironmentRevision,
+		&i.TargetRunnerID,
+		&i.TargetRunnerRevision,
 		&i.TargetCwd,
 		&i.OutputHash,
 		&i.Outcome,
@@ -291,7 +291,7 @@ func (q *Queries) GetMonitorByFireSubmission(ctx context.Context, fireSubmission
 }
 
 const getMonitorByOperationKey = `-- name: GetMonitorByOperationKey :one
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_environment, target_environment_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE operation_key = ?
+SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE operation_key = ?
 `
 
 func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey string) (Monitor, error) {
@@ -318,8 +318,8 @@ func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey str
 		&i.Runs,
 		&i.ExpiresAt,
 		&i.TargetExecutionID,
-		&i.TargetEnvironment,
-		&i.TargetEnvironmentRevision,
+		&i.TargetRunnerID,
+		&i.TargetRunnerRevision,
 		&i.TargetCwd,
 		&i.OutputHash,
 		&i.Outcome,
@@ -344,7 +344,7 @@ func (q *Queries) LatestUserSubmissionInConversation(ctx context.Context, conver
 }
 
 const listDueMonitors = `-- name: ListDueMonitors :many
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_environment, target_environment_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
+SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
 WHERE state = 'scheduled' AND (running = 1 OR due_at <= ?1 OR (expires_at > 0 AND expires_at <= ?1))
 ORDER BY due_at ASC, rowid ASC
 `
@@ -379,8 +379,8 @@ func (q *Queries) ListDueMonitors(ctx context.Context, now int64) ([]Monitor, er
 			&i.Runs,
 			&i.ExpiresAt,
 			&i.TargetExecutionID,
-			&i.TargetEnvironment,
-			&i.TargetEnvironmentRevision,
+			&i.TargetRunnerID,
+			&i.TargetRunnerRevision,
 			&i.TargetCwd,
 			&i.OutputHash,
 			&i.Outcome,
@@ -401,7 +401,7 @@ func (q *Queries) ListDueMonitors(ctx context.Context, now int64) ([]Monitor, er
 }
 
 const listMonitorsByConversation = `-- name: ListMonitorsByConversation :many
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_environment, target_environment_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
+SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
 WHERE conversation_id = ?
 ORDER BY CASE WHEN state = 'scheduled' THEN 0 ELSE 1 END, due_at ASC, rowid DESC
 LIMIT 50
@@ -437,8 +437,8 @@ func (q *Queries) ListMonitorsByConversation(ctx context.Context, conversationID
 			&i.Runs,
 			&i.ExpiresAt,
 			&i.TargetExecutionID,
-			&i.TargetEnvironment,
-			&i.TargetEnvironmentRevision,
+			&i.TargetRunnerID,
+			&i.TargetRunnerRevision,
 			&i.TargetCwd,
 			&i.OutputHash,
 			&i.Outcome,

@@ -225,7 +225,7 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := m.q.WithTx(tx)
-	if err := q.LockRoutineTools(ctx); err != nil {
+	if err := q.LockAutomationTools(ctx); err != nil {
 		return false, err
 	}
 	row, err := q.GetTelegramCallback(ctx, id)

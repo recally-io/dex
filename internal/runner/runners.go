@@ -65,7 +65,7 @@ func (rt *Runners) IssueCode(ctx context.Context, id string) (string, error) {
 	code := rand.Text()
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	n, err := rt.q.IssueRunnerCode(ctx, sqlc.IssueRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), ExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()})
+	n, err := rt.q.IssueRunnerCode(ctx, sqlc.IssueRunnerCodeParams{RunnerID: id, CodeDigest: runnerDigest(code), ExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli()})
 	if err == nil && n != 1 {
 		err = ErrRunnerConflict
 	}
@@ -81,7 +81,7 @@ func (rt *Runners) Enroll(ctx context.Context, id, code string) (string, error) 
 	token := rand.Text()
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	n, err := rt.q.RedeemRunnerCode(ctx, sqlc.RedeemRunnerCodeParams{EnvironmentID: id, CodeDigest: runnerDigest(code), CredentialDigest: runnerDigest(token), Now: time.Now().UnixMilli()})
+	n, err := rt.q.RedeemRunnerCode(ctx, sqlc.RedeemRunnerCodeParams{RunnerID: id, CodeDigest: runnerDigest(code), CredentialDigest: runnerDigest(token), Now: time.Now().UnixMilli()})
 	if err == nil && n != 1 {
 		err = ErrRunnerCredential
 	}

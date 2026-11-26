@@ -18,7 +18,7 @@ title dex: always-on agent inbox, run exit modes, outbox, and monitors
 top to bottom direction
 
 rectangle "User inputs\nWeb / Telegram / Feishu / WeChat" as user_in
-rectangle "Internal producers\nChild results + Process wakes + Routines" as sys_in
+rectangle "Internal producers\nChild results + Process wakes + Automations" as sys_in
 database "monitors\nPrompt or script; bounded runs and lifetime" as monitors
 rectangle "Scheduler\nCheck target and claim due work" as sched
 
@@ -26,7 +26,7 @@ database "Agent Inbox (submissions)\nDurable receipts + source dedup" as inbox
 
 package "Native PiG session run (QueueAll boundary batching)" as run {
   rectangle "User Turn\nlive.Run.Inputs has user message\nLive stream + auto reply on settle" as user_turn
-  rectangle "System Turn\nOnly task / Monitor / routine\nFail-quiet trace by default" as sys_turn
+  rectangle "System Turn\nOnly Task / Monitor / Automation\nFail-quiet trace by default" as sys_turn
 }
 
 rectangle "Explicit exit tools\nnotify_user\nsession_report (report to parent)" as tools
@@ -46,7 +46,7 @@ sys_turn --> tools : Optional call
 tools --> outbox : notify_user
 tools --> monitors : monitor_set (bounded)
 
-sched --> outbox : Pure Routine alerts
+sched --> outbox : Automation alerts
 outbox --> dispatch : Deliver one platform message
 note right of sys_turn
   Processes with wake="none" send no wake-up.

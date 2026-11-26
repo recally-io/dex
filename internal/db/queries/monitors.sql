@@ -3,12 +3,12 @@ INSERT INTO monitors (
     id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id,
     chain_depth, due_at, time_zone, prompt, state, created_at, updated_at,
     check_command, check_env, interval_seconds, max_runs, expires_at,
-    target_execution_id, target_environment, target_environment_revision, target_cwd
+    target_execution_id, target_runner_id, target_runner_revision, target_cwd
 ) VALUES (
     @id, @operation_key, @agent_id, @conversation_id, @root_request_id, @source_submission_id,
     @chain_depth, @due_at, @time_zone, @prompt, 'scheduled', @created_at, @updated_at,
     @check_command, @check_env, @interval_seconds, @max_runs, @expires_at,
-    @target_execution_id, @target_environment, @target_environment_revision, @target_cwd
+    @target_execution_id, @target_runner_id, @target_runner_revision, @target_cwd
 )
 ON CONFLICT (operation_key) DO NOTHING;
 

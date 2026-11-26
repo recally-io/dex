@@ -1,9 +1,9 @@
 import { useState } from "react";
-import type { Environment, SshHostEntry } from "../api/generated/types.gen";
-import { createEnvironment } from "../api/generated/sdk.gen";
+import type { Runner, SshHostEntry } from "../api/generated/types.gen";
+import { createRunner } from "../api/generated/sdk.gen";
 import { useApp } from "../lib/app-state";
-import { formatResolvedSshHost } from "../lib/environments";
-import { refreshEnvironments } from "../lib/queries";
+import { formatResolvedSshHost } from "../lib/runners";
+import { refreshRunners } from "../lib/queries";
 import { Modal } from "./dialog";
 import { Failure, Spinner } from "./feedback";
 import { Badge } from "./ui/badge";
@@ -15,7 +15,7 @@ export function ImportSshConfigDialog({
   onClose,
 }: {
   hosts: SshHostEntry[];
-  existing: Environment[];
+  existing: Runner[];
   onClose: () => void;
 }) {
   const { notify } = useApp();
@@ -45,19 +45,19 @@ export function ImportSshConfigDialog({
     try {
       for (const alias of selected) {
         // eslint-disable-next-line no-await-in-loop
-        await createEnvironment({
+        await createRunner({
           body: { name: alias, kind: "pi-env", config: { host: alias } },
           throwOnError: true,
         });
       }
 
-      await refreshEnvironments();
+      await refreshRunners();
       onClose();
       notify(
         selected.length === 1 ? `Imported ${selected[0]}.` : `Imported ${selected.length} SSH Machines.`,
       );
     } catch (cause) {
-      await refreshEnvironments();
+      await refreshRunners();
       setError(cause);
     } finally {
       setPending(false);

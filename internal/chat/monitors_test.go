@@ -173,13 +173,13 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	}
 }
 
-func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
+func TestUserAutomationOutboxSkipsUnchanged(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
 	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.InsertRoutineNotificationTarget(t.Context(), sqlc.InsertRoutineNotificationTargetParams{
+	if err := r.q.InsertAutomationNotificationTarget(t.Context(), sqlc.InsertAutomationNotificationTargetParams{
 		ID: "tgt-1", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {
 		t.Fatal(err)
@@ -214,7 +214,7 @@ func TestUserRoutineOutboxSkipsUnchanged(t *testing.T) {
 		`, tc.id, tc.outcome); err != nil {
 			t.Fatal(err)
 		}
-		if err := queueRoutineOutbox(t.Context(), r.q, tc.id, conv, r.service.now().UnixMilli()); err != nil {
+		if err := queueAutomationOutbox(t.Context(), r.q, tc.id, conv, r.service.now().UnixMilli()); err != nil {
 			t.Fatal(err)
 		}
 		var n int

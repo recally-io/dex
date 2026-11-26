@@ -4,7 +4,7 @@ import { createClient } from "../src/api/generated/client";
 import { createAgent, createAutomation, runAutomation } from "../src/api/generated/sdk.gen";
 
 describe("Automation run history", () => {
-  test("offers the Outbox on a read-only Routine transcript", async ({ app, browser, screen }) => {
+  test("offers the Outbox on a read-only Automation transcript", async ({ app, browser, screen }) => {
     await app.open("/");
     const origin = new URL(await browser.url());
 
@@ -57,7 +57,7 @@ describe("Automation run history", () => {
     // Empty fields prevent the fixture from inheriting a model or a runner.
     const { data: agent } = await createAgent({
       client,
-      body: { name: "Routine fixture", provider: "", modelId: "", environmentId: "local" },
+      body: { name: "Routine fixture", provider: "", modelId: "", runnerId: "local" },
       throwOnError: true,
     });
 

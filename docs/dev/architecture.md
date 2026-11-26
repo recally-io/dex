@@ -132,8 +132,8 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
    A blocked input does not hold the delivery gate of another Session of the same Bot.
    Cold Harness initialization still waits for shared model discovery, extension
    and MCP loading, and recovery. It publishes the Harness without opening the
-   default execution environment. A Session opens the lease it needs after that
-   shared barrier. Sessions that select the same environment can share its lease.
+   default Runner. A Session opens the lease it needs after that shared barrier.
+   Sessions that select the same Runner can share its lease.
    The engine does not hold its lease registry lock during remote preparation.
    Receipt creation and native admission have distinct timestamps. Structured
    logs correlate Session waits, native start, and settlement without logging
@@ -184,18 +184,18 @@ reconciliation cover the gap between their commits.
 
 Each subsystem has its own document. This overview gives only the boundaries.
 
-| Document                      | Covers                                                                     |
-| ----------------------------- | -------------------------------------------------------------------------- |
-| [Agents](agents.md)           | Agents and the HTTP API, settings, memory, and bot tools                   |
-| [Sessions](sessions.md)       | Main, Chats, child sessions, internal delegation, and session environments |
-| [Tasks](tasks.md)             | Board, Task Session links, the event store, holds, alerts, and Task tools  |
-| [Task Board](task-board.md)   | Append-only Task Board, access rules, and rollout (#291)                   |
-| [Plugins](plugins.md)         | Optional Task sources: GitHub, Webhook, email, and the plugin boundary     |
-| [Execution](execution.md)     | The native engine boundary, background commands, and transcripts           |
-| [Files](files.md)             | Artifacts, file results, channel file delivery, and attachments            |
-| [Channels](channels.md)       | Telegram, shared channels, Feishu and Lark, and WeChat                     |
-| [Extensions](extensions.md)   | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload             |
-| [Automations](automations.md) | Routines, schedules, and results                                           |
+| Document                      | Covers                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| [Agents](agents.md)           | Agents and the HTTP API, settings, memory, and bot tools                  |
+| [Sessions](sessions.md)       | Main, Chats, child sessions, internal delegation, and Runner selection    |
+| [Tasks](tasks.md)             | Board, Task Session links, the event store, holds, alerts, and Task tools |
+| [Task Board](task-board.md)   | Append-only Task Board, access rules, and rollout (#291)                  |
+| [Plugins](plugins.md)         | Optional Task sources: GitHub, Webhook, email, and the plugin boundary    |
+| [Execution](execution.md)     | The native engine boundary, background commands, and transcripts          |
+| [Files](files.md)             | Artifacts, file results, channel file delivery, and attachments           |
+| [Channels](channels.md)       | Telegram, shared channels, Feishu and Lark, and WeChat                    |
+| [Extensions](extensions.md)   | Skills, MCP servers, the secret vault, `AGENTS.md`, and reload            |
+| [Automations](automations.md) | Routines, schedules, and results                                          |
 
 ## Failure behavior
 

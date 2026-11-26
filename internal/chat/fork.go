@@ -24,9 +24,9 @@ type Origin struct {
 // to the entry before it. The fork takes the source's model, thinking level and project, and it
 // does not run. A running source contributes only its committed entries. When nothing comes
 // before entryID, the fork is an empty Chat with the same settings. Files on disk stay as they are.
-// A non-empty environmentID (local or an SSH environment) selects the environment of the fork;
+// A non-empty runnerID (local or an SSH environment) selects the environment of the fork;
 // empty keeps the selection of the source.
-func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int64, before bool, requestID, environmentID string) (Chat, error) {
+func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int64, before bool, requestID, runnerID string) (Chat, error) {
 	c, err := s.Get(ctx, agentID, chatID)
 	if err != nil {
 		return Chat{}, err
@@ -38,7 +38,7 @@ func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int6
 	if err != nil {
 		return Chat{}, err
 	}
-	target := cmp.Or(environmentID, conv.EnvironmentID)
+	target := cmp.Or(runnerID, conv.RunnerID)
 	if requestID != "" {
 		if receipt, err := s.q.GetForkReceipt(ctx, requestID); err == nil {
 			return s.forkReplay(ctx, agentID, receipt, chatID, entryID, before, target)
@@ -47,8 +47,8 @@ func (s *Service) Fork(ctx context.Context, agentID string, chatID, entryID int6
 		}
 	}
 	// Only a new fork needs a target that still exists. A retry gets its fork after a removal.
-	if environmentID != "" {
-		if err := checkEnvironment(ctx, s.q, environmentID); err != nil {
+	if runnerID != "" {
+		if err := checkRunner(ctx, s.q, runnerID); err != nil {
 			return Chat{}, err
 		}
 	}
@@ -83,7 +83,7 @@ var errRepeatedFork = errors.New("fork receipt already exists")
 
 // forkReplay returns the fork of receipt when the retry asks for the same fork. A fork cannot
 // change its environment, so its row tells the environment that the first call selected.
-func (s *Service) forkReplay(ctx context.Context, agentID string, receipt sqlc.ForkReceipt, chatID, entryID int64, before bool, environmentID string) (Chat, error) {
+func (s *Service) forkReplay(ctx context.Context, agentID string, receipt sqlc.ForkReceipt, chatID, entryID int64, before bool, runnerID string) (Chat, error) {
 	if receipt.SourceID != chatID || receipt.EntryID != entryID || receipt.BeforeEntry != boolInt(before) {
 		return Chat{}, ErrOperationID
 	}
@@ -91,18 +91,18 @@ func (s *Service) forkReplay(ctx context.Context, agentID string, receipt sqlc.F
 	if err != nil {
 		return Chat{}, err
 	}
-	if fork.EnvironmentID != environmentID {
+	if fork.RunnerID != runnerID {
 		return Chat{}, ErrOperationID
 	}
 	return s.Get(ctx, agentID, receipt.ForkID)
 }
 
 // fork copies the history of conv into a new Chat that has the parent of conv and runs in
-// environmentID (empty follows the bot). The optional store runs in the transaction that creates
+// runnerID (empty follows the bot). The optional store runs in the transaction that creates
 // the fork. Entry zero forks at the newest finished answer. A fork that moves to another effective
 // environment drops the cwd. A fork whose copied history last ran in another environment ends that
 // history with a notice.
-func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int64, before bool, environmentID string, store func(context.Context, *sqlc.Queries, sqlc.Conversation) error) (sqlc.Conversation, error) {
+func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int64, before bool, runnerID string, store func(context.Context, *sqlc.Queries, sqlc.Conversation) error) (sqlc.Conversation, error) {
 	if s.leaseUntil.Load() != 0 {
 		return sqlc.Conversation{}, engine.ErrMaintenance
 	}
@@ -113,7 +113,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 	if err != nil {
 		return sqlc.Conversation{}, err
 	}
-	from, to := effectiveEnvironment(bot, conv.EnvironmentID), effectiveEnvironment(bot, environmentID)
+	from, to := effectiveRunner(bot, conv.RunnerID), effectiveRunner(bot, runnerID)
 	cwd := conv.Cwd
 	if from != to {
 		cwd = ""
@@ -150,12 +150,12 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Conversation, entryID int6
 	if bot, err = q.GetAgent(ctx, conv.AgentID); err != nil {
 		return sqlc.Conversation{}, err
 	}
-	if effectiveEnvironment(bot, conv.EnvironmentID) != from || effectiveEnvironment(bot, environmentID) != to {
+	if effectiveRunner(bot, conv.RunnerID) != from || effectiveRunner(bot, runnerID) != to {
 		return sqlc.Conversation{}, fmt.Errorf("%w: the environment of the bot changed during the fork; fork again", engine.ErrBusy)
 	}
 	fork, err := q.CreateFork(ctx, sqlc.CreateForkParams{
 		AgentID: conv.AgentID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: title,
-		ModelProvider: conv.ModelProvider, ModelID: conv.ModelID, ThinkingLevel: conv.ThinkingLevel, Cwd: cwd, EnvironmentID: environmentID,
+		ModelProvider: conv.ModelProvider, ModelID: conv.ModelID, ThinkingLevel: conv.ThinkingLevel, Cwd: cwd, RunnerID: runnerID,
 		ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: copied}, ForkedFrom: sql.NullInt64{Int64: conv.ID, Valid: true}, ParentID: conv.ParentID,
 		CreatedAt: s.now().UnixMilli(),
 	})
@@ -177,7 +177,7 @@ func (s *Service) moveNotice(ctx context.Context, from, to string) (string, erro
 		if id == runner.LocalID {
 			return id, nil
 		}
-		row, err := s.q.GetEnvironment(ctx, id)
+		row, err := s.q.GetRunner(ctx, id)
 		if errors.Is(err, sql.ErrNoRows) {
 			return id, nil
 		}

@@ -941,31 +941,31 @@ paths:
               schema: { $ref: "#/components/schemas/SystemLogs" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/plugins:
+  /api/settings/sources:
     get:
-      operationId: listPlugins
-      description: List the plugins of this build, the stored choice, and whether each one runs now.
+      operationId: listSources
+      description: List the sources of this build, the stored choice, and whether each one runs now.
       responses:
         "200":
-          description: The plugins.
+          description: The sources.
           content:
             application/json:
               schema:
                 type: object
-                required: [plugins]
+                required: [sources]
                 properties:
-                  plugins:
+                  sources:
                     type: array
-                    items: { $ref: "#/components/schemas/PluginSetting" }
+                    items: { $ref: "#/components/schemas/SourceSetting" }
         default: { $ref: "#/components/responses/Error" }
-  /api/settings/plugins/{name}:
+  /api/settings/sources/{name}:
     parameters:
       - in: path
         name: name
         required: true
         schema: { type: string }
     put:
-      operationId: setPlugin
+      operationId: setSourceEnabled
       description: Turn a plugin on or off. The change takes effect when dex starts again.
       requestBody:
         required: true
@@ -1019,35 +1019,35 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/environments:
+  /api/settings/runners:
     get:
-      operationId: listEnvironments
-      description: Saved execution environments, without secrets. Built-in local is implicit when a bot has empty environmentId.
+      operationId: listRunners
+      description: Saved execution environments, without secrets. Built-in local is implicit when a bot has empty runnerId.
       responses:
         "200":
           description: Execution environments.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EnvironmentList" }
+              schema: { $ref: "#/components/schemas/RunnerList" }
         default: { $ref: "#/components/responses/Error" }
     post:
-      operationId: createEnvironment
+      operationId: createRunner
       description: Creates a new execution environment.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/EnvironmentInput" }
+            schema: { $ref: "#/components/schemas/RunnerInput" }
       responses:
         "201":
           description: Created.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Environment" }
+              schema: { $ref: "#/components/schemas/Runner" }
         "400": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/environments/ssh-config:
+  /api/settings/runners/ssh-config:
     get:
       operationId: discoverSshConfig
       description: Discovers concrete SSH host aliases from ~/.ssh/config and candidate private key paths under ~/.ssh/. Never reads private key contents.
@@ -1059,47 +1059,47 @@ paths:
               schema: { $ref: "#/components/schemas/SshConfigDiscovery" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/environments/probe:
+  /api/settings/runners/probe:
     post:
-      operationId: probeEnvironment
+      operationId: probeRunner
       description: Probes connectivity for an unsaved or edited execution environment configuration.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/EnvironmentProbeInput" }
+            schema: { $ref: "#/components/schemas/RunnerProbeInput" }
       responses:
         "200":
           description: Probe result.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EnvironmentTestResult" }
+              schema: { $ref: "#/components/schemas/RunnerTestResult" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/environments/{environmentId}:
+  /api/settings/runners/{runnerId}:
     parameters:
-      - $ref: "#/components/parameters/EnvironmentId"
+      - $ref: "#/components/parameters/RunnerId"
     put:
-      operationId: updateEnvironment
+      operationId: updateRunner
       description: Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/EnvironmentInput" }
+            schema: { $ref: "#/components/schemas/RunnerInput" }
       responses:
         "200":
           description: Updated.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Environment" }
+              schema: { $ref: "#/components/schemas/Runner" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
     delete:
-      operationId: deleteEnvironment
+      operationId: deleteRunner
       description: Deletes an execution environment if no active bot uses it (409 when in use).
       responses:
         "200":
@@ -1111,27 +1111,27 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/environments/{environmentId}/test:
+  /api/settings/runners/{runnerId}/test:
     parameters:
-      - $ref: "#/components/parameters/EnvironmentId"
+      - $ref: "#/components/parameters/RunnerId"
     post:
-      operationId: testEnvironment
+      operationId: testRunner
       description: Probes connectivity, platform metadata, and base workspace readiness.
       responses:
         "200":
           description: Probe result.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/EnvironmentTestResult" }
+              schema: { $ref: "#/components/schemas/RunnerTestResult" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/environments/{environmentId}/forget-host-key:
+  /api/settings/runners/{runnerId}/forget-host-key:
     parameters:
-      - $ref: "#/components/parameters/EnvironmentId"
+      - $ref: "#/components/parameters/RunnerId"
     post:
-      operationId: forgetEnvironmentHostKey
+      operationId: forgetRunnerHostKey
       description: Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
       responses:
         "200":
@@ -1143,9 +1143,9 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/settings/environments/{environmentId}/runner-pairing:
+  /api/settings/runners/{runnerId}/pairing:
     parameters:
-      - $ref: "#/components/parameters/EnvironmentId"
+      - $ref: "#/components/parameters/RunnerId"
     post:
       operationId: issueRunnerCode
       description: Creates a one-time enrollment code for a remote machine.
@@ -1649,14 +1649,14 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/environments:
+  /api/agents/{agentId}/runners:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
     get:
-      operationId: listAgentEnvironments
+      operationId: listAgentRunners
       description: >
         Lists the execution environments for the sessions of the agent: the environment of the
         agent first (default), then local and the other registered environments. Each entry
@@ -1666,18 +1666,18 @@ paths:
           description: The session environments.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AgentEnvironments" }
+              schema: { $ref: "#/components/schemas/AgentRunners" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/environment/reset:
+  /api/agents/{agentId}/runner/reset:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
     post:
-      operationId: resetAgentEnvironment
+      operationId: resetAgentRunner
       description: >
         Kills any persisted E2B sandbox for an idle agent, clears its sandbox ID,
         and releases open resources so the next turn provisions a fresh sandbox.
@@ -1814,7 +1814,7 @@ paths:
           name: agentId
           schema: { type: string }
         - in: query
-          name: environmentId
+          name: runnerId
           description: An execution environment of the agent. Absent selects the environment of the agent.
           schema: { type: string }
       responses:
@@ -1858,7 +1858,7 @@ paths:
         newest activity first.
       parameters:
         - in: query
-          name: environmentId
+          name: runnerId
           description: An execution environment of the agent. Absent selects the environment of the agent.
           schema: { type: string }
       responses:
@@ -1876,7 +1876,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/chats/{chatId}/environment:
+  /api/agents/{agentId}/chats/{chatId}/runner:
     parameters:
       - in: path
         name: agentId
@@ -1884,10 +1884,10 @@ paths:
         schema: { type: string }
       - $ref: "#/components/parameters/ChatId"
     put:
-      operationId: setChatEnvironment
+      operationId: setChatRunner
       description: >
         Selects the execution environment of a Chat session before its first message. The command
-        and file tools of the chat run there. Empty environmentId makes the chat follow the
+        and file tools of the chat run there. Empty runnerId makes the chat follow the
         environment of the agent. The selection clears the project directory. The environment must
         be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers
         409: fork it instead. Read-only conversations return 403.
@@ -1897,9 +1897,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [environmentId]
+              required: [runnerId]
               properties:
-                environmentId: { type: string }
+                runnerId: { type: string }
       responses:
         "200":
           description: The Chat session with its environment.
@@ -2142,18 +2142,18 @@ paths:
         when nothing comes before it, the new Chat is empty. The new Chat
         takes the model, thinking level and project of this session and does
         not run. A running session contributes only its committed entries.
-        Files on disk are not rolled back. With environmentId (local or a
+        Files on disk are not rolled back. With runnerId (local or a
         registered environment ID), the new Chat runs in that environment. When that
         moves the Chat to another environment, it has no project, and its
         history ends with a notice that the user and the bot see. Files,
         background tasks, and queued input stay where they are. A new Chat
-        with no history gets no notice. Without environmentId, the new Chat
+        with no history gets no notice. Without runnerId, the new Chat
         keeps the environment selection of this session. Without an id, each
         call creates another Chat. A retry with the same id and parameters
         returns the same Chat. A different source or parameters return 409.
         400 when the entry is not in this session or cannot start a fork, or
         when the environment does not exist or is not local or SSH. A scoped
-        session with environmentId, and automation and channel sessions,
+        session with runnerId, and automation and channel sessions,
         return 403.
       requestBody:
         required: true
@@ -2171,7 +2171,7 @@ paths:
                 before:
                   type: boolean
                   description: End the history just before the entry.
-                environmentId:
+                runnerId:
                   type: string
                   description: The execution environment of the new Chat.
       responses:
@@ -2565,14 +2565,14 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/extensions:
+  /api/agents/{agentId}/integrations:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
     get:
-      operationId: getExtensions
+      operationId: getBotIntegrations
       description: >
         The agent's skills and MCP servers. It does not start MCP servers.
         Before the agent starts, the servers are idle.
@@ -2581,11 +2581,11 @@ paths:
           description: The extensions.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Extensions" }
+              schema: { $ref: "#/components/schemas/BotIntegrations" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/extensions/mcp/{name}/oauth:
+  /api/agents/{agentId}/integrations/mcp/{name}/oauth:
     parameters:
       - in: path
         name: agentId
@@ -2606,7 +2606,7 @@ paths:
               type: object
               required: [scope]
               properties:
-                scope: { $ref: "#/components/schemas/ExtensionScope" }
+                scope: { $ref: "#/components/schemas/IntegrationScope" }
       responses:
         "200":
           description: The authorization URL and a browser binding cookie.
@@ -2651,7 +2651,7 @@ paths:
               type: object
               required: [scope, name, value]
               properties:
-                scope: { $ref: "#/components/schemas/ExtensionScope" }
+                scope: { $ref: "#/components/schemas/IntegrationScope" }
                 name: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
                 value: { type: string, writeOnly: true }
       responses:
@@ -2670,7 +2670,7 @@ paths:
         - in: query
           name: scope
           required: true
-          schema: { $ref: "#/components/schemas/ExtensionScope" }
+          schema: { $ref: "#/components/schemas/IntegrationScope" }
         - in: query
           name: name
           required: true
@@ -2685,14 +2685,14 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/extensions/reload:
+  /api/agents/{agentId}/integrations/reload:
     parameters:
       - in: path
         name: agentId
         required: true
         schema: { type: string }
     post:
-      operationId: reloadExtensions
+      operationId: reloadBotIntegrations
       description: >
         Reloads only the selected agent's Harness and MCP connections. Opens
         that agent if needed and returns its server connection states. Skills
@@ -2705,7 +2705,7 @@ paths:
           description: The loaded extensions.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Extensions" }
+              schema: { $ref: "#/components/schemas/BotIntegrations" }
         "400": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
@@ -2878,8 +2878,8 @@ components:
       in: path
       required: true
       schema: { type: integer, format: int64 }
-    EnvironmentId:
-      name: environmentId
+    RunnerId:
+      name: runnerId
       in: path
       required: true
       schema: { type: string }
@@ -3315,7 +3315,7 @@ components:
       properties:
         status: { type: string, enum: [ok] }
 
-    PluginSetting:
+    SourceSetting:
       type: object
       required: [name, enabled, running]
       properties:
@@ -3429,15 +3429,15 @@ components:
           type: array
           items: { $ref: "#/components/schemas/SystemBackup" }
 
-    AgentEnvironments:
+    AgentRunners:
       type: object
-      required: [environments]
+      required: [runners]
       properties:
-        environments:
+        runners:
           type: array
           items:
             type: object
-            x-go-type: engine.EnvironmentInfo
+            x-go-type: engine.RunnerInfo
             x-go-type-import:
               path: github.com/recally-io/dex/internal/engine
             required: [id, name, kind, default, status]
@@ -3488,7 +3488,7 @@ components:
         cwd:
           type: string
           description: The saved project directory. Empty means the workspace of the environment.
-        environmentId:
+        runnerId:
           type: string
           description: >-
             The execution environment that the chat selects: "local" or an environment ID. Empty
@@ -3778,7 +3778,7 @@ components:
           minimum: 1
           description: Required in session mode. Absent if the saved target was deleted.
         enabled: { type: boolean }
-        environmentId:
+        runnerId:
           type: string
           description: >
             local or an SSH environment ID for the runs. Empty follows the
@@ -3869,7 +3869,7 @@ components:
         createdAt,
         read,
         dismissed,
-        environmentId,
+        runnerId,
         cwd,
       ]
       properties:
@@ -3884,7 +3884,7 @@ components:
         outcome: { type: string, enum: [changed, failed] }
         read: { type: boolean }
         dismissed: { type: boolean }
-        environmentId:
+        runnerId:
           type: string
           description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
         cwd:
@@ -3924,7 +3924,7 @@ components:
           type: string
           description: Why Dex could not queue a notification for this run, if applicable.
         chatId: { type: integer, format: int64 }
-        environmentId:
+        runnerId:
           type: string
           description: The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
         cwd:
@@ -4304,11 +4304,11 @@ components:
         connectToken: { type: string }
         serviceAccountToken: { type: string }
 
-    EnvironmentKind:
+    RunnerKind:
       type: string
       enum: [pi-env, e2b, runner]
 
-    EnvironmentConfig:
+    RunnerConfig:
       type: object
       properties:
         host: { type: string }
@@ -4337,7 +4337,7 @@ components:
         canSelfUpdate: { type: boolean }
         selfUpdateReason: { type: string }
 
-    Environment:
+    Runner:
       type: object
       required: [id, name, kind, config, secretSet, createdAt, updatedAt]
       properties:
@@ -4349,22 +4349,22 @@ components:
           x-go-name: Description,
           description: Owner-provided plain text.,
         }
-        kind: { $ref: "#/components/schemas/EnvironmentKind" }
-        config: { $ref: "#/components/schemas/EnvironmentConfig" }
+        kind: { $ref: "#/components/schemas/RunnerKind" }
+        config: { $ref: "#/components/schemas/RunnerConfig" }
         secretSet: { type: boolean }
         runner: { $ref: "#/components/schemas/RunnerStatus" }
         createdAt: { type: integer, format: int64 }
         updatedAt: { type: integer, format: int64 }
 
-    EnvironmentList:
+    RunnerList:
       type: object
-      required: [environments]
+      required: [runners]
       properties:
-        environments:
+        runners:
           type: array
-          items: { $ref: "#/components/schemas/Environment" }
+          items: { $ref: "#/components/schemas/Runner" }
 
-    EnvironmentInput:
+    RunnerInput:
       type: object
       required: [name, kind]
       properties:
@@ -4374,26 +4374,26 @@ components:
           maxLength: 500
           x-go-name: Description
           description: Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
-        kind: { $ref: "#/components/schemas/EnvironmentKind" }
-        config: { $ref: "#/components/schemas/EnvironmentConfig" }
+        kind: { $ref: "#/components/schemas/RunnerKind" }
+        config: { $ref: "#/components/schemas/RunnerConfig" }
         secret:
           type: string
           description: Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
 
-    EnvironmentProbeInput:
+    RunnerProbeInput:
       type: object
       required: [kind]
       properties:
-        environmentId:
+        runnerId:
           type: string
           description: Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
-        kind: { $ref: "#/components/schemas/EnvironmentKind" }
-        config: { $ref: "#/components/schemas/EnvironmentConfig" }
+        kind: { $ref: "#/components/schemas/RunnerKind" }
+        config: { $ref: "#/components/schemas/RunnerConfig" }
         secret:
           type: string
-          description: Optional write-only secret. When environmentId is set and secret is omitted or empty, uses the saved secret.
+          description: Optional write-only secret. When runnerId is set and secret is omitted or empty, uses the saved secret.
 
-    EnvironmentTestResult:
+    RunnerTestResult:
       type: object
       required: [ok]
       properties:
@@ -4447,13 +4447,13 @@ components:
         path: github.com/recally-io/dex/internal/agent
       type: object
       required: [
-        routineFailed,
+        automationFailed,
         activeSessions,
         runningChannels,
         enabledAutomations,
       ]
       properties:
-        routineFailed: { type: boolean }
+        automationFailed: { type: boolean }
         activeSessions: { type: integer, format: int64 }
         runningChannels: { type: integer, format: int64 }
         enabledAutomations: { type: integer, format: int64 }
@@ -4471,7 +4471,7 @@ components:
         fallbackProvider,
         fallbackModelId,
         instructions,
-        environmentId,
+        runnerId,
       ]
       properties:
         id: { type: string, readOnly: true, description: The agent ID. }
@@ -4495,7 +4495,7 @@ components:
           description: Empty when no fallback model is chosen. Needs a model.,
         }
         instructions: { type: string }
-        environmentId: {
+        runnerId: {
           type: string,
           description: Empty means the built-in local host environment.,
         }
@@ -4527,7 +4527,7 @@ components:
           description: Empty when no fallback model is chosen. Needs a model.,
         }
         instructions: { type: string }
-        environmentId: {
+        runnerId: {
           type: string,
           description: Empty or "local" selects the built-in local host environment.,
         }
@@ -4554,7 +4554,7 @@ components:
           description: Omitted copies the default bot's fallback model. Empty chooses none.,
         }
         instructions: { type: string }
-        environmentId: {
+        runnerId: {
           type: string,
           description: Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.,
         }
@@ -4671,10 +4671,10 @@ components:
       required: [name, scope, updatedAt]
       properties:
         name: { type: string }
-        scope: { $ref: "#/components/schemas/ExtensionScope" }
+        scope: { $ref: "#/components/schemas/IntegrationScope" }
         updatedAt: { type: string, format: date-time }
 
-    Extensions:
+    BotIntegrations:
       type: object
       required: [levels, skills, servers, warnings, errors, reloadPending]
       properties:
@@ -4687,7 +4687,7 @@ components:
             type: object
             required: [scope, dir]
             properties:
-              scope: { $ref: "#/components/schemas/ExtensionScope" }
+              scope: { $ref: "#/components/schemas/IntegrationScope" }
               dir: { type: string }
         skills:
           type: array
@@ -4711,7 +4711,7 @@ components:
             loaded. dex reloads the agent when all agents are idle and the configuration is
             valid.
 
-    ExtensionScope:
+    IntegrationScope:
       type: string
       description: Shared across dex or scoped to one agent.
       enum: [dex, agent]
@@ -4744,7 +4744,7 @@ components:
       required: [name, scope, overrides, state, tools]
       properties:
         name: { type: string }
-        scope: { $ref: "#/components/schemas/ExtensionScope" }
+        scope: { $ref: "#/components/schemas/IntegrationScope" }
         overrides:
           type: boolean
           description: The server replaces a wider server with the same name.
@@ -5092,7 +5092,7 @@ components:
             reply,
             proactive,
             question,
-            routine,
+            automation,
             system_error,
             file,
             control,

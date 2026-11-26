@@ -4,8 +4,8 @@ import { createClient } from "../src/api/generated/client";
 import {
   attachTaskExecution,
   createTask,
-  createEnvironment,
-  deleteEnvironment,
+  createRunner,
+  deleteRunner,
   issueRunnerCode,
   updateTask,
 } from "../src/api/generated/sdk.gen";
@@ -27,7 +27,7 @@ test("shows an external run on its Task and registered Runner", async ({ app, br
 
   const name = "External build Runner";
 
-  const { data: runner } = await createEnvironment({
+  const { data: runner } = await createRunner({
     client,
     body: { kind: "runner", name },
     throwOnError: true,
@@ -36,7 +36,7 @@ test("shows an external run on its Task and registered Runner", async ({ app, br
   try {
     const { data: enrollment } = await issueRunnerCode({
       client,
-      path: { environmentId: runner.id },
+      path: { runnerId: runner.id },
       throwOnError: true,
     });
 
@@ -93,6 +93,6 @@ test("shows an external run on its Task and registered Runner", async ({ app, br
       body: { status: "cancelled" },
       throwOnError: true,
     });
-    await deleteEnvironment({ client, path: { environmentId: runner.id }, throwOnError: true });
+    await deleteRunner({ client, path: { runnerId: runner.id }, throwOnError: true });
   }
 });

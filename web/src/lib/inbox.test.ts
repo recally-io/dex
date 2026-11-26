@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import type { InboxItem } from "../api/generated/types.gen";
-import { continuationEnvironment, resultQuote } from "./inbox";
+import { continuationRunner, resultQuote } from "./inbox";
 
 const result: InboxItem = {
   runId: "run",
@@ -14,7 +14,7 @@ const result: InboxItem = {
   createdAt: 1,
   read: false,
   dismissed: false,
-  environmentId: "local",
+  runnerId: "local",
   cwd: "",
 };
 
@@ -29,26 +29,26 @@ test("Continue quotes the stored result and identifies the exact run transcript"
 });
 
 test("a continuation chat pins the environment where the result ran", () => {
-  const environments = [
+  const runners = [
     { id: "box", name: "box", kind: "pi-env", default: true, status: "available" },
     { id: "local", name: "local", kind: "local", default: false, status: "available" },
     { id: "runner", name: "runner", kind: "runner", default: false, status: "available" },
   ];
 
   expect(() =>
-    continuationEnvironment("offline", [
+    continuationRunner("offline", [
       { id: "offline", name: "Runner A", kind: "runner", status: "offline", default: false },
     ]),
   ).toThrow("Try again when the Outbound Machine reconnects.");
-  expect(continuationEnvironment("runner", environments)).toBe("runner");
-  expect(continuationEnvironment("box", environments)).toBe("box");
-  expect(continuationEnvironment("local", environments)).toBe("local");
-  expect(() => continuationEnvironment("", environments)).toThrow("has no recorded Runner");
-  expect(() => continuationEnvironment("gone", environments)).toThrow("This result ran in gone");
+  expect(continuationRunner("runner", runners)).toBe("runner");
+  expect(continuationRunner("box", runners)).toBe("box");
+  expect(continuationRunner("local", runners)).toBe("local");
+  expect(() => continuationRunner("", runners)).toThrow("has no recorded Runner");
+  expect(() => continuationRunner("gone", runners)).toThrow("This result ran in gone");
   expect(() =>
-    continuationEnvironment("sandbox", [
+    continuationRunner("sandbox", [
       { id: "sandbox", name: "sandbox", kind: "e2b", default: true, status: "available" },
-      ...environments,
+      ...runners,
     ]),
   ).toThrow("ran in sandbox, which cannot continue this run");
 });

@@ -170,13 +170,13 @@ test("opens questions and resolves changed results from the global Inbox", async
 
   const { data: bot } = await createAgent({
     client,
-    body: { name: "Inbox fixture", provider: "faux", modelId: "tool", environmentId: "local" },
+    body: { name: "Inbox fixture", provider: "faux", modelId: "tool", runnerId: "local" },
     throwOnError: true,
   });
 
   const { data: unconfigured } = await createAgent({
     client,
-    body: { name: "Inbox setup fixture", provider: "", modelId: "", environmentId: "local" },
+    body: { name: "Inbox setup fixture", provider: "", modelId: "", runnerId: "local" },
     throwOnError: true,
   });
 
@@ -228,7 +228,7 @@ test("opens questions and resolves changed results from the global Inbox", async
   await updateAgent({
     client,
     path: { agentId: bot.id },
-    body: { name: bot.name, provider: "faux", modelId: "echo", thinkingLevel: "off", environmentId: "local" },
+    body: { name: bot.name, provider: "faux", modelId: "echo", thinkingLevel: "off", runnerId: "local" },
     throwOnError: true,
   });
   await expect(screen.getByText("Inbox missing model fixture", { exact: true })).toBeVisible();

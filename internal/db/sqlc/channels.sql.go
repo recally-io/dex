@@ -160,12 +160,12 @@ WITH active AS (
 ), enabled AS (
     SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
 )
-SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, a.primary_notification_target_id, a.archived_at, a.environment_id, a.environment_sandbox_id, a.fallback_provider, a.fallback_model_id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
+SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, a.primary_notification_target_id, a.archived_at, a.runner_id, a.runner_sandbox_id, a.fallback_provider, a.fallback_model_id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
-    CAST(EXISTS (SELECT 1 FROM automations routine
+    CAST(EXISTS (SELECT 1 FROM automations automation
         JOIN automation_runs r ON r.id = (SELECT latest.id FROM automation_runs latest
-            WHERE latest.automation_id = routine.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
-        WHERE routine.agent_id = a.id AND routine.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS routine_failed
+            WHERE latest.automation_id = automation.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
+        WHERE automation.agent_id = a.id AND automation.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS automation_failed
 FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
 WHERE a.archived_at IS NULL
 ORDER BY a.created_at, a.id
@@ -175,7 +175,7 @@ type ListAgentActivityRow struct {
 	Agent              Agent `json:"agent"`
 	ActiveSessions     int64 `json:"active_sessions"`
 	EnabledAutomations int64 `json:"enabled_automations"`
-	RoutineFailed      int64 `json:"routine_failed"`
+	AutomationFailed   int64 `json:"automation_failed"`
 }
 
 func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow, error) {
@@ -197,13 +197,13 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 			&i.Agent.ThinkingLevel,
 			&i.Agent.PrimaryNotificationTargetID,
 			&i.Agent.ArchivedAt,
-			&i.Agent.EnvironmentID,
-			&i.Agent.EnvironmentSandboxID,
+			&i.Agent.RunnerID,
+			&i.Agent.RunnerSandboxID,
 			&i.Agent.FallbackProvider,
 			&i.Agent.FallbackModelID,
 			&i.ActiveSessions,
 			&i.EnabledAutomations,
-			&i.RoutineFailed,
+			&i.AutomationFailed,
 		); err != nil {
 			return nil, err
 		}

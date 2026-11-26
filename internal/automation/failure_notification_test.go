@@ -11,7 +11,7 @@ import (
 	"github.com/recally-io/dex/internal/chat"
 )
 
-func TestUserRoutineScheduleAndEnvironmentFailuresAlertButBusyDoesNot(t *testing.T) {
+func TestUserRoutineScheduleAndRunnerFailuresAlertButBusyDoesNot(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, reason string
@@ -29,7 +29,7 @@ func TestUserRoutineScheduleAndEnvironmentFailuresAlertButBusyDoesNot(t *testing
 				t.Fatal(err)
 			}
 			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
-INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
+INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
 				t.Fatal(err)
 			}
 			in := routineInput()
@@ -39,10 +39,10 @@ INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) 
 				in.Schedule.Time, in.Schedule.Minutes = "09:00", 0
 			}
 			if tc.name == "unavailable environment" {
-				if _, err := f.conn.ExecContext(ctx, `INSERT INTO execution_environments (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','Box','pi-env','{"host":"fixture.invalid"}','',0,0)`); err != nil {
+				if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','Box','pi-env','{"host":"fixture.invalid"}','',0,0)`); err != nil {
 					t.Fatal(err)
 				}
-				in.EnvironmentID = "box"
+				in.RunnerID = "box"
 				f.routines.ConfigureProbe(func(context.Context, string, string) error { return errors.New("fixture private diagnostic") })
 			}
 			a, err := f.routines.Create(ctx, "a", in)
@@ -84,7 +84,7 @@ INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) 
 			}
 			var count int
 			var body string
-			if err = f.conn.QueryRowContext(ctx, `SELECT count(*), coalesce(max(body),'') FROM outbox_messages WHERE kind = 'routine'`).Scan(&count, &body); err != nil {
+			if err = f.conn.QueryRowContext(ctx, `SELECT count(*), coalesce(max(body),'') FROM outbox_messages WHERE kind = 'automation'`).Scan(&count, &body); err != nil {
 				t.Fatal(err)
 			}
 			if tc.alert && (count != 1 || body != "routine: failed\n"+tc.reason) || !tc.alert && count != 0 {
@@ -100,7 +100,7 @@ func TestUserRoutineDoesNotCreateConversationToOwnAnAlert(t *testing.T) {
 	f := newRoutineFixture(t)
 	ctx := t.Context()
 	if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
-INSERT INTO routine_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary', model_id='' WHERE id='a'`); err != nil {
+INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary', model_id='' WHERE id='a'`); err != nil {
 		t.Fatal(err)
 	}
 	in := routineInput()

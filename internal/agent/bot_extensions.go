@@ -24,7 +24,7 @@ type BotInfo struct {
 	FallbackModelID  string `json:"fallbackModelId,omitempty"`
 	// Instructions is the first line in bot_list and the full text in bot_get.
 	Instructions    string   `json:"instructions"`
-	EnvironmentID   string   `json:"environmentId,omitempty"`
+	RunnerID        string   `json:"environmentId,omitempty"`
 	Skills          []string `json:"skills,omitempty"`
 	McpServers      []string `json:"mcpServers,omitempty"`
 	RunningSessions *int64   `json:"runningSessions,omitempty"`
@@ -40,7 +40,7 @@ type BotPatch struct {
 	ThinkingLevel    *string `json:"thinkingLevel,omitempty"`
 	FallbackProvider *string `json:"fallbackProvider,omitempty"`
 	FallbackModelID  *string `json:"fallbackModelId,omitempty"`
-	EnvironmentID    *string `json:"environmentId,omitempty"`
+	RunnerID         *string `json:"environmentId,omitempty"`
 }
 
 // BotDeleteArgs is the input of bot_delete.

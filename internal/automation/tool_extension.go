@@ -39,8 +39,8 @@ type RoutinePatch struct {
 	TargetConversationID *int64               `json:"targetConversationId,omitempty"`
 	Enabled              *bool                `json:"enabled,omitempty"`
 	Cwd                  *string              `json:"cwd,omitempty"`
-	// EnvironmentID is local or an SSH Machine ID; empty follows the environment of the bot.
-	EnvironmentID *string `json:"environmentId,omitempty"`
+	// RunnerID is local or an SSH Machine ID; empty follows the environment of the bot.
+	RunnerID *string `json:"environmentId,omitempty"`
 }
 
 type RoutineRun struct {
@@ -67,7 +67,7 @@ type RoutineInfo struct {
 	TargetConversationID int64                `json:"targetConversationId,omitzero"`
 	Enabled              bool                 `json:"enabled"`
 	Cwd                  string               `json:"cwd"`
-	EnvironmentID        string               `json:"environmentId"`
+	RunnerID             string               `json:"environmentId"`
 	NextRuns             []int64              `json:"nextRuns"`
 	LastRun              *RoutineRun          `json:"lastRun,omitempty"`
 	CreatedAt            int64                `json:"createdAt"`

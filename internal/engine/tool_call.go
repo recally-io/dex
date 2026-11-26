@@ -20,8 +20,8 @@ type TaskContext struct {
 	Key             string
 }
 
-// EnvironmentInfo is an execution environment that a session can select. It has no secrets.
-type EnvironmentInfo struct {
+// RunnerInfo is an execution environment that a session can select. It has no secrets.
+type RunnerInfo struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"desc,omitempty"`

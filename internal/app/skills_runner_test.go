@@ -34,7 +34,7 @@ func TestUserManagesHostSkillsFromTwoRunners(t *testing.T) {
 			})
 		})
 		chat := d.newSession(t).ID
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/environment", chat), map[string]string{"environmentId": m.envID}, nil)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", chat), map[string]string{"runnerId": m.envID}, nil)
 		return m, chat
 	}
 	first, chat := start("First machine")

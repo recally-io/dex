@@ -33,7 +33,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 	q := sqlc.New(conn)
 
 	now := time.Now().UnixMilli()
-	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-ssh", Name: "Dev SSH", Kind: string(runner.KindPiEnv),
 		Config: `{"host":"devbox.internal","workspaceDir":"~/workspaces"}`, CreatedAt: now, UpdatedAt: now,
 	})
@@ -41,7 +41,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 		t.Fatal(err)
 	}
 	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{
-		ID: "bot-ssh", Name: "SSH Bot", ThinkingLevel: "off", EnvironmentID: envRow.ID, CreatedAt: now,
+		ID: "bot-ssh", Name: "SSH Bot", ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 	})
 	t.Cleanup(func() { _ = mgr.Close(context.Background()) })
 
-	// First TestEnvironment trusts host key via TOFU and succeeds.
+	// First TestRunner trusts host key via TOFU and succeeds.
 	probe, err := mgr.Probe(t.Context(), new(runner.SpecFromRow(envRow)), runner.SpecFromRow(envRow))
 	if err != nil || !probe.OK || probe.Home != sshFix.RemoteHome {
 		t.Fatalf("probe=%+v err=%v", probe, err)
@@ -111,7 +111,7 @@ func TestUserProbesUnsavedPiEnvWithoutPollutingKnownHosts(t *testing.T) {
 
 	// When probing an unsaved SSH environment (saved == nil), connectivity succeeds
 	// without writing into <dataDir>/ssh_known_hosts.
-	probe, err := mgr.Probe(t.Context(), nil, runner.EnvironmentSpec{
+	probe, err := mgr.Probe(t.Context(), nil, runner.Spec{
 		Kind:   runner.KindPiEnv,
 		Config: `{"host":"preview.internal","workspaceDir":"~/work"}`,
 	})
@@ -140,21 +140,21 @@ func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
 	q := sqlc.New(conn)
 
 	now := time.Now().UnixMilli()
-	if _, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-login-default", Name: "Default Login", Kind: string(runner.KindPiEnv),
 		Config: `{"host":"login.internal"}`, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-login-off", Name: "No Login", Kind: string(runner.KindPiEnv),
 		Config: `{"host":"nologin.internal","loginShell":false}`, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	for _, agent := range []sqlc.CreateAgentParams{
-		{ID: "bot-login", Name: "Login Bot", ThinkingLevel: "off", EnvironmentID: "env-login-default", CreatedAt: now},
-		{ID: "bot-nologin", Name: "No Login Bot", ThinkingLevel: "off", EnvironmentID: "env-login-off", CreatedAt: now},
+		{ID: "bot-login", Name: "Login Bot", ThinkingLevel: "off", RunnerID: "env-login-default", CreatedAt: now},
+		{ID: "bot-nologin", Name: "No Login Bot", ThinkingLevel: "off", RunnerID: "env-login-off", CreatedAt: now},
 	} {
 		if _, err := q.CreateAgent(t.Context(), agent); err != nil {
 			t.Fatal(err)
@@ -220,7 +220,7 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 
 	// Given two bots on one SSH environment.
 	now := time.Now().UnixMilli()
-	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-shared", Name: "Shared SSH", Kind: string(runner.KindPiEnv),
 		Config: `{"host":"shared.internal","workspaceDir":"~/one"}`, CreatedAt: now, UpdatedAt: now,
 	})
@@ -228,7 +228,7 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"bot-a", "bot-b"} {
-		if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: id, Name: id, ThinkingLevel: "off", EnvironmentID: envRow.ID, CreatedAt: now}); err != nil {
+		if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: id, Name: id, ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -269,7 +269,7 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 	}
 
 	// When the environment changes.
-	updated, err := q.UpdateEnvironment(t.Context(), sqlc.UpdateEnvironmentParams{
+	updated, err := q.UpdateRunner(t.Context(), sqlc.UpdateRunnerParams{
 		Name: envRow.Name, Kind: envRow.Kind, Config: `{"host":"shared.internal","workspaceDir":"~/two"}`, UpdatedAt: now + 1, ID: envRow.ID,
 	})
 	if err != nil {
@@ -327,12 +327,12 @@ func TestUserPiEnvOpenFailsWhenDexStopsDuringTheFirstConnect(t *testing.T) {
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
 	now := time.Now().UnixMilli()
-	if _, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-slow", Name: "Slow SSH", Kind: string(runner.KindPiEnv), Config: `{"host":"slow.internal"}`, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: "bot-slow", Name: "Slow", ThinkingLevel: "off", EnvironmentID: "env-slow", CreatedAt: now}); err != nil {
+	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: "bot-slow", Name: "Slow", ThinkingLevel: "off", RunnerID: "env-slow", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	mgr := runner.NewManager(runner.ManagerConfig{DataDir: dataDir, Queries: q, SSHProgram: sshFix.SSHProgram})
@@ -394,7 +394,7 @@ func TestUserPiEnvBuildsDaemonOutsideModuleCheckout(t *testing.T) {
 	q := sqlc.New(conn)
 
 	now := time.Now().UnixMilli()
-	envRow, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{
+	envRow, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{
 		ID: "env-standalone", Name: "MacMini", Kind: string(runner.KindPiEnv),
 		Config: `{"host":"macmini.local","user":"vaayne","workspaceDir":"~/.dex/agents"}`, CreatedAt: now, UpdatedAt: now,
 	})

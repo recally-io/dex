@@ -116,7 +116,7 @@ func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
 	refreshErr := errors.New("could not save snapshot")
 	var envErr, beforeErr, validationErr, snapshotErr error
 	config := Config{DataDir: t.TempDir()}
-	config.SessionEnvironment = func(context.Context, Ref) (string, error) { return "", envErr }
+	config.SessionRunner = func(context.Context, Ref) (string, error) { return "", envErr }
 	agents := coreEngine(t, config)
 	ref := coreCreate(t, agents, "alpha", coreOptions("echo"))
 	var refreshes int

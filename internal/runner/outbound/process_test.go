@@ -40,7 +40,7 @@ func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
 	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: "input", ConversationID: 1, Origin: "web", Producer: "user", Kind: "message", Content: "start", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	seed(`INSERT INTO execution_environments (id,name,kind,config,created_at,updated_at) VALUES ('remote','Remote','runner','{}',1,1)`)
+	seed(`INSERT INTO runners (id,name,kind,config,created_at,updated_at) VALUES ('remote','Remote','runner','{}',1,1)`)
 	manager := runner.NewManager(runner.ManagerConfig{DataDir: data, Queries: q})
 	defer manager.Close(context.WithoutCancel(ctx))
 	machines := manager.Runners()
@@ -94,7 +94,7 @@ func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
 		return e, h.Workspace(), h.Kind(), release, nil
 	})
 	row, err := bg.Start(ctx, background.StartParams{CallKey: "alpha/process", AgentID: "alpha", ConversationID: 1, SourceRequestID: "input", Wake: background.WakeNone,
-		Command: `touch started; while [ ! -e finish ]; do sleep .05; done`, Cwd: work, DefaultCwd: work, EnvironmentID: "remote", EnvKind: runner.KindRunner, Timeout: 15 * time.Second,
+		Command: `touch started; while [ ! -e finish ]; do sleep .05; done`, Cwd: work, DefaultCwd: work, RunnerID: "remote", EnvKind: runner.KindRunner, Timeout: 15 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)

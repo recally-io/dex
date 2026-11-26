@@ -42,10 +42,10 @@ func newMachineFixture(t *testing.T) *machineFixture {
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
 	now := time.Now().UnixMilli()
-	if _, err := q.CreateEnvironment(t.Context(), sqlc.CreateEnvironmentParams{ID: "laptop", Name: "Laptop", Kind: string(runner.KindRunner), Config: "{}", CreatedAt: now, UpdatedAt: now}); err != nil {
+	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{ID: "laptop", Name: "Laptop", Kind: string(runner.KindRunner), Config: "{}", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: "coder", Name: "Coder", ThinkingLevel: "off", EnvironmentID: "laptop", CreatedAt: now}); err != nil {
+	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: "coder", Name: "Coder", ThinkingLevel: "off", RunnerID: "laptop", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	mgr := runner.NewManager(runner.ManagerConfig{DataDir: t.TempDir(), Queries: q})

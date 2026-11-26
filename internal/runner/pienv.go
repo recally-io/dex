@@ -176,11 +176,11 @@ type piEnvConn struct {
 	retired bool
 }
 
-func piEnvKey(spec EnvironmentSpec) string {
+func piEnvKey(spec Spec) string {
 	return fmt.Sprintf("%d|%s|%s", spec.UpdatedAt, spec.Config, spec.Secret)
 }
 
-func (r *piEnvRuntime) normalize(spec EnvironmentSpec) (string, error) {
+func (r *piEnvRuntime) normalize(spec Spec) (string, error) {
 	cfg, err := parsePiEnvConfig(spec.Config)
 	if err != nil {
 		return "", err
@@ -195,7 +195,7 @@ func (r *piEnvRuntime) normalize(spec EnvironmentSpec) (string, error) {
 	return string(encoded), nil
 }
 
-func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error) {
+func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec Spec) (lease, error) {
 	c, err := r.acquire(ctx, spec)
 	if err != nil {
 		return nil, err
@@ -210,7 +210,7 @@ func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec Environmen
 
 // acquire returns the shared connection of spec's environment with one more lease. The first
 // caller dials; concurrent callers wait for that dial.
-func (r *piEnvRuntime) acquire(ctx context.Context, spec EnvironmentSpec) (*piEnvConn, error) {
+func (r *piEnvRuntime) acquire(ctx context.Context, spec Spec) (*piEnvConn, error) {
 	key := piEnvKey(spec)
 	r.mu.Lock()
 	if r.closed {
@@ -327,7 +327,7 @@ func (r *piEnvRuntime) close() {
 }
 
 // dial connects to spec's host, starts the daemon, and reads the workspace base and the login environment.
-func (r *piEnvRuntime) dial(ctx context.Context, spec EnvironmentSpec) (piEnvSession, error) {
+func (r *piEnvRuntime) dial(ctx context.Context, spec Spec) (piEnvSession, error) {
 	cfg, err := parsePiEnvConfig(spec.Config)
 	if err != nil {
 		return piEnvSession{}, err
@@ -369,7 +369,7 @@ func (r *piEnvRuntime) dial(ctx context.Context, spec EnvironmentSpec) (piEnvSes
 	return piEnvSession{conn: conn, home: detected.Home, sep: sep, base: base, loginEnv: loginEnv}, nil
 }
 
-func (r *piEnvRuntime) probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+func (r *piEnvRuntime) probe(ctx context.Context, saved *Spec, spec Spec) (TestResult, error) {
 	cfg, err := parsePiEnvConfig(spec.Config)
 	if err != nil {
 		return TestResult{}, err
@@ -454,7 +454,7 @@ func (r *piEnvRuntime) probe(ctx context.Context, saved *EnvironmentSpec, spec E
 
 // changed forgets the saved host key when the endpoint changed or the row was deleted, and
 // retires the shared connection, so the next open uses the new configuration.
-func (r *piEnvRuntime) changed(_ context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
+func (r *piEnvRuntime) changed(_ context.Context, old Spec, cur *Spec) error {
 	r.retire(old.ID)
 	if r.dataDir == "" || old.ID == "" {
 		return nil
@@ -474,8 +474,8 @@ func (r *piEnvRuntime) changed(_ context.Context, old EnvironmentSpec, cur *Envi
 }
 
 // release keeps the remote workspace: the SSH host belongs to the user.
-func (*piEnvRuntime) release(context.Context, string, EnvironmentSpec, string) error { return nil }
-func (*piEnvRuntime) disposable() bool                                               { return false }
+func (*piEnvRuntime) release(context.Context, string, Spec, string) error { return nil }
+func (*piEnvRuntime) disposable() bool                                    { return false }
 
 // identity is the retirement epoch of the shared connection of envID.
 func (r *piEnvRuntime) identity(_ context.Context, envID string) (string, error) {
@@ -486,7 +486,7 @@ func (r *piEnvRuntime) identity(_ context.Context, envID string) (string, error)
 
 // forgetHostKey removes the saved trust and retires the shared connection, so the next open
 // makes a new SSH handshake and loaded bots reload.
-func (r *piEnvRuntime) forgetHostKey(spec EnvironmentSpec) error {
+func (r *piEnvRuntime) forgetHostKey(spec Spec) error {
 	if r.dataDir == "" || strings.TrimSpace(spec.ID) == "" {
 		return nil
 	}

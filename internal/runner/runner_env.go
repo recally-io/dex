@@ -18,14 +18,14 @@ import (
 // runnerBackend opens leases on enrolled Remote hosts.
 type runnerBackend struct{ runners *Runners }
 
-func (runnerBackend) normalize(spec EnvironmentSpec) (string, error) {
+func (runnerBackend) normalize(spec Spec) (string, error) {
 	if spec.Secret != "" {
 		return "", fmt.Errorf("%w: a remote machine has no secret", ErrInvalidConfig)
 	}
 	return "{}", nil
 }
 
-func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+func (b runnerBackend) probe(_ context.Context, _ *Spec, spec Spec) (TestResult, error) {
 	session := b.runners.online(spec.ID)
 	if session == nil {
 		return TestResult{Error: "Outbound Machine is offline"}, nil
@@ -34,7 +34,7 @@ func (b runnerBackend) probe(_ context.Context, _ *EnvironmentSpec, spec Environ
 	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil
 }
 
-func (b runnerBackend) open(ctx context.Context, agentID string, spec EnvironmentSpec) (lease, error) {
+func (b runnerBackend) open(ctx context.Context, agentID string, spec Spec) (lease, error) {
 	digest, err := b.runners.identity(ctx, spec.ID)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (b runnerBackend) open(ctx context.Context, agentID string, spec Environmen
 	return h, nil
 }
 
-func (b runnerBackend) changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
+func (b runnerBackend) changed(ctx context.Context, old Spec, cur *Spec) error {
 	if cur != nil {
 		return nil
 	}
@@ -62,8 +62,8 @@ func (b runnerBackend) changed(ctx context.Context, old EnvironmentSpec, cur *En
 }
 
 // release keeps the machine workspace: the machine belongs to the user.
-func (runnerBackend) release(context.Context, string, EnvironmentSpec, string) error { return nil }
-func (runnerBackend) disposable() bool                                               { return false }
+func (runnerBackend) release(context.Context, string, Spec, string) error { return nil }
+func (runnerBackend) disposable() bool                                    { return false }
 func (b runnerBackend) identity(ctx context.Context, envID string) (string, error) {
 	return b.runners.identity(ctx, envID)
 }

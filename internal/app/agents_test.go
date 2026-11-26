@@ -22,7 +22,7 @@ type apiAgent struct {
 	ModelID       string `json:"modelId"`
 	ThinkingLevel string `json:"thinkingLevel"`
 	Instructions  string `json:"instructions"`
-	EnvironmentID string `json:"environmentId"`
+	RunnerID      string `json:"runnerId"`
 }
 
 func TestUserCreatesAndValidatesAgents(t *testing.T) {
@@ -272,7 +272,7 @@ func TestUserKeepsAgentAutomationsAndTasksSeparate(t *testing.T) {
 	runPath := fmt.Sprintf("%s/chats/%d", base, run.ChatID)
 	d.watchPath(t, runPath+"/events").until(t, "B automation answer", answered("echo: no delegated work"))
 	d.must(t, http.MethodPut, runPath+"/settings", map[string]string{"provider": "faux", "modelId": "shout", "thinkingLevel": "high"}, nil)
-	d.must(t, http.MethodGet, base+"/extensions", nil, nil)
+	d.must(t, http.MethodGet, base+"/integrations", nil, nil)
 	d.must(t, http.MethodDelete, path, nil, nil)
 	d.must(t, http.MethodGet, path, nil, nil, http.StatusNotFound)
 	t.Logf("artifact: B=%s child=%s automation=%s run=%s", b.ID, child, auto.ID, run.ID)
@@ -295,7 +295,7 @@ func TestUserGetsNotFoundForUnknownAgents(t *testing.T) {
 		{http.MethodPost, "/chats/1/messages", map[string]string{"id": uuid.NewV7().String(), "text": "unknown"}},
 		{http.MethodPost, "/chats/1/clear", map[string]string{"id": uuid.NewV7().String()}}, {http.MethodPost, "/chats/1/abort", nil},
 		{http.MethodGet, "/tasks/missing", nil}, {http.MethodGet, "/uploads/" + uuid.NewV7().String(), nil},
-		{http.MethodPost, "/uploads", nil}, {http.MethodGet, "/extensions", nil}, {http.MethodPost, "/extensions/reload", nil},
+		{http.MethodPost, "/uploads", nil}, {http.MethodGet, "/integrations", nil}, {http.MethodPost, "/integrations/reload", nil},
 		{http.MethodGet, "/automations", nil}, {http.MethodPost, "/automations", map[string]string{}},
 		{http.MethodGet, "/automations/missing", nil}, {http.MethodPut, "/automations/missing", map[string]string{}},
 		{http.MethodDelete, "/automations/missing", nil}, {http.MethodPost, "/automations/missing/run", nil}, {http.MethodGet, "/automations/missing/runs", nil},

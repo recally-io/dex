@@ -201,9 +201,9 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	// A child in the same bot runs in the environment of its parent unless it selects another one;
 	// a child in another bot runs in the environment of that bot. The cwd of the parent stays in
 	// the environment of the parent.
-	environment := inherited.EnvironmentID
+	environment := inherited.RunnerID
 	if a.Environment != "" {
-		if err := checkEnvironment(ctx, s.q, a.Environment); err != nil {
+		if err := checkRunner(ctx, s.q, a.Environment); err != nil {
 			return SessionRef{}, err
 		}
 		environment = a.Environment
@@ -211,7 +211,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	cwd := inherited.Cwd
 	if source, err := s.q.GetAgent(ctx, r.AgentID); err != nil {
 		return SessionRef{}, err
-	} else if effectiveEnvironment(target, environment) != effectiveEnvironment(source, parent.EnvironmentID) {
+	} else if effectiveRunner(target, environment) != effectiveRunner(source, parent.RunnerID) {
 		cwd = ""
 	}
 	if a.Cwd != "" {
@@ -245,7 +245,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	now := s.now().UnixMilli()
 	child, err := q.CreateChildConversation(ctx, sqlc.CreateChildConversationParams{
 		AgentID: target.ID, ChannelKey: chatPrefix + uuid.NewV7().String(), Title: a.Title,
-		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd, EnvironmentID: environment,
+		ModelProvider: settings.Provider, ModelID: settings.ModelID, ThinkingLevel: settings.ThinkingLevel, Cwd: cwd, RunnerID: environment,
 		ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}, CreatedAt: now,
 	})
 	if err != nil {
@@ -361,12 +361,12 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 		return s.ref(ctx, s.q, c)
 	}
 	if a.Environment != "" {
-		if err := checkEnvironment(ctx, s.q, a.Environment); err != nil {
+		if err := checkRunner(ctx, s.q, a.Environment); err != nil {
 			return SessionRef{}, err
 		}
 	}
 	var ledger *tasksvc.Ledger
-	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.EnvironmentID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
+	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.RunnerID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
 		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
 		}

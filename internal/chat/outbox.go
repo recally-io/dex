@@ -499,8 +499,8 @@ func bindFileDeliveries(ctx context.Context, q *sqlc.Queries, outboxID, sourceID
 	return q.DeleteUnboundOutboxFiles(ctx, source)
 }
 
-// WakeRoutineOutbox nudges channel delivery after commit without waking any conversation.
-func (s *Service) WakeRoutineOutbox(ctx context.Context, runID string) {
+// WakeAutomationOutbox nudges channel delivery after commit without waking any conversation.
+func (s *Service) WakeAutomationOutbox(ctx context.Context, runID string) {
 	if s.notify != nil {
 		if row, err := s.q.GetOutboxMessage(ctx, "routine:"+runID); err == nil && row.Status == "pending" {
 			s.notify(row.Peer)
@@ -515,14 +515,14 @@ func routineFailure(run sqlc.AutomationRun) bool {
 			return true
 		default:
 			reason := run.Reason.String
-			return strings.HasPrefix(reason, routineEnvironmentPrefix) &&
+			return strings.HasPrefix(reason, routineRunnerPrefix) &&
 				(strings.HasSuffix(reason, routineUnavailableSuffix) || strings.HasSuffix(reason, routineRemovedSuffix))
 		}
 	}
 	return run.Outcome == "failed"
 }
 
-func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, convID int64, now int64) error {
+func queueAutomationOutbox(ctx context.Context, q *sqlc.Queries, runID string, convID int64, now int64) error {
 	run, err := q.GetAutomationRun(ctx, runID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil // A non-Routine input also uses settlement.
@@ -545,7 +545,7 @@ func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, conv
 	} else if run.Outcome != "changed" || run.Duplicate != 0 {
 		return nil
 	}
-	info, err := q.GetRoutineOutboxInfo(ctx, runID)
+	info, err := q.GetAutomationOutboxInfo(ctx, runID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return q.SetAutomationRunNotificationNote(ctx, sqlc.SetAutomationRunNotificationNoteParams{ID: runID, NotificationNote: "not delivered: no notification target"})
 	}
@@ -554,7 +554,7 @@ func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, conv
 	}
 	source := sql.NullString{String: runID, Valid: convID != 0}
 	if convID == 0 {
-		convID, err = q.GetRoutineOutboxConversation(ctx, info.AgentID)
+		convID, err = q.GetAutomationOutboxConversation(ctx, info.AgentID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return q.SetAutomationRunNotificationNote(ctx, sqlc.SetAutomationRunNotificationNoteParams{ID: runID, NotificationNote: "not delivered: no existing bot conversation"})
 		}
@@ -592,7 +592,7 @@ func queueRoutineOutbox(ctx context.Context, q *sqlc.Queries, runID string, conv
 		AgentID:            info.AgentID,
 		ConversationID:     convID,
 		SourceSubmissionID: source,
-		Kind:               "routine",
+		Kind:               "automation",
 		Peer:               info.Peer,
 		ChannelContext:     string(chCtx),
 		TopicKey:           topicKey,

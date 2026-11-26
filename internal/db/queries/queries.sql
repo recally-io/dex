@@ -12,8 +12,8 @@ UPDATE agents SET
     fallback_provider = @fallback_provider,
     fallback_model_id = @fallback_model_id,
     instructions = @instructions,
-    environment_sandbox_id = CASE WHEN environment_id = @environment_id THEN environment_sandbox_id ELSE '' END,
-    environment_id = @environment_id
+    runner_sandbox_id = CASE WHEN runner_id = @runner_id THEN runner_sandbox_id ELSE '' END,
+    runner_id = @runner_id
 WHERE id = @id;
 
 -- name: GetAgent :one
@@ -71,7 +71,7 @@ WHERE agents.id = @agent_id AND archived_at IS NULL AND agents.id <> 'default'
 UPDATE agents SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL;
 
 -- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, environment_id, created_at)
+INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, runner_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -103,7 +103,7 @@ RETURNING *;
 -- name: CreateFork :one
 -- A fork is a new Chat with the settings and the parent of its source. execution_id is NULL when
 -- the fork starts empty, so the first message creates the native conversation.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, environment_id, execution_id, forked_from, parent_id, created_at)
+INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, execution_id, forked_from, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -215,7 +215,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
-    c.environment_id,
+    c.runner_id,
     c.created_at,
     c.archived_at,
     c.parent_id,
@@ -249,7 +249,7 @@ SELECT
     c.model_id,
     c.thinking_level,
     c.cwd,
-    c.environment_id,
+    c.runner_id,
     c.created_at,
     c.archived_at,
     c.parent_id,
@@ -366,13 +366,13 @@ SELECT id FROM agents WHERE archived_at IS NULL ORDER BY id;
 
 -- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, environment_id, session, target_conversation_id
+    id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_conversation_id
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateAutomation :execrows
 UPDATE automations SET
     cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
-    notification_route = ?, notification_target_id = ?, environment_id = ?, updated_at = ?, target_conversation_id = ?
+    notification_route = ?, notification_target_id = ?, runner_id = ?, updated_at = ?, target_conversation_id = ?
 WHERE id = ? AND agent_id = ?;
 
 -- name: GetAutomation :one
@@ -398,7 +398,7 @@ DELETE FROM automations WHERE id = ? AND agent_id = ?;
 
 -- name: CreateAutomationRun :execrows
 -- A run for a scheduled time that has a run already is not stored again.
-INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at, environment_id, cwd)
+INSERT INTO automation_runs (id, automation_id, due_at, status, reason, created_at, runner_id, cwd)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT DO NOTHING;
 
@@ -409,7 +409,7 @@ SELECT
     r.due_at,
     r.status,
     r.reason,
-    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.environment_id, r.cwd, r.notification_note,
+    r.created_at, r.outcome, r.summary, r.change_key, r.duplicate, r.runner_id, r.cwd, r.notification_note,
     s.status AS message_status,
     s.reason AS message_reason,
     s.conversation_id AS chat_id,

@@ -50,10 +50,10 @@ describe("chat", () => {
 
     expect(settings.ok).toBe(true);
 
-    const environment = await fetch(`${base}/${id}/environment`, {
+    const environment = await fetch(`${base}/${id}/runner`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ environmentId: "local" }),
+      body: JSON.stringify({ runnerId: "local" }),
     });
 
     expect(environment.ok).toBe(true);

@@ -5,16 +5,16 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   getMainChatOptions,
-  listEnvironmentsOptions,
+  listRunnersOptions,
   listModelsOptions,
-  resetAgentEnvironmentMutation,
+  resetAgentRunnerMutation,
   setChatSettingsMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { errorText, refreshChats, refreshEnvironments } from "../lib/queries";
+import { errorText, refreshChats, refreshRunners } from "../lib/queries";
 
 import { findModel, saveAgent, thinkingNames, useAgentModel } from "../lib/agent";
 import { useApp } from "../lib/app-state";
-import { environmentBotHint, environmentOptionLabel } from "../lib/environments";
+import { runnerBotHint, runnerOptionLabel } from "../lib/runners";
 import { ModelPicker } from "../components/model-picker";
 import { ThinkingPicker } from "../components/thinking-picker";
 import { Failure, Loading, Spinner } from "../components/feedback";
@@ -265,7 +265,7 @@ function Agent({ settings }: { settings: Settings }) {
               }
             />
           </div>
-          <ExecutionEnvironmentRow environmentId={settings.agent.environmentId} />
+          <RunnerRow runnerId={settings.agent.runnerId} />
         </Panel>
       </Section>
       <div id="instructions">
@@ -384,19 +384,19 @@ function NameRow({ name }: { name: string }) {
   );
 }
 
-function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
+function RunnerRow({ runnerId }: { runnerId: string }) {
   const agentId = useAgentId();
   const { notify } = useApp();
-  const environments = useQuery(listEnvironmentsOptions());
-  const list = environments.data?.environments ?? [];
-  const current = list.find((env) => env.id === environmentId);
+  const runners = useQuery(listRunnersOptions());
+  const list = runners.data?.runners ?? [];
+  const current = list.find((env) => env.id === runnerId);
   const isE2B = current?.kind === "e2b";
 
   const save = useMutation({
-    mutationFn: (nextId: string) => saveAgent(agentId, (agent) => ({ ...agent, environmentId: nextId })),
+    mutationFn: (nextId: string) => saveAgent(agentId, (agent) => ({ ...agent, runnerId: nextId })),
     onSuccess: async (_, nextId) => {
       const target = list.find((env) => env.id === nextId);
-      await refreshEnvironments();
+      await refreshRunners();
 
       notify(
         target
@@ -407,12 +407,12 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
   });
 
   const resetSandbox = useMutation({
-    ...resetAgentEnvironmentMutation(),
+    ...resetAgentRunnerMutation(),
     onSuccess: () => notify("Sandbox reset. The next message starts a fresh sandbox."),
     onError: (err) => notify(errorText(err)),
   });
 
-  const missingSelection = !!environmentId && !environments.isPending && !current;
+  const missingSelection = !!runnerId && !runners.isPending && !current;
 
   return (
     <div className="border-t border-border px-4 py-3.5">
@@ -423,9 +423,9 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
           </label>
           <p id="bot-environment-hint" className="mt-0.5 text-[12.5px] text-muted-foreground">
             {current
-              ? environmentBotHint(current)
+              ? runnerBotHint(current)
               : missingSelection
-                ? `Configured Runner (${environmentId}) is missing.`
+                ? `Configured Runner (${runnerId}) is missing.`
                 : "Runs tools and workspaces on this computer."}{" "}
             <Link className="font-medium text-primary underline" to="/settings/runners">
               Manage Runners
@@ -450,23 +450,23 @@ function ExecutionEnvironmentRow({ environmentId }: { environmentId: string }) {
             aria-describedby="bot-environment-hint"
             aria-invalid={save.isError || missingSelection}
             className="w-full sm:w-[220px]"
-            value={environmentId}
-            disabled={save.isPending || environments.isPending}
+            value={runnerId}
+            disabled={save.isPending || runners.isPending}
             onChange={(event) => save.mutate(event.target.value)}
           >
             <option value="">Local</option>
-            {missingSelection ? <option value={environmentId}>Missing ({environmentId})</option> : null}
+            {missingSelection ? <option value={runnerId}>Missing ({runnerId})</option> : null}
             {list.map((env) => (
               <option key={env.id} value={env.id}>
-                {environmentOptionLabel(env)}
+                {runnerOptionLabel(env)}
               </option>
             ))}
           </Select>
         </div>
       </div>
-      {environments.isError ? (
+      {runners.isError ? (
         <div className="mt-3">
-          <Failure title="Could not load Runners" error={environments.error} />
+          <Failure title="Could not load Runners" error={runners.error} />
         </div>
       ) : null}
       {save.isError ? (

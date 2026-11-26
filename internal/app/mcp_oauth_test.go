@@ -131,7 +131,7 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 			t.Fatalf("POST %s: %d, want %d", path, resp.StatusCode, want)
 		}
 	}
-	const startPath = "/api/agents/default/extensions/mcp/notes/oauth"
+	const startPath = "/api/agents/default/integrations/mcp/notes/oauth"
 	const startBody = `{"scope":"agent"}`
 	status(startPath, startBody, http.StatusUnauthorized)
 	status("/api/session", `{"token":"`+ownerToken+`"}`, http.StatusNoContent)
@@ -199,7 +199,7 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 		t.Fatalf("refreshes: %d", refreshes.Load())
 	}
 	var other extensions
-	d.must(t, http.MethodGet, "/api/agents/"+bot.ID+"/extensions", nil, &other)
+	d.must(t, http.MethodGet, "/api/agents/"+bot.ID+"/integrations", nil, &other)
 	if s := other.server("notes"); s.Scope != "dex" || s.OAuth != "authorize" {
 		t.Fatalf("grant reached shared scope: %+v", s)
 	}
@@ -218,7 +218,7 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 	revoked.Store(true)
 	d.send(t, chatID, `mcp__notes__read {}`)
 	eventually(t, "reauthorize", func() (bool, any) {
-		_, body := d.call(t, http.MethodGet, "/api/agents/default/extensions", nil)
+		_, body := d.call(t, http.MethodGet, "/api/agents/default/integrations", nil)
 		return strings.Contains(body, `"oauth":"reauthorize"`) && !strings.Contains(body, "private-refresh-token"), body
 	})
 	w.until(t, "reauthorization action", answeredWith("reauthorize this MCP connection in Tools"))

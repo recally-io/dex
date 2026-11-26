@@ -47,7 +47,7 @@ func toolRun(r Run) RoutineRun {
 }
 
 func routineView(a Automation) RoutineInfo {
-	out := RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, TargetConversationID: a.TargetConversationID, Enabled: a.Enabled, Cwd: a.Cwd, EnvironmentID: a.EnvironmentID, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
+	out := RoutineInfo{Notification: a.Notification, ID: a.ID, Name: a.Name, Prompt: a.Prompt, Schedule: RoutineSchedule(a.Schedule), TimeZone: a.TimeZone, Session: a.Session, TargetConversationID: a.TargetConversationID, Enabled: a.Enabled, Cwd: a.Cwd, RunnerID: a.RunnerID, NextRuns: a.NextRuns, CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt}
 	if a.LastRun != nil {
 		out.LastRun = new(toolRun(*a.LastRun))
 	}
@@ -102,14 +102,14 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.service.q.WithTx(tx)
-	if err = q.LockRoutineTools(ctx); err != nil {
+	if err = q.LockAutomationTools(ctx); err != nil {
 		return err
 	}
 	conv, source, err := routineCaller(ctx, q, c)
 	if err != nil {
 		return err
 	}
-	prior, err := q.GetRoutineToolOperation(ctx, c.Key)
+	prior, err := q.GetAutomationToolOperation(ctx, c.Key)
 	if err == nil {
 		if prior.AgentID != c.AgentID || prior.ConversationID != conv.ID || prior.SourceRequestID != source.ID || prior.Action != action {
 			return invalid("tool key belongs to another operation")
@@ -137,7 +137,7 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	if err != nil {
 		return err
 	}
-	if err = q.CreateRoutineToolOperation(ctx, sqlc.CreateRoutineToolOperationParams{Key: c.Key, AgentID: c.AgentID, ConversationID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
+	if err = q.CreateAutomationToolOperation(ctx, sqlc.CreateAutomationToolOperationParams{Key: c.Key, AgentID: c.AgentID, ConversationID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -182,11 +182,11 @@ func applyPatch(in *Input, p RoutinePatch) {
 		in.Enabled = *p.Enabled
 	}
 	// A cwd of one environment means nothing in another, so a new environment drops it.
-	if p.EnvironmentID != nil {
-		if *p.EnvironmentID != in.EnvironmentID {
+	if p.RunnerID != nil {
+		if *p.RunnerID != in.RunnerID {
 			in.Cwd = ""
 		}
-		in.EnvironmentID = *p.EnvironmentID
+		in.RunnerID = *p.RunnerID
 	}
 	if p.Cwd != nil {
 		in.Cwd = *p.Cwd
@@ -200,7 +200,7 @@ func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p Routin
 			return nil, invalid("name, prompt, schedule and explicit timeZone are required")
 		}
 		// The routine runs where this conversation runs, with its cwd.
-		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, EnvironmentID: conv.EnvironmentID, Notification: &RoutineNotification{Mode: "default"}}
+		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, RunnerID: conv.RunnerID, Notification: &RoutineNotification{Mode: "default"}}
 		applyPatch(&in, p)
 		a, err := local.Create(ctx, c.AgentID, in)
 		return routineView(a), err
@@ -239,18 +239,18 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p Routin
 			if err := local.applyNotification(ctx, &row, cleanIn.Notification); err != nil {
 				return nil, err
 			}
-			if err := local.checkEnvironment(ctx, cleanIn.EnvironmentID, row.EnvironmentID); err != nil {
+			if err := local.checkRunner(ctx, cleanIn.RunnerID, row.RunnerID); err != nil {
 				return nil, err
 			}
 			if err := local.checkTarget(ctx, c.AgentID, cleanIn); err != nil {
 				return nil, err
 			}
-			row.Cwd, row.EnvironmentID, row.TargetConversationID = cleanIn.Cwd, cleanIn.EnvironmentID, targetID(cleanIn)
+			row.Cwd, row.RunnerID, row.TargetConversationID = cleanIn.Cwd, cleanIn.RunnerID, targetID(cleanIn)
 			row.Name = cleanIn.Name
 			row.Prompt = cleanIn.Prompt
 			row.Session = cleanIn.Session
 			row.UpdatedAt = local.now().UnixMilli()
-			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: row.AgentID})
+			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, RunnerID: row.RunnerID, TargetConversationID: row.TargetConversationID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: row.AgentID})
 			if err != nil {
 				return nil, err
 			}

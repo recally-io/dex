@@ -79,9 +79,9 @@ func (s *Service) reloadExtensions(ctx context.Context, agentID string, reload f
 	return reload(ctx, agentID)
 }
 
-// ResetEnvironment verifies agentID is idle, closes its active runtime resources and background
+// ResetRunner verifies agentID is idle, closes its active runtime resources and background
 // commands, and invokes reset to tear down remote sandbox state.
-func (s *Service) ResetEnvironment(ctx context.Context, agentID string, reset func(context.Context) error) error {
+func (s *Service) ResetRunner(ctx context.Context, agentID string, reset func(context.Context) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

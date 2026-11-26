@@ -9,7 +9,7 @@ import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { findModel, thinkingNames } from "../lib/agent";
 import { refreshChats } from "../lib/queries";
 import { ChatActivity } from "./chat-activity";
-import { ChatEnvironment } from "./chat-environment";
+import { ChatRunner } from "./chat-runner";
 import { ChatProject } from "./chat-project";
 import { ModelPicker } from "./model-picker";
 import { Button } from "./ui/button";
@@ -74,8 +74,8 @@ export function SessionSettings({
       aria-label="Task settings"
       className="flex min-w-0 items-center gap-0.5 overflow-hidden"
     >
-      <ChatEnvironment chat={chat} started={started} />
-      <ChatProject chatId={chat.id} cwd={chat.cwd} environmentId={chat.environmentId} />
+      <ChatRunner chat={chat} started={started} />
+      <ChatProject chatId={chat.id} cwd={chat.cwd} runnerId={chat.runnerId} />
       <ChatActivity chatId={chat.id} writable={!chat.readOnly} />
       <ModelPicker
         side="top"

@@ -250,7 +250,7 @@ func (e *environments) backOnline(ctx context.Context, err error) bool {
 // the reason why it is unavailable. A provider without reports is always available.
 func (e *environments) status(ctx context.Context, id string) string {
 	if p, ok := e.provider.(interface {
-		Status(ctx context.Context, agentID, environmentID string) string
+		Status(ctx context.Context, agentID, runnerID string) string
 	}); ok {
 		return p.Status(ctx, e.agentID, id)
 	}
@@ -293,11 +293,11 @@ func (e *environments) close(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// withEnvironment runs fn with the lease of environmentID for agentID: the open agent's lease, or
+// withRunner runs fn with the lease of runnerID for agentID: the open agent's lease, or
 // a temporary lease for the default when the agent is not open. Explicit browsing opens the
 // agent (and loads its configured MCP servers) so subsequent operations use the
 // same lease, including disposable sandboxes.
-func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID string, fn func(runner.Handle) error) error {
+func (a *Agents) withRunner(ctx context.Context, agentID, runnerID string, fn func(runner.Handle) error) error {
 	if !agentIDPattern.MatchString(agentID) {
 		return ErrInvalidInput
 	}
@@ -305,8 +305,8 @@ func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID str
 		return err
 	}
 	defer a.end(agentID)
-	if a.environments(agentID) == nil && environmentID != "" {
-		if _, err := a.config.ExecEnv.Stamp(ctx, agentID, environmentID); err != nil {
+	if a.environments(agentID) == nil && runnerID != "" {
+		if _, err := a.config.ExecEnv.Stamp(ctx, agentID, runnerID); err != nil {
 			return err
 		}
 		if _, err := a.harness(ctx, agentID); err != nil {
@@ -314,13 +314,13 @@ func (a *Agents) withEnvironment(ctx context.Context, agentID, environmentID str
 		}
 	}
 	if envs := a.environments(agentID); envs != nil {
-		s, err := envs.byID(ctx, environmentID)
+		s, err := envs.byID(ctx, runnerID)
 		if err != nil {
 			return err
 		}
 		return fn(s.Handle)
 	}
-	h, err := a.config.ExecEnv.Open(ctx, agentID, environmentID)
+	h, err := a.config.ExecEnv.Open(ctx, agentID, runnerID)
 	if err != nil {
 		return err
 	}
@@ -337,12 +337,12 @@ func (a *Agents) environments(agentID string) *environments {
 	return nil
 }
 
-// sessionEnvironmentID returns the explicit environment of a session, or empty when it follows its agent.
-func (a *Agents) sessionEnvironmentID(ctx context.Context, ref Ref) (string, error) {
-	if ref.ID <= 0 || a.config.SessionEnvironment == nil {
+// sessionRunnerID returns the explicit environment of a session, or empty when it follows its agent.
+func (a *Agents) sessionRunnerID(ctx context.Context, ref Ref) (string, error) {
+	if ref.ID <= 0 || a.config.SessionRunner == nil {
 		return "", nil
 	}
-	id, err := a.config.SessionEnvironment(ctx, ref)
+	id, err := a.config.SessionRunner(ctx, ref)
 	if err != nil {
 		return "", fmt.Errorf("read the environment of the session: %w", err)
 	}

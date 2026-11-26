@@ -23,16 +23,16 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	// The bot uses a runner that is registered but not connected.
-	var machine apiEnvironment
-	d.must(t, http.MethodPost, "/api/settings/environments", map[string]string{"name": "Offline runner", "kind": "runner"}, &machine, http.StatusCreated)
+	var machine apiRunner
+	d.must(t, http.MethodPost, "/api/settings/runners", map[string]string{"name": "Offline runner", "kind": "runner"}, &machine, http.StatusCreated)
 	var bot apiAgent
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
-	bot.EnvironmentID = machine.ID
+	bot.RunnerID = machine.ID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
 	probeRunner := func() {
 		t.Helper()
-		var probe apiEnvironmentTestResult
-		d.must(t, http.MethodPost, "/api/settings/environments/"+machine.ID+"/test", nil, &probe)
+		var probe apiRunnerTestResult
+		d.must(t, http.MethodPost, "/api/settings/runners/"+machine.ID+"/test", nil, &probe)
 		if probe.OK {
 			t.Fatal("expected the configured runner to be offline")
 		}

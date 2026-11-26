@@ -52,7 +52,7 @@ func TestUserIdleBotDoesNotCheckExtensionStampsPeriodically(t *testing.T) {
 	}
 }
 
-func TestUserEnvironmentEditReloadsOnlyItsIdleBot(t *testing.T) {
+func TestUserRunnerEditReloadsOnlyItsIdleBot(t *testing.T) {
 	t.Parallel()
 	data, files := t.TempDir(), t.TempDir()
 	seedMCP(t, data, app.DefaultAgentID, map[string]any{"files": stdioServer(t, files)})
@@ -61,7 +61,7 @@ func TestUserEnvironmentEditReloadsOnlyItsIdleBot(t *testing.T) {
 	m.connect(d)
 	useMachine(t, d, m, "tool")
 	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Local", "provider": "faux", "modelId": "echo", "environmentId": ""}, &other, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Local", "provider": "faux", "modelId": "echo", "runnerId": ""}, &other, http.StatusCreated)
 	otherChat := (&bots{t: t, d: d}).echoChat(other.ID, "before the edit")
 	otherWatch := otherChat.watch()
 
@@ -72,9 +72,9 @@ func TestUserEnvironmentEditReloadsOnlyItsIdleBot(t *testing.T) {
 		got := readNotes(t, files)
 		return strings.Contains(got, "started edit"), got
 	})
-	d.must(t, http.MethodPut, "/api/settings/environments/"+m.envID, map[string]string{"name": "New machine name", "kind": "runner"}, nil)
+	d.must(t, http.MethodPut, "/api/settings/runners/"+m.envID, map[string]string{"name": "New machine name", "kind": "runner"}, nil)
 	var pending apiExtensionsPending
-	d.must(t, http.MethodGet, "/api/agents/default/extensions", nil, &pending)
+	d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &pending)
 	if !pending.ReloadPending {
 		t.Fatal("the environment edit did not request a reload")
 	}
@@ -101,7 +101,7 @@ func TestUserIdleBotRestoresMachineWithoutNewInput(t *testing.T) {
 
 	d := startDexWith(t, cfg)
 	chat := d.newSession(t).ID
-	d.must(t, http.MethodPut, chatPath(chat, "environment"), map[string]string{"environmentId": "local"}, nil)
+	d.must(t, http.MethodPut, chatPath(chat, "runner"), map[string]string{"runnerId": "local"}, nil)
 	d.send(t, chat, "open without the default")
 	w := d.watch(t, chat)
 	w.until(t, "the local turn ends", answered("echo: open without the default"))
@@ -135,7 +135,7 @@ func waitReloadStream(t *testing.T, w *watcher) {
 	}
 }
 
-func TestUserKeepsWorkingExtensionsUntilRefusedConfigChanges(t *testing.T) {
+func TestUserKeepsWorkingIntegrationsUntilRefusedConfigChanges(t *testing.T) {
 	data := t.TempDir()
 	logs := sysops.NewLogBuffer(100)
 	old := slog.Default()

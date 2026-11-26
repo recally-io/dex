@@ -119,7 +119,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 		return 0, 0, "", err
 	}
 	if !routineCanceled(event.Status, event.Reason) {
-		if err = queueRoutineOutbox(ctx, q, id, conv.ID, s.now().UnixMilli()); err != nil {
+		if err = queueAutomationOutbox(ctx, q, id, conv.ID, s.now().UnixMilli()); err != nil {
 			return 0, 0, "", err
 		}
 	}

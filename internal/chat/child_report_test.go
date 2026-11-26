@@ -154,7 +154,7 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := r.q.InsertRoutineNotificationTarget(t.Context(), sqlc.InsertRoutineNotificationTargetParams{ID: "target", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42"}); err != nil {
+				if err := r.q.InsertAutomationNotificationTarget(t.Context(), sqlc.InsertAutomationNotificationTargetParams{ID: "target", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42"}); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := r.q.SetPrimaryNotificationTarget(t.Context(), sqlc.SetPrimaryNotificationTargetParams{ID: "bot", PrimaryNotificationTargetID: sql.NullString{String: "target", Valid: true}}); err != nil {

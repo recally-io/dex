@@ -5,31 +5,31 @@ import {
   createAgentMutation,
   getAgentOptions,
   listAgentsQueryKey,
-  listEnvironmentsOptions,
+  listRunnersOptions,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { findModel } from "../lib/agent";
-import { environmentOptionLabel } from "../lib/environments";
+import { runnerOptionLabel } from "../lib/runners";
 import { queryClient } from "../lib/queries";
 import { Modal } from "./dialog";
 import { Field, Input, Select } from "./form";
 import { Button } from "./ui/button";
 import { Failure, Loading } from "./feedback";
 import { ModelPicker } from "./model-picker";
-import type { Agent, Environment, Model } from "../api/generated/types.gen";
+import type { Agent, Runner, Model } from "../api/generated/types.gen";
 
 export function AgentCreateDialog({ onClose }: { onClose: () => void }) {
   // A new bot starts with a copy of the default bot's model, fallback, and environment.
   const template = useQuery(getAgentOptions({ path: { agentId: "default" } }));
   const models = useQuery(listModelsOptions());
-  const environments = useQuery(listEnvironmentsOptions());
-  const error = template.error ?? environments.error;
+  const runners = useQuery(listRunnersOptions());
+  const error = template.error ?? runners.error;
 
-  return template.data && environments.data ? (
+  return template.data && runners.data ? (
     <CreateForm
       defaults={template.data}
       models={models.data?.models}
-      environments={environments.data.environments}
+      runners={runners.data.runners}
       onClose={onClose}
     />
   ) : (
@@ -42,12 +42,12 @@ export function AgentCreateDialog({ onClose }: { onClose: () => void }) {
 function CreateForm({
   defaults,
   models,
-  environments,
+  runners,
   onClose,
 }: {
   defaults: Agent;
   models: Model[] | undefined;
-  environments: Environment[];
+  runners: Runner[];
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
@@ -61,8 +61,8 @@ function CreateForm({
 
   const [fallbackName, setFallbackName] = useState<string | null>(null);
 
-  const [environmentId, setEnvironmentId] = useState(
-    environments.some((env) => env.id === defaults.environmentId) ? defaults.environmentId : "",
+  const [runnerId, setRunnerId] = useState(
+    runners.some((env) => env.id === defaults.runnerId) ? defaults.runnerId : "",
   );
 
   const navigate = useNavigate();
@@ -121,7 +121,7 @@ function CreateForm({
                 thinkingLevel: defaults.thinkingLevel,
                 fallbackProvider: fallback.provider,
                 fallbackModelId: fallback.modelId,
-                environmentId,
+                runnerId,
               },
             });
         }}
@@ -189,18 +189,14 @@ function CreateForm({
             />
           )}
         </Field>
-        {environments.length > 0 ? (
+        {runners.length > 0 ? (
           <Field label="Default Runner">
             {({ id }) => (
-              <Select
-                id={id}
-                value={environmentId}
-                onChange={(event) => setEnvironmentId(event.target.value)}
-              >
+              <Select id={id} value={runnerId} onChange={(event) => setRunnerId(event.target.value)}>
                 <option value="">Local</option>
-                {environments.map((env) => (
+                {runners.map((env) => (
                   <option key={env.id} value={env.id}>
-                    {environmentOptionLabel(env)}
+                    {runnerOptionLabel(env)}
                   </option>
                 ))}
               </Select>

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestUserRoutineDeliversToPairedWechatOwner(t *testing.T) {
+func TestUserAutomationDeliversToPairedWechatOwner(t *testing.T) {
 	t.Parallel()
 	// Given a paired WeChat owner with a recent context token.
 	f := newFakeWechat(t)
@@ -39,7 +39,7 @@ func TestUserRoutineDeliversToPairedWechatOwner(t *testing.T) {
 	}
 }
 
-func TestUserRoutineDeliversToPairedFeishuOwner(t *testing.T) {
+func TestUserAutomationDeliversToPairedFeishuOwner(t *testing.T) {
 	t.Parallel()
 	// Given a Feishu bot paired to its private owner.
 	f := newFakeFeishu(t)
@@ -64,7 +64,7 @@ func TestUserRoutineDeliversToPairedFeishuOwner(t *testing.T) {
 	f.waitReply(t, "feishu notification")
 }
 
-func TestUserRoutineNotificationRetriesAfterRestart(t *testing.T) {
+func TestUserAutomationNotificationRetriesAfterRestart(t *testing.T) {
 	t.Parallel()
 	// Given a routine whose remote Telegram send fails temporarily.
 	f := newFakeTelegram(t)
@@ -99,7 +99,7 @@ func TestUserRoutineNotificationRetriesAfterRestart(t *testing.T) {
 	}
 }
 
-func TestUserRoutineDeliversToAuthorizedTelegramOwner(t *testing.T) {
+func TestUserAutomationDeliversToAuthorizedTelegramOwner(t *testing.T) {
 	t.Parallel()
 	// Given a connected Telegram bot and an authorized owner.
 	f := newFakeTelegram(t)
@@ -127,7 +127,7 @@ func TestUserRoutineDeliversToAuthorizedTelegramOwner(t *testing.T) {
 	}
 }
 
-func TestUserCanSetRoutineNotificationRoute(t *testing.T) {
+func TestUserCanSetAutomationNotificationRoute(t *testing.T) {
 	t.Parallel()
 	// Given a user creating a routine with an explicit default-channel route.
 	d := startDex(t, t.TempDir(), "")

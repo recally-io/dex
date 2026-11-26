@@ -184,10 +184,10 @@ value, include `[hidden]` for that key in `mcp_server_set`. Do not paste
 literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
 
-`GET /api/agents/{agentId}/extensions` reads file metadata and MCP status.
-For an open Harness, the request uses the default environment's lease to inspect
+`GET /api/agents/{agentId}/integrations` reads file metadata and MCP status.
+For an open Harness, the request uses the default Runner's lease to inspect
 workspace skills. If the lease has not opened, this request can open it without
-blocking admission in other environments. Bot Settings → Integrations shows
+blocking admission on other Runners. Bot Settings → Integrations shows
 loaded MCP server state and the current OAuth grant state. Reload is available
 from both Integrations and Skills.
 Before the agent opens, the API shows connection state `idle` for declarations
@@ -235,7 +235,7 @@ works, Integrations shows **Reauthorize**. Dex does not fall back to static head
 
 ### Reload
 
-`POST /api/agents/{agentId}/extensions/reload`
+`POST /api/agents/{agentId}/integrations/reload`
 validates the selected agent and requires idle execution of that agent only:
 no open, task, submission, settlement, or tool call of the agent can be in
 progress. Work of other agents does not block it. The idle check and

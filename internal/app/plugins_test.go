@@ -26,12 +26,12 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+task.Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{"revision": "abc", "afterAt": 1}}, nil, http.StatusNoContent)
 
 	// When the owner turns GitHub off, it keeps running until dex starts again.
-	d.must(t, http.MethodPut, "/api/settings/plugins/github", map[string]bool{"enabled": false}, nil, http.StatusNoContent)
-	d.must(t, http.MethodPut, "/api/settings/plugins/unknown", map[string]bool{"enabled": true}, nil, http.StatusNotFound)
-	var plugins api.ListPlugins200JSONResponse
-	d.must(t, http.MethodGet, "/api/settings/plugins", nil, &plugins)
-	if !slices.Equal(plugins.Plugins, []api.PluginSetting{{Name: "github", Enabled: false, Running: true}, {Name: "webhook", Enabled: false, Running: false}, {Name: "email", Enabled: false, Running: false}}) {
-		t.Fatalf("the choice must wait for a restart: %+v", plugins.Plugins)
+	d.must(t, http.MethodPut, "/api/settings/sources/github", map[string]bool{"enabled": false}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/settings/sources/unknown", map[string]bool{"enabled": true}, nil, http.StatusNotFound)
+	var plugins api.ListSources200JSONResponse
+	d.must(t, http.MethodGet, "/api/settings/sources", nil, &plugins)
+	if !slices.Equal(plugins.Sources, []api.SourceSetting{{Name: "github", Enabled: false, Running: true}, {Name: "webhook", Enabled: false, Running: false}, {Name: "email", Enabled: false, Running: false}}) {
+		t.Fatalf("the choice must wait for a restart: %+v", plugins.Sources)
 	}
 	d.stop()
 	d = startDex(t, dataDir, "")

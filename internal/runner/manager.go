@@ -13,8 +13,8 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// EnvironmentSpec holds the stored configuration and secret for one execution environment.
-type EnvironmentSpec struct {
+// Spec holds the stored configuration and secret for one execution environment.
+type Spec struct {
 	ID        string
 	Kind      Kind
 	Config    string
@@ -96,7 +96,7 @@ func (m *Manager) backend(kind Kind) (backend, error) {
 }
 
 // Normalize validates spec against its backend rules and returns the normalized JSON config.
-func (m *Manager) Normalize(spec EnvironmentSpec) (string, error) {
+func (m *Manager) Normalize(spec Spec) (string, error) {
 	b, err := m.backend(spec.Kind)
 	if err != nil {
 		return "", err
@@ -106,7 +106,7 @@ func (m *Manager) Normalize(spec EnvironmentSpec) (string, error) {
 
 // Probe checks connectivity for spec. When saved is the stored spec of the same environment,
 // a backend can reuse saved host state, such as SSH known_hosts, if the endpoint is unchanged.
-func (m *Manager) Probe(ctx context.Context, saved *EnvironmentSpec, spec EnvironmentSpec) (TestResult, error) {
+func (m *Manager) Probe(ctx context.Context, saved *Spec, spec Spec) (TestResult, error) {
 	b, err := m.backend(spec.Kind)
 	if err != nil {
 		return TestResult{}, err
@@ -115,7 +115,7 @@ func (m *Manager) Probe(ctx context.Context, saved *EnvironmentSpec, spec Enviro
 }
 
 // Changed runs backend housekeeping after an environment row changed. cur is nil when the row was deleted.
-func (m *Manager) Changed(ctx context.Context, old EnvironmentSpec, cur *EnvironmentSpec) error {
+func (m *Manager) Changed(ctx context.Context, old Spec, cur *Spec) error {
 	b, err := m.backend(old.Kind)
 	if err != nil {
 		return err
@@ -124,7 +124,7 @@ func (m *Manager) Changed(ctx context.Context, old EnvironmentSpec, cur *Environ
 }
 
 // ForgetHostKey removes saved SSH host trust entries for spec so the next connect re-trusts via TOFU.
-func (m *Manager) ForgetHostKey(spec EnvironmentSpec) error {
+func (m *Manager) ForgetHostKey(spec Spec) error {
 	if spec.Kind != KindPiEnv {
 		return fmt.Errorf("%w: host key reset applies only to SSH environments", ErrInvalidConfig)
 	}
@@ -133,22 +133,22 @@ func (m *Manager) ForgetHostKey(spec EnvironmentSpec) error {
 
 // binding is the environment that an agent uses. A zero spec selects local.
 type binding struct {
-	spec      EnvironmentSpec
+	spec      Spec
 	sandboxID string
 }
 
-// binding resolves environmentID for agentID. Empty selects the environment of the agent, with
+// binding resolves runnerID for agentID. Empty selects the environment of the agent, with
 // its sandbox. An explicit selection names local or a registered environment.
-func (m *Manager) binding(ctx context.Context, agentID, environmentID string) (binding, error) {
-	switch environmentID {
+func (m *Manager) binding(ctx context.Context, agentID, runnerID string) (binding, error) {
+	switch runnerID {
 	case "":
 		return m.agentBinding(ctx, agentID)
 	case LocalID:
 		return binding{}, nil
 	}
-	row, err := m.q.GetEnvironment(ctx, environmentID)
+	row, err := m.q.GetRunner(ctx, runnerID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, environmentID)
+		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, runnerID)
 	}
 	if err != nil {
 		return binding{}, err
@@ -167,19 +167,19 @@ func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, er
 	if err != nil {
 		return binding{}, err
 	}
-	if row.EnvironmentID == "" {
+	if row.RunnerID == "" {
 		return binding{}, nil
 	}
 	if row.FoundID == "" {
-		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, row.EnvironmentID)
+		return binding{}, fmt.Errorf("%w: execution environment %s was removed", ErrUnavailable, row.RunnerID)
 	}
-	spec := EnvironmentSpec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt}
-	return binding{spec: spec, sandboxID: row.EnvironmentSandboxID}, nil
+	spec := Spec{ID: row.FoundID, Kind: Kind(row.Kind), Config: row.Config, Secret: row.Secret, UpdatedAt: row.UpdatedAt}
+	return binding{spec: spec, sandboxID: row.RunnerSandboxID}, nil
 }
 
 // stamp fingerprints spec and the backend identity, so a new machine enrollment or a forgotten
 // host key makes earlier handles stale. A machine reconnect keeps the stamp.
-func (m *Manager) stamp(ctx context.Context, b backend, spec EnvironmentSpec) (string, error) {
+func (m *Manager) stamp(ctx context.Context, b backend, spec Spec) (string, error) {
 	identity, err := b.identity(ctx, spec.ID)
 	if err != nil {
 		return "", err
@@ -193,14 +193,14 @@ func (m *Manager) stamp(ctx context.Context, b backend, spec EnvironmentSpec) (s
 }
 
 // Open resolves the selected environment of agentID from control storage and opens a lease on it.
-func (m *Manager) Open(ctx context.Context, agentID, environmentID string) (Handle, error) {
+func (m *Manager) Open(ctx context.Context, agentID, runnerID string) (Handle, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if err := validateAgentID(agentID); err != nil {
 		return nil, err
 	}
-	bound, err := m.binding(ctx, agentID, environmentID)
+	bound, err := m.binding(ctx, agentID, runnerID)
 	if err != nil {
 		return nil, err
 	}
@@ -221,12 +221,12 @@ func (m *Manager) Open(ctx context.Context, agentID, environmentID string) (Hand
 		return nil, err
 	}
 	var l lease
-	if bound.spec.Kind == KindE2B && environmentID != "" {
+	if bound.spec.Kind == KindE2B && runnerID != "" {
 		agent, getErr := m.q.GetAgent(ctx, agentID)
 		if getErr != nil {
 			return nil, getErr
 		}
-		if agent.EnvironmentID != environmentID {
+		if agent.RunnerID != runnerID {
 			l, err = m.e2b.openOverride(ctx, agentID, bound.spec)
 		} else {
 			l, err = b.open(ctx, agentID, bound.spec)
@@ -241,8 +241,8 @@ func (m *Manager) Open(ctx context.Context, agentID, environmentID string) (Hand
 }
 
 // Stamp returns the fingerprint of the selected execution environment of agentID.
-func (m *Manager) Stamp(ctx context.Context, agentID, environmentID string) (string, error) {
-	bound, err := m.binding(ctx, agentID, environmentID)
+func (m *Manager) Stamp(ctx context.Context, agentID, runnerID string) (string, error) {
+	bound, err := m.binding(ctx, agentID, runnerID)
 	if err != nil {
 		return "", err
 	}
@@ -256,10 +256,10 @@ func (m *Manager) Stamp(ctx context.Context, agentID, environmentID string) (str
 	return m.stamp(ctx, b, bound.spec)
 }
 
-// Status reports whether agentID can use environmentID now: "available", "offline" for a
+// Status reports whether agentID can use runnerID now: "available", "offline" for a
 // disconnected machine, or "unavailable: <reason>".
-func (m *Manager) Status(ctx context.Context, agentID, environmentID string) string {
-	bound, err := m.binding(ctx, agentID, environmentID)
+func (m *Manager) Status(ctx context.Context, agentID, runnerID string) string {
+	bound, err := m.binding(ctx, agentID, runnerID)
 	if err != nil {
 		return "unavailable: " + err.Error()
 	}
@@ -304,7 +304,7 @@ func (m *Manager) ReleaseAgent(ctx context.Context, agentID, envID, sandboxID st
 	if envID == "" {
 		return nil
 	}
-	envRow, err := m.q.GetEnvironment(ctx, envID)
+	envRow, err := m.q.GetRunner(ctx, envID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -326,9 +326,9 @@ func (m *Manager) Close(context.Context) error {
 	return nil
 }
 
-// SpecFromRow converts a sqlc.ExecutionEnvironment row into an EnvironmentSpec.
-func SpecFromRow(row sqlc.ExecutionEnvironment) EnvironmentSpec {
-	return EnvironmentSpec{
+// SpecFromRow converts a sqlc.Runner row into an Spec.
+func SpecFromRow(row sqlc.Runner) Spec {
+	return Spec{
 		ID:        row.ID,
 		Kind:      Kind(row.Kind),
 		Config:    row.Config,

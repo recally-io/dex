@@ -10,15 +10,15 @@ import (
 )
 
 var (
-	ErrBusy                 = errors.New("conversation is busy")
-	ErrEnvironmentResetting = errors.New("environment reset in progress")
-	ErrOriginBusy           = errors.New("follow-up queue holds another origin")
-	ErrMaintenance          = errors.New("engine admission is paused")
-	ErrClosed               = errors.New("engine is closed")
-	ErrInvalidInput         = errors.New("invalid engine input")
-	ErrNotFound             = errors.New("conversation not found")
-	ErrItemNotFound         = errors.New("transcript item not found")
-	ErrNoModel              = errors.New("the bot has no model; choose one in Settings")
+	ErrBusy            = errors.New("conversation is busy")
+	ErrRunnerResetting = errors.New("environment reset in progress")
+	ErrOriginBusy      = errors.New("follow-up queue holds another origin")
+	ErrMaintenance     = errors.New("engine admission is paused")
+	ErrClosed          = errors.New("engine is closed")
+	ErrInvalidInput    = errors.New("invalid engine input")
+	ErrNotFound        = errors.New("conversation not found")
+	ErrItemNotFound    = errors.New("transcript item not found")
+	ErrNoModel         = errors.New("the bot has no model; choose one in Settings")
 )
 
 type Ref struct {
@@ -61,8 +61,8 @@ type Input struct {
 	// RefreshContent replaces Content after the admission checks, inside the native transaction.
 	// The native write can still fail. Replay of an admitted request does not call it.
 	RefreshContent func(context.Context) (string, error)
-	// RequireEnvironment delays admission until the selected environment is online.
-	RequireEnvironment bool
+	// RequireRunner delays admission until the selected environment is online.
+	RequireRunner bool
 	// Changed wakes content-free execution subscribers. It must not block.
 	Changed                                  func()
 	RequestID, Content, Kind, Origin, Source string
@@ -123,9 +123,9 @@ type Config struct {
 	LoginEnv func(ctx context.Context, base map[string]string) (map[string]string, error)
 	// ExecEnv configures agent workspace and execution backends. Nil defaults to a host-local provider.
 	ExecEnv runner.Provider
-	// SessionEnvironment returns the explicit execution environment of a session, or
+	// SessionRunner returns the explicit execution environment of a session, or
 	// empty when the session follows its agent. Nil makes every session follow its agent.
-	SessionEnvironment func(ctx context.Context, ref Ref) (string, error)
+	SessionRunner func(ctx context.Context, ref Ref) (string, error)
 	// FallbackModel returns the current fallback model for an agent, or an empty ModelRef.
 	FallbackModel func(ctx context.Context, agentID string) ModelRef
 	FakeModel     bool

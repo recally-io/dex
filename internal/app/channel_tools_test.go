@@ -165,7 +165,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	reviewChannelChange(t, d, owner, http.MethodPost, removed, "", http.StatusConflict)
 	setTelegram(42, 44)
 	conn := sessionDB(t, d)
-	if _, err := conn.ExecContext(t.Context(), `INSERT INTO routine_notification_targets (id, agent_id, platform, account_id, peer)
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO automation_notification_targets (id, agent_id, platform, account_id, peer)
 		SELECT ?, agent_id, 'telegram', substr(token, 1, instr(token, ':') - 1), 'telegram:44' FROM telegram_settings WHERE agent_id = ?`, target.ID, bot.ID); err != nil {
 		t.Fatal(err)
 	}

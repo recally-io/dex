@@ -289,8 +289,8 @@ func (q *Queries) ListExternalTaskEntries(ctx context.Context, arg ListExternalT
 const listTaskExecutions = `-- name: ListTaskExecutions :many
 SELECT e.id, e.task_id, e.bot_id, e.kind, e.conversation_id, e.turn_request_id, e.is_primary, e.harness, e.machine_id, e.host_meta_json, e.workspace_path, e.git_branch, e.external_session_id, e.state, e.lease_epoch, e.lease_expires_at, e.last_heartbeat_at, e.started_at, e.ended_at, e.dispatch_id, e.lease_ttl_ms, e.runner_enrollment, t.number AS task_number, coalesce(r.name, '') AS runner_name
 FROM task_executions e JOIN tasks t ON t.id = e.task_id
-LEFT JOIN execution_environments r ON r.id = e.machine_id AND r.kind = 'runner'
-  AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.environment_id = r.id
+LEFT JOIN runners r ON r.id = e.machine_id AND r.kind = 'runner'
+  AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.runner_id = r.id
     AND p.credential_digest <> '' AND p.credential_digest = e.runner_enrollment)
 WHERE (CAST(?1 AS TEXT) = '' OR e.task_id = ?1)
   AND (CAST(?2 AS TEXT) = '' OR r.id = ?2)

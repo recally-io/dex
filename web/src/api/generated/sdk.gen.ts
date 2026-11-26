@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddTaskDependencyData, AddTaskDependencyErrors, AddTaskDependencyResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, AttachTaskExecutionData, AttachTaskExecutionErrors, AttachTaskExecutionResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelChatMonitorData, CancelChatMonitorErrors, CancelChatMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateEnvironmentData, CreateEnvironmentErrors, CreateEnvironmentResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTaskData, CreateTaskEntryData, CreateTaskEntryErrors, CreateTaskEntryResponses, CreateTaskErrors, CreateTaskResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteEnvironmentData, DeleteEnvironmentErrors, DeleteEnvironmentResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, FinishTaskExecutionData, FinishTaskExecutionErrors, FinishTaskExecutionResponses, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyErrors, ForgetEnvironmentHostKeyResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetInboxSummaryData, GetInboxSummaryErrors, GetInboxSummaryResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetUploadData, GetUploadErrors, GetUploadResponses, HeartbeatTaskExecutionData, HeartbeatTaskExecutionErrors, HeartbeatTaskExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentEnvironmentsData, ListAgentEnvironmentsErrors, ListAgentEnvironmentsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListChatMonitorsData, ListChatMonitorsErrors, ListChatMonitorsResponses, ListChatOutboxData, ListChatOutboxErrors, ListChatOutboxResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListEnvironmentsData, ListEnvironmentsErrors, ListEnvironmentsResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListPluginsData, ListPluginsErrors, ListPluginsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListTaskExecutionsData, ListTaskExecutionsErrors, ListTaskExecutionsResponses, ListTasksData, ListTasksErrors, ListTasksResponses, ListVaultData, ListVaultErrors, ListVaultResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostTaskExternalEntryData, PostTaskExternalEntryErrors, PostTaskExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeEnvironmentData, ProbeEnvironmentErrors, ProbeEnvironmentResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReadTaskExternalTaskData, ReadTaskExternalTaskErrors, ReadTaskExternalTaskResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RemoveTaskDependencyData, RemoveTaskDependencyErrors, RemoveTaskDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentEnvironmentData, ResetAgentEnvironmentErrors, ResetAgentEnvironmentResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, ResumeTaskExecutionData, ResumeTaskExecutionErrors, ResumeTaskExecutionResponses, ReviewTaskData, ReviewTaskErrors, ReviewTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatEnvironmentData, SetChatEnvironmentErrors, SetChatEnvironmentResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPluginData, SetPluginErrors, SetPluginResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SplitTaskData, SplitTaskErrors, SplitTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, StreamTaskEventsData, StreamTaskEventsErrors, StreamTaskEventsResponse, StreamTaskEventsResponses, TestEnvironmentData, TestEnvironmentErrors, TestEnvironmentResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateEnvironmentData, UpdateEnvironmentErrors, UpdateEnvironmentResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpdateTaskData, UpdateTaskErrors, UpdateTaskResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddTaskDependencyData, AddTaskDependencyErrors, AddTaskDependencyResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, AttachTaskExecutionData, AttachTaskExecutionErrors, AttachTaskExecutionResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelChatMonitorData, CancelChatMonitorErrors, CancelChatMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateRunnerData, CreateRunnerErrors, CreateRunnerResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTaskData, CreateTaskEntryData, CreateTaskEntryErrors, CreateTaskEntryResponses, CreateTaskErrors, CreateTaskResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteRunnerData, DeleteRunnerErrors, DeleteRunnerResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, FinishTaskExecutionData, FinishTaskExecutionErrors, FinishTaskExecutionResponses, ForgetRunnerHostKeyData, ForgetRunnerHostKeyErrors, ForgetRunnerHostKeyResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetBotIntegrationsData, GetBotIntegrationsErrors, GetBotIntegrationsResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetInboxSummaryData, GetInboxSummaryErrors, GetInboxSummaryResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetUploadData, GetUploadErrors, GetUploadResponses, HeartbeatTaskExecutionData, HeartbeatTaskExecutionErrors, HeartbeatTaskExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentRunnersData, ListAgentRunnersErrors, ListAgentRunnersResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListChatMonitorsData, ListChatMonitorsErrors, ListChatMonitorsResponses, ListChatOutboxData, ListChatOutboxErrors, ListChatOutboxResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListRunnersData, ListRunnersErrors, ListRunnersResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTaskExecutionsData, ListTaskExecutionsErrors, ListTaskExecutionsResponses, ListTasksData, ListTasksErrors, ListTasksResponses, ListVaultData, ListVaultErrors, ListVaultResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostTaskExternalEntryData, PostTaskExternalEntryErrors, PostTaskExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeRunnerData, ProbeRunnerErrors, ProbeRunnerResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReadTaskExternalTaskData, ReadTaskExternalTaskErrors, ReadTaskExternalTaskResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadBotIntegrationsData, ReloadBotIntegrationsErrors, ReloadBotIntegrationsResponses, RemoveTaskDependencyData, RemoveTaskDependencyErrors, RemoveTaskDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentRunnerData, ResetAgentRunnerErrors, ResetAgentRunnerResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, ResumeTaskExecutionData, ResumeTaskExecutionErrors, ResumeTaskExecutionResponses, ReviewTaskData, ReviewTaskErrors, ReviewTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatRunnerData, SetChatRunnerErrors, SetChatRunnerResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetSourceEnabledData, SetSourceEnabledErrors, SetSourceEnabledResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SplitTaskData, SplitTaskErrors, SplitTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, StreamTaskEventsData, StreamTaskEventsErrors, StreamTaskEventsResponse, StreamTaskEventsResponses, TestRunnerData, TestRunnerErrors, TestRunnerResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateRunnerData, UpdateRunnerErrors, UpdateRunnerResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpdateTaskData, UpdateTaskErrors, UpdateTaskResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -835,9 +835,9 @@ export const getSystemLogs = <ThrowOnError extends boolean = false>(options?: Op
 });
 
 /**
- * List the plugins of this build, the stored choice, and whether each one runs now.
+ * List the sources of this build, the stored choice, and whether each one runs now.
  */
-export const listPlugins = <ThrowOnError extends boolean = false>(options?: Options<ListPluginsData, ThrowOnError>): RequestResult<ListPluginsResponses, ListPluginsErrors, ThrowOnError> => (options?.client ?? client).get<ListPluginsResponses, ListPluginsErrors, ThrowOnError>({
+export const listSources = <ThrowOnError extends boolean = false>(options?: Options<ListSourcesData, ThrowOnError>): RequestResult<ListSourcesResponses, ListSourcesErrors, ThrowOnError> => (options?.client ?? client).get<ListSourcesResponses, ListSourcesErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -847,14 +847,14 @@ export const listPlugins = <ThrowOnError extends boolean = false>(options?: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/plugins',
+    url: '/api/settings/sources',
     ...options
 });
 
 /**
  * Turn a plugin on or off. The change takes effect when dex starts again.
  */
-export const setPlugin = <ThrowOnError extends boolean = false>(options: Options<SetPluginData, ThrowOnError>): RequestResult<SetPluginResponses, SetPluginErrors, ThrowOnError> => (options.client ?? client).put<SetPluginResponses, SetPluginErrors, ThrowOnError>({
+export const setSourceEnabled = <ThrowOnError extends boolean = false>(options: Options<SetSourceEnabledData, ThrowOnError>): RequestResult<SetSourceEnabledResponses, SetSourceEnabledErrors, ThrowOnError> => (options.client ?? client).put<SetSourceEnabledResponses, SetSourceEnabledErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -864,7 +864,7 @@ export const setPlugin = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/plugins/{name}',
+    url: '/api/settings/sources/{name}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -923,9 +923,9 @@ export const setOnePassword = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * Saved execution environments, without secrets. Built-in local is implicit when a bot has empty environmentId.
+ * Saved execution environments, without secrets. Built-in local is implicit when a bot has empty runnerId.
  */
-export const listEnvironments = <ThrowOnError extends boolean = false>(options?: Options<ListEnvironmentsData, ThrowOnError>): RequestResult<ListEnvironmentsResponses, ListEnvironmentsErrors, ThrowOnError> => (options?.client ?? client).get<ListEnvironmentsResponses, ListEnvironmentsErrors, ThrowOnError>({
+export const listRunners = <ThrowOnError extends boolean = false>(options?: Options<ListRunnersData, ThrowOnError>): RequestResult<ListRunnersResponses, ListRunnersErrors, ThrowOnError> => (options?.client ?? client).get<ListRunnersResponses, ListRunnersErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -935,14 +935,14 @@ export const listEnvironments = <ThrowOnError extends boolean = false>(options?:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments',
+    url: '/api/settings/runners',
     ...options
 });
 
 /**
  * Creates a new execution environment.
  */
-export const createEnvironment = <ThrowOnError extends boolean = false>(options: Options<CreateEnvironmentData, ThrowOnError>): RequestResult<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<CreateEnvironmentResponses, CreateEnvironmentErrors, ThrowOnError>({
+export const createRunner = <ThrowOnError extends boolean = false>(options: Options<CreateRunnerData, ThrowOnError>): RequestResult<CreateRunnerResponses, CreateRunnerErrors, ThrowOnError> => (options.client ?? client).post<CreateRunnerResponses, CreateRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -952,7 +952,7 @@ export const createEnvironment = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments',
+    url: '/api/settings/runners',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -973,14 +973,14 @@ export const discoverSshConfig = <ThrowOnError extends boolean = false>(options?
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/ssh-config',
+    url: '/api/settings/runners/ssh-config',
     ...options
 });
 
 /**
  * Probes connectivity for an unsaved or edited execution environment configuration.
  */
-export const probeEnvironment = <ThrowOnError extends boolean = false>(options: Options<ProbeEnvironmentData, ThrowOnError>): RequestResult<ProbeEnvironmentResponses, ProbeEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<ProbeEnvironmentResponses, ProbeEnvironmentErrors, ThrowOnError>({
+export const probeRunner = <ThrowOnError extends boolean = false>(options: Options<ProbeRunnerData, ThrowOnError>): RequestResult<ProbeRunnerResponses, ProbeRunnerErrors, ThrowOnError> => (options.client ?? client).post<ProbeRunnerResponses, ProbeRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -990,7 +990,7 @@ export const probeEnvironment = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/probe',
+    url: '/api/settings/runners/probe',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1001,7 +1001,7 @@ export const probeEnvironment = <ThrowOnError extends boolean = false>(options: 
 /**
  * Deletes an execution environment if no active bot uses it (409 when in use).
  */
-export const deleteEnvironment = <ThrowOnError extends boolean = false>(options: Options<DeleteEnvironmentData, ThrowOnError>): RequestResult<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError> => (options.client ?? client).delete<DeleteEnvironmentResponses, DeleteEnvironmentErrors, ThrowOnError>({
+export const deleteRunner = <ThrowOnError extends boolean = false>(options: Options<DeleteRunnerData, ThrowOnError>): RequestResult<DeleteRunnerResponses, DeleteRunnerErrors, ThrowOnError> => (options.client ?? client).delete<DeleteRunnerResponses, DeleteRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1011,14 +1011,14 @@ export const deleteEnvironment = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/{environmentId}',
+    url: '/api/settings/runners/{runnerId}',
     ...options
 });
 
 /**
  * Updates an execution environment. Empty or omitted secret keeps the saved secret. Open bots using it reload when idle.
  */
-export const updateEnvironment = <ThrowOnError extends boolean = false>(options: Options<UpdateEnvironmentData, ThrowOnError>): RequestResult<UpdateEnvironmentResponses, UpdateEnvironmentErrors, ThrowOnError> => (options.client ?? client).put<UpdateEnvironmentResponses, UpdateEnvironmentErrors, ThrowOnError>({
+export const updateRunner = <ThrowOnError extends boolean = false>(options: Options<UpdateRunnerData, ThrowOnError>): RequestResult<UpdateRunnerResponses, UpdateRunnerErrors, ThrowOnError> => (options.client ?? client).put<UpdateRunnerResponses, UpdateRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1028,7 +1028,7 @@ export const updateEnvironment = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/{environmentId}',
+    url: '/api/settings/runners/{runnerId}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1039,7 +1039,7 @@ export const updateEnvironment = <ThrowOnError extends boolean = false>(options:
 /**
  * Probes connectivity, platform metadata, and base workspace readiness.
  */
-export const testEnvironment = <ThrowOnError extends boolean = false>(options: Options<TestEnvironmentData, ThrowOnError>): RequestResult<TestEnvironmentResponses, TestEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<TestEnvironmentResponses, TestEnvironmentErrors, ThrowOnError>({
+export const testRunner = <ThrowOnError extends boolean = false>(options: Options<TestRunnerData, ThrowOnError>): RequestResult<TestRunnerResponses, TestRunnerErrors, ThrowOnError> => (options.client ?? client).post<TestRunnerResponses, TestRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1049,14 +1049,14 @@ export const testEnvironment = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/{environmentId}/test',
+    url: '/api/settings/runners/{runnerId}/test',
     ...options
 });
 
 /**
  * Removes stored SSH host key entries for an SSH environment so the next test or open re-trusts the host key via TOFU.
  */
-export const forgetEnvironmentHostKey = <ThrowOnError extends boolean = false>(options: Options<ForgetEnvironmentHostKeyData, ThrowOnError>): RequestResult<ForgetEnvironmentHostKeyResponses, ForgetEnvironmentHostKeyErrors, ThrowOnError> => (options.client ?? client).post<ForgetEnvironmentHostKeyResponses, ForgetEnvironmentHostKeyErrors, ThrowOnError>({
+export const forgetRunnerHostKey = <ThrowOnError extends boolean = false>(options: Options<ForgetRunnerHostKeyData, ThrowOnError>): RequestResult<ForgetRunnerHostKeyResponses, ForgetRunnerHostKeyErrors, ThrowOnError> => (options.client ?? client).post<ForgetRunnerHostKeyResponses, ForgetRunnerHostKeyErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1066,7 +1066,7 @@ export const forgetEnvironmentHostKey = <ThrowOnError extends boolean = false>(o
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/{environmentId}/forget-host-key',
+    url: '/api/settings/runners/{runnerId}/forget-host-key',
     ...options
 });
 
@@ -1083,7 +1083,7 @@ export const revokeRunner = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/{environmentId}/runner-pairing',
+    url: '/api/settings/runners/{runnerId}/pairing',
     ...options
 });
 
@@ -1100,7 +1100,7 @@ export const issueRunnerCode = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/settings/environments/{environmentId}/runner-pairing',
+    url: '/api/settings/runners/{runnerId}/pairing',
     ...options
 });
 
@@ -1619,7 +1619,7 @@ export const restoreAgent = <ThrowOnError extends boolean = false>(options: Opti
  * Lists the execution environments for the sessions of the agent: the environment of the agent first (default), then local and the other registered environments. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
  *
  */
-export const listAgentEnvironments = <ThrowOnError extends boolean = false>(options: Options<ListAgentEnvironmentsData, ThrowOnError>): RequestResult<ListAgentEnvironmentsResponses, ListAgentEnvironmentsErrors, ThrowOnError> => (options.client ?? client).get<ListAgentEnvironmentsResponses, ListAgentEnvironmentsErrors, ThrowOnError>({
+export const listAgentRunners = <ThrowOnError extends boolean = false>(options: Options<ListAgentRunnersData, ThrowOnError>): RequestResult<ListAgentRunnersResponses, ListAgentRunnersErrors, ThrowOnError> => (options.client ?? client).get<ListAgentRunnersResponses, ListAgentRunnersErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1629,7 +1629,7 @@ export const listAgentEnvironments = <ThrowOnError extends boolean = false>(opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/environments',
+    url: '/api/agents/{agentId}/runners',
     ...options
 });
 
@@ -1637,7 +1637,7 @@ export const listAgentEnvironments = <ThrowOnError extends boolean = false>(opti
  * Kills any persisted E2B sandbox for an idle agent, clears its sandbox ID, and releases open resources so the next turn provisions a fresh sandbox.
  *
  */
-export const resetAgentEnvironment = <ThrowOnError extends boolean = false>(options: Options<ResetAgentEnvironmentData, ThrowOnError>): RequestResult<ResetAgentEnvironmentResponses, ResetAgentEnvironmentErrors, ThrowOnError> => (options.client ?? client).post<ResetAgentEnvironmentResponses, ResetAgentEnvironmentErrors, ThrowOnError>({
+export const resetAgentRunner = <ThrowOnError extends boolean = false>(options: Options<ResetAgentRunnerData, ThrowOnError>): RequestResult<ResetAgentRunnerResponses, ResetAgentRunnerErrors, ThrowOnError> => (options.client ?? client).post<ResetAgentRunnerResponses, ResetAgentRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1647,7 +1647,7 @@ export const resetAgentEnvironment = <ThrowOnError extends boolean = false>(opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/environment/reset',
+    url: '/api/agents/{agentId}/runner/reset',
     ...options
 });
 
@@ -1790,10 +1790,10 @@ export const listRecentProjects = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Selects the execution environment of a Chat session before its first message. The command and file tools of the chat run there. Empty environmentId makes the chat follow the environment of the agent. The selection clears the project directory. The environment must be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers 409: fork it instead. Read-only conversations return 403.
+ * Selects the execution environment of a Chat session before its first message. The command and file tools of the chat run there. Empty runnerId makes the chat follow the environment of the agent. The selection clears the project directory. The environment must be local or a registered SSH, runner, or E2B environment (400). A chat that has started answers 409: fork it instead. Read-only conversations return 403.
  *
  */
-export const setChatEnvironment = <ThrowOnError extends boolean = false>(options: Options<SetChatEnvironmentData, ThrowOnError>): RequestResult<SetChatEnvironmentResponses, SetChatEnvironmentErrors, ThrowOnError> => (options.client ?? client).put<SetChatEnvironmentResponses, SetChatEnvironmentErrors, ThrowOnError>({
+export const setChatRunner = <ThrowOnError extends boolean = false>(options: Options<SetChatRunnerData, ThrowOnError>): RequestResult<SetChatRunnerResponses, SetChatRunnerErrors, ThrowOnError> => (options.client ?? client).put<SetChatRunnerResponses, SetChatRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1803,7 +1803,7 @@ export const setChatEnvironment = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/chats/{chatId}/environment',
+    url: '/api/agents/{agentId}/chats/{chatId}/runner',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1940,7 +1940,7 @@ export const continueChat = <ThrowOnError extends boolean = false>(options: Opti
 });
 
 /**
- * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With environmentId (local or a registered environment ID), the new Chat runs in that environment. When that moves the Chat to another environment, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without environmentId, the new Chat keeps the environment selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the environment does not exist or is not local or SSH. A scoped session with environmentId, and automation and channel sessions, return 403.
+ * Starts a new Chat from the history of this writable session. Without before, the history ends at entryId, which must be an answer that waits for no tool result. With before, it ends just before entryId; when nothing comes before it, the new Chat is empty. The new Chat takes the model, thinking level and project of this session and does not run. A running session contributes only its committed entries. Files on disk are not rolled back. With runnerId (local or a registered environment ID), the new Chat runs in that environment. When that moves the Chat to another environment, it has no project, and its history ends with a notice that the user and the bot see. Files, background tasks, and queued input stay where they are. A new Chat with no history gets no notice. Without runnerId, the new Chat keeps the environment selection of this session. Without an id, each call creates another Chat. A retry with the same id and parameters returns the same Chat. A different source or parameters return 409. 400 when the entry is not in this session or cannot start a fork, or when the environment does not exist or is not local or SSH. A scoped session with runnerId, and automation and channel sessions, return 403.
  *
  */
 export const forkChat = <ThrowOnError extends boolean = false>(options: Options<ForkChatData, ThrowOnError>): RequestResult<ForkChatResponses, ForkChatErrors, ThrowOnError> => (options.client ?? client).post<ForkChatResponses, ForkChatErrors, ThrowOnError>({
@@ -2223,7 +2223,7 @@ export const renameArtifact = <ThrowOnError extends boolean = false>(options: Op
  * The agent's skills and MCP servers. It does not start MCP servers. Before the agent starts, the servers are idle.
  *
  */
-export const getExtensions = <ThrowOnError extends boolean = false>(options: Options<GetExtensionsData, ThrowOnError>): RequestResult<GetExtensionsResponses, GetExtensionsErrors, ThrowOnError> => (options.client ?? client).get<GetExtensionsResponses, GetExtensionsErrors, ThrowOnError>({
+export const getBotIntegrations = <ThrowOnError extends boolean = false>(options: Options<GetBotIntegrationsData, ThrowOnError>): RequestResult<GetBotIntegrationsResponses, GetBotIntegrationsErrors, ThrowOnError> => (options.client ?? client).get<GetBotIntegrationsResponses, GetBotIntegrationsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2233,7 +2233,7 @@ export const getExtensions = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/extensions',
+    url: '/api/agents/{agentId}/integrations',
     ...options
 });
 
@@ -2250,7 +2250,7 @@ export const startMcpOAuth = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/extensions/mcp/{name}/oauth',
+    url: '/api/agents/{agentId}/integrations/mcp/{name}/oauth',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -2317,7 +2317,7 @@ export const putVault = <ThrowOnError extends boolean = false>(options: Options<
  * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Checks idle execution across all agents before replacement; returns 409 when any agent has unfinished work. Other agents can start work after this check while the selected agent reloads. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
  *
  */
-export const reloadExtensions = <ThrowOnError extends boolean = false>(options: Options<ReloadExtensionsData, ThrowOnError>): RequestResult<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError> => (options.client ?? client).post<ReloadExtensionsResponses, ReloadExtensionsErrors, ThrowOnError>({
+export const reloadBotIntegrations = <ThrowOnError extends boolean = false>(options: Options<ReloadBotIntegrationsData, ThrowOnError>): RequestResult<ReloadBotIntegrationsResponses, ReloadBotIntegrationsErrors, ThrowOnError> => (options.client ?? client).post<ReloadBotIntegrationsResponses, ReloadBotIntegrationsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -2327,7 +2327,7 @@ export const reloadExtensions = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/extensions/reload',
+    url: '/api/agents/{agentId}/integrations/reload',
     ...options
 });
 

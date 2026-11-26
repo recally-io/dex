@@ -272,7 +272,7 @@ export type Ok = {
     status: 'ok';
 };
 
-export type PluginSetting = {
+export type SourceSetting = {
     name: string;
     /**
      * The stored choice. dex reads it at start.
@@ -351,8 +351,8 @@ export type SystemStatus = {
     backups: Array<SystemBackup>;
 };
 
-export type AgentEnvironments = {
-    environments: Array<{
+export type AgentRunners = {
+    runners: Array<{
         id: string;
         name: string;
         /**
@@ -396,7 +396,7 @@ export type Chat = {
     /**
      * The execution environment that the chat selects: "local" or an environment ID. Empty means the environment of the agent.
      */
-    environmentId?: string;
+    runnerId?: string;
     title: string;
     createdAt: number;
     /**
@@ -629,7 +629,7 @@ export type AutomationInput = {
      * local or an SSH environment ID for the runs. Empty follows the bot's environment. A run never uses another environment: when this one was removed, the run is skipped with a reason. A reused chat that ran in another environment stays readable, and the run starts a new chat. An update can keep a removed environment.
      *
      */
-    environmentId?: string;
+    runnerId?: string;
     /**
      * Omit on update to retain the current route. New routines default to none.
      */
@@ -690,7 +690,7 @@ export type InboxItem = {
     /**
      * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
      */
-    environmentId: string;
+    runnerId: string;
     /**
      * The cwd that the run started with, in its environment.
      */
@@ -729,7 +729,7 @@ export type AutomationRun = {
     /**
      * The effective execution environment that the run started in. Empty for a run with no message, and for a run from before Dex stored it.
      */
-    environmentId?: string;
+    runnerId?: string;
     /**
      * The cwd that the run started with, in its environment.
      */
@@ -1055,9 +1055,9 @@ export type OnePasswordInput = {
     serviceAccountToken?: string;
 };
 
-export type EnvironmentKind = 'pi-env' | 'e2b' | 'runner';
+export type RunnerKind = 'pi-env' | 'e2b' | 'runner';
 
-export type EnvironmentConfig = {
+export type RunnerConfig = {
     host?: string;
     user?: string;
     port?: number;
@@ -1084,53 +1084,53 @@ export type RunnerStatus = {
     selfUpdateReason?: string;
 };
 
-export type Environment = {
+export type Runner = {
     id: string;
     name: string;
     /**
      * Owner-provided plain text.
      */
     desc?: string;
-    kind: EnvironmentKind;
-    config: EnvironmentConfig;
+    kind: RunnerKind;
+    config: RunnerConfig;
     secretSet: boolean;
     runner?: RunnerStatus;
     createdAt: number;
     updatedAt: number;
 };
 
-export type EnvironmentList = {
-    environments: Array<Environment>;
+export type RunnerList = {
+    runners: Array<Runner>;
 };
 
-export type EnvironmentInput = {
+export type RunnerInput = {
     name: string;
     /**
      * Optional plain text. Omit on update to keep the saved description. Send an empty string to clear it.
      */
     desc?: string;
-    kind: EnvironmentKind;
-    config?: EnvironmentConfig;
+    kind: RunnerKind;
+    config?: RunnerConfig;
     /**
      * Write-only secret. Required for E2B Cloud; optional for custom E2B endpoints. Empty or omitted on update keeps the saved secret.
      */
     secret?: string;
 };
 
-export type EnvironmentProbeInput = {
+export type RunnerProbeInput = {
     /**
      * Optional existing environment ID when testing unsaved edits (reuses saved secret and known host key when host and port are unchanged).
      */
-    environmentId?: string;
-    kind: EnvironmentKind;
-    config?: EnvironmentConfig;
+    runnerId?: string;
+    kind: RunnerKind;
+    config?: RunnerConfig;
     /**
-     * Optional write-only secret. When environmentId is set and secret is omitted or empty, uses the saved secret.
+     * Optional write-only secret. When runnerId is set and secret is omitted or empty, uses the saved secret.
      */
     secret?: string;
 };
 
-export type EnvironmentTestResult = {
+export type RunnerTestResult = {
     ok: boolean;
     platform?: string;
     arch?: string;
@@ -1162,7 +1162,7 @@ export type Channels = {
 };
 
 export type AgentActivity = {
-    routineFailed: boolean;
+    automationFailed: boolean;
     activeSessions: number;
     runningChannels: number;
     enabledAutomations: number;
@@ -1196,7 +1196,7 @@ export type Agent = {
     /**
      * Empty means the built-in local host environment.
      */
-    environmentId: string;
+    runnerId: string;
     /**
      * Archive time in Unix milliseconds. Absent for an active agent.
      */
@@ -1223,7 +1223,7 @@ export type AgentInput = {
     /**
      * Empty or "local" selects the built-in local host environment.
      */
-    environmentId?: string;
+    runnerId?: string;
 };
 
 export type CreateAgentInput = {
@@ -1246,7 +1246,7 @@ export type CreateAgentInput = {
     /**
      * Omitted copies the default bot's execution environment. Empty or "local" selects the built-in local host environment.
      */
-    environmentId?: string;
+    runnerId?: string;
 };
 
 /**
@@ -1345,17 +1345,17 @@ export type Model = {
 
 export type VaultEntry = {
     name: string;
-    scope: ExtensionScope;
+    scope: IntegrationScope;
     updatedAt: string;
 };
 
-export type Extensions = {
+export type BotIntegrations = {
     /**
      * The .agents directories, from wide to narrow. Each can hold skills/. Two levels can have the same directory.
      *
      */
     levels: Array<{
-        scope: ExtensionScope;
+        scope: IntegrationScope;
         dir: string;
     }>;
     /**
@@ -1381,7 +1381,7 @@ export type Extensions = {
 /**
  * Shared across dex or scoped to one agent.
  */
-export type ExtensionScope = 'dex' | 'agent';
+export type IntegrationScope = 'dex' | 'agent';
 
 export type Skill = {
     name: string;
@@ -1411,7 +1411,7 @@ export type Skill = {
  */
 export type McpServer = {
     name: string;
-    scope: ExtensionScope;
+    scope: IntegrationScope;
     /**
      * The server replaces a wider server with the same name.
      */
@@ -1630,7 +1630,7 @@ export type MonitorList = {
 
 export type OutboxMessage = {
     id: string;
-    kind: 'reply' | 'proactive' | 'question' | 'routine' | 'system_error' | 'file' | 'control' | 'feedback';
+    kind: 'reply' | 'proactive' | 'question' | 'automation' | 'system_error' | 'file' | 'control' | 'feedback';
     peer: string;
     topicKey: string;
     body: string;
@@ -1666,7 +1666,7 @@ export type AgentWritable = {
     /**
      * Empty means the built-in local host environment.
      */
-    environmentId: string;
+    runnerId: string;
 };
 
 export type TelegramInputWritable = {
@@ -1728,7 +1728,7 @@ export type AutomationId = string;
 
 export type ChatId = number;
 
-export type EnvironmentId = string;
+export type RunnerId = string;
 
 export type BindTaskGitHubPullData = {
     body: {
@@ -3264,34 +3264,34 @@ export type GetSystemLogsResponses = {
 
 export type GetSystemLogsResponse = GetSystemLogsResponses[keyof GetSystemLogsResponses];
 
-export type ListPluginsData = {
+export type ListSourcesData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/settings/plugins';
+    url: '/api/settings/sources';
 };
 
-export type ListPluginsErrors = {
+export type ListSourcesErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type ListPluginsError = ListPluginsErrors[keyof ListPluginsErrors];
+export type ListSourcesError = ListSourcesErrors[keyof ListSourcesErrors];
 
-export type ListPluginsResponses = {
+export type ListSourcesResponses = {
     /**
-     * The plugins.
+     * The sources.
      */
     200: {
-        plugins: Array<PluginSetting>;
+        sources: Array<SourceSetting>;
     };
 };
 
-export type ListPluginsResponse = ListPluginsResponses[keyof ListPluginsResponses];
+export type ListSourcesResponse = ListSourcesResponses[keyof ListSourcesResponses];
 
-export type SetPluginData = {
+export type SetSourceEnabledData = {
     body: {
         enabled: boolean;
     };
@@ -3299,26 +3299,26 @@ export type SetPluginData = {
         name: string;
     };
     query?: never;
-    url: '/api/settings/plugins/{name}';
+    url: '/api/settings/sources/{name}';
 };
 
-export type SetPluginErrors = {
+export type SetSourceEnabledErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type SetPluginError = SetPluginErrors[keyof SetPluginErrors];
+export type SetSourceEnabledError = SetSourceEnabledErrors[keyof SetSourceEnabledErrors];
 
-export type SetPluginResponses = {
+export type SetSourceEnabledResponses = {
     /**
      * Choice saved.
      */
     204: void;
 };
 
-export type SetPluginResponse = SetPluginResponses[keyof SetPluginResponses];
+export type SetSourceEnabledResponse = SetSourceEnabledResponses[keyof SetSourceEnabledResponses];
 
 export type GetSettingsData = {
     body?: never;
@@ -3399,39 +3399,39 @@ export type SetOnePasswordResponses = {
 
 export type SetOnePasswordResponse = SetOnePasswordResponses[keyof SetOnePasswordResponses];
 
-export type ListEnvironmentsData = {
+export type ListRunnersData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/settings/environments';
+    url: '/api/settings/runners';
 };
 
-export type ListEnvironmentsErrors = {
+export type ListRunnersErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type ListEnvironmentsError = ListEnvironmentsErrors[keyof ListEnvironmentsErrors];
+export type ListRunnersError = ListRunnersErrors[keyof ListRunnersErrors];
 
-export type ListEnvironmentsResponses = {
+export type ListRunnersResponses = {
     /**
      * Execution environments.
      */
-    200: EnvironmentList;
+    200: RunnerList;
 };
 
-export type ListEnvironmentsResponse = ListEnvironmentsResponses[keyof ListEnvironmentsResponses];
+export type ListRunnersResponse = ListRunnersResponses[keyof ListRunnersResponses];
 
-export type CreateEnvironmentData = {
-    body: EnvironmentInput;
+export type CreateRunnerData = {
+    body: RunnerInput;
     path?: never;
     query?: never;
-    url: '/api/settings/environments';
+    url: '/api/settings/runners';
 };
 
-export type CreateEnvironmentErrors = {
+export type CreateRunnerErrors = {
     /**
      * The request failed.
      */
@@ -3442,22 +3442,22 @@ export type CreateEnvironmentErrors = {
     default: Error;
 };
 
-export type CreateEnvironmentError = CreateEnvironmentErrors[keyof CreateEnvironmentErrors];
+export type CreateRunnerError = CreateRunnerErrors[keyof CreateRunnerErrors];
 
-export type CreateEnvironmentResponses = {
+export type CreateRunnerResponses = {
     /**
      * Created.
      */
-    201: Environment;
+    201: Runner;
 };
 
-export type CreateEnvironmentResponse = CreateEnvironmentResponses[keyof CreateEnvironmentResponses];
+export type CreateRunnerResponse = CreateRunnerResponses[keyof CreateRunnerResponses];
 
 export type DiscoverSshConfigData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/settings/environments/ssh-config';
+    url: '/api/settings/runners/ssh-config';
 };
 
 export type DiscoverSshConfigErrors = {
@@ -3478,14 +3478,14 @@ export type DiscoverSshConfigResponses = {
 
 export type DiscoverSshConfigResponse = DiscoverSshConfigResponses[keyof DiscoverSshConfigResponses];
 
-export type ProbeEnvironmentData = {
-    body: EnvironmentProbeInput;
+export type ProbeRunnerData = {
+    body: RunnerProbeInput;
     path?: never;
     query?: never;
-    url: '/api/settings/environments/probe';
+    url: '/api/settings/runners/probe';
 };
 
-export type ProbeEnvironmentErrors = {
+export type ProbeRunnerErrors = {
     /**
      * The request failed.
      */
@@ -3500,27 +3500,27 @@ export type ProbeEnvironmentErrors = {
     default: Error;
 };
 
-export type ProbeEnvironmentError = ProbeEnvironmentErrors[keyof ProbeEnvironmentErrors];
+export type ProbeRunnerError = ProbeRunnerErrors[keyof ProbeRunnerErrors];
 
-export type ProbeEnvironmentResponses = {
+export type ProbeRunnerResponses = {
     /**
      * Probe result.
      */
-    200: EnvironmentTestResult;
+    200: RunnerTestResult;
 };
 
-export type ProbeEnvironmentResponse = ProbeEnvironmentResponses[keyof ProbeEnvironmentResponses];
+export type ProbeRunnerResponse = ProbeRunnerResponses[keyof ProbeRunnerResponses];
 
-export type DeleteEnvironmentData = {
+export type DeleteRunnerData = {
     body?: never;
     path: {
-        environmentId: string;
+        runnerId: string;
     };
     query?: never;
-    url: '/api/settings/environments/{environmentId}';
+    url: '/api/settings/runners/{runnerId}';
 };
 
-export type DeleteEnvironmentErrors = {
+export type DeleteRunnerErrors = {
     /**
      * The request failed.
      */
@@ -3535,27 +3535,27 @@ export type DeleteEnvironmentErrors = {
     default: Error;
 };
 
-export type DeleteEnvironmentError = DeleteEnvironmentErrors[keyof DeleteEnvironmentErrors];
+export type DeleteRunnerError = DeleteRunnerErrors[keyof DeleteRunnerErrors];
 
-export type DeleteEnvironmentResponses = {
+export type DeleteRunnerResponses = {
     /**
      * Removed.
      */
     200: Ok;
 };
 
-export type DeleteEnvironmentResponse = DeleteEnvironmentResponses[keyof DeleteEnvironmentResponses];
+export type DeleteRunnerResponse = DeleteRunnerResponses[keyof DeleteRunnerResponses];
 
-export type UpdateEnvironmentData = {
-    body: EnvironmentInput;
+export type UpdateRunnerData = {
+    body: RunnerInput;
     path: {
-        environmentId: string;
+        runnerId: string;
     };
     query?: never;
-    url: '/api/settings/environments/{environmentId}';
+    url: '/api/settings/runners/{runnerId}';
 };
 
-export type UpdateEnvironmentErrors = {
+export type UpdateRunnerErrors = {
     /**
      * The request failed.
      */
@@ -3570,27 +3570,27 @@ export type UpdateEnvironmentErrors = {
     default: Error;
 };
 
-export type UpdateEnvironmentError = UpdateEnvironmentErrors[keyof UpdateEnvironmentErrors];
+export type UpdateRunnerError = UpdateRunnerErrors[keyof UpdateRunnerErrors];
 
-export type UpdateEnvironmentResponses = {
+export type UpdateRunnerResponses = {
     /**
      * Updated.
      */
-    200: Environment;
+    200: Runner;
 };
 
-export type UpdateEnvironmentResponse = UpdateEnvironmentResponses[keyof UpdateEnvironmentResponses];
+export type UpdateRunnerResponse = UpdateRunnerResponses[keyof UpdateRunnerResponses];
 
-export type TestEnvironmentData = {
+export type TestRunnerData = {
     body?: never;
     path: {
-        environmentId: string;
+        runnerId: string;
     };
     query?: never;
-    url: '/api/settings/environments/{environmentId}/test';
+    url: '/api/settings/runners/{runnerId}/test';
 };
 
-export type TestEnvironmentErrors = {
+export type TestRunnerErrors = {
     /**
      * The request failed.
      */
@@ -3605,27 +3605,27 @@ export type TestEnvironmentErrors = {
     default: Error;
 };
 
-export type TestEnvironmentError = TestEnvironmentErrors[keyof TestEnvironmentErrors];
+export type TestRunnerError = TestRunnerErrors[keyof TestRunnerErrors];
 
-export type TestEnvironmentResponses = {
+export type TestRunnerResponses = {
     /**
      * Probe result.
      */
-    200: EnvironmentTestResult;
+    200: RunnerTestResult;
 };
 
-export type TestEnvironmentResponse = TestEnvironmentResponses[keyof TestEnvironmentResponses];
+export type TestRunnerResponse = TestRunnerResponses[keyof TestRunnerResponses];
 
-export type ForgetEnvironmentHostKeyData = {
+export type ForgetRunnerHostKeyData = {
     body?: never;
     path: {
-        environmentId: string;
+        runnerId: string;
     };
     query?: never;
-    url: '/api/settings/environments/{environmentId}/forget-host-key';
+    url: '/api/settings/runners/{runnerId}/forget-host-key';
 };
 
-export type ForgetEnvironmentHostKeyErrors = {
+export type ForgetRunnerHostKeyErrors = {
     /**
      * The request failed.
      */
@@ -3640,24 +3640,24 @@ export type ForgetEnvironmentHostKeyErrors = {
     default: Error;
 };
 
-export type ForgetEnvironmentHostKeyError = ForgetEnvironmentHostKeyErrors[keyof ForgetEnvironmentHostKeyErrors];
+export type ForgetRunnerHostKeyError = ForgetRunnerHostKeyErrors[keyof ForgetRunnerHostKeyErrors];
 
-export type ForgetEnvironmentHostKeyResponses = {
+export type ForgetRunnerHostKeyResponses = {
     /**
      * Host key cleared.
      */
     200: Ok;
 };
 
-export type ForgetEnvironmentHostKeyResponse = ForgetEnvironmentHostKeyResponses[keyof ForgetEnvironmentHostKeyResponses];
+export type ForgetRunnerHostKeyResponse = ForgetRunnerHostKeyResponses[keyof ForgetRunnerHostKeyResponses];
 
 export type RevokeRunnerData = {
     body?: never;
     path: {
-        environmentId: string;
+        runnerId: string;
     };
     query?: never;
-    url: '/api/settings/environments/{environmentId}/runner-pairing';
+    url: '/api/settings/runners/{runnerId}/pairing';
 };
 
 export type RevokeRunnerErrors = {
@@ -3681,10 +3681,10 @@ export type RevokeRunnerResponse = RevokeRunnerResponses[keyof RevokeRunnerRespo
 export type IssueRunnerCodeData = {
     body?: never;
     path: {
-        environmentId: string;
+        runnerId: string;
     };
     query?: never;
-    url: '/api/settings/environments/{environmentId}/runner-pairing';
+    url: '/api/settings/runners/{runnerId}/pairing';
 };
 
 export type IssueRunnerCodeErrors = {
@@ -4535,16 +4535,16 @@ export type RestoreAgentResponses = {
 
 export type RestoreAgentResponse = RestoreAgentResponses[keyof RestoreAgentResponses];
 
-export type ListAgentEnvironmentsData = {
+export type ListAgentRunnersData = {
     body?: never;
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/environments';
+    url: '/api/agents/{agentId}/runners';
 };
 
-export type ListAgentEnvironmentsErrors = {
+export type ListAgentRunnersErrors = {
     /**
      * The request failed.
      */
@@ -4555,27 +4555,27 @@ export type ListAgentEnvironmentsErrors = {
     default: Error;
 };
 
-export type ListAgentEnvironmentsError = ListAgentEnvironmentsErrors[keyof ListAgentEnvironmentsErrors];
+export type ListAgentRunnersError = ListAgentRunnersErrors[keyof ListAgentRunnersErrors];
 
-export type ListAgentEnvironmentsResponses = {
+export type ListAgentRunnersResponses = {
     /**
      * The session environments.
      */
-    200: AgentEnvironments;
+    200: AgentRunners;
 };
 
-export type ListAgentEnvironmentsResponse = ListAgentEnvironmentsResponses[keyof ListAgentEnvironmentsResponses];
+export type ListAgentRunnersResponse = ListAgentRunnersResponses[keyof ListAgentRunnersResponses];
 
-export type ResetAgentEnvironmentData = {
+export type ResetAgentRunnerData = {
     body?: never;
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/environment/reset';
+    url: '/api/agents/{agentId}/runner/reset';
 };
 
-export type ResetAgentEnvironmentErrors = {
+export type ResetAgentRunnerErrors = {
     /**
      * The request failed.
      */
@@ -4594,16 +4594,16 @@ export type ResetAgentEnvironmentErrors = {
     default: Error;
 };
 
-export type ResetAgentEnvironmentError = ResetAgentEnvironmentErrors[keyof ResetAgentEnvironmentErrors];
+export type ResetAgentRunnerError = ResetAgentRunnerErrors[keyof ResetAgentRunnerErrors];
 
-export type ResetAgentEnvironmentResponses = {
+export type ResetAgentRunnerResponses = {
     /**
      * Reset completed.
      */
     200: Ok;
 };
 
-export type ResetAgentEnvironmentResponse = ResetAgentEnvironmentResponses[keyof ResetAgentEnvironmentResponses];
+export type ResetAgentRunnerResponse = ResetAgentRunnerResponses[keyof ResetAgentRunnerResponses];
 
 export type GetMainChatData = {
     body?: never;
@@ -4811,7 +4811,7 @@ export type ListDirectoriesData = {
         /**
          * An execution environment of the agent. Absent selects the environment of the agent.
          */
-        environmentId?: string;
+        runnerId?: string;
     };
     url: '/api/directories';
 };
@@ -4857,7 +4857,7 @@ export type ListRecentProjectsData = {
         /**
          * An execution environment of the agent. Absent selects the environment of the agent.
          */
-        environmentId?: string;
+        runnerId?: string;
     };
     url: '/api/agents/{agentId}/projects';
 };
@@ -4886,19 +4886,19 @@ export type ListRecentProjectsResponses = {
 
 export type ListRecentProjectsResponse = ListRecentProjectsResponses[keyof ListRecentProjectsResponses];
 
-export type SetChatEnvironmentData = {
+export type SetChatRunnerData = {
     body: {
-        environmentId: string;
+        runnerId: string;
     };
     path: {
         agentId: string;
         chatId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/chats/{chatId}/environment';
+    url: '/api/agents/{agentId}/chats/{chatId}/runner';
 };
 
-export type SetChatEnvironmentErrors = {
+export type SetChatRunnerErrors = {
     /**
      * The request failed.
      */
@@ -4921,16 +4921,16 @@ export type SetChatEnvironmentErrors = {
     default: Error;
 };
 
-export type SetChatEnvironmentError = SetChatEnvironmentErrors[keyof SetChatEnvironmentErrors];
+export type SetChatRunnerError = SetChatRunnerErrors[keyof SetChatRunnerErrors];
 
-export type SetChatEnvironmentResponses = {
+export type SetChatRunnerResponses = {
     /**
      * The Chat session with its environment.
      */
     200: Chat;
 };
 
-export type SetChatEnvironmentResponse = SetChatEnvironmentResponses[keyof SetChatEnvironmentResponses];
+export type SetChatRunnerResponse = SetChatRunnerResponses[keyof SetChatRunnerResponses];
 
 export type SetChatProjectData = {
     body: {
@@ -5216,7 +5216,7 @@ export type ForkChatData = {
         /**
          * The execution environment of the new Chat.
          */
-        environmentId?: string;
+        runnerId?: string;
     };
     path: {
         agentId: string;
@@ -5777,16 +5777,16 @@ export type RenameArtifactResponses = {
 
 export type RenameArtifactResponse = RenameArtifactResponses[keyof RenameArtifactResponses];
 
-export type GetExtensionsData = {
+export type GetBotIntegrationsData = {
     body?: never;
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/extensions';
+    url: '/api/agents/{agentId}/integrations';
 };
 
-export type GetExtensionsErrors = {
+export type GetBotIntegrationsErrors = {
     /**
      * The request failed.
      */
@@ -5797,27 +5797,27 @@ export type GetExtensionsErrors = {
     default: Error;
 };
 
-export type GetExtensionsError = GetExtensionsErrors[keyof GetExtensionsErrors];
+export type GetBotIntegrationsError = GetBotIntegrationsErrors[keyof GetBotIntegrationsErrors];
 
-export type GetExtensionsResponses = {
+export type GetBotIntegrationsResponses = {
     /**
      * The extensions.
      */
-    200: Extensions;
+    200: BotIntegrations;
 };
 
-export type GetExtensionsResponse = GetExtensionsResponses[keyof GetExtensionsResponses];
+export type GetBotIntegrationsResponse = GetBotIntegrationsResponses[keyof GetBotIntegrationsResponses];
 
 export type StartMcpOAuthData = {
     body: {
-        scope: ExtensionScope;
+        scope: IntegrationScope;
     };
     path: {
         agentId: string;
         name: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/extensions/mcp/{name}/oauth';
+    url: '/api/agents/{agentId}/integrations/mcp/{name}/oauth';
 };
 
 export type StartMcpOAuthErrors = {
@@ -5846,7 +5846,7 @@ export type DeleteVaultData = {
         agentId: string;
     };
     query: {
-        scope: ExtensionScope;
+        scope: IntegrationScope;
         name: string;
     };
     url: '/api/agents/{agentId}/vault';
@@ -5907,7 +5907,7 @@ export type ListVaultResponse = ListVaultResponses[keyof ListVaultResponses];
 
 export type PutVaultData = {
     body: {
-        scope: ExtensionScope;
+        scope: IntegrationScope;
         name: string;
         value: string;
     };
@@ -5944,16 +5944,16 @@ export type PutVaultResponses = {
 
 export type PutVaultResponse = PutVaultResponses[keyof PutVaultResponses];
 
-export type ReloadExtensionsData = {
+export type ReloadBotIntegrationsData = {
     body?: never;
     path: {
         agentId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/extensions/reload';
+    url: '/api/agents/{agentId}/integrations/reload';
 };
 
-export type ReloadExtensionsErrors = {
+export type ReloadBotIntegrationsErrors = {
     /**
      * The request failed.
      */
@@ -5972,16 +5972,16 @@ export type ReloadExtensionsErrors = {
     default: Error;
 };
 
-export type ReloadExtensionsError = ReloadExtensionsErrors[keyof ReloadExtensionsErrors];
+export type ReloadBotIntegrationsError = ReloadBotIntegrationsErrors[keyof ReloadBotIntegrationsErrors];
 
-export type ReloadExtensionsResponses = {
+export type ReloadBotIntegrationsResponses = {
     /**
      * The loaded extensions.
      */
-    200: Extensions;
+    200: BotIntegrations;
 };
 
-export type ReloadExtensionsResponse = ReloadExtensionsResponses[keyof ReloadExtensionsResponses];
+export type ReloadBotIntegrationsResponse = ReloadBotIntegrationsResponses[keyof ReloadBotIntegrationsResponses];
 
 export type ListAutomationsData = {
     body?: never;

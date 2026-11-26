@@ -94,10 +94,10 @@ WITH active AS (
 )
 SELECT sqlc.embed(a), CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
-    CAST(EXISTS (SELECT 1 FROM automations routine
+    CAST(EXISTS (SELECT 1 FROM automations automation
         JOIN automation_runs r ON r.id = (SELECT latest.id FROM automation_runs latest
-            WHERE latest.automation_id = routine.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
-        WHERE routine.agent_id = a.id AND routine.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS routine_failed
+            WHERE latest.automation_id = automation.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
+        WHERE automation.agent_id = a.id AND automation.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS automation_failed
 FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
 WHERE a.archived_at IS NULL
 ORDER BY a.created_at, a.id;

@@ -28,16 +28,16 @@ import (
 // Chat is one conversation on one channel.
 type Chat struct {
 	Cwd string
-	// EnvironmentID is the explicit environment of the session, or empty when it follows its bot.
-	EnvironmentID string
-	ID            int64
-	ChannelKey    string
-	Title         string
-	CreatedAt     int64
-	UpdatedAt     int64 // latest conversation or input activity
-	Busy          bool  // a message has no answer yet
-	ArchivedAt    int64 // zero when the Chat session is not archived
-	Settings      Settings
+	// RunnerID is the explicit environment of the session, or empty when it follows its bot.
+	RunnerID   string
+	ID         int64
+	ChannelKey string
+	Title      string
+	CreatedAt  int64
+	UpdatedAt  int64 // latest conversation or input activity
+	Busy       bool  // a message has no answer yet
+	ArchivedAt int64 // zero when the Chat session is not archived
+	Settings   Settings
 	// Writable is true when the web UI can send input to the session now. Main, Chat and child
 	// sessions are always writable.
 	Writable bool
@@ -663,7 +663,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Chat, error) {
 	chats := make([]Chat, len(rows))
 	for i, r := range rows {
 		chats[i] = Chat{
-			Cwd: r.Cwd, EnvironmentID: r.EnvironmentID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+			Cwd: r.Cwd, RunnerID: r.RunnerID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: byChat[r.ID], StoppedByParent: stoppedByParent[r.ID],
 		}
@@ -738,7 +738,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Chat, erro
 		return Chat{}, err
 	}
 	c := Chat{
-		Cwd: r.Cwd, EnvironmentID: r.EnvironmentID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		Cwd: r.Cwd, RunnerID: r.RunnerID, ID: r.ID, ChannelKey: r.ChannelKey, Title: r.Title, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 		Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, Question: question,
 		ForkedFrom: forkOrigin(r),
@@ -770,7 +770,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	var trace *slog.Logger
 	var admissionErr error
 	if p.Kind == "message" {
-		environment := effectiveEnvironment(agent, conv.EnvironmentID)
+		environment := effectiveRunner(agent, conv.RunnerID)
 		trace = receiptTrace(p.ConversationID, p.ID).With("agent", p.AgentID, "native_namespace", "private", "environment", environment)
 		reason := "unknown"
 		switch {
@@ -834,7 +834,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		input.ModelSuffix = BoundRoutineCheckSuffix
 	}
 	if input.Kind == "task_result" && isMonitorEvent(input.RequestID) {
-		input.RequireEnvironment = true
+		input.RequireRunner = true
 		input.ValidateAdmission = func(ctx context.Context, ref engine.Ref) error {
 			caller := engine.TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: p.ID}
 			if err := s.authorizeMonitor(ctx, caller); err != nil {
@@ -1037,7 +1037,7 @@ func (s *Service) settle(ctx context.Context, id string, event engine.Outcome) e
 	if s.notify != nil && outboxPeer != "" {
 		s.notify(outboxPeer)
 	}
-	s.WakeRoutineOutbox(ctx, id)
+	s.WakeAutomationOutbox(ctx, id)
 	return nil
 }
 

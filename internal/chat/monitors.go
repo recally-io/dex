@@ -145,7 +145,7 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a Mo
 	if err != nil {
 		return MonitorInfo{}, err
 	}
-	targetEnv, targetRev, err := monitorEnvironment(ctx, q, conv)
+	targetEnv, targetRev, err := monitorRunner(ctx, q, conv)
 	if err != nil {
 		return MonitorInfo{}, err
 	}
@@ -155,27 +155,27 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a Mo
 	id := uuid.NewV7().String()
 	nowMs := now.UnixMilli()
 	created, err := q.CreateMonitor(ctx, sqlc.CreateMonitorParams{
-		ID:                        id,
-		OperationKey:              r.Key,
-		AgentID:                   conv.AgentID,
-		ConversationID:            conv.ID,
-		RootRequestID:             rootRequestID,
-		SourceSubmissionID:        source.ID,
-		ChainDepth:                chainDepth,
-		DueAt:                     dueAt.UnixMilli(),
-		TimeZone:                  tz,
-		Prompt:                    a.Prompt,
-		CreatedAt:                 nowMs,
-		UpdatedAt:                 nowMs,
-		CheckCommand:              script,
-		CheckEnv:                  string(checkEnv),
-		IntervalSeconds:           int64(a.IntervalSeconds),
-		MaxRuns:                   int64(maxRuns),
-		ExpiresAt:                 expiresAt,
-		TargetExecutionID:         conv.ExecutionID.Int64,
-		TargetEnvironment:         targetEnv,
-		TargetEnvironmentRevision: targetRev,
-		TargetCwd:                 conv.Cwd,
+		ID:                   id,
+		OperationKey:         r.Key,
+		AgentID:              conv.AgentID,
+		ConversationID:       conv.ID,
+		RootRequestID:        rootRequestID,
+		SourceSubmissionID:   source.ID,
+		ChainDepth:           chainDepth,
+		DueAt:                dueAt.UnixMilli(),
+		TimeZone:             tz,
+		Prompt:               a.Prompt,
+		CreatedAt:            nowMs,
+		UpdatedAt:            nowMs,
+		CheckCommand:         script,
+		CheckEnv:             string(checkEnv),
+		IntervalSeconds:      int64(a.IntervalSeconds),
+		MaxRuns:              int64(maxRuns),
+		ExpiresAt:            expiresAt,
+		TargetExecutionID:    conv.ExecutionID.Int64,
+		TargetRunnerID:       targetEnv,
+		TargetRunnerRevision: targetRev,
+		TargetCwd:            conv.Cwd,
 	})
 	if err != nil {
 		return MonitorInfo{}, err
@@ -325,7 +325,7 @@ func activeMonitorTarget(c sqlc.Conversation) bool {
 	return c.ExecutionID.Valid && !c.ArchivedAt.Valid && c.AbortPending == 0
 }
 
-func monitorEnvironment(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation) (string, int64, error) {
+func monitorRunner(ctx context.Context, q *sqlc.Queries, c sqlc.Conversation) (string, int64, error) {
 	agent, err := q.GetAgent(ctx, c.AgentID)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && agent.ArchivedAt.Valid) {
 		return "", 0, errMonitorTarget
@@ -333,11 +333,11 @@ func monitorEnvironment(ctx context.Context, q *sqlc.Queries, c sqlc.Conversatio
 	if err != nil {
 		return "", 0, err
 	}
-	id := effectiveEnvironment(agent, c.EnvironmentID)
+	id := effectiveRunner(agent, c.RunnerID)
 	if id == "local" {
 		return id, 0, nil
 	}
-	env, err := q.GetEnvironment(ctx, id)
+	env, err := q.GetRunner(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", 0, errMonitorTarget
 	}
@@ -355,12 +355,12 @@ func monitorTarget(ctx context.Context, q *sqlc.Queries, row sqlc.Monitor) (sqlc
 	if c.AgentID != row.AgentID || !activeMonitorTarget(c) {
 		return c, errMonitorTarget
 	}
-	id, rev, err := monitorEnvironment(ctx, q, c)
+	id, rev, err := monitorRunner(ctx, q, c)
 	if err != nil {
 		return c, err
 	}
 	// Rows from the upgrade predate this binding. They keep the original session selection.
-	if row.TargetExecutionID != 0 && (c.ExecutionID.Int64 != row.TargetExecutionID || c.Cwd != row.TargetCwd || id != row.TargetEnvironment || rev != row.TargetEnvironmentRevision) {
+	if row.TargetExecutionID != 0 && (c.ExecutionID.Int64 != row.TargetExecutionID || c.Cwd != row.TargetCwd || id != row.TargetRunnerID || rev != row.TargetRunnerRevision) {
 		return c, errMonitorTarget
 	}
 	return c, nil

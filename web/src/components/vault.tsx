@@ -26,7 +26,7 @@ export function Vault({ target }: { target: VaultTarget }) {
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: [{ _id: "listVault" }] });
-    void queryClient.invalidateQueries({ queryKey: [{ _id: "getExtensions" }] });
+    void queryClient.invalidateQueries({ queryKey: [{ _id: "getBotIntegrations" }] });
   };
 
   const save = useMutation({

@@ -55,8 +55,8 @@ type Input struct {
 	Session              string               `json:"session"` // new, reuse, or session
 	TargetConversationID int64                `json:"targetConversationId,omitzero"`
 	Enabled              bool                 `json:"enabled"`
-	// EnvironmentID is local or an SSH environment ID. Empty follows the environment of the bot.
-	EnvironmentID string `json:"environmentId"`
+	// RunnerID is local or an SSH environment ID. Empty follows the environment of the bot.
+	RunnerID string `json:"runnerId"`
 }
 
 // Automation is an automation with its next times and its last run.
@@ -84,10 +84,10 @@ type Run struct {
 	Reason           string `json:"reason,omitempty"`
 	NotificationNote string `json:"notificationNote,omitempty"`
 	ChatID           int64  `json:"chatId,omitzero"` // 0 when the run has no message
-	// EnvironmentID and Cwd are where the run started: the effective environment, never empty
+	// RunnerID and Cwd are where the run started: the effective environment, never empty
 	// for a run with a message.
-	EnvironmentID string `json:"environmentId,omitempty"`
-	Cwd           string `json:"cwd,omitempty"`
+	RunnerID string `json:"runnerId,omitempty"`
+	Cwd      string `json:"cwd,omitempty"`
 }
 
 // Service manages automations for all agents.
@@ -97,18 +97,18 @@ type Service struct {
 	now        func() time.Time
 	wakeOutbox func(context.Context, string)
 	// probe opens an SSH environment of a run before its input; nil skips the check.
-	probe  func(ctx context.Context, agentID, environmentID string) error
-	status func(ctx context.Context, agentID, environmentID string) string
+	probe  func(ctx context.Context, agentID, runnerID string) error
+	status func(ctx context.Context, agentID, runnerID string) string
 }
 
 // ConfigureProbe sets the check that an SSH environment is reachable before a run. A run on an
 // unreachable host is skipped, so it never starts a chat that cannot use its machine.
-func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, environmentID string) error) {
+func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, runnerID string) error) {
 	s.probe = probe
 }
 
-// ConfigureEnvironmentStatus lets a bound Routine detect an offline target without opening it.
-func (s *Service) ConfigureEnvironmentStatus(status func(context.Context, string, string) string) {
+// ConfigureRunnerStatus lets a bound Routine detect an offline target without opening it.
+func (s *Service) ConfigureRunnerStatus(status func(context.Context, string, string) string) {
 	s.status = status
 }
 
@@ -117,7 +117,7 @@ func New(q *sqlc.Queries, chats *chat.Service, now func() time.Time) *Service {
 	s := &Service{q: q, now: now}
 	if chats != nil {
 		s.enqueue = chats.EnqueueAutomation
-		s.wakeOutbox = chats.WakeRoutineOutbox
+		s.wakeOutbox = chats.WakeAutomationOutbox
 	}
 	return s
 }
@@ -141,7 +141,7 @@ func clean(in Input) (Input, *time.Location, error) {
 		if in.TargetConversationID <= 0 {
 			return in, nil, invalid("choose a target session")
 		}
-		in.Cwd, in.EnvironmentID = "", ""
+		in.Cwd, in.RunnerID = "", ""
 	case "new", "reuse":
 		if in.TargetConversationID != 0 {
 			return in, nil, invalid("only session mode accepts a target session")
@@ -236,7 +236,7 @@ func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automat
 	if err := s.checkTarget(ctx, agentID, in); err != nil {
 		return Automation{}, err
 	}
-	if err := s.checkEnvironment(ctx, in.EnvironmentID, ""); err != nil {
+	if err := s.checkRunner(ctx, in.RunnerID, ""); err != nil {
 		return Automation{}, err
 	}
 	now := s.now()
@@ -269,7 +269,7 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	if err := s.checkTarget(ctx, agentID, in); err != nil {
 		return Automation{}, err
 	}
-	if err := s.checkEnvironment(ctx, in.EnvironmentID, row.EnvironmentID); err != nil {
+	if err := s.checkRunner(ctx, in.RunnerID, row.RunnerID); err != nil {
 		return Automation{}, err
 	}
 	if err := s.applyNotification(ctx, &row, in.Notification); err != nil {
@@ -283,7 +283,7 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	_, err = s.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{
 		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
 		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID,
-		EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: agentID,
+		RunnerID: row.RunnerID, TargetConversationID: row.TargetConversationID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: agentID,
 	})
 	if err != nil {
 		return Automation{}, err
@@ -291,14 +291,14 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	return s.view(ctx, row)
 }
 
-// checkEnvironment fails with ErrInvalid unless id is empty, LocalID, or a saved pi-env
+// checkRunner fails with ErrInvalid unless id is empty, LocalID, or a saved pi-env
 // environment. Routines can use E2B or runner only through their bot's default environment.
 // The saved value still passes so the owner can edit or pause a routine whose environment was removed.
-func (s *Service) checkEnvironment(ctx context.Context, id, current string) error {
+func (s *Service) checkRunner(ctx context.Context, id, current string) error {
 	if id == "" || id == current || id == runner.LocalID {
 		return nil
 	}
-	row, err := s.q.GetEnvironment(ctx, id)
+	row, err := s.q.GetRunner(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return invalid("the environment " + id + " does not exist")
 	}
@@ -316,7 +316,7 @@ func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n
 		return nil
 	}
 	if n.Mode == "target" {
-		if _, err := s.q.GetRoutineNotificationTarget(ctx, sqlc.GetRoutineNotificationTargetParams{ID: n.TargetID, AgentID: row.AgentID}); err != nil {
+		if _, err := s.q.GetAutomationNotificationTarget(ctx, sqlc.GetAutomationNotificationTargetParams{ID: n.TargetID, AgentID: row.AgentID}); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return invalid("notification target not found")
 			}
@@ -337,7 +337,7 @@ func fill(row *sqlc.Automation, in Input, loc *time.Location, now time.Time) err
 	if in.Enabled && in.Schedule.Kind == "once" && !time.UnixMilli(in.Schedule.At).After(now) {
 		return invalid("the time is in the past")
 	}
-	row.Cwd, row.EnvironmentID, row.TargetConversationID = in.Cwd, in.EnvironmentID, targetID(in)
+	row.Cwd, row.RunnerID, row.TargetConversationID = in.Cwd, in.RunnerID, targetID(in)
 	row.Name, row.Prompt, row.Schedule, row.TimeZone, row.Session = in.Name, in.Prompt, string(sched), in.TimeZone, in.Session
 	row.Enabled, row.NextDueAt = 0, sql.NullInt64{}
 	if in.Enabled {
@@ -400,7 +400,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error
 func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, error) {
 	a := Automation{
 		Notification: &RoutineNotification{Mode: row.NotificationRoute, TargetID: row.NotificationTargetID.String},
-		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, EnvironmentID: row.EnvironmentID, TargetConversationID: row.TargetConversationID.Int64,
+		Cwd:          row.Cwd, Name: row.Name, Prompt: row.Prompt, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled == 1, RunnerID: row.RunnerID, TargetConversationID: row.TargetConversationID.Int64,
 		ID: row.ID, NextRuns: []int64{}, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 	if err := json.Unmarshal([]byte(row.Schedule), &a.Schedule); err != nil {
@@ -436,7 +436,7 @@ func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int
 	}
 	out := make([]Run, len(rows))
 	for i, r := range rows {
-		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, NotificationNote: r.NotificationNote, ChatID: r.ChatID.Int64, EnvironmentID: r.EnvironmentID, Cwd: r.Cwd}
+		out[i] = Run{Outcome: r.Outcome, Summary: r.Summary, ChangeKey: r.ChangeKey, Duplicate: r.Duplicate == 1, ID: r.ID, DueAt: r.DueAt.Int64, CreatedAt: r.CreatedAt, Status: r.Status, Reason: r.Reason.String, NotificationNote: r.NotificationNote, ChatID: r.ChatID.Int64, RunnerID: r.RunnerID, Cwd: r.Cwd}
 		if r.AdmittedAt.Valid {
 			out[i].AdmittedAt = new(r.AdmittedAt.Int64)
 		}
@@ -566,7 +566,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 		key += ":" + run.ID
 	}
 	// The input stores row only while row is current: the preflight gives an edit time to commit.
-	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, EnvironmentID: row.EnvironmentID, Target: pre.ID, Skip: pre.Skip, Expected: &row}
+	input := chat.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, RunnerID: row.RunnerID, Target: pre.ID, Skip: pre.Skip, Expected: &row}
 	result, err := s.enqueue(ctx, input)
 	if !due.Valid && errors.Is(err, chat.ErrAutomationChanged) {
 		// A scheduled run checks again next minute; a manual run tells the caller.
@@ -595,7 +595,7 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 	if err != nil {
 		return Target{}, err
 	}
-	environmentID := row.EnvironmentID
+	runnerID := row.RunnerID
 	if row.Session == "session" {
 		conv, err := chat.AutomationTarget(ctx, s.q, row.AgentID, row.TargetConversationID)
 		if errors.Is(err, chat.ErrAutomationTarget) {
@@ -604,12 +604,12 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 		if err != nil {
 			return Target{}, err
 		}
-		environmentID = conv.EnvironmentID
+		runnerID = conv.RunnerID
 	}
-	id := cmp.Or(environmentID, agent.EnvironmentID, runner.LocalID)
+	id := cmp.Or(runnerID, agent.RunnerID, runner.LocalID)
 	skip, err := s.unavailable(ctx, row.AgentID, id)
 	if skip == "" && err == nil && row.Session == "session" && s.status != nil && s.status(ctx, row.AgentID, id) != "available" {
-		skip = chat.RoutineUnavailableEnvironment(id)
+		skip = chat.RoutineUnavailableRunner(id)
 	}
 	return Target{ID: id, Skip: skip}, err
 }
@@ -621,9 +621,9 @@ func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, 
 	if id == runner.LocalID {
 		return "", nil
 	}
-	env, err := s.q.GetEnvironment(ctx, id)
+	env, err := s.q.GetRunner(ctx, id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return chat.RoutineRemovedEnvironment(id), nil
+		return chat.RoutineRemovedRunner(id), nil
 	}
 	if err != nil || runner.Kind(env.Kind) != runner.KindPiEnv || s.probe == nil {
 		return "", err
@@ -633,7 +633,7 @@ func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, 
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		return chat.RoutineUnavailableEnvironment(env.Name), nil
+		return chat.RoutineUnavailableRunner(env.Name), nil
 	}
 	return "", nil
 }

@@ -10,31 +10,31 @@ import (
 )
 
 const getRunnerCredential = `-- name: GetRunnerCredential :one
-SELECT credential_digest FROM runner_pairing WHERE environment_id = ?
+SELECT credential_digest FROM runner_pairing WHERE runner_id = ?
 `
 
-func (q *Queries) GetRunnerCredential(ctx context.Context, environmentID string) (string, error) {
-	row := q.db.QueryRowContext(ctx, getRunnerCredential, environmentID)
+func (q *Queries) GetRunnerCredential(ctx context.Context, runnerID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getRunnerCredential, runnerID)
 	var credential_digest string
 	err := row.Scan(&credential_digest)
 	return credential_digest, err
 }
 
 const issueRunnerCode = `-- name: IssueRunnerCode :execrows
-INSERT INTO runner_pairing (environment_id, code_digest, expires_at)
-SELECT id, ?1, ?2 FROM execution_environments WHERE id = ?3 AND kind = 'runner'
-ON CONFLICT (environment_id) DO UPDATE SET code_digest = excluded.code_digest, expires_at = excluded.expires_at
+INSERT INTO runner_pairing (runner_id, code_digest, expires_at)
+SELECT id, ?1, ?2 FROM runners WHERE id = ?3 AND kind = 'runner'
+ON CONFLICT (runner_id) DO UPDATE SET code_digest = excluded.code_digest, expires_at = excluded.expires_at
 WHERE runner_pairing.credential_digest = ''
 `
 
 type IssueRunnerCodeParams struct {
-	CodeDigest    string `json:"code_digest"`
-	ExpiresAt     int64  `json:"expires_at"`
-	EnvironmentID string `json:"environment_id"`
+	CodeDigest string `json:"code_digest"`
+	ExpiresAt  int64  `json:"expires_at"`
+	RunnerID   string `json:"runner_id"`
 }
 
 func (q *Queries) IssueRunnerCode(ctx context.Context, arg IssueRunnerCodeParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, issueRunnerCode, arg.CodeDigest, arg.ExpiresAt, arg.EnvironmentID)
+	result, err := q.db.ExecContext(ctx, issueRunnerCode, arg.CodeDigest, arg.ExpiresAt, arg.RunnerID)
 	if err != nil {
 		return 0, err
 	}
@@ -43,12 +43,12 @@ func (q *Queries) IssueRunnerCode(ctx context.Context, arg IssueRunnerCodeParams
 
 const redeemRunnerCode = `-- name: RedeemRunnerCode :execrows
 UPDATE runner_pairing SET code_digest = '', expires_at = 0, credential_digest = ?1
-WHERE environment_id = ?2 AND code_digest = ?3 AND expires_at > ?4 AND credential_digest = ''
+WHERE runner_id = ?2 AND code_digest = ?3 AND expires_at > ?4 AND credential_digest = ''
 `
 
 type RedeemRunnerCodeParams struct {
 	CredentialDigest string `json:"credential_digest"`
-	EnvironmentID    string `json:"environment_id"`
+	RunnerID         string `json:"runner_id"`
 	CodeDigest       string `json:"code_digest"`
 	Now              int64  `json:"now"`
 }
@@ -56,7 +56,7 @@ type RedeemRunnerCodeParams struct {
 func (q *Queries) RedeemRunnerCode(ctx context.Context, arg RedeemRunnerCodeParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, redeemRunnerCode,
 		arg.CredentialDigest,
-		arg.EnvironmentID,
+		arg.RunnerID,
 		arg.CodeDigest,
 		arg.Now,
 	)
@@ -67,10 +67,10 @@ func (q *Queries) RedeemRunnerCode(ctx context.Context, arg RedeemRunnerCodePara
 }
 
 const revokeRunnerCredential = `-- name: RevokeRunnerCredential :exec
-DELETE FROM runner_pairing WHERE environment_id = ?
+DELETE FROM runner_pairing WHERE runner_id = ?
 `
 
-func (q *Queries) RevokeRunnerCredential(ctx context.Context, environmentID string) error {
-	_, err := q.db.ExecContext(ctx, revokeRunnerCredential, environmentID)
+func (q *Queries) RevokeRunnerCredential(ctx context.Context, runnerID string) error {
+	_, err := q.db.ExecContext(ctx, revokeRunnerCredential, runnerID)
 	return err
 }
