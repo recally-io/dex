@@ -272,26 +272,41 @@ function StateBadge({
   );
 }
 
-function ServerRow({ server: s }: { server: McpServer }) {
-  const state = STATE[s.state];
-  const auth = s.oauth && s.state !== "disabled" ? AUTH[s.oauth] : undefined;
-  const botId = useBotId();
-  const shared = s.scope === "dex";
-  const authorizeLabel = `${s.oauth === "authorize" ? "Authorize" : "Reauthorize"}${shared ? " for Dex" : ""}`;
-
-  const authorize = useMutation({
+/** Starts the browser authorization for a stored declaration. The callback returns to Bot Integrations. */
+export function useAuthorizeMcp() {
+  return useMutation({
     ...startMcpOAuthMutation(),
     gcTime: 0,
     onSuccess: (data) => window.location.assign(data.authorizationUrl),
   });
+}
+
+/** The authorization badge, for OAuth, and the connection badge of one MCP declaration. */
+export function McpServerStatus({ server: s }: { server: McpServer }) {
+  const state = STATE[s.state];
+  const auth = s.oauth && s.state !== "disabled" ? AUTH[s.oauth] : undefined;
+
+  return (
+    <>
+      {auth ? <StateBadge name="Authorization" label={auth.label} tone={auth.tone} /> : null}
+      <StateBadge name="Connection" label={state.label} tone={state.tone} />
+    </>
+  );
+}
+
+function ServerRow({ server: s }: { server: McpServer }) {
+  const auth = s.oauth && s.state !== "disabled" ? AUTH[s.oauth] : undefined;
+  const botId = useBotId();
+  const shared = s.scope === "dex";
+  const authorizeLabel = `${s.oauth === "authorize" ? "Authorize" : "Reauthorize"}${shared ? " for Dex" : ""}`;
+  const authorize = useAuthorizeMcp();
 
   return (
     <li className="px-4 py-3 [overflow-wrap:anywhere]">
       <div className="flex flex-wrap items-center gap-2">
         <Header name={s.name} scope={s.scope} overrides={s.overrides} />
         <span className="flex-1" />
-        {auth ? <StateBadge name="Authorization" label={auth.label} tone={auth.tone} /> : null}
-        <StateBadge name="Connection" label={state.label} tone={state.tone} />
+        <McpServerStatus server={s} />
         {s.oauth && s.state !== "disabled" ? (
           <Button
             size="sm"

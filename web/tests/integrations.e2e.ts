@@ -193,6 +193,33 @@ test("keeps Board, Integrations, and Settings in a fixed navigation footer", asy
   await expect(drawer.getByRole("navigation", "Workspace").getByRole("link", /^Board/)).toBeVisible();
   await expect(drawer.getByRole("link", "Integrations", { exact: true })).toBeVisible();
   await expect(drawer.getByRole("link", "Settings", { exact: true })).toBeVisible();
+
+  // On the narrow window, Add MCP server fits without clipped choices, even with Advanced options open.
+  await app.open("/integrations?bot=default");
+  await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
+
+  const dialog = screen.getByRole("dialog", "Add MCP server");
+
+  await dialog.getByRole("button", "Browser OAuth", { exact: true }).tap();
+  await dialog.getByRole("button", "Advanced options", { exact: true }).tap();
+  await expect(dialog.getByLabel("Client ID", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", "No authentication", { exact: true })).toBeVisible();
+  await expect(dialog.getByRole("button", "Add server", { exact: true })).toBeVisible();
+
+  const fit = await browser.evaluate(() => {
+    const box = document.querySelector('[role="dialog"]');
+    const segments = [...(box?.querySelectorAll("[aria-pressed]") ?? [])];
+
+    return {
+      overflow: box ? box.scrollWidth - box.clientWidth : -1,
+      right: box?.getBoundingClientRect().right ?? Infinity,
+      width: window.innerWidth,
+      clipped: segments.filter((item) => item.scrollWidth > item.clientWidth).length,
+    };
+  });
+
+  expect(fit).toEqual({ overflow: 0, right: fit.right, width: 390, clipped: 0 });
+  expect(fit.right <= fit.width).toBe(true);
 });
 
 test("shows an unsaved instructions draft on the mobile Bot menu", async ({ app, browser, screen }) => {
@@ -248,40 +275,91 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
     await expect(screen.getByRole("heading", "Channels", { exact: true })).toBeVisible();
     await expect(screen.getByRole("heading", "Sources", { exact: true })).toBeVisible();
 
-    // And adds a remote MCP server with browser authorization.
+    // When the owner opens Add MCP server, then the form names the target Bot and asks only for a
+    // name, a URL, and authentication. No authentication is the default.
     await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
 
-    const dialog = screen.getByRole("dialog", "Add MCP server");
+    let dialog = screen.getByRole("dialog", "Add MCP server");
 
-    await expect(
-      dialog.getByText(new RegExp(`^Adds a Bot-level declaration to ${name}\\. Other Bots do not change\\.`)),
-    ).toBeVisible();
+    await expect(dialog.getByText(`Bot: ${name}`, { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", "No authentication", { exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(dialog.getByRole("button", "Advanced options", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByLabel("Client ID", { exact: true })).toHaveCount(0);
+
+    // When the owner types a pre-registered client under OAuth, and then chooses No authentication.
+    await dialog.getByLabel("Name", { exact: true }).fill(`${serverName}_open`);
+    await dialog.getByLabel("Server URL", { exact: true }).fill(url.replace(/\/mcp$/, "/open"));
+    await dialog.getByRole("button", "Browser OAuth", { exact: true }).tap();
+
+    let advanced = dialog.getByRole("button", "Advanced options", { exact: true });
+
+    await expect(advanced).not.toBeExpanded();
+    await expect(dialog.getByLabel("Client ID", { exact: true })).toHaveCount(0);
+    await advanced.tap();
+    await expect(advanced).toBeExpanded();
+    await dialog.getByLabel("Client ID", { exact: true }).fill("typed-client");
+    await dialog.getByRole("button", "No authentication", { exact: true }).tap();
+    await dialog.getByRole("button", "Add server", { exact: true }).tap();
+
+    // Then the dialog says what happens next. The server has no authorization and is not live yet.
+    let added = screen.getByRole("dialog", `Added ${serverName}_open`);
+
+    await expect(added.getByText(/^Dex connects when this Bot starts or reloads\./)).toBeVisible();
+    await expect(added.getByText("Starts with the bot", { exact: true })).toBeVisible();
+    await expect(added.getByRole("button", /^Authorize/)).toHaveCount(0);
+    await added.getByRole("button", "Done", { exact: true }).tap();
+    await expect(screen.getByText(`${serverName}_open`, { exact: true })).toBeVisible();
+    await expect(screen.getByText("Not authorized", { exact: true })).toHaveCount(0);
+    await expect(screen.getByRole("button", "Authorize", { exact: true })).toHaveCount(0);
+
+    // When the owner adds a server with browser OAuth and keeps Advanced options closed.
+    await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
+    dialog = screen.getByRole("dialog", "Add MCP server");
     await dialog.getByLabel("Name", { exact: true }).fill(serverName);
     await dialog.getByLabel("Server URL", { exact: true }).fill(url);
-    await dialog.getByLabel("Use browser authorization (OAuth)", { exact: true }).tap();
-    await expect(dialog.getByLabel("Client ID", { exact: true })).toHaveValue("");
+    await dialog.getByRole("button", "Browser OAuth", { exact: true }).tap();
+
+    // An invalid vault name stays reported, and blocks saving, while Advanced options are closed.
+    advanced = dialog.getByRole("button", "Advanced options", { exact: true });
+    await advanced.tap();
+    await dialog.getByLabel("Client secret vault name", { exact: true }).fill("not a name");
+    await advanced.tap();
+    await expect(
+      dialog.getByText("Check Advanced options. Use a vault name: letters, digits, and _.", { exact: true }),
+    ).toBeVisible();
+    await expect(dialog.getByRole("button", "Add server", { exact: true })).toBeDisabled();
+    await advanced.tap();
+    await expect(dialog.getByLabel("Client secret vault name", { exact: true })).toHaveValue("not a name");
+    await dialog.getByLabel("Client secret vault name", { exact: true }).fill("");
+    await advanced.tap();
     await dialog.getByRole("button", "Add server", { exact: true }).tap();
-    await expect(screen.getByRole("dialog", "Add MCP server")).toHaveCount(0);
 
-    // Then the Bot lists the server, with authorization shown apart from the connection.
-    await expect(screen.getByText(serverName, { exact: true })).toBeVisible();
-    await expect(screen.getByText("Not authorized", { exact: true })).toBeVisible();
-    await expect(screen.getByText("Connected", { exact: true })).toHaveCount(0);
+    // Then the next action is authorization. Saving does not claim a connection.
+    added = screen.getByRole("dialog", `Added ${serverName}`);
+    await expect(added.getByText("Not authorized", { exact: true })).toBeVisible();
+    await expect(added.getByText("Connected", { exact: true })).toHaveCount(0);
 
-    // When the owner authorizes it, then the existing callback returns to Bot Integrations.
-    await screen.getByRole("button", "Authorize", { exact: true }).tap();
+    // When the owner authorizes from the dialog, then the existing callback returns to Bot Integrations.
+    await added.getByRole("button", "Authorize", { exact: true }).tap();
     await expect(screen.getByRole("button", "Reauthorize", { exact: true })).toBeVisible();
-    await expect(screen.getByText("Authorized", { exact: true })).toBeVisible();
     expect(new URL(await browser.url()).pathname).toBe(`/b/${id}/integrations`);
 
     // A grant alone is not a live connection: this Bot has not started yet.
-    await expect(screen.getByText("Starts with the bot", { exact: true })).toBeVisible();
-    await expect(screen.getByText("Connected", { exact: true })).toHaveCount(0);
+    const row = screen
+      .getByRole("listitem")
+      .filter({ hasText: serverName, hasNotText: `${serverName}_open` });
+
+    await expect(row.getByText("Authorized", { exact: true })).toBeVisible();
+    await expect(row.getByText("Starts with the bot", { exact: true })).toBeVisible();
+    await expect(row.getByText("Connected", { exact: true })).toHaveCount(0);
 
     // When the owner reloads the Bot, then the authorized connection is live.
     await screen.getByRole("button", "Reload", { exact: true }).tap();
-    await expect(screen.getByText("Connected", { exact: true })).toBeVisible();
-    await expect(screen.getByText("Authorized", { exact: true })).toBeVisible();
+    await expect(row.getByText("Connected", { exact: true })).toBeVisible();
+    await expect(row.getByText("Authorized", { exact: true })).toBeVisible();
 
     // And the default Bot does not get the declaration.
     await app.open("/integrations?bot=default");

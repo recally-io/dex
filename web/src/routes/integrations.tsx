@@ -1,23 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import {
   createMcpServerMutation,
+  getBotIntegrationsOptions,
   getBotIntegrationsQueryKey,
   listBotsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import type { Bot, CreateMcpServerData } from "../api/generated/types.gen";
 import { Modal } from "../components/dialog";
 import { Failure, Loading } from "../components/feedback";
-import { Field, Input, Select } from "../components/form";
+import { Field, Input, RadioSegments, Select } from "../components/form";
 import { FramedPage, Note } from "../components/page";
 import { SourceSettings } from "../components/source-settings";
 import { Button } from "../components/ui/button";
-import { Switch } from "../components/ui/switch";
-import { useApp } from "../lib/app-state";
 import { BotContext, useBotId } from "../lib/bot-scope";
 import { ChannelsSection, WithChannels } from "./channels";
-import { IntegrationCatalog } from "./skills";
+import { IntegrationCatalog, McpServerStatus, useAuthorizeMcp } from "./skills";
 
 const vaultName = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -108,33 +107,60 @@ function AddMcpServer({ bot }: { bot: Bot }) {
   );
 }
 
+type Auth = "none" | "oauth";
+
+const authOptions = [
+  { value: "none", label: "No authentication" },
+  { value: "oauth", label: "Browser OAuth" },
+] as const;
+
 function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void }) {
+  // The target is fixed when the dialog opens. A save and its result always use this Bot.
   const botId = bot.id!;
   const client = useQueryClient();
-  const { notify } = useApp();
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
-  const [oauth, setOAuth] = useState(false);
+  const [auth, setAuth] = useState<Auth>("none");
+  const [advanced, setAdvanced] = useState(false);
   const [clientId, setClientId] = useState("");
   const [secretName, setSecretName] = useState("");
   const [scope, setScope] = useState("");
-  const secretInvalid = secretName.trim() !== "" && !vaultName.test(secretName.trim());
+  const [added, setAdded] = useState<{ name: string; auth: Auth }>();
+  const advancedId = useId();
+
+  const secret = secretName.trim();
+
+  const secretError =
+    secret && !vaultName.test(secret)
+      ? "Use a vault name: letters, digits, and _."
+      : secret && !clientId.trim()
+        ? "Add a Client ID for this client secret."
+        : undefined;
+
+  const advancedError = auth === "oauth" ? secretError : undefined;
+
+  const advancedSet = [
+    clientId.trim() ? "Client ID" : "",
+    secret ? "client secret" : "",
+    scope.trim() ? "scope" : "",
+  ].filter(Boolean);
 
   const save = useMutation({
     ...createMcpServerMutation(),
-    onSuccess: async () => {
+    onSuccess: async (_, request) => {
       await client.invalidateQueries({ queryKey: getBotIntegrationsQueryKey({ path: { botId } }) });
-      notify(`Added ${name.trim()} to ${bot.name}.${oauth ? " Authorize the server before use." : ""}`);
-      onClose();
+      setAdded({ name: request.body.name, auth: request.body.oauth ? "oauth" : "none" });
     },
   });
+
+  if (added) return <AddedMcpServer bot={bot} added={added} onClose={onClose} />;
 
   const submit = () => {
     const body: CreateMcpServerData["body"] = { name: name.trim(), url: url.trim() };
 
-    if (oauth) {
+    // No authentication sends no OAuth settings, even if Advanced options hold values.
+    if (auth === "oauth") {
       const config: NonNullable<CreateMcpServerData["body"]["oauth"]> = {};
-      const secret = secretName.trim();
 
       if (clientId.trim()) config.clientId = clientId.trim();
 
@@ -151,7 +177,7 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
   return (
     <Modal
       title="Add MCP server"
-      description={`Adds a Bot-level declaration to ${bot.name}. Other Bots do not change. A name that this Bot or Dex already uses is refused.`}
+      description="Connects one Bot to a remote server. Other Bots do not change."
       pending={save.isPending}
       onClose={onClose}
       footer={
@@ -162,7 +188,7 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
           <Button
             type="submit"
             form="add-mcp-server"
-            disabled={save.isPending || !name.trim() || !url.trim() || secretInvalid}
+            disabled={save.isPending || !name.trim() || !url.trim() || !!advancedError}
           >
             {save.isPending ? "Adding…" : "Add server"}
           </Button>
@@ -177,7 +203,10 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
           submit();
         }}
       >
-        <Field label="Name" hint="Letters, digits, - and _. The bot gets tools as mcp__<name>__<tool>.">
+        <p className="rounded-md bg-muted px-3 py-2 text-[13px] font-medium text-foreground [overflow-wrap:anywhere]">
+          {`Bot: ${bot.name}`}
+        </p>
+        <Field label="Name" hint="Letters, digits, - and _.">
           {({ id, describedBy }) => (
             <Input
               id={id}
@@ -192,10 +221,7 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
             />
           )}
         </Field>
-        <Field
-          label="Server URL"
-          hint="A Streamable HTTP endpoint over HTTPS, or HTTP on this computer. No user name, password, or query."
-        >
+        <Field label="Server URL" hint="HTTPS, or HTTP on this computer. No user name, password, or query.">
           {({ id, describedBy }) => (
             <Input
               id={id}
@@ -209,60 +235,166 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
             />
           )}
         </Field>
-        <label className="flex items-center justify-between gap-3 text-[13px] text-foreground">
-          <span>
-            Browser authorization (OAuth)
-            <span className="block text-[12px] text-muted-foreground">
-              For a server that needs sign-in. Dex takes no headers or static tokens here.
-            </span>
+        <div className="flex flex-col gap-1.5">
+          <span aria-hidden className="text-[12.5px] font-medium text-foreground">
+            Authentication
           </span>
-          <Switch checked={oauth} onCheckedChange={setOAuth} aria-label="Use browser authorization (OAuth)" />
-        </label>
-        {oauth ? (
-          <>
-            <Field label="Client ID" hint="Optional. Use it when the provider gave you a registered client.">
-              {({ id, describedBy }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  value={clientId}
-                  onChange={(event) => setClientId(event.target.value)}
-                  autoComplete="off"
-                />
-              )}
-            </Field>
-            <Field
-              label="Client secret vault name"
-              hint="Optional, with a Client ID. The name of an entry in this Bot's Secrets. Never the secret itself."
-              error={secretInvalid ? "Use a vault name: letters, digits, and _." : undefined}
-            >
-              {({ id, describedBy }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  aria-invalid={secretInvalid || undefined}
-                  value={secretName}
-                  onChange={(event) => setSecretName(event.target.value)}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              )}
-            </Field>
-            <Field label="Scope" hint="Optional. Dex otherwise uses the scope that the server asks for.">
-              {({ id, describedBy }) => (
-                <Input
-                  id={id}
-                  aria-describedby={describedBy}
-                  value={scope}
-                  onChange={(event) => setScope(event.target.value)}
-                  autoComplete="off"
-                />
-              )}
-            </Field>
-          </>
+          <RadioSegments label="Authentication" options={authOptions} value={auth} onChange={setAuth} />
+          <p className="text-[12px] text-muted-foreground">
+            {auth === "none"
+              ? "For a public server. Dex sends no credentials."
+              : "You sign in to the server in this browser after you add it. Most servers need nothing else."}
+          </p>
+        </div>
+        {auth === "oauth" ? (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                aria-expanded={advanced}
+                aria-controls={advancedId}
+                onClick={() => setAdvanced((open) => !open)}
+              >
+                {advanced ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
+                Advanced options
+              </Button>
+              {!advanced && !advancedError && advancedSet.length ? (
+                <span className="text-[11.5px] text-muted-foreground">{`Set: ${advancedSet.join(", ")}`}</span>
+              ) : null}
+            </div>
+            {!advanced && advancedError ? (
+              <p className="text-[12px] text-red">{`Check Advanced options. ${advancedError}`}</p>
+            ) : null}
+            {advanced ? (
+              <div id={advancedId} className="flex flex-col gap-4 rounded-md border border-border p-3.5">
+                <p className="text-[12px] text-muted-foreground">
+                  Only for a provider that gave you a registered client.
+                </p>
+                <Field label="Client ID">
+                  {({ id, describedBy }) => (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      value={clientId}
+                      onChange={(event) => setClientId(event.target.value)}
+                      autoComplete="off"
+                    />
+                  )}
+                </Field>
+                <Field
+                  label="Client secret vault name"
+                  hint="The name of an entry in this Bot's Secrets, never the secret itself."
+                  error={secretError}
+                >
+                  {({ id, describedBy, invalid }) => (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      aria-invalid={invalid || undefined}
+                      value={secretName}
+                      onChange={(event) => setSecretName(event.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  )}
+                </Field>
+                <Field label="Scope" hint="Otherwise Dex uses the scope that the server asks for.">
+                  {({ id, describedBy }) => (
+                    <Input
+                      id={id}
+                      aria-describedby={describedBy}
+                      value={scope}
+                      onChange={(event) => setScope(event.target.value)}
+                      autoComplete="off"
+                    />
+                  )}
+                </Field>
+              </div>
+            ) : null}
+          </div>
         ) : null}
         {save.isError ? <Failure title="Could not add the MCP server" error={save.error} /> : null}
       </form>
+    </Modal>
+  );
+}
+
+/**
+ * The result of a save, read from the Bot's stored declarations. It names the next action and
+ * does not claim a live connection. A busy Bot lists the declaration only once it is idle.
+ */
+function AddedMcpServer({
+  bot,
+  added,
+  onClose,
+}: {
+  bot: Bot;
+  added: { name: string; auth: Auth };
+  onClose: () => void;
+}) {
+  const botId = bot.id!;
+  const integrations = useQuery(getBotIntegrationsOptions({ path: { botId } }));
+
+  const server = integrations.data?.servers.find(
+    (item) => item.name === added.name && item.scope === "agent",
+  );
+
+  const authorize = useAuthorizeMcp();
+  const canAuthorize = !!server?.oauth && server.state !== "disabled";
+
+  return (
+    <Modal
+      title={`Added ${added.name}`}
+      description={`Saved for ${bot.name}. Other Bots do not change.`}
+      pending={authorize.isPending}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant={canAuthorize ? "secondary" : "default"} onClick={onClose}>
+            Done
+          </Button>
+          {canAuthorize ? (
+            <Button
+              disabled={authorize.isPending}
+              onClick={() =>
+                authorize.mutate({ path: { botId, name: added.name }, body: { scope: "agent" } })
+              }
+            >
+              {authorize.isPending
+                ? "Starting…"
+                : server?.oauth === "authorize"
+                  ? "Authorize"
+                  : "Reauthorize"}
+            </Button>
+          ) : null}
+        </>
+      }
+    >
+      {integrations.isPending ? (
+        <Loading />
+      ) : server ? (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[12.5px] font-medium text-foreground">{server.name}</span>
+            <span className="flex-1" />
+            <McpServerStatus server={server} />
+          </div>
+          <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+            {canAuthorize
+              ? "Next, authorize it. Dex opens the server's sign-in page and returns to this Bot's Integrations."
+              : "Dex connects when this Bot starts or reloads. The MCP servers list shows the connection."}
+          </p>
+          {authorize.isError ? (
+            <Failure error={authorize.error} title="Could not start authorization" />
+          ) : null}
+        </>
+      ) : (
+        <Note>
+          {`The server appears under MCP servers when ${bot.name} is idle.${added.auth === "oauth" ? " Authorize it there." : ""}`}
+        </Note>
+      )}
     </Modal>
   );
 }

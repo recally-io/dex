@@ -83,8 +83,13 @@ Without `bot`, it writes the last opened Bot, or the first Bot, into the address
 An unknown or archived Bot shows a notice and no Bot sections. Channels and MCP
 servers use only the selected Bot's APIs. Sources stay global: the selection
 does not change them. **Add MCP server** sends `POST /api/bots/{botId}/integrations/mcp`
-with a name, a URL, and optional OAuth (client ID, a vault name for the client
-secret, and scope). The dialog names the target Bot and takes no headers or tokens. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
+with a name, a URL, and an authentication choice. The dialog names the target Bot
+and takes no headers or tokens. No authentication is the default and sends no
+OAuth settings. Browser OAuth keeps a client ID, a vault name for the client
+secret, and a scope under collapsed Advanced options; a closed panel still shows
+an error in them. After a save, the dialog reads the Bot's stored declarations:
+an OAuth row offers Authorize through the existing flow, another row shows its
+state, and a busy Bot that does not list it yet gets a note. When the GitHub plugin is on (`plugins` of `GET /api/health`), an open Task has
 a form to link a GitHub PR by repository ID and PR number. Each plugin keeps its
 components in `src/plugins/<name>/`, and a page renders them only when the
 plugin is on.
