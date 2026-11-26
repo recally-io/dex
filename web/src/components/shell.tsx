@@ -71,7 +71,7 @@ export function Shell() {
   // The drawer closes when the page changes.
   const [menuPath, setMenuPath] = useState(path);
   const [lastBot, setLastBot] = useState("default");
-  const routeBot = path.match(/^\/a\/([^/]+)/)?.[1];
+  const routeBot = path.match(/^\/b\/([^/]+)/)?.[1];
 
   const shell = useMemo(
     () => ({
@@ -146,6 +146,7 @@ export function Shell() {
         {sidebarOpen ? (
           <Sidebar
             path={path}
+            openBot={routeBot}
             statuses={statuses}
             attentionCount={attentionCount}
             className="hidden lg:flex"
@@ -177,6 +178,7 @@ export function Shell() {
         >
           <Sidebar
             path={path}
+            openBot={routeBot}
             statuses={statuses}
             attentionCount={attentionCount}
             className="max-w-[85vw]"

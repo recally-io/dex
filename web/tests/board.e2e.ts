@@ -37,17 +37,87 @@ function boardLabel(count: number) {
   return count === 0 ? "Board" : `Board, ${count} ${count === 1 ? "item needs" : "items need"} attention`;
 }
 
-test("creates, updates, and reviews Tasks from the unified Board", async ({ app, screen }) => {
+test("quick-adds a Task and shows it live on another Bot-filtered Board", async ({
+  app,
+  browser,
+  screen,
+}) => {
   await app.open("/board");
-  await expect(screen.getByRole("heading", "Board", { exact: true })).toBeVisible();
-  await screen.getByRole("textbox", "Task title").fill("Fix the sign-in flow");
-  await screen.getByRole("button", "Add", { exact: true }).tap();
-  await screen.getByRole("link", /Fix the sign-in flow/).tap();
-  await expect(screen.getByRole("heading", "Fix the sign-in flow")).toBeVisible();
+  const client = createClient({ baseUrl: new URL(await browser.url()).origin });
 
-  await screen.getByRole("textbox", "Task note").fill("The change is ready for review.");
+  const { data: bot } = await createBot({
+    client,
+    body: { name: "Filtered Board fixture", provider: "faux", modelId: "echo" },
+    throwOnError: true,
+  });
+
+  const { data: other } = await createTask({
+    client,
+    body: { title: "A Task from another Bot", assigneeBotId: bot.id },
+    throwOnError: true,
+  });
+
+  const editor = browser.tabs().find((tab) => tab.isActive());
+
+  if (!editor) throw new Error("The unfiltered Board tab is not open");
+  const observer = await browser.newTab();
+  await app.open("/board?bot=default");
+  await expect(screen.getByRole("combobox", "Assignee Bot")).toHaveValue("default");
+  await expect(screen.getByRole("link", new RegExp(other.title))).toHaveCount(0);
+
+  await editor.activate();
+  await screen.getByRole("combobox", "Assignee Bot").selectOption({ value: "default" });
+  await screen.getByRole("textbox", "Task title").fill("Plan the next release");
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await observer.activate();
+
+  const added = screen.getByRole("link", /Plan the next release/);
+  await expect(added).toBeVisible({ timeout: 4_000 });
+  await expect(added).toHaveAttribute("href", /^\/board\/T-\d+$/);
+  await expect(screen.getByRole("link", new RegExp(other.title))).toHaveCount(0);
+  await screen.getByRole("button", "Dex", { exact: true }).tap();
+  await expect(browser).toHaveURL("/board");
+  await expect(screen.getByRole("link", new RegExp(other.title))).toBeVisible();
+});
+
+test("edits a Task and replies with its Assignee from the Task timeline", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await app.open("/board");
+  const client = createClient({ baseUrl: new URL(await browser.url()).origin });
+
+  const { data: assignee } = await createBot({
+    client,
+    body: { name: "Task composer Bot", provider: "faux", modelId: "echo", runnerId: "local" },
+    throwOnError: true,
+  });
+
+  const { data: task } = await createTask({
+    client,
+    body: { title: "Fix the sign-in flow", assigneeBotId: "default" },
+    throwOnError: true,
+  });
+
+  const path = `/board/${task.key}`;
+  const revisions: (string | undefined)[] = [];
+  await browser.route(`**/api/tasks/${task.key}`, async (route) => {
+    if (route.request.method === "PATCH") revisions.push(route.request.headers["if-match"]);
+    await route.continue();
+  });
+  await app.open(path);
+
+  const note = screen.getByRole("textbox", "Task note");
+  await note.fill("See the [review notes](https://example.test/review).");
   await screen.getByRole("button", "Note only", { exact: true }).tap();
-  await expect(screen.getByText("The change is ready for review.")).toBeVisible();
+  await expect(screen.getByRole("link", "review notes", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("region", "Sessions", { exact: true })).toHaveCount(0);
+
+  const assigneeButton = screen.getByRole("button", "Assignee Bot", { exact: true });
+  await assigneeButton.tap();
+  await screen.getByRole("button", assignee.name, { exact: true }).tap();
+  await expect(assigneeButton).toContainText(assignee.name);
 
   await screen.getByRole("button", "Reviewer: None", { exact: true }).tap();
   await screen.getByLabel("Reviewer", { exact: true }).selectOption({ value: "owner" });
@@ -57,6 +127,25 @@ test("creates, updates, and reviews Tasks from the unified Board", async ({ app,
   const status = screen.getByRole("button", "Status", { exact: true });
   await status.tap();
   await screen.getByRole("button", "In Progress", { exact: true }).tap();
+  await expect(status).toContainText("In Progress");
+  expect(revisions).toHaveLength(3);
+  expect(revisions.every((revision) => /^\d+$/.test(revision ?? ""))).toBe(true);
+  expect(new Set(revisions).size).toBe(3);
+
+  const prompt = "Confirm the sign-in changes";
+  await note.fill(prompt);
+  await screen.getByRole("button", `Send to ${assignee.name}`, { exact: true }).tap();
+  const openMain = screen.getByRole("link", "Open Main", { exact: true });
+  await openMain.waitFor();
+  await expect(browser).toHaveURL(path);
+  await expect(openMain).toHaveAttribute("href", `/b/${assignee.id}`);
+  await openMain.tap();
+  const reply = screen.getByRole("article").filter({ hasText: prompt });
+  await expect(reply).toContainText('echo: Dex Task: "Fix the sign-in flow"');
+  const wake = screen.getByRole("region", "Task wake", { exact: true });
+  await expect(wake.getByRole("link", "Task wake", { exact: true })).toHaveAttribute("href", "/board");
+
+  await app.open(path);
   await status.tap();
   await screen.getByRole("button", "In Review", { exact: true }).tap();
   await expect(screen.getByRole("region", "In Review", { exact: true })).toBeVisible();
@@ -105,15 +194,13 @@ test("unblocks a subtask by approving its dependency from Board", async ({ app, 
   });
 
   await app.open(`/board/${parent.key}`);
-  await screen.getByRole("button", "Task actions", { exact: true }).tap();
-  await screen.getByRole("menuitem", "Add subtask", { exact: true }).tap();
+  await screen.getByRole("button", "Subtask", { exact: true }).tap();
   await screen.getByRole("textbox", "Subtask title").fill("Publish the build");
   await screen.getByRole("button", "Add subtask", { exact: true }).tap();
   await screen.getByRole("link", /Publish the build/).tap();
   const publishPath = new URL(await browser.url()).pathname;
 
-  await screen.getByRole("button", "Task actions", { exact: true }).tap();
-  await screen.getByRole("menuitem", "Add dependency", { exact: true }).tap();
+  await screen.getByRole("button", "Dependency", { exact: true }).tap();
   await screen.getByLabel("Sibling task").selectOption({ value: upstream.key });
   await screen.getByRole("button", "Add dependency", { exact: true }).tap();
   await expect(screen.getByText("Blocked", { exact: true })).toBeVisible();
@@ -298,8 +385,16 @@ test("answers questions and resolves automation updates directly from Board", as
   await expect(screen.getByText("Which color should the bot use?", { exact: true })).toHaveCount(0);
   await expect(screen.getByRole("link", boardLabel(baseline + 2), { exact: true })).toBeVisible();
 
+  const resultRead = async () => {
+    const { data } = await getBoardAttention({ client, throwOnError: true });
+
+    return data.results.find((result) => result.automationId === changed.id)?.read;
+  };
+
+  expect(await resultRead()).toBe(false);
   await update.tap();
   await expect(screen.getByText("A new item appeared", { exact: true })).toBeVisible();
+  await expect.poll(resultRead).toBe(true);
   await screen.getByRole("button", "Done", { exact: true }).tap();
   await expect(screen.getByRole("link", boardLabel(baseline + 1), { exact: true })).toBeVisible();
   await expect(screen.getByText("Board changed fixture", { exact: true })).toHaveCount(0);

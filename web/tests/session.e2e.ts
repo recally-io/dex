@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-describe("chat", () => {
+describe("Sessions", () => {
   beforeEach(async ({ app, browser }) => {
     await app.open("/");
     const baseUrl = new URL(await browser.url()).origin;
@@ -73,6 +73,8 @@ describe("chat", () => {
     const notice = screen.getByRole("article", "Notification");
     await expect(notice.getByText("Reviewed child conclusion", { exact: true })).toBeVisible();
     await expect(notice.getByText("Raw child data")).toHaveCount(0);
+    const result = screen.getByRole("region", "Session result: Web notification fixture");
+    await expect(result.getByRole("button", "View session", { exact: true })).toBeVisible();
 
     await app.open("/b/default");
     await expect(notice).toHaveCount(0);
@@ -188,19 +190,54 @@ describe("chat", () => {
     await monitor.getByText("cancelled", { exact: true }).first().waitFor();
   });
 
-  test("opens the Sessions list and creates a session from Main", async ({ screen, browser }) => {
+  test("opens, forks, clears, and archives a Session", async ({ screen, browser }) => {
     await screen.getByRole("link", "Sessions").tap();
-    await expect(browser).toHaveURL(/\/a\/default\/sessions/);
-    await expect(screen.getByRole("heading", "Sessions")).toBeVisible();
+    await expect(browser).toHaveURL("/b/default/sessions");
+    await screen.getByRole("heading", "Sessions").waitFor();
 
     await screen.getByRole("button", "New session").tap();
-    const closeDialog = screen.getByRole("button", "Close");
 
-    if (await closeDialog.isVisible().catch(() => false)) {
-      await closeDialog.tap();
-    }
+    await expect(browser).toHaveURL(/\/b\/default\/s\/\d+$/);
+    await screen.getByRole("dialog", "Project directory").getByRole("button", "Close").tap();
+    await expect(screen.getByRole("heading", "New session", { exact: true })).toBeVisible();
+    await expect(screen.getByRole("button", "Artifacts", { exact: true })).toBeVisible();
+    const source = new URL(await browser.url()).pathname;
 
-    await expect(browser).toHaveURL(/\/a\/default\/c\/\d+/);
-    await expect(screen.getByText(/This session has its own context/)).toBeVisible();
+    const composer = screen.getByRole("textbox", "Message Dex", { exact: true });
+    const send = screen.getByRole("button", "Send message", { exact: true });
+    const prompt = "Check the session lifecycle";
+    await composer.fill(prompt);
+    await send.tap();
+    const response = screen.getByRole("article").filter({ hasText: `echo: ${prompt}` });
+    const fork = response.getByRole("button", "Fork from here", { exact: true });
+    const hasRunnerMenu = (await fork.getAttribute("aria-haspopup")) === "menu";
+    await fork.tap();
+
+    if (hasRunnerMenu) await screen.getByRole("menuitem", "Fork on this Runner").tap();
+
+    await expect(screen.getByText("Forked from", { exact: false })).toBeVisible();
+    await expect(screen.getByText(`echo: ${prompt}`, { exact: true })).toBeVisible();
+    expect(new URL(await browser.url()).pathname).not.toBe(source);
+    await browser.locator(`a[href="${source}"]`).tap();
+    await expect(browser).toHaveURL(source);
+
+    await composer.fill("/clear");
+    await screen.getByRole("button", "Run command", { exact: true }).tap();
+    await expect(screen.getByRole("separator").filter({ hasText: "Context cleared" })).toBeVisible();
+    const handoff = "Continue after the context reset";
+    await composer.fill(handoff);
+    await send.tap();
+    await screen.getByText(`echo: ${handoff}`, { exact: true }).waitFor();
+
+    await screen.getByRole("link", "Sessions", { exact: true }).tap();
+    const row = screen.getByRole("listitem").filter({ has: browser.locator(`a[href="${source}"]`) });
+    await row.getByRole("button", "Archive", { exact: true }).tap();
+    await expect(row).toHaveCount(0);
+    await screen.getByRole("button", "Show archived", { exact: true }).tap();
+    await row.getByRole("button", "Restore", { exact: true }).tap();
+    await expect(row.getByRole("button", "Archive", { exact: true })).toBeVisible();
+    await row.getByRole("link").tap();
+    await expect(browser).toHaveURL(source);
+    await expect(screen.getByText(`echo: ${handoff}`, { exact: true })).toBeVisible();
   });
 });

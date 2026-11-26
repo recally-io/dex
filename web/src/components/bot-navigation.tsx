@@ -14,7 +14,7 @@ import { SessionProject } from "./session-project";
 import { Button, buttonVariants } from "./ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 
-const settingsSegments = ["agent", "skills", "integrations", "secrets", "channels"];
+const settingsSegments = ["bot", "skills", "integrations", "secrets", "channels"];
 
 /** Opens a session with the current project. The server reuses the newest empty session. */
 function useNewSession(cwd: string, created: (session: Session) => void) {
