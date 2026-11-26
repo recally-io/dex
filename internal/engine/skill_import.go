@@ -15,10 +15,10 @@ import (
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 )
 
-func (a *agentExtensions) skillImportTool() *durable.ToolRegistration {
+func (a *botExtensions) skillImportTool() *durable.ToolRegistration {
 	return &durable.ToolRegistration{
 		Name:        "skill_import",
-		Description: "Copy one skill directory from this environment into the dex or agent store. The destination must not exist.",
+		Description: "Copy one skill directory from this environment into the dex or bot store. The destination must not exist.",
 		Parameters: skillObject([]string{"path", "level"}, map[string]any{
 			"path": skillString, "name": skillString, "level": map[string]any{"type": "string", "enum": []string{"dex", "agent"}},
 		}),
@@ -46,7 +46,7 @@ func (a *agentExtensions) skillImportTool() *durable.ToolRegistration {
 			}
 			scope, dir, rel, err := a.skillPath(args.Level+"/"+name, true)
 			if err != nil || strings.Contains(rel, "/") {
-				return durable.ToolExecutionResult{}, errors.New("select dex or agent and a single skill directory name")
+				return durable.ToolExecutionResult{}, errors.New("select dex or bot and a single skill directory name")
 			}
 			start, err := env.CanonicalPath(ctx, absolute)
 			if err != nil {

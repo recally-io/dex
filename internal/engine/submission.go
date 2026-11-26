@@ -47,7 +47,7 @@ func (s *Submission) Wait(ctx context.Context) (Outcome, error) {
 	}
 }
 
-func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission, error) {
+func (a *Bots) Submit(ctx context.Context, ref Ref, input Input) (*Submission, error) {
 	if input.RequestID == "" {
 		return nil, fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
@@ -56,10 +56,10 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	default:
 		return nil, fmt.Errorf("%w: input kind", ErrInvalidInput)
 	}
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return nil, err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	}
 	var native durable.Submission
 	if record := existing; record != nil {
-		h, err := a.harness(ctx, ref.AgentID)
+		h, err := a.harness(ctx, ref.BotID)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +91,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		}
 	} else {
 		var target sessionEnv
-		envs := a.environments(ref.AgentID)
+		envs := a.environments(ref.BotID)
 		if envs == nil {
 			return nil, ErrClosed
 		}
@@ -121,7 +121,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 		if target.Files != nil {
 			options.Instructions = target.Files.instructionsContext(ctx, options.Cwd, options.Instructions)
 		}
-		change := agentChange(options)
+		change := botChange(options)
 		if a.config.InputExtensions != nil {
 			edit := a.config.InputExtensions(input)
 			if len(edit.Add) != 0 || len(edit.Remove) != 0 {
@@ -142,7 +142,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				if envErr != nil {
 					return nil, envErr
 				}
-				localWorkspace := filepath.Join(a.config.DataDir, "agents", ref.AgentID, "workspace")
+				localWorkspace := filepath.Join(a.config.DataDir, "agents", ref.BotID, "workspace")
 				for _, attachment := range input.Attachments {
 					if stageErr := runner.StageUpload(ctx, remoteEnv, localWorkspace, inputDirectory, attachment.Path); stageErr != nil {
 						return nil, stageErr
@@ -222,7 +222,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 			}
 			return nil, err
 		}
-		h, err := a.harness(ctx, ref.AgentID)
+		h, err := a.harness(ctx, ref.BotID)
 		if err != nil {
 			return nil, err
 		}
@@ -233,18 +233,18 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 	return a.settleSubmission(ctx, ref, conversation, input, native), nil
 }
 
-func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission) *Submission {
+func (a *Bots) settleSubmission(ctx context.Context, ref Ref, conversation harness.Conversation, input Input, native durable.Submission) *Submission {
 	var err error
 	result := &Submission{ID: int64(native.Id()), native: native, done: make(chan struct{})}
 	var stopActivity func()
 	if input.Child {
 		stopActivity, err = a.startActivityWatch(ctx, ref, conversation, input)
 		if err != nil {
-			slog.Error("track child activity", "agent", ref.AgentID, "conversation", ref.ID, "error", err)
+			slog.Error("track child activity", "agent", ref.BotID, "conversation", ref.ID, "error", err)
 		}
 	}
 	settlementCtx := context.WithoutCancel(ctx)
-	a.settle(ref.AgentID, func() {
+	a.settle(ref.BotID, func() {
 		defer close(result.done)
 		if stopActivity != nil {
 			defer stopActivity()
@@ -272,7 +272,7 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 					var scanErr error
 					runInputs, scanErr = runInputIDsForAnswer(tx, conversation.Id(), *settled.Answer)
 					if scanErr != nil {
-						slog.Warn("resolve run input membership", "agent", ref.AgentID, "conversation", ref.ID, "answer_id", *settled.Answer, "error", scanErr)
+						slog.Warn("resolve run input membership", "agent", ref.BotID, "conversation", ref.ID, "answer_id", *settled.Answer, "error", scanErr)
 						runInputs = nil
 					}
 					return nil, nil
@@ -290,10 +290,10 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 		}
 		// A failed or aborted execution may have changed host files too.
 		if _, err := a.memory.Commit(settlementCtx, "Update memory from "+input.Source); err != nil {
-			slog.Error("commit agent memory", "agent", ref.AgentID, "error", err)
+			slog.Error("commit bot memory", "agent", ref.BotID, "error", err)
 		}
-		if err := a.commitSkills(settlementCtx, ref.AgentID, input.Source); err != nil {
-			slog.Error("commit agent skills", "agent", ref.AgentID, "error", err)
+		if err := a.commitSkills(settlementCtx, ref.BotID, input.Source); err != nil {
+			slog.Error("commit bot skills", "agent", ref.BotID, "error", err)
 		}
 	})
 	return result

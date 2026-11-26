@@ -33,7 +33,7 @@ func (d *dex) fork(t *testing.T, sessionID, entryID int64, before bool) forkInfo
 	}
 	d.must(t, http.MethodPost, sessionPath(sessionID, "fork"), map[string]any{"entryId": entryID, "before": before}, &out, http.StatusCreated)
 	var c forkInfo
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", out.SessionID), nil, &c)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", out.SessionID), nil, &c)
 	return c
 }
 
@@ -216,7 +216,7 @@ func TestUserForksMain(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "context")
 	var main sessionInfo
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	w := d.watch(t, main.ID)
 	d.send(t, main.ID, "from main")
 	w.until(t, "main answer", answered(`context: ["from main"]`))

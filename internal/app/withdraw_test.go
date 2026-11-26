@@ -39,7 +39,7 @@ type withdrawn struct {
 }
 
 func withdrawPath(sessionID int64, id string) string {
-	return fmt.Sprintf("/api/agents/default/sessions/%d/messages/%s/withdraw", sessionID, id)
+	return fmt.Sprintf("/api/bots/default/sessions/%d/messages/%s/withdraw", sessionID, id)
 }
 
 func queuedItem(id string) func(*transcript) bool {
@@ -113,7 +113,7 @@ func TestUserWithdrawsQueuedMessageAndItNeverRuns(t *testing.T) {
 
 	// When the client retries the same request, then it does not run either. The same ID with
 	// another text is not a retry.
-	messages := fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID)
+	messages := fmt.Sprintf("/api/bots/default/sessions/%d/messages", sessionID)
 	d.must(t, http.MethodPost, messages, map[string]string{"id": secondID, "text": secondText}, nil, http.StatusAccepted)
 	d.must(t, http.MethodPost, messages, map[string]string{"id": secondID, "text": "echo retried"}, nil, http.StatusConflict)
 	d.send(t, sessionID, "echo last")

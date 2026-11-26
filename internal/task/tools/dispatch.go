@@ -30,7 +30,7 @@ type DispatchResult struct {
 }
 
 func (s *Service) DispatchExternal(ctx context.Context, c engine.TaskContext, a DispatchArgs, rt engine.ExtensionRuntime, start func(context.Context, engine.TaskContext, session.ProcessStartArgs) (session.ProcessInfo, error)) (DispatchResult, error) {
-	if c.Key == "" || !strings.HasPrefix(c.Key, c.AgentID+"/") {
+	if c.Key == "" || !strings.HasPrefix(c.Key, c.BotID+"/") {
 		return DispatchResult{}, invalid("a durable tool key is required")
 	}
 	u, err := url.Parse(a.Server)

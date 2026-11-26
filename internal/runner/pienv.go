@@ -195,12 +195,12 @@ func (r *piEnvRuntime) normalize(spec Spec) (string, error) {
 	return string(encoded), nil
 }
 
-func (r *piEnvRuntime) open(ctx context.Context, agentID string, spec Spec) (lease, error) {
+func (r *piEnvRuntime) open(ctx context.Context, botID string, spec Spec) (lease, error) {
 	c, err := r.acquire(ctx, spec)
 	if err != nil {
 		return nil, err
 	}
-	h := &piEnvHandle{rt: r, c: c, id: agentID, workspace: remoteBotWorkspace(c.base, c.sep, agentID)}
+	h := &piEnvHandle{rt: r, c: c, id: botID, workspace: remoteBotWorkspace(c.base, c.sep, botID)}
 	if err := createRemoteBotWorkspace(ctx, h); err != nil {
 		_ = h.Close(context.WithoutCancel(ctx))
 		return nil, err

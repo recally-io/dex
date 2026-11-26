@@ -1,4 +1,4 @@
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useMutation } from "@tanstack/react-query";
@@ -18,7 +18,7 @@ export function hasContext(items: Item[]) {
 }
 
 export function useClearContext(sessionId: number, running: boolean, onCleared: () => void) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const request = useRef(newId());
   const [refused, setRefused] = useState(false);
   const wasRunning = useRef(running);
@@ -39,7 +39,7 @@ export function useClearContext(sessionId: number, running: boolean, onCleared: 
       }
 
       const result = await clearContext({
-        path: { agentId, sessionId },
+        path: { botId, sessionId },
         body: { id: request.current, handoff: text || undefined },
       });
 
@@ -83,12 +83,12 @@ export function LoadEarlierButton({
   beforeNotification?: string;
   onPage: (page: HistoryPage, beforeNotification?: string) => void;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const anchor = useRef<HTMLDivElement>(null);
 
   const history = useMutation({
     mutationFn: (query: { before?: number; beforeNotification?: string }) =>
-      queryClient.fetchQuery(getSessionHistoryOptions({ path: { agentId, sessionId }, query })),
+      queryClient.fetchQuery(getSessionHistoryOptions({ path: { botId, sessionId }, query })),
     onSuccess: (page, query) => {
       // The page goes above the first item. Without this, a scroller at the top stays at the top,
       // keeps the button in view, and loads every page.

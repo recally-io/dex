@@ -1,6 +1,6 @@
 -- name: CreateChildSession :one
 -- A child session is a Session with a parent. Its first turn is stored in the same transaction.
-INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -16,8 +16,8 @@ ON CONFLICT DO NOTHING;
 -- bot, newest activity first. A row names the parent. The list leaves out dreams.
 SELECT
     c.id,
-    c.agent_id,
-    a.name AS agent_name,
+    c.bot_id,
+    a.name AS bot_name,
     c.title,
     c.model_provider,
     c.model_id,
@@ -29,11 +29,11 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST((SELECT count(*) FROM submissions s WHERE s.session_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM sessions c
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 WHERE c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.parent_id = @parent_id OR (
         CAST(@all_sessions AS INTEGER) = 1
-        AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
+        AND (CAST(@all_bots AS INTEGER) = 1 OR c.bot_id = @bot_id)
     ))
 ORDER BY updated_at DESC, c.id DESC
 LIMIT @max_rows;
@@ -67,13 +67,13 @@ LIMIT @max_rows;
 -- name: SearchTurns :many
 -- A turn matches when every non-empty word is a substring of its input or its answer. The caller
 -- lowercases ASCII letters of the words, and lower() does the same for the text.
-SELECT s.id, s.session_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
+SELECT s.id, s.session_id, c.bot_id, a.name AS bot_name, c.title, s.content, s.answer, s.created_at
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.id <> @excluded_turn_id
-    AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
+    AND (CAST(@all_bots AS INTEGER) = 1 OR c.bot_id = @bot_id)
     AND (CAST(@session_id AS INTEGER) = 0 OR c.id = @session_id)
     AND s.created_at >= @since
     AND (CAST(@w1 AS TEXT) = '' OR instr(lower(s.content), CAST(@w1 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(@w1 AS TEXT)) > 0)
@@ -106,7 +106,7 @@ ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 -- name: ListRecoveryChildren :many
 -- The child sessions with a pending parent turn. Recovery reads the native state of each pending
 -- input, because the admission receipt and the native admission are not one transaction.
-SELECT DISTINCT c.id, c.agent_id, c.execution_id
+SELECT DISTINCT c.id, c.bot_id, c.execution_id
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
@@ -115,7 +115,7 @@ ORDER BY c.id;
 
 -- name: ListChannelChildren :many
 SELECT * FROM sessions
-WHERE parent_id = @parent_id AND agent_id = @agent_id
+WHERE parent_id = @parent_id AND bot_id = @bot_id
     AND channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY id DESC
 LIMIT 50;
@@ -135,7 +135,7 @@ SELECT DISTINCT session_id FROM submissions WHERE stop_requested = 1 AND status 
 UNION SELECT session_id FROM main_turn_stops;
 
 -- name: ListRecoveryParentInputStops :many
-SELECT s.id, c.agent_id, c.execution_id
+SELECT s.id, c.bot_id, c.execution_id
 FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%';
 

@@ -29,16 +29,16 @@ func telegramAlbumKey(peer string, identity ChannelContext) (string, error) {
 	return "telegram:" + identity.AccountID + ":album:" + base64.RawURLEncoding.EncodeToString(key), err
 }
 
-func (s *Service) KnownTelegramAlbum(ctx context.Context, agentID, peer string, identity ChannelContext) (bool, error) {
+func (s *Service) KnownTelegramAlbum(ctx context.Context, botID, peer string, identity ChannelContext) (bool, error) {
 	key, err := telegramAlbumKey(peer, identity)
 	if err != nil {
 		return false, err
 	}
-	return s.q.HasTelegramAlbumGroup(ctx, sqlc.HasTelegramAlbumGroupParams{AgentID: agentID, GroupKey: key})
+	return s.q.HasTelegramAlbumGroup(ctx, sqlc.HasTelegramAlbumGroupParams{BotID: botID, GroupKey: key})
 }
 
 // StoreTelegramAlbum commits upload ownership before the transport may ACK the member.
-func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source string, msg Message) error {
+func (s *Service) StoreTelegramAlbum(ctx context.Context, botID, peer, source string, msg Message) error {
 	actor, err := strconv.ParseInt(msg.ChannelContext.SenderID, 10, 64)
 	if NonPrivateTelegramPeer(peer) || err != nil || actor <= 0 || msg.ChannelContext.AccountID == "" || msg.ChannelContext.MediaGroup == "" || len(msg.Attachments) != 1 {
 		return fmt.Errorf("%w: invalid Telegram album member", errSessionInvalid)
@@ -56,7 +56,7 @@ func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source 
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := db.RequireActive(ctx, q, agentID); err != nil {
+	if err := db.RequireActive(ctx, q, botID); err != nil {
 		return err
 	}
 	// A native receipt or a member receipt owns this global source, even after a credential move.
@@ -71,7 +71,7 @@ func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source 
 		return err
 	}
 	n, err := q.StoreTelegramAlbumMember(ctx, sqlc.StoreTelegramAlbumMemberParams{
-		AgentID: agentID, SourceKey: source, AccountID: msg.ChannelContext.AccountID, SenderID: msg.ChannelContext.SenderID,
+		BotID: botID, SourceKey: source, AccountID: msg.ChannelContext.AccountID, SenderID: msg.ChannelContext.SenderID,
 		Peer: peer, GroupKey: group, InputJson: string(data), ReceivedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
@@ -84,13 +84,13 @@ func (s *Service) StoreTelegramAlbum(ctx context.Context, agentID, peer, source 
 }
 
 // ReadyTelegramAlbums freezes each batch before any native call. Later members cannot change its payload.
-func (s *Service) ReadyTelegramAlbums(ctx context.Context, agentID string) ([]TelegramAlbum, time.Duration, error) {
+func (s *Service) ReadyTelegramAlbums(ctx context.Context, botID string) ([]TelegramAlbum, time.Duration, error) {
 	tx, q, err := s.writeTransaction(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	groups, err := q.ListCollectingTelegramAlbums(ctx, agentID)
+	groups, err := q.ListCollectingTelegramAlbums(ctx, botID)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -105,7 +105,7 @@ func (s *Service) ReadyTelegramAlbums(ctx context.Context, agentID string) ([]Te
 			delay = min(delay, time.Duration(due-now)*time.Millisecond)
 			continue
 		}
-		members, err := q.ListUnsealedTelegramAlbumMembers(ctx, sqlc.ListUnsealedTelegramAlbumMembersParams{AgentID: agentID, GroupKey: group.GroupKey})
+		members, err := q.ListUnsealedTelegramAlbumMembers(ctx, sqlc.ListUnsealedTelegramAlbumMembersParams{BotID: botID, GroupKey: group.GroupKey})
 		if err != nil {
 			return nil, 0, err
 		}
@@ -118,7 +118,7 @@ func (s *Service) ReadyTelegramAlbums(ctx context.Context, agentID string) ([]Te
 			return nil, 0, err
 		}
 		batch := group.GroupKey + ":batch:" + members[0].SourceKey
-		if err := q.SealTelegramAlbumMembers(ctx, sqlc.SealTelegramAlbumMembersParams{AgentID: agentID, BatchSource: batch, Sources: string(encoded)}); err != nil {
+		if err := q.SealTelegramAlbumMembers(ctx, sqlc.SealTelegramAlbumMembersParams{BotID: botID, BatchSource: batch, Sources: string(encoded)}); err != nil {
 			return nil, 0, err
 		}
 		if group.Members > 10 {
@@ -128,13 +128,13 @@ func (s *Service) ReadyTelegramAlbums(ctx context.Context, agentID string) ([]Te
 	if err := tx.Commit(); err != nil {
 		return nil, 0, err
 	}
-	batches, err := s.q.ListSealedTelegramAlbums(ctx, agentID)
+	batches, err := s.q.ListSealedTelegramAlbums(ctx, botID)
 	if err != nil {
 		return nil, 0, err
 	}
 	ready := make([]TelegramAlbum, 0, len(batches))
 	for _, source := range batches {
-		members, err := s.q.ListTelegramAlbumBatchMembers(ctx, sqlc.ListTelegramAlbumBatchMembersParams{AgentID: agentID, BatchSource: source})
+		members, err := s.q.ListTelegramAlbumBatchMembers(ctx, sqlc.ListTelegramAlbumBatchMembersParams{BotID: botID, BatchSource: source})
 		if err != nil {
 			return nil, 0, err
 		}
@@ -161,7 +161,7 @@ func (s *Service) ReadyTelegramAlbums(ctx context.Context, agentID string) ([]Te
 				notes = append(notes, input.ChannelNote)
 			}
 		}
-		late, err := s.q.HasEarlierTelegramAlbumBatch(ctx, sqlc.HasEarlierTelegramAlbumBatchParams{AgentID: agentID, GroupKey: members[0].GroupKey, BatchSource: source})
+		late, err := s.q.HasEarlierTelegramAlbumBatch(ctx, sqlc.HasEarlierTelegramAlbumBatchParams{BotID: botID, GroupKey: members[0].GroupKey, BatchSource: source})
 		if err != nil {
 			return nil, 0, err
 		}
@@ -178,15 +178,15 @@ func (s *Service) ReadyTelegramAlbums(ctx context.Context, agentID string) ([]Te
 }
 
 // FinishTelegramAlbum transfers upload ownership to the stored business input, not a second execution queue.
-func (s *Service) FinishTelegramAlbum(ctx context.Context, agentID, source string) error {
-	receipt, err := s.LookupSource(ctx, agentID, source)
+func (s *Service) FinishTelegramAlbum(ctx context.Context, botID, source string) error {
+	receipt, err := s.LookupSource(ctx, botID, source)
 	if err != nil {
 		return err
 	}
 	if receipt.ID == "" {
 		return fmt.Errorf("%w: album input has no business receipt", errSessionInvalid)
 	}
-	return s.q.TransferTelegramAlbumMembers(ctx, sqlc.TransferTelegramAlbumMembersParams{AgentID: agentID, BatchSource: source})
+	return s.q.TransferTelegramAlbumMembers(ctx, sqlc.TransferTelegramAlbumMembersParams{BotID: botID, BatchSource: source})
 }
 
 // DiscardedTelegramUpload identifies files that no native input owns.
@@ -195,11 +195,11 @@ type DiscardedTelegramUpload struct {
 	Attachments []engine.Attachment
 }
 
-func (s *Service) DiscardedTelegramUploads(ctx context.Context, agentID string) ([]DiscardedTelegramUpload, error) {
-	if err := s.q.DiscardUnauthorizedTelegramAlbums(ctx, agentID); err != nil {
+func (s *Service) DiscardedTelegramUploads(ctx context.Context, botID string) ([]DiscardedTelegramUpload, error) {
+	if err := s.q.DiscardUnauthorizedTelegramAlbums(ctx, botID); err != nil {
 		return nil, err
 	}
-	members, err := s.q.ListDiscardedTelegramAlbumMembers(ctx, agentID)
+	members, err := s.q.ListDiscardedTelegramAlbumMembers(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -226,6 +226,6 @@ func (s *Service) DiscardedTelegramUploads(ctx context.Context, agentID string) 
 	return out, nil
 }
 
-func (s *Service) ClearDiscardedTelegramUpload(ctx context.Context, agentID, source string) error {
-	return s.q.ClearDiscardedTelegramAlbumMember(ctx, sqlc.ClearDiscardedTelegramAlbumMemberParams{AgentID: agentID, SourceKey: source})
+func (s *Service) ClearDiscardedTelegramUpload(ctx context.Context, botID, source string) error {
+	return s.q.ClearDiscardedTelegramAlbumMember(ctx, sqlc.ClearDiscardedTelegramAlbumMemberParams{BotID: botID, SourceKey: source})
 }

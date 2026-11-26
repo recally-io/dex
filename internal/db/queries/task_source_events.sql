@@ -19,8 +19,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: LinkTaskObject :execrows
 INSERT INTO task_objects (namespace, object_type, object_key, task_id)
-SELECT @namespace, @object_type, @object_key, t.id FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
-WHERE t.id = @task_id AND t.assignee_bot_id = @agent_id AND a.archived_at IS NULL
+SELECT @namespace, @object_type, @object_key, t.id FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
+WHERE t.id = @task_id AND t.assignee_bot_id = @bot_id AND a.archived_at IS NULL
 ON CONFLICT (namespace, object_type, object_key) DO UPDATE SET task_id = excluded.task_id
 WHERE task_objects.task_id = excluded.task_id;
 
@@ -31,14 +31,14 @@ SELECT * FROM task_objects WHERE task_id = ? ORDER BY namespace, object_type, ob
 SELECT count(*) FROM task_objects WHERE namespace = ? AND object_type = ? AND object_key = ?;
 
 -- name: FindTaskByObject :one
-SELECT t.* FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.* FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN bots a ON a.id = t.assignee_bot_id
 WHERE o.namespace = ? AND o.object_type = ? AND o.object_key = ? AND a.archived_at IS NULL;
 
 -- name: AddTaskWait :execrows
 INSERT INTO task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at, alert)
 SELECT t.id, o.namespace, o.object_type, o.object_key, @event_type, @revision, @after_at, @alert
-FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
-WHERE t.id = @task_id AND t.assignee_bot_id = @agent_id AND t.status NOT IN ('done', 'cancelled') AND a.archived_at IS NULL
+FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN bots a ON a.id = t.assignee_bot_id
+WHERE t.id = @task_id AND t.assignee_bot_id = @bot_id AND t.status NOT IN ('done', 'cancelled') AND a.archived_at IS NULL
 AND o.namespace = @namespace AND o.object_type = @object_type AND o.object_key = @object_key
 ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at, alert = excluded.alert;
 

@@ -13,13 +13,13 @@ import (
 type childEvent struct {
 	Type      string `json:"type"`
 	SessionID int64  `json:"sessionId"`
-	AgentID   string `json:"agentId"`
+	BotID     string `json:"botId"`
 	State     string `json:"state"`
 }
 
 // childState reads current facts only. Idle is not a submission outcome.
-func (h *Hub) childState(ctx context.Context, parentID, sessionID int64, agentID string, running *bool) (childEvent, error) {
-	c, err := h.sessions.Get(ctx, agentID, sessionID)
+func (h *Hub) childState(ctx context.Context, parentID, sessionID int64, botID string, running *bool) (childEvent, error) {
+	c, err := h.sessions.Get(ctx, botID, sessionID)
 	if err != nil {
 		return childEvent{}, err
 	}
@@ -27,7 +27,7 @@ func (h *Hub) childState(ctx context.Context, parentID, sessionID int64, agentID
 		return childEvent{}, session.ErrNotFound
 	}
 	if running == nil && c.ExecutionID != 0 {
-		if run, available := h.agents.ChildRunning(engine.Ref{AgentID: agentID, ID: c.ExecutionID}); available {
+		if run, available := h.bots.ChildRunning(engine.Ref{BotID: botID, ID: c.ExecutionID}); available {
 			running = &run
 		}
 	}
@@ -41,11 +41,11 @@ func (h *Hub) childState(ctx context.Context, parentID, sessionID int64, agentID
 	default:
 		state = "unavailable"
 	}
-	return childEvent{Type: "child", SessionID: sessionID, AgentID: agentID, State: state}, nil
+	return childEvent{Type: "child", SessionID: sessionID, BotID: botID, State: state}, nil
 }
 
 // Only completed session tools identify children. Streamed arguments do not prove creation.
-func childRef(item engine.Item, agentID string) (int64, string) {
+func childRef(item engine.Item, botID string) (int64, string) {
 	if item.Kind != "tool" || item.Status != "done" {
 		return 0, ""
 	}
@@ -65,7 +65,7 @@ func childRef(item engine.Item, agentID string) (int64, string) {
 	if err != nil || id <= 0 {
 		return 0, ""
 	}
-	return id, cmp.Or(ref.BotID, agentID)
+	return id, cmp.Or(ref.BotID, botID)
 }
 
 func (h *Hub) subscribe(id int64, sub *subscriber) {

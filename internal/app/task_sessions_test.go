@@ -16,7 +16,7 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	coder := d.createCoder(t)
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Ship login"}, &task, http.StatusCreated)
 	path := "/api/tasks/" + task.Id
@@ -25,7 +25,7 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 	// When Task inputs start a child in each Bot.
 	start := func(title, bot, taskID string) string {
 		t.Helper()
-		d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID), map[string]string{
+		d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", main.ID), map[string]string{
 			"id": uuid.NewV7().String(), "taskId": taskID, "text": "session_new " + taskJSON(t, map[string]string{
 				"title": title, "bot": bot, "message": "Work on login", "provider": "faux", "modelId": "echo",
 			}),
@@ -48,8 +48,8 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 		t.Fatalf("Board must show both sessions: %+v", detail.Sessions)
 	}
 	first, second := detail.Sessions[0], detail.Sessions[1]
-	if first.AgentId != "default" || first.Title != "Implement login" || !first.IsPrimary || first.LinkedAt == 0 ||
-		second.AgentId != coder.ID || second.AgentName != "Coder" || second.Title != "Review login" || second.IsPrimary || second.LinkedAt == 0 ||
+	if first.BotId != "default" || first.Title != "Implement login" || !first.IsPrimary || first.LinkedAt == 0 ||
+		second.BotId != coder.ID || second.BotName != "Coder" || second.Title != "Review login" || second.IsPrimary || second.LinkedAt == 0 ||
 		detail.Task.PrimarySession == nil || detail.Task.PrimarySession.SessionId != first.SessionId {
 		t.Fatalf("unexpected session links: %+v, primary: %+v", detail.Sessions, detail.Task.PrimarySession)
 	}

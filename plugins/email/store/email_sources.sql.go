@@ -29,7 +29,7 @@ func (q *Queries) DeleteEmailSource(ctx context.Context, id string) error {
 }
 
 const getEmailSource = `-- name: GetEmailSource :one
-SELECT id, secret, task_agent_id, hold_unmatched FROM plugin_email_sources WHERE id = ?
+SELECT id, secret, task_bot_id, hold_unmatched FROM plugin_email_sources WHERE id = ?
 `
 
 func (q *Queries) GetEmailSource(ctx context.Context, id string) (PluginEmailSource, error) {
@@ -38,7 +38,7 @@ func (q *Queries) GetEmailSource(ctx context.Context, id string) (PluginEmailSou
 	err := row.Scan(
 		&i.ID,
 		&i.Secret,
-		&i.TaskAgentID,
+		&i.TaskBotID,
 		&i.HoldUnmatched,
 	)
 	return i, err
@@ -46,7 +46,7 @@ func (q *Queries) GetEmailSource(ctx context.Context, id string) (PluginEmailSou
 
 const listEmailIMAPPulls = `-- name: ListEmailIMAPPulls :many
 SELECT p.source_id, p.address, p.username, p.password, p.folder, p.configuration_id, p.uid_validity, p.last_uid,
-  s.task_agent_id, s.hold_unmatched
+  s.task_bot_id, s.hold_unmatched
 FROM plugin_email_imap_pulls p JOIN plugin_email_sources s ON s.id = p.source_id ORDER BY p.source_id
 `
 
@@ -59,7 +59,7 @@ type ListEmailIMAPPullsRow struct {
 	ConfigurationID string         `json:"configuration_id"`
 	UidValidity     int64          `json:"uid_validity"`
 	LastUid         int64          `json:"last_uid"`
-	TaskAgentID     sql.NullString `json:"task_agent_id"`
+	TaskBotID       sql.NullString `json:"task_bot_id"`
 	HoldUnmatched   int64          `json:"hold_unmatched"`
 }
 
@@ -81,7 +81,7 @@ func (q *Queries) ListEmailIMAPPulls(ctx context.Context) ([]ListEmailIMAPPullsR
 			&i.ConfigurationID,
 			&i.UidValidity,
 			&i.LastUid,
-			&i.TaskAgentID,
+			&i.TaskBotID,
 			&i.HoldUnmatched,
 		); err != nil {
 			return nil, err
@@ -131,19 +131,19 @@ func (q *Queries) SaveEmailIMAPPull(ctx context.Context, arg SaveEmailIMAPPullPa
 }
 
 const saveEmailSource = `-- name: SaveEmailSource :execrows
-INSERT INTO plugin_email_sources (id, secret, task_agent_id, hold_unmatched)
+INSERT INTO plugin_email_sources (id, secret, task_bot_id, hold_unmatched)
 SELECT ?1, ?2, ?3, ?4
 WHERE ?3 IS NULL OR EXISTS (
-  SELECT 1 FROM agents a WHERE a.id = ?3 AND a.archived_at IS NULL
+  SELECT 1 FROM bots a WHERE a.id = ?3 AND a.archived_at IS NULL
 )
-ON CONFLICT (id) DO UPDATE SET secret = excluded.secret, task_agent_id = excluded.task_agent_id,
+ON CONFLICT (id) DO UPDATE SET secret = excluded.secret, task_bot_id = excluded.task_bot_id,
   hold_unmatched = excluded.hold_unmatched
 `
 
 type SaveEmailSourceParams struct {
 	ID            string         `json:"id"`
 	Secret        string         `json:"secret"`
-	TaskAgentID   sql.NullString `json:"task_agent_id"`
+	TaskBotID     sql.NullString `json:"task_bot_id"`
 	HoldUnmatched int64          `json:"hold_unmatched"`
 }
 
@@ -151,7 +151,7 @@ func (q *Queries) SaveEmailSource(ctx context.Context, arg SaveEmailSourceParams
 	result, err := q.db.ExecContext(ctx, saveEmailSource,
 		arg.ID,
 		arg.Secret,
-		arg.TaskAgentID,
+		arg.TaskBotID,
 		arg.HoldUnmatched,
 	)
 	if err != nil {

@@ -17,7 +17,7 @@ func (s *Service) ToolReadDreamMessage(ctx context.Context, caller engine.TaskCo
 	if args.Offset < 0 || (args.Field != "user" && args.Field != "answer") {
 		return DreamMessagePage{}, denied
 	}
-	conv, err := s.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: caller.AgentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conv, err := s.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{BotID: caller.BotID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil || !strings.HasPrefix(conv.ChannelKey, dream.Channel) {
 		return DreamMessagePage{}, denied
 	}
@@ -30,7 +30,7 @@ func (s *Service) ToolReadDreamMessage(ctx context.Context, caller engine.TaskCo
 		return DreamMessagePage{}, denied
 	}
 	owner, err := s.q.GetSession(ctx, message.SessionID)
-	if err != nil || owner.AgentID != caller.AgentID || strings.HasPrefix(owner.ChannelKey, dream.Channel) || owner.ParentID.Valid {
+	if err != nil || owner.BotID != caller.BotID || strings.HasPrefix(owner.ChannelKey, dream.Channel) || owner.ParentID.Valid {
 		return DreamMessagePage{}, denied
 	}
 	text := message.Content

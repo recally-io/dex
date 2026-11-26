@@ -6,7 +6,7 @@ import {
   listRecentProjectsOptions,
   setSessionProjectMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { errorText, refreshSessions } from "../lib/queries";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -33,7 +33,7 @@ export function SessionProject({
   initialOpen?: boolean;
   onClose?: () => void;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const pathInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(initialOpen);
 
@@ -46,26 +46,26 @@ export function SessionProject({
   const [draft, setDraft] = useState(cwd || "~");
 
   const listing = useQuery({
-    ...listDirectoriesOptions({ query: { path, agentId, runnerId } }),
+    ...listDirectoriesOptions({ query: { path, botId, runnerId } }),
     enabled: open,
     retry: false,
   });
 
   const recent = useQuery({
-    ...listRecentProjectsOptions({ path: { agentId }, query: { runnerId } }),
+    ...listRecentProjectsOptions({ path: { botId }, query: { runnerId } }),
     enabled: open,
   });
 
   const save = useMutation({
     ...setSessionProjectMutation(),
     onSuccess: async () => {
-      await refreshSessions(agentId);
+      await refreshSessions(botId);
       close();
     },
   });
 
   function submit(directory: string) {
-    save.mutate({ path: { agentId, sessionId }, body: { cwd: directory } });
+    save.mutate({ path: { botId, sessionId }, body: { cwd: directory } });
   }
 
   function navigate(directory: string) {

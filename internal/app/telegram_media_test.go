@@ -71,7 +71,7 @@ func TestUserTelegramQuoteAndForwardKeepTheirContextWithoutGrantingAuthority(t *
 		"forward_origin":   map[string]any{"type": "hidden_user", "sender_user_name": "Forwarded author"},
 	}})
 	f.mu.Unlock()
-	// When the agent receives the input, it can see the supplied quote and forward context.
+	// When the bot receives the input, it can see the supplied quote and forward context.
 	answer := f.next(t).Text
 	for _, want := range []string{"selected quotation", "Quoted author", "Forwarded author", "explain this"} {
 		if !strings.Contains(answer, want) {

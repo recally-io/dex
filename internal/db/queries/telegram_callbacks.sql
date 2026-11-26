@@ -1,5 +1,5 @@
 -- name: CreateTelegramCallback :exec
-INSERT INTO telegram_callbacks (id, agent_id, source_id, ordinal, peer, channel_context,
+INSERT INTO telegram_callbacks (id, bot_id, source_id, ordinal, peer, channel_context,
     session_id, execution_id, context_revision, label, object_id, action, expires_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source_id, ordinal) DO NOTHING;

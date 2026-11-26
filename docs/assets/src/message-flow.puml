@@ -22,15 +22,15 @@ HTTP + session + live" as session
 database "control.sqlite" as cdb
 participant "Native engine
 PiG Harness + projection" as engine
-database "agent state.sqlite" as adb
+database "bot state.sqlite" as adb
 participant "Model provider" as model
 
 user -> session : POST message (client UUID)
 session -> cdb : Store input intent + origin
 opt first input of the session
-  session -> engine : Create(agent, options)
+  session -> engine : Create(bot, options)
   engine -> adb : Commit execution conversation
-  engine --> session : Ref{AgentID, ID}
+  engine --> session : Ref{BotID, ID}
   session -> cdb : Store execution_id
 end
 session -> engine : Submit(ref, request ID, metadata)

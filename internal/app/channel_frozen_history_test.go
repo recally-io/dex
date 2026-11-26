@@ -19,7 +19,7 @@ func TestUserResumesFrozenFeishuTextAtTheSameDestination(t *testing.T) {
 	const frozen = `{"text":"Frozen plain text"}`
 	conn := controlWriteDB(t, data)
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO outbox_messages
-		(id, event_id, agent_id, session_id, kind, peer, channel_context, body, rendered_message, created_at)
+		(id, event_id, bot_id, session_id, kind, peer, channel_context, body, rendered_message, created_at)
         VALUES ('history-text', 'history-text', 'default', ?, 'proactive', 'feishu:owner', '{"accountId":"app"}', 'Do not render this text', ?, 1)`, main, frozen); err != nil {
 		t.Fatal(err)
 	}

@@ -61,8 +61,8 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 	// Given a Routine parent, which is not Main, with one delegated child, and a scripted model.
 	r := startNative(t, "echo")
 	provider := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "child-send-fixture", Models: []ai.FauxModelDefinition{{ID: "script"}}, TokensPerSecond: 10000})
-	r.agents.Catalog.Models.SetProvider(provider.Provider())
-	if err := r.q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{
+	r.bots.Catalog.Models.SetProvider(provider.Provider())
+	if err := r.q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{
 		ID: "bot", Name: "Bot", ModelProvider: "child-send-fixture", ModelID: "script", ThinkingLevel: "off",
 	}); err != nil {
 		t.Fatal(err)

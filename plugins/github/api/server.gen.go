@@ -21,11 +21,11 @@ type Error struct {
 	Error string `json:"error"`
 }
 
-// AgentId defines model for AgentId.
-type AgentId = string
-
 // AutomationId defines model for AutomationId.
 type AutomationId = string
+
+// BotId defines model for BotId.
+type BotId = string
 
 // RunnerId defines model for RunnerId.
 type RunnerId = string
@@ -60,9 +60,9 @@ type SaveGitHubWebhookJSONBody struct {
 	// HoldUnmatched Hold Webhook and Pull events that match no Task on Board. The default ignores them.
 	HoldUnmatched *bool `json:"holdUnmatched,omitempty"`
 
-	// IssueAgentId Create Tasks for opened Issues under this agent. Omit to disable creation.
-	IssueAgentId *string `json:"issueAgentId,omitempty"`
-	Secret       *string `json:"secret,omitempty"`
+	// IssueBotId Create Tasks for opened Issues under this bot. Omit to disable creation.
+	IssueBotId *string `json:"issueBotId,omitempty"`
+	Secret     *string `json:"secret,omitempty"`
 }
 
 // BindTaskGitHubPullJSONRequestBody defines body for BindTaskGitHubPull for application/json ContentType.
@@ -77,8 +77,8 @@ type SaveGitHubWebhookJSONRequestBody SaveGitHubWebhookJSONBody
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 
-	// (PUT /api/plugins/github/agents/{agentId}/tasks/{taskId}/pull)
-	BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, agentId AgentId, taskId string)
+	// (PUT /api/plugins/github/bots/{botId}/tasks/{taskId}/pull)
+	BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, botId BotId, taskId string)
 
 	// (DELETE /api/plugins/github/review-pulls/{repositoryId}/{pullNumber})
 	DeleteGitHubReviewPull(w http.ResponseWriter, r *http.Request, repositoryId int64, pullNumber int64)
@@ -108,12 +108,12 @@ func (siw *ServerInterfaceWrapper) BindTaskGitHubPull(w http.ResponseWriter, r *
 	var err error
 	_ = err
 
-	// ------------- Path parameter "agentId" -------------
-	var agentId AgentId
+	// ------------- Path parameter "botId" -------------
+	var botId BotId
 
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	err = runtime.BindStyledParameterWithOptions("simple", "botId", r.PathValue("botId"), &botId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "botId", Err: err})
 		return
 	}
 
@@ -127,7 +127,7 @@ func (siw *ServerInterfaceWrapper) BindTaskGitHubPull(w http.ResponseWriter, r *
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.BindTaskGitHubPull(w, r, agentId, taskId)
+		siw.Handler.BindTaskGitHubPull(w, r, botId, taskId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -379,7 +379,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/plugins/github/agents/{agentId}/tasks/{taskId}/pull", wrapper.BindTaskGitHubPull)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/plugins/github/bots/{botId}/tasks/{taskId}/pull", wrapper.BindTaskGitHubPull)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/plugins/github/review-pulls/{repositoryId}/{pullNumber}", wrapper.DeleteGitHubReviewPull)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/plugins/github/review-pulls/{repositoryId}/{pullNumber}", wrapper.SaveGitHubReviewPull)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/plugins/github/webhooks/{repositoryId}", wrapper.DeleteGitHubWebhook)
@@ -391,9 +391,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 type ErrorJSONResponse Error
 
 type BindTaskGitHubPullRequestObject struct {
-	AgentId AgentId `json:"agentId"`
-	TaskId  string  `json:"taskId"`
-	Body    *BindTaskGitHubPullJSONRequestBody
+	BotId  BotId  `json:"botId"`
+	TaskId string `json:"taskId"`
+	Body   *BindTaskGitHubPullJSONRequestBody
 }
 
 type BindTaskGitHubPullResponseObject interface {
@@ -564,7 +564,7 @@ func (response SaveGitHubWebhookdefaultJSONResponse) VisitSaveGitHubWebhookRespo
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 
-	// (PUT /api/plugins/github/agents/{agentId}/tasks/{taskId}/pull)
+	// (PUT /api/plugins/github/bots/{botId}/tasks/{taskId}/pull)
 	BindTaskGitHubPull(ctx context.Context, request BindTaskGitHubPullRequestObject) (BindTaskGitHubPullResponseObject, error)
 
 	// (DELETE /api/plugins/github/review-pulls/{repositoryId}/{pullNumber})
@@ -620,10 +620,10 @@ type strictHandler struct {
 }
 
 // BindTaskGitHubPull operation middleware
-func (sh *strictHandler) BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, agentId AgentId, taskId string) {
+func (sh *strictHandler) BindTaskGitHubPull(w http.ResponseWriter, r *http.Request, botId BotId, taskId string) {
 	var request BindTaskGitHubPullRequestObject
 
-	request.AgentId = agentId
+	request.BotId = botId
 	request.TaskId = taskId
 
 	var body BindTaskGitHubPullJSONRequestBody

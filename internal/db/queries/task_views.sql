@@ -1,5 +1,5 @@
 -- name: ListTasks :many
-SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.* FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL
   AND (t.status NOT IN ('done', 'cancelled') OR @include_closed)
   AND (CAST(@bot_id AS TEXT) = '' OR t.assignee_bot_id = @bot_id)

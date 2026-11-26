@@ -8,20 +8,20 @@ describe("Automation session binding", () => {
     await app.open("/");
     const origin = new URL(await browser.url()).origin;
 
-    const created = await fetch(`${origin}/api/agents`, {
+    const created = await fetch(`${origin}/api/bots`, {
       method: "POST",
       headers: json,
       body: JSON.stringify({ name: "Routine browser fixture", provider: "faux", modelId: "echo" }),
     });
 
     if (created.status !== 201) throw new Error(`Create bot fixture: ${created.status}`);
-    const { id: agentId }: { id: string } = await created.json();
-    const bot = `${origin}/api/agents/${agentId}`;
+    const { id: botId }: { id: string } = await created.json();
+    const bot = `${origin}/api/bots/${botId}`;
     const session = await fetch(`${bot}/sessions`, { method: "POST" });
 
     if (session.status !== 201) throw new Error(`Create target fixture: ${session.status}`);
     const { id }: { id: number } = await session.json();
-    await app.open(`/a/${agentId}/automations`);
+    await app.open(`/b/${botId}/automations`);
     await screen.getByRole("button", "New automation").tap();
     const dialog = screen.getByRole("dialog", "New automation");
     await dialog.getByLabel("Name", { exact: true }).fill("Routine browser check");

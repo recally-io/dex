@@ -10,14 +10,14 @@ import (
 	"uuid"
 )
 
-func projectURL(id int64) string { return fmt.Sprintf("/api/agents/default/sessions/%d/project", id) }
+func projectURL(id int64) string { return fmt.Sprintf("/api/bots/default/sessions/%d/project", id) }
 
 func assertProject(t *testing.T, d *dex, id int64, want string) {
 	t.Helper()
 	var got struct {
 		Cwd *string `json:"cwd"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", id), nil, &got)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", id), nil, &got)
 	if got.Cwd == nil || *got.Cwd != want {
 		t.Fatalf("Session cwd = %v, want %q", got.Cwd, want)
 	}
@@ -140,7 +140,7 @@ func TestUserSessionProjectKeepsUploadedFilesAccessible(t *testing.T) {
 	id := d.newSession(t).ID
 	d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": t.TempDir()}, nil)
 	// When the message has an attachment, the model gets its absolute workspace path.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", id), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", id), map[string]any{
 		"id": uuid.NewV7().String(), "text": "read notes", "attachments": []string{file.ID},
 	}, nil, http.StatusAccepted)
 	path := filepath.Join(data, "agents", "default", "workspace", file.Path)

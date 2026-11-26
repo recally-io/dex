@@ -44,7 +44,7 @@ func linkTaskChild(ctx context.Context, q *sqlc.Queries, l *tasksvc.Ledger, sour
 		if err != nil {
 			return err
 		}
-		if main.AgentID != task.AssigneeBotID {
+		if main.BotID != task.AssigneeBotID {
 			return nil
 		}
 	}
@@ -102,14 +102,14 @@ func (s *Service) ConfigureTasks(tasks *tasksvc.Service) {
 	s.tasks = tasks
 }
 
-func recordTaskMessage(ctx context.Context, q *sqlc.Queries, l *tasksvc.Ledger, agentID, taskID string, m Message, now int64) error {
+func recordTaskMessage(ctx context.Context, q *sqlc.Queries, l *tasksvc.Ledger, botID, taskID string, m Message, now int64) error {
 	var task sqlc.Task
 	var err error
 	if m.AnswersQuestion != "" {
 		// The question is validated in its original Session, even after reassignment.
 		task, err = q.GetTask(ctx, taskID)
 	} else {
-		task, err = q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, AgentID: agentID})
+		task, err = q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, BotID: botID})
 	}
 	if err != nil {
 		return err

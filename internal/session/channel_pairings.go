@@ -9,11 +9,11 @@ import (
 )
 
 // RequirePairedChannel checks the current private sender at intake.
-func RequirePairedChannel(ctx context.Context, q *sqlc.Queries, agentID, peer string, actor ChannelContext) error {
+func RequirePairedChannel(ctx context.Context, q *sqlc.Queries, botID, peer string, actor ChannelContext) error {
 	if strings.HasPrefix(peer, "telegram:") {
-		return authorizeTelegramActor(ctx, q, agentID, actor.AccountID, actor.SenderID)
+		return authorizeTelegramActor(ctx, q, botID, actor.AccountID, actor.SenderID)
 	}
-	paired, err := q.ChannelPaired(ctx, sqlc.ChannelPairedParams{AgentID: agentID, Peer: peer, AccountID: actor.AccountID})
+	paired, err := q.ChannelPaired(ctx, sqlc.ChannelPairedParams{BotID: botID, Peer: peer, AccountID: actor.AccountID})
 	if err == nil && !paired {
 		return errors.New("channel is not paired")
 	}

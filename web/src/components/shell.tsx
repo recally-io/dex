@@ -1,4 +1,4 @@
-import { AgentContext } from "../lib/agent-scope";
+import { BotContext } from "../lib/bot-scope";
 import { attentionItems, boardAttentionOptions, botStatus, heldEventsOptions } from "../lib/board-attention";
 import { useTaskStream } from "../lib/task-stream";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogClose, DialogContent } from "./ui/dialog";
 import { PanelLeft, X } from "lucide-react";
 
-import { listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { listBotsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { ShellContext } from "./page";
 import { Sidebar } from "./sidebar";
 import { SearchDialog } from "./search-dialog";
@@ -45,7 +45,7 @@ function useSidebarOpen() {
 
 export function Shell() {
   useTaskStream();
-  const agents = useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
+  const bots = useQuery({ ...listBotsOptions(), refetchInterval: 3000 });
   const summary = useQuery(boardAttentionOptions());
   const held = useQuery(heldEventsOptions());
   const { count: attentionCount } = attentionItems(summary.data, held.data);
@@ -53,10 +53,7 @@ export function Shell() {
   const attention = attentionCount > 0;
 
   const statuses = new Map(
-    (agents.data?.agents ?? []).map((agent) => [
-      agent.id!,
-      botStatus(agent.id!, summary.data, agent.activity),
-    ]),
+    (bots.data?.bots ?? []).map((bot) => [bot.id!, botStatus(bot.id!, summary.data, bot.activity)]),
   );
 
   const [menu, setMenu] = useState(false);
@@ -73,8 +70,8 @@ export function Shell() {
   const shown = useRef(path);
   // The drawer closes when the page changes.
   const [menuPath, setMenuPath] = useState(path);
-  const [lastAgent, setLastAgent] = useState("default");
-  const routeAgent = path.match(/^\/a\/([^/]+)/)?.[1];
+  const [lastBot, setLastBot] = useState("default");
+  const routeBot = path.match(/^\/a\/([^/]+)/)?.[1];
 
   const shell = useMemo(
     () => ({
@@ -87,7 +84,7 @@ export function Shell() {
 
   useSystemTheme();
 
-  if (routeAgent && routeAgent !== lastAgent) setLastAgent(routeAgent);
+  if (routeBot && routeBot !== lastBot) setLastBot(routeBot);
 
   if (menuPath !== path) {
     setMenuPath(path);
@@ -167,9 +164,9 @@ export function Shell() {
           />
         ) : null}
         <main id="main" tabIndex={-1} className="flex min-w-0 flex-1 outline-none">
-          <AgentContext.Provider value={routeAgent ?? lastAgent}>
+          <BotContext.Provider value={routeBot ?? lastBot}>
             <Outlet />
-          </AgentContext.Provider>
+          </BotContext.Provider>
         </main>
       </div>
       <Dialog open={menu} onOpenChange={setMenu}>

@@ -567,8 +567,8 @@ export function AboutPage() {
               rows={[
                 ["Data directory", <Mono key="data">{health.data.dataDir}</Mono>],
                 ["Sessions and settings", <Mono key="control">control.sqlite</Mono>],
-                ["Transcripts and runs", <Mono key="state">agents/default/state.sqlite</Mono>],
-                ["Workspace", <Mono key="workspace">agents/default/workspace</Mono>],
+                ["Transcripts and runs", <Mono key="state">bots/default/state.sqlite</Mono>],
+                ["Workspace", <Mono key="workspace">bots/default/workspace</Mono>],
                 ["Memory", <Mono key="memory">memory</Mono>],
               ]}
             />

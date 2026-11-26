@@ -313,14 +313,14 @@ a {
 
 /* ── dex ─────────────────────────────────────────────── */
 
-/* An agent mark: one hue per agent, with a lightness that keeps the letter readable on either
+/* A bot mark: one hue per bot, with a lightness that keeps the letter readable on either
    theme. The hue is set by the component; only the lightness belongs here. */
-.agent-avatar {
+.bot-avatar {
   background-color: oklch(0.955 0.022 var(--avatar-hue, 260));
   color: oklch(0.42 0.06 var(--avatar-hue, 260));
 }
 
-.dark .agent-avatar {
+.dark .bot-avatar {
   background-color: oklch(0.3 0.03 var(--avatar-hue, 260));
   color: oklch(0.86 0.05 var(--avatar-hue, 260));
 }

@@ -26,29 +26,29 @@ func (q *Queries) CompleteChannelCommand(ctx context.Context, arg CompleteChanne
 
 const countChannelPending = `-- name: CountChannelPending :one
 SELECT count(*) FROM submissions s JOIN sessions c ON c.id = s.session_id
-WHERE s.status = 'pending' AND c.agent_id = ?1 AND s.origin = ?2
+WHERE s.status = 'pending' AND c.bot_id = ?1 AND s.origin = ?2
 `
 
 type CountChannelPendingParams struct {
-	AgentID string `json:"agent_id"`
-	Peer    string `json:"peer"`
+	BotID string `json:"bot_id"`
+	Peer  string `json:"peer"`
 }
 
 func (q *Queries) CountChannelPending(ctx context.Context, arg CountChannelPendingParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countChannelPending, arg.AgentID, arg.Peer)
+	row := q.db.QueryRowContext(ctx, countChannelPending, arg.BotID, arg.Peer)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const createChannelCommand = `-- name: CreateChannelCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context)
+INSERT INTO channel_commands (bot_id, source_key, peer, channel_key, command, channel_context)
 VALUES (?1, ?2, ?3, ?4, ?5, coalesce(nullif(CAST(?6 AS TEXT), ''), '{}'))
 ON CONFLICT DO NOTHING
 `
 
 type CreateChannelCommandParams struct {
-	AgentID        string `json:"agent_id"`
+	BotID          string `json:"bot_id"`
 	SourceKey      string `json:"source_key"`
 	Peer           string `json:"peer"`
 	ChannelKey     string `json:"channel_key"`
@@ -58,7 +58,7 @@ type CreateChannelCommandParams struct {
 
 func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCommandParams) error {
 	_, err := q.db.ExecContext(ctx, createChannelCommand,
-		arg.AgentID,
+		arg.BotID,
 		arg.SourceKey,
 		arg.Peer,
 		arg.ChannelKey,
@@ -69,13 +69,13 @@ func (q *Queries) CreateChannelCommand(ctx context.Context, arg CreateChannelCom
 }
 
 const createFeedbackCommand = `-- name: CreateFeedbackCommand :exec
-INSERT INTO channel_commands (agent_id, source_key, peer, channel_key, command, channel_context, completed, answer)
+INSERT INTO channel_commands (bot_id, source_key, peer, channel_key, command, channel_context, completed, answer)
 VALUES (?1, ?2, ?3, 'main', '/feedback', ?4, 1, ?5)
 ON CONFLICT DO NOTHING
 `
 
 type CreateFeedbackCommandParams struct {
-	AgentID        string `json:"agent_id"`
+	BotID          string `json:"bot_id"`
 	SourceKey      string `json:"source_key"`
 	Peer           string `json:"peer"`
 	ChannelContext string `json:"channel_context"`
@@ -85,7 +85,7 @@ type CreateFeedbackCommandParams struct {
 // The existing command receipt is the outbox. Store the reply atomically with its source key.
 func (q *Queries) CreateFeedbackCommand(ctx context.Context, arg CreateFeedbackCommandParams) error {
 	_, err := q.db.ExecContext(ctx, createFeedbackCommand,
-		arg.AgentID,
+		arg.BotID,
 		arg.SourceKey,
 		arg.Peer,
 		arg.ChannelContext,
@@ -95,7 +95,7 @@ func (q *Queries) CreateFeedbackCommand(ctx context.Context, arg CreateFeedbackC
 }
 
 const feishuCredentialOwner = `-- name: FeishuCredentialOwner :one
-SELECT a.id, a.name FROM agents a JOIN feishu_settings s ON s.agent_id = a.id WHERE s.app_id = ?
+SELECT a.id, a.name FROM bots a JOIN feishu_settings s ON s.bot_id = a.id WHERE s.app_id = ?
 `
 
 type FeishuCredentialOwnerRow struct {
@@ -111,14 +111,14 @@ func (q *Queries) FeishuCredentialOwner(ctx context.Context, appID string) (Feis
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE source_key = ?
+SELECT bot_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE source_key = ?
 `
 
 func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (ChannelCommand, error) {
 	row := q.db.QueryRowContext(ctx, getChannelCommand, sourceKey)
 	var i ChannelCommand
 	err := row.Scan(
-		&i.AgentID,
+		&i.BotID,
 		&i.SourceKey,
 		&i.Peer,
 		&i.ChannelKey,
@@ -146,9 +146,9 @@ func (q *Queries) GetSubmissionBySource(ctx context.Context, sourceKey sql.NullS
 	return id, err
 }
 
-const listAgentActivity = `-- name: ListAgentActivity :many
+const listBotActivity = `-- name: ListBotActivity :many
 WITH active AS (
-    SELECT c.agent_id, count(*) AS sessions
+    SELECT c.bot_id, count(*) AS sessions
     FROM sessions c
     WHERE (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
       AND c.channel_key NOT LIKE 'retired-telegram:%'
@@ -156,51 +156,51 @@ WITH active AS (
           SELECT 1 FROM submissions m WHERE m.session_id = c.id AND m.kind = 'message'
       ))
       AND EXISTS (SELECT 1 FROM submissions s WHERE s.session_id = c.id AND s.status = 'pending')
-    GROUP BY c.agent_id
+    GROUP BY c.bot_id
 ), enabled AS (
-    SELECT agent_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY agent_id
+    SELECT bot_id, count(*) AS automations FROM automations WHERE enabled = 1 GROUP BY bot_id
 )
 SELECT a.id, a.name, a.model_provider, a.model_id, a.instructions, a.created_at, a.thinking_level, a.primary_notification_target_id, a.archived_at, a.runner_id, a.runner_sandbox_id, a.fallback_provider, a.fallback_model_id, CAST(coalesce(active.sessions, 0) AS INTEGER) AS active_sessions,
     CAST(coalesce(enabled.automations, 0) AS INTEGER) AS enabled_automations,
     CAST(EXISTS (SELECT 1 FROM automations automation
         JOIN automation_runs r ON r.id = (SELECT latest.id FROM automation_runs latest
             WHERE latest.automation_id = automation.id ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)
-        WHERE automation.agent_id = a.id AND automation.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS automation_failed
-FROM agents a LEFT JOIN active ON active.agent_id = a.id LEFT JOIN enabled ON enabled.agent_id = a.id
+        WHERE automation.bot_id = a.id AND automation.enabled = 1 AND r.outcome = 'failed' AND r.status = 'failed') AS INTEGER) AS automation_failed
+FROM bots a LEFT JOIN active ON active.bot_id = a.id LEFT JOIN enabled ON enabled.bot_id = a.id
 WHERE a.archived_at IS NULL
 ORDER BY a.created_at, a.id
 `
 
-type ListAgentActivityRow struct {
-	Agent              Agent `json:"agent"`
+type ListBotActivityRow struct {
+	Bot                Bot   `json:"bot"`
 	ActiveSessions     int64 `json:"active_sessions"`
 	EnabledAutomations int64 `json:"enabled_automations"`
 	AutomationFailed   int64 `json:"automation_failed"`
 }
 
-func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow, error) {
-	rows, err := q.db.QueryContext(ctx, listAgentActivity)
+func (q *Queries) ListBotActivity(ctx context.Context) ([]ListBotActivityRow, error) {
+	rows, err := q.db.QueryContext(ctx, listBotActivity)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListAgentActivityRow{}
+	items := []ListBotActivityRow{}
 	for rows.Next() {
-		var i ListAgentActivityRow
+		var i ListBotActivityRow
 		if err := rows.Scan(
-			&i.Agent.ID,
-			&i.Agent.Name,
-			&i.Agent.ModelProvider,
-			&i.Agent.ModelID,
-			&i.Agent.Instructions,
-			&i.Agent.CreatedAt,
-			&i.Agent.ThinkingLevel,
-			&i.Agent.PrimaryNotificationTargetID,
-			&i.Agent.ArchivedAt,
-			&i.Agent.RunnerID,
-			&i.Agent.RunnerSandboxID,
-			&i.Agent.FallbackProvider,
-			&i.Agent.FallbackModelID,
+			&i.Bot.ID,
+			&i.Bot.Name,
+			&i.Bot.ModelProvider,
+			&i.Bot.ModelID,
+			&i.Bot.Instructions,
+			&i.Bot.CreatedAt,
+			&i.Bot.ThinkingLevel,
+			&i.Bot.PrimaryNotificationTargetID,
+			&i.Bot.ArchivedAt,
+			&i.Bot.RunnerID,
+			&i.Bot.RunnerSandboxID,
+			&i.Bot.FallbackProvider,
+			&i.Bot.FallbackModelID,
 			&i.ActiveSessions,
 			&i.EnabledAutomations,
 			&i.AutomationFailed,
@@ -219,20 +219,20 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT c.agent_id, c.source_key, c.peer, c.channel_key, c.command, c.answer, c.completed, c.delivered_at, c.channel_context FROM channel_commands c
+SELECT c.bot_id, c.source_key, c.peer, c.channel_key, c.command, c.answer, c.completed, c.delivered_at, c.channel_context FROM channel_commands c
 WHERE c.completed = 1 AND c.delivered_at IS NULL
-AND c.agent_id = ?1 AND c.peer LIKE ?2 || '%'
+AND c.bot_id = ?1 AND c.peer LIKE ?2 || '%'
 AND NOT EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = c.source_key)
 ORDER BY c.rowid
 `
 
 type ListChannelCommandRepliesParams struct {
-	AgentID string         `json:"agent_id"`
-	Prefix  sql.NullString `json:"prefix"`
+	BotID  string         `json:"bot_id"`
+	Prefix sql.NullString `json:"prefix"`
 }
 
 func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannelCommandRepliesParams) ([]ChannelCommand, error) {
-	rows, err := q.db.QueryContext(ctx, listChannelCommandReplies, arg.AgentID, arg.Prefix)
+	rows, err := q.db.QueryContext(ctx, listChannelCommandReplies, arg.BotID, arg.Prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 	for rows.Next() {
 		var i ChannelCommand
 		if err := rows.Scan(
-			&i.AgentID,
+			&i.BotID,
 			&i.SourceKey,
 			&i.Peer,
 			&i.ChannelKey,
@@ -265,11 +265,11 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE agent_id = ? AND completed = 0 AND delivered_at IS NULL
+SELECT bot_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE bot_id = ? AND completed = 0 AND delivered_at IS NULL
 `
 
-func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]ChannelCommand, error) {
-	rows, err := q.db.QueryContext(ctx, listChannelCommands, agentID)
+func (q *Queries) ListChannelCommands(ctx context.Context, botID string) ([]ChannelCommand, error) {
+	rows, err := q.db.QueryContext(ctx, listChannelCommands, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +278,7 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 	for rows.Next() {
 		var i ChannelCommand
 		if err := rows.Scan(
-			&i.AgentID,
+			&i.BotID,
 			&i.SourceKey,
 			&i.Peer,
 			&i.ChannelKey,
@@ -332,14 +332,14 @@ func (q *Queries) SaveChannelCommandAnswer(ctx context.Context, arg SaveChannelC
 }
 
 const telegramCredentialOwner = `-- name: TelegramCredentialOwner :one
-SELECT a.id, a.name FROM agents a JOIN telegram_settings s ON s.agent_id = a.id
-WHERE substr(s.token, 1, instr(s.token, ':') - 1) = ?1 AND s.agent_id != ?2
+SELECT a.id, a.name FROM bots a JOIN telegram_settings s ON s.bot_id = a.id
+WHERE substr(s.token, 1, instr(s.token, ':') - 1) = ?1 AND s.bot_id != ?2
 ORDER BY a.id LIMIT 1
 `
 
 type TelegramCredentialOwnerParams struct {
 	Account string `json:"account"`
-	AgentID string `json:"agent_id"`
+	BotID   string `json:"bot_id"`
 }
 
 type TelegramCredentialOwnerRow struct {
@@ -348,14 +348,14 @@ type TelegramCredentialOwnerRow struct {
 }
 
 func (q *Queries) TelegramCredentialOwner(ctx context.Context, arg TelegramCredentialOwnerParams) (TelegramCredentialOwnerRow, error) {
-	row := q.db.QueryRowContext(ctx, telegramCredentialOwner, arg.Account, arg.AgentID)
+	row := q.db.QueryRowContext(ctx, telegramCredentialOwner, arg.Account, arg.BotID)
 	var i TelegramCredentialOwnerRow
 	err := row.Scan(&i.ID, &i.Name)
 	return i, err
 }
 
 const wechatCredentialOwner = `-- name: WechatCredentialOwner :one
-SELECT a.id, a.name FROM agents a JOIN wechat_settings s ON s.agent_id = a.id WHERE s.bot_id = ?
+SELECT a.id, a.name FROM bots a JOIN wechat_settings s ON s.bot_id = a.id WHERE s.wechat_bot_id = ?
 `
 
 type WechatCredentialOwnerRow struct {
@@ -363,8 +363,8 @@ type WechatCredentialOwnerRow struct {
 	Name string `json:"name"`
 }
 
-func (q *Queries) WechatCredentialOwner(ctx context.Context, botID string) (WechatCredentialOwnerRow, error) {
-	row := q.db.QueryRowContext(ctx, wechatCredentialOwner, botID)
+func (q *Queries) WechatCredentialOwner(ctx context.Context, wechatBotID string) (WechatCredentialOwnerRow, error) {
+	row := q.db.QueryRowContext(ctx, wechatCredentialOwner, wechatBotID)
 	var i WechatCredentialOwnerRow
 	err := row.Scan(&i.ID, &i.Name)
 	return i, err

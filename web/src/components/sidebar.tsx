@@ -2,15 +2,15 @@ import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ListTodo, Plus, Search, Settings } from "lucide-react";
-import type { Agent } from "../api/generated/types.gen";
-import { getSettingsOptions, listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { AgentContext } from "../lib/agent-scope";
+import type { Bot } from "../api/generated/types.gen";
+import { getSettingsOptions, listBotsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { BotContext } from "../lib/bot-scope";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
 import type { BotStatus } from "../lib/board-attention";
 import { cn } from "../lib/utils";
-import { AgentAvatar } from "./agent-avatar";
-import { AgentCreateDialog } from "./agent-create-dialog";
+import { BotAvatar } from "./bot-avatar";
+import { BotCreateDialog } from "./bot-create-dialog";
 import { Button, buttonVariants } from "./ui/button";
 
 const row =
@@ -33,10 +33,10 @@ export function Sidebar({
   onSearch: () => void;
   className?: string;
 }) {
-  const agents = useQuery(listAgentsOptions());
+  const bots = useQuery(listBotsOptions());
   const [creating, setCreating] = useState(false);
   const [a, selected] = path.split("/").filter(Boolean);
-  const openAgent = a === "a" ? selected : undefined;
+  const openBot = a === "a" ? selected : undefined;
 
   return (
     <aside
@@ -83,10 +83,10 @@ export function Sidebar({
         </Link>
       </nav>
       <nav aria-label="Bots" className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-2 pb-3">
-        {(agents.data?.agents ?? []).map((agent) => (
-          <AgentContext.Provider key={agent.id} value={agent.id!}>
-            <BotGroup agent={agent} status={statuses.get(agent.id!)} open={agent.id === openAgent} />
-          </AgentContext.Provider>
+        {(bots.data?.bots ?? []).map((bot) => (
+          <BotContext.Provider key={bot.id} value={bot.id!}>
+            <BotGroup bot={bot} status={statuses.get(bot.id!)} open={bot.id === openBot} />
+          </BotContext.Provider>
         ))}
         <button
           type="button"
@@ -97,7 +97,7 @@ export function Sidebar({
           <Plus className="size-3.5 shrink-0" />
           New bot
         </button>
-        {agents.isError ? (
+        {bots.isError ? (
           <p role="alert" className="px-2 text-xs text-red">
             Could not load the bots.
           </p>
@@ -105,9 +105,9 @@ export function Sidebar({
       </nav>
       <Footer active={a === "settings"} />
       {creating ? (
-        <AgentContext.Provider value={openAgent ?? "default"}>
-          <AgentCreateDialog onClose={() => setCreating(false)} />
-        </AgentContext.Provider>
+        <BotContext.Provider value={openBot ?? "default"}>
+          <BotCreateDialog onClose={() => setCreating(false)} />
+        </BotContext.Provider>
       ) : null}
     </aside>
   );
@@ -139,18 +139,18 @@ function Footer({ active }: { active: boolean }) {
   );
 }
 
-function BotGroup({ agent, status, open }: { agent: Agent; status: BotStatus; open: boolean }) {
+function BotGroup({ bot, status, open }: { bot: Bot; status: BotStatus; open: boolean }) {
   const { draft } = useApp();
-  const dirty = instructionsDirty(draft, agent.instructions);
+  const dirty = instructionsDirty(draft, bot.instructions);
 
-  const label = [agent.name, dirty ? "instructions draft" : "", status ? statusLabel[status] : ""]
+  const label = [bot.name, dirty ? "instructions draft" : "", status ? statusLabel[status] : ""]
     .filter(Boolean)
     .join(", ");
 
   return (
     <Link
-      to="/a/$agentId"
-      params={{ agentId: agent.id! }}
+      to="/b/$botId"
+      params={{ botId: bot.id! }}
       aria-current={open ? "page" : undefined}
       aria-label={label}
       title={label}
@@ -159,8 +159,8 @@ function BotGroup({ agent, status, open }: { agent: Agent; status: BotStatus; op
         open ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
       )}
     >
-      <AgentAvatar agent={agent} className="size-5 text-[11px]" />
-      <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+      <BotAvatar bot={bot} className="size-5 text-[11px]" />
+      <span className="min-w-0 flex-1 truncate">{bot.name}</span>
       {status ? (
         <span
           role="img"

@@ -40,7 +40,7 @@ type Manager struct {
 	q        *sqlc.Queries
 	db       *sql.DB
 	sessions *session.Service
-	agentID  string
+	botID    string
 	setMu    sync.Mutex
 	intakeMu sync.Mutex // Orders callback commits with runtime removal.
 	mu       sync.Mutex
@@ -49,8 +49,8 @@ type Manager struct {
 }
 
 // New creates a manager. Close it before closing the database.
-func New(ctx context.Context, db *sql.DB, sessions *session.Service, agentID string) *Manager {
-	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, agentID: agentID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime)}
+func New(ctx context.Context, db *sql.DB, sessions *session.Service, botID string) *Manager {
+	return &Manager{ctx: ctx, db: db, q: sqlc.New(db), sessions: sessions, botID: botID, commands: make(map[string]chan struct{}), bots: make(map[string]*runtime)}
 }
 
 // Set stops the old bot and waits for it before starting its replacement.
@@ -149,22 +149,22 @@ func (m *Manager) Notify(key string) {
 
 // SetTelegramRetryAt persists a FloodWait retry deadline for Telegram polling.
 func (m *Manager) SetTelegramRetryAt(ctx context.Context, token string, until int64) error {
-	return m.q.SetTelegramRetryAt(ctx, sqlc.SetTelegramRetryAtParams{AgentID: m.agentID, Token: token, RetryAt: until})
+	return m.q.SetTelegramRetryAt(ctx, sqlc.SetTelegramRetryAtParams{BotID: m.botID, Token: token, RetryAt: until})
 }
 
-// ReceivedSource reports stored platform input, including input received by a previous agent.
+// ReceivedSource reports stored platform input, including input received by a previous bot.
 func (m *Manager) ReceivedSource(ctx context.Context, source string) (bool, error) {
 	return m.sessions.ReceivedSource(ctx, source)
 }
 
-// Source returns the stored input and typing state for this manager's agent.
+// Source returns the stored input and typing state for this manager's bot.
 func (m *Manager) Source(ctx context.Context, source string) (session.SourceReceipt, error) {
-	return m.sessions.LookupSource(ctx, m.agentID, source)
+	return m.sessions.LookupSource(ctx, m.botID, source)
 }
 
 // Pending reports input whose answer returns to this peer.
 func (m *Manager) Pending(ctx context.Context, peer string) (bool, error) {
-	n, err := m.q.CountChannelPending(ctx, sqlc.CountChannelPendingParams{AgentID: m.agentID, Peer: peer})
+	n, err := m.q.CountChannelPending(ctx, sqlc.CountChannelPendingParams{BotID: m.botID, Peer: peer})
 	return n > 0, err
 }
 

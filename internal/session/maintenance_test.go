@@ -10,7 +10,7 @@ import (
 
 func TestUserMaintenanceReportsClosedEngine(t *testing.T) {
 	r := startNative(t, "echo")
-	if err := r.agents.Close(t.Context()); err != nil {
+	if err := r.bots.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.service.AcquireMaintenance(t.Context()); !errors.Is(err, engine.ErrClosed) || errors.Is(err, ErrMaintenanceBusy) {
@@ -20,7 +20,7 @@ func TestUserMaintenanceReportsClosedEngine(t *testing.T) {
 
 func TestUserMaintenanceDoesNotReleaseAnUnconfirmedPause(t *testing.T) {
 	r := startNative(t, "echo")
-	if err := r.agents.Quiesce(t.Context()); err != nil {
+	if err := r.bots.Quiesce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.service.AcquireMaintenance(t.Context()); !errors.Is(err, engine.ErrMaintenance) {
@@ -29,10 +29,10 @@ func TestUserMaintenanceDoesNotReleaseAnUnconfirmedPause(t *testing.T) {
 	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.agents.Create(t.Context(), "bot", engine.Options{}); !errors.Is(err, engine.ErrMaintenance) {
+	if _, err := r.bots.Create(t.Context(), "bot", engine.Options{}); !errors.Is(err, engine.ErrMaintenance) {
 		t.Fatalf("maintenance released another holder: %v", err)
 	}
-	r.agents.Resume()
+	r.bots.Resume()
 }
 
 func TestUserMaintenanceRenewalKeepsAdmissionPaused(t *testing.T) {
@@ -43,7 +43,7 @@ func TestUserMaintenanceRenewalKeepsAdmissionPaused(t *testing.T) {
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.agents.Create(t.Context(), "bot", engine.Options{}); !errors.Is(err, engine.ErrMaintenance) {
+	if _, err := r.bots.Create(t.Context(), "bot", engine.Options{}); !errors.Is(err, engine.ErrMaintenance) {
 		t.Fatalf("renewal reopened native admission: %v", err)
 	}
 	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {

@@ -105,7 +105,7 @@ func (l *Ledger) createTask(ctx context.Context, actor Actor, p CreateTaskParams
 		root = parent.AuthorizedByRootID
 	}
 	task, err := l.createProjection(ctx, sqlc.CreateTaskParams{
-		ID: id, AgentID: p.AssigneeBotID, Title: p.Title, At: now, Status: p.Status,
+		ID: id, BotID: p.AssigneeBotID, Title: p.Title, At: now, Status: p.Status,
 		CreatorKind: actor.kind, CreatorID: actor.botID, AuthorizedByRootID: root,
 		ReviewerKind: p.ReviewerKind, ReviewerID: p.ReviewerID,
 		ParentTaskID: sql.NullString{String: parent.ID, Valid: parent.ID != ""},
@@ -127,7 +127,7 @@ func validReviewer(kind, id string) bool {
 
 func (l *Ledger) createProjection(ctx context.Context, p sqlc.CreateTaskParams) (sqlc.Task, error) {
 	// Check the Assignee before the allocation; Source rules can fall back to an unmatched event.
-	if _, err := l.q.GetActiveTaskAssignee(ctx, p.AgentID); err != nil {
+	if _, err := l.q.GetActiveTaskAssignee(ctx, p.BotID); err != nil {
 		return sqlc.Task{}, err
 	}
 	n, err := l.q.AllocateTaskNumber(ctx)

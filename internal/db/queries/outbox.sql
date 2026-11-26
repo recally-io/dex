@@ -7,10 +7,10 @@ WHERE session_id = @session_id AND peer = @peer
 
 -- name: InsertOutboxMessage :execrows
 INSERT INTO outbox_messages (
-    id, event_id, agent_id, session_id, source_submission_id,
+    id, event_id, bot_id, session_id, source_submission_id,
     kind, peer, channel_context, topic_key, body, reason, status, created_at, delivered_at, rendered_message
 ) VALUES (
-    @id, @event_id, @agent_id, @session_id, @source_submission_id,
+    @id, @event_id, @bot_id, @session_id, @source_submission_id,
     @kind, @peer, coalesce(nullif(CAST(@channel_context AS TEXT), ''), '{}'),
     @topic_key, @body, @reason, @status, @created_at, @delivered_at, @rendered_message
 )
@@ -34,10 +34,10 @@ SELECT * FROM outbox_messages WHERE id = ?;
 SELECT peer FROM outbox_messages WHERE event_id = ? AND kind = 'automation' AND status = 'pending';
 
 -- name: CreateFileDeliveries :exec
-INSERT INTO outbox_messages (id, event_id, agent_id, session_id, source_submission_id,
+INSERT INTO outbox_messages (id, event_id, bot_id, session_id, source_submission_id,
     kind, peer, channel_context, body, created_at)
-SELECT 'file:' || f.id, 'file:' || f.agent_id || ':' || f.operation_key,
-    o.agent_id, o.session_id, o.source_submission_id,
+SELECT 'file:' || f.id, 'file:' || f.bot_id || ':' || f.operation_key,
+    o.bot_id, o.session_id, o.source_submission_id,
     'file', o.peer, o.channel_context, f.name, o.created_at
 FROM outbox_files f JOIN outbox_messages o ON o.id = @outbox_id
 WHERE f.submission_id = @submission_id AND f.outbox_id IS NULL AND o.status = 'pending'
@@ -53,14 +53,14 @@ WHERE submission_id = @submission_id AND outbox_id IS NULL
 DELETE FROM outbox_files WHERE submission_id = ? AND outbox_id IS NULL;
 
 -- name: QueueOutboxFile :execrows
-INSERT INTO outbox_files (id, agent_id, operation_key, submission_id, name, mime_type, body)
-SELECT @id, c.agent_id, @operation_key, s.id, @name, @mime_type, @body
+INSERT INTO outbox_files (id, bot_id, operation_key, submission_id, name, mime_type, body)
+SELECT @id, c.bot_id, @operation_key, s.id, @name, @mime_type, @body
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 WHERE s.id = @submission_id AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = @agent_id AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.execution_id = @execution_id
+  AND c.bot_id = @bot_id AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.execution_id = @execution_id
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
 ON CONFLICT DO NOTHING;
@@ -79,7 +79,7 @@ FROM outbox_messages o
 JOIN sessions c ON c.id = o.session_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
 WHERE o.status = 'pending' AND c.channel_key NOT LIKE 'retired-telegram:%'
-  AND o.agent_id = @agent_id AND o.channel = @channel
+  AND o.bot_id = @bot_id AND o.channel = @channel
   AND (
       o.kind != 'reply'
       OR NOT EXISTS (
@@ -87,7 +87,7 @@ WHERE o.status = 'pending' AND c.channel_key NOT LIKE 'retired-telegram:%'
           WHERE p.status = 'pending' AND p.origin = o.peer
             AND p.rowid < coalesce(src.rowid, o.rowid)
             AND p.kind = 'message' AND p.channel_revoked = 0
-            AND pc.agent_id = o.agent_id
+            AND pc.bot_id = o.bot_id
             AND NOT EXISTS (
                 SELECT 1 FROM outbox_messages prior
                 WHERE prior.source_submission_id = p.id
@@ -125,10 +125,10 @@ UPDATE submissions SET exit_action = @exit_action WHERE id = @id AND status = 'p
 
 -- name: InsertStoppedOutboxForSession :exec
 INSERT INTO outbox_messages (
-    id, event_id, agent_id, session_id, source_submission_id,
+    id, event_id, bot_id, session_id, source_submission_id,
     kind, peer, channel_context, reason, status, created_at
 )
-SELECT s.id, 'reply:' || @agent_id || ':' || s.id, @agent_id, s.session_id, s.id,
+SELECT s.id, 'reply:' || @bot_id || ':' || s.id, @bot_id, s.session_id, s.id,
     'reply', s.origin, s.channel_context, 'stopped', 'pending', @now
 FROM submissions s
 WHERE s.session_id = @session_id AND s.status = 'pending' AND s.kind = 'message'
@@ -144,7 +144,7 @@ ORDER BY created_at DESC, rowid DESC
 LIMIT 30;
 
 -- name: InsertWebNotification :exec
-INSERT INTO web_notifications (id, event_id, agent_id, session_id, source_submission_id, body, created_at)
+INSERT INTO web_notifications (id, event_id, bot_id, session_id, source_submission_id, body, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (event_id) DO NOTHING;
 
@@ -154,15 +154,15 @@ ON CONFLICT (event_id) DO NOTHING;
 SELECT CAST(o.rowid AS INTEGER) AS position, o.id, o.body, o.created_at
 FROM web_notifications o
 JOIN submissions s ON s.id = o.source_submission_id AND s.session_id = o.session_id
-JOIN sessions c ON c.id = o.session_id AND c.agent_id = o.agent_id
-JOIN agents a ON a.id = c.agent_id
-WHERE o.session_id = @session_id AND o.agent_id = @agent_id
+JOIN sessions c ON c.id = o.session_id AND c.bot_id = o.bot_id
+JOIN bots a ON a.id = c.bot_id
+WHERE o.session_id = @session_id AND o.bot_id = @bot_id
   AND a.archived_at IS NULL AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.parent_id IS NULL
   AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
   AND (s.origin = 'web' OR s.producer <> 'user')
   AND o.rowid > CAST(@after_position AS INTEGER)
   AND (CAST(@before_id AS TEXT) = '' OR o.rowid < (SELECT CAST(prior.rowid AS INTEGER) FROM web_notifications prior
-      WHERE prior.id = @before_id AND prior.session_id = @session_id AND prior.agent_id = @agent_id))
+      WHERE prior.id = @before_id AND prior.session_id = @session_id AND prior.bot_id = @bot_id))
 ORDER BY o.rowid DESC
 LIMIT @page_size;
 

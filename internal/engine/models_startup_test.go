@@ -83,8 +83,8 @@ func TestUserProviderEditRejectsOldCatalogAndLateDiscovery(t *testing.T) {
 	t.Log("artifact: cached old URL and cancelled late response did not replace edited provider")
 }
 
-func TestUserUnrelatedSaveKeepsCatalogAndOpenAgentUsable(t *testing.T) {
-	// Given a discovered provider and an already open native agent.
+func TestUserUnrelatedSaveKeepsCatalogAndOpenBotUsable(t *testing.T) {
+	// Given a discovered provider and an already open native bot.
 	entered, release := make(chan struct{}), make(chan struct{})
 	unblock := sync.OnceFunc(func() { close(release) })
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +139,7 @@ func TestUserUnrelatedSaveKeepsCatalogAndOpenAgentUsable(t *testing.T) {
 	if got := coreWait(t, coreSubmit(t, a, cold, "after-ready", "ready", "echo")); got.Answer != "echo: ready" {
 		t.Fatalf("recovered native admission: %+v", got)
 	}
-	t.Log("artifact: existing native agent stayed usable; cold admission recovered after discovery")
+	t.Log("artifact: existing native bot stayed usable; cold admission recovered after discovery")
 }
 
 func awaitDiscoverySignal(t *testing.T, signal <-chan struct{}) {

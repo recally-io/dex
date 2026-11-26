@@ -1,6 +1,6 @@
 -- name: ListBotTasks :many
 -- Match CanRead for Bot actors before applying the limit.
-SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.* FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL AND (
   (CAST(@child_session_id AS INTEGER) = 0 AND
     (t.assignee_bot_id = @bot_id OR (t.reviewer_kind = 'bot' AND t.reviewer_id = @bot_id)))
@@ -12,7 +12,7 @@ AND (CAST(@status_filter AS TEXT) = 'all' OR t.status = @status_filter
 ORDER BY t.updated_at DESC, t.id DESC LIMIT 50;
 
 -- name: ListBotWorkload :many
-SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.* FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 CROSS JOIN (SELECT CAST(@bot_id AS TEXT) AS id) AS caller
 WHERE a.archived_at IS NULL AND t.status NOT IN ('done', 'cancelled')
 AND (t.assignee_bot_id = caller.id OR (t.reviewer_kind = 'bot' AND t.reviewer_id = caller.id))
@@ -20,7 +20,7 @@ ORDER BY (t.status = 'in_review' AND t.reviewer_kind = 'bot' AND t.reviewer_id =
   t.updated_at DESC, t.number DESC;
 
 -- name: GetTaskByNumber :one
-SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.* FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE t.number = ? AND a.archived_at IS NULL;
 
 -- name: HasTaskTitleEntry :one
@@ -28,14 +28,14 @@ SELECT EXISTS (SELECT 1 FROM task_entries
   WHERE task_id = @task_id AND kind = 'status' AND trust <> 'external' AND content = @title);
 
 -- name: ListTaskSessions :many
-SELECT c.id AS session_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
-FROM task_sessions s JOIN sessions c ON c.id = s.session_id JOIN agents a ON a.id = s.bot_id
+SELECT c.id AS session_id, s.bot_id AS bot_id, a.name AS bot_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
+FROM task_sessions s JOIN sessions c ON c.id = s.session_id JOIN bots a ON a.id = s.bot_id
 WHERE s.task_id = ? ORDER BY s.is_primary DESC, s.started_at, c.id;
 
 -- name: LinkTaskSession :one
 -- Keep the original timestamp and child turn on replay. The first link becomes primary.
 INSERT INTO task_sessions (id, task_id, session_id, bot_id, is_primary, started_at, turn_request_id)
-SELECT 'session:' || @task_id || ':' || c.id, @task_id, c.id, c.agent_id,
+SELECT 'session:' || @task_id || ':' || c.id, @task_id, c.id, c.bot_id,
   NOT EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = @task_id AND s.is_primary = 1), @linked_at,
   COALESCE((SELECT s.id FROM submissions s WHERE s.session_id = c.id AND s.kind = 'message'
     AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
@@ -85,5 +85,5 @@ LIMIT @max_rows;
 SELECT * FROM task_tool_operations WHERE key = ?;
 
 -- name: CreateTaskToolOperation :exec
-INSERT INTO task_tool_operations (key, agent_id, session_id, source_request_id, action, result)
+INSERT INTO task_tool_operations (key, bot_id, session_id, source_request_id, action, result)
 VALUES (?, ?, ?, ?, ?, ?);

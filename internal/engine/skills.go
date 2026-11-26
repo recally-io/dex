@@ -23,7 +23,7 @@ import (
 	"github.com/recally-io/dex/internal/runner"
 )
 
-// The dex level is shared by all agents. Serialize host mutations and scans, but
+// The dex level is shared by all bots. Serialize host mutations and scans, but
 // do not hold this lock while transferring files to a session environment.
 var skillWrites sync.Mutex
 
@@ -32,7 +32,7 @@ type skillStore struct {
 	snapshot runner.SkillSnapshot
 }
 
-func (a *Agents) skillStore(level ExtensionLevel) *skillStore {
+func (a *Bots) skillStore(level ExtensionLevel) *skillStore {
 	dir := filepath.Join(level.Dir, "skills")
 	skillWrites.Lock()
 	defer skillWrites.Unlock()
@@ -46,7 +46,7 @@ func (a *Agents) skillStore(level ExtensionLevel) *skillStore {
 	return store
 }
 
-func (a *agentExtensions) snapshots() (map[string]runner.SkillSnapshot, error) {
+func (a *botExtensions) snapshots() (map[string]runner.SkillSnapshot, error) {
 	skillWrites.Lock()
 	defer skillWrites.Unlock()
 	out := make(map[string]runner.SkillSnapshot, len(a.levels))
@@ -60,13 +60,13 @@ func (a *agentExtensions) snapshots() (map[string]runner.SkillSnapshot, error) {
 	return out, nil
 }
 
-func (a *agentExtensions) syncRemoteSkills(ctx context.Context, env durableenv.ExecutionEnv) error {
+func (a *botExtensions) syncRemoteSkills(ctx context.Context, env durableenv.ExecutionEnv) error {
 	return a.syncSkills(ctx, env, true)
 }
 
 // trySyncSkills keeps unrelated tools available when the skill mirror cannot sync.
 // Mutating skill tools use syncRemoteSkills directly to report a failed transfer.
-func (a *agentExtensions) trySyncSkills(ctx context.Context, env durableenv.ExecutionEnv, refresh bool) bool {
+func (a *botExtensions) trySyncSkills(ctx context.Context, env durableenv.ExecutionEnv, refresh bool) bool {
 	if err := a.syncSkills(ctx, env, refresh); err != nil {
 		if ctx.Err() == nil {
 			slog.Warn("sync remote skills", "workspace", a.workspace, "error", err)
@@ -76,7 +76,7 @@ func (a *agentExtensions) trySyncSkills(ctx context.Context, env durableenv.Exec
 	return true
 }
 
-func (a *agentExtensions) syncSkills(ctx context.Context, env durableenv.ExecutionEnv, refresh bool) error {
+func (a *botExtensions) syncSkills(ctx context.Context, env durableenv.ExecutionEnv, refresh bool) error {
 	if !a.isRemote() {
 		return nil
 	}
@@ -113,7 +113,7 @@ func (a *agentExtensions) syncSkills(ctx context.Context, env durableenv.Executi
 	return nil
 }
 
-func (a *agentExtensions) openSkills(ctx context.Context) error {
+func (a *botExtensions) openSkills(ctx context.Context) error {
 	skillWrites.Lock()
 	defer skillWrites.Unlock()
 	for _, level := range a.distinct() {
@@ -128,8 +128,8 @@ func (a *agentExtensions) openSkills(ctx context.Context) error {
 	return nil
 }
 
-func (a *Agents) commitSkills(ctx context.Context, agentID, source string) error {
-	files := a.files(agentID, nil)
+func (a *Bots) commitSkills(ctx context.Context, botID, source string) error {
+	files := a.files(botID, nil)
 	skillWrites.Lock()
 	defer skillWrites.Unlock()
 	var errs []error
@@ -141,7 +141,7 @@ func (a *Agents) commitSkills(ctx context.Context, agentID, source string) error
 }
 
 // managedSkills lists both host levels, including skills that a narrower level overrides.
-func (a *agentExtensions) managedSkills() ([]SkillInfo, []string) {
+func (a *botExtensions) managedSkills() ([]SkillInfo, []string) {
 	snapshots, err := a.snapshots()
 	out, warnings := []SkillInfo{}, []string{}
 	if err != nil {
@@ -205,7 +205,7 @@ func (a *agentExtensions) managedSkills() ([]SkillInfo, []string) {
 	return out, warnings
 }
 
-func (a *agentExtensions) skillSessionPath(base, scope, rel string) string {
+func (a *botExtensions) skillSessionPath(base, scope, rel string) string {
 	if a.isRemote() {
 		return runner.JoinTargetPath(a.remoteSkillsRoot(), scope, rel)
 	}
@@ -216,11 +216,11 @@ func validSkillRel(rel string) bool {
 	return rel != "" && rel != "." && path.Clean(rel) == rel && !strings.ContainsAny(rel, "\\\x00") && filepath.IsLocal(filepath.FromSlash(rel)) && !slices.Contains(strings.Split(rel, "/"), ".git") && strings.SplitN(rel, "/", 2)[0] != ".manifest.json"
 }
 
-func (a *agentExtensions) skillPath(raw string, whole bool) (scope, dir, rel string, err error) {
+func (a *botExtensions) skillPath(raw string, whole bool) (scope, dir, rel string, err error) {
 	scope, rel, _ = strings.Cut(raw, "/")
 	store := a.stores[scope]
 	if store == nil || !validSkillRel(rel) || (!whole && !strings.Contains(rel, "/")) {
-		return "", "", "", errors.New("use a skill path of the form <dex|agent>/<name>/<file>")
+		return "", "", "", errors.New("use a skill path of the form <dex|bot>/<name>/<file>")
 	}
 	return scope, store.repo.Dir, rel, nil
 }
@@ -239,10 +239,10 @@ func skillText(text string) durable.ToolExecutionResult {
 	return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: text}}}
 }
 
-func (a *agentExtensions) skillExtension() *durable.Extension {
+func (a *botExtensions) skillExtension() *durable.Extension {
 	list := &durable.ToolRegistration{
 		Name:        "skill_list",
-		Description: "List dex and agent skills, including overrides and warnings.",
+		Description: "List dex and bot skills, including overrides and warnings.",
 		Parameters:  skillObject([]string{}, map[string]any{}),
 		Replay:      durable.ReplaySafe,
 		Execute: func(_ context.Context, _ any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
@@ -263,15 +263,15 @@ func (a *agentExtensions) skillExtension() *durable.Extension {
 	write.Parameters["properties"] = props
 	return &durable.Extension{Name: "skills", Tools: []*durable.ToolRegistration{
 		list,
-		a.wrapSkillFileTool(tools.CreateReadTool(nil), "skill_read", "Read a control-host skill file at <dex|agent>/<name>/<file>."),
-		a.wrapSkillFileTool(write, "skill_write", "Write a control-host skill file and sync it to this environment. Use <dex|agent>/<name>/<file>."),
+		a.wrapSkillFileTool(tools.CreateReadTool(nil), "skill_read", "Read a control-host skill file at <dex|bot>/<name>/<file>."),
+		a.wrapSkillFileTool(write, "skill_write", "Write a control-host skill file and sync it to this environment. Use <dex|bot>/<name>/<file>."),
 		a.wrapSkillFileTool(tools.CreateEditTool(), "skill_edit", "Edit a control-host skill file with exact oldText replacements and sync it to this environment."),
-		a.wrapSkillFileTool(nil, "skill_delete", "Delete <dex|agent>/<name>/<file> or a whole skill at <dex|agent>/<name>."),
+		a.wrapSkillFileTool(nil, "skill_delete", "Delete <dex|bot>/<name>/<file> or a whole skill at <dex|bot>/<name>."),
 		a.skillImportTool(),
 	}}
 }
 
-func (a *agentExtensions) wrapSkillFileTool(base *durable.ToolRegistration, name, description string) *durable.ToolRegistration {
+func (a *botExtensions) wrapSkillFileTool(base *durable.ToolRegistration, name, description string) *durable.ToolRegistration {
 	schema := ai.ToolSchema{Parameters: skillPathSchema()}
 	if base != nil {
 		schema = base.ToolSchema
@@ -344,7 +344,7 @@ func isToolError(result durable.ToolExecutionResult) bool {
 	return result.IsError != nil && *result.IsError
 }
 
-func (a *agentExtensions) syncSkillResult(ctx context.Context, api durable.ToolExecutionApi, scope, dir, rel string) (durable.ToolExecutionResult, error) {
+func (a *botExtensions) syncSkillResult(ctx context.Context, api durable.ToolExecutionApi, scope, dir, rel string) (durable.ToolExecutionResult, error) {
 	if a.onSkillChange != nil {
 		a.onSkillChange(scope)
 	}

@@ -70,13 +70,13 @@ func (q *Queries) RecordTelegramQueueAcknowledgement(ctx context.Context, arg Re
 
 const telegramPrivateReactionsEnabled = `-- name: TelegramPrivateReactionsEnabled :one
 SELECT EXISTS (
-    SELECT 1 FROM telegram_settings WHERE agent_id = ?
+    SELECT 1 FROM telegram_settings WHERE bot_id = ?
     AND json_extract(options, '$.reactions') IS NOT 0
 )
 `
 
-func (q *Queries) TelegramPrivateReactionsEnabled(ctx context.Context, agentID string) (bool, error) {
-	row := q.db.QueryRowContext(ctx, telegramPrivateReactionsEnabled, agentID)
+func (q *Queries) TelegramPrivateReactionsEnabled(ctx context.Context, botID string) (bool, error) {
+	row := q.db.QueryRowContext(ctx, telegramPrivateReactionsEnabled, botID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

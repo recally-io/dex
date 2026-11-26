@@ -41,7 +41,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{
+	if _, err := q.CreateBot(t.Context(), sqlc.CreateBotParams{
 		ID: "bot-e2b", Name: "E2B Bot", ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 		t.Fatalf("probe counts=%+v want created=1 killed=1", got)
 	}
 
-	// First Open creates persistent sandbox sbx-2 and stores sandbox_id on agents.
+	// First Open creates persistent sandbox sbx-2 and stores sandbox_id on bots.
 	h, err := mgr.Open(t.Context(), "bot-e2b", "")
 	if err != nil {
 		t.Fatal(err)
@@ -103,9 +103,9 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 	}
 	_ = h.Close(t.Context())
 
-	agentRow, err := q.GetAgent(t.Context(), "bot-e2b")
-	if err != nil || agentRow.RunnerSandboxID != "sbx-2" {
-		t.Fatalf("persisted sandbox=%q err=%v", agentRow.RunnerSandboxID, err)
+	botRow, err := q.GetBot(t.Context(), "bot-e2b")
+	if err != nil || botRow.RunnerSandboxID != "sbx-2" {
+		t.Fatalf("persisted sandbox=%q err=%v", botRow.RunnerSandboxID, err)
 	}
 
 	// Simulate E2B idle autoPause + dex restart (fresh Manager): next Open reconnects via /connect and preserves files.
@@ -129,13 +129,13 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 		t.Fatalf("expected reconnect without new sandbox, counts=%+v", got)
 	}
 
-	// ResetAgent kills sbx-2 and clears sandbox_id; next Open provisions sbx-3.
-	if err := mgr2.ResetAgent(t.Context(), "bot-e2b"); err != nil {
+	// ResetBot kills sbx-2 and clears sandbox_id; next Open provisions sbx-3.
+	if err := mgr2.ResetBot(t.Context(), "bot-e2b"); err != nil {
 		t.Fatal(err)
 	}
-	agentAfterReset, _ := q.GetAgent(t.Context(), "bot-e2b")
-	if agentAfterReset.RunnerSandboxID != "" {
-		t.Fatalf("expected cleared sandbox_id, got %q", agentAfterReset.RunnerSandboxID)
+	botAfterReset, _ := q.GetBot(t.Context(), "bot-e2b")
+	if botAfterReset.RunnerSandboxID != "" {
+		t.Fatalf("expected cleared sandbox_id, got %q", botAfterReset.RunnerSandboxID)
 	}
 
 	h3, err := mgr2.Open(t.Context(), "bot-e2b", "")
@@ -143,9 +143,9 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = h3.Close(t.Context())
-	agentFresh, _ := q.GetAgent(t.Context(), "bot-e2b")
-	if agentFresh.RunnerSandboxID != "sbx-3" {
-		t.Fatalf("expected fresh sbx-3 after reset, got %q", agentFresh.RunnerSandboxID)
+	botFresh, _ := q.GetBot(t.Context(), "bot-e2b")
+	if botFresh.RunnerSandboxID != "sbx-3" {
+		t.Fatalf("expected fresh sbx-3 after reset, got %q", botFresh.RunnerSandboxID)
 	}
 
 	// Simulate expired sandbox (404 on /connect): fresh Manager transparently creates sbx-4.
@@ -157,17 +157,17 @@ func TestUserE2BManagerPersistsResumesRecoversAndResetsSandbox(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = h4.Close(t.Context())
-	agentRecovered, _ := q.GetAgent(t.Context(), "bot-e2b")
-	if agentRecovered.RunnerSandboxID != "sbx-4" {
-		t.Fatalf("expected transparent 404 recovery sbx-4, got %q", agentRecovered.RunnerSandboxID)
+	botRecovered, _ := q.GetBot(t.Context(), "bot-e2b")
+	if botRecovered.RunnerSandboxID != "sbx-4" {
+		t.Fatalf("expected transparent 404 recovery sbx-4, got %q", botRecovered.RunnerSandboxID)
 	}
 
 	// Releasing the earlier sandbox keeps the reference to the sandbox that a later open stored.
-	if err := mgr3.ReleaseAgent(t.Context(), "bot-e2b", envRow.ID, "sbx-3"); err != nil {
+	if err := mgr3.ReleaseBot(t.Context(), "bot-e2b", envRow.ID, "sbx-3"); err != nil {
 		t.Fatal(err)
 	}
-	if agentKept, _ := q.GetAgent(t.Context(), "bot-e2b"); agentKept.RunnerSandboxID != "sbx-4" {
-		t.Fatalf("release of sbx-3 cleared the later sandbox reference, got %q", agentKept.RunnerSandboxID)
+	if botKept, _ := q.GetBot(t.Context(), "bot-e2b"); botKept.RunnerSandboxID != "sbx-4" {
+		t.Fatalf("release of sbx-3 cleared the later sandbox reference, got %q", botKept.RunnerSandboxID)
 	}
 }
 
@@ -239,7 +239,7 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{
+	if _, err := q.CreateBot(t.Context(), sqlc.CreateBotParams{
 		ID: "bot-custom-e2b", Name: "Custom E2B Bot", ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -311,13 +311,13 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 	}
 	_ = h2.Close(t.Context())
 
-	// ResetAgent and ReleaseAgent must still DELETE the sandbox even when Secret is empty.
+	// ResetBot and ReleaseBot must still DELETE the sandbox even when Secret is empty.
 	killsBeforeReset := fake.Counts().Killed
-	if err := mgr2.ResetAgent(t.Context(), "bot-custom-e2b"); err != nil {
+	if err := mgr2.ResetBot(t.Context(), "bot-custom-e2b"); err != nil {
 		t.Fatal(err)
 	}
 	if fake.Counts().Killed <= killsBeforeReset {
-		t.Fatalf("expected ResetAgent to delete custom keyless sandbox, counts=%+v", fake.Counts())
+		t.Fatalf("expected ResetBot to delete custom keyless sandbox, counts=%+v", fake.Counts())
 	}
 
 	h3, err := mgr2.Open(t.Context(), "bot-custom-e2b", "")
@@ -325,13 +325,13 @@ func TestUserConnectsCustomE2BEndpointsWithoutSecretAndWithoutAutoPause(t *testi
 		t.Fatal(err)
 	}
 	_ = h3.Close(t.Context())
-	agentRow, _ := q.GetAgent(t.Context(), "bot-custom-e2b")
+	botRow, _ := q.GetBot(t.Context(), "bot-custom-e2b")
 	killsBeforeCleanup := fake.Counts().Killed
-	if err := mgr2.ReleaseAgent(t.Context(), "bot-custom-e2b", envRow.ID, agentRow.RunnerSandboxID); err != nil {
+	if err := mgr2.ReleaseBot(t.Context(), "bot-custom-e2b", envRow.ID, botRow.RunnerSandboxID); err != nil {
 		t.Fatal(err)
 	}
 	if fake.Counts().Killed <= killsBeforeCleanup {
-		t.Fatalf("expected ReleaseAgent to delete custom keyless sandbox, counts=%+v", fake.Counts())
+		t.Fatalf("expected ReleaseBot to delete custom keyless sandbox, counts=%+v", fake.Counts())
 	}
 }
 

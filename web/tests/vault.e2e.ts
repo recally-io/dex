@@ -5,7 +5,7 @@ test("saves and deletes a write-only shared secret", async ({ app, browser, scre
   await app.open("/settings/secrets");
   const name = `VAULT_BROWSER_${Date.now()}`;
   const value = "vault-browser-fixture-value";
-  const endpoint = new URL("/api/agents/default/vault", await browser.url());
+  const endpoint = new URL("/api/bots/default/vault", await browser.url());
 
   try {
     await screen.getByLabel("Secret name").fill(name);

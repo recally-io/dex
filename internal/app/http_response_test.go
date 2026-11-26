@@ -13,7 +13,7 @@ func TestUserTimelineFailureDoesNotAppendJSON(t *testing.T) {
 	d, _, _, sessionID := startWithHeldDiscovery(t, false)
 
 	// When the event reader fails after its SSE headers have been sent.
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("%s/api/agents/default/sessions/%d/events", d.srv.URL, sessionID), nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, fmt.Sprintf("%s/api/bots/default/sessions/%d/events", d.srv.URL, sessionID), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,6 +32,6 @@ func TestUserTimelineFailureDoesNotAppendJSON(t *testing.T) {
 		t.Fatalf("failed timeline: HTTP %d, content type %q, body %q", resp.StatusCode, resp.Header.Get("Content-Type"), body)
 	}
 	// An error before the response starts still returns its normal JSON status.
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/999999/events", nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/999999/events", nil, nil, http.StatusNotFound)
 	t.Log("artifact: failed SSE ended without JSON; unknown timeline still returned HTTP 404")
 }

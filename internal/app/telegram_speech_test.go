@@ -19,7 +19,7 @@ func configureTelegramSpeech(t *testing.T, d *dex, endpoint string, stt map[stri
 	t.Helper()
 	d.must(t, http.MethodPut, "/api/settings/providers/speech", map[string]any{"api": "openai-completions", "baseUrl": endpoint + "/v1", "apiKey": "synthetic-local-key", "models": []string{"session-only"}}, nil)
 	options := map[string]any{"stt": stt}
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
 }
 
 func (f *fakeTelegram) voice() {
@@ -202,9 +202,9 @@ func TestUserMissingConfiguredTelegramSpeechProviderDoesNotChooseAnother(t *test
 	f.files["voice.ogg"] = "OggS\x00\x00OpusHeadsynthetic"
 	d := startTelegram(t, f, t.TempDir(), 42)
 	// Transcription requires consent to send audio.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"stt": map[string]any{"enabled": true, "provider": "private", "model": "transcriber"}}}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"stt": map[string]any{"enabled": true, "provider": "private", "model": "transcriber"}}}, nil, http.StatusBadRequest)
 	// An explicit model name is not proof that a provider exists or supports audio.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"stt": map[string]any{"enabled": true, "allowSending": true, "provider": "missing", "model": "explicit"}}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"stt": map[string]any{"enabled": true, "allowSending": true, "provider": "missing", "model": "explicit"}}}, nil)
 	f.voice()
 	if got := f.next(t).Text; !strings.Contains(got, "provider is not configured") || !strings.Contains(got, "voice.ogg") {
 		t.Fatalf("missing provider=%q", got)
@@ -234,7 +234,7 @@ printf synthetic-local-key
 	d := &dex{app: a, srv: httptest.NewServer(a.Handler())}
 	t.Cleanup(d.stop)
 	d.setModel(t, "echo")
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	d.must(t, http.MethodPut, "/api/settings/onepassword", map[string]any{"mode": "service-account", "serviceAccountToken": "synthetic-auth"}, nil)
 	boundary, calls := localSTT(t, "reference credential works")
 	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"})
@@ -285,7 +285,7 @@ func TestUserRevokedTelegramSpeechCannotAdmitItsStagedAudio(t *testing.T) {
 		t.Fatal("speech request did not start")
 	}
 	// When authorization is revoked, the runtime cancels the request and releases only its unadmitted upload.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{}}, nil)
 	conn := controlWriteDB(t, data)
 	eventually(t, "revoked staging released without native input", func() (bool, any) {
 		n := count(t, conn, "SELECT count(*) FROM telegram_effects WHERE kind='stt' AND state='discarded' AND input_json='{}'")
@@ -294,7 +294,7 @@ func TestUserRevokedTelegramSpeechCannotAdmitItsStagedAudio(t *testing.T) {
 		return n == 1 && uploads == 0 && inputs == 0, []int{n, uploads, inputs}
 	})
 	// Regranting the same actor does not revive the withdrawn update or send its audio again.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}}, nil)
 	f.message(2, 42, 42, "new authorized message")
 	if got := f.next(t).Text; !strings.Contains(got, "new authorized message") {
 		t.Fatalf("revoked update revived: %q", got)

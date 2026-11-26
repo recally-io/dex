@@ -25,11 +25,11 @@ func openTools(t *testing.T) (*Service, *sql.DB) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	for _, bot := range []string{"assignee", "reviewer", "other"} {
-		if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: bot, Name: bot, ThinkingLevel: "off"}); err != nil {
+		if _, err := sqlc.New(conn).CreateBot(ctx, sqlc.CreateBotParams{ID: bot, Name: bot, ThinkingLevel: "off"}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := conn.ExecContext(ctx, `INSERT INTO sessions (id, agent_id, channel_key, execution_id, created_at, parent_id) VALUES
+	if _, err := conn.ExecContext(ctx, `INSERT INTO sessions (id, bot_id, channel_key, execution_id, created_at, parent_id) VALUES
 		(1, 'assignee', 'main', 1, 1, NULL), (2, 'reviewer', 'main', 2, 1, NULL), (3, 'other', 'main', 3, 1, NULL),
 		(4, 'other', 'chat:child', 4, 1, 1), (5, 'assignee', 'chat:top', 5, 1, NULL), (6, 'reviewer', 'chat:top', 6, 1, NULL)`); err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func openTools(t *testing.T) (*Service, *sql.DB) {
 }
 
 func toolCall(bot string, conversation int64, source, key string) engine.TaskContext {
-	return engine.TaskContext{AgentID: bot, ConversationID: conversation, SourceRequestID: source, Key: bot + "/" + key}
+	return engine.TaskContext{BotID: bot, ConversationID: conversation, SourceRequestID: source, Key: bot + "/" + key}
 }
 
 func TestUserTaskToolsEnforceActorAndOrigin(t *testing.T) {

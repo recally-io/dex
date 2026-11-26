@@ -1,14 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  getAgentOptions,
+  getBotOptions,
   getSettingsOptions,
-  listAgentsQueryKey,
+  listBotsQueryKey,
   listRunnersOptions,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import type { Agent } from "../api/generated/types.gen";
-import { findModel, saveAgent, thinkingNames } from "../lib/agent";
+import type { Bot } from "../api/generated/types.gen";
+import { findModel, saveBot, thinkingNames } from "../lib/bot";
 import { useApp } from "../lib/app-state";
 import { runnerOptionLabel } from "../lib/runners";
 import { queryClient } from "../lib/queries";
@@ -43,13 +43,13 @@ export function GeneralSettingsPage() {
   const { notify } = useApp();
   const settings = useQuery(getSettingsOptions());
   // New bots copy these fields from the built-in default bot.
-  const template = useQuery(getAgentOptions({ path: { agentId: "default" } }));
+  const template = useQuery(getBotOptions({ path: { botId: "default" } }));
   const models = useQuery(listModelsOptions());
   const runners = useQuery(listRunnersOptions());
 
   const save = useMutation({
-    mutationFn: (patch: Partial<Agent>) => saveAgent("default", (saved) => ({ ...saved, ...patch })),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: listAgentsQueryKey() }),
+    mutationFn: (patch: Partial<Bot>) => saveBot("default", (saved) => ({ ...saved, ...patch })),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: listBotsQueryKey() }),
   });
 
   const defaults = template.data;
@@ -65,7 +65,7 @@ export function GeneralSettingsPage() {
 
   const missingEnv = Boolean(defaults?.runnerId && !runners.isPending && !runners.isError && !currentEnv);
 
-  async function updateDefaults(patch: Partial<Agent>, message: string) {
+  async function updateDefaults(patch: Partial<Bot>, message: string) {
     await save.mutateAsync(patch);
     notify(message);
   }

@@ -15,10 +15,10 @@ func TestUserPreviewsFeedbackInPairedPrivateChannelsWithoutModel(t *testing.T) {
 		t.Run(platform, func(t *testing.T) {
 			// Given a paired private channel and no configured model.
 			e := newMainEntry(t, platform)
-			var a apiAgent
-			e.d.must(t, http.MethodGet, "/api/agents/default", nil, &a)
+			var a apiBot
+			e.d.must(t, http.MethodGet, "/api/bots/default", nil, &a)
 			a.Provider, a.ModelID = "", ""
-			e.d.must(t, http.MethodPut, "/api/agents/default", a, nil)
+			e.d.must(t, http.MethodPut, "/api/bots/default", a, nil)
 			// When the user asks for feedback and supplies a title and description.
 			e.send("/feedback")
 			e.send("/feedback A *literal* title\nDescription <literal>\nSecond line")

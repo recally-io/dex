@@ -50,7 +50,7 @@ func TestMigrationKeepsChatsOnTheAgentSettings(t *testing.T) {
 	// Then the agent thinks "off", as before, the chat overrides nothing, and the message has no files
 	var level, provider2, model, chatLevel, attachments string
 	err = db.QueryRowContext(t.Context(), `SELECT a.thinking_level, c.model_provider, c.model_id, c.thinking_level, s.attachments
-		FROM agents a, sessions c, submissions s`).Scan(&level, &provider2, &model, &chatLevel, &attachments)
+		FROM bots a, sessions c, submissions s`).Scan(&level, &provider2, &model, &chatLevel, &attachments)
 	if err != nil {
 		t.Fatal(err)
 	}

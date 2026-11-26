@@ -48,7 +48,7 @@ func TestUserTelegramSettingsStopBeforeWrite(t *testing.T) {
 				if method == http.MethodPut {
 					body = map[string]any{"token": "", "allowedUsers": []int64{42}}
 				}
-				status, _ := d.call(t, method, "/api/agents/default/channels/telegram", body)
+				status, _ := d.call(t, method, "/api/bots/default/channels/telegram", body)
 				result <- status
 			}()
 			// Then the old bot is stopped before the database write can finish.
@@ -107,7 +107,7 @@ func TestUserTelegramContinuesAfterSettingsWriteFails(t *testing.T) {
 				body = map[string]any{"token": "", "allowedUsers": []int64{42}}
 			}
 			// When the settings operation fails.
-			status, _ := d.call(t, method, "/api/agents/default/channels/telegram", body)
+			status, _ := d.call(t, method, "/api/bots/default/channels/telegram", body)
 			if status < 400 {
 				t.Fatalf("settings status = %d", status)
 			}

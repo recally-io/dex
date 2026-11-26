@@ -39,7 +39,7 @@ type extensions struct {
 	Warnings []string     `json:"warnings"`
 }
 
-// dir returns the .agents directory of a level.
+// dir returns the .bots directory of a level.
 func (e extensions) dir(scope string) string {
 	for _, level := range e.Levels {
 		if level.Scope == scope {
@@ -72,7 +72,7 @@ func (e extensions) server(name string) serverInfo {
 func (d *dex) extensions(t *testing.T) extensions {
 	t.Helper()
 	var out extensions
-	d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &out)
+	d.must(t, http.MethodGet, "/api/bots/default/integrations", nil, &out)
 	return out
 }
 
@@ -83,7 +83,7 @@ func (d *dex) reload(t *testing.T) (int, string) {
 	var status int
 	var body string
 	eventually(t, "reload", func() (bool, any) {
-		status, body = d.call(t, http.MethodPost, "/api/agents/default/integrations/reload", nil)
+		status, body = d.call(t, http.MethodPost, "/api/bots/default/integrations/reload", nil)
 		return status != http.StatusConflict, body
 	})
 	return status, body
@@ -128,7 +128,7 @@ func httpServer(t *testing.T, dir string) map[string]any {
 	return map[string]any{"type": "http", "url": srv.URL + "/mcp"}
 }
 
-func seedMCP(t *testing.T, dataDir, agentID string, servers map[string]any) {
+func seedMCP(t *testing.T, dataDir, botID string, servers map[string]any) {
 	t.Helper()
 	conn, err := db.Open(t.Context(), filepath.Join(dataDir, "control.sqlite"))
 	if err != nil {
@@ -141,7 +141,7 @@ func seedMCP(t *testing.T, dataDir, agentID string, servers map[string]any) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := q.SetMCPServer(t.Context(), sqlc.SetMCPServerParams{AgentID: agentID, Name: name, Config: string(raw)}); err != nil {
+		if err := q.SetMCPServer(t.Context(), sqlc.SetMCPServerParams{BotID: botID, Name: name, Config: string(raw)}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -156,23 +156,23 @@ func readNotes(t *testing.T, dir string) string {
 	return string(b)
 }
 
-func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
+func TestUserBotSkillReplacesTheGlobalSkill(t *testing.T) {
 	t.Parallel()
-	// Given global skills review and notes, and agent skills review and broken
+	// Given global skills review and notes, and bot skills review and broken
 	dataDir, home := t.TempDir(), t.TempDir()
 	globalDir := filepath.Join(dataDir, ".agents", "skills")
-	agentDir := filepath.Join(dataDir, "agents", app.DefaultAgentID, ".agents", "skills")
+	botDir := filepath.Join(dataDir, "agents", app.DefaultBotID, ".agents", "skills")
 	writeSkill(t, globalDir, "review", "name: review\ndescription: Global review steps")
 	notes := writeSkill(t, globalDir, "notes", "description: Take notes")
-	review := writeSkill(t, agentDir, "review", "description: Agent review steps")
-	writeSkill(t, agentDir, "broken", "name: broken")
+	review := writeSkill(t, botDir, "review", "description: Bot review steps")
+	writeSkill(t, botDir, "broken", "name: broken")
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "section")
 
 	// When the user opens the extensions
 	got := d.extensions(t)
 
-	// Then the agent review replaces the global review, and broken shows its error
+	// Then the bot review replaces the global review, and broken shows its error
 	type row struct {
 		Name, Scope       string
 		Overrides, Broken bool
@@ -190,14 +190,14 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 		t.Fatalf("skills = %+v, levels = %+v", got.Skills, got.Levels)
 	}
 
-	// When the agent reads its skills section
+	// When the bot reads its skills section
 	sessionID := d.newSessionWithMessage(t, "skills")
 	w := d.watch(t, sessionID)
 
-	// Then it lists the agent review and notes with their files, and not the global review or broken
+	// Then it lists the bot review and notes with their files, and not the global review or broken
 	w.until(t, "answer", answeredWith("section: "))
 	answer := w.tr.items[len(w.tr.items)-1].Text
-	for _, s := range []string{"- notes: Take notes (" + notes + ")", "- review: Agent review steps (" + review + ")"} {
+	for _, s := range []string{"- notes: Take notes (" + notes + ")", "- review: Bot review steps (" + review + ")"} {
 		if !strings.Contains(answer, s) {
 			t.Fatalf("no %q in %q", s, answer)
 		}
@@ -206,35 +206,35 @@ func TestUserAgentSkillReplacesTheGlobalSkill(t *testing.T) {
 		t.Fatalf("answer = %q", answer)
 	}
 
-	// When the user changes the agent review, and the agent reads its skills again
-	writeSkill(t, agentDir, "review", "description: New review steps")
+	// When the user changes the bot review, and the bot reads its skills again
+	writeSkill(t, botDir, "review", "description: New review steps")
 	d.send(t, sessionID, "skills")
 
-	// Then the agent has the change without a reload
+	// Then the bot has the change without a reload
 	w.until(t, "second answer", answeredWith("- review: New review steps"))
 }
 
-func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
+func TestUserBotUsesMCPToolsFromBothScopes(t *testing.T) {
 	t.Parallel()
-	// Given dex servers files (stdio), web (HTTP), shared and old, and agent servers that
+	// Given dex servers files (stdio), web (HTTP), shared and old, and bot servers that
 	// replace shared, turn off old, and add one whose command does not exist
 	dataDir, home := t.TempDir(), t.TempDir()
-	filesDir, webDir, globalShared, agentShared := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	filesDir, webDir, globalShared, botShared := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
 	seedMCP(t, dataDir, "", map[string]any{
 		"files":  stdioServer(t, filesDir),
 		"web":    httpServer(t, webDir),
 		"shared": stdioServer(t, globalShared),
 		"old":    stdioServer(t, t.TempDir()),
 	})
-	seedMCP(t, dataDir, app.DefaultAgentID, map[string]any{
-		"shared":  stdioServer(t, agentShared),
+	seedMCP(t, dataDir, app.DefaultBotID, map[string]any{
+		"shared":  stdioServer(t, botShared),
 		"old":     map[string]any{"disabled": true},
 		"missing": map[string]any{"command": filepath.Join(home, "no-such-server")},
 	})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
 
-	// When the user opens the extensions before the agent starts
+	// When the user opens the extensions before the bot starts
 	got := d.extensions(t)
 
 	// Then the servers are idle
@@ -242,7 +242,7 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 		t.Fatalf("servers = %+v", got.Servers)
 	}
 
-	// When the agent calls a tool of each server
+	// When the bot calls a tool of each server
 	sessionID := d.newSessionWithMessage(t, `mcp__files__append {"text":"one"}`)
 	w := d.watch(t, sessionID)
 	w.until(t, "files answer", answered("tool: appended 1"))
@@ -254,11 +254,11 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 	d.send(t, sessionID, `mcp__files__fail {}`)
 	w.until(t, "error answer", answered("tool error: failed on purpose"))
 
-	// Then each call reached its server, and the agent server replaced the global one
-	if readNotes(t, filesDir) != "one\n" || readNotes(t, webDir) != "two\n" || readNotes(t, agentShared) != "three\n" ||
+	// Then each call reached its server, and the bot server replaced the global one
+	if readNotes(t, filesDir) != "one\n" || readNotes(t, webDir) != "two\n" || readNotes(t, botShared) != "three\n" ||
 		readNotes(t, globalShared) != "" {
-		t.Fatalf("notes: files %q, web %q, agent shared %q, global shared %q",
-			readNotes(t, filesDir), readNotes(t, webDir), readNotes(t, agentShared), readNotes(t, globalShared))
+		t.Fatalf("notes: files %q, web %q, bot shared %q, global shared %q",
+			readNotes(t, filesDir), readNotes(t, webDir), readNotes(t, botShared), readNotes(t, globalShared))
 	}
 	got = d.extensions(t)
 	tools := []string{"append", "fail", "read", "wait"}
@@ -276,11 +276,11 @@ func TestUserAgentUsesMCPToolsFromBothScopes(t *testing.T) {
 	}
 }
 
-func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
+func TestUserReloadsMCPServersWhenTheBotIsIdle(t *testing.T) {
 	t.Parallel()
-	// Given an agent with one MCP server that has answered
+	// Given a bot with one MCP server that has answered
 	dataDir, home, filesDir := t.TempDir(), t.TempDir(), t.TempDir()
-	seedMCP(t, dataDir, app.DefaultAgentID, map[string]any{"files": stdioServer(t, filesDir)})
+	seedMCP(t, dataDir, app.DefaultBotID, map[string]any{"files": stdioServer(t, filesDir)})
 	d := startDexHome(t, app.Config{DataDir: dataDir}, home)
 	d.setModel(t, "tool")
 	sessionID := d.newSessionWithMessage(t, `mcp__files__append {"text":"one"}`)
@@ -292,9 +292,9 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	eventually(t, "started call", func() (bool, any) {
 		return strings.Contains(readNotes(t, filesDir), "started slow"), readNotes(t, filesDir)
 	})
-	status, body := d.call(t, http.MethodPost, "/api/agents/default/integrations/reload", nil)
+	status, body := d.call(t, http.MethodPost, "/api/bots/default/integrations/reload", nil)
 
-	// Then dex refuses, because the agent is busy
+	// Then dex refuses, because the bot is busy
 	if status != http.StatusConflict {
 		t.Fatalf("reload while busy: %d %s", status, body)
 	}
@@ -306,7 +306,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 		status, body := d.call(t, http.MethodPost, "/api/maintenance", nil)
 		return status == http.StatusOK, body
 	})
-	status, body = d.call(t, http.MethodPost, "/api/agents/default/integrations/reload", nil)
+	status, body = d.call(t, http.MethodPost, "/api/bots/default/integrations/reload", nil)
 
 	// Then dex refuses, and the update keeps its lease until it releases it
 	if status != http.StatusConflict {
@@ -316,7 +316,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 
 	// When the user adds a server, then reloads
 	moreDir := t.TempDir()
-	seedMCP(t, dataDir, app.DefaultAgentID, map[string]any{"more": stdioServer(t, moreDir)})
+	seedMCP(t, dataDir, app.DefaultBotID, map[string]any{"more": stdioServer(t, moreDir)})
 	var got extensions
 	if status, body := d.reload(t); status != http.StatusOK || json.Unmarshal([]byte(body), &got) != nil {
 		t.Fatalf("reload: %d %s", status, body)
@@ -332,7 +332,7 @@ func TestUserReloadsMCPServersWhenTheAgentIsIdle(t *testing.T) {
 	w.until(t, "new server answer", answered("tool: appended 1"))
 
 	// When the tool environment is not valid, reload leaves the working connections intact.
-	envPath := filepath.Join(dataDir, "vault", "agent-"+app.DefaultAgentID+".age")
+	envPath := filepath.Join(dataDir, "vault", "agent-"+app.DefaultBotID+".age")
 	writeFile(t, envPath, `invalid line`)
 	status, body = d.reload(t)
 	if status != http.StatusBadRequest || !strings.Contains(body, "vault") {
@@ -361,7 +361,7 @@ func TestInterruptedMCPCallIsNotRepeatedAfterRestart(t *testing.T) {
 	d = startDexHome(t, app.Config{DataDir: dataDir}, home)
 	w := d.watch(t, sessionID)
 
-	// Then the agent gets an error for the call, and the server did not get it again
+	// Then the bot gets an error for the call, and the server did not get it again
 	w.until(t, "answer", answeredWith("tool error: "))
 	if notes := readNotes(t, filesDir); notes != "started crash\n" {
 		t.Fatalf("notes = %q", notes)

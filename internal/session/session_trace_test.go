@@ -67,7 +67,7 @@ func TestUserSessionDiagnosticsSeparateQueuedStartAndStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := executionRef(c)
-	watch, err := r.agents.Watch(t.Context(), ref)
+	watch, err := r.bots.Watch(t.Context(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestUserSessionDiagnosticsSeparateQueuedStartAndStop(t *testing.T) {
 	watch.Close()
 	deadline, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 	defer cancel()
-	if err := r.agents.StopTask(deadline, ref, target); !errors.Is(err, context.DeadlineExceeded) {
+	if err := r.bots.StopTask(deadline, ref, target); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expired stop: %v", err)
 	}
 	if err := r.service.Stop(t.Context(), "bot", id, &target); err != nil {
@@ -97,7 +97,7 @@ func TestUserSessionDiagnosticsSeparateQueuedStartAndStop(t *testing.T) {
 		t.Errorf("expected one native start per turn, without duplicates from tool rounds:\n%s", got)
 	}
 	// The native shell reports a typed timeout; do not infer it from tool output.
-	if err := r.q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: "tool", ThinkingLevel: "off"}); err != nil {
+	if err := r.q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: "tool", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "timeout-private-id", `bash {"command":"# timeout-canary\nexec sleep 5","timeout":0.1}`); err != nil {

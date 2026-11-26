@@ -1,9 +1,9 @@
 # Skills and Integrations
 
 This document describes how dex loads skills, MCP servers, vault secrets, and
-`AGENTS.md` for an agent, and how it reloads them.
+`AGENTS.md` for a bot, and how it reloads them.
 
-Skills come from two file levels: dex (`<data dir>/.agents/`) and agent
+Skills come from two file levels: dex (`<data dir>/.agents/`) and bot
 (`<data dir>/agents/<id>/.agents/`). dex does not read the user home for skills.
 Narrower levels win. Equal real paths are read once as the narrower level.
 The engine reads `AGENTS.md` only from the session's cwd on its
@@ -21,12 +21,12 @@ states the current execution directory.
 `GET /api/directories` lists visible host directories with the same path validation
 as project changes. It follows directory symlinks, marks Git repositories, sorts
 names without case, and returns at most 500 entries. It requires the same API
-authentication and never returns file contents. `GET /api/agents/{agentId}/projects`
+authentication and never returns file contents. `GET /api/bots/{botId}/projects`
 reads distinct session paths in activity order with one control query.
 It checks each path and returns up to eight existing directories.
 The Session picker uses these routes because a remote browser cannot select host paths.
 
-`PUT /api/agents/{agentId}/sessions/{sessionId}/project` changes the cwd for the
+`PUT /api/bots/{botId}/sessions/{sessionId}/project` changes the cwd for the
 next message. Main, separate Web sessions, and child sessions can set it. The API and `set_project`
 tool share one path validator: trim, expand `~` or `~/`, require an existing
 absolute directory, and clean the path. Empty clears the override.
@@ -45,7 +45,7 @@ hidden directories and `node_modules`. The front matter `name` wins over the
 directory name. A second skill with the same name in one level is a warning
 and does not block MCP Reload.
 
-The dex and agent stores are on the control host. Owner sessions use
+The dex and bot stores are on the control host. Owner sessions use
 `skill_list` and `skill_read` to inspect these stores. Use `skill_write`,
 `skill_edit`, and `skill_delete` to change them.
 Use a path such as `agent/deploy/run.sh`. Set `mode` to the octal string `0755`
@@ -87,15 +87,15 @@ recovers changes left by a crash. Git honors a skill's `.gitignore`; sync does n
 
 ## Tool environment and MCP
 
-Each agent has its own environment snapshot. Local tools and stdio MCP
+Each bot has its own environment snapshot. Local tools and stdio MCP
 start from the control host's login shell environment and configured
 1Password credentials. Tools on a remote Runner inherit its process
 environment and receive the configured 1Password credentials. A command or MCP declaration can
 add explicit environment variables. dex does not modify its process environment.
 Skill and MCP tool writes, vault writes, and 1Password settings changes
-request a reload. Runner settings changes request a reload for agents
+request a reload. Runner settings changes request a reload for bots
 that use the Runner. A machine reconnect requests a reload if the default
-machine was offline at cold open or the last reload could not open it. Each open agent reloads
+machine was offline at cold open or the last reload could not open it. Each open bot reloads
 when it is idle. If validation fails, dex keeps the current resources and
 does not try the same configuration again automatically.
 
@@ -104,7 +104,7 @@ the next reload from another change, after an explicit reload, or when dex
 restarts. dex does not poll for changes or watch these files.
 
 The [engine extension loader](../../internal/engine/extensions.go) connects
-servers before it resumes the agent Harness. This is a shared wait for all
+servers before it resumes the bot Harness. This is a shared wait for all
 Sessions of a Bot, including Sessions that use another Runner. MCP servers
 use control-host configuration and do not need a lease on the default Runner.
 The loader installs prompt sections for the extension guide and current skills.
@@ -116,10 +116,10 @@ tools to the next model call. It does not expand the session's permissions.
 ### Secret vault
 
 Use Settings → Secrets to set shared values. Use a bot's Secrets page to
-set values for that bot. An agent entry overrides a shared entry with the same
-name. `GET /api/agents/{agentId}/vault` returns names, scopes, and last change
+set values for that bot. A bot entry overrides a shared entry with the same
+name. `GET /api/bots/{botId}/vault` returns names, scopes, and last change
 times. `PUT` sets a value and `DELETE` removes it. Neither returns a value.
-The agent has only `secret_list`, which shows effective names and metadata.
+The bot has only `secret_list`, which shows effective names and metadata.
 
 `bash`, `process_start`, and `monitor_set` accept `vault:NAME`
 as an `env` value. A schedule stores the reference and resolves it when the
@@ -154,17 +154,17 @@ Store secrets in the vault. Put other values in shell rc files or in the
 The `mcp_servers` table in `control.sqlite` stores declarations at the Dex
 and Bot levels. A Bot declaration replaces a Dex declaration with the same
 name. Use `disabled: true`
-at the agent level to turn off a dex server for that agent. The database backup
+at the bot level to turn off a dex server for that bot. The database backup
 includes these declarations.
 
 All owner sessions can use `mcp_server_list`, `mcp_server_get`,
 `mcp_server_set`, and `mcp_server_remove` from any Runner.
 `mcp_server_set` replaces one declaration. A stdio server runs on the control
-host. Relative `cwd` values use the agent's control-host workspace.
+host. Relative `cwd` values use the bot's control-host workspace.
 `mcp_server_remove` deletes one level's declaration and can uncover a wider
 declaration. Writes apply after
-the current work ends and the affected agent reloads. A dex change marks all
-open agents for reload.
+the current work ends and the affected bot reloads. A dex change marks all
+open bots for reload.
 
 `mcp_server_get` hides plain `env` and `headers` values and the URL query.
 dex resolves `vault:NAME` and inline `${vault:NAME}` in `env` and `headers`
@@ -176,13 +176,13 @@ value, include `[hidden]` for that key in `mcp_server_set`. Do not paste
 literal secrets into a declaration. A snippet can enter the transcript.
 Plain values in declarations are stored as plain text.
 
-`GET /api/agents/{agentId}/integrations` reads file metadata and MCP status.
+`GET /api/bots/{botId}/integrations` reads file metadata and MCP status.
 For an open Harness, the request uses the default Runner's lease to inspect
 workspace skills. If the lease has not opened, this request can open it without
 blocking admission on other Runners. Bot Settings → Integrations shows
 loaded MCP server state and the current OAuth grant state. Reload is available
 from both Integrations and Skills.
-Before the agent opens, the API shows connection state `idle` for declarations
+Before the bot opens, the API shows connection state `idle` for declarations
 that are not disabled.
 
 ### MCP browser authorization
@@ -221,23 +221,23 @@ or URL cannot use the old grant. The server reads the current pre-registered
 secret from its vault entry at exchange and refresh. To preserve grants,
 back up the private vault files with the other vault files.
 
-A successful callback opens `/a/{agentId}/integrations` and marks the affected connections for idle reload. Dex refreshes an expired token when a refresh token is available.
+A successful callback opens `/b/{botId}/integrations` and marks the affected connections for idle reload. Dex refreshes an expired token when a refresh token is available.
 On HTTP 401, dex attempts at most one refresh and retry. If the grant no longer
 works, Integrations shows **Reauthorize**. Dex does not fall back to static headers.
 
 ### Reload
 
-`POST /api/agents/{agentId}/integrations/reload`
-validates the selected agent and requires idle execution of that agent only:
-no open, task, submission, settlement, or tool call of the agent can be in
-progress. Work of other agents does not block it. The idle check and
+`POST /api/bots/{botId}/integrations/reload`
+validates the selected bot and requires idle execution of that bot only:
+no open, task, submission, settlement, or tool call of the bot can be in
+progress. Work of other bots does not block it. The idle check and
 registration of the selected replacement are atomic. Reload does not hold the
-global maintenance pause. A shutdown or a restore still waits for all agents. After preflight succeeds, other
-agents can start work while the selected agent closes and opens its resources.
-If the selected agent has not opened, Reload opens it and reports the MCP
+global maintenance pause. A shutdown or a restore still waits for all bots. After preflight succeeds, other
+bots can start work while the selected bot closes and opens its resources.
+If the selected bot has not opened, Reload opens it and reports the MCP
 connection results. A failed preflight keeps its current resources.
 
-Each agent has its own resource lock. Concurrent calls for that agent wait with
+Each bot has its own resource lock. Concurrent calls for that bot wait with
 context cancellation. The global lock protects resource state; file access,
 MCP connection, and resource close run outside it. The engine tracks opens and
 reloads before resource work starts. Maintenance fails busy during an active

@@ -25,10 +25,10 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	// The bot uses a runner that is registered but not connected.
 	var machine apiRunner
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]string{"name": "Offline runner", "kind": "runner"}, &machine, http.StatusCreated)
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	var bot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 	bot.RunnerID = machine.ID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, &bot)
 	probeRunner := func() {
 		t.Helper()
 		var probe apiRunnerTestResult
@@ -39,7 +39,7 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	}
 	probeRunner()
 	secret := strings.Repeat("c", 40)
-	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret, "issueAgentId": "default"}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret, "issueBotId": "default"}, nil, http.StatusNoContent)
 	deliver := func(id, kind, body string) {
 		t.Helper()
 		mac := hmac.New(sha256.New, []byte(secret))
@@ -75,10 +75,10 @@ func TestUserTracksReviewsOnTheIssueTask(t *testing.T) {
 	}}
 
 	// When the owner binds the PR, it cannot also belong to a second Task.
-	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+task.Id+"/pull", binding, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/bots/default/tasks/"+task.Id+"/pull", binding, nil, http.StatusNoContent)
 	var other api.TaskSummary
 	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Other"}, &other, http.StatusCreated)
-	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+other.Id+"/pull", binding, nil, http.StatusConflict)
+	d.must(t, http.MethodPut, "/api/plugins/github/bots/default/tasks/"+other.Id+"/pull", binding, nil, http.StatusConflict)
 
 	checkWait := func(want bool) api.TaskDetail {
 		t.Helper()

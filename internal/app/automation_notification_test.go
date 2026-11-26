@@ -23,13 +23,13 @@ func TestUserAutomationDeliversToPairedWechatOwner(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"targets"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/notification-targets", nil, &targets)
+	d.must(t, http.MethodGet, "/api/bots/default/notification-targets", nil, &targets)
 	if len(targets.Targets) != 1 {
 		t.Fatalf("targets=%+v", targets)
 	}
 	body := map[string]any{"name": "WeChat check", "prompt": `automation_report {"outcome":"changed","summary":"wechat notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &routine, http.StatusCreated)
 	// When the routine settles, the owner receives the summary with its context.
 	run := d.runNow(t, routine["id"].(string))
 	settledRoutine(t, d, routine["id"].(string), run.ID)
@@ -51,13 +51,13 @@ func TestUserAutomationDeliversToPairedFeishuOwner(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"targets"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/notification-targets", nil, &targets)
+	d.must(t, http.MethodGet, "/api/bots/default/notification-targets", nil, &targets)
 	if len(targets.Targets) != 1 {
 		t.Fatalf("targets=%+v", targets)
 	}
 	body := map[string]any{"name": "Feishu check", "prompt": `automation_report {"outcome":"changed","summary":"feishu notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &routine, http.StatusCreated)
 	// When the routine settles, the platform receives its summary.
 	run := d.runNow(t, routine["id"].(string))
 	settledRoutine(t, d, routine["id"].(string), run.ID)
@@ -77,10 +77,10 @@ func TestUserAutomationNotificationRetriesAfterRestart(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"targets"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/notification-targets", nil, &targets)
+	d.must(t, http.MethodGet, "/api/bots/default/notification-targets", nil, &targets)
 	body := map[string]any{"name": "Retry", "prompt": `automation_report {"outcome":"changed","summary":"retry result"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &routine, http.StatusCreated)
 	run := d.runNow(t, routine["id"].(string))
 	settledRoutine(t, d, routine["id"].(string), run.ID)
 	select {
@@ -110,13 +110,13 @@ func TestUserAutomationDeliversToAuthorizedTelegramOwner(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"targets"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/notification-targets", nil, &targets)
+	d.must(t, http.MethodGet, "/api/bots/default/notification-targets", nil, &targets)
 	if len(targets.Targets) != 1 {
 		t.Fatalf("targets: %+v", targets)
 	}
 	body := map[string]any{"name": "Check", "prompt": `automation_report {"outcome":"changed","summary":"fixture notification"}`, "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "target", "targetId": targets.Targets[0].ID}}
 	var routine map[string]any
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &routine, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &routine, http.StatusCreated)
 	// When the routine finishes.
 	run := d.runNow(t, routine["id"].(string))
 	settledRoutine(t, d, routine["id"].(string), run.ID)
@@ -134,10 +134,10 @@ func TestUserCanSetAutomationNotificationRoute(t *testing.T) {
 	body := map[string]any{"name": "Check", "prompt": "check", "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true, "notification": map[string]any{"mode": "default"}}
 	// When the user saves it via the existing routine API.
 	var created map[string]any
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &created, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &created, http.StatusCreated)
 	// Then the selected route is returned and persists on read.
 	var fetched map[string]any
-	d.must(t, http.MethodGet, "/api/agents/default/automations/"+created["id"].(string), nil, &fetched)
+	d.must(t, http.MethodGet, "/api/bots/default/automations/"+created["id"].(string), nil, &fetched)
 	for _, v := range []map[string]any{created, fetched} {
 		notification, ok := v["notification"].(map[string]any)
 		if !ok || notification["mode"] != "default" {
@@ -147,12 +147,12 @@ func TestUserCanSetAutomationNotificationRoute(t *testing.T) {
 	// Older clients omit the field on update; they must not erase the route.
 	delete(body, "notification")
 	var updated map[string]any
-	d.must(t, http.MethodPut, "/api/agents/default/automations/"+created["id"].(string), body, &updated)
+	d.must(t, http.MethodPut, "/api/bots/default/automations/"+created["id"].(string), body, &updated)
 	if updated["notification"].(map[string]any)["mode"] != "default" {
 		t.Fatalf("omitted route changed: %+v", updated)
 	}
 	body["notification"] = map[string]any{"mode": "target", "targetId": "not-owned"}
-	if status, _ := d.call(t, http.MethodPut, "/api/agents/default/automations/"+created["id"].(string), body); status != http.StatusBadRequest {
+	if status, _ := d.call(t, http.MethodPut, "/api/bots/default/automations/"+created["id"].(string), body); status != http.StatusBadRequest {
 		t.Fatalf("unknown target accepted: %d", status)
 	}
 }

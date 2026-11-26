@@ -386,7 +386,7 @@ func TestUserTaskBoardDerivesBlockersAndMainQueuePosition(t *testing.T) {
 		if taskID != "" {
 			boardExec(t, conn, `INSERT INTO task_inputs (submission_id, task_id) VALUES (?, ?)`, id, taskID)
 		}
-		boardExec(t, conn, `INSERT INTO questions (id, agent_id, session_id, source_submission_id, tool_operation_key,
+		boardExec(t, conn, `INSERT INTO questions (id, bot_id, session_id, source_submission_id, tool_operation_key,
 			text, options_json, status, queued, created_at) VALUES (?, ?, ?, ?, ?, 'Proceed?', '[]', ?, ?, 1)`,
 			id, botID, sessionID, id, id, status, queued)
 	}
@@ -454,10 +454,10 @@ func openBoardTest(t *testing.T) (*sql.DB, *sqlc.Queries, *tasksvc.Service) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	boardExec(t, conn, `INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES
+	boardExec(t, conn, `INSERT INTO bots (id, name, model_provider, model_id, created_at) VALUES
 		('assignee', 'Assignee', 'faux', 'echo', 1), ('reviewer', 'Reviewer', 'faux', 'echo', 1),
 		('linked', 'Linked', 'faux', 'echo', 1), ('other', 'Other', 'faux', 'echo', 1)`)
-	boardExec(t, conn, `INSERT INTO sessions (id, agent_id, channel_key, created_at, parent_id) VALUES
+	boardExec(t, conn, `INSERT INTO sessions (id, bot_id, channel_key, created_at, parent_id) VALUES
 		(1, 'assignee', 'main', 1, NULL), (2, 'other', 'main', 1, NULL), (3, 'assignee', 'chat:child', 1, 1),
 		(4, 'linked', 'chat:linked', 1, 1), (5, 'linked', 'chat:other-child', 1, 2),
 		(6, 'assignee', 'chat:standalone', 1, NULL), (7, 'linked', 'main', 1, NULL),

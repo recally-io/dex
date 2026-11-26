@@ -81,7 +81,7 @@ func (s *Service) fireMonitor(ctx context.Context, id string) error {
 		_, err = monitorTarget(ctx, s.q, current)
 		return err
 	}
-	hash, terminal, checkErr := s.engine.MonitorCheck(checkCtx, engine.Ref{AgentID: row.AgentID, ID: target.ExecutionID.Int64}, target.Cwd, row.CheckCommand, env, verify)
+	hash, terminal, checkErr := s.engine.MonitorCheck(checkCtx, engine.Ref{BotID: row.BotID, ID: target.ExecutionID.Int64}, target.Cwd, row.CheckCommand, env, verify)
 
 	if ctx.Err() != nil {
 		// Leave the durable claim for startup to settle as interrupted. Never replay an

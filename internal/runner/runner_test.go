@@ -45,7 +45,7 @@ func newMachineFixture(t *testing.T) *machineFixture {
 	if _, err := q.CreateRunner(t.Context(), sqlc.CreateRunnerParams{ID: "laptop", Name: "Laptop", Kind: string(runner.KindRunner), Config: "{}", CreatedAt: now, UpdatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: "coder", Name: "Coder", ThinkingLevel: "off", RunnerID: "laptop", CreatedAt: now}); err != nil {
+	if _, err := q.CreateBot(t.Context(), sqlc.CreateBotParams{ID: "coder", Name: "Coder", ThinkingLevel: "off", RunnerID: "laptop", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	mgr := runner.NewManager(runner.ManagerConfig{DataDir: t.TempDir(), Queries: q})

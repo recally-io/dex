@@ -8,14 +8,14 @@ describe("chat", () => {
   beforeEach(async ({ app, browser }) => {
     await app.open("/");
     const baseUrl = new URL(await browser.url()).origin;
-    const res = await fetch(`${baseUrl}/api/agents/default`);
-    const agent = await res.json();
-    await fetch(`${baseUrl}/api/agents/default`, {
+    const res = await fetch(`${baseUrl}/api/bots/default`);
+    const bot = await res.json();
+    await fetch(`${baseUrl}/api/bots/default`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...agent, provider: "faux", modelId: "echo" }),
+      body: JSON.stringify({ ...bot, provider: "faux", modelId: "echo" }),
     });
-    await app.open("/a/default");
+    await app.open("/b/default");
   });
 
   test("sends a message and displays the assistant reply", async ({ screen }) => {
@@ -36,7 +36,7 @@ describe("chat", () => {
     screen,
     browser,
   }) => {
-    const base = new URL(await browser.url()).origin + "/api/agents/default/sessions";
+    const base = new URL(await browser.url()).origin + "/api/bots/default/sessions";
     const created = await fetch(base, { method: "POST" });
 
     expect(created.status).toBe(201);
@@ -58,7 +58,7 @@ describe("chat", () => {
 
     expect(environment.ok).toBe(true);
 
-    const path = `/a/default/s/${id}`;
+    const path = `/b/default/s/${id}`;
     await app.open(path);
     await screen.getByRole("textbox", "Message Dex").fill(
       JSON.stringify({
@@ -74,7 +74,7 @@ describe("chat", () => {
     await expect(notice.getByText("Reviewed child conclusion", { exact: true })).toBeVisible();
     await expect(notice.getByText("Raw child data")).toHaveCount(0);
 
-    await app.open("/a/default");
+    await app.open("/b/default");
     await expect(notice).toHaveCount(0);
     await app.open(path);
     await expect(notice.getByText("Reviewed child conclusion", { exact: true })).toBeVisible();
@@ -83,17 +83,17 @@ describe("chat", () => {
 
   test("sends from idle Main while its child is working", async ({ app, screen, browser }) => {
     const baseUrl = new URL(await browser.url()).origin;
-    const settings = `${baseUrl}/api/agents/default`;
-    const agent = await (await fetch(settings)).json();
+    const settings = `${baseUrl}/api/bots/default`;
+    const bot = await (await fetch(settings)).json();
 
     const updated = await fetch(settings, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...agent, provider: "faux", modelId: "tool" }),
+      body: JSON.stringify({ ...bot, provider: "faux", modelId: "tool" }),
     });
 
     expect(updated.ok).toBe(true);
-    await app.open("/a/default");
+    await app.open("/b/default");
 
     // Given Main started a child that waits for a local gate, and Main finished its turn.
     const dir = await mkdtemp(join(tmpdir(), "dex-main-e2e-"));
@@ -112,7 +112,7 @@ describe("chat", () => {
       await send.tap();
       await childReply.waitFor();
       await screen.getByRole("link", "Dex, Working").waitFor();
-      await app.open("/a/default");
+      await app.open("/b/default");
       await childReply.waitFor();
       await screen.getByRole("link", "Dex, Working").waitFor();
 
@@ -150,7 +150,7 @@ describe("chat", () => {
       const { sessions } = await (await fetch(`${settings}/sessions`)).json();
       const child = sessions.find((session: { title: string }) => session.title === title);
       expect(child?.busy).toBe(true);
-      await app.open(`/a/default/s/${child.id}`);
+      await app.open(`/b/default/s/${child.id}`);
       await stop.tap();
       await screen.getByText(/^Stop requested/).waitFor();
       await expect(stop).not.toBeVisible();
@@ -161,14 +161,14 @@ describe("chat", () => {
 
   test("shows and cancels a session monitor", async ({ app, screen, browser }) => {
     const baseUrl = new URL(await browser.url()).origin;
-    const settings = `${baseUrl}/api/agents/default`;
-    const agent = await (await fetch(settings)).json();
+    const settings = `${baseUrl}/api/bots/default`;
+    const bot = await (await fetch(settings)).json();
     await fetch(settings, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...agent, provider: "faux", modelId: "tool" }),
+      body: JSON.stringify({ ...bot, provider: "faux", modelId: "tool" }),
     });
-    await app.open("/a/default");
+    await app.open("/b/default");
     const prompt = `Synthetic monitor ${Date.now()}`;
     await screen
       .getByRole("textbox", "Message Dex")

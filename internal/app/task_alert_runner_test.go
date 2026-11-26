@@ -42,12 +42,12 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	if err != nil || paired.StatusCode != http.StatusOK || enrolled.Token == "" {
 		t.Fatalf("pairing: %d, %v", paired.StatusCode, err)
 	}
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	var bot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 	bot.RunnerID = machine.ID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, nil)
 	secret := strings.Repeat("r", 40)
-	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret, "issueAgentId": "default"}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret, "issueBotId": "default"}, nil, http.StatusNoContent)
 	issue := `{"action":"opened","repository":{"id":10},"issue":{"id":17,"number":1,"user":{"login":"maintainer"},"author_association":"MEMBER","title":"Fix login","html_url":"https://github.com/o/r/issues/1","created_at":"2026-11-21T02:00:00Z"}}`
 
 	// When an Issue opens a Task while the runner is away, and the controller restarts.
@@ -86,7 +86,7 @@ func TestUserMainRunsAPendingTaskAlertOnceWhenTheRunnerReturns(t *testing.T) {
 	// Then Main settles the saved alert. Open the transcript after settlement so
 	// this test does not depend on live events during the cold start.
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	conn := sessionDB(t, d)
 	var alertID string
 	if err := conn.QueryRowContext(t.Context(), `SELECT s.id FROM submissions s JOIN task_inputs i ON i.submission_id = s.id WHERE s.kind = 'task_wake'`).Scan(&alertID); err != nil {

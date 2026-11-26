@@ -15,7 +15,7 @@ import { ChannelPage, BotIntegrationsPage } from "./channels";
 import { FeishuChannel } from "./feishu";
 import type { ChannelId } from "../components/channel-kit";
 
-const path = { path: { agentId: "default" } };
+const path = { path: { botId: "default" } };
 
 const connected: Channels = {
   telegram: { enabled: true, botId: "123456", allowedUsers: [42], status: { state: "running" } },

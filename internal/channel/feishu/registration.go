@@ -67,7 +67,7 @@ func (r Registrar) post(ctx context.Context, brand string, form url.Values) (Reg
 
 // Begin requests only private messages and resource access.
 func (r Registrar) Begin(ctx context.Context, brand string) (Registration, error) {
-	data, err := r.post(ctx, brand, url.Values{"action": {"begin"}, "archetype": {"PersonalAgent"}, "auth_method": {"client_secret"}, "request_user_info": {"open_id tenant_brand"}})
+	data, err := r.post(ctx, brand, url.Values{"action": {"begin"}, "archetype": {"PersonalBot"}, "auth_method": {"client_secret"}, "request_user_info": {"open_id tenant_brand"}})
 	if err != nil {
 		return data, err
 	}

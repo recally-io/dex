@@ -49,14 +49,14 @@ type Store struct {
 
 func New(dataDir string) *Store { return &Store{dir: filepath.Join(dataDir, "vault")} }
 
-func (s *Store) Paths(agentID string) []string {
-	return []string{filepath.Join(s.dir, "dex.age"), filepath.Join(s.dir, "agent-"+agentID+".age")}
+func (s *Store) Paths(botID string) []string {
+	return []string{filepath.Join(s.dir, "dex.age"), filepath.Join(s.dir, "agent-"+botID+".age")}
 }
 
-func (s *Store) Load(agentID string) (Snapshot, error) {
+func (s *Store) Load(botID string) (Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	paths := s.Paths(agentID)
+	paths := s.Paths(botID)
 	wide, err := s.read(paths[0])
 	if err != nil {
 		return Snapshot{}, err
@@ -68,13 +68,13 @@ func (s *Store) Load(agentID string) (Snapshot, error) {
 	return snapshot(wide, narrow), nil
 }
 
-func (s *Store) Edit(agentID, scope, name string, value *string) error {
+func (s *Store) Edit(botID, scope, name string, value *string) error {
 	if !namePattern.MatchString(name) || (scope != "dex" && scope != "agent") || (value != nil && strings.ContainsRune(*value, 0)) {
 		return ErrInvalid
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	paths := s.Paths(agentID)
+	paths := s.Paths(botID)
 	path := paths[0]
 	if scope == "agent" {
 		path = paths[1]
@@ -131,13 +131,13 @@ func (s *Store) mcpPath(key [32]byte) string {
 	return filepath.Join(s.dir, "mcp-"+hex.EncodeToString(key[:])+".age")
 }
 
-// Exact reads a secret at one level. Agent entries cannot change shared clients.
-func (s *Store) Exact(agentID, name string) (string, error) {
+// Exact reads a secret at one level. Bot entries cannot change shared clients.
+func (s *Store) Exact(botID, name string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	path := s.Paths(agentID)[0]
-	if agentID != "" {
-		path = s.Paths(agentID)[1]
+	path := s.Paths(botID)[0]
+	if botID != "" {
+		path = s.Paths(botID)[1]
 	}
 	entries, err := s.read(path)
 	if err != nil {
@@ -295,7 +295,7 @@ func (s Snapshot) List() []Metadata {
 	return slices.Clone(s.list)
 }
 
-// All lists both levels, including values that the agent level overrides.
+// All lists both levels, including values that the bot level overrides.
 func (s Snapshot) All() []Metadata { return slices.Clone(s.all) }
 
 func (s Snapshot) HasMask() bool { return s.mask != nil }

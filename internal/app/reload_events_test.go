@@ -21,12 +21,12 @@ type observedStamps struct {
 	checked chan struct{}
 }
 
-func (p *observedStamps) Stamp(ctx context.Context, agentID, envID string) (string, error) {
+func (p *observedStamps) Stamp(ctx context.Context, botID, envID string) (string, error) {
 	select {
 	case p.checked <- struct{}{}:
 	default:
 	}
-	return p.Provider.Stamp(ctx, agentID, envID)
+	return p.Provider.Stamp(ctx, botID, envID)
 }
 
 func TestUserIdleBotDoesNotCheckExtensionStampsPeriodically(t *testing.T) {
@@ -55,13 +55,13 @@ func TestUserIdleBotDoesNotCheckExtensionStampsPeriodically(t *testing.T) {
 func TestUserRunnerEditReloadsOnlyItsIdleBot(t *testing.T) {
 	t.Parallel()
 	data, files := t.TempDir(), t.TempDir()
-	seedMCP(t, data, app.DefaultAgentID, map[string]any{"files": stdioServer(t, files)})
+	seedMCP(t, data, app.DefaultBotID, map[string]any{"files": stdioServer(t, files)})
 	d := startDexWith(t, app.Config{DataDir: data})
 	m := enrollMachine(t, d)
 	m.connect(d)
 	useMachine(t, d, m, "tool")
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Local", "provider": "faux", "modelId": "echo", "runnerId": ""}, &other, http.StatusCreated)
+	var other apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Local", "provider": "faux", "modelId": "echo", "runnerId": ""}, &other, http.StatusCreated)
 	otherSession := (&bots{t: t, d: d}).echoSession(other.ID, "before the edit")
 	otherWatch := otherSession.watch()
 
@@ -74,7 +74,7 @@ func TestUserRunnerEditReloadsOnlyItsIdleBot(t *testing.T) {
 	})
 	d.must(t, http.MethodPut, "/api/settings/runners/"+m.envID, map[string]string{"name": "New machine name", "kind": "runner"}, nil)
 	var pending apiExtensionsPending
-	d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &pending)
+	d.must(t, http.MethodGet, "/api/bots/default/integrations", nil, &pending)
 	if !pending.ReloadPending {
 		t.Fatal("the environment edit did not request a reload")
 	}
@@ -145,7 +145,7 @@ func TestUserKeepsWorkingIntegrationsUntilRefusedConfigChanges(t *testing.T) {
 	d.setModel(t, "tool")
 	session := d.newSession(t).ID
 	if got := taskTool(t, d, session, "mcp_server_list", map[string]string{}); got != "tool: []" {
-		t.Fatalf("open agent: %q", got)
+		t.Fatalf("open bot: %q", got)
 	}
 	writeSkill := func(content string) {
 		t.Helper()

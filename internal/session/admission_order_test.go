@@ -19,7 +19,7 @@ import (
 
 type nativeTest struct {
 	service *Service
-	agents  *engine.Agents
+	bots    *engine.Bots
 	conn    *sql.DB
 	q       *sqlc.Queries
 	dir     string
@@ -38,10 +38,10 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provide
 		t.Fatal(err)
 	}
 	q := sqlc.New(conn)
-	if err = q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "bot", Name: "Bot"}); err != nil {
+	if err = q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "bot", Name: "Bot"}); err != nil {
 		t.Fatal(err)
 	}
-	if err = q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: model, ThinkingLevel: "off"}); err != nil {
+	if err = q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: model, ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	var service *Service
@@ -52,8 +52,8 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provide
 	report := func(ctx context.Context, c engine.TaskContext, a ReportParentArgs) (string, error) {
 		return service.ToolReportParent(ctx, c, a)
 	}
-	agents, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, FakeInputSuffix: BoundRoutineCheckSuffix, ExecEnv: provider, SessionRunner: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionRunner(ctx, ref) }, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
-		id := rt.AgentID
+	bots, err := engine.New(engine.Config{DataDir: dir, MCPServers: engine.NewMCPStore(conn), Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, FakeInputSuffix: BoundRoutineCheckSuffix, ExecEnv: provider, SessionRunner: func(ctx context.Context, ref engine.Ref) (string, error) { return service.SessionRunner(ctx, ref) }, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
+		id := rt.BotID
 		handlers := Handlers{Sessions: Tools{
 			New: service.ToolSessionNew, Send: service.ToolSessionSend, Stop: service.ToolSessionStop, List: service.ToolSessionList,
 		}}
@@ -77,13 +77,13 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provide
 	if err != nil {
 		t.Fatal(err)
 	}
-	service = New(conn, agents, time.Now, nil, nil)
+	service = New(conn, bots, time.Now, nil, nil)
 	closeTest := sync.OnceFunc(func() {
 		service.cancel()
 		service.wg.Wait()
 		closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := agents.Close(closeCtx); err != nil {
+		if err := bots.Close(closeCtx); err != nil {
 			t.Error(err)
 		}
 		if err := conn.Close(); err != nil {
@@ -91,7 +91,7 @@ func openNativeTest(t *testing.T, dir, model string, wrap ...func(runner.Provide
 		}
 	})
 	t.Cleanup(closeTest)
-	return &nativeTest{service, agents, conn, q, dir, closeTest}
+	return &nativeTest{service, bots, conn, q, dir, closeTest}
 }
 
 func waitFor(t *testing.T, check func() bool) {
@@ -303,20 +303,20 @@ func TestUserCancellationFailureDoesNotBlockOtherSessions(t *testing.T) {
 	if err = r.service.CancelSession(t.Context(), "bot", id); err == nil {
 		t.Fatal("expected cancellation acknowledgement failure")
 	}
-	// When users send to another conversation and another agent, both can run.
-	if err = r.q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "other", Name: "Other"}); err != nil {
+	// When users send to another conversation and another bot, both can run.
+	if err = r.q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "other", Name: "Other"}); err != nil {
 		t.Fatal(err)
 	}
-	if err = r.q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "other", Name: "Other", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
+	if err = r.q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "other", Name: "Other", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, agent := range []string{"bot", "other"} {
-		request := "healthy-" + agent
-		if _, err = r.service.Post(t.Context(), agent, "chat:healthy", "", request, "healthy"); err != nil {
-			t.Errorf("unrelated cancellation rejected %s: %v", agent, err)
+	for _, bot := range []string{"bot", "other"} {
+		request := "healthy-" + bot
+		if _, err = r.service.Post(t.Context(), bot, "chat:healthy", "", request, "healthy"); err != nil {
+			t.Errorf("unrelated cancellation rejected %s: %v", bot, err)
 		}
 		if !receipt(t, r, request).AdmittedAt.Valid {
-			t.Fatalf("unrelated cancellation blocked %s", agent)
+			t.Fatalf("unrelated cancellation blocked %s", bot)
 		}
 		if sub := awaitReceipt(t, r, request); sub.Answer.String != "echo: healthy" {
 			t.Fatalf("healthy answer: %+v", sub)

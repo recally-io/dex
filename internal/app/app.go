@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/background"
+	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/channel"
 	"github.com/recally-io/dex/internal/channel/delivery"
 	"github.com/recally-io/dex/internal/channel/feishu"
@@ -41,8 +41,8 @@ import (
 	"github.com/recally-io/dex/internal/vault"
 )
 
-// DefaultAgentID is the agent that the web UI talks to.
-const DefaultAgentID = "default"
+// DefaultBotID is the bot that the web UI talks to.
+const DefaultBotID = "default"
 
 // Config configures an App.
 type Config struct {
@@ -97,7 +97,7 @@ type Config struct {
 // App is a running control process.
 type App struct {
 	db         *sql.DB
-	engine     *engine.Agents
+	engine     *engine.Bots
 	envs       *runner.Manager
 	sysops     *sysops.Manager
 	handler    http.Handler
@@ -118,8 +118,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	q := sqlc.New(conn)
-	err = q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{
-		ID: DefaultAgentID, Name: "Dex", CreatedAt: time.Now().UnixMilli(),
+	err = q.CreateBotIfMissing(ctx, sqlc.CreateBotIfMissingParams{
+		ID: DefaultBotID, Name: "Dex", CreatedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {
 		return nil, errors.Join(err, conn.Close())
@@ -128,13 +128,13 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	var (
-		artifacts     *artifact.Service
-		sessions      *session.Service
-		routineTools  *automation.ToolService
-		prefs         *settings.Service
-		agentsService *agent.Service
-		hub           *live.Hub
-		bots          *channelRegistry
+		artifacts    *artifact.Service
+		sessions     *session.Service
+		routineTools *automation.ToolService
+		prefs        *settings.Service
+		botsService  *bot.Service
+		hub          *live.Hub
+		bots         *channelRegistry
 	)
 	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { sessions.WakeSession(id) })
 	// A previous run owned the processes of running commands. This must precede any new command.
@@ -158,8 +158,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	// These tools bind to services that exist only after the engine.
-	botTools := &agent.BotTools{}
-	var channelTools agent.ChannelTools
+	botTools := &bot.Tools{}
+	var channelTools bot.ChannelTools
 	taskToolService := tasktools.New(conn)
 	taskToolService.ConfigureTasks(tasks)
 	taskTools := taskToolService.Handlers(pluginTools(plugins))
@@ -168,12 +168,12 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		if err != nil {
 			return result, err
 		}
-		_, file, err := artifacts.Open(caller.AgentID, result.Name)
+		_, file, err := artifacts.Open(caller.BotID, result.Name)
 		if err != nil {
 			return result, err
 		}
 		defer file.Close()
-		queued, err := bots.Agent(caller.AgentID).QueueFile(ctx, caller, result.Name, file)
+		queued, err := bots.Bot(caller.BotID).QueueFile(ctx, caller, result.Name, file)
 		if queued {
 			result.ChannelDelivery = "queued"
 		}
@@ -204,7 +204,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		FakeModel:       cfg.FakeModel,
 		FakeInputSuffix: session.BoundRoutineCheckSuffix,
 		Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
-			id := rt.AgentID
+			id := rt.BotID
 			sessionHandlers := session.Handlers{
 				SetProject: sessions.ToolSetProject,
 				Sessions: session.Tools{
@@ -212,16 +212,16 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 					Fork: sessions.ToolSessionFork, List: sessions.ToolSessionList, Read: sessions.ToolSessionRead, Search: sessions.ToolSessionSearch,
 				},
 				Runners: func(ctx context.Context, c engine.TaskContext) ([]engine.RunnerInfo, error) {
-					return prefs.SessionRunners(ctx, c.AgentID)
+					return prefs.SessionRunners(ctx, c.BotID)
 				},
 			}
 			outbox := session.OutboxTools{NotifyUser: sessions.ToolNotifyUser, ReportParent: sessions.ToolReportParent, RecentOutbox: sessions.ToolRecentOutbox}
 			botHandlers := botTools.Handlers()
 			optional := []*engine.Extension{
 				session.FrontDeskExtension(), session.OutboxExtension(id, outbox), session.ChildOutboxExtension(id, outbox),
-				session.AskUserExtension(id, sessions.ToolAskUser), agent.BotReadExtension(id, botHandlers), agent.BotManageExtension(id, botHandlers),
+				session.AskUserExtension(id, sessions.ToolAskUser), bot.ReadExtension(id, botHandlers), bot.ManageExtension(id, botHandlers),
 			}
-			optional = append(optional, agent.ChannelExtensions(id, agent.ChannelTools{
+			optional = append(optional, bot.ChannelExtensions(id, bot.ChannelTools{
 				Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
 					return channelTools.Read(ctx, c, view, bot)
 				},
@@ -255,9 +255,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 		},
 		InputExtensions:   inputExtensions,
-		HideToolArguments: agent.IsChannelTool,
-		FallbackModel: func(ctx context.Context, agentID string) engine.ModelRef {
-			row, err := q.GetAgent(ctx, agentID)
+		HideToolArguments: bot.IsChannelTool,
+		FallbackModel: func(ctx context.Context, botID string) engine.ModelRef {
+			row, err := q.GetBot(ctx, botID)
 			if err != nil {
 				return engine.ModelRef{}
 			}
@@ -289,10 +289,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	automations.ConfigureRunnerStatus(envs.Status)
 	// Check admits due Automations one at a time. An offline SSH host can delay
 	// the others by this timeout. Probe in parallel if many Automations use SSH.
-	automations.ConfigureProbe(func(ctx context.Context, agentID, runnerID string) error {
+	automations.ConfigureProbe(func(ctx context.Context, botID, runnerID string) error {
 		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		defer cancel()
-		h, err := envs.Open(ctx, agentID, runnerID)
+		h, err := envs.Open(ctx, botID, runnerID)
 		if err != nil {
 			return err
 		}
@@ -309,9 +309,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			err = errors.Join(err, a.Close())
 		}
 	}()
-	setTelegram := func(agentID string, config *telegram.Config) {
-		manager := bots.Agent(agentID)
-		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
+	setTelegram := func(botID string, config *telegram.Config) {
+		manager := bots.Bot(botID)
+		uploads := upload.New(bot.Home(cfg.DataDir, botID))
 		if config == nil {
 			manager.Set("telegram", nil) //nolint:contextcheck // Manager owns the app lifetime, not the settings request.
 			if err := manager.CleanupTelegramAlbums(runCtx, uploads); err != nil {
@@ -334,59 +334,59 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err != nil {
 		return nil, err
 	}
-	agentsService = agent.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
-	if err := agentsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
+	botsService = bot.New(q, prefs.CheckModel, cfg.TelegramAPIURL, setTelegram)
+	if err := botsService.ConfigureTelegramVault(ctx, vault.New(cfg.DataDir)); err != nil {
 		slog.Warn("telegram: could not open the manager credential")
 	}
-	agentsService.OnRunnerChanged = func(changeCtx context.Context, agentID, oldEnvID, oldSandboxID string) {
-		_ = native.CloseAgent(changeCtx, agentID)
-		if err := envs.ReleaseAgent(changeCtx, agentID, oldEnvID, oldSandboxID); err != nil {
-			slog.Warn("release the earlier Runner of a bot", "agent", agentID, "err", err)
+	botsService.OnRunnerChanged = func(changeCtx context.Context, botID, oldEnvID, oldSandboxID string) {
+		_ = native.CloseBot(changeCtx, botID)
+		if err := envs.ReleaseBot(changeCtx, botID, oldEnvID, oldSandboxID); err != nil {
+			slog.Warn("release the earlier Runner of a bot", "agent", botID, "err", err)
 		}
 	}
-	*botTools = agent.BotTools{Agents: agentsService, Sessions: sessions, Extensions: native.Extensions}
-	channelTools = agentsService.ChannelToolHandlers(sessions)
+	*botTools = bot.Tools{Bots: botsService, Sessions: sessions, Extensions: native.Extensions}
+	channelTools = botsService.ChannelToolHandlers(sessions)
 	// An approved archive commits in a session receipt; the channels stop right after it.
 	sessions.OnBotArchived = func(id string) {
-		if err := bg.StopAgent(runCtx, id); err != nil {
+		if err := bg.StopBot(runCtx, id); err != nil {
 			slog.Error("stop background commands of an archived bot", "agent", id, "err", err)
 		}
-		if err := native.CloseAgent(runCtx, id); err != nil && !errors.Is(err, engine.ErrBusy) {
+		if err := native.CloseBot(runCtx, id); err != nil && !errors.Is(err, engine.ErrBusy) {
 			slog.Warn("close runtime resources of an archived bot", "agent", id, "err", err)
 		}
-		if err := envs.ResetAgent(runCtx, id); err != nil {
+		if err := envs.ResetBot(runCtx, id); err != nil {
 			slog.Warn("cleanup sandbox of an archived bot", "agent", id, "err", err)
 		}
-		if err := agentsService.StopChannels(runCtx, id); err != nil {
+		if err := botsService.StopChannels(runCtx, id); err != nil {
 			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
 		}
 	}
 	sessions.ConfigureSessions(prefs.CheckSession)
-	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
-		manager := bots.Agent(agentID)
-		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
+	setFeishu := func(botID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
+		manager := bots.Bot(botID)
+		uploads := upload.New(bot.Home(cfg.DataDir, botID))
 		if config == nil {
 			manager.Set("feishu", nil)
 			return
 		}
 		manager.Set("feishu", feishu.New(*config, manager, uploads, func(ctx context.Context, owner, code string) (bool, error) {
-			return agentsService.PairFeishu(ctx, agentID, owner, code)
+			return botsService.PairFeishu(ctx, botID, owner, code)
 		}))
 	}
-	agentsService.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
-	agentsService.ChannelStatus = bots.Status
+	botsService.ConfigureFeishu(cfg.FeishuAPIURL, cfg.FeishuAccountsURL, setFeishu)
+	botsService.ChannelStatus = bots.Status
 	wxOptions := wechat.Options{APIURL: cfg.WechatAPIURL, CDNURL: cfg.WechatCDNURL, HTTPClient: cfg.WechatHTTPClient, Version: cfg.Version}
-	setWechat := func(agentID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
-		manager := bots.Agent(agentID)
-		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
+	setWechat := func(botID string, config *wechat.Config) { //nolint:contextcheck // bot lifetime belongs to the manager
+		manager := bots.Bot(botID)
+		uploads := upload.New(bot.Home(cfg.DataDir, botID))
 		if config == nil {
 			manager.Set("wechat", nil)
 			return
 		}
 		manager.Set("wechat", wechat.New(*config, wxOptions, q, manager, uploads))
 	}
-	agentsService.ConfigureWechat(wxOptions, conn, setWechat)
-	agents, err := q.ListAgents(ctx)
+	botsService.ConfigureWechat(wxOptions, conn, setWechat)
+	activeBots, err := q.ListBots(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +422,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	a.sysops = sys
 
 	forRunnerBots := func(ctx context.Context, id string, fn func(string)) {
-		bots, err := q.ListActiveAgentsByRunner(ctx, id)
+		bots, err := q.ListActiveBotsByRunner(ctx, id)
 		if err != nil {
 			if ctx.Err() == nil {
 				slog.Warn("find bots that use the Runner", "runner", id, "err", err)
@@ -435,7 +435,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	// Restore the default even when no input is waiting for the machine.
 	envs.Runners().OnOnline(func(id string) {
-		forRunnerBots(runCtx, id, func(agentID string) { native.MarkRestorable(runCtx, agentID) })
+		forRunnerBots(runCtx, id, func(botID string) { native.MarkRestorable(runCtx, botID) })
 		sessions.RetryNow()
 	})
 	a.handler = server.New(server.Config{
@@ -446,15 +446,15 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Engine: native,
 		Envs:   envs,
 		RunnerChanged: func(ctx context.Context, id string) {
-			forRunnerBots(context.WithoutCancel(ctx), id, func(agentID string) {
-				native.MarkStale(agentID, "Runner settings")
+			forRunnerBots(context.WithoutCancel(ctx), id, func(botID string) {
+				native.MarkStale(botID, "Runner settings")
 			})
 			native.MarkRunnerChanged(id)
 		},
 		Runners:     envs.Runners(),
 		System:      sys,
 		ReleaseBase: cfg.ReleaseBase,
-		Sessions:    sessions, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		Sessions:    sessions, Automations: automations, Settings: prefs, Bots: botsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { sessions.Run(runCtx) })
 	a.wg.Go(func() { tasks.RunLeaseWatchdog(runCtx) })
@@ -496,25 +496,25 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 		}
 	}
-	if err := jobs.Every("telegram-manager", time.Second, agentsService.TelegramManagerPoll()); err != nil {
+	if err := jobs.Every("telegram-manager", time.Second, botsService.TelegramManagerPoll()); err != nil {
 		return nil, err
 	}
-	for _, agent := range agents {
-		tg, err := agentsService.TelegramConfig(ctx, agent.ID)
+	for _, bot := range activeBots {
+		tg, err := botsService.TelegramConfig(ctx, bot.ID)
 		if err != nil {
 			return nil, err
 		}
-		wx, err := agentsService.WechatConfig(ctx, agent.ID)
+		wx, err := botsService.WechatConfig(ctx, bot.ID)
 		if err != nil {
 			return nil, err
 		}
-		fs, err := agentsService.FeishuConfig(ctx, agent.ID)
+		fs, err := botsService.FeishuConfig(ctx, bot.ID)
 		if err != nil {
 			return nil, err
 		}
-		setTelegram(agent.ID, tg)
-		setFeishu(agent.ID, fs)
-		setWechat(agent.ID, wx)
+		setTelegram(bot.ID, tg)
+		setFeishu(bot.ID, fs)
+		setWechat(bot.ID, wx)
 	}
 	jobs.Start(runCtx)
 	return a, nil
@@ -550,7 +550,7 @@ func ToolEnv(environ []string) map[string]string {
 
 // runReloads waits for a change or settlement. The one-shot delay groups writes
 // and lets the Harness finish its turn before the idle check.
-func runReloads(ctx context.Context, native *engine.Agents, sessions *session.Service) {
+func runReloads(ctx context.Context, native *engine.Bots, sessions *session.Service) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -562,8 +562,8 @@ func runReloads(ctx context.Context, native *engine.Agents, sessions *session.Se
 			return
 		case <-time.After(time.Second):
 		}
-		// One signal can represent multiple agents. A concurrent signal can be
-		// consumed here because the snapshot below includes its dirty agents.
+		// One signal can represent multiple bots. A concurrent signal can be
+		// consumed here because the snapshot below includes its dirty bots.
 		select {
 		case <-native.ReloadWake():
 		default:

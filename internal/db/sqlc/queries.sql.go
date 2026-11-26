@@ -24,14 +24,55 @@ func (q *Queries) AdmitSubmission(ctx context.Context, arg AdmitSubmissionParams
 	return err
 }
 
-const agentArchiveBlocker = `-- name: AgentArchiveBlocker :one
+const archiveBot = `-- name: ArchiveBot :execrows
+UPDATE bots SET archived_at = ?1
+WHERE bots.id = ?2 AND archived_at IS NULL AND bots.id <> 'default'
+    AND NOT EXISTS (
+        SELECT 1 FROM submissions s JOIN sessions c ON c.id = s.session_id
+        WHERE c.bot_id = bots.id AND s.status = 'pending'
+    )
+`
+
+type ArchiveBotParams struct {
+	Now   sql.NullInt64 `json:"now"`
+	BotID string        `json:"bot_id"`
+}
+
+// One statement holds the rules of BotArchiveBlocker, so a caller outside a transaction cannot
+// archive a bot that has just become busy.
+func (q *Queries) ArchiveBot(ctx context.Context, arg ArchiveBotParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, archiveBot, arg.Now, arg.BotID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const archiveSession = `-- name: ArchiveSession :exec
+UPDATE sessions SET archived_at = coalesce(archived_at, ?1)
+WHERE id = ?2 AND bot_id = ?3 AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
+`
+
+type ArchiveSessionParams struct {
+	ArchivedAt sql.NullInt64 `json:"archived_at"`
+	ID         int64         `json:"id"`
+	BotID      string        `json:"bot_id"`
+}
+
+// Keep the first archive time. The owner can archive Sessions and child sessions.
+func (q *Queries) ArchiveSession(ctx context.Context, arg ArchiveSessionParams) error {
+	_, err := q.db.ExecContext(ctx, archiveSession, arg.ArchivedAt, arg.ID, arg.BotID)
+	return err
+}
+
+const botArchiveBlocker = `-- name: BotArchiveBlocker :one
 SELECT CAST(CASE
-    WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = ?1) THEN 'missing'
+    WHEN NOT EXISTS (SELECT 1 FROM bots WHERE bots.id = ?1) THEN 'missing'
     WHEN ?1 = 'default' THEN 'default'
-    WHEN EXISTS (SELECT 1 FROM agents WHERE agents.id = ?1 AND archived_at IS NOT NULL) THEN 'archived'
+    WHEN EXISTS (SELECT 1 FROM bots WHERE bots.id = ?1 AND archived_at IS NOT NULL) THEN 'archived'
     WHEN EXISTS (
         SELECT 1 FROM submissions s JOIN sessions c ON c.id = s.session_id
-        WHERE c.agent_id = ?1 AND s.status = 'pending'
+        WHERE c.bot_id = ?1 AND s.status = 'pending'
     ) THEN 'busy'
     ELSE ''
 END AS TEXT)
@@ -40,49 +81,49 @@ END AS TEXT)
 // Why a bot cannot be archived now, or an empty string. Busy means any pending input in any
 // session of the bot, including automation runs and dreams. A queued task has a pending
 // input too, so the check needs no task table.
-func (q *Queries) AgentArchiveBlocker(ctx context.Context, agentID string) (string, error) {
-	row := q.db.QueryRowContext(ctx, agentArchiveBlocker, agentID)
+func (q *Queries) BotArchiveBlocker(ctx context.Context, botID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, botArchiveBlocker, botID)
 	var column_1 string
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
-const agentArchived = `-- name: AgentArchived :one
-SELECT CAST(EXISTS (SELECT 1 FROM agents WHERE agents.id = ?1 AND archived_at IS NOT NULL) AS INTEGER)
+const botArchived = `-- name: BotArchived :one
+SELECT CAST(EXISTS (SELECT 1 FROM bots WHERE bots.id = ?1 AND archived_at IS NOT NULL) AS INTEGER)
 `
 
 // Input writers call this after they hold the SQLite writer, so an input and an archive are ordered.
-func (q *Queries) AgentArchived(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, agentArchived, agentID)
+func (q *Queries) BotArchived(ctx context.Context, botID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, botArchived, botID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
-const agentRunningSessions = `-- name: AgentRunningSessions :many
-SELECT c.agent_id, CAST(count(DISTINCT c.id) AS INTEGER) AS sessions
+const botRunningSessions = `-- name: BotRunningSessions :many
+SELECT c.bot_id, CAST(count(DISTINCT c.id) AS INTEGER) AS sessions
 FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending'
-GROUP BY c.agent_id
+GROUP BY c.bot_id
 `
 
-type AgentRunningSessionsRow struct {
-	AgentID  string `json:"agent_id"`
+type BotRunningSessionsRow struct {
+	BotID    string `json:"bot_id"`
 	Sessions int64  `json:"sessions"`
 }
 
 // The sessions of each bot that have a pending input, Main included. This is the busy rule of
-// AgentArchiveBlocker, so a bot with a count above zero is a bot that cannot be archived.
-func (q *Queries) AgentRunningSessions(ctx context.Context) ([]AgentRunningSessionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, agentRunningSessions)
+// BotArchiveBlocker, so a bot with a count above zero is a bot that cannot be archived.
+func (q *Queries) BotRunningSessions(ctx context.Context) ([]BotRunningSessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, botRunningSessions)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []AgentRunningSessionsRow{}
+	items := []BotRunningSessionsRow{}
 	for rows.Next() {
-		var i AgentRunningSessionsRow
-		if err := rows.Scan(&i.AgentID, &i.Sessions); err != nil {
+		var i BotRunningSessionsRow
+		if err := rows.Scan(&i.BotID, &i.Sessions); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -94,47 +135,6 @@ func (q *Queries) AgentRunningSessions(ctx context.Context) ([]AgentRunningSessi
 		return nil, err
 	}
 	return items, nil
-}
-
-const archiveAgent = `-- name: ArchiveAgent :execrows
-UPDATE agents SET archived_at = ?1
-WHERE agents.id = ?2 AND archived_at IS NULL AND agents.id <> 'default'
-    AND NOT EXISTS (
-        SELECT 1 FROM submissions s JOIN sessions c ON c.id = s.session_id
-        WHERE c.agent_id = agents.id AND s.status = 'pending'
-    )
-`
-
-type ArchiveAgentParams struct {
-	Now     sql.NullInt64 `json:"now"`
-	AgentID string        `json:"agent_id"`
-}
-
-// One statement holds the rules of AgentArchiveBlocker, so a caller outside a transaction cannot
-// archive a bot that has just become busy.
-func (q *Queries) ArchiveAgent(ctx context.Context, arg ArchiveAgentParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, archiveAgent, arg.Now, arg.AgentID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const archiveSession = `-- name: ArchiveSession :exec
-UPDATE sessions SET archived_at = coalesce(archived_at, ?1)
-WHERE id = ?2 AND agent_id = ?3 AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
-`
-
-type ArchiveSessionParams struct {
-	ArchivedAt sql.NullInt64 `json:"archived_at"`
-	ID         int64         `json:"id"`
-	AgentID    string        `json:"agent_id"`
-}
-
-// Keep the first archive time. The owner can archive Sessions and child sessions.
-func (q *Queries) ArchiveSession(ctx context.Context, arg ArchiveSessionParams) error {
-	_, err := q.db.ExecContext(ctx, archiveSession, arg.ArchivedAt, arg.ID, arg.AgentID)
-	return err
 }
 
 const countAutomationPending = `-- name: CountAutomationPending :one
@@ -188,83 +188,15 @@ func (q *Queries) CreateAccessTokenIfMissing(ctx context.Context, token string) 
 	return err
 }
 
-const createAgent = `-- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, runner_id, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id
-`
-
-type CreateAgentParams struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	ModelProvider    string `json:"model_provider"`
-	ModelID          string `json:"model_id"`
-	ThinkingLevel    string `json:"thinking_level"`
-	FallbackProvider string `json:"fallback_provider"`
-	FallbackModelID  string `json:"fallback_model_id"`
-	Instructions     string `json:"instructions"`
-	RunnerID         string `json:"runner_id"`
-	CreatedAt        int64  `json:"created_at"`
-}
-
-func (q *Queries) CreateAgent(ctx context.Context, arg CreateAgentParams) (Agent, error) {
-	row := q.db.QueryRowContext(ctx, createAgent,
-		arg.ID,
-		arg.Name,
-		arg.ModelProvider,
-		arg.ModelID,
-		arg.ThinkingLevel,
-		arg.FallbackProvider,
-		arg.FallbackModelID,
-		arg.Instructions,
-		arg.RunnerID,
-		arg.CreatedAt,
-	)
-	var i Agent
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.ModelProvider,
-		&i.ModelID,
-		&i.Instructions,
-		&i.CreatedAt,
-		&i.ThinkingLevel,
-		&i.PrimaryNotificationTargetID,
-		&i.ArchivedAt,
-		&i.RunnerID,
-		&i.RunnerSandboxID,
-		&i.FallbackProvider,
-		&i.FallbackModelID,
-	)
-	return i, err
-}
-
-const createAgentIfMissing = `-- name: CreateAgentIfMissing :exec
-INSERT INTO agents (id, name, model_provider, model_id, created_at)
-VALUES (?, ?, '', '', ?)
-ON CONFLICT (id) DO NOTHING
-`
-
-type CreateAgentIfMissingParams struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	CreatedAt int64  `json:"created_at"`
-}
-
-func (q *Queries) CreateAgentIfMissing(ctx context.Context, arg CreateAgentIfMissingParams) error {
-	_, err := q.db.ExecContext(ctx, createAgentIfMissing, arg.ID, arg.Name, arg.CreatedAt)
-	return err
-}
-
 const createAutomation = `-- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id
+    id, bot_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateAutomationParams struct {
 	ID                   string         `json:"id"`
-	AgentID              string         `json:"agent_id"`
+	BotID                string         `json:"bot_id"`
 	Name                 string         `json:"name"`
 	Prompt               string         `json:"prompt"`
 	Schedule             string         `json:"schedule"`
@@ -284,7 +216,7 @@ type CreateAutomationParams struct {
 func (q *Queries) CreateAutomation(ctx context.Context, arg CreateAutomationParams) error {
 	_, err := q.db.ExecContext(ctx, createAutomation,
 		arg.ID,
-		arg.AgentID,
+		arg.BotID,
 		arg.Name,
 		arg.Prompt,
 		arg.Schedule,
@@ -338,14 +270,82 @@ func (q *Queries) CreateAutomationRun(ctx context.Context, arg CreateAutomationR
 	return result.RowsAffected()
 }
 
+const createBot = `-- name: CreateBot :one
+INSERT INTO bots (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, runner_id, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id
+`
+
+type CreateBotParams struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	ModelProvider    string `json:"model_provider"`
+	ModelID          string `json:"model_id"`
+	ThinkingLevel    string `json:"thinking_level"`
+	FallbackProvider string `json:"fallback_provider"`
+	FallbackModelID  string `json:"fallback_model_id"`
+	Instructions     string `json:"instructions"`
+	RunnerID         string `json:"runner_id"`
+	CreatedAt        int64  `json:"created_at"`
+}
+
+func (q *Queries) CreateBot(ctx context.Context, arg CreateBotParams) (Bot, error) {
+	row := q.db.QueryRowContext(ctx, createBot,
+		arg.ID,
+		arg.Name,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
+		arg.FallbackProvider,
+		arg.FallbackModelID,
+		arg.Instructions,
+		arg.RunnerID,
+		arg.CreatedAt,
+	)
+	var i Bot
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.Instructions,
+		&i.CreatedAt,
+		&i.ThinkingLevel,
+		&i.PrimaryNotificationTargetID,
+		&i.ArchivedAt,
+		&i.RunnerID,
+		&i.RunnerSandboxID,
+		&i.FallbackProvider,
+		&i.FallbackModelID,
+	)
+	return i, err
+}
+
+const createBotIfMissing = `-- name: CreateBotIfMissing :exec
+INSERT INTO bots (id, name, model_provider, model_id, created_at)
+VALUES (?, ?, '', '', ?)
+ON CONFLICT (id) DO NOTHING
+`
+
+type CreateBotIfMissingParams struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt int64  `json:"created_at"`
+}
+
+func (q *Queries) CreateBotIfMissing(ctx context.Context, arg CreateBotIfMissingParams) error {
+	_, err := q.db.ExecContext(ctx, createBotIfMissing, arg.ID, arg.Name, arg.CreatedAt)
+	return err
+}
+
 const createDream = `-- name: CreateDream :exec
-INSERT INTO dreams (id, agent_id, through_settled_at, through_id, created_at)
+INSERT INTO dreams (id, bot_id, through_settled_at, through_id, created_at)
 VALUES (?, ?, ?, ?, ?)
 `
 
 type CreateDreamParams struct {
 	ID               string `json:"id"`
-	AgentID          string `json:"agent_id"`
+	BotID            string `json:"bot_id"`
 	ThroughSettledAt int64  `json:"through_settled_at"`
 	ThroughID        string `json:"through_id"`
 	CreatedAt        int64  `json:"created_at"`
@@ -354,7 +354,7 @@ type CreateDreamParams struct {
 func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error {
 	_, err := q.db.ExecContext(ctx, createDream,
 		arg.ID,
-		arg.AgentID,
+		arg.BotID,
 		arg.ThroughSettledAt,
 		arg.ThroughID,
 		arg.CreatedAt,
@@ -363,13 +363,13 @@ func (q *Queries) CreateDream(ctx context.Context, arg CreateDreamParams) error 
 }
 
 const createFork = `-- name: CreateFork :one
-INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, execution_id, forked_from, parent_id, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, execution_id, forked_from, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
+RETURNING id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type CreateForkParams struct {
-	AgentID       string        `json:"agent_id"`
+	BotID         string        `json:"bot_id"`
 	ChannelKey    string        `json:"channel_key"`
 	Title         string        `json:"title"`
 	ModelProvider string        `json:"model_provider"`
@@ -387,7 +387,7 @@ type CreateForkParams struct {
 // the fork starts empty, so the first message creates the native conversation.
 func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Session, error) {
 	row := q.db.QueryRowContext(ctx, createFork,
-		arg.AgentID,
+		arg.BotID,
 		arg.ChannelKey,
 		arg.Title,
 		arg.ModelProvider,
@@ -403,7 +403,7 @@ func (q *Queries) CreateFork(ctx context.Context, arg CreateForkParams) (Session
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -483,16 +483,16 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 }
 
 const deleteAutomation = `-- name: DeleteAutomation :exec
-DELETE FROM automations WHERE id = ? AND agent_id = ?
+DELETE FROM automations WHERE id = ? AND bot_id = ?
 `
 
 type DeleteAutomationParams struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    string `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) DeleteAutomation(ctx context.Context, arg DeleteAutomationParams) error {
-	_, err := q.db.ExecContext(ctx, deleteAutomation, arg.ID, arg.AgentID)
+	_, err := q.db.ExecContext(ctx, deleteAutomation, arg.ID, arg.BotID)
 	return err
 }
 
@@ -515,11 +515,11 @@ func (q *Queries) DeleteProvider(ctx context.Context, id string) error {
 }
 
 const deleteTelegramSettings = `-- name: DeleteTelegramSettings :exec
-DELETE FROM telegram_settings WHERE agent_id = ?
+DELETE FROM telegram_settings WHERE bot_id = ?
 `
 
-func (q *Queries) DeleteTelegramSettings(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, deleteTelegramSettings, agentID)
+func (q *Queries) DeleteTelegramSettings(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, deleteTelegramSettings, botID)
 	return err
 }
 
@@ -529,7 +529,7 @@ SELECT
     d.through_id
 FROM dreams d
 JOIN submissions s ON s.id = d.id
-WHERE d.agent_id = ? AND s.status = 'done'
+WHERE d.bot_id = ? AND s.status = 'done'
 ORDER BY d.created_at DESC, d.id DESC
 LIMIT 1
 `
@@ -539,44 +539,44 @@ type DreamBoundaryRow struct {
 	ThroughID        string `json:"through_id"`
 }
 
-// Where the newest done dream of an agent stopped reading.
-func (q *Queries) DreamBoundary(ctx context.Context, agentID string) (DreamBoundaryRow, error) {
-	row := q.db.QueryRowContext(ctx, dreamBoundary, agentID)
+// Where the newest done dream of a bot stopped reading.
+func (q *Queries) DreamBoundary(ctx context.Context, botID string) (DreamBoundaryRow, error) {
+	row := q.db.QueryRowContext(ctx, dreamBoundary, botID)
 	var i DreamBoundaryRow
 	err := row.Scan(&i.ThroughSettledAt, &i.ThroughID)
 	return i, err
 }
 
 const ensureEmptySession = `-- name: EnsureEmptySession :one
-INSERT INTO sessions (agent_id, channel_key, title, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, created_at)
 VALUES (
     ?1,
     coalesce((
         SELECT c.channel_key FROM sessions c
-        WHERE c.agent_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
+        WHERE c.bot_id = ?1 AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
             AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.session_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
     ), ?2),
     '', ?3
 )
-ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
+ON CONFLICT (bot_id, channel_key) DO UPDATE SET bot_id = excluded.bot_id
+RETURNING id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type EnsureEmptySessionParams struct {
-	AgentID    string      `json:"agent_id"`
+	BotID      string      `json:"bot_id"`
 	ChannelKey interface{} `json:"channel_key"`
 	CreatedAt  int64       `json:"created_at"`
 }
 
 // One write statement serializes concurrent opens and first-message admission.
 func (q *Queries) EnsureEmptySession(ctx context.Context, arg EnsureEmptySessionParams) (Session, error) {
-	row := q.db.QueryRowContext(ctx, ensureEmptySession, arg.AgentID, arg.ChannelKey, arg.CreatedAt)
+	row := q.db.QueryRowContext(ctx, ensureEmptySession, arg.BotID, arg.ChannelKey, arg.CreatedAt)
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -595,15 +595,15 @@ func (q *Queries) EnsureEmptySession(ctx context.Context, arg EnsureEmptySession
 }
 
 const ensureSession = `-- name: EnsureSession :one
-INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+ON CONFLICT (bot_id, channel_key) DO UPDATE SET bot_id = excluded.bot_id
     WHERE sessions.channel_key NOT LIKE 'retired-telegram:%'
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
+RETURNING id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type EnsureSessionParams struct {
-	AgentID       string `json:"agent_id"`
+	BotID         string `json:"bot_id"`
 	ChannelKey    string `json:"channel_key"`
 	Title         string `json:"title"`
 	ModelProvider string `json:"model_provider"`
@@ -615,7 +615,7 @@ type EnsureSessionParams struct {
 // The title and the settings are set only when the session is created.
 func (q *Queries) EnsureSession(ctx context.Context, arg EnsureSessionParams) (Session, error) {
 	row := q.db.QueryRowContext(ctx, ensureSession,
-		arg.AgentID,
+		arg.BotID,
 		arg.ChannelKey,
 		arg.Title,
 		arg.ModelProvider,
@@ -626,7 +626,7 @@ func (q *Queries) EnsureSession(ctx context.Context, arg EnsureSessionParams) (S
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -697,46 +697,21 @@ func (q *Queries) GetAccessToken(ctx context.Context) (string, error) {
 	return token, err
 }
 
-const getAgent = `-- name: GetAgent :one
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE id = ?
-`
-
-func (q *Queries) GetAgent(ctx context.Context, id string) (Agent, error) {
-	row := q.db.QueryRowContext(ctx, getAgent, id)
-	var i Agent
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.ModelProvider,
-		&i.ModelID,
-		&i.Instructions,
-		&i.CreatedAt,
-		&i.ThinkingLevel,
-		&i.PrimaryNotificationTargetID,
-		&i.ArchivedAt,
-		&i.RunnerID,
-		&i.RunnerSandboxID,
-		&i.FallbackProvider,
-		&i.FallbackModelID,
-	)
-	return i, err
-}
-
 const getAutomation = `-- name: GetAutomation :one
-SELECT id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id FROM automations WHERE id = ? AND agent_id = ?
+SELECT id, bot_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id FROM automations WHERE id = ? AND bot_id = ?
 `
 
 type GetAutomationParams struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    string `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) GetAutomation(ctx context.Context, arg GetAutomationParams) (Automation, error) {
-	row := q.db.QueryRowContext(ctx, getAutomation, arg.ID, arg.AgentID)
+	row := q.db.QueryRowContext(ctx, getAutomation, arg.ID, arg.BotID)
 	var i Automation
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.Name,
 		&i.Prompt,
 		&i.Schedule,
@@ -778,6 +753,31 @@ func (q *Queries) GetAutomationRun(ctx context.Context, id string) (AutomationRu
 		&i.RunnerID,
 		&i.Cwd,
 		&i.NotificationNote,
+	)
+	return i, err
+}
+
+const getBot = `-- name: GetBot :one
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM bots WHERE id = ?
+`
+
+func (q *Queries) GetBot(ctx context.Context, id string) (Bot, error) {
+	row := q.db.QueryRowContext(ctx, getBot, id)
+	var i Bot
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.ModelProvider,
+		&i.ModelID,
+		&i.Instructions,
+		&i.CreatedAt,
+		&i.ThinkingLevel,
+		&i.PrimaryNotificationTargetID,
+		&i.ArchivedAt,
+		&i.RunnerID,
+		&i.RunnerSandboxID,
+		&i.FallbackProvider,
+		&i.FallbackModelID,
 	)
 	return i, err
 }
@@ -869,7 +869,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSession = `-- name: GetSession :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE id = ? AND channel_key NOT LIKE 'retired-telegram:%'
+SELECT id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE id = ? AND channel_key NOT LIKE 'retired-telegram:%'
 `
 
 func (q *Queries) GetSession(ctx context.Context, id int64) (Session, error) {
@@ -877,7 +877,7 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (Session, error) {
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -896,20 +896,20 @@ func (q *Queries) GetSession(ctx context.Context, id int64) (Session, error) {
 }
 
 const getSessionByKey = `-- name: GetSessionByKey :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE agent_id = ? AND channel_key = ? AND channel_key NOT LIKE 'retired-telegram:%'
+SELECT id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE bot_id = ? AND channel_key = ? AND channel_key NOT LIKE 'retired-telegram:%'
 `
 
 type GetSessionByKeyParams struct {
-	AgentID    string `json:"agent_id"`
+	BotID      string `json:"bot_id"`
 	ChannelKey string `json:"channel_key"`
 }
 
 func (q *Queries) GetSessionByKey(ctx context.Context, arg GetSessionByKeyParams) (Session, error) {
-	row := q.db.QueryRowContext(ctx, getSessionByKey, arg.AgentID, arg.ChannelKey)
+	row := q.db.QueryRowContext(ctx, getSessionByKey, arg.BotID, arg.ChannelKey)
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -930,8 +930,8 @@ func (q *Queries) GetSessionByKey(ctx context.Context, arg GetSessionByKeyParams
 const getSessionDetails = `-- name: GetSessionDetails :one
 SELECT
     c.id,
-    p.agent_id AS parent_agent_id,
-    pa.name AS parent_agent_name,
+    p.bot_id AS parent_bot_id,
+    pa.name AS parent_bot_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -956,20 +956,20 @@ FROM sessions c
 LEFT JOIN submissions s ON s.session_id = c.id
 LEFT JOIN sessions f ON f.id = c.forked_from
 LEFT JOIN sessions p ON p.id = c.parent_id
-LEFT JOIN agents pa ON pa.id = p.agent_id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.channel_key NOT LIKE 'dream:%'
+LEFT JOIN bots pa ON pa.id = p.bot_id
+WHERE c.id = ? AND c.bot_id = ? AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id
 `
 
 type GetSessionDetailsParams struct {
-	ID      int64  `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    int64  `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 type GetSessionDetailsRow struct {
 	ID              int64          `json:"id"`
-	ParentAgentID   sql.NullString `json:"parent_agent_id"`
-	ParentAgentName sql.NullString `json:"parent_agent_name"`
+	ParentBotID     sql.NullString `json:"parent_bot_id"`
+	ParentBotName   sql.NullString `json:"parent_bot_name"`
 	ChannelKey      string         `json:"channel_key"`
 	Title           string         `json:"title"`
 	ModelProvider   string         `json:"model_provider"`
@@ -989,12 +989,12 @@ type GetSessionDetailsRow struct {
 }
 
 func (q *Queries) GetSessionDetails(ctx context.Context, arg GetSessionDetailsParams) (GetSessionDetailsRow, error) {
-	row := q.db.QueryRowContext(ctx, getSessionDetails, arg.ID, arg.AgentID)
+	row := q.db.QueryRowContext(ctx, getSessionDetails, arg.ID, arg.BotID)
 	var i GetSessionDetailsRow
 	err := row.Scan(
 		&i.ID,
-		&i.ParentAgentID,
-		&i.ParentAgentName,
+		&i.ParentBotID,
+		&i.ParentBotName,
 		&i.ChannelKey,
 		&i.Title,
 		&i.ModelProvider,
@@ -1016,7 +1016,7 @@ func (q *Queries) GetSessionDetails(ctx context.Context, arg GetSessionDetailsPa
 }
 
 const getSessionForStop = `-- name: GetSessionForStop :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE id = ?
+SELECT id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE id = ?
 `
 
 // Startup also stops retired sessions that still have a native execution.
@@ -1025,7 +1025,7 @@ func (q *Queries) GetSessionForStop(ctx context.Context, id int64) (Session, err
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -1102,14 +1102,14 @@ func (q *Queries) GetSubmissionReply(ctx context.Context, id string) (GetSubmiss
 }
 
 const getTelegramSettings = `-- name: GetTelegramSettings :one
-SELECT agent_id, token, allowed_users, pairing_code, pairing_expires, retry_at, options, webhook_url, webhook_secret FROM telegram_settings WHERE agent_id = ?
+SELECT bot_id, token, allowed_users, pairing_code, pairing_expires, retry_at, options, webhook_url, webhook_secret FROM telegram_settings WHERE bot_id = ?
 `
 
-func (q *Queries) GetTelegramSettings(ctx context.Context, agentID string) (TelegramSetting, error) {
-	row := q.db.QueryRowContext(ctx, getTelegramSettings, agentID)
+func (q *Queries) GetTelegramSettings(ctx context.Context, botID string) (TelegramSetting, error) {
+	row := q.db.QueryRowContext(ctx, getTelegramSettings, botID)
 	var i TelegramSetting
 	err := row.Scan(
-		&i.AgentID,
+		&i.BotID,
 		&i.Token,
 		&i.AllowedUsers,
 		&i.PairingCode,
@@ -1129,7 +1129,7 @@ SELECT
     s.status
 FROM dreams d
 LEFT JOIN submissions s ON s.id = d.id
-WHERE d.agent_id = ?
+WHERE d.bot_id = ?
 ORDER BY d.created_at DESC, d.id DESC
 LIMIT 1
 `
@@ -1140,96 +1140,27 @@ type LatestDreamRow struct {
 	Status    sql.NullString `json:"status"`
 }
 
-// The newest dream of an agent. status is NULL when its message was never stored.
-func (q *Queries) LatestDream(ctx context.Context, agentID string) (LatestDreamRow, error) {
-	row := q.db.QueryRowContext(ctx, latestDream, agentID)
+// The newest dream of a bot. status is NULL when its message was never stored.
+func (q *Queries) LatestDream(ctx context.Context, botID string) (LatestDreamRow, error) {
+	row := q.db.QueryRowContext(ctx, latestDream, botID)
 	var i LatestDreamRow
 	err := row.Scan(&i.ID, &i.CreatedAt, &i.Status)
 	return i, err
 }
 
-const listAgentIDs = `-- name: ListAgentIDs :many
-SELECT id FROM agents WHERE archived_at IS NULL ORDER BY id
+const listArchivedBots = `-- name: ListArchivedBots :many
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM bots WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
 `
 
-func (q *Queries) ListAgentIDs(ctx context.Context) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listAgentIDs)
+func (q *Queries) ListArchivedBots(ctx context.Context) ([]Bot, error) {
+	rows, err := q.db.QueryContext(ctx, listArchivedBots)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []string{}
+	items := []Bot{}
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listAgents = `-- name: ListAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NULL ORDER BY created_at, id
-`
-
-// Active bots only. Startup starts channels for these bots.
-func (q *Queries) ListAgents(ctx context.Context) ([]Agent, error) {
-	rows, err := q.db.QueryContext(ctx, listAgents)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Agent{}
-	for rows.Next() {
-		var i Agent
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.ModelProvider,
-			&i.ModelID,
-			&i.Instructions,
-			&i.CreatedAt,
-			&i.ThinkingLevel,
-			&i.PrimaryNotificationTargetID,
-			&i.ArchivedAt,
-			&i.RunnerID,
-			&i.RunnerSandboxID,
-			&i.FallbackProvider,
-			&i.FallbackModelID,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listArchivedAgents = `-- name: ListArchivedAgents :many
-SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id
-`
-
-func (q *Queries) ListArchivedAgents(ctx context.Context) ([]Agent, error) {
-	rows, err := q.db.QueryContext(ctx, listArchivedAgents)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Agent{}
-	for rows.Next() {
-		var i Agent
+		var i Bot
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
@@ -1344,11 +1275,11 @@ func (q *Queries) ListAutomationRuns(ctx context.Context, arg ListAutomationRuns
 }
 
 const listAutomationTargetCandidates = `-- name: ListAutomationTargetCandidates :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' ORDER BY created_at DESC, id DESC
+SELECT id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE bot_id = ? AND channel_key NOT LIKE 'retired-telegram:%' ORDER BY created_at DESC, id DESC
 `
 
-func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, agentID string) ([]Session, error) {
-	rows, err := q.db.QueryContext(ctx, listAutomationTargetCandidates, agentID)
+func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, botID string) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listAutomationTargetCandidates, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -1358,7 +1289,7 @@ func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, agentID st
 		var i Session
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.BotID,
 			&i.ChannelKey,
 			&i.ExecutionID,
 			&i.CreatedAt,
@@ -1387,11 +1318,11 @@ func (q *Queries) ListAutomationTargetCandidates(ctx context.Context, agentID st
 }
 
 const listAutomations = `-- name: ListAutomations :many
-SELECT id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id FROM automations WHERE agent_id = ? ORDER BY created_at, id
+SELECT id, bot_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id FROM automations WHERE bot_id = ? ORDER BY created_at, id
 `
 
-func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automation, error) {
-	rows, err := q.db.QueryContext(ctx, listAutomations, agentID)
+func (q *Queries) ListAutomations(ctx context.Context, botID string) ([]Automation, error) {
+	rows, err := q.db.QueryContext(ctx, listAutomations, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -1401,7 +1332,7 @@ func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automa
 		var i Automation
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.BotID,
 			&i.Name,
 			&i.Prompt,
 			&i.Schedule,
@@ -1430,6 +1361,75 @@ func (q *Queries) ListAutomations(ctx context.Context, agentID string) ([]Automa
 	return items, nil
 }
 
+const listBotIDs = `-- name: ListBotIDs :many
+SELECT id FROM bots WHERE archived_at IS NULL ORDER BY id
+`
+
+func (q *Queries) ListBotIDs(ctx context.Context) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listBotIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBots = `-- name: ListBots :many
+SELECT id, name, model_provider, model_id, instructions, created_at, thinking_level, primary_notification_target_id, archived_at, runner_id, runner_sandbox_id, fallback_provider, fallback_model_id FROM bots WHERE archived_at IS NULL ORDER BY created_at, id
+`
+
+// Active bots only. Startup starts channels for these bots.
+func (q *Queries) ListBots(ctx context.Context) ([]Bot, error) {
+	rows, err := q.db.QueryContext(ctx, listBots)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Bot{}
+	for rows.Next() {
+		var i Bot
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.ModelProvider,
+			&i.ModelID,
+			&i.Instructions,
+			&i.CreatedAt,
+			&i.ThinkingLevel,
+			&i.PrimaryNotificationTargetID,
+			&i.ArchivedAt,
+			&i.RunnerID,
+			&i.RunnerSandboxID,
+			&i.FallbackProvider,
+			&i.FallbackModelID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDreamInput = `-- name: ListDreamInput :many
 SELECT
     s.id,
@@ -1444,7 +1444,7 @@ SELECT
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
 WHERE
-    c.agent_id = ?1
+    c.bot_id = ?1
     AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
     AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.kind = 'message'
@@ -1455,7 +1455,7 @@ LIMIT ?4
 `
 
 type ListDreamInputParams struct {
-	AgentID        string        `json:"agent_id"`
+	BotID          string        `json:"bot_id"`
 	AfterSettledAt sql.NullInt64 `json:"after_settled_at"`
 	AfterID        string        `json:"after_id"`
 	MaxRows        int64         `json:"max_rows"`
@@ -1473,10 +1473,10 @@ type ListDreamInputRow struct {
 	Title     string         `json:"title"`
 }
 
-// The settled messages of an agent's sessions after a dream boundary, oldest first.
+// The settled messages of a bot's sessions after a dream boundary, oldest first.
 func (q *Queries) ListDreamInput(ctx context.Context, arg ListDreamInputParams) ([]ListDreamInputRow, error) {
 	rows, err := q.db.QueryContext(ctx, listDreamInput,
-		arg.AgentID,
+		arg.BotID,
 		arg.AfterSettledAt,
 		arg.AfterID,
 		arg.MaxRows,
@@ -1513,7 +1513,7 @@ func (q *Queries) ListDreamInput(ctx context.Context, arg ListDreamInputParams) 
 }
 
 const listDueAutomations = `-- name: ListDueAutomations :many
-SELECT a.id, a.agent_id, a.name, a.prompt, a.schedule, a.time_zone, a.enabled, a.next_due_at, a.created_at, a.updated_at, a.cwd, a.notification_route, a.notification_target_id, a.runner_id, a.session, a.target_session_id FROM automations a JOIN agents b ON b.id = a.agent_id
+SELECT a.id, a.bot_id, a.name, a.prompt, a.schedule, a.time_zone, a.enabled, a.next_due_at, a.created_at, a.updated_at, a.cwd, a.notification_route, a.notification_target_id, a.runner_id, a.session, a.target_session_id FROM automations a JOIN bots b ON b.id = a.bot_id
 WHERE a.enabled = 1 AND a.next_due_at <= ? AND b.archived_at IS NULL ORDER BY a.next_due_at
 `
 
@@ -1528,7 +1528,7 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 		var i Automation
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.BotID,
 			&i.Name,
 			&i.Prompt,
 			&i.Schedule,
@@ -1558,13 +1558,13 @@ func (q *Queries) ListDueAutomations(ctx context.Context, nextDueAt sql.NullInt6
 }
 
 const listPendingExecutionAborts = `-- name: ListPendingExecutionAborts :many
-SELECT c.id, c.agent_id, c.execution_id FROM sessions c
+SELECT c.id, c.bot_id, c.execution_id FROM sessions c
 WHERE c.abort_pending = 1
 `
 
 type ListPendingExecutionAbortsRow struct {
 	ID          int64         `json:"id"`
-	AgentID     string        `json:"agent_id"`
+	BotID       string        `json:"bot_id"`
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
@@ -1577,7 +1577,7 @@ func (q *Queries) ListPendingExecutionAborts(ctx context.Context) ([]ListPending
 	items := []ListPendingExecutionAbortsRow{}
 	for rows.Next() {
 		var i ListPendingExecutionAbortsRow
-		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
+		if err := rows.Scan(&i.ID, &i.BotID, &i.ExecutionID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1605,7 +1605,7 @@ SELECT
     s.admitted_at,
     s.when_busy,
     s.session_id,
-    c.agent_id,
+    c.bot_id,
     c.channel_key
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
@@ -1626,7 +1626,7 @@ type ListPendingSubmissionsRow struct {
 	AdmittedAt   sql.NullInt64 `json:"admitted_at"`
 	WhenBusy     string        `json:"when_busy"`
 	SessionID    int64         `json:"session_id"`
-	AgentID      string        `json:"agent_id"`
+	BotID        string        `json:"bot_id"`
 	ChannelKey   string        `json:"channel_key"`
 }
 
@@ -1653,7 +1653,7 @@ func (q *Queries) ListPendingSubmissions(ctx context.Context, sessionID int64) (
 			&i.AdmittedAt,
 			&i.WhenBusy,
 			&i.SessionID,
-			&i.AgentID,
+			&i.BotID,
 			&i.ChannelKey,
 		); err != nil {
 			return nil, err
@@ -1713,7 +1713,7 @@ WITH activity AS (
     ) AS updated_at
     FROM sessions c
     LEFT JOIN submissions s ON s.session_id = c.id
-    WHERE c.agent_id = ? AND c.cwd <> ''
+    WHERE c.bot_id = ? AND c.cwd <> ''
     GROUP BY c.id
 )
 SELECT cwd FROM activity
@@ -1721,8 +1721,8 @@ GROUP BY cwd
 ORDER BY max(updated_at) DESC, max(id) DESC
 `
 
-func (q *Queries) ListRecentProjects(ctx context.Context, agentID string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listRecentProjects, agentID)
+func (q *Queries) ListRecentProjects(ctx context.Context, botID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRecentProjects, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -1747,10 +1747,10 @@ func (q *Queries) ListRecentProjects(ctx context.Context, agentID string) ([]str
 const listSessionSummaries = `-- name: ListSessionSummaries :many
 SELECT
     c.id,
-    c.agent_id,
-    a.name AS agent_name,
-    p.agent_id AS parent_agent_id,
-    pa.name AS parent_agent_name,
+    c.bot_id,
+    a.name AS bot_name,
+    p.bot_id AS parent_bot_id,
+    pa.name AS parent_bot_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -1768,11 +1768,11 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM sessions c
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 LEFT JOIN sessions p ON p.id = c.parent_id
-LEFT JOIN agents pa ON pa.id = p.agent_id
+LEFT JOIN bots pa ON pa.id = p.bot_id
 LEFT JOIN submissions s ON s.session_id = c.id
-WHERE (c.agent_id = ?1 OR p.agent_id = ?1) AND c.channel_key NOT LIKE 'retired-telegram:%'
+WHERE (c.bot_id = ?1 OR p.bot_id = ?1) AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.session_id = c.id AND m.kind = 'message'
@@ -1782,28 +1782,28 @@ ORDER BY updated_at DESC, c.id DESC
 `
 
 type ListSessionSummariesRow struct {
-	ID              int64          `json:"id"`
-	AgentID         string         `json:"agent_id"`
-	AgentName       string         `json:"agent_name"`
-	ParentAgentID   sql.NullString `json:"parent_agent_id"`
-	ParentAgentName sql.NullString `json:"parent_agent_name"`
-	ChannelKey      string         `json:"channel_key"`
-	Title           string         `json:"title"`
-	ModelProvider   string         `json:"model_provider"`
-	ModelID         string         `json:"model_id"`
-	ThinkingLevel   string         `json:"thinking_level"`
-	Cwd             string         `json:"cwd"`
-	RunnerID        string         `json:"runner_id"`
-	CreatedAt       int64          `json:"created_at"`
-	ArchivedAt      sql.NullInt64  `json:"archived_at"`
-	ParentID        sql.NullInt64  `json:"parent_id"`
-	UpdatedAt       int64          `json:"updated_at"`
-	Pending         int64          `json:"pending"`
+	ID            int64          `json:"id"`
+	BotID         string         `json:"bot_id"`
+	BotName       string         `json:"bot_name"`
+	ParentBotID   sql.NullString `json:"parent_bot_id"`
+	ParentBotName sql.NullString `json:"parent_bot_name"`
+	ChannelKey    string         `json:"channel_key"`
+	Title         string         `json:"title"`
+	ModelProvider string         `json:"model_provider"`
+	ModelID       string         `json:"model_id"`
+	ThinkingLevel string         `json:"thinking_level"`
+	Cwd           string         `json:"cwd"`
+	RunnerID      string         `json:"runner_id"`
+	CreatedAt     int64          `json:"created_at"`
+	ArchivedAt    sql.NullInt64  `json:"archived_at"`
+	ParentID      sql.NullInt64  `json:"parent_id"`
+	UpdatedAt     int64          `json:"updated_at"`
+	Pending       int64          `json:"pending"`
 }
 
 // The sessions of one bot, and the children of its sessions that belong to another bot.
-func (q *Queries) ListSessionSummaries(ctx context.Context, agentID string) ([]ListSessionSummariesRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionSummaries, agentID)
+func (q *Queries) ListSessionSummaries(ctx context.Context, botID string) ([]ListSessionSummariesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionSummaries, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -1813,10 +1813,10 @@ func (q *Queries) ListSessionSummaries(ctx context.Context, agentID string) ([]L
 		var i ListSessionSummariesRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
-			&i.AgentName,
-			&i.ParentAgentID,
-			&i.ParentAgentName,
+			&i.BotID,
+			&i.BotName,
+			&i.ParentBotID,
+			&i.ParentBotName,
 			&i.ChannelKey,
 			&i.Title,
 			&i.ModelProvider,
@@ -1847,23 +1847,23 @@ const pairTelegramOwner = `-- name: PairTelegramOwner :one
 UPDATE telegram_settings
 SET allowed_users = CAST(?1 AS TEXT),
     pairing_code = '', pairing_expires = 0
-WHERE agent_id = ?2 AND allowed_users = '' AND token = ?3 AND pairing_code = ?4
+WHERE bot_id = ?2 AND allowed_users = '' AND token = ?3 AND pairing_code = ?4
     AND pairing_code <> '' AND pairing_expires > ?5
 RETURNING allowed_users
 `
 
 type PairTelegramOwnerParams struct {
-	UserID  string `json:"user_id"`
-	AgentID string `json:"agent_id"`
-	Token   string `json:"token"`
-	Code    string `json:"code"`
-	Now     int64  `json:"now"`
+	UserID string `json:"user_id"`
+	BotID  string `json:"bot_id"`
+	Token  string `json:"token"`
+	Code   string `json:"code"`
+	Now    int64  `json:"now"`
 }
 
 func (q *Queries) PairTelegramOwner(ctx context.Context, arg PairTelegramOwnerParams) (string, error) {
 	row := q.db.QueryRowContext(ctx, pairTelegramOwner,
 		arg.UserID,
-		arg.AgentID,
+		arg.BotID,
 		arg.Token,
 		arg.Code,
 		arg.Now,
@@ -1908,25 +1908,25 @@ func (q *Queries) RequestExecutionAbort(ctx context.Context, id int64) error {
 	return err
 }
 
-const restoreAgent = `-- name: RestoreAgent :execrows
-UPDATE agents SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL
+const restoreBot = `-- name: RestoreBot :execrows
+UPDATE bots SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL
 `
 
-func (q *Queries) RestoreAgent(ctx context.Context, id string) (int64, error) {
-	result, err := q.db.ExecContext(ctx, restoreAgent, id)
+func (q *Queries) RestoreBot(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, restoreBot, id)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const sessionAgentArchived = `-- name: SessionAgentArchived :one
-SELECT CAST(EXISTS (SELECT 1 FROM sessions c JOIN agents a ON a.id = c.agent_id
+const sessionBotArchived = `-- name: SessionBotArchived :one
+SELECT CAST(EXISTS (SELECT 1 FROM sessions c JOIN bots a ON a.id = c.bot_id
     WHERE c.id = ?1 AND a.archived_at IS NOT NULL) AS INTEGER)
 `
 
-func (q *Queries) SessionAgentArchived(ctx context.Context, sessionID int64) (int64, error) {
-	row := q.db.QueryRowContext(ctx, sessionAgentArchived, sessionID)
+func (q *Queries) SessionBotArchived(ctx context.Context, sessionID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, sessionBotArchived, sessionID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -2029,23 +2029,23 @@ func (q *Queries) SetOnePassword(ctx context.Context, arg SetOnePasswordParams) 
 }
 
 const setSessionCwd = `-- name: SetSessionCwd :exec
-UPDATE sessions SET cwd = ? WHERE id = ? AND agent_id = ?
+UPDATE sessions SET cwd = ? WHERE id = ? AND bot_id = ?
 `
 
 type SetSessionCwdParams struct {
-	Cwd     string `json:"cwd"`
-	ID      int64  `json:"id"`
-	AgentID string `json:"agent_id"`
+	Cwd   string `json:"cwd"`
+	ID    int64  `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) SetSessionCwd(ctx context.Context, arg SetSessionCwdParams) error {
-	_, err := q.db.ExecContext(ctx, setSessionCwd, arg.Cwd, arg.ID, arg.AgentID)
+	_, err := q.db.ExecContext(ctx, setSessionCwd, arg.Cwd, arg.ID, arg.BotID)
 	return err
 }
 
 const setSessionSettings = `-- name: SetSessionSettings :exec
 UPDATE sessions SET model_provider = ?, model_id = ?, thinking_level = ?
-WHERE id = ? AND agent_id = ?
+WHERE id = ? AND bot_id = ?
 `
 
 type SetSessionSettingsParams struct {
@@ -2053,7 +2053,7 @@ type SetSessionSettingsParams struct {
 	ModelID       string `json:"model_id"`
 	ThinkingLevel string `json:"thinking_level"`
 	ID            int64  `json:"id"`
-	AgentID       string `json:"agent_id"`
+	BotID         string `json:"bot_id"`
 }
 
 func (q *Queries) SetSessionSettings(ctx context.Context, arg SetSessionSettingsParams) error {
@@ -2062,37 +2062,37 @@ func (q *Queries) SetSessionSettings(ctx context.Context, arg SetSessionSettings
 		arg.ModelID,
 		arg.ThinkingLevel,
 		arg.ID,
-		arg.AgentID,
+		arg.BotID,
 	)
 	return err
 }
 
 const setTelegramPairing = `-- name: SetTelegramPairing :exec
-UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE agent_id = ?
+UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE bot_id = ?
 `
 
 type SetTelegramPairingParams struct {
 	PairingCode    string `json:"pairing_code"`
 	PairingExpires int64  `json:"pairing_expires"`
-	AgentID        string `json:"agent_id"`
+	BotID          string `json:"bot_id"`
 }
 
 func (q *Queries) SetTelegramPairing(ctx context.Context, arg SetTelegramPairingParams) error {
-	_, err := q.db.ExecContext(ctx, setTelegramPairing, arg.PairingCode, arg.PairingExpires, arg.AgentID)
+	_, err := q.db.ExecContext(ctx, setTelegramPairing, arg.PairingCode, arg.PairingExpires, arg.BotID)
 	return err
 }
 
 const setTelegramSettings = `-- name: SetTelegramSettings :one
-INSERT INTO telegram_settings (agent_id, token, allowed_users, options, webhook_url, webhook_secret)
+INSERT INTO telegram_settings (bot_id, token, allowed_users, options, webhook_url, webhook_secret)
 VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, options = excluded.options, pairing_code = '', pairing_expires = 0,
+ON CONFLICT (bot_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, options = excluded.options, pairing_code = '', pairing_expires = 0,
 webhook_url = excluded.webhook_url, webhook_secret = excluded.webhook_secret,
 retry_at = CASE WHEN substr(token, 1, instr(token, ':') - 1) = substr(excluded.token, 1, instr(excluded.token, ':') - 1) THEN retry_at ELSE 0 END
 RETURNING retry_at
 `
 
 type SetTelegramSettingsParams struct {
-	AgentID       string `json:"agent_id"`
+	BotID         string `json:"bot_id"`
 	Token         string `json:"token"`
 	AllowedUsers  string `json:"allowed_users"`
 	Options       string `json:"options"`
@@ -2102,7 +2102,7 @@ type SetTelegramSettingsParams struct {
 
 func (q *Queries) SetTelegramSettings(ctx context.Context, arg SetTelegramSettingsParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, setTelegramSettings,
-		arg.AgentID,
+		arg.BotID,
 		arg.Token,
 		arg.AllowedUsers,
 		arg.Options,
@@ -2143,57 +2143,16 @@ func (q *Queries) SettleSubmission(ctx context.Context, arg SettleSubmissionPara
 
 const unarchiveSession = `-- name: UnarchiveSession :exec
 UPDATE sessions SET archived_at = NULL
-WHERE id = ?1 AND agent_id = ?2 AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
+WHERE id = ?1 AND bot_id = ?2 AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL)
 `
 
 type UnarchiveSessionParams struct {
-	ID      int64  `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    int64  `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) UnarchiveSession(ctx context.Context, arg UnarchiveSessionParams) error {
-	_, err := q.db.ExecContext(ctx, unarchiveSession, arg.ID, arg.AgentID)
-	return err
-}
-
-const updateAgentSettings = `-- name: UpdateAgentSettings :exec
-UPDATE agents SET
-    name = ?1,
-    model_provider = ?2,
-    model_id = ?3,
-    thinking_level = ?4,
-    fallback_provider = ?5,
-    fallback_model_id = ?6,
-    instructions = ?7,
-    runner_sandbox_id = CASE WHEN runner_id = ?8 THEN runner_sandbox_id ELSE '' END,
-    runner_id = ?8
-WHERE id = ?9
-`
-
-type UpdateAgentSettingsParams struct {
-	Name             string `json:"name"`
-	ModelProvider    string `json:"model_provider"`
-	ModelID          string `json:"model_id"`
-	ThinkingLevel    string `json:"thinking_level"`
-	FallbackProvider string `json:"fallback_provider"`
-	FallbackModelID  string `json:"fallback_model_id"`
-	Instructions     string `json:"instructions"`
-	RunnerID         string `json:"runner_id"`
-	ID               string `json:"id"`
-}
-
-func (q *Queries) UpdateAgentSettings(ctx context.Context, arg UpdateAgentSettingsParams) error {
-	_, err := q.db.ExecContext(ctx, updateAgentSettings,
-		arg.Name,
-		arg.ModelProvider,
-		arg.ModelID,
-		arg.ThinkingLevel,
-		arg.FallbackProvider,
-		arg.FallbackModelID,
-		arg.Instructions,
-		arg.RunnerID,
-		arg.ID,
-	)
+	_, err := q.db.ExecContext(ctx, unarchiveSession, arg.ID, arg.BotID)
 	return err
 }
 
@@ -2201,7 +2160,7 @@ const updateAutomation = `-- name: UpdateAutomation :execrows
 UPDATE automations SET
     cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
     notification_route = ?, notification_target_id = ?, runner_id = ?, updated_at = ?, target_session_id = ?
-WHERE id = ? AND agent_id = ?
+WHERE id = ? AND bot_id = ?
 `
 
 type UpdateAutomationParams struct {
@@ -2219,7 +2178,7 @@ type UpdateAutomationParams struct {
 	UpdatedAt            int64          `json:"updated_at"`
 	TargetSessionID      sql.NullInt64  `json:"target_session_id"`
 	ID                   string         `json:"id"`
-	AgentID              string         `json:"agent_id"`
+	BotID                string         `json:"bot_id"`
 }
 
 func (q *Queries) UpdateAutomation(ctx context.Context, arg UpdateAutomationParams) (int64, error) {
@@ -2238,12 +2197,53 @@ func (q *Queries) UpdateAutomation(ctx context.Context, arg UpdateAutomationPara
 		arg.UpdatedAt,
 		arg.TargetSessionID,
 		arg.ID,
-		arg.AgentID,
+		arg.BotID,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const updateBotSettings = `-- name: UpdateBotSettings :exec
+UPDATE bots SET
+    name = ?1,
+    model_provider = ?2,
+    model_id = ?3,
+    thinking_level = ?4,
+    fallback_provider = ?5,
+    fallback_model_id = ?6,
+    instructions = ?7,
+    runner_sandbox_id = CASE WHEN runner_id = ?8 THEN runner_sandbox_id ELSE '' END,
+    runner_id = ?8
+WHERE id = ?9
+`
+
+type UpdateBotSettingsParams struct {
+	Name             string `json:"name"`
+	ModelProvider    string `json:"model_provider"`
+	ModelID          string `json:"model_id"`
+	ThinkingLevel    string `json:"thinking_level"`
+	FallbackProvider string `json:"fallback_provider"`
+	FallbackModelID  string `json:"fallback_model_id"`
+	Instructions     string `json:"instructions"`
+	RunnerID         string `json:"runner_id"`
+	ID               string `json:"id"`
+}
+
+func (q *Queries) UpdateBotSettings(ctx context.Context, arg UpdateBotSettingsParams) error {
+	_, err := q.db.ExecContext(ctx, updateBotSettings,
+		arg.Name,
+		arg.ModelProvider,
+		arg.ModelID,
+		arg.ThinkingLevel,
+		arg.FallbackProvider,
+		arg.FallbackModelID,
+		arg.Instructions,
+		arg.RunnerID,
+		arg.ID,
+	)
+	return err
 }
 
 const upsertProvider = `-- name: UpsertProvider :exec

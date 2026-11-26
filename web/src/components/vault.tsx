@@ -13,12 +13,12 @@ import { Field, Input } from "./form";
 import { Mono, Panel, Section } from "./page";
 import { Button } from "./ui/button";
 
-type VaultTarget = { scope: "agent"; agentId: string } | { scope: "dex" };
+type VaultTarget = { scope: "agent"; botId: string } | { scope: "dex" };
 
 export function Vault({ target }: { target: VaultTarget }) {
   const { notify } = useApp();
-  const agentId = target.scope === "agent" ? target.agentId : "default";
-  const path = { agentId };
+  const botId = target.scope === "agent" ? target.botId : "default";
+  const path = { botId };
   const scope = target.scope;
   const query = useQuery(listVaultOptions({ path }));
   const [name, setName] = useState("");

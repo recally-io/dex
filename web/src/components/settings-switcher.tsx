@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { cn } from "../lib/utils";
 
 /**
@@ -28,15 +28,15 @@ function segment(current: boolean) {
 }
 
 const botPages = [
-  { to: "/a/$agentId/agent", label: "General", segment: "agent" },
-  { to: "/a/$agentId/skills", label: "Skills", segment: "skills" },
-  { to: "/a/$agentId/integrations", label: "Integrations", segment: "integrations" },
-  { to: "/a/$agentId/secrets", label: "Secrets", segment: "secrets" },
+  { to: "/b/$botId/bot", label: "General", segment: "bot" },
+  { to: "/b/$botId/skills", label: "Skills", segment: "skills" },
+  { to: "/b/$botId/integrations", label: "Integrations", segment: "integrations" },
+  { to: "/b/$botId/secrets", label: "Secrets", segment: "secrets" },
 ] as const;
 
 /** The pages of a bot's settings. */
 export function BotSettingsSwitcher({ segment: active }: { segment: string | undefined }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   return (
     <Track label="Settings pages">
@@ -47,7 +47,7 @@ export function BotSettingsSwitcher({ segment: active }: { segment: string | und
           <Link
             key={page.to}
             to={page.to}
-            params={{ agentId }}
+            params={{ botId }}
             aria-current={current ? "page" : undefined}
             className={segment(current)}
           >

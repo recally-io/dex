@@ -20,7 +20,7 @@ func TestUserCICannotResolveAWait(t *testing.T) {
 	if err := plugin.Migrate(ctx, conn, "github", Migrations); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+	if _, err := sqlc.New(conn).CreateBot(ctx, sqlc.CreateBotParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	store := tasksvc.New(conn, nil)

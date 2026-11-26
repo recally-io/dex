@@ -1,26 +1,20 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type {
-  Agent,
-  TaskExecution,
-  Runner,
-  RunnerTestResult,
-  SshHostEntry,
-} from "../api/generated/types.gen";
+import type { Bot, TaskExecution, Runner, RunnerTestResult, SshHostEntry } from "../api/generated/types.gen";
 import {
   deleteRunnerMutation,
   discoverSshConfigOptions,
   forgetRunnerHostKeyMutation,
   getHealthOptions,
   revokeRunnerMutation,
-  listAgentsOptions,
+  listBotsOptions,
   listTaskExecutionsOptions,
   listRunnersOptions,
   testRunnerMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { useApp } from "../lib/app-state";
-import { saveAgent } from "../lib/agent";
+import { saveBot } from "../lib/bot";
 import {
   detectSandboxPreset,
   runnerKindBadge,
@@ -50,7 +44,7 @@ export function Runners() {
   });
 
   const healthQuery = useQuery(getHealthOptions());
-  const agentsQuery = useQuery(listAgentsOptions());
+  const botsQuery = useQuery(listBotsOptions());
   const sshConfigQuery = useQuery(discoverSshConfigOptions());
 
   const externalRuns = useQuery({
@@ -68,14 +62,14 @@ export function Runners() {
   const sshHosts = sshConfigQuery.data?.hosts ?? [];
   const identityFiles = sshConfigQuery.data?.identityFiles ?? [];
 
-  const usersByEnv = new Map<string, Agent[]>();
+  const usersByEnv = new Map<string, Bot[]>();
 
-  for (const agent of agentsQuery.data?.agents ?? []) {
-    if (!agent.runnerId) continue;
+  for (const bot of botsQuery.data?.bots ?? []) {
+    if (!bot.runnerId) continue;
 
-    const current = usersByEnv.get(agent.runnerId) ?? [];
-    current.push(agent);
-    usersByEnv.set(agent.runnerId, current);
+    const current = usersByEnv.get(bot.runnerId) ?? [];
+    current.push(bot);
+    usersByEnv.set(bot.runnerId, current);
   }
 
   return (
@@ -210,7 +204,7 @@ function RunnerCard({
 }: {
   env: Runner;
   serverVersion?: string;
-  users: Agent[];
+  users: Bot[];
   externalRuns: TaskExecution[];
   externalRunsUnavailable: boolean;
   sshHosts: SshHostEntry[];
@@ -351,7 +345,7 @@ function RunnerCard({
           </Badge>
           {users.length ? (
             <Badge variant="secondary" className="h-5 max-w-full bg-primary/10 px-2 text-[11px] text-primary">
-              <span className="truncate">Used by {users.map((agent) => agent.name).join(", ")}</span>
+              <span className="truncate">Used by {users.map((bot) => bot.name).join(", ")}</span>
             </Badge>
           ) : null}
           {isE2B ? (
@@ -461,14 +455,14 @@ function DeleteRunnerDialog({
   onClose,
 }: {
   env: Runner;
-  users: Agent[];
+  users: Bot[];
   others: Runner[];
   onClose: () => void;
 }) {
   const { notify } = useApp();
   const [targetEnvId, setTargetEnvId] = useState("");
   const current = users.length > 0;
-  const names = users.map((agent) => agent.name).join(", ");
+  const names = users.map((bot) => bot.name).join(", ");
 
   const remove = useMutation({
     ...deleteRunnerMutation(),
@@ -479,9 +473,7 @@ function DeleteRunnerDialog({
     mutationFn: async () => {
       await Promise.all(
         users.map((user) =>
-          saveAgent(user.id!, (agent) =>
-            agent.runnerId === env.id ? { ...agent, runnerId: targetEnvId } : agent,
-          ),
+          saveBot(user.id!, (bot) => (bot.runnerId === env.id ? { ...bot, runnerId: targetEnvId } : bot)),
         ),
       );
     },

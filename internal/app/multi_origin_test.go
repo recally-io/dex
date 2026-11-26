@@ -85,14 +85,14 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	})
 	waitResultSubmission(t, conn, resultID, "done")
 	waitResultSubmission(t, conn, steer, "done")
-	var agents struct {
-		Agents []struct {
+	var bots struct {
+		Bots []struct {
 			Name string `json:"name"`
-		} `json:"agents"`
+		} `json:"bots"`
 	}
-	d.must(t, http.MethodGet, "/api/agents", nil, &agents)
-	for _, agent := range agents.Agents {
-		if agent.Name == "Unauthorized" {
+	d.must(t, http.MethodGet, "/api/bots", nil, &bots)
+	for _, bot := range bots.Bots {
+		if bot.Name == "Unauthorized" {
 			t.Fatal("the steer granted bot creation authority")
 		}
 	}

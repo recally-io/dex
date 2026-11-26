@@ -40,7 +40,7 @@ func (e *e2bExecEnv) acquire(ctx context.Context) (*envdClient, string, error) {
 	if s := e.handle.override; s != nil {
 		return s.acquire(ctx)
 	}
-	session, err := e.handle.rt.acquire(ctx, e.handle.agentID, e.handle.spec)
+	session, err := e.handle.rt.acquire(ctx, e.handle.botID, e.handle.spec)
 	return session.envd, session.sandboxID, err
 }
 

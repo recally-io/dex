@@ -79,19 +79,19 @@ func TestUserManagesSSHRunnerAndExecutesBotRemotely(t *testing.T) {
 	}
 
 	// The default bot runs tools on its SSH Runner and blocks deletion of that Runner (409).
-	var defAgent apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &defAgent)
-	defAgent.Provider = "faux"
-	defAgent.ModelID = "bash"
-	defAgent.ThinkingLevel = "off"
-	defAgent.RunnerID = created.ID
-	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
-	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil)
+	var defBot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &defBot)
+	defBot.Provider = "faux"
+	defBot.ModelID = "bash"
+	defBot.ThinkingLevel = "off"
+	defBot.RunnerID = created.ID
+	d.must(t, http.MethodPut, "/api/bots/default", defBot, &defBot)
+	d.must(t, http.MethodPost, "/api/bots/default/integrations/reload", nil, nil)
 
 	d.must(t, http.MethodDelete, "/api/settings/runners/"+created.ID, nil, nil, http.StatusConflict)
 
 	var dirs directoryListing
-	d.must(t, http.MethodGet, "/api/directories?agentId=default&path=~", nil, &dirs)
+	d.must(t, http.MethodGet, "/api/directories?botId=default&path=~", nil, &dirs)
 	if dirs.Home != sshFix.RemoteHome {
 		t.Fatalf("directories home=%q want=%q", dirs.Home, sshFix.RemoteHome)
 	}
@@ -131,7 +131,7 @@ func TestUserManagesSSHRunnerAndExecutesBotRemotely(t *testing.T) {
 	var recent struct {
 		Projects []string `json:"projects"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/projects", nil, &recent)
+	d.must(t, http.MethodGet, "/api/bots/default/projects", nil, &recent)
 	if !slices.Equal(recent.Projects, []string{remoteProject}) {
 		t.Fatalf("recent projects=%v want=[%s]", recent.Projects, remoteProject)
 	}
@@ -140,11 +140,11 @@ func TestUserManagesSSHRunnerAndExecutesBotRemotely(t *testing.T) {
 	// The turn returns its answer before the session settles, and a busy session blocks the switch.
 	eventually(t, "session settled before switch", func() (bool, any) {
 		var info sessionListItem
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &info)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", sessionID), nil, &info)
 		return !info.Busy, info.Busy
 	})
-	defAgent.RunnerID = ""
-	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
+	defBot.RunnerID = ""
+	d.must(t, http.MethodPut, "/api/bots/default", defBot, &defBot)
 	d.must(t, http.MethodDelete, "/api/settings/runners/"+created.ID, nil, nil, http.StatusOK)
 }
 

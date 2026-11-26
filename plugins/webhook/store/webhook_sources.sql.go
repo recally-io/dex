@@ -20,7 +20,7 @@ func (q *Queries) DeleteWebhookSource(ctx context.Context, id string) error {
 }
 
 const getWebhookSource = `-- name: GetWebhookSource :one
-SELECT id, secret, task_agent_id, hold_unmatched FROM plugin_webhook_sources WHERE id = ?
+SELECT id, secret, task_bot_id, hold_unmatched FROM plugin_webhook_sources WHERE id = ?
 `
 
 func (q *Queries) GetWebhookSource(ctx context.Context, id string) (PluginWebhookSource, error) {
@@ -29,26 +29,26 @@ func (q *Queries) GetWebhookSource(ctx context.Context, id string) (PluginWebhoo
 	err := row.Scan(
 		&i.ID,
 		&i.Secret,
-		&i.TaskAgentID,
+		&i.TaskBotID,
 		&i.HoldUnmatched,
 	)
 	return i, err
 }
 
 const saveWebhookSource = `-- name: SaveWebhookSource :execrows
-INSERT INTO plugin_webhook_sources (id, secret, task_agent_id, hold_unmatched)
+INSERT INTO plugin_webhook_sources (id, secret, task_bot_id, hold_unmatched)
 SELECT ?1, ?2, ?3, ?4
 WHERE ?3 IS NULL OR EXISTS (
-  SELECT 1 FROM agents a WHERE a.id = ?3 AND a.archived_at IS NULL
+  SELECT 1 FROM bots a WHERE a.id = ?3 AND a.archived_at IS NULL
 )
-ON CONFLICT (id) DO UPDATE SET secret = excluded.secret, task_agent_id = excluded.task_agent_id,
+ON CONFLICT (id) DO UPDATE SET secret = excluded.secret, task_bot_id = excluded.task_bot_id,
   hold_unmatched = excluded.hold_unmatched
 `
 
 type SaveWebhookSourceParams struct {
 	ID            string         `json:"id"`
 	Secret        string         `json:"secret"`
-	TaskAgentID   sql.NullString `json:"task_agent_id"`
+	TaskBotID     sql.NullString `json:"task_bot_id"`
 	HoldUnmatched int64          `json:"hold_unmatched"`
 }
 
@@ -56,7 +56,7 @@ func (q *Queries) SaveWebhookSource(ctx context.Context, arg SaveWebhookSourcePa
 	result, err := q.db.ExecContext(ctx, saveWebhookSource,
 		arg.ID,
 		arg.Secret,
-		arg.TaskAgentID,
+		arg.TaskBotID,
 		arg.HoldUnmatched,
 	)
 	if err != nil {

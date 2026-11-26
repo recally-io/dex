@@ -67,7 +67,7 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 	}
 	testSetMCP(t, store, "", "c_disabled", serverConfig{Disabled: true})
 	testSetMCP(t, store, "", "d_invalid", serverConfig{Command: filepath.Join(dir, "missing-command")})
-	agents := coreEngine(t, Config{DataDir: data, Home: home, MCPServers: store})
+	bots := coreEngine(t, Config{DataDir: data, Home: home, MCPServers: store})
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 
@@ -88,7 +88,7 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 		}
 		coordinated <- waitMCPLoadingFile(ctx, filepath.Join(dir, "disconnected"))
 	}()
-	err = agents.Reload(ctx, "a")
+	err = bots.Reload(ctx, "a")
 	if coordinationErr := <-coordinated; coordinationErr != nil {
 		t.Fatal(coordinationErr)
 	}
@@ -98,7 +98,7 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 
 	// Then status queries retain the failure and the later server's tools still work.
 	for {
-		info, err := agents.Extensions(ctx, "a")
+		info, err := bots.Extensions(ctx, "a")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -122,8 +122,8 @@ func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
 		case <-time.After(5 * time.Millisecond):
 		}
 	}
-	ref := coreCreate(t, agents, "a", coreOptions("tool"))
-	outcome := coreWait(t, coreSubmit(t, agents, ref, "append", `mcp__b_later__append {"text":"loaded after disconnect"}`, "tool"))
+	ref := coreCreate(t, bots, "a", coreOptions("tool"))
+	outcome := coreWait(t, coreSubmit(t, bots, ref, "append", `mcp__b_later__append {"text":"loaded after disconnect"}`, "tool"))
 	if outcome.Status != "done" || !strings.Contains(outcome.Answer, "appended 1") {
 		t.Fatalf("later server tool: %+v", outcome)
 	}

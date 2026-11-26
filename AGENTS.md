@@ -1,4 +1,4 @@
-# Agent instruction index
+# Bot instruction index
 
 Read the rules that match the task before acting. If a task spans several
 areas, read each matching rule. Do not load all rule files by default.
@@ -14,7 +14,7 @@ areas, read each matching rule. Do not load all rule files by default.
 
 ## Reference docs
 
-Keep user-facing docs in [README.md](README.md) and agent or engineering
+Keep user-facing docs in [README.md](README.md) and bot or engineering
 references here.
 
 - [Product](docs/product.md): users, scope, and non-goals.
@@ -22,6 +22,7 @@ references here.
   mapping.
 - [Architecture](docs/dev/architecture.md): the overview, with links to one
   document per subsystem in `docs/dev/`, such as [Plugins](docs/dev/plugins.md).
+- [Bots](docs/dev/bots.md): Bot settings, archive, memory, and tools.
 - [Tasks](docs/dev/tasks.md): Board, Task access, and external runs.
 - [Development](docs/dev/development.md): local setup, tasks, tests, and debug.
 - [Releasing](docs/dev/releasing.md): CI shards and release workflow.

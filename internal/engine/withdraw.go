@@ -23,14 +23,14 @@ const (
 
 // PeekWithdrawal reads the native state without waiting for the execution serialization gate.
 // The result is a snapshot; placement can race with a later Stop.
-func (a *Agents) PeekWithdrawal(ctx context.Context, ref Ref, requestID string) (Withdrawal, error) {
+func (a *Bots) PeekWithdrawal(ctx context.Context, ref Ref, requestID string) (Withdrawal, error) {
 	if requestID == "" {
 		return "", fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return "", err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return "", err
@@ -54,14 +54,14 @@ func (a *Agents) PeekWithdrawal(ctx context.Context, ref Ref, requestID string) 
 
 // Withdraw removes one queued input by its business request ID. The native transaction decides
 // whether the input is still queued; a placed input keeps running.
-func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withdrawal, error) {
+func (a *Bots) Withdraw(ctx context.Context, ref Ref, requestID string) (Withdrawal, error) {
 	if requestID == "" {
 		return "", fmt.Errorf("%w: request ID is required", ErrInvalidInput)
 	}
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return "", err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return "", err
@@ -71,7 +71,7 @@ func (a *Agents) Withdraw(ctx context.Context, ref Ref, requestID string) (Withd
 	if err != nil {
 		return "", err
 	}
-	h, err := a.harness(ctx, ref.AgentID)
+	h, err := a.harness(ctx, ref.BotID)
 	if err != nil {
 		return "", err
 	}

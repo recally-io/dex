@@ -1,7 +1,7 @@
 import { describe, test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import { createClient } from "../src/api/generated/client";
-import { createAgent, createAutomation, runAutomation } from "../src/api/generated/sdk.gen";
+import { createBot, createAutomation, runAutomation } from "../src/api/generated/sdk.gen";
 
 describe("Automation run history", () => {
   test("offers the Outbox on a read-only Automation transcript", async ({ app, browser, screen }) => {
@@ -12,7 +12,7 @@ describe("Automation run history", () => {
 
     const client = createClient({ baseUrl: origin.origin });
 
-    const { data: agent } = await createAgent({
+    const { data: bot } = await createBot({
       client,
       body: { name: "Routine Outbox fixture", provider: "faux", modelId: "echo" },
       throwOnError: true,
@@ -20,7 +20,7 @@ describe("Automation run history", () => {
 
     const { data: routine } = await createAutomation({
       client,
-      path: { agentId: agent.id },
+      path: { botId: bot.id },
       body: {
         name: "Read-only Outbox fixture",
         prompt: "Routine transcript",
@@ -35,12 +35,12 @@ describe("Automation run history", () => {
 
     const { data: run } = await runAutomation({
       client,
-      path: { agentId: agent.id, automationId: routine.id },
+      path: { botId: bot.id, automationId: routine.id },
       throwOnError: true,
     });
 
     expect(run.sessionId).toBeDefined();
-    await app.open(`/a/${agent.id}/s/${run.sessionId}`);
+    await app.open(`/b/${bot.id}/s/${run.sessionId}`);
     await screen.getByRole("button", "Session activity").tap();
     await expect(screen.getByText("No outbound messages yet.")).toBeVisible();
     await expect(screen.getByRole("textbox", "Message Dex")).toHaveCount(0);
@@ -55,7 +55,7 @@ describe("Automation run history", () => {
     const client = createClient({ baseUrl: origin.origin });
 
     // Empty fields prevent the fixture from inheriting a model or a runner.
-    const { data: agent } = await createAgent({
+    const { data: bot } = await createBot({
       client,
       body: { name: "Routine fixture", provider: "", modelId: "", runnerId: "local" },
       throwOnError: true,
@@ -63,7 +63,7 @@ describe("Automation run history", () => {
 
     const { data: routine } = await createAutomation({
       client,
-      path: { agentId: agent.id },
+      path: { botId: bot.id },
       body: {
         name: "Routine failure fixture",
         prompt: "Check",
@@ -78,14 +78,14 @@ describe("Automation run history", () => {
 
     const { data: run } = await runAutomation({
       client,
-      path: { agentId: agent.id, automationId: routine.id },
+      path: { botId: bot.id, automationId: routine.id },
       throwOnError: true,
     });
 
     expect(run.status).toBe("skipped");
     expect(run.reason).toBe("the bot has no model");
 
-    await app.open(`/a/${agent.id}/automations/${routine.id}`);
+    await app.open(`/b/${bot.id}/automations/${routine.id}`);
 
     await expect(screen.getByText("the bot has no model", { exact: true })).toBeVisible();
     await expect(screen.getByText("not delivered: no notification target", { exact: true })).toBeVisible();

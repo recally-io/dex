@@ -50,10 +50,10 @@ func acceptIssue(ctx context.Context, store *tasksvc.Service, repositoryID int64
 	}
 	var receipt tasksvc.Receipt
 	var err error
-	if rule.IssueAgentID == "" {
+	if rule.IssueBotID == "" {
 		receipt, err = store.Accept(ctx, event)
 	} else {
-		receipt, err = store.AcceptCreating(ctx, event, rule.IssueAgentID, "GitHub issue #"+number)
+		receipt, err = store.AcceptCreating(ctx, event, rule.IssueBotID, "GitHub issue #"+number)
 	}
 	if err != nil {
 		return nil, err

@@ -79,8 +79,8 @@ func TestUserSeesWebChildAndMonitorNotificationsInTheirOrigin(t *testing.T) {
 
 	// Given more notices than fit in the snapshot, the earliest real child conclusion is paged.
 	if _, err := conn.ExecContext(t.Context(), `WITH RECURSIVE fixture(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM fixture WHERE n < 31)
-		INSERT INTO web_notifications (id, event_id, agent_id, session_id, source_submission_id, body, created_at)
-		SELECT 'fixture-'||n, 'tool:fixture-'||n, agent_id, session_id, source_submission_id, 'Fixture notice', created_at+n
+		INSERT INTO web_notifications (id, event_id, bot_id, session_id, source_submission_id, body, created_at)
+		SELECT 'fixture-'||n, 'tool:fixture-'||n, bot_id, session_id, source_submission_id, 'Fixture notice', created_at+n
 		FROM web_notifications CROSS JOIN fixture WHERE id = ?`, child.Id); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestUserCannotReadTimelineNotificationsUnderAnotherOrArchivedBot(t *testing
 	// Given a second bot with its own Web notice.
 	s := startBots(t)
 	bot := s.session(s.b.ID)
-	base := fmt.Sprintf("/api/agents/%s/sessions/%d", s.b.ID, bot.id)
+	base := fmt.Sprintf("/api/bots/%s/sessions/%d", s.b.ID, bot.id)
 	s.d.must(t, http.MethodPut, base+"/settings", map[string]string{"provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, nil)
 	w := bot.watch()
 	w.until(t, "initial notice page", func(tr *transcript) bool { return len(tr.noticeEvents) == 1 })

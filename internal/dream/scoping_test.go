@@ -22,8 +22,8 @@ import (
 	"github.com/recally-io/dex/internal/session"
 )
 
-func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
-	// Given real native execution for two agents, with old settled chats and one active input.
+func TestUserIdleBotDreamsWhileAnotherBotIsBusy(t *testing.T) {
+	// Given real native execution for two bots, with old settled chats and one active input.
 	data := t.TempDir()
 	conn, err := db.Open(t.Context(), filepath.Join(data, "control.sqlite"))
 	if err != nil {
@@ -34,7 +34,7 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	var now atomic.Int64
 	now.Store(time.Unix(1_800_000_000, 0).UnixMilli())
 	clock := func() time.Time { return time.UnixMilli(now.Load()) }
-	agents, err := engine.New(engine.Config{DataDir: data, Home: t.TempDir()})
+	bots, err := engine.New(engine.Config{DataDir: data, Home: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,15 +71,15 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 		responses[i] = step
 	}
 	faux.SetResponses(responses)
-	agents.Catalog.Models.SetProvider(faux.Provider())
-	chats := session.New(conn, agents, clock, nil, nil)
+	bots.Catalog.Models.SetProvider(faux.Provider())
+	chats := session.New(conn, bots, clock, nil, nil)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); chats.Run(ctx) }()
 	t.Cleanup(func() {
 		cancel()
 		<-done
-		if err := agents.Close(context.Background()); err != nil {
+		if err := bots.Close(context.Background()); err != nil {
 			t.Error(err)
 		}
 	})
@@ -103,10 +103,10 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	}
 	ids := map[string]int64{}
 	for _, id := range []string{"busy", "idle"} {
-		if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: id, Name: id}); err != nil {
+		if err := q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: id, Name: id}); err != nil {
 			t.Fatal(err)
 		}
-		if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: id, Name: id, ModelProvider: "dream-fixture", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
+		if err := q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: id, Name: id, ModelProvider: "dream-fixture", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 			t.Fatal(err)
 		}
 		sessionID, err := chats.Post(t.Context(), id, "chat:first", "", id+"-first", id+" evidence")
@@ -122,7 +122,7 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 	}
 	d := dream.New(q, chats.Post, 24*time.Hour, clock)
 
-	// When concurrent checks run, only the idle agent gets one dream.
+	// When concurrent checks run, only the idle bot gets one dream.
 	var checks sync.WaitGroup
 	for range 8 {
 		checks.Go(func() { d.Check(t.Context()) })
@@ -143,10 +143,10 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(input.Content, fmt.Sprintf(`"chat":"dex:idle/chat/%d"`, ids["idle"])) || strings.Contains(input.Content, "busy evidence") {
-		t.Fatal("dream input crosses agents or has an old source")
+		t.Fatal("dream input crosses bots or has an old source")
 	}
 
-	// Then the unfinished dream blocks another agent even after its foreground input settles.
+	// Then the unfinished dream blocks another bot even after its foreground input settles.
 	close(busyRelease)
 	waitDone("busy-pending")
 	dream.New(q, chats.Post, 24*time.Hour, clock).Check(t.Context())
@@ -158,13 +158,13 @@ func TestUserIdleAgentDreamsWhileAnotherAgentIsBusy(t *testing.T) {
 		t.Fatalf("pending dream count=%d err=%v", len(pending), err)
 	}
 
-	// When the native dream finishes, the next check can admit the other agent.
+	// When the native dream finishes, the next check can admit the other bot.
 	close(dreamRelease)
 	waitDone(idle.ID)
 	d.Check(t.Context())
 	busy, err := q.LatestDream(t.Context(), "busy")
 	if err != nil {
-		t.Fatalf("next agent dream: %v", err)
+		t.Fatalf("next bot dream: %v", err)
 	}
 	waitDone(busy.ID)
 	latest, err := q.LatestDream(t.Context(), "idle")
@@ -181,13 +181,13 @@ func TestUserDreamClipsLongMessageAndCapsBatchBytes(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	q := sqlc.New(conn)
-	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
+	if err := q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "default", Name: "Dex"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "default", Name: "Dex", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
+	if err := q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "default", Name: "Dex", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	conv, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "default", ChannelKey: "chat:clip", Title: "Clip", CreatedAt: 1})
+	conv, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{BotID: "default", ChannelKey: "chat:clip", Title: "Clip", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestUserDreamClipsLongMessageAndCapsBatchBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	var throughID string
-	if err := conn.QueryRowContext(t.Context(), `SELECT through_id FROM dreams WHERE agent_id = 'default' ORDER BY created_at DESC LIMIT 1`).Scan(&throughID); err != nil || throughID != last.MessageID {
+	if err := conn.QueryRowContext(t.Context(), `SELECT through_id FROM dreams WHERE bot_id = 'default' ORDER BY created_at DESC LIMIT 1`).Scan(&throughID); err != nil || throughID != last.MessageID {
 		t.Fatalf("dream boundary through_id=%q err=%v, want %s", throughID, err, last.MessageID)
 	}
 }

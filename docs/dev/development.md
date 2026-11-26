@@ -17,11 +17,11 @@ Check: `mise run check` passes.
 1. Run `mise run dev:server`. It builds the web UI and the development machine
    archives, then runs `dex --port 18787 --data-dir ~/.dex-dev`. It does not
    touch an installed dex on port 8787 or its data in `~/.dex`.
-2. Open <http://127.0.0.1:18787>. The default agent timeline opens.
+2. Open <http://127.0.0.1:18787>. The default bot timeline opens.
 3. On Providers, add a built-in provider with its API key, or a custom one with its
    API (OpenAI Session Completions, OpenAI Responses, or Anthropic Messages), base
    URL, and key. Add more providers if you want.
-4. In the agent Settings tab, choose a model.
+4. In the bot Settings tab, choose a model.
 
 Check: a new session answers a message, and the answer appears while the model
 writes it.
@@ -35,7 +35,7 @@ To try the UI without a provider, start the server with `DEX_FAKE_MODEL=1`
 and choose `faux/echo`, or `faux/bash` to see tool calls.
 
 For channel setup, see the [product scope](../product.md#scope) and the
-selected agent's Channels page under Settings.
+selected bot's Channels page under Settings.
 
 Every `dev:server` run shares `~/.dex-dev`. For isolated data, such as a
 second checkout or a clean first run, pass another data directory; later flags
@@ -119,9 +119,9 @@ source and its PNG in the same change.
 - Start `DEX_FAKE_MODEL=1 mise run dev:server -- --data-dir <dir>` to inspect
   native execution without provider credentials.
 - Inspect business receipts in `control.sqlite`. Use engine history and watch
-  methods to inspect execution state. Business code must not query agent
+  methods to inspect execution state. Business code must not query bot
   execution tables.
-- Each agent uses `<data dir>/agents/<id>/state.sqlite` and its own workspace.
+- Each bot uses `<data dir>/agents/<id>/state.sqlite` and its own workspace.
   Stop dex before you copy a complete data directory for backup or inspection.
 
 ## More guides

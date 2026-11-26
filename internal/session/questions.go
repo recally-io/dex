@@ -125,7 +125,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return QuestionInfo{}, err
 	}
-	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{BotID: r.BotID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return QuestionInfo{}, err
 	}
@@ -168,7 +168,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 		queued = 1
 	}
 	id := uuid.NewV7().String()
-	params := sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, SessionID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli(), Queued: queued}
+	params := sqlc.CreateQuestionParams{ID: id, BotID: r.BotID, SessionID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli(), Queued: queued}
 	action.store(&params)
 	if err := q.CreateQuestion(ctx, params); err != nil {
 		return QuestionInfo{}, err
@@ -192,9 +192,9 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 // answerContent loads the open question for an answer inside the receipt transaction and returns
 // the content that the model reads. For an action question it also decides the action; see
 // decideAnswer.
-func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, sessionID int64, questionID, answer, origin string) (answerDecision, error) {
+func answerContent(ctx context.Context, q *sqlc.Queries, botID string, sessionID int64, questionID, answer, origin string) (answerDecision, error) {
 	row, err := q.GetQuestion(ctx, questionID)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.AgentID != agentID || row.SessionID != sessionID)) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.BotID != botID || row.SessionID != sessionID)) {
 		return answerDecision{}, ErrQuestionClosed
 	}
 	if err != nil {
@@ -218,16 +218,16 @@ func reopenQuestion(ctx context.Context, q *sqlc.Queries, submissionID string) e
 
 // renderQuestion is the channel text of a question. A platform that quotes (Telegram and Feishu)
 // tells the user to reply to the message; the others point to the web.
-func renderQuestion(q sqlc.Question, options []string, agentID string, main, quotable bool) string {
+func renderQuestion(q sqlc.Question, options []string, botID string, main, quotable bool) string {
 	var b strings.Builder
 	b.WriteString(q.Text)
 	b.WriteString("\n")
 	for i, option := range options {
 		fmt.Fprintf(&b, "\n%c. %s", rune('A'+i), option)
 	}
-	path := fmt.Sprintf("/a/%s/s/%d", agentID, q.SessionID)
+	path := fmt.Sprintf("/b/%s/s/%d", botID, q.SessionID)
 	if main {
-		path = "/a/" + agentID
+		path = "/b/" + botID
 	}
 	if quotable {
 		b.WriteString("\n\nReply to this message to answer, or answer in the dex web app: " + path)
@@ -259,7 +259,7 @@ func (s *Service) withQuestion(ctx context.Context, id string, event engine.Outc
 	if err != nil {
 		return event, err
 	}
-	rendered := renderQuestion(row, q.Options, row.AgentID, conv.ChannelKey == MainKey, quotes(reply.Origin))
+	rendered := renderQuestion(row, q.Options, row.BotID, conv.ChannelKey == MainKey, quotes(reply.Origin))
 	if event.Answer != "" {
 		rendered = event.Answer + "\n\n" + rendered
 	}

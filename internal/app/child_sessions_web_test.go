@@ -28,7 +28,7 @@ func (d *dex) listWebSessions(t *testing.T) map[int64]webSession {
 	var list struct {
 		Sessions []webSession `json:"sessions"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/sessions", nil, &list)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions", nil, &list)
 	out := map[int64]webSession{}
 	for _, c := range list.Sessions {
 		out[c.ID] = c
@@ -57,7 +57,7 @@ func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 		return false
 	})
 	var opened webSession
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", child.conversation(t)), nil, &opened)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", child.conversation(t)), nil, &opened)
 
 	// Then it gets the child session, which is writable and names its parent.
 	if opened.ID != child.conversation(t) || opened.ParentID == nil || *opened.ParentID != parent || opened.ReadOnly || opened.Channel != "web" {
@@ -69,9 +69,9 @@ func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 	}
 
 	// And another Bot cannot open the child at its own Session URL.
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/sessions/%d", other.ID, opened.ID), nil, nil, http.StatusNotFound)
+	var other apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/%s/sessions/%d", other.ID, opened.ID), nil, nil, http.StatusNotFound)
 }
 
 func TestUserParentStopWithdrawsParentInputQueuedBehindAUserRun(t *testing.T) {
@@ -88,7 +88,7 @@ func TestUserParentStopWithdrawsParentInputQueuedBehindAUserRun(t *testing.T) {
 	var ref childRef
 	toolJSON(t, callSessionTool(t, d, parent, "session_send", map[string]any{"id": child.ID, "message": "echo parent queued"}), &ref)
 	// When the user stops the parent session.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", parent), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", parent), nil, nil)
 	releaseResultGate(t, dir, "user-active")
 	// Then the run of the user finishes, and the parent input never runs.
 	turns := waitChildTurnsEnded(t, conn, child.conversation(t), 3)
@@ -159,7 +159,7 @@ func TestUserSeesStopOnlyForWithdrawableMixedChildInput(t *testing.T) {
 	}
 
 	// When the parent stops, only the queued parent input ends.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", parent), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", parent), nil, nil)
 	turns := childTurns(t, conn, child.conversation(t))
 	if len(turns) != 3 || turns[0].status != "pending" || turns[1].status != "pending" || turns[2].status != "unanswered" || turns[2].reason != "stopped" {
 		t.Fatalf("mixed child after Stop: %+v", turns)
@@ -195,7 +195,7 @@ func TestUserSeesWhichChildrenStopOnTheParentReaches(t *testing.T) {
 	}
 
 	// And the mark is the effect of Stop: it ends the first child and leaves the second.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", parent), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", parent), nil, nil)
 	waitChildTurnsEnded(t, conn, reached.conversation(t), 1)
 	if turns := childTurns(t, conn, alone.conversation(t)); turns[1].status != "pending" {
 		t.Fatalf("the stop of the parent ended the turn of the user: %+v", turns[1])

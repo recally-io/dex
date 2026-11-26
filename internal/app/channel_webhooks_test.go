@@ -54,7 +54,7 @@ func TestUserVerifiesFeishuWebhook(t *testing.T) {
 	var setup struct {
 		PairingCode string `json:"pairingCode"`
 	}
-	d.must(t, http.MethodPut, "/api/agents/default/channels/feishu", map[string]any{
+	d.must(t, http.MethodPut, "/api/bots/default/channels/feishu", map[string]any{
 		"appId": "app", "appSecret": "app-secret", "brand": "feishu", "transport": "webhook",
 		"webhook": map[string]string{"verificationToken": "verify-me"},
 	}, &setup)
@@ -73,7 +73,7 @@ func TestUserVerifiesFeishuWebhook(t *testing.T) {
 	postChannelHook(t, d, feishuHook, feishuHookTextAt(t, "hello", "owner", "p2p", "verify-me", "old replay", old), map[string]string{larkevent.EventRequestTimestamp: strconv.FormatInt(time.Now().Unix(), 10)}, http.StatusBadRequest)
 	postChannelHook(t, d, feishuHook, feishuHookText(t, "hello", "owner", "p2p", "verify-me", "hello webhook"), nil, http.StatusOK)
 	f.waitReply(t, "echo: hello webhook")
-	_, view := d.call(t, http.MethodGet, "/api/agents/default/channels/feishu", nil)
+	_, view := d.call(t, http.MethodGet, "/api/bots/default/channels/feishu", nil)
 	if !strings.Contains(view, `"transport":"webhook"`) || strings.Contains(view, "verify-me") {
 		t.Fatalf("unexpected Feishu view: %s", view)
 	}
@@ -109,7 +109,7 @@ func TestUserSwitchesTelegramWebhookWithDurableRetriesAndRollback(t *testing.T) 
 	postChannelHook(t, d, telegramHook, []byte(`{}`), nil, http.StatusNotFound)
 
 	// When the owner enables the webhook, Telegram retains pending updates.
-	const settings = "/api/agents/default/channels/telegram"
+	const settings = "/api/bots/default/channels/telegram"
 	const secret = "telegram-hook-secret"
 	const endpoint = "https://hooks.example.test" + telegramHook
 	webhook := map[string]any{"token": "", "allowedUsers": []int64{42}, "transport": "webhook",
@@ -123,7 +123,7 @@ func TestUserSwitchesTelegramWebhookWithDurableRetriesAndRollback(t *testing.T) 
 	if registered.URL != endpoint || registered.Secret != secret || registered.Drop || registered.Max != 1 || !slices.Equal(registered.Updates, []string{"message", "edited_message", "callback_query"}) {
 		t.Fatalf("incorrect registration: %+v", registered)
 	}
-	_, view := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
+	_, view := d.call(t, http.MethodGet, "/api/bots/default/channels", nil)
 	if !strings.Contains(view, `"transport":"webhook"`) || strings.Contains(view, secret) {
 		t.Fatalf("unexpected Telegram view: %s", view)
 	}
@@ -136,7 +136,7 @@ func TestUserSwitchesTelegramWebhookWithDurableRetriesAndRollback(t *testing.T) 
 	f.nextEvent(t, "download")
 
 	// A failed storage write cannot ACK. An accepted update behind the held
-	// download survives a restart even though the agent has not seen it.
+	// download survives a restart even though the bot has not seen it.
 	conn := controlWriteDB(t, dir)
 	if _, err := conn.ExecContext(t.Context(), `CREATE TRIGGER reject_webhook BEFORE INSERT ON channel_webhook_queue WHEN NEW.event_id = '201' BEGIN SELECT RAISE(FAIL, 'intake unavailable'); END`); err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestUserKeepsPendingAndRecentWebhookEventsAfterCleanup(t *testing.T) {
 	now := time.Now()
 	old := now.Add(-8 * 24 * time.Hour).UnixMilli()
 	if _, err := conn.ExecContext(t.Context(), `
-INSERT INTO channel_webhook_queue (platform, account, event_id, agent_id, received_at, payload)
+INSERT INTO channel_webhook_queue (platform, account, event_id, bot_id, received_at, payload)
 VALUES ('telegram', '123', 'recent', 'default', ?, NULL),
        ('telegram', '123', 'skew-margin', 'default', ?, NULL),
        ('telegram', '123', 'handled', 'default', ?, NULL),
@@ -270,7 +270,7 @@ func TestUserSwitchesFeishuToEncryptedWebhookAndBack(t *testing.T) {
 	f.mu.Unlock()
 
 	// When the owner switches, only encrypted and signed events enter the inbox.
-	const settings = "/api/agents/default/channels/feishu"
+	const settings = "/api/bots/default/channels/feishu"
 	d.must(t, http.MethodPut, settings, map[string]any{"appId": "app", "appSecret": "", "brand": "feishu", "transport": "webhook",
 		"webhook": map[string]string{"verificationToken": "verify-me", "encryptKey": feishuTestEncryptKey}}, nil)
 	plaintextChallenge := []byte(`{"type":"url_verification","token":"verify-me","challenge":"encrypted-proof"}`)
@@ -314,7 +314,7 @@ func TestUserSwitchesFeishuToEncryptedWebhookAndBack(t *testing.T) {
 	d.stop()
 
 	// A retry with the same event ID and a different message ID cannot enter
-	// the agent after restart. The IDs are distinct in the platform protocol.
+	// the bot after restart. The IDs are distinct in the platform protocol.
 	d = startFeishu(t, f, dir)
 	retry := bytes.Replace(feishuHookText(t, "changed", "owner", "p2p", "verify-me", "changed retry"), []byte(`"event-changed"`), []byte(`"event-secure"`), 1)
 	body = encryptedFeishuHook(t, retry)

@@ -8,19 +8,19 @@ info:
     operation except POST /api/session needs the access token, as a Bearer
     token or as the session cookie. The API refuses cross-site writes.
     Times are Unix milliseconds.
-    Agent resources require /api/agents/{agentId}, including the default agent.
-    Un-nested agent routes return 404. Global settings contain no agent.
+    Bot resources require /api/bots/{botId}, including the default bot.
+    Un-nested bot routes return 404. Global settings contain no bot.
     Model discovery runs after HTTP startup. History reads and extension reload
-    return 503 if they need to open an agent while discovery is pending. Model
+    return 503 if they need to open a bot while discovery is pending. Model
     validation returns 503 if the requested model still needs discovery.
     Stored input and Stop requests remain durable until discovery finishes.
 security:
   - bearer: []
   - session: []
 paths:
-  /api/plugins/github/agents/{agentId}/tasks/{taskId}/pull:
+  /api/plugins/github/bots/{botId}/tasks/{taskId}/pull:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
       - in: path
         name: taskId
         required: true
@@ -161,9 +161,9 @@ paths:
                   maxLength: 256,
                   writeOnly: true,
                 }
-                taskAgentId:
+                taskBotId:
                   type: string
-                  description: Create a Task under this agent for a new thread. Omit to disable creation.
+                  description: Create a Task under this bot for a new thread. Omit to disable creation.
                 holdUnmatched:
                   type: boolean
                   default: false
@@ -202,9 +202,9 @@ paths:
                   maxLength: 256,
                   writeOnly: true,
                 }
-                taskAgentId:
+                taskBotId:
                   type: string
-                  description: Create a Task under this agent for an unmatched event with exactly one object. Omit to disable creation.
+                  description: Create a Task under this bot for an unmatched event with exactly one object. Omit to disable creation.
                 holdUnmatched:
                   type: boolean
                   default: false
@@ -243,9 +243,9 @@ paths:
                   maxLength: 256,
                   writeOnly: true,
                 }
-                issueAgentId:
+                issueBotId:
                   type: string
-                  description: Create Tasks for opened Issues under this agent. Omit to disable creation.
+                  description: Create Tasks for opened Issues under this bot. Omit to disable creation.
                 holdUnmatched:
                   type: boolean
                   default: false
@@ -697,9 +697,9 @@ paths:
           application/json:
             schema:
               type: object
-              required: [agentId, taskId]
+              required: [botId, taskId]
               properties:
-                agentId: { type: string }
+                botId: { type: string }
                 taskId: { type: string }
       responses:
         "204": { description: Event attached. }
@@ -1002,7 +1002,7 @@ paths:
       operationId: setOnePassword
       description: >
         Saves how tools authenticate the 1Password CLI. An empty or missing token keeps
-        the saved token. Open agents apply the change when all agents are idle.
+        the saved token. Open bots apply the change when all bots are idle.
       requestBody:
         required: true
         content:
@@ -1237,27 +1237,27 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels:
+  /api/bots/{botId}/channels:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     get:
       operationId: getChannels
       responses:
         "200":
-          description: Channel configuration and runtime status for this agent.
+          description: Channel configuration and runtime status for this bot.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Channels" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/notification-targets:
+  /api/bots/{botId}/notification-targets:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     get:
       operationId: getNotificationTargets
       responses:
         "200":
-          description: This agent's authorized notification destinations and default.
+          description: This bot's authorized notification destinations and default.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NotificationTargets" }
@@ -1305,9 +1305,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/telegram/managed:
+  /api/bots/{botId}/channels/telegram/managed:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     post:
       operationId: beginTelegramManagedSetup
       description: Creates a setup and a private Telegram link to verify the owner.
@@ -1319,9 +1319,9 @@ paths:
               schema: { $ref: "#/components/schemas/TelegramManagedSetup" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/telegram/managed/{setupId}:
+  /api/bots/{botId}/channels/telegram/managed/{setupId}:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
       - name: setupId
         in: path
         required: true
@@ -1346,9 +1346,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/telegram/pairing:
+  /api/bots/{botId}/channels/telegram/pairing:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     post:
       operationId: createTelegramPairing
       description: Creates a single-use owner pairing link. The link expires in 10 minutes.
@@ -1366,9 +1366,9 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "500": { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/wechat/login:
+  /api/bots/{botId}/channels/wechat/login:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     post:
       operationId: beginWechatLogin
       description: Starts QR login. The person who confirms becomes the only allowed sender.
@@ -1380,9 +1380,9 @@ paths:
               schema: { $ref: "#/components/schemas/WechatLogin" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/wechat/login/{loginId}/poll:
+  /api/bots/{botId}/channels/wechat/login/{loginId}/poll:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     post:
       operationId: pollWechatLogin
       description: Polls for up to 35 seconds. Saves credentials only after confirmed login.
@@ -1406,9 +1406,9 @@ paths:
               schema: { $ref: "#/components/schemas/WechatLogin" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/wechat:
+  /api/bots/{botId}/channels/wechat:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     delete:
       operationId: deleteWechat
       description: Stops WeChat and forgets its credentials. Past sessions stay read-only.
@@ -1420,9 +1420,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/telegram:
+  /api/bots/{botId}/channels/telegram:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     put:
       operationId: setTelegram
       description: Saves the bot and restarts it. An empty token keeps the saved token.
@@ -1450,9 +1450,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/feishu:
+  /api/bots/{botId}/channels/feishu:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     get:
       operationId: getFeishu
       responses:
@@ -1486,9 +1486,9 @@ paths:
               schema: { $ref: "#/components/schemas/Ok" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/feishu/registration:
+  /api/bots/{botId}/channels/feishu/registration:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     post:
       operationId: beginFeishu
       requestBody:
@@ -1504,9 +1504,9 @@ paths:
               schema: { $ref: "#/components/schemas/FeishuSetup" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/channels/feishu/registration/poll:
+  /api/bots/{botId}/channels/feishu/registration/poll:
     parameters:
-      - $ref: "#/components/parameters/AgentId"
+      - $ref: "#/components/parameters/BotId"
     post:
       operationId: pollFeishu
       requestBody:
@@ -1540,123 +1540,123 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents:
+  /api/bots:
     get:
-      operationId: listAgents
-      description: List the owner's agents in creation order.
+      operationId: listBots
+      description: List the owner's bots in creation order.
       responses:
         "200":
-          description: The agents.
+          description: The bots.
           content:
             application/json:
               schema:
                 type: object
-                required: [agents]
+                required: [bots]
                 properties:
-                  agents:
+                  bots:
                     type: array
-                    items: { $ref: "#/components/schemas/Agent" }
+                    items: { $ref: "#/components/schemas/Bot" }
         default: { $ref: "#/components/responses/Error" }
     post:
-      operationId: createAgent
-      description: Create an agent without changing global providers or channels.
+      operationId: createBot
+      description: Create a bot without changing global providers or channels.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/CreateAgentInput" }
+            schema: { $ref: "#/components/schemas/CreateBotInput" }
       responses:
         "201":
-          description: The created agent with a UUID v7 ID.
+          description: The created bot with a UUID v7 ID.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Agent" }
+              schema: { $ref: "#/components/schemas/Bot" }
         "400": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}:
+  /api/bots/{botId}:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
-      operationId: getAgent
+      operationId: getBot
       responses:
         "200":
-          description: The agent's settings.
+          description: The bot's settings.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Agent" }
+              schema: { $ref: "#/components/schemas/Bot" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
     put:
-      operationId: updateAgent
-      description: Save this agent's settings. Its next message uses them.
+      operationId: updateBot
+      description: Save this bot's settings. Its next message uses them.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AgentInput" }
+            schema: { $ref: "#/components/schemas/BotInput" }
       responses:
         "200":
-          description: The saved agent.
+          description: The saved bot.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Agent" }
+              schema: { $ref: "#/components/schemas/Bot" }
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/archived-agents:
+  /api/archived-bots:
     get:
-      operationId: listArchivedAgents
-      description: List the archived agents, newest archive first. GET /api/agents omits them.
+      operationId: listArchivedBots
+      description: List the archived bots, newest archive first. GET /api/bots omits them.
       responses:
         "200":
-          description: The archived agents.
+          description: The archived bots.
           content:
             application/json:
               schema:
                 type: object
-                required: [agents]
+                required: [bots]
                 properties:
-                  agents:
+                  bots:
                     type: array
-                    items: { $ref: "#/components/schemas/Agent" }
+                    items: { $ref: "#/components/schemas/Bot" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/archive:
+  /api/bots/{botId}/archive:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     delete:
-      operationId: restoreAgent
+      operationId: restoreBot
       description: >
-        Restores an archived agent and starts its saved channels. An agent that is not archived
-        answers 404. There is no archive route: an agent is archived only when the owner approves
-        a bot_delete question. Every other agent route answers 404 for an archived agent.
+        Restores an archived bot and starts its saved channels. A bot that is not archived
+        answers 404. There is no archive route: a bot is archived only when the owner approves
+        a bot_delete question. Every other bot route answers 404 for an archived bot.
       responses:
         "200":
-          description: The restored agent.
+          description: The restored bot.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Agent" }
+              schema: { $ref: "#/components/schemas/Bot" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/runners:
+  /api/bots/{botId}/runners:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
-      operationId: listAgentRunners
+      operationId: listBotRunners
       description: >
-        Lists the Runners that the agent's sessions can use. The default comes first,
+        Lists the Runners that the bot's sessions can use. The default comes first,
         followed by Local and the other registered Runners. Each entry
         has a status, but no configuration or secrets. Registration does not guarantee connectivity.
       responses:
@@ -1664,20 +1664,20 @@ paths:
           description: The session Runners.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AgentRunners" }
+              schema: { $ref: "#/components/schemas/BotRunners" }
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/runner/reset:
+  /api/bots/{botId}/runner/reset:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     post:
-      operationId: resetAgentRunner
+      operationId: resetBotRunner
       description: >
-        Kills any persisted E2B sandbox for an idle agent, clears its sandbox ID,
+        Kills any persisted E2B sandbox for an idle bot, clears its sandbox ID,
         and releases open resources so the next turn provisions a fresh sandbox.
       responses:
         "200":
@@ -1690,15 +1690,15 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/main:
+  /api/bots/{botId}/sessions/main:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
       operationId: getMainSession
-      description: Find or create the requested agent's main timeline.
+      description: Find or create the requested bot's main timeline.
       responses:
         "200":
           description: The main timeline.
@@ -1708,16 +1708,16 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions:
+  /api/bots/{botId}/sessions:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
       operationId: listSessions
       description: >
-        Session summaries of the requested agent, newest activity first, then
+        Session summaries of the requested bot, newest activity first, then
         highest ID first. Excludes main, channel sessions, dreams and web sessions with no
         message. Transcripts are not included.
       responses:
@@ -1729,7 +1729,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
     post:
-      operationId: createAgentSession
+      operationId: createBotSession
       description: >
         Opens a separate writable session. Reuses the newest session
         with no message that is not archived, or creates one. No request body or model is needed.
@@ -1743,10 +1743,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}:
+  /api/bots/{botId}/sessions/{sessionId}:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -1761,10 +1761,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/archive:
+  /api/bots/{botId}/sessions/{sessionId}/archive:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -1801,7 +1801,7 @@ paths:
     get:
       operationId: listDirectories
       description: >
-        Lists visible directories on the selected Runner of the agent, including symlinks
+        Lists visible directories on the selected Runner of the bot, including symlinks
         to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/.
         Entries are sorted by name without case and capped at 500.
       parameters:
@@ -1809,11 +1809,11 @@ paths:
           name: path
           schema: { type: string }
         - in: query
-          name: agentId
+          name: botId
           schema: { type: string }
         - in: query
           name: runnerId
-          description: A Runner ID. Omit to use the default Runner of the agent.
+          description: A Runner ID. Omit to use the default Runner of the bot.
           schema: { type: string }
       responses:
         "200":
@@ -1843,10 +1843,10 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/projects:
+  /api/bots/{botId}/projects:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
@@ -1857,11 +1857,11 @@ paths:
       parameters:
         - in: query
           name: runnerId
-          description: A Runner ID. Omit to use the default Runner of the agent.
+          description: A Runner ID. Omit to use the default Runner of the bot.
           schema: { type: string }
       responses:
         "200":
-          description: Recent project paths for this agent.
+          description: Recent project paths for this bot.
           content:
             application/json:
               schema:
@@ -1874,10 +1874,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/runner:
+  /api/bots/{botId}/sessions/{sessionId}/runner:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -1885,7 +1885,7 @@ paths:
       operationId: setSessionRunner
       description: >
         Selects the Runner of a session before its first message. Its command and file tools
-        use that Runner. An empty runnerId follows the agent's default. The selection clears
+        use that Runner. An empty runnerId follows the bot's default. The selection clears
         the project directory. Specify Local or a registered Machine or Sandbox. An invalid
         selection returns 400. A started Session returns 409. A read-only Session returns 403.
       requestBody:
@@ -1909,10 +1909,10 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/project:
+  /api/bots/{botId}/sessions/{sessionId}/project:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -1921,7 +1921,7 @@ paths:
       description: >
         Sets the project directory of a session from the next message. Main, separate Web sessions,
         and child sessions accept the change. Read-only sessions return 403.
-        Empty cwd restores the agent workspace.
+        Empty cwd restores the bot workspace.
         The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
       requestBody:
         required: true
@@ -1943,10 +1943,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/settings:
+  /api/bots/{botId}/sessions/{sessionId}/settings:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -1954,7 +1954,7 @@ paths:
       operationId: setSessionSettings
       description: >
         Sets the model and the thinking level of one session. An absent field
-        follows the agent's setting. They apply from the next message, including
+        follows the bot's setting. They apply from the next message, including
         channel input on Main. Main, separate Web sessions, child sessions, and
         Automation sessions accept overrides. Other read-only sessions return 403.
       requestBody:
@@ -1973,10 +1973,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/messages:
+  /api/bots/{botId}/sessions/{sessionId}/messages:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -1986,8 +1986,8 @@ paths:
         Stores a message in a web session and returns. An identical retry of an
         accepted message returns 202 with the same submissionId. A retry with the same ID and different
         text, attachments, mode, or session returns 409. The answer comes through
-        the event stream. 409 when the agent has no model, or when the mode is
-        reject and the agent is working in the session. Main and writable sessions
+        the event stream. 409 when the bot has no model, or when the mode is
+        reject and the bot is working in the session. Main and writable sessions
         take web messages. Automation and channel sessions return 403.
       requestBody:
         required: true
@@ -2006,10 +2006,10 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw:
+  /api/bots/{botId}/sessions/{sessionId}/messages/{messageId}/withdraw:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2038,10 +2038,10 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/clear:
+  /api/bots/{botId}/sessions/{sessionId}/clear:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2082,10 +2082,10 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/continue:
+  /api/bots/{botId}/sessions/{sessionId}/continue:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2122,10 +2122,10 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/fork:
+  /api/bots/{botId}/sessions/{sessionId}/fork:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2185,10 +2185,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/compact:
+  /api/bots/{botId}/sessions/{sessionId}/compact:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2227,10 +2227,10 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/history:
+  /api/bots/{botId}/sessions/{sessionId}/history:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2262,10 +2262,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/items/{itemId}:
+  /api/bots/{botId}/sessions/{sessionId}/items/{itemId}:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2294,10 +2294,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/abort:
+  /api/bots/{botId}/sessions/{sessionId}/abort:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2328,10 +2328,10 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/monitors:
+  /api/bots/{botId}/sessions/{sessionId}/monitors:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2347,10 +2347,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId}:
+  /api/bots/{botId}/sessions/{sessionId}/monitors/{monitorId}:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2371,10 +2371,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/outbox:
+  /api/bots/{botId}/sessions/{sessionId}/outbox:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2390,10 +2390,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/sessions/{sessionId}/events:
+  /api/bots/{botId}/sessions/{sessionId}/events:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/SessionId"
@@ -2405,7 +2405,7 @@ paths:
         eligible Web session also gets an initial notifications page and
         later notification updates. Merge notifications by Outbox ID; a native
         snapshot does not replace them. A comment line comes every 15 s. The
-        server closes the stream when the agent reloads, the engine closes, or
+        server closes the stream when the bot reloads, the engine closes, or
         the client is too slow. The client reconnects and gets a new snapshot.
       responses:
         "200":
@@ -2415,17 +2415,17 @@ paths:
               schema: { $ref: "#/components/schemas/SessionEvent" }
         "404": { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/uploads:
+  /api/bots/{botId}/uploads:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     post:
       operationId: createUpload
       description: >
-        Stores one file for a later message, in the agent workspace at
-        `uploads/<id>/<name>`. The agent reads it with its tools. The largest
+        Stores one file for a later message, in the bot workspace at
+        `uploads/<id>/<name>`. The bot reads it with its tools. The largest
         file is 20 MB.
       requestBody:
         required: true
@@ -2447,10 +2447,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/uploads/{uploadId}:
+  /api/bots/{botId}/uploads/{uploadId}:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - name: uploadId
@@ -2477,10 +2477,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/artifacts:
+  /api/bots/{botId}/artifacts:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
@@ -2501,10 +2501,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/artifacts/{artifactName}:
+  /api/bots/{botId}/artifacts/{artifactName}:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - in: path
@@ -2561,17 +2561,17 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/integrations:
+  /api/bots/{botId}/integrations:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
       operationId: getBotIntegrations
       description: >
-        The agent's skills and MCP servers. It does not start MCP servers.
-        Before the agent starts, the servers are idle.
+        The bot's skills and MCP servers. It does not start MCP servers.
+        Before the bot starts, the servers are idle.
       responses:
         "200":
           description: The integrations.
@@ -2581,10 +2581,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/integrations/mcp/{name}/oauth:
+  /api/bots/{botId}/integrations/mcp/{name}/oauth:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - in: path
@@ -2618,15 +2618,15 @@ paths:
                   authorizationUrl: { type: string }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/vault:
+  /api/bots/{botId}/vault:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
       operationId: listVault
-      description: List vault metadata at dex and agent levels. Values are write-only.
+      description: List vault metadata at dex and bot levels. Values are write-only.
       responses:
         "200":
           description: Vault entries without their values.
@@ -2638,7 +2638,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     put:
       operationId: putVault
-      description: Set a vault value. The agent reloads when idle.
+      description: Set a vault value. The bot reloads when idle.
       requestBody:
         required: true
         content:
@@ -2661,7 +2661,7 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteVault
-      description: Remove a vault value. The agent reloads when idle.
+      description: Remove a vault value. The bot reloads when idle.
       parameters:
         - in: query
           name: scope
@@ -2681,20 +2681,20 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/integrations/reload:
+  /api/bots/{botId}/integrations/reload:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     post:
       operationId: reloadBotIntegrations
       description: >
-        Reloads only the selected agent's Harness and MCP connections. Opens
-        that agent if needed and returns its server connection states. Skills
-        need no reload. Checks idle execution across all agents before replacement;
-        returns 409 when any agent has unfinished work. Other agents can start work
-        after this check while the selected agent reloads. Returns 400 when a file
+        Reloads only the selected bot's Harness and MCP connections. Opens
+        that bot if needed and returns its server connection states. Skills
+        need no reload. Checks idle execution across all bots before replacement;
+        returns 409 when any bot has unfinished work. Other bots can start work
+        after this check while the selected bot reloads. Returns 400 when a file
         is not valid and keeps the current resources. Returns 503 while model discovery is pending.
       responses:
         "200":
@@ -2707,15 +2707,15 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/automations:
+  /api/bots/{botId}/automations:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
     get:
       operationId: listAutomations
-      description: All automations of this agent, oldest first.
+      description: All automations of this bot, oldest first.
       responses:
         "200":
           description: The automations.
@@ -2741,11 +2741,11 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/automations/targets:
+  /api/bots/{botId}/automations/targets:
     get:
       operationId: listAutomationTargets
       parameters:
-        - $ref: "#/components/parameters/AgentId"
+        - $ref: "#/components/parameters/BotId"
       responses:
         "200":
           description: Existing sessions that can be used by an Automation of this bot.
@@ -2758,10 +2758,10 @@ paths:
                   targets:
                     type: array
                     items: { $ref: "#/components/schemas/AutomationTarget" }
-  /api/agents/{agentId}/automations/{automationId}:
+  /api/bots/{botId}/automations/{automationId}:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/AutomationId"
@@ -2806,10 +2806,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/automations/{automationId}/run:
+  /api/bots/{botId}/automations/{automationId}/run:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/AutomationId"
@@ -2817,7 +2817,7 @@ paths:
       operationId: runAutomation
       description: >
         Runs the automation now, outside its schedule. The run is skipped when
-        the agent has no model or the previous run is still busy.
+        the bot has no model or the previous run is still busy.
       responses:
         "202":
           description: The run, started or skipped.
@@ -2827,10 +2827,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         default: { $ref: "#/components/responses/Error" }
 
-  /api/agents/{agentId}/automations/{automationId}/runs:
+  /api/bots/{botId}/automations/{automationId}/runs:
     parameters:
       - in: path
-        name: agentId
+        name: botId
         required: true
         schema: { type: string }
       - $ref: "#/components/parameters/AutomationId"
@@ -2859,9 +2859,9 @@ components:
       name: If-Match
       description: The expected Task revision as a decimal integer.
       schema: { type: integer, format: int64, minimum: 0 }
-    AgentId:
+    BotId:
       in: path
-      name: agentId
+      name: botId
       required: true
       schema: { type: string }
     AutomationId:
@@ -2974,8 +2974,8 @@ components:
       type: object
       required: [
         sessionId,
-        agentId,
-        agentName,
+        botId,
+        botName,
         title,
         isPrimary,
         linkedAt,
@@ -2983,8 +2983,8 @@ components:
       ]
       properties:
         sessionId: { type: integer, format: int64 }
-        agentId: { type: string }
-        agentName: { type: string }
+        botId: { type: string }
+        botName: { type: string }
         title: { type: string }
         isPrimary: { type: boolean }
         linkedAt: { type: integer, format: int64 }
@@ -3237,13 +3237,13 @@ components:
         queuePosition: { type: integer, format: int64 }
     TaskQuestion:
       type: object
-      required: [id, text, options, queued, agentId, sessionId]
+      required: [id, text, options, queued, botId, sessionId]
       properties:
         id: { type: string }
         text: { type: string }
         options: { type: array, items: { type: string } }
         queued: { type: boolean }
-        agentId: { type: string }
+        botId: { type: string }
         sessionId: { type: integer, format: int64 }
     TaskEvent:
       type: object
@@ -3425,7 +3425,7 @@ components:
           type: array
           items: { $ref: "#/components/schemas/SystemBackup" }
 
-    AgentRunners:
+    BotRunners:
       type: object
       required: [runners]
       properties:
@@ -3448,7 +3448,7 @@ components:
               kind: { type: string }
               default: {
                 type: boolean,
-                description: This is the default Runner of the agent.,
+                description: This is the default Runner of the bot.,
               }
               status:
                 type: string
@@ -3473,7 +3473,7 @@ components:
           type: string
           enum: [web, telegram, wechat, feishu, automation]
           description: External channel sessions are read-only in the web UI.
-        main: { type: boolean, description: This is the agent's main timeline. }
+        main: { type: boolean, description: This is the bot's main timeline. }
         readOnly: {
           type: boolean,
           description: The web cannot send messages to this session now. A child session is writable at any time.,
@@ -3488,7 +3488,7 @@ components:
           type: string
           description: >-
             The Runner that the Session selects: "local" or a registered Runner ID. An empty value
-            follows the default Runner of the agent.
+            follows the default Runner of the bot.
         title: { type: string }
         createdAt: { type: integer, format: int64 }
         updatedAt:
@@ -3513,22 +3513,22 @@ components:
           type: integer
           format: int64
           description: The session that created this child session. Absent on any other session.
-        agentId:
+        botId:
           type: string
           description: >-
             The bot that owns this session. Only on a child session that belongs to
             another bot than the one in the request path. The list of the parent shows it.
-        agentName:
+        botName:
           type: string
-          description: The name of the bot in agentId. Present with agentId.
-        parentAgentId:
+          description: The name of the bot in botId. Present with botId.
+        parentBotId:
           type: string
           description: >-
             The bot of the parent session. Only on a child session whose parent belongs to
             another bot than the one in the request path.
-        parentAgentName:
+        parentBotName:
           type: string
-          description: The name of the bot in parentAgentId. Present with parentAgentId.
+          description: The name of the bot in parentBotId. Present with parentBotId.
         lastActivityAt:
           type: integer
           format: int64
@@ -3557,7 +3557,7 @@ components:
       type: object
       description: >
         The settings that a session overrides. An absent field follows the
-        agent's setting. provider and modelId are both present or both absent.
+        bot's setting. provider and modelId are both present or both absent.
       properties:
         provider: { type: string }
         modelId: { type: string }
@@ -3587,7 +3587,7 @@ components:
         attachments:
           type: array
           maxItems: 10
-          description: Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
+          description: Upload IDs from POST /api/bots/{botId}/uploads, at most 10.
           items: { type: string }
         taskId:
           type: string
@@ -3603,7 +3603,7 @@ components:
           enum: [followUp, steer, reject]
           default: followUp
           description: >
-            What happens when the agent is already working in this session.
+            What happens when the bot is already working in this session.
             followUp waits until the current run ends. steer joins the current
             run after its current tool step. reject answers 409 and the message
             does not run. A retry must use the same mode. An omitted mode
@@ -3615,7 +3615,7 @@ components:
       type: object
       required: [id, text, options, status]
       description: >
-        The question that the agent asked with ask_user. It waits for the user,
+        The question that the bot asked with ask_user. It waits for the user,
         or its answer waits in the queue.
       properties:
         id: { type: string }
@@ -3672,7 +3672,7 @@ components:
         mimeType: { type: string }
         path:
           type: string
-          description: The path in the agent workspace, uploads/<id>/<name>.
+          description: The path in the bot workspace, uploads/<id>/<name>.
 
     SentMessage:
       type: object
@@ -3723,9 +3723,9 @@ components:
           items: { type: integer, format: int64 }
 
     NotificationTargets:
-      x-go-type: agent.NotificationTargets
+      x-go-type: bot.NotificationTargets
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [targets, primaryId]
       properties:
@@ -3759,7 +3759,7 @@ components:
         prompt: { type: string, minLength: 1, maxLength: 32000 }
         cwd:
           type: string
-          description: Existing absolute project directory. Empty uses the agent workspace.
+          description: Existing absolute project directory. Empty uses the bot workspace.
         schedule: { $ref: "#/components/schemas/Schedule" }
         timeZone: { type: string }
         session:
@@ -3790,7 +3790,7 @@ components:
             mode: { type: string, enum: [none, default, target] }
             targetId: {
               type: string,
-              description: An authorized target owned by this agent.,
+              description: An authorized target owned by this bot.,
             }
 
     Automation:
@@ -3830,10 +3830,10 @@ components:
           items: { $ref: "#/components/schemas/BoardAttentionTaskReview" }
     BoardAttentionSession:
       type: object
-      required: [id, agentId, title, main, busy]
+      required: [id, botId, title, main, busy]
       properties:
         id: { type: integer, format: int64 }
-        agentId: { type: string }
+        botId: { type: string }
         title: { type: string }
         main: { type: boolean }
         busy: { type: boolean }
@@ -3848,10 +3848,10 @@ components:
         options: { type: array, items: { type: string } }
     BoardAttentionAutomation:
       type: object
-      required: [id, agentId, name, setup]
+      required: [id, botId, name, setup]
       properties:
         id: { type: string }
-        agentId: { type: string }
+        botId: { type: string }
         name: { type: string }
         setup: { type: boolean }
         targetSessionId: { type: integer, format: int64 }
@@ -3859,7 +3859,7 @@ components:
       type: object
       required: [
         runId,
-        agentId,
+        botId,
         automationId,
         automationName,
         sessionId,
@@ -3872,7 +3872,7 @@ components:
       ]
       properties:
         runId: { type: string }
-        agentId: { type: string }
+        botId: { type: string }
         automationId: { type: string }
         automationName: { type: string }
         sessionId: { type: integer, format: int64 }
@@ -3915,9 +3915,9 @@ components:
       allOf:
         - $ref: "#/components/schemas/AutomationResultSummary"
         - type: object
-          required: [agentName, dismissed]
+          required: [botName, dismissed]
           properties:
-            agentName: { type: string }
+            botName: { type: string }
             dismissed: { type: boolean }
 
     AutomationRun:
@@ -4063,7 +4063,7 @@ components:
         at: { type: integer, format: int64 }
         queued:
           type: boolean
-          description: True while the message waits for the agent.
+          description: True while the message waits for the bot.
         steer:
           type: boolean
           description: >
@@ -4263,11 +4263,11 @@ components:
       description: >-
         Current state of this session or an observed child. Idle is not a turn outcome.
         A disconnected client must show unavailable until the new stream supplies this state.
-      required: [type, sessionId, agentId, state]
+      required: [type, sessionId, botId, state]
       properties:
         type: { type: string, enum: [child] }
         sessionId: { type: integer, format: int64 }
-        agentId: { type: string }
+        botId: { type: string }
         state: { type: string, enum: [waiting, running, idle, unavailable] }
 
     SnapshotEvent:
@@ -4494,9 +4494,9 @@ components:
           items: { type: string }
 
     Channels:
-      x-go-type: agent.Channels
+      x-go-type: bot.Channels
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [telegram, wechat, feishu]
       properties:
@@ -4504,10 +4504,10 @@ components:
         wechat: { $ref: "#/components/schemas/Wechat" }
         feishu: { $ref: "#/components/schemas/Feishu" }
 
-    AgentActivity:
-      x-go-type: agent.Activity
+    BotActivity:
+      x-go-type: bot.Activity
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [
         automationFailed,
@@ -4521,10 +4521,10 @@ components:
         runningChannels: { type: integer, format: int64 }
         enabledAutomations: { type: integer, format: int64 }
 
-    Agent:
-      x-go-type: agent.Agent
+    Bot:
+      x-go-type: bot.Bot
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [
         name,
@@ -4537,12 +4537,12 @@ components:
         runnerId,
       ]
       properties:
-        id: { type: string, readOnly: true, description: The agent ID. }
+        id: { type: string, readOnly: true, description: The bot ID. }
         activity:
           allOf:
-            - $ref: "#/components/schemas/AgentActivity"
+            - $ref: "#/components/schemas/BotActivity"
           readOnly: true
-          description: Activity counts returned by GET /api/agents.
+          description: Activity counts returned by GET /api/bots.
         name: {
           type: string,
           minLength: 1,
@@ -4566,12 +4566,12 @@ components:
           type: integer
           format: int64
           readOnly: true
-          description: Archive time in Unix milliseconds. Absent for an active agent.
+          description: Archive time in Unix milliseconds. Absent for an active bot.
 
-    AgentInput:
-      x-go-type: agent.Agent
+    BotInput:
+      x-go-type: bot.Bot
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [name, provider, modelId, thinkingLevel]
       properties:
@@ -4595,7 +4595,7 @@ components:
           description: Empty or "local" selects the built-in Local Runner.,
         }
 
-    CreateAgentInput:
+    CreateBotInput:
       type: object
       required: [name]
       properties:
@@ -4744,7 +4744,7 @@ components:
         levels:
           type: array
           description: >
-            The .agents directories, from wide to narrow. Each can hold skills/.
+            The .bots directories, from wide to narrow. Each can hold skills/.
             Two levels can have the same directory.
           items:
             type: object
@@ -4758,7 +4758,7 @@ components:
           items: { $ref: "#/components/schemas/Skill" }
         servers:
           type: array
-          description: Loaded servers, or idle declarations before the agent opens.
+          description: Loaded servers, or idle declarations before the bot opens.
           items: { $ref: "#/components/schemas/McpServer" }
         warnings:
           type: array
@@ -4770,13 +4770,13 @@ components:
         reloadPending:
           type: boolean
           description: >
-            Extension files, vault entries, shell rc files, or 1Password settings changed after the agent
-            loaded. dex reloads the agent when all agents are idle and the configuration is
+            Extension files, vault entries, shell rc files, or 1Password settings changed after the bot
+            loaded. dex reloads the bot when all bots are idle and the configuration is
             valid.
 
     IntegrationScope:
       type: string
-      description: Shared across dex or scoped to one agent.
+      description: Shared across dex or scoped to one bot.
       enum: [dex, agent]
 
     Skill:
@@ -4788,7 +4788,7 @@ components:
         scope:
           type: string
           description: >
-            A file level, or project for .agents/skills under the agent workspace. The
+            A file level, or project for .agents/skills under the bot workspace. The
             prompt reads the project level under the session's cwd.
           enum: [dex, agent, project]
         path: { type: string, description: The SKILL.md file. }
@@ -4813,15 +4813,15 @@ components:
           description: The server replaces a wider server with the same name.
         transport:
           type: string
-          description: Absent for an agent entry that only turns off a global server.
+          description: Absent for a bot entry that only turns off a global server.
           enum: [stdio, http]
         state:
           type: string
-          description: idle means that the agent has not started, so dex has not connected.
+          description: idle means that the bot has not started, so dex has not connected.
           enum: [idle, connected, failed, disabled]
         tools:
           type: array
-          description: The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
+          description: The MCP tool names. The bot gets each tool as mcp__<server>__<tool>.
           items: { type: string }
         oauth:
           type: string
@@ -4835,9 +4835,9 @@ components:
         error: { type: string }
 
     Wechat:
-      x-go-type: agent.Wechat
+      x-go-type: bot.Wechat
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [enabled, status]
       properties:
@@ -4871,9 +4871,9 @@ components:
         reason: { type: string }
 
     TelegramManagedSetup:
-      x-go-type: agent.TelegramManagedSetup
+      x-go-type: bot.TelegramManagedSetup
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [id, state, expiresAt]
       properties:
@@ -4999,9 +4999,9 @@ components:
         }
 
     Feishu:
-      x-go-type: agent.Feishu
+      x-go-type: bot.Feishu
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [enabled, appId, brand, paired, status, error]
       properties:
@@ -5017,9 +5017,9 @@ components:
         error: { type: string }
 
     FeishuSetup:
-      x-go-type: agent.FeishuSetup
+      x-go-type: bot.FeishuSetup
       x-go-type-import:
-        path: github.com/recally-io/dex/internal/agent
+        path: github.com/recally-io/dex/internal/bot
       type: object
       required: [session, qrUrl, interval, expiresIn, status, pairingCode]
       properties:

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/bot"
 )
 
 func TestUserBlockedControlReplyDoesNotBlockOwner(t *testing.T) {
@@ -48,7 +48,7 @@ func TestUserCannotPairSecondTelegramOwner(t *testing.T) {
 	dir := t.TempDir()
 	d := startTelegram(t, f, dir, 42)
 	// When someone requests another pairing link.
-	status, raw := d.call(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil)
+	status, raw := d.call(t, http.MethodPost, "/api/bots/default/channels/telegram/pairing", nil)
 	// Then link creation is rejected.
 	if status != http.StatusBadRequest {
 		t.Fatalf("pairing status = %d: %s", status, raw)
@@ -74,9 +74,9 @@ func TestUserCannotPairSecondTelegramOwner(t *testing.T) {
 func assertTelegramOwner(t *testing.T, d *dex) {
 	t.Helper()
 	var got struct {
-		Telegram agent.Telegram `json:"telegram"`
+		Telegram bot.Telegram `json:"telegram"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &got)
+	d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &got)
 	if !slices.Equal(got.Telegram.AllowedUsers, []int64{42}) {
 		t.Fatalf("allowed users = %v", got.Telegram.AllowedUsers)
 	}
@@ -93,7 +93,7 @@ func TestUserTelegramPairingAcknowledgementSurvivesFailure(t *testing.T) {
 			var pair struct {
 				URL string `json:"url"`
 			}
-			d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
+			d.must(t, http.MethodPost, "/api/bots/default/channels/telegram/pairing", nil, &pair)
 			link, err := url.Parse(pair.URL)
 			if err != nil {
 				t.Fatal(err)

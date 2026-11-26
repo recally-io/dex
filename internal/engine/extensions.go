@@ -53,7 +53,7 @@ type ExtensionInfo struct {
 	Servers  []McpServerInfo  `json:"servers"`
 	Warnings []string         `json:"warnings"`
 	Errors   []string         `json:"errors"`
-	// ReloadPending reports changed files or settings that wait for all agents to be idle.
+	// ReloadPending reports changed files or settings that wait for all bots to be idle.
 	ReloadPending bool `json:"reloadPending"`
 }
 type extensionValidationError struct{ Message string }
@@ -61,12 +61,12 @@ type extensionValidationError struct{ Message string }
 func (e *extensionValidationError) Error() string { return e.Message }
 func (e *extensionValidationError) Unwrap() error { return ErrInvalidInput }
 
-type agentExtensions struct {
-	levels              []ExtensionLevel
-	workspace, agentDir string
-	agentID             string
-	mcp                 *MCPStore
-	vault               *vault.Store
+type botExtensions struct {
+	levels            []ExtensionLevel
+	workspace, botDir string
+	botID             string
+	mcp               *MCPStore
+	vault             *vault.Store
 	// home only expands ~/ in AGENTS.md imports; it is not an extension level.
 	home            string
 	env             *toolEnv
@@ -85,8 +85,8 @@ type agentExtensions struct {
 // same lease even if another request replaces an expired sandbox.
 type sessionPromptEnv struct {
 	durableenv.ExecutionEnv
-	files        *agentExtensions
-	agentID      string
+	files        *botExtensions
+	botID        string
 	conversation durable.ConversationId
 }
 
@@ -142,14 +142,14 @@ var serverName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 var toolName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 var headerVar = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-func newAgentExtensions(home, dataDir, agentID string, handle runner.Handle, env *toolEnv) *agentExtensions {
-	agentDir := filepath.Join(dataDir, "agents", agentID)
-	workspace := filepath.Join(agentDir, "workspace")
+func newBotExtensions(home, dataDir, botID string, handle runner.Handle, env *toolEnv) *botExtensions {
+	botDir := filepath.Join(dataDir, "agents", botID)
+	workspace := filepath.Join(botDir, "workspace")
 	if handle != nil {
 		workspace = handle.Workspace()
 	}
-	a := &agentExtensions{env: env, home: home, agentID: agentID, agentDir: agentDir, vault: vault.New(dataDir), workspace: workspace, execHandle: handle, stores: map[string]*skillStore{}}
-	for _, l := range []ExtensionLevel{{"dex", dataDir}, {"agent", agentDir}} {
+	a := &botExtensions{env: env, home: home, botID: botID, botDir: botDir, vault: vault.New(dataDir), workspace: workspace, execHandle: handle, stores: map[string]*skillStore{}}
+	for _, l := range []ExtensionLevel{{"dex", dataDir}, {"agent", botDir}} {
 		l.Dir = canonicalExtensionPath(filepath.Join(l.Dir, ".agents"))
 		a.levels = append(a.levels, l)
 		a.stores[l.Scope] = &skillStore{}
@@ -157,15 +157,15 @@ func newAgentExtensions(home, dataDir, agentID string, handle runner.Handle, env
 	return a
 }
 
-func (a *agentExtensions) forHandle(h runner.Handle) *agentExtensions {
-	return &agentExtensions{levels: a.levels, agentID: a.agentID, agentDir: a.agentDir, mcp: a.mcp, vault: a.vault, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h, stores: a.stores}
+func (a *botExtensions) forHandle(h runner.Handle) *botExtensions {
+	return &botExtensions{levels: a.levels, botID: a.botID, botDir: a.botDir, mcp: a.mcp, vault: a.vault, home: a.home, env: a.env, workspace: h.Workspace(), execHandle: h, stores: a.stores}
 }
 
-func (a *agentExtensions) isRemote() bool {
+func (a *botExtensions) isRemote() bool {
 	return a.execHandle != nil && a.execHandle.Kind() != runner.KindLocal
 }
 
-func (a *agentExtensions) remoteSkillsRoot() string {
+func (a *botExtensions) remoteSkillsRoot() string {
 	return runner.JoinTargetPath(a.workspace, ".dex", "skills")
 }
 func canonicalExtensionPath(path string) string {
@@ -178,7 +178,7 @@ func canonicalExtensionPath(path string) string {
 	}
 	return filepath.Join(canonicalExtensionPath(parent), filepath.Base(path))
 }
-func (a *agentExtensions) distinct() []ExtensionLevel { return distinctLevels(a.levels) }
+func (a *botExtensions) distinct() []ExtensionLevel { return distinctLevels(a.levels) }
 
 // distinctLevels keeps the narrowest of levels with the same directory.
 func distinctLevels(levels []ExtensionLevel) []ExtensionLevel {
@@ -192,8 +192,8 @@ func distinctLevels(levels []ExtensionLevel) []ExtensionLevel {
 }
 
 // skillsContext reads skills from the project's cwd/.agents/skills and, when
-// available, from the dex and agent stores.
-func (a *agentExtensions) skillsContext(ctx context.Context, remoteEnv durableenv.ExecutionEnv, cwd string, errs *[]string, includeManaged bool) []SkillInfo {
+// available, from the dex and bot stores.
+func (a *botExtensions) skillsContext(ctx context.Context, remoteEnv durableenv.ExecutionEnv, cwd string, errs *[]string, includeManaged bool) []SkillInfo {
 	if cwd == "" {
 		cwd = a.workspace
 	}
@@ -383,10 +383,10 @@ func parseSkill(text, dirName string) (string, string, string) {
 }
 
 // stamp includes the revisions of the two MCP declaration levels.
-func (a *agentExtensions) stamp() string {
-	return a.mcp.stamp(a.agentID) + a.env.stamp() + fileStamp(slices.Values(a.vault.Paths(a.agentID)))
+func (a *botExtensions) stamp() string {
+	return a.mcp.stamp(a.botID) + a.env.stamp() + fileStamp(slices.Values(a.vault.Paths(a.botID)))
 }
-func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remoteEnv durableenv.ExecutionEnv) extensionScan {
+func (a *botExtensions) scan(ctx context.Context, base map[string]string, remoteEnv durableenv.ExecutionEnv) extensionScan {
 	s := extensionScan{
 		info: ExtensionInfo{Levels: a.levels, Skills: []SkillInfo{}, Servers: []McpServerInfo{}, Warnings: []string{}, Errors: []string{}},
 		env:  maps.Clone(base),
@@ -397,7 +397,7 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 	if !a.defaultUnavailable {
 		s.info.Skills = a.skillsContext(ctx, remoteEnv, a.workspace, &s.info.Warnings, true)
 	}
-	servers, mcpErr := a.mcp.list(ctx, a.agentID)
+	servers, mcpErr := a.mcp.list(ctx, a.botID)
 	if mcpErr != nil {
 		s.info.Errors = append(s.info.Errors, "cannot load MCP declarations")
 	}
@@ -411,7 +411,7 @@ func (a *agentExtensions) scan(ctx context.Context, base map[string]string, remo
 	s.info.Warnings = append(s.info.Warnings, a.agentsMDContext(ctx, "").warnings...)
 	return s
 }
-func (a *agentExtensions) Info(ctx context.Context) (ExtensionInfo, error) {
+func (a *botExtensions) Info(ctx context.Context) (ExtensionInfo, error) {
 	if ctx.Err() != nil {
 		return ExtensionInfo{}, context.Cause(ctx)
 	}
@@ -436,11 +436,11 @@ func (a *agentExtensions) Info(ctx context.Context) (ExtensionInfo, error) {
 }
 
 // Validate reads configuration without changing the loaded environment or MCP connections.
-func (a *agentExtensions) Validate(ctx context.Context) error {
+func (a *botExtensions) Validate(ctx context.Context) error {
 	if ctx.Err() != nil {
 		return context.Cause(ctx)
 	}
-	if _, err := a.vault.Load(a.agentID); err != nil {
+	if _, err := a.vault.Load(a.botID); err != nil {
 		return fmt.Errorf("%w: cannot open vault: %w", ErrInvalidInput, err)
 	}
 	base, _, _ := a.env.snapshot()
@@ -450,8 +450,8 @@ func (a *agentExtensions) Validate(ctx context.Context) error {
 	}
 	return nil
 }
-func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
-	// Take the stamp first, so that a change during the load makes the agent stale.
+func (a *botExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
+	// Take the stamp first, so that a change during the load makes the bot stale.
 	stamp := a.stamp()
 	var remoteEnv durableenv.ExecutionEnv
 	if a.isRemote() {
@@ -461,7 +461,7 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 			return nil, err
 		}
 	}
-	secrets, err := a.vault.Load(a.agentID)
+	secrets, err := a.vault.Load(a.botID)
 	if err != nil {
 		return nil, fmt.Errorf("load vault: %w", err)
 	}
@@ -541,7 +541,7 @@ func (a *agentExtensions) Load(ctx context.Context) (*loadedExtensions, error) {
 	}
 	return loaded, nil
 }
-func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env map[string]string, secrets vault.Snapshot) (*mcp.Client, []*durable.ToolRegistration, error) {
+func (a *botExtensions) connect(ctx context.Context, entry serverEntry, env map[string]string, secrets vault.Snapshot) (*mcp.Client, []*durable.ToolRegistration, error) {
 	c := entry.config
 	client := mcp.NewClient(mcp.ClientOptions{Name: "dex", Version: "1", RequestTimeoutMs: 30000})
 	var transport mcp.Transport
@@ -594,7 +594,7 @@ func (a *agentExtensions) connect(ctx context.Context, entry serverEntry, env ma
 		maps.Copy(vars, declared)
 		cwd := c.Cwd
 		if !filepath.IsAbs(cwd) {
-			workspace := filepath.Join(a.agentDir, "workspace")
+			workspace := filepath.Join(a.botDir, "workspace")
 			if err := os.MkdirAll(workspace, 0o700); err != nil {
 				return nil, nil, &privateError{message: "cannot create the control workspace", cause: err}
 			}
@@ -708,11 +708,11 @@ func extensionGuide(levels []ExtensionLevel, secrets string) string {
 	lines = append(lines,
 		"Narrower levels win. A skill or MCP server with the same name replaces the wider entry as a whole.",
 		"",
-		"Skills: dex and agent skills live on the control host. Change them only with skill_write, skill_edit, skill_delete, or skill_import. Use skill_list and skill_read to inspect them. Skill file paths use <dex|agent>/<name>/<file>. To install a skill, run the installer in a temporary directory, then use skill_import on the skill directory.",
+		"Skills: dex and bot skills live on the control host. Change them only with skill_write, skill_edit, skill_delete, or skill_import. Use skill_list and skill_read to inspect them. Skill file paths use <dex|bot>/<name>/<file>. To install a skill, run the installer in a temporary directory, then use skill_import on the skill directory.",
 		"Start SKILL.md with the YAML front matter fields name and description. The name defaults to the directory name. Project skills in <cwd>/.agents/skills override the other levels. Use the normal file tools for project skills.",
 		"Run a managed skill's scripts from its directory in the session environment. Use the returned path from a skill tool, or the path in the skills list. Bash sets DEX_SKILL_CACHE to <workspace>/.dex/cache/skills. Put runtime files in $DEX_SKILL_CACHE/<name> and create that directory with mkdir -p. Remote skill copies are read-only.",
 		"Keep secrets in the vault. Use secret_list to find names and pass vault:NAME references in the env argument of bash, process_start, or a monitor_set check. Ask the user to add missing values in Settings. Do not put secrets in skill files. dex commits skill history; do not run Git in the stores.",
-		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or agent level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the agent finishes its current work.`,
+		`MCP: use mcp_server_list and mcp_server_get to inspect declarations. Call mcp_server_set to replace one declaration at the dex or bot level. Call mcp_server_remove to delete it. For stdio, use command, args, env, and cwd. For HTTP, use "type": "http", url, and headers. {"disabled": true} turns off a wider server with the same name. Changes apply after the bot finishes its current work.`,
 		`To use a JSON snippet, call mcp_server_set for each server. Ask the user to move secrets into the vault first: a pasted snippet is stored in the transcript. Use vault:NAME or ${vault:NAME} references in env and headers. Plain values are stored as plain text in control.sqlite.`,
 		`For browser OAuth, set type to http and add oauth: {}. If the provider requires a registered client, set oauth.clientId and use vault:NAME in oauth.clientSecret. Ask the owner to authorize the connection in Tools. Never ask for OAuth tokens or codes.`,
 		"",

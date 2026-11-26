@@ -18,10 +18,10 @@ const approve = "Archive Coder"
 func archiveFixture(t *testing.T) (*nativeTest, int64, engine.TaskContext) {
 	t.Helper()
 	r := startNative(t, "echo")
-	if err := r.q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "coder", Name: "Coder", CreatedAt: 1}); err != nil {
+	if err := r.q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "coder", Name: "Coder", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "default", Name: "Dex", CreatedAt: 1}); err != nil {
+	if err := r.q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "default", Name: "Dex", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	sessionID, source := taskParent(t, r)
@@ -30,7 +30,7 @@ func archiveFixture(t *testing.T) (*nativeTest, int64, engine.TaskContext) {
 
 func archivedAt(t *testing.T, r *nativeTest, id string) bool {
 	t.Helper()
-	row, err := r.q.GetAgent(t.Context(), id)
+	row, err := r.q.GetBot(t.Context(), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,25 +175,25 @@ func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
 	}
 
 	// Given the default bot, the caller itself, and a missing bot, then the tool refuses to ask.
-	if err := ask("bot/default", "default"); !errors.Is(err, db.ErrDefaultAgent) {
+	if err := ask("bot/default", "default"); !errors.Is(err, db.ErrDefaultBot) {
 		t.Fatalf("default: %v", err)
 	}
 	if err := ask("bot/self", "bot"); !errors.Is(err, ErrQuestionInvalid) {
 		t.Fatalf("self: %v", err)
 	}
-	if err := ask("bot/missing", "nobody"); !errors.Is(err, db.ErrAgentMissing) {
+	if err := ask("bot/missing", "nobody"); !errors.Is(err, db.ErrBotMissing) {
 		t.Fatalf("missing: %v", err)
 	}
 
 	// Given a bot with a pending input in any conversation, then the tool refuses to ask.
-	busySession, err := r.q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "coder", ChannelKey: "chat:busy", CreatedAt: 1})
+	busySession, err := r.q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{BotID: "coder", ChannelKey: "chat:busy", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "busy-input", SessionID: busySession.ID, Content: "work", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	if err := ask("bot/busy", "coder"); !errors.Is(err, db.ErrAgentBusy) {
+	if err := ask("bot/busy", "coder"); !errors.Is(err, db.ErrBotBusy) {
 		t.Fatalf("busy: %v", err)
 	}
 	if archivedAt(t, r, "coder") {
@@ -207,7 +207,7 @@ func TestBotBecomingBusyAfterTheQuestionIsNotArchivedOnApproval(t *testing.T) {
 	q := askArchive(t, r, source)
 
 	// When the bot gets a running input before the owner approves.
-	busySession, err := r.q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "coder", ChannelKey: "chat:busy", CreatedAt: 1})
+	busySession, err := r.q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{BotID: "coder", ChannelKey: "chat:busy", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +220,7 @@ func TestBotBecomingBusyAfterTheQuestionIsNotArchivedOnApproval(t *testing.T) {
 
 	// Then the answer is stored, the bot stays active, and the model reads why.
 	row, err := r.q.GetQuestion(t.Context(), q.ID)
-	want := `dex: Approved, but bot "Coder" is not archived: ` + db.ErrAgentBusy.Error() + "."
+	want := `dex: Approved, but bot "Coder" is not archived: ` + db.ErrBotBusy.Error() + "."
 	if err != nil || row.Outcome.String != want || archivedAt(t, r, "coder") {
 		t.Fatalf("outcome %q err=%v archived=%v", row.Outcome.String, err, archivedAt(t, r, "coder"))
 	}
@@ -281,7 +281,7 @@ func TestBotToolCallerNeedsAPersonInMainOrASession(t *testing.T) {
 	} {
 		next++
 		t.Run(fmt.Sprintf("%s %s change=%v", c.key, c.origin, c.change), func(t *testing.T) {
-			conv, err := r.q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "bot", ChannelKey: c.key, CreatedAt: 1})
+			conv, err := r.q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{BotID: "bot", ChannelKey: c.key, CreatedAt: 1})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -292,7 +292,7 @@ func TestBotToolCallerNeedsAPersonInMainOrASession(t *testing.T) {
 			if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: id, SessionID: conv.ID, Content: "x", Attachments: "null", Origin: c.origin, Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 				t.Fatal(err)
 			}
-			err = r.service.ToolBotCaller(t.Context(), engine.TaskContext{AgentID: "bot", ConversationID: next, SourceRequestID: id}, c.change)
+			err = r.service.ToolBotCaller(t.Context(), engine.TaskContext{BotID: "bot", ConversationID: next, SourceRequestID: id}, c.change)
 			if (err == nil) != c.want || (err != nil && !errors.Is(err, errBotCaller)) {
 				t.Fatalf("err=%v want allowed=%v", err, c.want)
 			}
@@ -326,7 +326,7 @@ func TestBotToolCallerRefusesAChildSessionWithASessionKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, change := range []bool{false, true} {
-		err := r.service.ToolBotCaller(t.Context(), engine.TaskContext{AgentID: "bot", ConversationID: 7000, SourceRequestID: "child-followup"}, change)
+		err := r.service.ToolBotCaller(t.Context(), engine.TaskContext{BotID: "bot", ConversationID: 7000, SourceRequestID: "child-followup"}, change)
 		if !errors.Is(err, errBotCaller) {
 			t.Errorf("change=%v: err=%v, want errBotCaller", change, err)
 		}

@@ -21,11 +21,11 @@ type Error struct {
 	Error string `json:"error"`
 }
 
-// AgentId defines model for AgentId.
-type AgentId = string
-
 // AutomationId defines model for AutomationId.
 type AutomationId = string
+
+// BotId defines model for BotId.
+type BotId = string
 
 // RunnerId defines model for RunnerId.
 type RunnerId = string
@@ -42,8 +42,8 @@ type SaveWebhookSourceJSONBody struct {
 	HoldUnmatched *bool   `json:"holdUnmatched,omitempty"`
 	Secret        *string `json:"secret,omitempty"`
 
-	// TaskAgentId Create a Task under this agent for an unmatched event with exactly one object. Omit to disable creation.
-	TaskAgentId *string `json:"taskAgentId,omitempty"`
+	// TaskBotId Create a Task under this bot for an unmatched event with exactly one object. Omit to disable creation.
+	TaskBotId *string `json:"taskBotId,omitempty"`
 }
 
 // SaveWebhookSourceJSONRequestBody defines body for SaveWebhookSource for application/json ContentType.

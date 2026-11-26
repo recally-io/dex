@@ -224,7 +224,7 @@ func maskCodeSpans(line string) string {
 	return string(b)
 }
 
-func (a *agentExtensions) instructionsContext(ctx context.Context, cwd, own string) string {
+func (a *botExtensions) instructionsContext(ctx context.Context, cwd, own string) string {
 	project := a.agentsMDContext(ctx, cwd)
 	if project.text == "" {
 		return own
@@ -236,7 +236,7 @@ func (a *agentExtensions) instructionsContext(ctx context.Context, cwd, own stri
 }
 
 // agentsMDContext reads the project file in the session's execution environment.
-func (a *agentExtensions) agentsMDContext(ctx context.Context, cwd string) agentsMD {
+func (a *botExtensions) agentsMDContext(ctx context.Context, cwd string) agentsMD {
 	if cwd == "" {
 		cwd = a.workspace
 	}

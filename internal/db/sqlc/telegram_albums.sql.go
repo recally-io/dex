@@ -11,45 +11,45 @@ import (
 
 const clearDiscardedTelegramAlbumMember = `-- name: ClearDiscardedTelegramAlbumMember :exec
 UPDATE telegram_album_members SET input_json = '{}'
-WHERE agent_id = ? AND source_key = ? AND state = 'discarded'
+WHERE bot_id = ? AND source_key = ? AND state = 'discarded'
 `
 
 type ClearDiscardedTelegramAlbumMemberParams struct {
-	AgentID   string `json:"agent_id"`
+	BotID     string `json:"bot_id"`
 	SourceKey string `json:"source_key"`
 }
 
 func (q *Queries) ClearDiscardedTelegramAlbumMember(ctx context.Context, arg ClearDiscardedTelegramAlbumMemberParams) error {
-	_, err := q.db.ExecContext(ctx, clearDiscardedTelegramAlbumMember, arg.AgentID, arg.SourceKey)
+	_, err := q.db.ExecContext(ctx, clearDiscardedTelegramAlbumMember, arg.BotID, arg.SourceKey)
 	return err
 }
 
 const discardPrivateTelegramAlbums = `-- name: DiscardPrivateTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'
-WHERE agent_id = ? AND peer NOT LIKE 'telegram:-%' AND state IN ('collecting', 'sealed')
+WHERE bot_id = ? AND peer NOT LIKE 'telegram:-%' AND state IN ('collecting', 'sealed')
 `
 
-func (q *Queries) DiscardPrivateTelegramAlbums(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, discardPrivateTelegramAlbums, agentID)
+func (q *Queries) DiscardPrivateTelegramAlbums(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, discardPrivateTelegramAlbums, botID)
 	return err
 }
 
 const discardUnauthorizedTelegramAlbums = `-- name: DiscardUnauthorizedTelegramAlbums :exec
 UPDATE telegram_album_members SET state = 'discarded'
-WHERE telegram_album_members.agent_id = ?1 AND state IN ('collecting', 'sealed')
- AND NOT EXISTS(SELECT 1 FROM agents a JOIN telegram_settings t ON t.agent_id = a.id
+WHERE telegram_album_members.bot_id = ?1 AND state IN ('collecting', 'sealed')
+ AND NOT EXISTS(SELECT 1 FROM bots a JOIN telegram_settings t ON t.bot_id = a.id
    WHERE a.id = ?1 AND a.archived_at IS NULL
     AND substr(t.token, 1, instr(t.token, ':') - 1) = telegram_album_members.account_id
     AND instr(',' || replace(t.allowed_users, ' ', '') || ',', ',' || telegram_album_members.sender_id || ',') > 0)
 `
 
-func (q *Queries) DiscardUnauthorizedTelegramAlbums(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, discardUnauthorizedTelegramAlbums, agentID)
+func (q *Queries) DiscardUnauthorizedTelegramAlbums(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, discardUnauthorizedTelegramAlbums, botID)
 	return err
 }
 
 const getTelegramAlbumMember = `-- name: GetTelegramAlbumMember :one
-SELECT source_key, agent_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members WHERE source_key = ?
+SELECT source_key, bot_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members WHERE source_key = ?
 `
 
 func (q *Queries) GetTelegramAlbumMember(ctx context.Context, sourceKey string) (TelegramAlbumMember, error) {
@@ -57,7 +57,7 @@ func (q *Queries) GetTelegramAlbumMember(ctx context.Context, sourceKey string) 
 	var i TelegramAlbumMember
 	err := row.Scan(
 		&i.SourceKey,
-		&i.AgentID,
+		&i.BotID,
 		&i.AccountID,
 		&i.SenderID,
 		&i.Peer,
@@ -71,37 +71,37 @@ func (q *Queries) GetTelegramAlbumMember(ctx context.Context, sourceKey string) 
 }
 
 const hasEarlierTelegramAlbumBatch = `-- name: HasEarlierTelegramAlbumBatch :one
-SELECT EXISTS(SELECT 1 FROM telegram_album_members m WHERE m.agent_id = ?1
+SELECT EXISTS(SELECT 1 FROM telegram_album_members m WHERE m.bot_id = ?1
  AND m.group_key = ?2 AND m.batch_source <> ''
  AND (m.received_at, m.rowid) < (SELECT first.received_at, first.rowid FROM telegram_album_members first
-   WHERE first.agent_id = ?1 AND first.batch_source = ?3
+   WHERE first.bot_id = ?1 AND first.batch_source = ?3
    ORDER BY first.received_at, first.rowid LIMIT 1))
 `
 
 type HasEarlierTelegramAlbumBatchParams struct {
-	AgentID     string `json:"agent_id"`
+	BotID       string `json:"bot_id"`
 	GroupKey    string `json:"group_key"`
 	BatchSource string `json:"batch_source"`
 }
 
 func (q *Queries) HasEarlierTelegramAlbumBatch(ctx context.Context, arg HasEarlierTelegramAlbumBatchParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasEarlierTelegramAlbumBatch, arg.AgentID, arg.GroupKey, arg.BatchSource)
+	row := q.db.QueryRowContext(ctx, hasEarlierTelegramAlbumBatch, arg.BotID, arg.GroupKey, arg.BatchSource)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
 }
 
 const hasTelegramAlbumGroup = `-- name: HasTelegramAlbumGroup :one
-SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE agent_id = ? AND group_key = ? AND state <> 'discarded')
+SELECT EXISTS(SELECT 1 FROM telegram_album_members WHERE bot_id = ? AND group_key = ? AND state <> 'discarded')
 `
 
 type HasTelegramAlbumGroupParams struct {
-	AgentID  string `json:"agent_id"`
+	BotID    string `json:"bot_id"`
 	GroupKey string `json:"group_key"`
 }
 
 func (q *Queries) HasTelegramAlbumGroup(ctx context.Context, arg HasTelegramAlbumGroupParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasTelegramAlbumGroup, arg.AgentID, arg.GroupKey)
+	row := q.db.QueryRowContext(ctx, hasTelegramAlbumGroup, arg.BotID, arg.GroupKey)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -109,12 +109,12 @@ func (q *Queries) HasTelegramAlbumGroup(ctx context.Context, arg HasTelegramAlbu
 
 const isTelegramAlbumSealed = `-- name: IsTelegramAlbumSealed :one
 SELECT EXISTS(SELECT 1 FROM telegram_album_members
-WHERE agent_id = ?1 AND batch_source = ?2 AND state = 'sealed'
+WHERE bot_id = ?1 AND batch_source = ?2 AND state = 'sealed'
  AND peer = ?3 AND account_id = ?4 AND sender_id = ?5)
 `
 
 type IsTelegramAlbumSealedParams struct {
-	AgentID     string `json:"agent_id"`
+	BotID       string `json:"bot_id"`
 	BatchSource string `json:"batch_source"`
 	Peer        string `json:"peer"`
 	AccountID   string `json:"account_id"`
@@ -123,7 +123,7 @@ type IsTelegramAlbumSealedParams struct {
 
 func (q *Queries) IsTelegramAlbumSealed(ctx context.Context, arg IsTelegramAlbumSealedParams) (bool, error) {
 	row := q.db.QueryRowContext(ctx, isTelegramAlbumSealed,
-		arg.AgentID,
+		arg.BotID,
 		arg.BatchSource,
 		arg.Peer,
 		arg.AccountID,
@@ -136,7 +136,7 @@ func (q *Queries) IsTelegramAlbumSealed(ctx context.Context, arg IsTelegramAlbum
 
 const listCollectingTelegramAlbums = `-- name: ListCollectingTelegramAlbums :many
 SELECT group_key, CAST(min(received_at) AS INTEGER) AS first_at, CAST(max(received_at) AS INTEGER) AS last_at, count(*) AS members
-FROM telegram_album_members WHERE agent_id = ? AND state = 'collecting'
+FROM telegram_album_members WHERE bot_id = ? AND state = 'collecting'
 GROUP BY group_key ORDER BY min(received_at), min(rowid)
 `
 
@@ -147,8 +147,8 @@ type ListCollectingTelegramAlbumsRow struct {
 	Members  int64  `json:"members"`
 }
 
-func (q *Queries) ListCollectingTelegramAlbums(ctx context.Context, agentID string) ([]ListCollectingTelegramAlbumsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listCollectingTelegramAlbums, agentID)
+func (q *Queries) ListCollectingTelegramAlbums(ctx context.Context, botID string) ([]ListCollectingTelegramAlbumsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listCollectingTelegramAlbums, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -176,12 +176,12 @@ func (q *Queries) ListCollectingTelegramAlbums(ctx context.Context, agentID stri
 }
 
 const listDiscardedTelegramAlbumMembers = `-- name: ListDiscardedTelegramAlbumMembers :many
-SELECT source_key, agent_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members
-WHERE agent_id = ? AND state = 'discarded' AND peer NOT LIKE 'telegram:-%' AND input_json <> '{}'
+SELECT source_key, bot_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members
+WHERE bot_id = ? AND state = 'discarded' AND peer NOT LIKE 'telegram:-%' AND input_json <> '{}'
 `
 
-func (q *Queries) ListDiscardedTelegramAlbumMembers(ctx context.Context, agentID string) ([]TelegramAlbumMember, error) {
-	rows, err := q.db.QueryContext(ctx, listDiscardedTelegramAlbumMembers, agentID)
+func (q *Queries) ListDiscardedTelegramAlbumMembers(ctx context.Context, botID string) ([]TelegramAlbumMember, error) {
+	rows, err := q.db.QueryContext(ctx, listDiscardedTelegramAlbumMembers, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func (q *Queries) ListDiscardedTelegramAlbumMembers(ctx context.Context, agentID
 		var i TelegramAlbumMember
 		if err := rows.Scan(
 			&i.SourceKey,
-			&i.AgentID,
+			&i.BotID,
 			&i.AccountID,
 			&i.SenderID,
 			&i.Peer,
@@ -216,12 +216,12 @@ func (q *Queries) ListDiscardedTelegramAlbumMembers(ctx context.Context, agentID
 
 const listSealedTelegramAlbums = `-- name: ListSealedTelegramAlbums :many
 SELECT batch_source FROM telegram_album_members
-WHERE agent_id = ? AND state = 'sealed'
+WHERE bot_id = ? AND state = 'sealed'
 GROUP BY batch_source ORDER BY min(received_at), min(rowid)
 `
 
-func (q *Queries) ListSealedTelegramAlbums(ctx context.Context, agentID string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listSealedTelegramAlbums, agentID)
+func (q *Queries) ListSealedTelegramAlbums(ctx context.Context, botID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listSealedTelegramAlbums, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -244,18 +244,18 @@ func (q *Queries) ListSealedTelegramAlbums(ctx context.Context, agentID string) 
 }
 
 const listTelegramAlbumBatchMembers = `-- name: ListTelegramAlbumBatchMembers :many
-SELECT source_key, agent_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members
-WHERE agent_id = ? AND batch_source = ? AND state = 'sealed'
+SELECT source_key, bot_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members
+WHERE bot_id = ? AND batch_source = ? AND state = 'sealed'
 ORDER BY received_at, rowid
 `
 
 type ListTelegramAlbumBatchMembersParams struct {
-	AgentID     string `json:"agent_id"`
+	BotID       string `json:"bot_id"`
 	BatchSource string `json:"batch_source"`
 }
 
 func (q *Queries) ListTelegramAlbumBatchMembers(ctx context.Context, arg ListTelegramAlbumBatchMembersParams) ([]TelegramAlbumMember, error) {
-	rows, err := q.db.QueryContext(ctx, listTelegramAlbumBatchMembers, arg.AgentID, arg.BatchSource)
+	rows, err := q.db.QueryContext(ctx, listTelegramAlbumBatchMembers, arg.BotID, arg.BatchSource)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (q *Queries) ListTelegramAlbumBatchMembers(ctx context.Context, arg ListTel
 		var i TelegramAlbumMember
 		if err := rows.Scan(
 			&i.SourceKey,
-			&i.AgentID,
+			&i.BotID,
 			&i.AccountID,
 			&i.SenderID,
 			&i.Peer,
@@ -289,18 +289,18 @@ func (q *Queries) ListTelegramAlbumBatchMembers(ctx context.Context, arg ListTel
 }
 
 const listUnsealedTelegramAlbumMembers = `-- name: ListUnsealedTelegramAlbumMembers :many
-SELECT source_key, agent_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members
-WHERE agent_id = ? AND group_key = ? AND state = 'collecting'
+SELECT source_key, bot_id, account_id, sender_id, peer, group_key, input_json, received_at, batch_source, state FROM telegram_album_members
+WHERE bot_id = ? AND group_key = ? AND state = 'collecting'
 ORDER BY received_at, rowid LIMIT 10
 `
 
 type ListUnsealedTelegramAlbumMembersParams struct {
-	AgentID  string `json:"agent_id"`
+	BotID    string `json:"bot_id"`
 	GroupKey string `json:"group_key"`
 }
 
 func (q *Queries) ListUnsealedTelegramAlbumMembers(ctx context.Context, arg ListUnsealedTelegramAlbumMembersParams) ([]TelegramAlbumMember, error) {
-	rows, err := q.db.QueryContext(ctx, listUnsealedTelegramAlbumMembers, arg.AgentID, arg.GroupKey)
+	rows, err := q.db.QueryContext(ctx, listUnsealedTelegramAlbumMembers, arg.BotID, arg.GroupKey)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +310,7 @@ func (q *Queries) ListUnsealedTelegramAlbumMembers(ctx context.Context, arg List
 		var i TelegramAlbumMember
 		if err := rows.Scan(
 			&i.SourceKey,
-			&i.AgentID,
+			&i.BotID,
 			&i.AccountID,
 			&i.SenderID,
 			&i.Peer,
@@ -335,25 +335,25 @@ func (q *Queries) ListUnsealedTelegramAlbumMembers(ctx context.Context, arg List
 
 const sealTelegramAlbumMembers = `-- name: SealTelegramAlbumMembers :exec
 UPDATE telegram_album_members SET batch_source = ?1, state = 'sealed'
-WHERE agent_id = ?2 AND state = 'collecting'
+WHERE bot_id = ?2 AND state = 'collecting'
   AND source_key IN (SELECT value FROM json_each(?3))
 `
 
 type SealTelegramAlbumMembersParams struct {
 	BatchSource string      `json:"batch_source"`
-	AgentID     string      `json:"agent_id"`
+	BotID       string      `json:"bot_id"`
 	Sources     interface{} `json:"sources"`
 }
 
 func (q *Queries) SealTelegramAlbumMembers(ctx context.Context, arg SealTelegramAlbumMembersParams) error {
-	_, err := q.db.ExecContext(ctx, sealTelegramAlbumMembers, arg.BatchSource, arg.AgentID, arg.Sources)
+	_, err := q.db.ExecContext(ctx, sealTelegramAlbumMembers, arg.BatchSource, arg.BotID, arg.Sources)
 	return err
 }
 
 const storeTelegramAlbumMember = `-- name: StoreTelegramAlbumMember :execrows
-INSERT INTO telegram_album_members (source_key, agent_id, account_id, sender_id, peer, group_key, input_json, received_at)
+INSERT INTO telegram_album_members (source_key, bot_id, account_id, sender_id, peer, group_key, input_json, received_at)
 SELECT ?1, a.id, ?2, ?3, ?4, ?5, ?6, ?7
-FROM agents a JOIN telegram_settings t ON t.agent_id = a.id
+FROM bots a JOIN telegram_settings t ON t.bot_id = a.id
 WHERE a.id = ?8 AND a.archived_at IS NULL
   AND substr(t.token, 1, instr(t.token, ':') - 1) = ?2
   AND instr(',' || replace(t.allowed_users, ' ', '') || ',', ',' || ?3 || ',') > 0
@@ -368,7 +368,7 @@ type StoreTelegramAlbumMemberParams struct {
 	GroupKey   string `json:"group_key"`
 	InputJson  string `json:"input_json"`
 	ReceivedAt int64  `json:"received_at"`
-	AgentID    string `json:"agent_id"`
+	BotID      string `json:"bot_id"`
 }
 
 func (q *Queries) StoreTelegramAlbumMember(ctx context.Context, arg StoreTelegramAlbumMemberParams) (int64, error) {
@@ -380,7 +380,7 @@ func (q *Queries) StoreTelegramAlbumMember(ctx context.Context, arg StoreTelegra
 		arg.GroupKey,
 		arg.InputJson,
 		arg.ReceivedAt,
-		arg.AgentID,
+		arg.BotID,
 	)
 	if err != nil {
 		return 0, err
@@ -390,15 +390,15 @@ func (q *Queries) StoreTelegramAlbumMember(ctx context.Context, arg StoreTelegra
 
 const transferTelegramAlbumMembers = `-- name: TransferTelegramAlbumMembers :exec
 UPDATE telegram_album_members SET state = 'transferred', input_json = '{}'
-WHERE agent_id = ? AND batch_source = ? AND state = 'sealed'
+WHERE bot_id = ? AND batch_source = ? AND state = 'sealed'
 `
 
 type TransferTelegramAlbumMembersParams struct {
-	AgentID     string `json:"agent_id"`
+	BotID       string `json:"bot_id"`
 	BatchSource string `json:"batch_source"`
 }
 
 func (q *Queries) TransferTelegramAlbumMembers(ctx context.Context, arg TransferTelegramAlbumMembersParams) error {
-	_, err := q.db.ExecContext(ctx, transferTelegramAlbumMembers, arg.AgentID, arg.BatchSource)
+	_, err := q.db.ExecContext(ctx, transferTelegramAlbumMembers, arg.BotID, arg.BatchSource)
 	return err
 }

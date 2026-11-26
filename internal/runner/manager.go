@@ -38,14 +38,14 @@ type ManagerConfig struct {
 	DataDir string
 	// SSHHome overrides the directory scanned for ~/.ssh/config and key discovery (falls back to OS home).
 	SSHHome string
-	// Queries reads agents and environments. Probes work without it; Open, Stamp, and the agent methods need it.
+	// Queries reads bots and environments. Probes work without it; Open, Stamp, and the bot methods need it.
 	Queries    *sqlc.Queries
 	SSHProgram string
 	E2BAPIURL  string
 	E2BEnvdURL string
 }
 
-// Manager resolves each agent's configured execution environment from control storage
+// Manager resolves each bot's configured execution environment from control storage
 // and dispatches each environment to its backend.
 type Manager struct {
 	sshHome  string
@@ -131,18 +131,18 @@ func (m *Manager) ForgetHostKey(spec Spec) error {
 	return m.pienv.forgetHostKey(spec)
 }
 
-// binding is the environment that an agent uses. A zero spec selects local.
+// binding is the environment that a bot uses. A zero spec selects local.
 type binding struct {
 	spec      Spec
 	sandboxID string
 }
 
-// binding resolves runnerID for agentID. Empty selects the environment of the agent, with
+// binding resolves runnerID for botID. Empty selects the environment of the bot, with
 // its sandbox. An explicit selection names local or a registered environment.
-func (m *Manager) binding(ctx context.Context, agentID, runnerID string) (binding, error) {
+func (m *Manager) binding(ctx context.Context, botID, runnerID string) (binding, error) {
 	switch runnerID {
 	case "":
-		return m.agentBinding(ctx, agentID)
+		return m.botBinding(ctx, botID)
 	case LocalID:
 		return binding{}, nil
 	}
@@ -159,10 +159,10 @@ func (m *Manager) binding(ctx context.Context, agentID, runnerID string) (bindin
 	return binding{spec: SpecFromRow(row)}, nil
 }
 
-func (m *Manager) agentBinding(ctx context.Context, agentID string) (binding, error) {
-	row, err := m.q.GetAgentBinding(ctx, agentID)
+func (m *Manager) botBinding(ctx context.Context, botID string) (binding, error) {
+	row, err := m.q.GetBotBinding(ctx, botID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return binding{}, fmt.Errorf("agent %q not found", agentID)
+		return binding{}, fmt.Errorf("bot %q not found", botID)
 	}
 	if err != nil {
 		return binding{}, err
@@ -192,20 +192,20 @@ func (m *Manager) stamp(ctx context.Context, b backend, spec Spec) (string, erro
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// Open resolves the selected environment of agentID from control storage and opens a lease on it.
-func (m *Manager) Open(ctx context.Context, agentID, runnerID string) (Handle, error) {
+// Open resolves the selected environment of botID from control storage and opens a lease on it.
+func (m *Manager) Open(ctx context.Context, botID, runnerID string) (Handle, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := validateAgentID(agentID); err != nil {
+	if err := validateBotID(botID); err != nil {
 		return nil, err
 	}
-	bound, err := m.binding(ctx, agentID, runnerID)
+	bound, err := m.binding(ctx, botID, runnerID)
 	if err != nil {
 		return nil, err
 	}
 	if bound.spec.ID == "" {
-		l, err := m.local.open(ctx, agentID)
+		l, err := m.local.open(ctx, botID)
 		if err != nil {
 			return nil, err
 		}
@@ -222,17 +222,17 @@ func (m *Manager) Open(ctx context.Context, agentID, runnerID string) (Handle, e
 	}
 	var l lease
 	if bound.spec.Kind == KindE2B && runnerID != "" {
-		agent, getErr := m.q.GetAgent(ctx, agentID)
+		bot, getErr := m.q.GetBot(ctx, botID)
 		if getErr != nil {
 			return nil, getErr
 		}
-		if agent.RunnerID != runnerID {
-			l, err = m.e2b.openOverride(ctx, agentID, bound.spec)
+		if bot.RunnerID != runnerID {
+			l, err = m.e2b.openOverride(ctx, botID, bound.spec)
 		} else {
-			l, err = b.open(ctx, agentID, bound.spec)
+			l, err = b.open(ctx, botID, bound.spec)
 		}
 	} else {
-		l, err = b.open(ctx, agentID, bound.spec)
+		l, err = b.open(ctx, botID, bound.spec)
 	}
 	if err != nil {
 		return nil, err
@@ -240,9 +240,9 @@ func (m *Manager) Open(ctx context.Context, agentID, runnerID string) (Handle, e
 	return stampedHandle{lease: l, stamp: stamp}, nil
 }
 
-// Stamp returns the fingerprint of the selected execution environment of agentID.
-func (m *Manager) Stamp(ctx context.Context, agentID, runnerID string) (string, error) {
-	bound, err := m.binding(ctx, agentID, runnerID)
+// Stamp returns the fingerprint of the selected execution environment of botID.
+func (m *Manager) Stamp(ctx context.Context, botID, runnerID string) (string, error) {
+	bound, err := m.binding(ctx, botID, runnerID)
 	if err != nil {
 		return "", err
 	}
@@ -256,10 +256,10 @@ func (m *Manager) Stamp(ctx context.Context, agentID, runnerID string) (string, 
 	return m.stamp(ctx, b, bound.spec)
 }
 
-// Status reports whether agentID can use runnerID now: "available", "offline" for a
+// Status reports whether botID can use runnerID now: "available", "offline" for a
 // disconnected machine, or "unavailable: <reason>".
-func (m *Manager) Status(ctx context.Context, agentID, runnerID string) string {
-	bound, err := m.binding(ctx, agentID, runnerID)
+func (m *Manager) Status(ctx context.Context, botID, runnerID string) string {
+	bound, err := m.binding(ctx, botID, runnerID)
 	if err != nil {
 		return "unavailable: " + err.Error()
 	}
@@ -269,9 +269,9 @@ func (m *Manager) Status(ctx context.Context, agentID, runnerID string) string {
 	return "available"
 }
 
-// CanResetAgent reports whether agentID's environment discards its files on reset.
-func (m *Manager) CanResetAgent(ctx context.Context, agentID string) (bool, error) {
-	bound, err := m.agentBinding(ctx, agentID)
+// CanResetBot reports whether botID's environment discards its files on reset.
+func (m *Manager) CanResetBot(ctx context.Context, botID string) (bool, error) {
+	bound, err := m.botBinding(ctx, botID)
 	if err != nil || bound.spec.ID == "" {
 		return false, err
 	}
@@ -282,9 +282,9 @@ func (m *Manager) CanResetAgent(ctx context.Context, agentID string) (bool, erro
 	return b.disposable(), nil
 }
 
-// ResetAgent discards agentID's state in its current environment when that environment is disposable.
-func (m *Manager) ResetAgent(ctx context.Context, agentID string) error {
-	bound, err := m.agentBinding(ctx, agentID)
+// ResetBot discards botID's state in its current environment when that environment is disposable.
+func (m *Manager) ResetBot(ctx context.Context, botID string) error {
+	bound, err := m.botBinding(ctx, botID)
 	if err != nil || bound.spec.ID == "" {
 		return err
 	}
@@ -295,12 +295,12 @@ func (m *Manager) ResetAgent(ctx context.Context, agentID string) error {
 	if !b.disposable() {
 		return nil
 	}
-	return b.release(ctx, agentID, bound.spec, bound.sandboxID)
+	return b.release(ctx, botID, bound.spec, bound.sandboxID)
 }
 
-// ReleaseAgent tells the backend of an earlier environment that agentID left it.
-// sandboxID is the agent's sandbox reference in that environment, or empty.
-func (m *Manager) ReleaseAgent(ctx context.Context, agentID, envID, sandboxID string) error {
+// ReleaseBot tells the backend of an earlier environment that botID left it.
+// sandboxID is the bot's sandbox reference in that environment, or empty.
+func (m *Manager) ReleaseBot(ctx context.Context, botID, envID, sandboxID string) error {
 	if envID == "" {
 		return nil
 	}
@@ -316,7 +316,7 @@ func (m *Manager) ReleaseAgent(ctx context.Context, agentID, envID, sandboxID st
 	if err != nil {
 		return err
 	}
-	return b.release(ctx, agentID, spec, sandboxID)
+	return b.release(ctx, botID, spec, sandboxID)
 }
 
 // Close disconnects the machines and closes the shared connections. Open leases fail after Close.

@@ -28,7 +28,7 @@ func (q *Queries) CountHandledChannelWebhook(ctx context.Context, arg CountHandl
 }
 
 const enqueueChannelWebhook = `-- name: EnqueueChannelWebhook :exec
-INSERT INTO channel_webhook_queue (platform, account, event_id, agent_id, received_at, payload)
+INSERT INTO channel_webhook_queue (platform, account, event_id, bot_id, received_at, payload)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (platform, account, event_id) DO NOTHING
 `
@@ -37,7 +37,7 @@ type EnqueueChannelWebhookParams struct {
 	Platform   string `json:"platform"`
 	Account    string `json:"account"`
 	EventID    string `json:"event_id"`
-	AgentID    string `json:"agent_id"`
+	BotID      string `json:"bot_id"`
 	ReceivedAt int64  `json:"received_at"`
 	Payload    []byte `json:"payload"`
 }
@@ -47,7 +47,7 @@ func (q *Queries) EnqueueChannelWebhook(ctx context.Context, arg EnqueueChannelW
 		arg.Platform,
 		arg.Account,
 		arg.EventID,
-		arg.AgentID,
+		arg.BotID,
 		arg.ReceivedAt,
 		arg.Payload,
 	)
@@ -65,12 +65,12 @@ func (q *Queries) FinishChannelWebhook(ctx context.Context, id int64) error {
 
 const nextChannelWebhook = `-- name: NextChannelWebhook :one
 SELECT id, payload FROM channel_webhook_queue
-WHERE agent_id = ? AND platform = ? AND account = ? AND payload IS NOT NULL
+WHERE bot_id = ? AND platform = ? AND account = ? AND payload IS NOT NULL
 ORDER BY id LIMIT 1
 `
 
 type NextChannelWebhookParams struct {
-	AgentID  string `json:"agent_id"`
+	BotID    string `json:"bot_id"`
 	Platform string `json:"platform"`
 	Account  string `json:"account"`
 }
@@ -81,7 +81,7 @@ type NextChannelWebhookRow struct {
 }
 
 func (q *Queries) NextChannelWebhook(ctx context.Context, arg NextChannelWebhookParams) (NextChannelWebhookRow, error) {
-	row := q.db.QueryRowContext(ctx, nextChannelWebhook, arg.AgentID, arg.Platform, arg.Account)
+	row := q.db.QueryRowContext(ctx, nextChannelWebhook, arg.BotID, arg.Platform, arg.Account)
 	var i NextChannelWebhookRow
 	err := row.Scan(&i.ID, &i.Payload)
 	return i, err

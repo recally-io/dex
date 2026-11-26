@@ -34,8 +34,8 @@ type Recovered struct {
 }
 
 // RecoveryOutcome reads a committed input before any Harness can resume. It never admits work.
-func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string) (_ Recovered, resultErr error) {
-	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 || requestID == "" {
+func (a *Bots) RecoveryOutcome(ctx context.Context, ref Ref, requestID string) (_ Recovered, resultErr error) {
+	if !botIDPattern.MatchString(ref.BotID) || ref.ID <= 0 || requestID == "" {
 		return Recovered{}, fmt.Errorf("%w: recovery input", ErrInvalidInput)
 	}
 	if err := a.begin(""); err != nil {
@@ -45,14 +45,14 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 	a.mu.Lock()
 	if len(a.resources) != 0 || len(a.opening) != 0 {
 		a.mu.Unlock()
-		return Recovered{}, errors.New("recovery must precede opening agents")
+		return Recovered{}, errors.New("recovery must precede opening bots")
 	}
 	readCtx, cancel := context.WithCancel(ctx)
-	opening := &agentOpening{done: make(chan struct{}), cancel: cancel}
-	a.opening[ref.AgentID] = opening
+	opening := &botOpening{done: make(chan struct{}), cancel: cancel}
+	a.opening[ref.BotID] = opening
 	a.mu.Unlock()
-	defer a.finishOpening(ref.AgentID, opening)
-	dir := filepath.Join(a.config.DataDir, "agents", ref.AgentID)
+	defer a.finishOpening(ref.BotID, opening)
+	dir := filepath.Join(a.config.DataDir, "agents", ref.BotID)
 	path := filepath.Join(dir, "state.sqlite")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return Recovered{State: RecoveryAbsent}, nil
@@ -96,7 +96,7 @@ func (a *Agents) RecoveryOutcome(ctx context.Context, ref Ref, requestID string)
 		outcome.Answer = answerText(entry.Entry.Model)
 		runInputs, err := runInputIDsForAnswer(storeEntryScanner{ctx: readCtx, store: store}, durable.ConversationId(ref.ID), *record.Answer)
 		if err != nil {
-			slog.Warn("resolve recovered run input membership", "agent", ref.AgentID, "conversation", ref.ID, "answer_id", *record.Answer, "error", err)
+			slog.Warn("resolve recovered run input membership", "agent", ref.BotID, "conversation", ref.ID, "answer_id", *record.Answer, "error", err)
 			runInputs = nil
 		}
 		outcome.RunInputIDs = runInputs

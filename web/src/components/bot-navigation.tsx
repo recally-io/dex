@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { CalendarClock, ChevronDown, List, Plus, Settings } from "lucide-react";
-import type { Agent, Session } from "../api/generated/types.gen";
-import { createAgentSession, setSessionProject } from "../api/generated/sdk.gen";
-import { listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { useAgentId } from "../lib/agent-scope";
+import type { Bot, Session } from "../api/generated/types.gen";
+import { createBotSession, setSessionProject } from "../api/generated/sdk.gen";
+import { listBotsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { useBotId } from "../lib/bot-scope";
 import { useApp } from "../lib/app-state";
 import { instructionsDirty } from "../lib/instructions";
 import { errorText, refreshSessions } from "../lib/queries";
@@ -18,15 +18,15 @@ const settingsSegments = ["agent", "skills", "integrations", "secrets", "channel
 
 /** Opens a session with the current project. The server reuses the newest empty session. */
 function useNewSession(cwd: string, created: (session: Session) => void) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const navigate = useNavigate();
   const { notify } = useApp();
 
   return useMutation({
     mutationFn: async () => {
-      const { data: session } = await createAgentSession({ path: { agentId }, throwOnError: true });
+      const { data: session } = await createBotSession({ path: { botId }, throwOnError: true });
       await setSessionProject({
-        path: { agentId, sessionId: session.id },
+        path: { botId, sessionId: session.id },
         body: { cwd },
         throwOnError: true,
       });
@@ -34,22 +34,22 @@ function useNewSession(cwd: string, created: (session: Session) => void) {
       return { ...session, cwd };
     },
     onSuccess: async (session) => {
-      await refreshSessions(agentId);
-      await navigate({ to: "/a/$agentId/s/$sessionId", params: { agentId, sessionId: String(session.id) } });
+      await refreshSessions(botId);
+      await navigate({ to: "/b/$botId/s/$sessionId", params: { botId, sessionId: String(session.id) } });
       created(session);
     },
     onError: (cause) => notify(`Could not open a new session. ${errorText(cause)}`),
   });
 }
 
-export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: string; cwd: string }) {
-  const agentId = agent.id!;
+export function BotNavigation({ bot, segment, cwd }: { bot: Bot; segment: string; cwd: string }) {
+  const botId = bot.id!;
   const { draft } = useApp();
-  const dirty = instructionsDirty(draft, agent.instructions);
+  const dirty = instructionsDirty(draft, bot.instructions);
   const [created, setCreated] = useState<Session>();
   const newSession = useNewSession(cwd, setCreated);
-  const agents = useQuery(listAgentsOptions());
-  const activity = agents.data?.agents.find((item) => item.id === agentId)?.activity;
+  const bots = useQuery(listBotsOptions());
+  const activity = bots.data?.bots.find((item) => item.id === botId)?.activity;
   const automations = activity?.enabledAutomations ?? 0;
   const failed = activity?.automationFailed ?? false;
 
@@ -73,11 +73,11 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
       <DropdownMenuItem disabled={newSession.isPending} onClick={() => newSession.mutate()}>
         <Plus size={15} /> New session
       </DropdownMenuItem>
-      <DropdownMenuItem render={<Link to="/a/$agentId/sessions" params={{ agentId }} />}>
+      <DropdownMenuItem render={<Link to="/b/$botId/sessions" params={{ botId }} />}>
         <List size={15} /> Sessions
       </DropdownMenuItem>
       <DropdownMenuItem
-        render={<Link to="/a/$agentId/automations" params={{ agentId }} />}
+        render={<Link to="/b/$botId/automations" params={{ botId }} />}
         aria-label={automationLabel}
       >
         <CalendarClock size={15} /> Automations
@@ -90,10 +90,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           />
         ) : null}
       </DropdownMenuItem>
-      <DropdownMenuItem
-        render={<Link to="/a/$agentId/agent" params={{ agentId }} />}
-        aria-label={settingsLabel}
-      >
+      <DropdownMenuItem render={<Link to="/b/$botId/bot" params={{ botId }} />} aria-label={settingsLabel}>
         <Settings size={15} /> Settings
         {dirty ? (
           <span aria-label="Unsaved instructions draft" className="text-orange">
@@ -119,8 +116,8 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           <Plus aria-hidden="true" />
         </Button>
         <Link
-          to="/a/$agentId/sessions"
-          params={{ agentId }}
+          to="/b/$botId/sessions"
+          params={{ botId }}
           aria-current={segment === "sessions" ? "page" : undefined}
           aria-label="Sessions"
           title="Sessions"
@@ -129,8 +126,8 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           <List aria-hidden="true" />
         </Link>
         <Link
-          to="/a/$agentId/automations"
-          params={{ agentId }}
+          to="/b/$botId/automations"
+          params={{ botId }}
           aria-current={segment === "automations" ? "page" : undefined}
           aria-label={automationLabel}
           title={automationLabel}
@@ -146,8 +143,8 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
           ) : null}
         </Link>
         <Link
-          to="/a/$agentId/agent"
-          params={{ agentId }}
+          to="/b/$botId/bot"
+          params={{ botId }}
           aria-current={settingsSegments.includes(segment) ? "page" : undefined}
           aria-label={settingsLabel}
           title={settingsLabel}
@@ -170,7 +167,7 @@ export function BotNavigation({ agent, segment, cwd }: { agent: Agent; segment: 
               variant="ghost"
               size="sm"
               className="relative shrink-0 text-muted-foreground lg:hidden"
-              aria-label={`Bot menu: ${agent.name}`}
+              aria-label={`Bot menu: ${bot.name}`}
             />
           }
         >

@@ -83,8 +83,8 @@ func PullRequest(number int64) tasksvc.Object {
 
 // Rule is the source rule of one repository. The Webhook and Pull use the same rule.
 type Rule struct {
-	// IssueAgentID creates a Task under this agent for an opened issue.
-	IssueAgentID string
+	// IssueBotID creates a Task under this bot for an opened issue.
+	IssueBotID string
 	// HoldUnmatched keeps an event that matches no Task for the owner.
 	HoldUnmatched bool
 }
@@ -98,7 +98,7 @@ func AcceptWebhook(ctx context.Context, store *tasksvc.Service, repositoryID int
 	if !plugin.ValidSignature(secret, signature, body) {
 		return nil, ErrSignature
 	}
-	if kind == "issues" && (rule.IssueAgentID != "" || rule.HoldUnmatched) {
+	if kind == "issues" && (rule.IssueBotID != "" || rule.HoldUnmatched) {
 		return acceptIssue(ctx, store, repositoryID, "webhook:"+delivery, body, rule)
 	}
 	if kind == "check_suite" {

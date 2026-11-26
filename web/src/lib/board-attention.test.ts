@@ -3,11 +3,11 @@ import type { BoardAttention, HeldEvent } from "../api/generated/types.gen";
 import { attentionItems, botStatus } from "./board-attention";
 
 const empty: BoardAttention = { sessions: [], automations: [], results: [], taskReviews: [] };
-const main = { agentId: "a", id: 1, title: "Main", main: true, busy: true };
+const main = { botId: "a", id: 1, title: "Main", main: true, busy: true };
 
 const result = {
   runId: "run",
-  agentId: "a",
+  botId: "a",
   automationId: "auto",
   automationName: "Daily",
   sessionId: 10,
@@ -37,10 +37,10 @@ test("Board and the sidebar count each Owner action, with held events only acros
   const board: BoardAttention = {
     sessions: [{ ...main, question: { id: "q", text: "Which one?", options: ["A"] } }],
     automations: [
-      { id: "auto", agentId: "a", name: "Daily", setup: true },
-      { id: "ready", agentId: "b", name: "Ready", setup: false },
+      { id: "auto", botId: "a", name: "Daily", setup: true },
+      { id: "ready", botId: "b", name: "Ready", setup: false },
     ],
-    results: [result, { ...result, runId: "other", agentId: "b", outcome: "changed", read: true }],
+    results: [result, { ...result, runId: "other", botId: "b", outcome: "changed", read: true }],
     taskReviews: [{ key: "T-1", title: "Review it", assigneeBotId: "b" }],
   };
 

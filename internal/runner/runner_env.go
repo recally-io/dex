@@ -34,7 +34,7 @@ func (b runnerBackend) probe(_ context.Context, _ *Spec, spec Spec) (TestResult,
 	return TestResult{OK: true, Platform: meta.OS, Arch: meta.Arch, Home: meta.Home}, nil
 }
 
-func (b runnerBackend) open(ctx context.Context, agentID string, spec Spec) (lease, error) {
+func (b runnerBackend) open(ctx context.Context, botID string, spec Spec) (lease, error) {
 	digest, err := b.runners.identity(ctx, spec.ID)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func (b runnerBackend) open(ctx context.Context, agentID string, spec Spec) (lea
 	}
 	info := session.Info()
 	base := path.Join(path.Dir(info.Workspace), "workspaces")
-	h := &runnerHandle{runners: b.runners, id: spec.ID, digest: digest, ready: info, workspace: remoteBotWorkspace(base, "/", agentID)}
+	h := &runnerHandle{runners: b.runners, id: spec.ID, digest: digest, ready: info, workspace: remoteBotWorkspace(base, "/", botID)}
 	if err := createRemoteBotWorkspace(ctx, h); err != nil {
 		return nil, fmt.Errorf("create runner workspace: %w", err)
 	}

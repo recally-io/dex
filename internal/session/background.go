@@ -54,7 +54,7 @@ func (s *Service) ToolProcessStart(ctx context.Context, r engine.TaskContext, a 
 	maps.Copy(env, a.BaseEnv)
 	maps.Copy(env, a.Env)
 	row, err := s.background.Start(ctx, background.StartParams{
-		CallKey: r.Key, AgentID: conv.AgentID, SessionID: conv.ID, SourceRequestID: r.SourceRequestID,
+		CallKey: r.Key, BotID: conv.BotID, SessionID: conv.ID, SourceRequestID: r.SourceRequestID,
 		Command: a.Command, Wake: a.Wake, Timeout: time.Duration(a.Timeout) * time.Second, Cwd: a.Cwd,
 		DefaultCwd: cmp.Or(conv.Cwd, a.Workspace), Label: a.Label, RunnerID: a.RunnerID, Env: env,
 		InheritEnv: a.InheritEnv, EnvKind: a.EnvKind, OutputDir: a.OutputDir, MaskOutput: a.MaskOutput,

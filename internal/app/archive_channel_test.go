@@ -29,7 +29,7 @@ func TestArchiveInvalidatesInflightWechatLogin(t *testing.T) {
 			defer release()
 			d := startWechat(t, f, t.TempDir())
 			bot := d.createCoder(t)
-			prefix := "/api/agents/" + bot.ID
+			prefix := "/api/bots/" + bot.ID
 			var login wechatLogin
 			d.must(t, http.MethodPost, prefix+"/channels/wechat/login", nil, &login)
 			type result struct {
@@ -51,7 +51,7 @@ func TestArchiveInvalidatesInflightWechatLogin(t *testing.T) {
 				d.must(t, http.MethodDelete, prefix+"/archive", nil, nil)
 			case "db_archive":
 				conn := sessionDB(t, d)
-				if _, err := conn.ExecContext(t.Context(), "UPDATE agents SET archived_at = 1 WHERE id = ?", bot.ID); err != nil {
+				if _, err := conn.ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id = ?", bot.ID); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -114,7 +114,7 @@ func TestArchiveInvalidatesInflightFeishuRegistration(t *testing.T) {
 			d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAPIURL: f.server.URL, FeishuAccountsURL: accounts.URL})
 			d.setModel(t, "echo")
 			bot := d.createCoder(t)
-			prefix := "/api/agents/" + bot.ID + "/channels/feishu/registration"
+			prefix := "/api/bots/" + bot.ID + "/channels/feishu/registration"
 			var setup struct {
 				Session string `json:"session"`
 			}
@@ -147,10 +147,10 @@ func TestArchiveInvalidatesInflightFeishuRegistration(t *testing.T) {
 				archiveCoder(t, d)
 			case "restore":
 				archiveCoder(t, d)
-				d.must(t, http.MethodDelete, "/api/agents/"+bot.ID+"/archive", nil, nil)
+				d.must(t, http.MethodDelete, "/api/bots/"+bot.ID+"/archive", nil, nil)
 			case "db_archive":
 				conn := sessionDB(t, d)
-				if _, err := conn.ExecContext(t.Context(), "UPDATE agents SET archived_at = 1 WHERE id = ?", bot.ID); err != nil {
+				if _, err := conn.ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id = ?", bot.ID); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -161,9 +161,9 @@ func TestArchiveInvalidatesInflightFeishuRegistration(t *testing.T) {
 				t.Fatalf("the registration finished after the archive: %s", got.body)
 			}
 			if mode != "restore" {
-				d.must(t, http.MethodDelete, "/api/agents/"+bot.ID+"/archive", nil, nil)
+				d.must(t, http.MethodDelete, "/api/bots/"+bot.ID+"/archive", nil, nil)
 			}
-			if _, body := d.call(t, http.MethodGet, "/api/agents/"+bot.ID+"/channels", nil); strings.Contains(body, "qr-app") {
+			if _, body := d.call(t, http.MethodGet, "/api/bots/"+bot.ID+"/channels", nil); strings.Contains(body, "qr-app") {
 				t.Fatalf("the registration saved credentials after the archive: %s", body)
 			}
 			f.mu.Lock()

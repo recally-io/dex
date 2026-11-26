@@ -17,8 +17,8 @@ var ErrNothingToContinue = errors.New("the session has no run to continue")
 // Continue runs a writable session again on its current context, for example after a failed or
 // stopped run. It sends no new message. A retry with the same request ID starts nothing new. It
 // returns engine.ErrBusy while the session runs.
-func (s *Service) Continue(ctx context.Context, agentID string, sessionID int64, requestID string) error {
-	c, err := s.Get(ctx, agentID, sessionID)
+func (s *Service) Continue(ctx context.Context, botID string, sessionID int64, requestID string) error {
+	c, err := s.Get(ctx, botID, sessionID)
 	if err != nil {
 		return err
 	}
@@ -43,11 +43,11 @@ func (s *Service) Continue(ctx context.Context, agentID string, sessionID int64,
 	if !conv.ExecutionID.Valid {
 		return ErrNothingToContinue
 	}
-	agent, err := s.q.GetAgent(ctx, agentID)
+	bot, err := s.q.GetBot(ctx, botID)
 	if err != nil {
 		return err
 	}
-	err = s.engine.Continue(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, requestID, sessionOptions(agent, conv))
+	err = s.engine.Continue(ctx, engine.Ref{BotID: botID, ID: conv.ExecutionID.Int64}, requestID, sessionOptions(bot, conv))
 	if err == nil {
 		s.signal(sessionID)
 	}
@@ -57,8 +57,8 @@ func (s *Service) Continue(ctx context.Context, agentID string, sessionID int64,
 // Compact summarizes the older context of a writable session. It also works while the session runs; the
 // summary joins the context at the run's next boundary. The transcript shows the progress and the
 // outcome. Instructions say what the summary must keep.
-func (s *Service) Compact(ctx context.Context, agentID string, sessionID int64, instructions, requestID string) error {
-	c, err := s.Get(ctx, agentID, sessionID)
+func (s *Service) Compact(ctx context.Context, botID string, sessionID int64, instructions, requestID string) error {
+	c, err := s.Get(ctx, botID, sessionID)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (s *Service) Compact(ctx context.Context, agentID string, sessionID int64, 
 	if !conv.ExecutionID.Valid {
 		return ErrNothingToCompact
 	}
-	agent, err := s.q.GetAgent(ctx, agentID)
+	bot, err := s.q.GetBot(ctx, botID)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func (s *Service) Compact(ctx context.Context, agentID string, sessionID int64, 
 			}
 		}
 	}
-	err = s.engine.Compact(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, instructions, requestID, sessionOptions(agent, conv))
+	err = s.engine.Compact(ctx, engine.Ref{BotID: botID, ID: conv.ExecutionID.Int64}, instructions, requestID, sessionOptions(bot, conv))
 	if err == nil {
 		s.signal(sessionID)
 	}

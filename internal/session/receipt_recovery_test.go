@@ -36,9 +36,9 @@ func TestUserReceiptRecoveryKeepsNativeAnswerAfterModelChange(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				ref := engine.Ref{AgentID: "bot", ID: conv.ExecutionID.Int64}
+				ref := engine.Ref{BotID: "bot", ID: conv.ExecutionID.Int64}
 				input := engine.Input{RequestID: id, Content: business.Content, Kind: "message", Origin: "telegram:7", Source: "dex:bot/chat/1", Model: engine.ModelRef{Provider: "faux", ModelID: "bash"}}
-				native, err := r.agents.Submit(t.Context(), ref, input)
+				native, err := r.bots.Submit(t.Context(), ref, input)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -57,8 +57,8 @@ func TestUserReceiptRecoveryKeepsNativeAnswerAfterModelChange(t *testing.T) {
 					t.Fatalf("trigger did not hold expected receipt window: %+v", before)
 				}
 				// When the user clears or changes the model before receipt reconciliation.
-				// SaveAgent permits an empty model and uses this query.
-				if err := r.q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: model, ThinkingLevel: "off"}); err != nil {
+				// SaveBot permits an empty model and uses this query.
+				if err := r.q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: model, ThinkingLevel: "off"}); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := r.conn.ExecContext(t.Context(), "DROP TRIGGER block_receipt"); err != nil {
@@ -87,7 +87,7 @@ func TestUserReceiptRecoveryKeepsNativeAnswerAfterModelChange(t *testing.T) {
 				if err != nil || string(data) != "x" {
 					t.Fatalf("execution repeated: %q err=%v", data, err)
 				}
-				history, err := r.agents.History(t.Context(), ref, 1<<62, 100)
+				history, err := r.bots.History(t.Context(), ref, 1<<62, 100)
 				if err != nil {
 					t.Fatal(err)
 				}

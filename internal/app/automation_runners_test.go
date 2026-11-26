@@ -52,13 +52,13 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 
 	// When a routine selects an E2B or a missing environment, then it is refused.
 	for _, env := range []string{sandbox.ID, "missing"} {
-		d.must(t, http.MethodPost, "/api/agents/default/automations", routine("Refused", env), nil, http.StatusBadRequest)
+		d.must(t, http.MethodPost, "/api/bots/default/automations", routine("Refused", env), nil, http.StatusBadRequest)
 	}
 
 	// When a routine selects remote-box, then its runs use the SSH host.
 	body := routine("Remote", remoteEnv.ID)
 	var remote routineRunner
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &remote, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &remote, http.StatusCreated)
 	if remote.RunnerID != remoteEnv.ID {
 		t.Fatalf("routine=%+v", remote)
 	}
@@ -66,17 +66,17 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 
 	// Then a routine that selects nothing runs on the bot's local environment.
 	var local routineRunner
-	d.must(t, http.MethodPost, "/api/agents/default/automations", routine("Local", ""), &local, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", routine("Local", ""), &local, http.StatusCreated)
 	firstLocal := runIn(local.ID, "bash: local")
 
 	// When the owner moves the bot to remote-box, then the next run of the following routine starts
 	// a new session there, although nobody edited the routine. Its runs tell where each one ran.
 	setBotRunner := func(id string) {
 		t.Helper()
-		var bot apiAgent
-		d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+		var bot apiBot
+		d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 		bot.RunnerID = id
-		d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+		d.must(t, http.MethodPut, "/api/bots/default", bot, nil)
 	}
 	setBotRunner(remoteEnv.ID)
 	followed := runIn(local.ID, "bash: ssh-fake-ok")
@@ -89,7 +89,7 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 			RunnerID string `json:"runnerId"`
 		} `json:"runs"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/automations/"+local.ID+"/runs", nil, &runs)
+	d.must(t, http.MethodGet, "/api/bots/default/automations/"+local.ID+"/runs", nil, &runs)
 	if len(runs.Runs) != 2 || runs.Runs[0].RunnerID != remoteEnv.ID || runs.Runs[1].RunnerID != "local" {
 		t.Fatalf("runs=%+v", runs.Runs)
 	}
@@ -98,10 +98,10 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 	// When the reused routine moves to local and back, then each move starts a new session, and the
 	// earlier sessions stay readable.
 	body["runnerId"] = "local"
-	d.must(t, http.MethodPut, "/api/agents/default/automations/"+remote.ID, body, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/automations/"+remote.ID, body, nil)
 	onLocal := runIn(remote.ID, "bash: local")
 	body["runnerId"] = remoteEnv.ID
-	d.must(t, http.MethodPut, "/api/agents/default/automations/"+remote.ID, body, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/automations/"+remote.ID, body, nil)
 	back := runIn(remote.ID, "bash: ssh-fake-ok")
 	if onLocal.SessionID == onRemote.SessionID || back.SessionID == onRemote.SessionID || back.SessionID == onLocal.SessionID {
 		t.Fatalf("sessions: remote=%d local=%d back=%d", onRemote.SessionID, onLocal.SessionID, back.SessionID)
@@ -123,7 +123,7 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 
 	// When the bot creates a routine in a session on remote-box, then the routine runs there too.
 	sessionID := d.newSession(t).ID
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", sessionID), map[string]any{"runnerId": remoteEnv.ID}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", sessionID), map[string]any{"runnerId": remoteEnv.ID}, nil)
 	var created struct {
 		RunnerID string `json:"runnerId"`
 	}
@@ -140,7 +140,7 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 	}, &deadEnv, http.StatusCreated)
 	sshFix.Refuse(t, "dead.internal")
 	var dead routineRunner
-	d.must(t, http.MethodPost, "/api/agents/default/automations", routine("Dead", deadEnv.ID), &dead, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", routine("Dead", deadEnv.ID), &dead, http.StatusCreated)
 	if run := d.runNow(t, dead.ID); run.Status != "skipped" || run.SessionID != 0 || !strings.Contains(run.Reason, "dead-box is unavailable") {
 		t.Fatalf("run on a dead host=%+v", run)
 	}
@@ -160,5 +160,5 @@ func TestUserRunsAutomationsInSelectedRunners(t *testing.T) {
 	}
 	// Then the owner can still pause the routine without choosing another environment.
 	body["enabled"] = false
-	d.must(t, http.MethodPut, "/api/agents/default/automations/"+remote.ID, body, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/automations/"+remote.ID, body, nil)
 }

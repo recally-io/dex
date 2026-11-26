@@ -1,10 +1,10 @@
 -- name: SaveEmailSource :execrows
-INSERT INTO plugin_email_sources (id, secret, task_agent_id, hold_unmatched)
-SELECT @id, @secret, sqlc.narg(task_agent_id), @hold_unmatched
-WHERE sqlc.narg(task_agent_id) IS NULL OR EXISTS (
-  SELECT 1 FROM agents a WHERE a.id = sqlc.narg(task_agent_id) AND a.archived_at IS NULL
+INSERT INTO plugin_email_sources (id, secret, task_bot_id, hold_unmatched)
+SELECT @id, @secret, sqlc.narg(task_bot_id), @hold_unmatched
+WHERE sqlc.narg(task_bot_id) IS NULL OR EXISTS (
+  SELECT 1 FROM bots a WHERE a.id = sqlc.narg(task_bot_id) AND a.archived_at IS NULL
 )
-ON CONFLICT (id) DO UPDATE SET secret = excluded.secret, task_agent_id = excluded.task_agent_id,
+ON CONFLICT (id) DO UPDATE SET secret = excluded.secret, task_bot_id = excluded.task_bot_id,
   hold_unmatched = excluded.hold_unmatched;
 
 -- name: GetEmailSource :one
@@ -26,7 +26,7 @@ DELETE FROM plugin_email_imap_pulls WHERE source_id = ?;
 
 -- name: ListEmailIMAPPulls :many
 SELECT p.source_id, p.address, p.username, p.password, p.folder, p.configuration_id, p.uid_validity, p.last_uid,
-  s.task_agent_id, s.hold_unmatched
+  s.task_bot_id, s.hold_unmatched
 FROM plugin_email_imap_pulls p JOIN plugin_email_sources s ON s.id = p.source_id ORDER BY p.source_id;
 
 -- name: SetEmailIMAPCursor :exec

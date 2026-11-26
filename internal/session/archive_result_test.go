@@ -13,11 +13,11 @@ func TestUserArchivedBotRejectsClear(t *testing.T) {
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE submissions SET status='done'"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.conn.ExecContext(t.Context(), "UPDATE agents SET archived_at = 1 WHERE id = 'bot'"); err != nil {
+	if _, err := r.conn.ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id = 'bot'"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.service.Clear(t.Context(), "bot", sessionID, "clear-1", "web", ""); !errors.Is(err, db.ErrAgentArchived) {
-		t.Fatalf("Clear err = %v, want ErrAgentArchived", err)
+	if err := r.service.Clear(t.Context(), "bot", sessionID, "clear-1", "web", ""); !errors.Is(err, db.ErrBotArchived) {
+		t.Fatalf("Clear err = %v, want ErrBotArchived", err)
 	}
 }
 
@@ -30,7 +30,7 @@ func TestUserArchivedParentReceivesNoChildResult(t *testing.T) {
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE submissions SET status='done'"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.conn.ExecContext(t.Context(), "UPDATE agents SET archived_at = 1 WHERE id = 'bot'"); err != nil {
+	if _, err := r.conn.ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id = 'bot'"); err != nil {
 		t.Fatal(err)
 	}
 	var turn string

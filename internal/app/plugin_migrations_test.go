@@ -139,7 +139,7 @@ ORDER BY name`)
 	}
 	d.stop()
 	_ = startDex(t, dataDir, "")
-	if got := count("SELECT count(*) FROM applied_plugin_migrations WHERE plugin = 'email'"); got != 2 {
+	if got := count("SELECT count(*) FROM applied_plugin_migrations WHERE plugin = 'email'"); got != 3 {
 		t.Fatalf("a restart must not apply a version again: %d", got)
 	}
 }

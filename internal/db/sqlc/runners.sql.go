@@ -10,67 +10,67 @@ import (
 	"database/sql"
 )
 
-const clearAgentRunnerSandboxID = `-- name: ClearAgentRunnerSandboxID :exec
-UPDATE agents
+const clearBotRunnerSandboxID = `-- name: ClearBotRunnerSandboxID :exec
+UPDATE bots
 SET runner_sandbox_id = ''
 WHERE id = ?1 AND runner_sandbox_id = ?2
 `
 
-type ClearAgentRunnerSandboxIDParams struct {
-	AgentID   string `json:"agent_id"`
+type ClearBotRunnerSandboxIDParams struct {
+	BotID     string `json:"bot_id"`
 	SandboxID string `json:"sandbox_id"`
 }
 
-func (q *Queries) ClearAgentRunnerSandboxID(ctx context.Context, arg ClearAgentRunnerSandboxIDParams) error {
-	_, err := q.db.ExecContext(ctx, clearAgentRunnerSandboxID, arg.AgentID, arg.SandboxID)
+func (q *Queries) ClearBotRunnerSandboxID(ctx context.Context, arg ClearBotRunnerSandboxIDParams) error {
+	_, err := q.db.ExecContext(ctx, clearBotRunnerSandboxID, arg.BotID, arg.SandboxID)
 	return err
 }
 
 const clearDefaultAutomationCwd = `-- name: ClearDefaultAutomationCwd :exec
-UPDATE automations SET cwd = '' WHERE agent_id = ? AND runner_id = ''
+UPDATE automations SET cwd = '' WHERE bot_id = ? AND runner_id = ''
 `
 
 // Automations that follow the Bot's Runner use the new Runner's workspace.
-func (q *Queries) ClearDefaultAutomationCwd(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, clearDefaultAutomationCwd, agentID)
+func (q *Queries) ClearDefaultAutomationCwd(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, clearDefaultAutomationCwd, botID)
 	return err
 }
 
 const clearDefaultSessionCwd = `-- name: ClearDefaultSessionCwd :exec
-UPDATE sessions SET cwd = '' WHERE agent_id = ? AND runner_id = ''
+UPDATE sessions SET cwd = '' WHERE bot_id = ? AND runner_id = ''
 `
 
 // Sessions that follow the Bot's Runner start in the new Runner's workspace.
-func (q *Queries) ClearDefaultSessionCwd(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, clearDefaultSessionCwd, agentID)
+func (q *Queries) ClearDefaultSessionCwd(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, clearDefaultSessionCwd, botID)
 	return err
 }
 
 const countDefaultSessionWork = `-- name: CountDefaultSessionWork :one
 SELECT
     (SELECT count(*) FROM submissions s JOIN sessions c ON c.id = s.session_id
-     WHERE c.agent_id = ?1 AND c.runner_id = '' AND s.status = 'pending')
+     WHERE c.bot_id = ?1 AND c.runner_id = '' AND s.status = 'pending')
     + (SELECT count(*) FROM background_commands b JOIN sessions c ON c.id = b.session_id
-       WHERE c.agent_id = ?1 AND c.runner_id = '' AND b.state IN ('starting', 'running'))
+       WHERE c.bot_id = ?1 AND c.runner_id = '' AND b.state IN ('starting', 'running'))
 `
 
 // A change to the Bot's Runner waits for unsettled input and running Processes in
 // Sessions that follow it. This includes input that PiG accepted but has not run.
-func (q *Queries) CountDefaultSessionWork(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countDefaultSessionWork, agentID)
+func (q *Queries) CountDefaultSessionWork(ctx context.Context, botID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countDefaultSessionWork, botID)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
-const countPendingAgent = `-- name: CountPendingAgent :one
+const countPendingBot = `-- name: CountPendingBot :one
 SELECT count(*)
 FROM submissions s JOIN sessions c ON c.id = s.session_id
-WHERE c.agent_id = ? AND s.status = 'pending'
+WHERE c.bot_id = ? AND s.status = 'pending'
 `
 
-func (q *Queries) CountPendingAgent(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countPendingAgent, agentID)
+func (q *Queries) CountPendingBot(ctx context.Context, botID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countPendingBot, botID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -122,7 +122,7 @@ const deleteRunnerIfUnused = `-- name: DeleteRunnerIfUnused :execrows
 DELETE FROM runners
 WHERE runners.id = ?1
   AND NOT EXISTS (
-      SELECT 1 FROM agents WHERE agents.runner_id = runners.id AND agents.archived_at IS NULL
+      SELECT 1 FROM bots WHERE bots.runner_id = runners.id AND bots.archived_at IS NULL
   )
 `
 
@@ -134,7 +134,7 @@ func (q *Queries) DeleteRunnerIfUnused(ctx context.Context, id string) (int64, e
 	return result.RowsAffected()
 }
 
-const getAgentBinding = `-- name: GetAgentBinding :one
+const getBotBinding = `-- name: GetBotBinding :one
 SELECT
     a.runner_id,
     a.runner_sandbox_id,
@@ -143,12 +143,12 @@ SELECT
     CAST(coalesce(e.config, '') AS TEXT) AS config,
     CAST(coalesce(e.secret, '') AS TEXT) AS secret,
     CAST(coalesce(e.updated_at, 0) AS INTEGER) AS updated_at
-FROM agents a
+FROM bots a
 LEFT JOIN runners e ON e.id = a.runner_id
 WHERE a.id = ?
 `
 
-type GetAgentBindingRow struct {
+type GetBotBindingRow struct {
 	RunnerID        string `json:"runner_id"`
 	RunnerSandboxID string `json:"runner_sandbox_id"`
 	FoundID         string `json:"found_id"`
@@ -159,9 +159,9 @@ type GetAgentBindingRow struct {
 }
 
 // found_id is empty when runner_id names a deleted Runner.
-func (q *Queries) GetAgentBinding(ctx context.Context, id string) (GetAgentBindingRow, error) {
-	row := q.db.QueryRowContext(ctx, getAgentBinding, id)
-	var i GetAgentBindingRow
+func (q *Queries) GetBotBinding(ctx context.Context, id string) (GetBotBindingRow, error) {
+	row := q.db.QueryRowContext(ctx, getBotBinding, id)
+	var i GetBotBindingRow
 	err := row.Scan(
 		&i.RunnerID,
 		&i.RunnerSandboxID,
@@ -210,26 +210,26 @@ func (q *Queries) LastAutomationRunRunner(ctx context.Context, sessionID int64) 
 	return runner_id, err
 }
 
-const listActiveAgentsByRunner = `-- name: ListActiveAgentsByRunner :many
-SELECT id, name FROM agents
+const listActiveBotsByRunner = `-- name: ListActiveBotsByRunner :many
+SELECT id, name FROM bots
 WHERE runner_id = ? AND archived_at IS NULL
 ORDER BY created_at, id
 `
 
-type ListActiveAgentsByRunnerRow struct {
+type ListActiveBotsByRunnerRow struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-func (q *Queries) ListActiveAgentsByRunner(ctx context.Context, runnerID string) ([]ListActiveAgentsByRunnerRow, error) {
-	rows, err := q.db.QueryContext(ctx, listActiveAgentsByRunner, runnerID)
+func (q *Queries) ListActiveBotsByRunner(ctx context.Context, runnerID string) ([]ListActiveBotsByRunnerRow, error) {
+	rows, err := q.db.QueryContext(ctx, listActiveBotsByRunner, runnerID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListActiveAgentsByRunnerRow{}
+	items := []ListActiveBotsByRunnerRow{}
 	for rows.Next() {
-		var i ListActiveAgentsByRunnerRow
+		var i ListActiveBotsByRunnerRow
 		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
@@ -295,38 +295,38 @@ func (q *Queries) RetireAutomationSession(ctx context.Context, arg RetireAutomat
 	return err
 }
 
-const setAgentRunnerSandboxID = `-- name: SetAgentRunnerSandboxID :exec
-UPDATE agents
+const setBotRunnerSandboxID = `-- name: SetBotRunnerSandboxID :exec
+UPDATE bots
 SET runner_sandbox_id = ?1
 WHERE id = ?2 AND runner_id = ?3
 `
 
-type SetAgentRunnerSandboxIDParams struct {
+type SetBotRunnerSandboxIDParams struct {
 	SandboxID string `json:"sandbox_id"`
-	AgentID   string `json:"agent_id"`
+	BotID     string `json:"bot_id"`
 	RunnerID  string `json:"runner_id"`
 }
 
-func (q *Queries) SetAgentRunnerSandboxID(ctx context.Context, arg SetAgentRunnerSandboxIDParams) error {
-	_, err := q.db.ExecContext(ctx, setAgentRunnerSandboxID, arg.SandboxID, arg.AgentID, arg.RunnerID)
+func (q *Queries) SetBotRunnerSandboxID(ctx context.Context, arg SetBotRunnerSandboxIDParams) error {
+	_, err := q.db.ExecContext(ctx, setBotRunnerSandboxID, arg.SandboxID, arg.BotID, arg.RunnerID)
 	return err
 }
 
 const setSessionRunner = `-- name: SetSessionRunner :execrows
 UPDATE sessions SET runner_id = ?1, cwd = ''
-WHERE sessions.id = ?2 AND sessions.agent_id = ?3 AND sessions.execution_id IS NULL AND sessions.forked_from IS NULL
+WHERE sessions.id = ?2 AND sessions.bot_id = ?3 AND sessions.execution_id IS NULL AND sessions.forked_from IS NULL
   AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.session_id = sessions.id)
 `
 
 type SetSessionRunnerParams struct {
 	RunnerID string `json:"runner_id"`
 	ID       int64  `json:"id"`
-	AgentID  string `json:"agent_id"`
+	BotID    string `json:"bot_id"`
 }
 
 // Select a Session's Runner before its first message.
 func (q *Queries) SetSessionRunner(ctx context.Context, arg SetSessionRunnerParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setSessionRunner, arg.RunnerID, arg.ID, arg.AgentID)
+	result, err := q.db.ExecContext(ctx, setSessionRunner, arg.RunnerID, arg.ID, arg.BotID)
 	if err != nil {
 		return 0, err
 	}

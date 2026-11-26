@@ -22,8 +22,8 @@ var (
 )
 
 type Ref struct {
-	AgentID string
-	ID      int64
+	BotID string
+	ID    int64
 }
 type RunningTool struct {
 	Name            string `json:"name"`
@@ -122,18 +122,18 @@ type Config struct {
 	// LoginEnv captures the login shell environment for tools, started from BaseEnv; nil keeps
 	// BaseEnv.
 	LoginEnv func(ctx context.Context, base map[string]string) (map[string]string, error)
-	// ExecEnv configures agent workspace and execution backends. Nil defaults to a host-local provider.
+	// ExecEnv configures bot workspace and execution backends. Nil defaults to a host-local provider.
 	ExecEnv runner.Provider
 	// SessionRunner returns the explicit execution environment of a session, or
-	// empty when the session follows its agent. Nil makes every session follow its agent.
+	// empty when the session follows its bot. Nil makes every session follow its bot.
 	SessionRunner func(ctx context.Context, ref Ref) (string, error)
-	// FallbackModel returns the current fallback model for an agent, or an empty ModelRef.
-	FallbackModel func(ctx context.Context, agentID string) ModelRef
+	// FallbackModel returns the current fallback model for a bot, or an empty ModelRef.
+	FallbackModel func(ctx context.Context, botID string) ModelRef
 	FakeModel     bool
 	// FakeInputSuffix is model guidance that the faux command fixtures omit from arguments.
 	FakeInputSuffix string
 	BashTimeout     time.Duration
-	// Extensions supplies application extensions at agent open and reload.
+	// Extensions supplies application extensions at bot open and reload.
 	Extensions func(ExtensionRuntime) ExtensionSet
 	// InputExtensions selects application extensions before each fresh admission.
 	InputExtensions func(Input) ExtensionEdit

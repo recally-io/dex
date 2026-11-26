@@ -6,7 +6,7 @@ test("offers both Telegram setup choices only after a manager is configured", as
   browser,
   screen,
 }) => {
-  await app.open("/a/default/integrations");
+  await app.open("/b/default/integrations");
   await screen.getByRole("link", { name: "Telegram", exact: true }).click();
   await expect(screen.getByRole("button", { name: "Connect bot" })).toBeVisible();
   await expect(screen.getByRole("button", { name: "Create a new Bot" })).toHaveCount(0);

@@ -33,7 +33,7 @@ func newRoutineFixture(t *testing.T) *routineFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	if _, err = conn.ExecContext(t.Context(), `INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('a','a','faux','echo',0)`); err != nil {
+	if _, err = conn.ExecContext(t.Context(), `INSERT INTO bots (id,name,model_provider,model_id,created_at) VALUES ('a','a','faux','echo',0)`); err != nil {
 		t.Fatal(err)
 	}
 	native, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{}, FakeModel: true})
@@ -66,7 +66,7 @@ func TestUserScheduledRoutineDoesNotRunStaleInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			snapshot, err := f.q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: a.ID, AgentID: "a"})
+			snapshot, err := f.q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: a.ID, BotID: "a"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -86,7 +86,7 @@ func TestUserScheduledRoutineDoesNotRunStaleInput(t *testing.T) {
 			// Submit the previously captured snapshot after the user change has committed.
 			id := uuid.NewV7().String()
 			result, enqueueErr := f.sessions.EnqueueAutomation(ctx, session.AutomationInput{
-				Expected: &snapshot, AgentID: "a", ChannelKey: "automation:" + a.ID + ":" + id, Title: snapshot.Name, Content: snapshot.Prompt, Cwd: snapshot.Cwd,
+				Expected: &snapshot, BotID: "a", ChannelKey: "automation:" + a.ID + ":" + id, Title: snapshot.Name, Content: snapshot.Prompt, Cwd: snapshot.Cwd,
 				Run: sqlc.CreateAutomationRunParams{ID: id, AutomationID: a.ID, DueAt: snapshot.NextDueAt, Status: "started", CreatedAt: f.now.UnixMilli()},
 			})
 			var count int
@@ -182,7 +182,7 @@ func TestUserRoutineRunsOnlyOnTheCheckedRunner(t *testing.T) {
 	if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','ssh','{"host":"box.internal"}','',0,0)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.conn.ExecContext(ctx, `UPDATE agents SET runner_id = 'box' WHERE id = 'a'`); err != nil {
+	if _, err := f.conn.ExecContext(ctx, `UPDATE bots SET runner_id = 'box' WHERE id = 'a'`); err != nil {
 		t.Fatal(err)
 	}
 	a, err := f.routines.Create(ctx, "a", routineInput())
@@ -190,9 +190,9 @@ func TestUserRoutineRunsOnlyOnTheCheckedRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	var probed []string
-	f.routines.ConfigureProbe(func(ctx context.Context, agentID, runnerID string) error {
+	f.routines.ConfigureProbe(func(ctx context.Context, botID, runnerID string) error {
 		probed = append(probed, runnerID)
-		_, err := f.conn.ExecContext(ctx, `UPDATE agents SET runner_id = '' WHERE id = ?`, agentID)
+		_, err := f.conn.ExecContext(ctx, `UPDATE bots SET runner_id = '' WHERE id = ?`, botID)
 		return err
 	})
 	if _, err := f.routines.RunNow(ctx, "a", a.ID); !errors.Is(err, engine.ErrBusy) {
@@ -221,9 +221,9 @@ func TestUserRoutineEditDuringRunNowCheckStartsNoRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.routines.ConfigureProbe(func(ctx context.Context, agentID, _ string) error {
+	f.routines.ConfigureProbe(func(ctx context.Context, botID, _ string) error {
 		in.RunnerID = runner.LocalID
-		_, err := f.routines.Update(ctx, agentID, a.ID, in)
+		_, err := f.routines.Update(ctx, botID, a.ID, in)
 		return err
 	})
 	if run, err := f.routines.RunNow(ctx, "a", a.ID); !errors.Is(err, engine.ErrBusy) {
@@ -250,18 +250,18 @@ func TestUserRoutineSkipsATargetInvalidatedDuringPreflight(t *testing.T) {
 			if _, err := f.sessions.Main(ctx, "a"); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
-INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE agents SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
+			if _, err := f.conn.ExecContext(ctx, `INSERT INTO telegram_settings (bot_id, token, allowed_users) VALUES ('a', '123:fixture', '42');
+INSERT INTO automation_notification_targets (id,bot_id,platform,account_id,peer) VALUES ('primary','a','telegram','123','telegram:42'); UPDATE bots SET primary_notification_target_id='primary' WHERE id='a'`); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := f.conn.ExecContext(ctx, `INSERT INTO runners (id,name,kind,config,secret,created_at,updated_at) VALUES ('box','box','ssh','{"host":"box.internal"}','',0,0)`); err != nil {
 				t.Fatal(err)
 			}
-			conv, err := f.q.EnsureSession(ctx, sqlc.EnsureSessionParams{AgentID: "a", ChannelKey: "chat:bound-target"})
+			conv, err := f.q.EnsureSession(ctx, sqlc.EnsureSessionParams{BotID: "a", ChannelKey: "chat:bound-target"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err := f.q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{ID: conv.ID, AgentID: "a", RunnerID: "box"}); err != nil {
+			if _, err := f.q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{ID: conv.ID, BotID: "a", RunnerID: "box"}); err != nil {
 				t.Fatal(err)
 			}
 			in := routineInput()

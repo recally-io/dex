@@ -27,18 +27,18 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	}
 	defer conn.Close()
 	q := sqlc.New(conn)
-	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "bot", Name: "Bot"}); err != nil {
+	if err := q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "bot", Name: "Bot"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:synthetic", AllowedUsers: "42"}); err != nil {
+	if _, err := q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:synthetic", AllowedUsers: "42"}); err != nil {
 		t.Fatal(err)
 	}
-	agents, err := engine.New(engine.Config{DataDir: directory, Home: t.TempDir(), FakeModel: true})
+	bots, err := engine.New(engine.Config{DataDir: directory, Home: t.TempDir(), FakeModel: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer agents.Close(context.WithoutCancel(t.Context()))
-	service := session.New(conn, agents, time.Now, nil, nil)
+	defer bots.Close(context.WithoutCancel(t.Context()))
+	service := session.New(conn, bots, time.Now, nil, nil)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()
@@ -54,7 +54,7 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	}
 	create := func(id string) {
 		t.Helper()
-		if err := q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, AgentID: "bot", SourceID: id, Peer: "telegram:42", ChannelContext: string(encoded), SessionID: target.ID, ExecutionID: target.ExecutionID, ObjectID: strconv.FormatInt(target.ID, 10), Action: "/status", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
+		if err := q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, BotID: "bot", SourceID: id, Peer: "telegram:42", ChannelContext: string(encoded), SessionID: target.ID, ExecutionID: target.ExecutionID, ObjectID: strconv.FormatInt(target.ID, 10), Action: "/status", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
 			t.Fatal(err)
 		}
 		if err := q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: id, MessageID: "10"}); err != nil {
@@ -121,10 +121,10 @@ func TestUserTelegramButtonClaimAndDurableIntentAreAtomic(t *testing.T) {
 	if err := session.RequirePairedChannel(ctx, q, "bot", "telegram:42", identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: "bot", SourceKey: "telegram-callback:queued-revoked-stop", Peer: "telegram:42", ChannelKey: target.ChannelKey, Command: "/stop", ChannelContext: string(encoded)}); err != nil {
+	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{BotID: "bot", SourceKey: "telegram-callback:queued-revoked-stop", Peer: "telegram:42", ChannelKey: target.ChannelKey, Command: "/stop", ChannelContext: string(encoded)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:synthetic", AllowedUsers: "43"}); err != nil {
+	if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:synthetic", AllowedUsers: "43"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.StopChannelCommand(ctx, "bot", target.ID, "telegram-callback:queued-revoked-stop", "stop must not execute"); !errors.Is(err, session.ErrTelegramUnauthorized) {

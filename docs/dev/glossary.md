@@ -8,8 +8,8 @@ storage, and execution boundaries.
 - **Owner**: The person who operates the Dex instance, its Bots, and its paired
   Channels.
 - **Bot**: An assistant with its own model, instructions, skills, default
-  Runner, Channels, and Automations. The API and storage use `agent` for this
-  object. A Telegram bot token belongs to a Channel.
+  Runner, Channels, and Automations. Its directory remains `<data dir>/agents/<id>/`
+  across upgrades. A Telegram bot token belongs to a Channel.
 - **Session**: A Bot's transcript and execution context. **Main** is shared
   by Web and Channels. The Owner can open a separate writable Web Session.
   A **child Session** has a parent, possibly in another Bot. A separate
@@ -84,19 +84,19 @@ They do not share a runtime abstraction.
 
 ## Cross-layer mapping
 
-| Concept                         | Web or tool surface                                  | API, storage, or engine                                                                                                   |
-| ------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Bot                             | Bots; `bot_*`                                        | `/api/agents/*`, `agents`, `internal/agent`                                                                               |
-| Session                         | Sessions; `session_*`                                | `/api/agents/{id}/sessions/*`, `sessions`, `internal/session`                                                             |
-| Child result                    | Result mark                                          | `session_result` submission, `dex.session_result` native entry                                                            |
-| Monitor or Process wake         | Wake mark; `monitor_*`, `process_*`                  | `wake` submission, `dex.wake` native entry; `monitors`, `background_commands`                                             |
-| Task wake                       | Task wake mark                                       | `task_wake` submission, `dex.task_wake` native entry                                                                      |
-| Automation                      | Automations; `automation_*`                          | `/api/agents/{id}/automations/*`, `automations`, `automation_runs`, `internal/automation`                                 |
-| Task                            | `/board/$taskKey`; `task_*`, `dex task`              | `/api/tasks/*`, `tasks` and related tables, `internal/task`                                                               |
-| Board attention                 | `/board`; Needs you and Updates                      | `/api/board/attention`, `/api/sources/held-events*`; `questions`, `task_source_holds`                                     |
-| Automation result               | `/board/results/$runId`                              | `/api/automations/results*`                                                                                               |
-| Runner                          | Runners; `runner_list`                               | `/api/settings/runners`, `/api/agents/{id}/runners`, `runners`, `runner_id`, Outbound `runner_pairing`, `internal/runner` |
-| Runner change in copied history | Runner boundary                                      | `dex.runner` entry; `boundary: "runner"` in the transcript                                                                |
-| Secrets                         | Secrets; `secret_list`                               | Vault APIs, `/api/settings/onepassword`, `internal/vault`                                                                 |
-| Skills                          | Bot Skills; `skill_*`                                | `/api/agents/{id}/integrations`, `internal/engine/skills.go`                                                              |
-| Channel, MCP Server, Source     | Integrations; `mcp_server_*` and Owner channel tools | Channel APIs, `/api/agents/{id}/integrations*`, `/api/settings/sources*`, `mcp_servers`, `enabled_plugins`                |
+| Concept                         | Web or tool surface                                  | API, storage, or engine                                                                                                 |
+| ------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Bot                             | Bots; `bot_*`                                        | `/api/bots/*`, `bots`, `internal/bot`                                                                                   |
+| Session                         | Sessions; `session_*`                                | `/api/bots/{id}/sessions/*`, `sessions`, `internal/session`                                                             |
+| Child result                    | Result mark                                          | `session_result` submission, `dex.session_result` native entry                                                          |
+| Monitor or Process wake         | Wake mark; `monitor_*`, `process_*`                  | `wake` submission, `dex.wake` native entry; `monitors`, `background_commands`                                           |
+| Task wake                       | Task wake mark                                       | `task_wake` submission, `dex.task_wake` native entry                                                                    |
+| Automation                      | Automations; `automation_*`                          | `/api/bots/{id}/automations/*`, `automations`, `automation_runs`, `internal/automation`                                 |
+| Task                            | `/board/$taskKey`; `task_*`, `dex task`              | `/api/tasks/*`, `tasks` and related tables, `internal/task`                                                             |
+| Board attention                 | `/board`; Needs you and Updates                      | `/api/board/attention`, `/api/sources/held-events*`; `questions`, `task_source_holds`                                   |
+| Automation result               | `/board/results/$runId`                              | `/api/automations/results*`                                                                                             |
+| Runner                          | Runners; `runner_list`                               | `/api/settings/runners`, `/api/bots/{id}/runners`, `runners`, `runner_id`, Outbound `runner_pairing`, `internal/runner` |
+| Runner change in copied history | Runner boundary                                      | `dex.runner` entry; `boundary: "runner"` in the transcript                                                              |
+| Secrets                         | Secrets; `secret_list`                               | Vault APIs, `/api/settings/onepassword`, `internal/vault`                                                               |
+| Skills                          | Bot Skills; `skill_*`                                | `/api/bots/{id}/integrations`, `internal/engine/skills.go`                                                              |
+| Channel, MCP Server, Source     | Integrations; `mcp_server_*` and Owner channel tools | Channel APIs, `/api/bots/{id}/integrations*`, `/api/settings/sources*`, `mcp_servers`, `enabled_plugins`                |

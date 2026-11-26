@@ -44,10 +44,10 @@ func newFixture(t *testing.T, limits background.Limits) *fixture {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
-	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "bot", Name: "Bot", CreatedAt: 1}); err != nil {
+	if err := q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "bot", Name: "Bot", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	conv, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "bot", ChannelKey: "chat:test", Title: "t", CreatedAt: 1})
+	conv, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{BotID: "bot", ChannelKey: "chat:test", Title: "t", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ func newFixture(t *testing.T, limits background.Limits) *fixture {
 func (f *fixture) params(command, wake string) background.StartParams {
 	f.nextKey++
 	return background.StartParams{
-		CallKey: fmt.Sprintf("bot/%d", f.nextKey), AgentID: "bot", SessionID: f.conv, SourceRequestID: f.source,
+		CallKey: fmt.Sprintf("bot/%d", f.nextKey), BotID: "bot", SessionID: f.conv, SourceRequestID: f.source,
 		Command: command, Wake: wake, DefaultCwd: f.dir, OutputDir: filepath.Join(f.dir, "out"), Env: map[string]string{"PATH": os.Getenv("PATH")},
 	}
 }
@@ -275,7 +275,7 @@ func TestAnArchivedBotGetsNoWakeUp(t *testing.T) {
 	f := newFixture(t, background.Limits{})
 	gate := filepath.Join(f.dir, "gate")
 	row := f.start("until test -f "+gate+"; do sleep 0.02; done", background.WakeExit)
-	if _, err := f.conn.ExecContext(t.Context(), `UPDATE agents SET archived_at = 1 WHERE id = 'bot'`); err != nil {
+	if _, err := f.conn.ExecContext(t.Context(), `UPDATE bots SET archived_at = 1 WHERE id = 'bot'`); err != nil {
 		t.Fatal(err)
 	}
 	// When it ends.

@@ -5,7 +5,7 @@ import {
   formatDuration,
   isStalled,
   parentName,
-  sessionAgentId,
+  sessionBotId,
   sessionKind,
 } from "./sessions";
 
@@ -55,11 +55,11 @@ test("a child row names its parent by ID: Main only for the ID of Main, and an a
   expect(parentName({ parentId: 4 }, 1, all)).toBe("New session");
   // A parent that the list does not hold is not Main.
   expect(parentName({ parentId: 9 }, 1, all)).toBe("a session");
-  expect(parentName({ parentId: 2, agentName: "Coder" }, 1, all)).toBe("Review · Coder");
-  expect(parentName({ parentId: 9, parentAgentName: "Dex" }, 1, all)).toBe("Dex");
+  expect(parentName({ parentId: 2, botName: "Coder" }, 1, all)).toBe("Review · Coder");
+  expect(parentName({ parentId: 9, parentBotName: "Dex" }, 1, all)).toBe("Dex");
 });
 
 test("a child session in another bot opens in that bot and names it", () => {
-  expect(sessionAgentId({}, "default")).toBe("default");
-  expect(sessionAgentId({ agentId: "coder" }, "default")).toBe("coder");
+  expect(sessionBotId({}, "default")).toBe("default");
+  expect(sessionBotId({ botId: "coder" }, "default")).toBe("coder");
 });

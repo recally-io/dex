@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
-import { listAgentsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
+import { listBotsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
 import { heldEventsOptions } from "../lib/board-attention";
 import { attachHeldEvent, dismissHeldEvent } from "../api/generated/sdk.gen";
-import type { Agent, HeldEvent, TaskSummary } from "../api/generated/types.gen";
+import type { Bot, HeldEvent, TaskSummary } from "../api/generated/types.gen";
 import { Failure } from "./feedback";
 import { Select } from "./form";
 import { Badge } from "./ui/badge";
@@ -21,7 +21,7 @@ function sourceHref(url: string) {
 }
 
 export function HeldEventRows({ events, total }: { events: HeldEvent[]; total: number }) {
-  const agents = useQuery(listAgentsOptions());
+  const bots = useQuery(listBotsOptions());
 
   const tasks = useQuery({
     ...listTasksOptions({ query: { includeClosed: false } }),
@@ -31,13 +31,13 @@ export function HeldEventRows({ events, total }: { events: HeldEvent[]; total: n
   if (!events.length) return null;
 
   const open = tasks.data?.tasks ?? [];
-  const botList = agents.data?.agents ?? [];
+  const botList = bots.data?.bots ?? [];
 
   return (
     <>
       {tasks.isError ? <Failure title="Could not load tasks for attachment" error={tasks.error} /> : null}
       {events.map((event) => (
-        <HeldEventRow key={event.id} event={event} tasks={open} agents={botList} />
+        <HeldEventRow key={event.id} event={event} tasks={open} bots={botList} />
       ))}
       {total > events.length ? (
         <li className="py-3.5 text-[13px] text-muted-foreground">
@@ -48,7 +48,7 @@ export function HeldEventRows({ events, total }: { events: HeldEvent[]; total: n
   );
 }
 
-function HeldEventRow({ event, tasks, agents }: { event: HeldEvent; tasks: TaskSummary[]; agents: Agent[] }) {
+function HeldEventRow({ event, tasks, bots }: { event: HeldEvent; tasks: TaskSummary[]; bots: Bot[] }) {
   const [selected, setSelected] = useState("");
   const client = useQueryClient();
   // An attach also links the event objects, and no API removes a link. The owner must pick the Task.
@@ -64,7 +64,7 @@ function HeldEventRow({ event, tasks, agents }: { event: HeldEvent; tasks: TaskS
     mutationFn: (target: TaskSummary) =>
       attachHeldEvent({
         path: { eventId: event.id },
-        body: { agentId: target.assigneeBotId, taskId: target.id },
+        body: { botId: target.assigneeBotId, taskId: target.id },
         throwOnError: true,
       }),
     onSuccess: refresh,
@@ -113,7 +113,7 @@ function HeldEventRow({ event, tasks, agents }: { event: HeldEvent; tasks: TaskS
           {tasks.map((item) => (
             <option key={item.id} value={item.id}>
               {item.key} · {item.title} (
-              {agents.find((agent) => agent.id === item.assigneeBotId)?.name ?? item.assigneeBotId})
+              {bots.find((bot) => bot.id === item.assigneeBotId)?.name ?? item.assigneeBotId})
             </option>
           ))}
         </Select>

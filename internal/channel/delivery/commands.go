@@ -53,9 +53,9 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.
 	telegramCommand := strings.HasPrefix(peer, "telegram:") && channel.IsCommand(cmd)
 	isCommand := isFeedback || basicCommand || telegramCommand
 	if !isCommand || msg.AlbumSource != "" || len(msg.Attachments) > 0 {
-		return m.sessions.AcceptMessage(ctx, m.agentID, peer, source, msg)
+		return m.sessions.AcceptMessage(ctx, m.botID, peer, source, msg)
 	}
-	if err := session.RequirePairedChannel(ctx, m.q, m.agentID, peer, msg.ChannelContext); err != nil {
+	if err := session.RequirePairedChannel(ctx, m.q, m.botID, peer, msg.ChannelContext); err != nil {
 		return err
 	}
 	identity, err := json.Marshal(msg.ChannelContext)
@@ -64,13 +64,13 @@ func (m *Manager) Receive(ctx context.Context, peer, source string, msg session.
 	}
 	if isFeedback {
 		answer := feedbackReply(cmd)
-		if err := m.q.CreateFeedbackCommand(ctx, sqlc.CreateFeedbackCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelContext: string(identity), Answer: answer}); err != nil {
+		if err := m.q.CreateFeedbackCommand(ctx, sqlc.CreateFeedbackCommandParams{BotID: m.botID, SourceKey: source, Peer: peer, ChannelContext: string(identity), Answer: answer}); err != nil {
 			return err
 		}
 		m.Notify(peer)
 		return nil
 	}
-	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: session.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
+	if err = m.q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{BotID: m.botID, SourceKey: source, Peer: peer, ChannelKey: session.MainKey, Command: cmd, ChannelContext: string(identity)}); err != nil {
 		return err
 	}
 	return m.complete(ctx, source)
@@ -132,7 +132,7 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	if err != nil {
 		return err
 	}
-	if c.AgentID != m.agentID || c.Completed != 0 || c.DeliveredAt.Valid {
+	if c.BotID != m.botID || c.Completed != 0 || c.DeliveredAt.Valid {
 		return nil
 	}
 	var target session.Session
@@ -149,12 +149,12 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 	// Rows saved before /clear existed hold /new.
 	case "/clear", "/new":
 		if target.ID == 0 {
-			target, err = m.sessions.Main(ctx, m.agentID)
+			target, err = m.sessions.Main(ctx, m.botID)
 			if err != nil {
 				return err
 			}
 		}
-		err := m.sessions.Clear(ctx, m.agentID, target.ID, "channel:"+c.SourceKey, c.Peer, "")
+		err := m.sessions.Clear(ctx, m.botID, target.ID, "channel:"+c.SourceKey, c.Peer, "")
 		switch {
 		case errors.Is(err, session.ErrTelegramUnauthorized):
 			answer = ""
@@ -170,13 +170,13 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 		if answer == "" {
 			if target.ID == 0 {
 				var err error
-				target, err = m.sessions.Main(ctx, m.agentID)
+				target, err = m.sessions.Main(ctx, m.botID)
 				if err != nil {
 					return err
 				}
 			}
 			answer = "Stop requested. Earlier actions are not undone. Processes and remote work may continue."
-			if err := m.sessions.StopChannelCommand(ctx, m.agentID, target.ID, c.SourceKey, answer); err != nil {
+			if err := m.sessions.StopChannelCommand(ctx, m.botID, target.ID, c.SourceKey, answer); err != nil {
 				if errors.Is(err, session.ErrTelegramUnauthorized) {
 					return m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
 				}
@@ -193,7 +193,7 @@ func (m *Manager) complete(ctx context.Context, source string) error {
 
 // QueueChannelNotice records a platform acknowledgement without a model input.
 func (m *Manager) QueueChannelNotice(ctx context.Context, peer, source string, identity session.ChannelContext, body string) error {
-	target, err := m.sessions.Main(ctx, m.agentID)
+	target, err := m.sessions.Main(ctx, m.botID)
 	if err != nil {
 		return err
 	}
@@ -203,7 +203,7 @@ func (m *Manager) QueueChannelNotice(ctx context.Context, peer, source string, i
 	}
 	id := "notice:" + source
 	if _, err := m.q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID: id, EventID: id, AgentID: m.agentID, SessionID: target.ID,
+		ID: id, EventID: id, BotID: m.botID, SessionID: target.ID,
 		Kind: "control", Peer: peer, ChannelContext: string(encoded), Body: body,
 		Status: "pending", CreatedAt: time.Now().UnixMilli(),
 	}); err != nil {
@@ -218,7 +218,7 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 	if r.Answer == "" {
 		return m.q.MarkChannelCommandDelivered(ctx, sqlc.MarkChannelCommandDeliveredParams{SourceKey: r.SourceKey, DeliveredAt: sql.NullInt64{Int64: now, Valid: true}})
 	}
-	target, err := m.sessions.Main(ctx, m.agentID)
+	target, err := m.sessions.Main(ctx, m.botID)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func (m *Manager) queueCommandReply(ctx context.Context, bot channel.Bot, r sqlc
 		return err
 	}
 	_, err = m.q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-		ID: r.SourceKey, EventID: "control:" + r.SourceKey, AgentID: m.agentID, SessionID: target.ID,
+		ID: r.SourceKey, EventID: "control:" + r.SourceKey, BotID: m.botID, SessionID: target.ID,
 		Kind: kind, Peer: r.Peer, ChannelContext: r.ChannelContext, RenderedMessage: string(encoded),
 		Status: "pending", CreatedAt: now,
 	})

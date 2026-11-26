@@ -122,7 +122,7 @@ func TestUserGetsCrossBotReviewWakesOnlyAfterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	boardExec(t, conn, `INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES
+	boardExec(t, conn, `INSERT INTO bots (id, name, model_provider, model_id, created_at) VALUES
 		('assignee', 'Assignee', 'faux', 'echo', 1), ('reviewer', 'Reviewer', 'faux', 'echo', 1)`)
 	q := sqlc.New(conn)
 	var woken []string
@@ -131,7 +131,7 @@ func TestUserGetsCrossBotReviewWakesOnlyAfterCommit(t *testing.T) {
 		if err != nil || conv.ChannelKey != "main" {
 			t.Fatalf("wake did not target a committed Main: %+v, %v", conv, err)
 		}
-		woken = append(woken, conv.AgentID)
+		woken = append(woken, conv.BotID)
 		wake := pendingWake(t, q, id)
 		payload := readWake(t, wake)
 		var kind string
@@ -139,11 +139,11 @@ func TestUserGetsCrossBotReviewWakesOnlyAfterCommit(t *testing.T) {
 			t.Fatalf("wake cursor has no committed entry: %v", err)
 		}
 		wantKind := tasksvc.KindReview
-		if conv.AgentID == "reviewer" {
+		if conv.BotID == "reviewer" {
 			wantKind = tasksvc.KindStatus
 		}
 		if kind != wantKind || len(payload.Items) != 1 {
-			t.Fatalf("unexpected wake for %s: %s, %+v", conv.AgentID, kind, payload)
+			t.Fatalf("unexpected wake for %s: %s, %+v", conv.BotID, kind, payload)
 		}
 	})
 

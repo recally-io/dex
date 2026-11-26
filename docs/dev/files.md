@@ -22,7 +22,7 @@ The open panel polls every three seconds, including in background tabs, and
 updates after mutations and session reconnect/completion. Selection uses the current
 file name. Modification time refreshes previews when bytes change.
 
-An agent calls `deliver_file` to copy a workspace-relative regular file of at most
+A bot calls `deliver_file` to copy a workspace-relative regular file of at most
 20 MiB into its bot directory under the original name. Existing names fail with
 a conflict. No deduplication or retry receipt is saved. Workspace source files
 are not changed by artifact rename or delete. The tool returns the actual bot
@@ -94,7 +94,7 @@ The adapter accepts only private chats.
 
 ## Attachments
 
-1. The browser sends each file as `POST /api/agents/{agentId}/uploads` (multipart, one file,
+1. The browser sends each file as `POST /api/bots/{botId}/uploads` (multipart, one file,
    at most 20 MB). [`upload.Store`](../../internal/upload/upload.go) writes
    it to `workspace/uploads/<UUIDv7>/<name>` and returns its ID, name, size,
    type (from the content) and workspace path. The directory is the only
@@ -107,4 +107,4 @@ The adapter accepts only private chats.
    also prepares images for a model with image input. The `dex.user` entry
    keeps the attachments, so the transcript shows the files and the text
    without the list.
-4. `GET /api/agents/{agentId}/uploads/{id}` serves a file for the transcript.
+4. `GET /api/bots/{botId}/uploads/{id}` serves a file for the transcript.

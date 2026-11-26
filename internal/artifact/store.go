@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/engine"
 )
 
@@ -77,8 +77,8 @@ func openDirectory(parent *os.Root, name string) (*os.Root, error) {
 	return root, nil
 }
 
-func (s *Service) root(agentID string, create bool) (*os.Root, error) {
-	home, err := os.OpenRoot(agent.Home(s.dataDir, agentID))
+func (s *Service) root(botID string, create bool) (*os.Root, error) {
+	home, err := os.OpenRoot(bot.Home(s.dataDir, botID))
 	if err != nil {
 		return nil, err
 	}
@@ -121,10 +121,10 @@ func fileInfo(name string, stat os.FileInfo) Info {
 	return Info{Name: name, Size: stat.Size(), ModifiedAt: stat.ModTime().UTC().Format(time.RFC3339Nano)}
 }
 
-func (s *Service) List(agentID string) ([]Info, error) {
+func (s *Service) List(botID string) ([]Info, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	root, err := s.root(agentID, false)
+	root, err := s.root(botID, false)
 	if os.IsNotExist(err) {
 		return []Info{}, nil
 	}
@@ -158,8 +158,8 @@ func (s *Service) List(agentID string) ([]Info, error) {
 	return out, nil
 }
 
-func (s *Service) Open(agentID, name string) (Info, *os.File, error) {
-	root, err := s.root(agentID, false)
+func (s *Service) Open(botID, name string) (Info, *os.File, error) {
+	root, err := s.root(botID, false)
 	if err != nil {
 		return Info{}, nil, err
 	}
@@ -176,13 +176,13 @@ func (s *Service) Open(agentID, name string) (Info, *os.File, error) {
 	return fileInfo(name, stat), f, nil
 }
 
-func (s *Service) Rename(agentID, old, name string) (Info, error) {
+func (s *Service) Rename(botID, old, name string) (Info, error) {
 	if err := checkName(name); err != nil {
 		return Info{}, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	root, err := s.root(agentID, false)
+	root, err := s.root(botID, false)
 	if err != nil {
 		return Info{}, err
 	}
@@ -209,10 +209,10 @@ func (s *Service) Rename(agentID, old, name string) (Info, error) {
 	return fileInfo(name, stat), nil
 }
 
-func (s *Service) Delete(agentID, name string) error {
+func (s *Service) Delete(botID, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	root, err := s.root(agentID, false)
+	root, err := s.root(botID, false)
 	if err != nil {
 		return err
 	}
@@ -247,13 +247,13 @@ func (s *Service) Deliver(ctx context.Context, caller engine.TaskContext, path s
 	if int64(len(data)) > MaxSize {
 		return Delivery{}, errors.New("deliver a regular file of at most 20 MB")
 	}
-	return s.storeDeliveredBytes(caller.AgentID, name, data)
+	return s.storeDeliveredBytes(caller.BotID, name, data)
 }
 
-func (s *Service) storeDeliveredBytes(agentID, name string, data []byte) (Delivery, error) {
+func (s *Service) storeDeliveredBytes(botID, name string, data []byte) (Delivery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	root, err := s.root(agentID, true)
+	root, err := s.root(botID, true)
 	if err != nil {
 		return Delivery{}, err
 	}
@@ -274,6 +274,6 @@ func (s *Service) storeDeliveredBytes(agentID, name string, data []byte) (Delive
 	return Delivery{
 		Name: name,
 		Size: int64(len(data)),
-		URL:  "/api/agents/" + url.PathEscape(agentID) + "/artifacts/" + url.PathEscape(name),
+		URL:  "/api/bots/" + url.PathEscape(botID) + "/artifacts/" + url.PathEscape(name),
 	}, nil
 }

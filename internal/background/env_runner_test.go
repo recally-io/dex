@@ -42,7 +42,7 @@ func TestUserRunsBackgroundCommandsInRemoteEnv(t *testing.T) {
 		f.nextKey++
 		row, err := f.m.Start(t.Context(), background.StartParams{
 			CallKey:         fmt.Sprintf("remote/%d", f.nextKey),
-			AgentID:         "bot",
+			BotID:           "bot",
 			SessionID:       f.conv,
 			SourceRequestID: f.source,
 			Command:         command,

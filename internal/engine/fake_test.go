@@ -11,11 +11,11 @@ import (
 
 func TestUserFauxTaskResultKeepsStableMetadata(t *testing.T) {
 	// Given a task result with the native follow-up metadata.
-	agents := coreEngine(t, Config{})
-	ref := coreCreate(t, agents, "alpha", coreOptions("spawn"))
+	bots := coreEngine(t, Config{})
+	ref := coreCreate(t, bots, "alpha", coreOptions("spawn"))
 	input := `{"session-result":{"session":"7","turn":"turn-1","title":"Report title","outcome":"done","answer":"echo: report"}}`
 	// When the faux model receives the result as an ordinary queued input.
-	result := coreWait(t, coreSubmit(t, agents, ref, "result", input, "spawn"))
+	result := coreWait(t, coreSubmit(t, bots, ref, "result", input, "spawn"))
 	// Then the answer keeps all fields and has stable JSON for transcript assertions.
 	want := `session-result: {"answer":"echo: report","outcome":"done","session":"7","title":"Report title","turn":"turn-1"}`
 	if result.Status != "done" || result.Answer != want {

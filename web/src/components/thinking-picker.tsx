@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Command, CommandList, CommandItem } from "./ui/command";
 import type { ThinkingLevel } from "../api/generated/types.gen";
-import { thinkingNames } from "../lib/agent";
+import { thinkingNames } from "../lib/bot";
 import { Failure } from "./feedback";
 import { Mark } from "./model-picker";
 

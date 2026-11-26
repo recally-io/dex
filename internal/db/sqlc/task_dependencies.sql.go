@@ -119,7 +119,7 @@ func (q *Queries) InsertTaskDependency(ctx context.Context, arg InsertTaskDepend
 }
 
 const listOwnerTaskReviews = `-- name: ListOwnerTaskReviews :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL AND t.status = 'in_review' AND t.reviewer_kind = 'owner'
 ORDER BY t.updated_at DESC, t.number DESC
 `

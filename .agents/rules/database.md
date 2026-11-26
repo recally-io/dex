@@ -3,7 +3,7 @@
 Read this before you change the schema, a migration, or a query.
 
 dex is one local binary, so control uses SQLite (`modernc.org/sqlite`, no cgo)
-instead of PostgreSQL. PiG execution data stays in each agent's
+instead of PostgreSQL. PiG execution data stays in each bot's
 `state.sqlite`. Only `internal/engine` opens that storage. Business services
 use typed engine methods; they do not query execution tables.
 

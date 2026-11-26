@@ -5,8 +5,8 @@ and transcript subscriptions and history.
 
 ## Native execution boundary
 
-`internal/engine.Agents` owns one concrete execution service. Business code
-uses typed Go calls and `Ref{AgentID, ID}`. An execution ID names a PiG
+`internal/engine.Bots` owns one concrete execution service. Business code
+uses typed Go calls and `Ref{BotID, ID}`. An execution ID names a PiG
 conversation, while a session ID names a business record in `control.sqlite`.
 `sessions.execution_id` connects the two records.
 
@@ -38,7 +38,7 @@ names. JSON encoding occurs at the HTTP boundary.
 
 Business packages define the tool schemas, prompt sections, and handlers.
 `internal/app` supplies these extensions when the engine opens or reloads an
-agent. The engine registers them before PiG can resume work. The app selects
+bot. The engine registers them before PiG can resume work. The app selects
 optional extensions by name before native input admission. Keep the existing
 extension names because PiG saves them with sessions. Default extensions keep
 their order in the model prompt.
@@ -134,7 +134,7 @@ Stop, restart and limits:
   Archiving a session does not.
 - A graceful shutdown (`App.Close`) stops the process group of every running
   command (SIGTERM, then SIGKILL after 5 s), stores `stopped` with reason
-  `shutdown`, and stores an end wake-up that says dex shut down, so the agent
+  `shutdown`, and stores an end wake-up that says dex shut down, so the bot
   can start the command again. This runs before the database closes. dex does
   not restart a command by itself.
 - Only a crash leaves a process behind. At the next start every `starting` and
@@ -206,8 +206,8 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
   receives its first execution reference. The hub encodes typed engine events
   as JSON at the SSE boundary.
 
-`POST /api/agents/{agentId}/sessions/{id}/messages/{messageId}/withdraw` removes one
-queued input. Under the Session delivery gate, `Agents.Withdraw` calls PiG's
+`POST /api/bots/{botId}/sessions/{id}/messages/{messageId}/withdraw` removes one
+queued input. Under the Session delivery gate, `Bots.Withdraw` calls PiG's
 `Submission.Abort`. PiG decides: `aborted` means the input never runs, and
 `already_placed` means it runs, so dex answers 409. The control receipt settles
 as `unanswered` with reason `withdrawn` and keeps its request ID and source
@@ -215,10 +215,10 @@ key, so a channel redelivery does not run it. It sets `delivered_at`, so the
 reply outbox sends nothing. A repeated call returns the same message. The
 withdrawal writes no `dex.withdrawn` entry, so Edit leaves no stale bubble.
 
-`POST /api/agents/{agentId}/sessions/{id}/clear` uses the Session delivery gate and a SQLite writer
+`POST /api/bots/{botId}/sessions/{id}/clear` uses the Session delivery gate and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
 engine also checks its active run and native Inbox. A refused request stores no reset.
-`Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and
+`Bots.Reset` submits a passive `pi.reset` entry with a stable request ID and
 `head: self`. A retry adds no second reset. A handoff is stored in the receipt
 content and becomes the reset entry's user message. It does not start a run;
 the next run reads it. Reset entries keep their time in
@@ -231,7 +231,7 @@ decides whether work is active. A refused `/clear` shows a warning and keeps the
 same request ID for a retry with the same handoff. The menu greys out `/clear`
 and `/compact` when the last non-compaction item is a plain reset or is absent.
 
-`Agents.Compact` starts a native manual compaction. It also runs during a run;
+`Bots.Compact` starts a native manual compaction. It also runs during a run;
 the summary then waits in the native Inbox for the run's next boundary. A conversation
 abort withdraws queued summaries. Main Stop aborts only the targeted run. It
 keeps the native Inbox and takes the next boundary if input waits.
@@ -242,7 +242,7 @@ then for the queued summary. When no summary is placed, it writes a
 that Stop drops, or that a reset makes stale, counts as failed. A restart
 before the goroutine ends loses the note, not the compaction.
 
-`Session.Fork` starts a new Session from a writable session. `Agents.Fork` checks that
+`Session.Fork` starts a new Session from a writable session. `Bots.Fork` checks that
 the entry is visible from the source with `Session.Entries`, then calls
 `Session.Fork`. Without `before`, the entry must be an answer without tool
 calls, because a copied call would never get its result. With `before`, the
@@ -259,7 +259,7 @@ A snapshot contains only the active native context. Reset and summary entries
 show dividers. A reset divider shows its handoff; a summary divider can expand
 the summary. `historyBefore` points
 to the head entry. The browser requests
-`GET /api/agents/{agentId}/sessions/{id}/history?before=<entry ID>&limit=100` on demand. The engine
+`GET /api/bots/{botId}/sessions/{id}/history?before=<entry ID>&limit=100` on demand. The engine
 reads `Session.Entries` before that exclusive cursor and returns items
 in entry order with `nextBefore`. A page can extend to the previous assistant
 or input so a tool call keeps its result. Committed assistant block IDs use

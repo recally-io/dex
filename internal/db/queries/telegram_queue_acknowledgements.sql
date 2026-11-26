@@ -19,6 +19,6 @@ SET outcome = ?, updated_at = ? WHERE submission_id = ?;
 
 -- name: TelegramPrivateReactionsEnabled :one
 SELECT EXISTS (
-    SELECT 1 FROM telegram_settings WHERE agent_id = ?
+    SELECT 1 FROM telegram_settings WHERE bot_id = ?
     AND json_extract(options, '$.reactions') IS NOT 0
 );

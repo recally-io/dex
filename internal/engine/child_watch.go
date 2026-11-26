@@ -18,7 +18,7 @@ type childActivityWatch struct {
 
 // startActivityWatch shares a child watch across queued inputs. Replays do not own a second
 // reference. The first input's settlement must not stop observation of the next input.
-func (a *Agents) startActivityWatch(ctx context.Context, ref Ref, conversation harness.Conversation, input Input) (func(), error) {
+func (a *Bots) startActivityWatch(ctx context.Context, ref Ref, conversation harness.Conversation, input Input) (func(), error) {
 	for {
 		a.mu.Lock()
 		prior := a.activityWatches[ref]
@@ -124,7 +124,7 @@ func (a *Agents) startActivityWatch(ctx context.Context, ref Ref, conversation h
 	}
 }
 
-func (a *Agents) releaseActivityWatch(owned *childActivityWatch, request string) {
+func (a *Bots) releaseActivityWatch(owned *childActivityWatch, request string) {
 	a.mu.Lock()
 	delete(owned.requests, request)
 	stop := len(owned.requests) == 0
@@ -139,7 +139,7 @@ func (a *Agents) releaseActivityWatch(owned *childActivityWatch, request string)
 }
 
 // ChildRunning reads the existing child observation. It never opens an execution or reads its history.
-func (a *Agents) ChildRunning(ref Ref) (running, available bool) {
+func (a *Bots) ChildRunning(ref Ref) (running, available bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	w := a.activityWatches[ref]

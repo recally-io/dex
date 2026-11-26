@@ -1,0 +1,122 @@
+package app_test
+
+import (
+	"database/sql"
+	"fmt"
+	"net/http"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+type botActivity struct {
+	ActiveSessions     int64 `json:"activeSessions"`
+	RunningChannels    int64 `json:"runningChannels"`
+	EnabledAutomations int64 `json:"enabledAutomations"`
+}
+
+func TestUserReadsAllBotActivityInOneList(t *testing.T) {
+	t.Parallel()
+	// Given two bots, one running bot, and durable sessions held before worker admission.
+	f := newFakeTelegram(t)
+	d := startTelegram(t, f, t.TempDir(), 42)
+	var b apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &b, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
+	conn, err := sql.Open("sqlite", "file:"+filepath.Join(d.dataDir(t), "control.sqlite")+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	for i, key := range []string{"main", "chat:busy", "automation:busy", "task:queued", "task:running", "task:done", "task:failed", "task:cancelled", "task:interrupted", "chat:empty", "telegram:old", "dream:hidden"} {
+		id := int64(100 + i)
+		// The migration gives every old task conversation the parent of its task.
+		var parent any
+		if strings.HasPrefix(key, "task:") {
+			parent = 100
+		}
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (id,bot_id,channel_key,parent_id,created_at) VALUES (?,'default',?,?,1)", id, key, parent); err != nil {
+			t.Fatal(err)
+		}
+		kind := "message"
+		if key == "chat:empty" {
+			kind = "session_result"
+		}
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,session_id,content,status,created_at,kind) VALUES (?,?,'fixture','pending',1,?)", fmt.Sprint(id), id, kind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A session with a pending input counts, and so does a child session. Two inputs in a Session count once.
+	for _, stmt := range []string{
+		"UPDATE submissions SET status='done' WHERE session_id=103",
+		// A finished task has settled its own input. A pending input there would be a continuation.
+		"UPDATE submissions SET status='done' WHERE session_id IN (105,106,107,108)",
+		"INSERT INTO submissions (id,session_id,content,status,created_at) VALUES ('second-input',101,'second','pending',2)",
+	} {
+		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A finished child session that holds a pending user message is active again.
+	for _, stmt := range []string{
+		"INSERT INTO sessions (id,bot_id,channel_key,parent_id,created_at) VALUES (300,'default','chat:continued',100,1)",
+		"INSERT INTO submissions (id,session_id,content,status,created_at,kind) VALUES ('300',300,'goal','done',1,'message')",
+		"INSERT INTO submissions (id,session_id,content,status,created_at,kind) VALUES ('continuation',300,'reply','pending',2,'message')",
+	} {
+		if _, err := conn.ExecContext(t.Context(), stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (id,bot_id,channel_key,created_at) VALUES (200,?,'chat:B',1)", b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO submissions (id,session_id,content,status,created_at) VALUES ('B-input',200,'B','pending',1)"); err != nil {
+		t.Fatal(err)
+	}
+	for i, bot := range []string{"default", "default", "default", b.ID} {
+		enabled := 1
+		if i == 2 {
+			enabled = 0
+		}
+		if _, err := conn.ExecContext(t.Context(), "INSERT INTO automations (id,bot_id,name,prompt,schedule,time_zone,session,enabled,created_at,updated_at) VALUES (?,?,'fixture','fixture','{}','UTC','reuse',?,1,1)", fmt.Sprint(i), bot, enabled); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// When one list request reads all bots, then activity uses session status and runtime state.
+	var listed struct {
+		Bots []struct {
+			ID       string      `json:"id"`
+			Activity botActivity `json:"activity"`
+		} `json:"bots"`
+	}
+	d.must(t, http.MethodGet, "/api/bots", nil, &listed)
+	// The status column of an old task is not state any more: 103 is 'queued' there but has no pending input.
+	want := map[string]botActivity{
+		"default": {ActiveSessions: 4, RunningChannels: 1, EnabledAutomations: 2},
+		b.ID:      {ActiveSessions: 1, RunningChannels: 0, EnabledAutomations: 1},
+	}
+	if len(listed.Bots) != len(want) {
+		t.Fatalf("bots=%+v", listed)
+	}
+	for _, bot := range listed.Bots {
+		if bot.Activity != want[bot.ID] {
+			t.Fatalf("bot %s activity=%+v want=%+v", bot.ID, bot.Activity, want[bot.ID])
+		}
+		var sessions struct {
+			Sessions []struct {
+				Busy bool `json:"busy"`
+			} `json:"sessions"`
+		}
+		d.must(t, http.MethodGet, "/api/bots/"+bot.ID+"/sessions", nil, &sessions)
+		var active int64
+		for _, session := range sessions.Sessions {
+			if session.Busy {
+				active++
+			}
+		}
+		if active != bot.Activity.ActiveSessions {
+			t.Fatalf("bot %s list count=%d activity=%+v", bot.ID, active, bot.Activity)
+		}
+	}
+	t.Logf("artifact: activity=%+v; session counts match list behavior; multiple inputs count once", listed)
+}

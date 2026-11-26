@@ -24,7 +24,7 @@ var (
 // stored session follows its bot: session stores the execution ID before the first input, so no
 // tool of a session runs before its row exists.
 func (s *Service) SessionRunner(ctx context.Context, ref engine.Ref) (string, error) {
-	conv, err := s.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: ref.AgentID, ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true}})
+	conv, err := s.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{BotID: ref.BotID, ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true}})
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -54,22 +54,22 @@ func checkRunner(ctx context.Context, q *sqlc.Queries, runnerID string) error {
 
 // effectiveRunner is the environment that a session with selection id runs in: id, or the
 // environment of the bot for an empty id.
-func effectiveRunner(agent sqlc.Agent, id string) string {
+func effectiveRunner(bot sqlc.Bot, id string) string {
 	if id != "" {
 		return id
 	}
-	if agent.RunnerID == "" {
+	if bot.RunnerID == "" {
 		return runner.LocalID
 	}
-	return agent.RunnerID
+	return bot.RunnerID
 }
 
 // SetRunner selects the execution environment of a session before its first message. An empty
 // runnerID makes the session follow its bot. The selection clears the project of the session,
 // because a path of one environment means nothing in another.
-func (s *Service) SetRunner(ctx context.Context, agentID string, id int64, runnerID string) (Session, error) {
+func (s *Service) SetRunner(ctx context.Context, botID string, id int64, runnerID string) (Session, error) {
 	conv, err := s.q.GetSession(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && conv.AgentID != agentID) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && conv.BotID != botID) {
 		return Session{}, ErrNotFound
 	}
 	if err != nil {
@@ -83,12 +83,12 @@ func (s *Service) SetRunner(ctx context.Context, agentID string, id int64, runne
 			return Session{}, err
 		}
 	}
-	n, err := s.q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{RunnerID: runnerID, ID: id, AgentID: agentID})
+	n, err := s.q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{RunnerID: runnerID, ID: id, BotID: botID})
 	if err != nil {
 		return Session{}, err
 	}
 	if n == 0 && conv.RunnerID != runnerID {
 		return Session{}, ErrRunnerLocked
 	}
-	return s.Get(ctx, agentID, id)
+	return s.Get(ctx, botID, id)
 }

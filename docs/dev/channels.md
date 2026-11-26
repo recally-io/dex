@@ -59,7 +59,7 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   not fetch embedded media. Full rich quote fidelity is not implemented.
 - Photos use the largest size. Documents, photos, voice, audio, video, video notes,
   animations, and stickers pass through `upload.Store`, with a 20 MiB limit.
-  Captions become message text. The agent and web transcript use the same upload
+  Captions become message text. The bot and web transcript use the same upload
   record. Location, contact, and poll inputs keep their available fields as text.
   Quoted files are not downloaded. Media bytes alone do not prove that a model
   can understand their content.
@@ -126,7 +126,7 @@ still update the other settings without changing the transport.
 
 Keep dex on its private address (default `127.0.0.1:8787`). Use a public DNS
 name and a TLS reverse proxy with a trusted certificate. Expose only the
-needed callback paths. For example, for the `default` agent, a Caddy site can
+needed callback paths. For example, for the `default` bot, a Caddy site can
 use these rules:
 
 ```caddyfile
@@ -141,20 +141,20 @@ hooks.example.net {
 }
 ```
 
-Replace `default` with the target agent ID. Remove paths for channels you do
+Replace `default` with the target bot ID. Remove paths for channels you do
 not use. Forward the POST body and provider headers without changes. Do not
 require the dex access token on callback paths. Dex authenticates those requests
 with the platform credentials. Do not log callback bodies, security headers,
 or settings requests. Allow callback bodies up to 4 MiB, the dex limit. Feishu
 allows 3 seconds for the response. Do not add a proxy authentication redirect
-or wait for an agent result.
+or wait for a bot result.
 
 ### Telegram setup and rollback
 
 1. Configure the public HTTPS route. Use port 443 with a trusted certificate.
    Telegram also lists ports 80, 88, and 8443 for webhooks. Dex does not upload
    a self-signed certificate.
-2. Send `PUT /api/agents/{agentId}/channels/telegram` with the following fields.
+2. Send `PUT /api/bots/{botId}/channels/telegram` with the following fields.
    Keep the current `allowedUsers` list. An empty `token` keeps the saved bot
    token. Generate a random `secretToken` that meets the
    [Bot API requirements](https://core.telegram.org/bots/api#setwebhook).
@@ -199,7 +199,7 @@ registration without dropping updates before you start dex in polling mode.
    app. Copy its Verification Token. If you set an Encrypt Key, copy that key
    as well. Use the same security settings on both sides. Prefer encryption
    because the token is in the body of unencrypted events.
-2. Send `PUT /api/agents/{agentId}/channels/feishu`. Keep the app ID and
+2. Send `PUT /api/bots/{botId}/channels/feishu`. Keep the app ID and
    brand (`feishu` or `lark`). An empty `appSecret` keeps the secret for the
    same app. Use `"transport": "webhook"` and
    `"webhook": {"verificationToken": "REPLACE_WITH_PLATFORM_TOKEN"}`.
@@ -232,7 +232,7 @@ changes. Check the platform's event logs after a switch. See the
 
 Dex commits each authenticated event to `channel_webhook_queue` in
 `control.sqlite` before it returns HTTP 200. A failed commit gets HTTP 503.
-The ACK does not wait for message processing, downloads, or agent execution.
+The ACK does not wait for message processing, downloads, or bot execution.
 Telegram uses the bot ID and update ID. Feishu uses the app ID and
 `header.event_id`. The unique key also includes the platform. Valid retries
 within the deduplication window get HTTP 200 without adding another item, even
@@ -256,22 +256,22 @@ if exposed.
 The Webhook Queue recovers accepted events without platform replay
 after restart. The default transport drains the existing queue before it starts
 receiving from the platform. It skips events already processed from the queue
-when the platform sends the same event ID again. Pending payloads stay bound to the agent that
-accepted them and are not transferred when credentials move to another agent.
+when the platform sends the same event ID again. Pending payloads stay bound to the bot that
+accepted them and are not transferred when credentials move to another bot.
 Back up and restrict access to `control.sqlite`: it can contain pending
 message bodies and channel credentials.
 
 ## Shared channels
 
-The app owns a registry with one Manager per agent. Startup restores all agents' bots.
-Creating an agent adds its Manager. Shutdown stops all Managers before the database closes.
-Uploads use the bot's agent directory. Session notifications
-wake all Managers; each Manager reads only its agent's replies and commands. This fan-out
-is a limit: route notifications by agent if wakeups become costly.
+The app owns a registry with one Manager per bot. Startup restores all bots' bots.
+Creating a bot adds its Manager. Shutdown stops all Managers before the database closes.
+Uploads use the bot's bot directory. Session notifications
+wake all Managers; each Manager reads only its bot's replies and commands. This fan-out
+is a limit: route notifications by bot if wakeups become costly.
 
-Channel settings use `agent_id` as their primary key. Telegram bot IDs, WeChat bot IDs,
-and Feishu app IDs cannot be assigned to multiple agents. A duplicate returns 409 and names the
-agent that owns the credential. QR login and registration sessions are also per agent.
+Channel settings use `bot_id` as their primary key. Telegram bot IDs, WeChat bot IDs,
+and Feishu app IDs cannot be assigned to multiple bots. A duplicate returns 409 and names the
+bot that owns the credential. QR login and registration sessions are also per bot.
 WeChat runtime state is keyed by bot ID and owner.
 
 [`delivery.Manager`](../../internal/channel/delivery/manager.go) owns bot lifetime,
@@ -287,9 +287,9 @@ files keep their shared frozen encoding; the adapter owns the wire format.
 
 `session.Service.ReceivedSource` reports the global stored input fact. Channel
 and platform adapters use it for duplicate input and attachment replay, including
-when a bot credential moves between agents. `LookupSource` returns the
+when a bot credential moves between bots. `LookupSource` returns the
 business-owned `SourceReceipt` for typing and upload cleanup. Its
-references belong to the requested agent. A stored receipt means control
+references belong to the requested bot. A stored receipt means control
 received the input, even when native admission is pending. Adapters do not infer
 this state from `admitted_at` or terminal status. Native admission remains the
 execution authority; reconciliation still retries pending input with its
@@ -301,7 +301,7 @@ same command by source key. They do not hold a Bot-wide command lock. A native r
 without setting `admitted_at`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
-channels enters the bot's agent `main` session with that peer as origin.
+channels enters the bot's bot `main` session with that peer as origin.
 Dex checks pairing at intake. The source receipt saves the account and peer for replies and labels the transcript.
 Channel input cannot select a session. The Sessions list excludes
 per-peer sessions. Main and separate Web sessions are writable on the web. Automation
@@ -475,9 +475,9 @@ place.
 
 The bot ignores groups and other users. Text mentions are removed. Rich posts
 become text and image attachments. Code blocks keep their text and language
-in Markdown fences. Repeated `/pair` messages never reach the agent.
+in Markdown fences. Repeated `/pair` messages never reach the bot.
 Message resources pass through `upload.Store`, with its 20 MB file limit and 10 attachments per message.
-The shared channel manager handles `/clear`, `/new`, `/stop`, `/help`, and `/feedback`. A source key contains `feishu:<app ID>:<message ID>`. The WebSocket receiver acknowledges valid agent
+The shared channel manager handles `/clear`, `/new`, `/stop`, `/help`, and `/feedback`. A source key contains `feishu:<app ID>:<message ID>`. The WebSocket receiver acknowledges valid bot
 input after durable admission succeeds. Invalid content, rejected resource access,
 and files with invalid names or excessive size are acknowledged and ignored.
 Storage and temporary platform failures get a 500 acknowledgement for retry.

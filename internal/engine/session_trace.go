@@ -12,7 +12,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
-func sessionTraceExtension(agent string) *durable.Extension {
+func sessionTraceExtension(bot string) *durable.Extension {
 	namespace := "private"
 	// Native generation hooks run again on retries and tool rounds. Keep a bounded
 	// cache of the last observed input list per conversation; misses only repeat
@@ -41,7 +41,7 @@ func sessionTraceExtension(agent string) *durable.Extension {
 					if alreadyLogged {
 						return nil, nil
 					}
-					slog.InfoContext(ctx, "session input", "phase", "generation_started", "agent", agent, "native_namespace", namespace,
+					slog.InfoContext(ctx, "session input", "phase", "generation_started", "agent", bot, "native_namespace", namespace,
 						"native_conversation_id", api.ConversationId(), "native_task_id", api.TaskId(), "native_submission_ids", live.Run.Inputs)
 				}
 				return nil, nil
@@ -57,7 +57,7 @@ func (e *sessionPromptEnv) Exec(ctx context.Context, command any, opts *durablee
 	result, err := e.ExecutionEnv.Exec(ctx, command, opts)
 	executionErr, typed := errors.AsType[*durableenv.ExecutionError](err)
 	if errors.Is(err, context.DeadlineExceeded) || (typed && executionErr.Code == durableenv.ExecutionErrorTimeout) {
-		slog.InfoContext(ctx, "session execution", "phase", "shell_timeout", "agent", e.agentID,
+		slog.InfoContext(ctx, "session execution", "phase", "shell_timeout", "agent", e.botID,
 			"native_namespace", "private", "native_conversation_id", e.conversation, "elapsed_ms", time.Since(started).Milliseconds())
 	}
 	return result, err

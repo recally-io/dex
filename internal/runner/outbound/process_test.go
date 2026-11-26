@@ -35,8 +35,8 @@ func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	seed(`INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('alpha','Alpha','faux','echo',1),('beta','Beta','faux','echo',1)`)
-	seed(`INSERT INTO sessions (id,agent_id,channel_key,created_at) VALUES (1,'alpha','main',1),(2,'beta','main',1)`)
+	seed(`INSERT INTO bots (id,name,model_provider,model_id,created_at) VALUES ('alpha','Alpha','faux','echo',1),('beta','Beta','faux','echo',1)`)
+	seed(`INSERT INTO sessions (id,bot_id,channel_key,created_at) VALUES (1,'alpha','main',1),(2,'beta','main',1)`)
 	if _, err := q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{ID: "input", SessionID: 1, Origin: "web", Producer: "user", Kind: "message", Content: "start", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
@@ -80,8 +80,8 @@ func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
 	// Given a Process on one Bot that cannot exit until another Bot writes a marker.
 	bg := background.New(dbConn, time.Now, background.Limits{}, nil)
 	defer bg.Close()
-	bg.ConfigureEnvOpener(func(ctx context.Context, agent, machine, cwd string, values map[string]string) (env.ExecutionEnv, string, runner.Kind, func(), error) {
-		h, err := manager.Open(ctx, agent, machine)
+	bg.ConfigureEnvOpener(func(ctx context.Context, bot, machine, cwd string, values map[string]string) (env.ExecutionEnv, string, runner.Kind, func(), error) {
+		h, err := manager.Open(ctx, bot, machine)
 		if err != nil {
 			return nil, "", "", nil, err
 		}
@@ -93,7 +93,7 @@ func TestUserRunsAnotherBotsToolDuringAnOutboundProcess(t *testing.T) {
 		}
 		return e, h.Workspace(), h.Kind(), release, nil
 	})
-	row, err := bg.Start(ctx, background.StartParams{CallKey: "alpha/process", AgentID: "alpha", SessionID: 1, SourceRequestID: "input", Wake: background.WakeNone,
+	row, err := bg.Start(ctx, background.StartParams{CallKey: "alpha/process", BotID: "alpha", SessionID: 1, SourceRequestID: "input", Wake: background.WakeNone,
 		Command: `touch started; while [ ! -e finish ]; do sleep .05; done`, Cwd: work, DefaultCwd: work, RunnerID: "remote", EnvKind: runner.KindRunner, Timeout: 15 * time.Second,
 	})
 	if err != nil {

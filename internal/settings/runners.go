@@ -168,7 +168,7 @@ func (s *Service) DeleteRunner(ctx context.Context, id string) error {
 		if _, getErr := s.q.GetRunner(ctx, id); errors.Is(getErr, sql.ErrNoRows) {
 			return ErrNotFound
 		}
-		users, listErr := s.q.ListActiveAgentsByRunner(ctx, id)
+		users, listErr := s.q.ListActiveBotsByRunner(ctx, id)
 		if listErr != nil {
 			return listErr
 		}
@@ -332,11 +332,11 @@ func runnerView(row sqlc.Runner) (Runner, error) {
 	}, nil
 }
 
-// SessionRunners lists the execution environments for the sessions of agentID: the
+// SessionRunners lists the execution environments for the sessions of botID: the
 // environment of the bot first, then local and the other registered environments.
 // It has no configuration and no secrets.
-func (s *Service) SessionRunners(ctx context.Context, agentID string) ([]engine.RunnerInfo, error) {
-	agent, err := s.q.GetAgent(ctx, agentID)
+func (s *Service) SessionRunners(ctx context.Context, botID string) ([]engine.RunnerInfo, error) {
+	bot, err := s.q.GetBot(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -344,18 +344,18 @@ func (s *Service) SessionRunners(ctx context.Context, agentID string) ([]engine.
 	if err != nil {
 		return nil, err
 	}
-	own := engine.RunnerInfo{ID: runner.LocalID, Name: runner.LocalID, Kind: string(runner.KindLocal), Default: true, Status: s.envs.Status(ctx, agentID, "")}
+	own := engine.RunnerInfo{ID: runner.LocalID, Name: runner.LocalID, Kind: string(runner.KindLocal), Default: true, Status: s.envs.Status(ctx, botID, "")}
 	out := []engine.RunnerInfo{own}
-	if agent.RunnerID != "" {
+	if bot.RunnerID != "" {
 		out = append(out, engine.RunnerInfo{ID: runner.LocalID, Name: runner.LocalID, Kind: string(runner.KindLocal), Status: "available"})
 	}
 	for _, r := range rows {
-		if r.ID == agent.RunnerID {
+		if r.ID == bot.RunnerID {
 			out[0].ID, out[0].Name, out[0].Kind, out[0].Description = r.ID, r.Name, r.Kind, r.Description
 			continue
 		}
 		if runner.IsRegisteredKind(runner.Kind(r.Kind)) {
-			out = append(out, engine.RunnerInfo{ID: r.ID, Name: r.Name, Description: r.Description, Kind: r.Kind, Status: s.envs.Status(ctx, agentID, r.ID)})
+			out = append(out, engine.RunnerInfo{ID: r.ID, Name: r.Name, Description: r.Description, Kind: r.Kind, Status: s.envs.Status(ctx, botID, r.ID)})
 		}
 	}
 	return out, nil

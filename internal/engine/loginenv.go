@@ -11,8 +11,8 @@ import (
 	"sync"
 )
 
-// toolEnv is the base environment of all agents: the login shell environment, else the
-// fallback keys, plus the 1Password variables of the settings. One capture serves all agents
+// toolEnv is the base environment of all bots: the login shell environment, else the
+// fallback keys, plus the 1Password variables of the settings. One capture serves all bots
 // until an edit of a shell rc file.
 type toolEnv struct {
 	home     string
@@ -48,7 +48,7 @@ func (t *toolEnv) rcStamp() string {
 	})
 }
 
-// load returns the base environment for an agent that opens. It captures the login shell
+// load returns the base environment for a bot that opens. It captures the login shell
 // again only after an rc file change, also after a failure, so that a broken shell does not
 // cost every caller the timeout. A failure keeps the last captured environment, so a slow rc
 // edit does not take PATH entries away from tools.

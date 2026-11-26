@@ -106,7 +106,7 @@ test("authorizes an MCP connection and returns to Bot Integrations", async ({ ap
 
     const name = `OAuth ${Date.now()}`;
 
-    const created = await fetch(`${dex}/api/agents`, {
+    const created = await fetch(`${dex}/api/bots`, {
       method: "POST",
       headers: contentType,
       body: JSON.stringify({
@@ -120,10 +120,10 @@ test("authorizes an MCP connection and returns to Bot Integrations", async ({ ap
     if (!created.ok) throw new Error(`Could not create OAuth test bot (${created.status})`);
 
     const { id }: { id: string } = await created.json();
-    const integrations = `/a/${id}/integrations`;
+    const integrations = `/b/${id}/integrations`;
 
     try {
-      await app.open(`/a/${id}`);
+      await app.open(`/b/${id}`);
       await screen
         .getByRole("textbox", `Message ${name}`)
         .fill(
@@ -137,7 +137,7 @@ test("authorizes an MCP connection and returns to Bot Integrations", async ({ ap
       await expect(screen.getByText("Connected", { exact: true })).toBeVisible();
       expect(new URL(await browser.url()).pathname).toBe(integrations);
     } finally {
-      await fetch(`${dex}/api/agents/${id}`, { method: "DELETE" });
+      await fetch(`${dex}/api/bots/${id}`, { method: "DELETE" });
     }
   } finally {
     server.close();

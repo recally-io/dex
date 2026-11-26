@@ -13,7 +13,7 @@ import (
 const addTaskWait = `-- name: AddTaskWait :execrows
 INSERT INTO task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at, alert)
 SELECT t.id, o.namespace, o.object_type, o.object_key, ?1, ?2, ?3, ?4
-FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
+FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN bots a ON a.id = t.assignee_bot_id
 WHERE t.id = ?5 AND t.assignee_bot_id = ?6 AND t.status NOT IN ('done', 'cancelled') AND a.archived_at IS NULL
 AND o.namespace = ?7 AND o.object_type = ?8 AND o.object_key = ?9
 ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at, alert = excluded.alert
@@ -25,7 +25,7 @@ type AddTaskWaitParams struct {
 	AfterAt    int64  `json:"after_at"`
 	Alert      int64  `json:"alert"`
 	TaskID     string `json:"task_id"`
-	AgentID    string `json:"agent_id"`
+	BotID      string `json:"bot_id"`
 	Namespace  string `json:"namespace"`
 	ObjectType string `json:"object_type"`
 	ObjectKey  string `json:"object_key"`
@@ -38,7 +38,7 @@ func (q *Queries) AddTaskWait(ctx context.Context, arg AddTaskWaitParams) (int64
 		arg.AfterAt,
 		arg.Alert,
 		arg.TaskID,
-		arg.AgentID,
+		arg.BotID,
 		arg.Namespace,
 		arg.ObjectType,
 		arg.ObjectKey,
@@ -88,7 +88,7 @@ func (q *Queries) DecideTaskSourceHold(ctx context.Context, arg DecideTaskSource
 }
 
 const findTaskByObject = `-- name: FindTaskByObject :one
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM task_objects o JOIN tasks t ON t.id = o.task_id JOIN bots a ON a.id = t.assignee_bot_id
 WHERE o.namespace = ? AND o.object_type = ? AND o.object_key = ? AND a.archived_at IS NULL
 `
 
@@ -244,7 +244,7 @@ func (q *Queries) HoldTaskSourceEvent(ctx context.Context, arg HoldTaskSourceEve
 
 const linkTaskObject = `-- name: LinkTaskObject :execrows
 INSERT INTO task_objects (namespace, object_type, object_key, task_id)
-SELECT ?1, ?2, ?3, t.id FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT ?1, ?2, ?3, t.id FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE t.id = ?4 AND t.assignee_bot_id = ?5 AND a.archived_at IS NULL
 ON CONFLICT (namespace, object_type, object_key) DO UPDATE SET task_id = excluded.task_id
 WHERE task_objects.task_id = excluded.task_id
@@ -255,7 +255,7 @@ type LinkTaskObjectParams struct {
 	ObjectType string `json:"object_type"`
 	ObjectKey  string `json:"object_key"`
 	TaskID     string `json:"task_id"`
-	AgentID    string `json:"agent_id"`
+	BotID      string `json:"bot_id"`
 }
 
 func (q *Queries) LinkTaskObject(ctx context.Context, arg LinkTaskObjectParams) (int64, error) {
@@ -264,7 +264,7 @@ func (q *Queries) LinkTaskObject(ctx context.Context, arg LinkTaskObjectParams) 
 		arg.ObjectType,
 		arg.ObjectKey,
 		arg.TaskID,
-		arg.AgentID,
+		arg.BotID,
 	)
 	if err != nil {
 		return 0, err

@@ -47,7 +47,7 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 	// When the owner attaches the review to a new Task and dismisses the Issue.
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Ship PR 7"}, &task, http.StatusCreated)
-	attach := map[string]string{"agentId": "default", "taskId": task.Id}
+	attach := map[string]string{"botId": "default", "taskId": task.Id}
 	d.must(t, http.MethodPost, "/api/sources/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNoContent)
 	d.must(t, http.MethodPost, "/api/sources/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNotFound)
 	d.must(t, http.MethodPost, "/api/sources/held-events/"+issue.Id+"/dismiss", nil, nil, http.StatusNoContent)

@@ -25,13 +25,13 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/channel/telegram` | Telegram polling, pairing, protocol, and media adaptation                           |
 | `internal/channel/feishu`   | Feishu/Lark setup, events, cards, and media adaptation                              |
 | `internal/channel/wechat`   | WeChat login, polling, protocol, and media adaptation                               |
-| `internal/upload`           | Upload validation, file storage, and agent-scoped paths                             |
+| `internal/upload`           | Upload validation, file storage, and bot-scoped paths                               |
 | `internal/service`          | Per-user launchd/systemd definitions, commands, and readiness checks                |
 | `internal/sysops`           | In-process server operations: update coordination, restart, SQLite backups, logs    |
 | `internal/update`           | Release verification, maintenance coordination, and executable replacement          |
 | `internal/mcptest`          | Local MCP test servers; no production execution                                     |
 | `internal/settings`         | Global providers, model checks, 1Password credentials, access token                 |
-| `internal/agent`            | Agent settings, activity, paths, channel configuration                              |
+| `internal/bot`              | Bot settings, activity, paths, channel configuration                                |
 | `internal/task`             | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
 | `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
 | `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it          |
@@ -41,8 +41,8 @@ Read this before you change code, dependencies, native execution, or stored data
 
 - Go code: follow the `use-modern-go` skill in `.agents/skills/`. New JSON
   code uses `encoding/json/v2`. IDs use the standard `uuid` package.
-- Call `internal/engine.Agents` through typed Go methods. Use
-  `engine.Ref{AgentID, ID}` for execution references. Do not add an internal
+- Call `internal/engine.Bots` through typed Go methods. Use
+  `engine.Ref{BotID, ID}` for execution references. Do not add an internal
   serialized protocol or a backend subprocess.
 - Only the engine opens `<data dir>/agents/<id>/state.sqlite`. Business
   services must not query execution SQLite. Run one dex process per data
@@ -58,7 +58,7 @@ Read this before you change code, dependencies, native execution, or stored data
   not prove that input was admitted. Reconcile both failed admission and failed
   receipt writes with the same request ID. Channel delivery facts stay in
   business storage. `internal/session` owns global source deduplication through
-  `ReceivedSource`. It scopes preview references to each agent through
+  `ReceivedSource`. It scopes preview references to each bot through
   `LookupSource` and `SourceReceipt`. Platform adapters must not define
   duplicate input or pending replies from `admitted_at` and submission status
   predicates.
@@ -71,7 +71,7 @@ Read this before you change code, dependencies, native execution, or stored data
 - A new dependency needs the user's approval. Prefer the standard library,
   then a dependency the repository already has.
 - Settings live only in `control.sqlite`. `internal/settings` owns global
-  settings. `internal/agent` owns agent and channel settings. `internal/session`
+  settings. `internal/bot` owns bot and channel settings. `internal/session`
   owns session overrides. Do not add an environment variable or a file for a
   setting. Skills and the encrypted secret vault use files. MCP declarations
   stay in `control.sqlite`. The settings service passes provider credentials
@@ -81,7 +81,7 @@ Read this before you change code, dependencies, native execution, or stored data
   resume. Use a delivery gate for each Session. Never hold two Session gates or
   hold the control writer across a native call. The global receipt gate orders
   receipt commits and maintenance confirmation.
-- Reload replaces only the selected agent's resources. Tools and stdio MCP
+- Reload replaces only the selected bot's resources. Tools and stdio MCP
   receive an explicit environment. Do not change the dex process environment.
 - Do not edit generated code: `internal/db/sqlc/` and `plugins/*/store/`
   (`mise run generate:db`), `internal/api/server.gen.go`,

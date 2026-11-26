@@ -15,11 +15,11 @@ import { BoardResultPage } from "./components/board-results";
 import { BoardPage } from "./routes/board";
 import { TaskDetailPage } from "./routes/task-detail";
 import { Shell } from "./components/shell";
-import { AgentLayout } from "./components/agent-layout";
+import { BotLayout } from "./components/bot-layout";
 import { SessionPage } from "./routes/session";
 import { AutomationPage, AutomationsPage } from "./routes/automations";
 import { SessionsPage } from "./routes/sessions";
-import { AgentPage } from "./routes/agent";
+import { BotPage } from "./routes/bot";
 import { GeneralSettingsPage } from "./routes/general-settings";
 import { ProvidersPage } from "./routes/providers";
 import { BotIntegrationsPage, ChannelPage } from "./routes/channels";
@@ -53,12 +53,12 @@ const root = createRootRoute({
 });
 
 // The pages of a bot share its tabs. The bot pane draws the main timeline itself.
-const agentPages = createRoute({ getParentRoute: () => root, path: "/a/$agentId", component: AgentLayout });
+const botPages = createRoute({ getParentRoute: () => root, path: "/b/$botId", component: BotLayout });
 
-const home = createRoute({ getParentRoute: () => agentPages, path: "/", component: () => null });
+const home = createRoute({ getParentRoute: () => botPages, path: "/", component: () => null });
 
 const session = createRoute({
-  getParentRoute: () => agentPages,
+  getParentRoute: () => botPages,
   path: "/s/$sessionId",
   component: SessionRoute,
 });
@@ -77,15 +77,15 @@ function SessionRoute() {
 const page = <P extends string>(path: P, component: () => React.ReactNode) =>
   createRoute({ getParentRoute: () => root, path, component });
 
-const agentPage = <P extends string>(path: P, component: () => React.ReactNode) =>
-  createRoute({ getParentRoute: () => agentPages, path, component });
+const botPage = <P extends string>(path: P, component: () => React.ReactNode) =>
+  createRoute({ getParentRoute: () => botPages, path, component });
 
-const agent = agentPage("/agent", AgentPage);
-const skills = agentPage("/skills", SkillsPage);
-const botIntegrations = agentPage("/integrations", BotIntegrationsPage);
-const botSecrets = agentPage("/secrets", BotSecretsPage);
+const botSettings = botPage("/bot", BotPage);
+const skills = botPage("/skills", SkillsPage);
+const botIntegrations = botPage("/integrations", BotIntegrationsPage);
+const botSecrets = botPage("/secrets", BotSecretsPage);
 
-const automations = agentPage("/automations", AutomationsPage);
+const automations = botPage("/automations", AutomationsPage);
 
 const board = createRoute({
   getParentRoute: () => root,
@@ -127,7 +127,7 @@ const archived = page("/settings/archived", ArchivedPage);
 const about = page("/settings/about", AboutPage);
 
 const channel = createRoute({
-  getParentRoute: () => agentPages,
+  getParentRoute: () => botPages,
   path: "/channels/$channelId",
   beforeLoad: ({ params }) => {
     if (params.channelId !== "wechat" && params.channelId !== "telegram" && params.channelId !== "feishu")
@@ -156,7 +156,7 @@ const defaultSettings = createRoute({
 });
 
 const automation = createRoute({
-  getParentRoute: () => agentPages,
+  getParentRoute: () => botPages,
   path: "/automations/$automationId",
   component: AutomationRoute,
 });
@@ -167,27 +167,27 @@ function AutomationRoute() {
   return <AutomationPage key={automationId} automationId={automationId} />;
 }
 
-const sessions = agentPage("/sessions", SessionsPage);
+const sessions = botPage("/sessions", SessionsPage);
 
 const index = createRoute({
   getParentRoute: () => root,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/a/$agentId", params: { agentId: "default" }, replace: true });
+    throw redirect({ to: "/b/$botId", params: { botId: "default" }, replace: true });
   },
 });
 
 const router = createRouter({
   defaultPreload: "intent",
   routeTree: root.addChildren([
-    agentPages.addChildren([
+    botPages.addChildren([
       home,
       session,
       sessions,
       channel,
       automations,
       automation,
-      agent,
+      botSettings,
       skills,
       botIntegrations,
       botSecrets,

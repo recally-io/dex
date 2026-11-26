@@ -12,7 +12,7 @@ user turn in Main or a top-level Web session.
 Updates are partial. An enabled-only update pauses or resumes an automation
 without replacing its prompt or project directory. Creation inherits the
 calling session's project when `cwd` is omitted. A run result includes
-its session ID so the agent can link to the saved transcript. Tool results name
+its session ID so the bot can link to the saved transcript. Tool results name
 the duplicate-finding flag `repeatedFinding` to distinguish it from execution
 counts. The HTTP API keeps its `duplicate` field. The tools do not provide deletion.
 
@@ -25,7 +25,7 @@ user input; a saved receipt can still be read after that input settles.
 An automation runs a prompt on a schedule.
 [`automation.Service`](../../internal/automation/automation.go) stores
 automations and their runs in `control.sqlite`. One scheduler job calls its
-`Check` every minute for all agents. Each row supplies its owning agent ID.
+`Check` every minute for all bots. Each row supplies its owning bot ID.
 `Check` posts the prompt of each automation whose
 `next_due_at` has come, as a message to its session (`automation:<id>`, or
 `automation:<id>:<run id>` for a new session each run), or to a saved existing
@@ -63,9 +63,9 @@ transcript stays readable.
 
 The `automation_notification_targets` table stores authorized recipients. The
 `automation_tool_operations` table stores committed tool results for replay.
-A user can select a primary notification target for each agent. Each automation can
+A user can select a primary notification target for each bot. Each automation can
 turn notifications off, follow the primary target, or select another authorized
-recipient of that agent. Existing automations keep notifications off. The API keeps
+recipient of that bot. Existing automations keep notifications off. The API keeps
 an omitted notification field on update. New automations created in the dialog or
 by the automation tool follow the primary target. With no primary target, the run
 has no channel delivery.

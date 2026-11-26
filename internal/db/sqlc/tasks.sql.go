@@ -92,7 +92,7 @@ RETURNING id, assignee_bot_id, title, created_at, updated_at, number, status, pa
 
 type CreateTaskParams struct {
 	ID                 string         `json:"id"`
-	AgentID            string         `json:"agent_id"`
+	BotID              string         `json:"bot_id"`
 	Title              string         `json:"title"`
 	At                 int64          `json:"at"`
 	Number             int64          `json:"number"`
@@ -108,7 +108,7 @@ type CreateTaskParams struct {
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
 	row := q.db.QueryRowContext(ctx, createTask,
 		arg.ID,
-		arg.AgentID,
+		arg.BotID,
 		arg.Title,
 		arg.At,
 		arg.Number,
@@ -143,7 +143,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 }
 
 const getActiveTaskAssignee = `-- name: GetActiveTaskAssignee :one
-SELECT id FROM agents WHERE id = ? AND archived_at IS NULL
+SELECT id FROM bots WHERE id = ? AND archived_at IS NULL
 `
 
 func (q *Queries) GetActiveTaskAssignee(ctx context.Context, id string) (string, error) {
@@ -154,17 +154,17 @@ func (q *Queries) GetActiveTaskAssignee(ctx context.Context, id string) (string,
 }
 
 const getAssignedTask = `-- name: GetAssignedTask :one
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE t.id = ?1 AND t.assignee_bot_id = ?2 AND a.archived_at IS NULL
 `
 
 type GetAssignedTaskParams struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    string `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) GetAssignedTask(ctx context.Context, arg GetAssignedTaskParams) (Task, error) {
-	row := q.db.QueryRowContext(ctx, getAssignedTask, arg.ID, arg.AgentID)
+	row := q.db.QueryRowContext(ctx, getAssignedTask, arg.ID, arg.BotID)
 	var i Task
 	err := row.Scan(
 		&i.ID,
@@ -188,7 +188,7 @@ func (q *Queries) GetAssignedTask(ctx context.Context, arg GetAssignedTaskParams
 }
 
 const getTask = `-- name: GetTask :one
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE t.id = ? AND a.archived_at IS NULL
 `
 
@@ -344,7 +344,7 @@ func (q *Queries) ListTaskQuestionBlockers(ctx context.Context, taskID string) (
 }
 
 const listTaskQuestions = `-- name: ListTaskQuestions :many
-SELECT q.id, q.agent_id, q.session_id, q.source_submission_id, q.tool_operation_key, q.text, q.options_json, q.status, q.answer_submission_id, q.created_at, q.settled_at, q."action", q.action_agent_id, q.approve_text, q.outcome, q.queued FROM questions q
+SELECT q.id, q.bot_id, q.session_id, q.source_submission_id, q.tool_operation_key, q.text, q.options_json, q.status, q.answer_submission_id, q.created_at, q.settled_at, q."action", q.action_bot_id, q.approve_text, q.outcome, q.queued FROM questions q
 JOIN task_inputs i ON i.submission_id = q.source_submission_id
 JOIN submissions s ON s.id = q.source_submission_id
 WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
@@ -362,7 +362,7 @@ func (q *Queries) ListTaskQuestions(ctx context.Context, taskID string) ([]Quest
 		var i Question
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.BotID,
 			&i.SessionID,
 			&i.SourceSubmissionID,
 			&i.ToolOperationKey,
@@ -373,7 +373,7 @@ func (q *Queries) ListTaskQuestions(ctx context.Context, taskID string) ([]Quest
 			&i.CreatedAt,
 			&i.SettledAt,
 			&i.Action,
-			&i.ActionAgentID,
+			&i.ActionBotID,
 			&i.ApproveText,
 			&i.Outcome,
 			&i.Queued,

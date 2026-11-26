@@ -10,7 +10,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 )
 
-func (a *Agents) mcpServerTools(agentID string, loaded *loadedExtensions) []*durable.ToolRegistration {
+func (a *Bots) mcpServerTools(botID string, loaded *loadedExtensions) []*durable.ToolRegistration {
 	store := a.config.MCPServers
 	if store == nil {
 		return nil
@@ -61,9 +61,9 @@ func (a *Agents) mcpServerTools(agentID string, loaded *loadedExtensions) []*dur
 					switch args.Level {
 					case "dex":
 					case "agent":
-						levelID = agentID
+						levelID = botID
 					default:
-						return durable.ToolExecutionResult{}, errors.New("MCP server level must be dex or agent")
+						return durable.ToolExecutionResult{}, errors.New("MCP server level must be dex or bot")
 					}
 				}
 				result, err := invoke(ctx, levelID, args)
@@ -74,7 +74,7 @@ func (a *Agents) mcpServerTools(agentID string, loaded *loadedExtensions) []*dur
 					return durable.ToolExecutionResult{}, err
 				}
 				if action == "set" || action == "remove" {
-					a.markExtensionChange(agentID, args.Level, "MCP server "+action)
+					a.markExtensionChange(botID, args.Level, "MCP server "+action)
 				}
 				data, err := json.Marshal(result)
 				if err != nil {
@@ -84,14 +84,14 @@ func (a *Agents) mcpServerTools(agentID string, loaded *loadedExtensions) []*dur
 			},
 		})
 	}
-	add("list", "List the effective MCP servers and their connection status for this agent.", func(_ context.Context, _ string, _ arguments) (any, error) {
+	add("list", "List the effective MCP servers and their connection status for this bot.", func(_ context.Context, _ string, _ arguments) (any, error) {
 		return loaded.serverInfo(), nil
 	})
 	add("get", "Read one MCP server declaration at the given level. Plain environment and header values and the URL query are hidden.", func(ctx context.Context, levelID string, args arguments) (any, error) {
 		cfg, err := store.get(ctx, levelID, args.Name)
 		return redactMCPConfig(cfg), err
 	})
-	const saved = "Saved. The change applies when the agent finishes its current work and reloads."
+	const saved = "Saved. The change applies when the bot finishes its current work and reloads."
 	add("set", "Replace one MCP server declaration. Use vault references for secrets. Send [hidden] for each environment or header value to keep. Use disabled: true to turn off a wider declaration.", func(ctx context.Context, levelID string, args arguments) (any, error) {
 		if args.Config == nil {
 			return nil, errors.New("MCP server config is required")

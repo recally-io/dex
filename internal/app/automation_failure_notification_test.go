@@ -20,7 +20,7 @@ func createFailureRoutine(t *testing.T, d *dex, mode, target string) (string, ma
 	}
 	body := map[string]any{"name": "Failure fixture", "prompt": "check", "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": false, "notification": route}
 	var a automationInfo
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &a, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &a, http.StatusCreated)
 	return a.ID, body
 }
 
@@ -31,7 +31,7 @@ func telegramRoutineTarget(t *testing.T, d *dex) string {
 			ID string `json:"id"`
 		} `json:"targets"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/notification-targets", nil, &targets)
+	d.must(t, http.MethodGet, "/api/bots/default/notification-targets", nil, &targets)
 	if len(targets.Targets) != 1 {
 		t.Fatalf("targets=%+v", targets)
 	}
@@ -45,7 +45,7 @@ func TestUserAutomationNotifiesWhenItCannotStart(t *testing.T) {
 	f.failSend.Store(true)
 	d := startTelegram(t, f, t.TempDir(), 42)
 	main := d.mainSession(t)
-	d.must(t, http.MethodPut, "/api/agents/default/notification-targets", map[string]any{"targetId": telegramRoutineTarget(t, d)}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/notification-targets", map[string]any{"targetId": telegramRoutineTarget(t, d)}, nil)
 	d.setModel(t, "")
 	id, _ := createFailureRoutine(t, d, "default", "")
 	conn := sessionDB(t, d)
@@ -121,7 +121,7 @@ func TestUserAutomationFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing
 	} {
 		// When the model reports each result in order.
 		body["prompt"] = fmt.Sprintf(`automation_report {"outcome":%q,"summary":%q,"changeKey":%q}`, step.outcome, step.summary, step.key)
-		d.must(t, http.MethodPut, "/api/agents/default/automations/"+id, body, nil)
+		d.must(t, http.MethodPut, "/api/bots/default/automations/"+id, body, nil)
 		run := settledRoutine(t, d, id, d.runNow(t, id).ID)
 		// Then the alert decision is independent of automation_report business deduplication.
 		if run.Outcome != step.outcome || run.Summary != step.summary || run.Duplicate != step.businessDuplicate {
@@ -165,7 +165,7 @@ func TestUserAutomationRunListShowsWhenNoNotificationTargetResolved(t *testing.T
 			var list struct {
 				Runs []map[string]any `json:"runs"`
 			}
-			d.must(t, http.MethodGet, "/api/agents/default/automations/"+id+"/runs", nil, &list)
+			d.must(t, http.MethodGet, "/api/bots/default/automations/"+id+"/runs", nil, &list)
 			// Then the run list shows both the failure and why no message was sent.
 			if len(list.Runs) != 1 || list.Runs[0]["reason"] != "the bot has no model" || list.Runs[0]["notificationNote"] != "not delivered: no notification target" {
 				t.Fatalf("missing run notification note: %+v", list.Runs)

@@ -76,7 +76,7 @@ FROM (
 	if err := upgraded.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_schema WHERE name IN ('channel_bindings', 'channel_follow_ups')`).Scan(&removedTables); err != nil || removedTables != 0 {
 		t.Fatalf("removed tables = %d: %v", removedTables, err)
 	}
-	if err := upgraded.QueryRowContext(ctx, `SELECT options FROM telegram_settings WHERE agent_id = 'fixture'`).Scan(&options); err != nil || options != "{}" {
+	if err := upgraded.QueryRowContext(ctx, `SELECT options FROM telegram_settings WHERE bot_id = 'fixture'`).Scan(&options); err != nil || options != "{}" {
 		t.Fatalf("options = %q, want {}: %v", options, err)
 	}
 }

@@ -8,7 +8,7 @@ import (
 )
 
 // RecoverSessions registers pending stops before any Harness can resume. This includes retired
-// group sessions from the agent store. It also settles interrupted parent turns without replay,
+// group sessions from the bot store. It also settles interrupted parent turns without replay,
 // since their side effects are not known. The child stays open for session_send.
 func (s *Service) RecoverSessions(ctx context.Context) error {
 	children, err := s.q.ListRecoveryChildren(ctx)
@@ -27,7 +27,7 @@ func (s *Service) RecoverSessions(ctx context.Context) error {
 	refs := make([]engine.Ref, 0, len(aborts))
 	for _, c := range aborts {
 		if c.ExecutionID.Valid {
-			refs = append(refs, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64})
+			refs = append(refs, engine.Ref{BotID: c.BotID, ID: c.ExecutionID.Int64})
 		}
 	}
 	stops, err := s.q.ListRecoveryParentInputStops(ctx)
@@ -36,7 +36,7 @@ func (s *Service) RecoverSessions(ctx context.Context) error {
 	}
 	var withdrawals []engine.RecoveryWithdrawal
 	for _, stop := range stops {
-		withdrawals = append(withdrawals, engine.RecoveryWithdrawal{Ref: engine.Ref{AgentID: stop.AgentID, ID: stop.ExecutionID.Int64}, RequestID: stop.ID})
+		withdrawals = append(withdrawals, engine.RecoveryWithdrawal{Ref: engine.Ref{BotID: stop.BotID, ID: stop.ExecutionID.Int64}, RequestID: stop.ID})
 	}
 	return s.engine.Recover(ctx, refs, withdrawals...)
 }
@@ -52,7 +52,7 @@ type recoveredInput struct {
 // it sits in the native queue or only in the control database, and the result of the interrupted
 // turn counts them.
 func (s *Service) recoverChild(ctx context.Context, c sqlc.ListRecoveryChildrenRow) error {
-	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}
+	ref := engine.Ref{BotID: c.BotID, ID: c.ExecutionID.Int64}
 	pending, err := s.q.ListChildPending(ctx, c.ID)
 	if err != nil {
 		return err

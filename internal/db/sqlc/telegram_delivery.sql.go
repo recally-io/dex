@@ -11,16 +11,16 @@ import (
 
 const setTelegramRetryAt = `-- name: SetTelegramRetryAt :exec
 UPDATE telegram_settings SET retry_at = max(retry_at, ?1)
-WHERE agent_id = ?2 AND token = ?3
+WHERE bot_id = ?2 AND token = ?3
 `
 
 type SetTelegramRetryAtParams struct {
 	RetryAt interface{} `json:"retry_at"`
-	AgentID string      `json:"agent_id"`
+	BotID   string      `json:"bot_id"`
 	Token   string      `json:"token"`
 }
 
 func (q *Queries) SetTelegramRetryAt(ctx context.Context, arg SetTelegramRetryAtParams) error {
-	_, err := q.db.ExecContext(ctx, setTelegramRetryAt, arg.RetryAt, arg.AgentID, arg.Token)
+	_, err := q.db.ExecContext(ctx, setTelegramRetryAt, arg.RetryAt, arg.BotID, arg.Token)
 	return err
 }

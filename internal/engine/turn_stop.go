@@ -17,7 +17,7 @@ import (
 var ErrStaleRunTarget = errors.New("the selected task is no longer active in this session")
 
 func runTargetPrefix(ref Ref) string {
-	return ref.AgentID + "/" + strconv.FormatInt(ref.ID, 10) + "/"
+	return ref.BotID + "/" + strconv.FormatInt(ref.ID, 10) + "/"
 }
 
 func runTargetID(ref Ref, target string) (durable.TaskId, error) {
@@ -52,15 +52,15 @@ func isCurrentRun(ctx context.Context, c harness.Conversation, id durable.TaskId
 }
 
 // ValidateRunTarget checks the target before the caller records a new stop intent.
-func (a *Agents) ValidateRunTarget(ctx context.Context, ref Ref, target string) error {
+func (a *Bots) ValidateRunTarget(ctx context.Context, ref Ref, target string) error {
 	id, err := runTargetID(ref, target)
 	if err != nil {
 		return err
 	}
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	c, err := a.conversation(ctx, ref)
 	if err != nil {
 		return err
@@ -76,14 +76,14 @@ func (a *Agents) ValidateRunTarget(ctx context.Context, ref Ref, target string) 
 }
 
 // StopSession cancels the session and withdraws its queued input.
-func (a *Agents) StopSession(ctx context.Context, ref Ref) error {
-	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
+func (a *Bots) StopSession(ctx context.Context, ref Ref) error {
+	if !botIDPattern.MatchString(ref.BotID) || ref.ID <= 0 {
 		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
 	}
 	if err := a.beginSessionStop(ref); err != nil {
 		return err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -97,8 +97,8 @@ func (a *Agents) StopSession(ctx context.Context, ref Ref) error {
 }
 
 // StopTask cancels only the named native foreground task without withdrawing queued input.
-func (a *Agents) StopTask(ctx context.Context, ref Ref, target string) (resultErr error) {
-	if !agentIDPattern.MatchString(ref.AgentID) || ref.ID <= 0 {
+func (a *Bots) StopTask(ctx context.Context, ref Ref, target string) (resultErr error) {
+	if !botIDPattern.MatchString(ref.BotID) || ref.ID <= 0 {
 		return fmt.Errorf("%w: cancellation reference", ErrInvalidInput)
 	}
 	id, err := runTargetID(ref, target)
@@ -107,10 +107,10 @@ func (a *Agents) StopTask(ctx context.Context, ref Ref, target string) (resultEr
 	}
 	finish := traceTaskStop(ctx, ref, id)
 	defer func() { finish(resultErr) }()
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	unlock, err := a.lock(ctx, ref)
 	if err != nil {
 		return err
@@ -124,7 +124,7 @@ func (a *Agents) StopTask(ctx context.Context, ref Ref, target string) (resultEr
 }
 
 func traceTaskStop(ctx context.Context, ref Ref, id durable.TaskId) func(error) {
-	trace := slog.With("agent", ref.AgentID, "native_conversation_id", ref.ID, "native_task_id", id)
+	trace := slog.With("agent", ref.BotID, "native_conversation_id", ref.ID, "native_task_id", id)
 	started := time.Now()
 	trace.InfoContext(ctx, "session stop", "phase", "stop_attempt")
 	return func(resultErr error) {
@@ -144,8 +144,8 @@ func traceTaskStop(ctx context.Context, ref Ref, id durable.TaskId) func(error) 
 	}
 }
 
-func (a *Agents) stopTask(ctx context.Context, ref Ref, c harness.Conversation, id durable.TaskId) error {
-	h, err := a.harness(ctx, ref.AgentID)
+func (a *Bots) stopTask(ctx context.Context, ref Ref, c harness.Conversation, id durable.TaskId) error {
+	h, err := a.harness(ctx, ref.BotID)
 	if err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func (a *Agents) stopTask(ctx context.Context, ref Ref, c harness.Conversation, 
 		}
 		if live.RunFailure == nil {
 			slog.WarnContext(ctx, "session stop skipped inbox resume: run failure missing after abort",
-				"agent", ref.AgentID, "native_conversation_id", ref.ID, "native_task_id", id)
+				"agent", ref.BotID, "native_conversation_id", ref.ID, "native_task_id", id)
 			return nil, nil
 		}
 		if live.RunFailure.TaskId != id {

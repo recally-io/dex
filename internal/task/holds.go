@@ -18,7 +18,7 @@ func (s *Service) ListHeld(ctx context.Context) ([]sqlc.ListHeldTaskSourceEvents
 // AttachHeld adds a held event to the timeline of an open Task and links its free objects there,
 // so later events of those objects route to the Task. An object linked to another Task keeps its link.
 // The owner decision does not resolve a wait or alert Main, because the event arrived before it.
-func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID string) error {
+func (s *Service) AttachHeld(ctx context.Context, eventID, botID, taskID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -35,7 +35,7 @@ func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID strin
 	if err != nil {
 		return err
 	}
-	task, err := q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, AgentID: agentID})
+	task, err := q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, BotID: botID})
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID strin
 		return err
 	}
 	for _, object := range objects {
-		if err := linkObject(ctx, q, agentID, taskID, event.Namespace, object); err != nil && !errors.Is(err, ErrObjectConflict) {
+		if err := linkObject(ctx, q, botID, taskID, event.Namespace, object); err != nil && !errors.Is(err, ErrObjectConflict) {
 			return err
 		}
 	}

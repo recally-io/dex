@@ -77,7 +77,7 @@ func TestUserManagesAutomationsThroughSession(t *testing.T) {
 		var runs struct {
 			Runs []automation.Run `json:"runs"`
 		}
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/automations/%s/runs", created.ID), nil, &runs)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/automations/%s/runs", created.ID), nil, &runs)
 		return len(runs.Runs) > 0 && runs.Runs[0].Status == "done", runs
 	})
 	var detail automation.ToolInfo
@@ -114,7 +114,7 @@ func TestUserManagesAutomationsThroughSession(t *testing.T) {
 func savedRoutineCaller(t *testing.T, conn *sql.DB, action string) engine.TaskContext {
 	t.Helper()
 	var c engine.TaskContext
-	err := conn.QueryRowContext(t.Context(), `SELECT o.agent_id,c.execution_id,o.source_request_id,o.key FROM automation_tool_operations o JOIN sessions c ON c.id=o.session_id WHERE action=? ORDER BY o.rowid DESC LIMIT 1`, action).Scan(&c.AgentID, &c.ConversationID, &c.SourceRequestID, &c.Key)
+	err := conn.QueryRowContext(t.Context(), `SELECT o.bot_id,c.execution_id,o.source_request_id,o.key FROM automation_tool_operations o JOIN sessions c ON c.id=o.session_id WHERE action=? ORDER BY o.rowid DESC LIMIT 1`, action).Scan(&c.BotID, &c.ConversationID, &c.SourceRequestID, &c.Key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestUserAutomationBusinessBoundaryRejectsUntrustedSources(t *testing.T) {
 		}
 	}
 	wrong := source
-	wrong.AgentID = "other"
+	wrong.BotID = "other"
 	reject(wrong)
 	wrong = source
 	wrong.ConversationID++
@@ -296,10 +296,10 @@ func TestUserAutomationOtherBotCannotReadOrChangeAutomation(t *testing.T) {
 	id := d.mainSession(t)
 	var a automation.ToolInfo
 	routineToolJSON(t, d, id, "automation_create", map[string]any{"name": "Private routine", "prompt": "check", "schedule": map[string]any{"kind": "every", "minutes": 30}, "timeZone": "UTC"}, &a)
-	var beta apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Beta", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &beta, http.StatusCreated)
+	var beta apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Beta", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &beta, http.StatusCreated)
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/"+beta.ID+"/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/"+beta.ID+"/sessions/main", nil, &main)
 	conn := sessionDB(t, d)
 	// When Beta attempts to inspect or mutate the first bot's ID, ownership remains enforced.
 	for _, name := range []string{"automation_list", "automation_get", "automation_update", "automation_run"} {
@@ -311,7 +311,7 @@ func TestUserAutomationOtherBotCannotReadOrChangeAutomation(t *testing.T) {
 			args["enabled"] = false
 		}
 		request := uuid.NewV7().String()
-		d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", beta.ID, main.ID), map[string]string{"id": request, "text": name + " " + taskJSON(t, args)}, nil, http.StatusAccepted)
+		d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/messages", beta.ID, main.ID), map[string]string{"id": request, "text": name + " " + taskJSON(t, args)}, nil, http.StatusAccepted)
 		var status, answer string
 		eventually(t, "Beta "+name, func() (bool, any) {
 			err := conn.QueryRowContext(t.Context(), "SELECT status,answer FROM submissions WHERE id=?", request).Scan(&status, &answer)
@@ -347,7 +347,7 @@ func TestUserAutomationToolDoesNotRunInASessionSelectedDuringPreflight(t *testin
 		"name": "fixture box", "kind": "ssh", "config": map[string]string{"host": "fixture.internal", "user": "dev"},
 	}, &remote, http.StatusCreated)
 	for _, target := range []int64{first, second} {
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", target), map[string]string{"runnerId": remote.ID}, nil)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", target), map[string]string{"runnerId": remote.ID}, nil)
 	}
 	body := boundRoutine(first, "report the fixture")
 	var routine automationInfo
@@ -362,20 +362,20 @@ func TestUserAutomationToolDoesNotRunInASessionSelectedDuringPreflight(t *testin
 
 	// When the owner selects the other session while the tool's preflight is in progress.
 	service := automation.New(sqlc.New(conn), nil, time.Now)
-	service.ConfigureProbe(func(ctx context.Context, agentID, runnerID string) error {
+	service.ConfigureProbe(func(ctx context.Context, botID, runnerID string) error {
 		if runnerID != remote.ID {
 			t.Errorf("probe checked %q, want %q", runnerID, remote.ID)
 		}
-		saved, err := service.Get(ctx, agentID, routine.ID)
+		saved, err := service.Get(ctx, botID, routine.ID)
 		if err != nil {
 			return err
 		}
 		saved.TargetSessionID = second
-		_, err = service.Update(ctx, agentID, routine.ID, saved.Input)
+		_, err = service.Update(ctx, botID, routine.ID, saved.Input)
 		return err
 	})
 	tools := automation.NewToolService(conn, service, func(int64) {})
-	_, err := tools.Run(t.Context(), engine.TaskContext{AgentID: "default", ConversationID: executionID, SourceRequestID: id, Key: "default/fixture-run"}, routine.ID)
+	_, err := tools.Run(t.Context(), engine.TaskContext{BotID: "default", ConversationID: executionID, SourceRequestID: id, Key: "default/fixture-run"}, routine.ID)
 
 	// Then the tool asks the caller to try again without sending a run to either session.
 	if !errors.Is(err, engine.ErrBusy) || len(d.runs(t, routine.ID)) != 0 {

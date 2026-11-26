@@ -6,7 +6,7 @@ import {
   getNotificationTargetsOptions,
   setPrimaryNotificationTargetMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { Failure } from "./feedback";
 import { FramedPage, Mono, Note, Panel, Section } from "./page";
 import { BotSettingsSwitcher } from "./settings-switcher";
@@ -66,14 +66,14 @@ export function ChannelFrame({
   description: string;
   children: ReactNode;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   return (
     <FramedPage
       eyebrow={
         <Link
-          to="/a/$agentId/integrations"
-          params={{ agentId }}
+          to="/b/$botId/integrations"
+          params={{ botId }}
           className="hover:text-foreground hover:underline"
         >
           Integrations
@@ -100,10 +100,10 @@ export function Steps({ children }: { children: ReactNode }) {
 
 /** Lets this channel's owner receive automation results. */
 export function Notifications({ channel }: { channel: ChannelId }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const targets = useQuery({
-    ...getNotificationTargetsOptions({ path: { agentId } }),
+    ...getNotificationTargetsOptions({ path: { botId } }),
     refetchInterval: 3000,
   });
 
@@ -131,7 +131,7 @@ export function Notifications({ channel }: { channel: ChannelId }) {
                     size="xs"
                     variant="secondary"
                     disabled={primary.isPending}
-                    onClick={() => primary.mutate({ path: { agentId }, body: { targetId: target.id } })}
+                    onClick={() => primary.mutate({ path: { botId }, body: { targetId: target.id } })}
                   >
                     Make primary
                   </Button>

@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/bot"
 )
 
-const managedSetupPath = "/api/agents/default/channels/telegram/managed"
+const managedSetupPath = "/api/bots/default/channels/telegram/managed"
 const telegramManagerPath = "/api/telegram/manager"
 
 func TestUserCanStartManagedTelegramOnlyWithManagementMode(t *testing.T) {
@@ -40,7 +40,7 @@ func TestUserCanStartManagedTelegramOnlyWithManagementMode(t *testing.T) {
 		}
 	}
 	// Then the existing-token flow remains usable.
-	if status, body := d.call(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}); status != http.StatusOK {
+	if status, body := d.call(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}); status != http.StatusOK {
 		t.Fatalf("save existing token = %d %s", status, body)
 	}
 }
@@ -60,7 +60,7 @@ type managedTelegramAPI struct {
 
 const managerTestToken = "456:managerSecret"
 const managedTestToken = "789:managedSecret"
-const telegramChannelPath = "/api/agents/default/channels/telegram"
+const telegramChannelPath = "/api/bots/default/channels/telegram"
 
 func fakeManagedTelegram(t *testing.T, failToken bool) *managedTelegramAPI {
 	t.Helper()
@@ -156,8 +156,8 @@ func (f *managedTelegramAPI) managed(id, owner int64, username string) {
 func configureManagedTelegram(t *testing.T, d *dex) {
 	t.Helper()
 	d.must(t, http.MethodPut, telegramManagerPath, map[string]string{"token": managerTestToken}, nil)
-	var channels agent.Channels
-	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &channels)
+	var channels bot.Channels
+	d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &channels)
 	if !channels.Telegram.ManagedCreationAvailable {
 		t.Fatal("managed creation is not available")
 	}
@@ -165,7 +165,7 @@ func configureManagedTelegram(t *testing.T, d *dex) {
 
 func beginAndVerifyManagedTelegram(t *testing.T, d *dex, f *managedTelegramAPI, updateID int64) (string, string) {
 	t.Helper()
-	var setup agent.TelegramManagedSetup
+	var setup bot.TelegramManagedSetup
 	d.must(t, http.MethodPost, managedSetupPath, nil, &setup)
 	link, err := url.Parse(setup.URL)
 	if err != nil || setup.State != "verify_owner" || link.Host != "t.me" || link.Path != "/DexManagerBot" || link.Query().Get("start") == "" {
@@ -203,18 +203,18 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 	waitManaged(t, func() bool { return f.offset.Load() >= 3 && f.childPolls.Load() > 0 })
 
 	// Then Dex polls the new bot once configured for the verified owner. The API returns no token.
-	var setup agent.TelegramManagedSetup
+	var setup bot.TelegramManagedSetup
 	d.must(t, http.MethodGet, path, nil, &setup)
 	if setup.State != "connected" || f.fetched.Load() != 1 {
 		t.Fatalf("setup = %+v, token requests = %d", setup, f.fetched.Load())
 	}
 	assertManagedChannel := func(d *dex) {
-		var channels agent.Channels
-		d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &channels)
+		var channels bot.Channels
+		d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &channels)
 		if tg := channels.Telegram; tg.BotID != "789" || len(tg.AllowedUsers) != 1 || tg.AllowedUsers[0] != 42 || !tg.Options.Silent {
 			t.Fatalf("wrong managed channel %+v", tg)
 		}
-		for _, p := range []string{path, "/api/agents/default/channels", "/api/agents/default/vault"} {
+		for _, p := range []string{path, "/api/bots/default/channels", "/api/bots/default/vault"} {
 			if _, raw := d.call(t, http.MethodGet, p, nil); strings.Contains(raw, managedTestToken) || strings.Contains(raw, managerTestToken) {
 				t.Fatalf("API %s exposed a credential", p)
 			}
@@ -224,7 +224,7 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 	// Editing with a blank token must retain the vault reference, including across restart.
 	d.must(t, http.MethodPut, telegramChannelPath, map[string]any{"token": "", "allowedUsers": []int64{42}}, nil)
 	var stored string
-	if err := controlWriteDB(t, dir).QueryRowContext(t.Context(), "SELECT token FROM telegram_settings WHERE agent_id='default'").Scan(&stored); err != nil || stored == managedTestToken {
+	if err := controlWriteDB(t, dir).QueryRowContext(t.Context(), "SELECT token FROM telegram_settings WHERE bot_id='default'").Scan(&stored); err != nil || stored == managedTestToken {
 		t.Fatalf("managed credential must not be stored in SQLite: %v", err)
 	}
 	d.stop()
@@ -240,7 +240,7 @@ func TestUserConnectsManagedTelegramAndKeepsItAfterReplay(t *testing.T) {
 	}
 	f.managed(5, 42, username2)
 	waitManaged(t, func() bool { return f.offset.Load() >= 6 })
-	setup = agent.TelegramManagedSetup{}
+	setup = bot.TelegramManagedSetup{}
 	d.must(t, http.MethodGet, path2, nil, &setup)
 	if setup.State != "create_bot" {
 		t.Fatalf("a second setup claimed the same bot: %+v", setup)
@@ -270,12 +270,12 @@ func TestUserKeepsTelegramWebhookWhenConnectingManagedBot(t *testing.T) {
 	// When Telegram confirms the new bot, the old webhook is removed and the new bot uses its settings.
 	f.managed(2, 42, username)
 	waitManaged(t, func() bool { return f.offset.Load() >= 3 })
-	status, view := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
+	status, view := d.call(t, http.MethodGet, "/api/bots/default/channels", nil)
 	if status != http.StatusOK || !strings.Contains(view, `"transport":"webhook"`) || !strings.Contains(view, endpoint) ||
 		strings.Contains(view, secret) || strings.Contains(view, managedTestToken) {
 		t.Fatalf("managed channel did not retain a write-only webhook configuration (HTTP %d)", status)
 	}
-	var setup agent.TelegramManagedSetup
+	var setup bot.TelegramManagedSetup
 	d.must(t, http.MethodGet, path, nil, &setup)
 	if setup.State != "connected" {
 		t.Fatalf("managed setup = %s", setup.State)
@@ -321,7 +321,7 @@ func TestUserKeepsTelegramWebhookWhenManagedBotCannotRemoveOldRegistration(t *te
 	// When Telegram confirms creation, replacement fails and the original bot still answers.
 	f.managed(2, 42, username)
 	waitManaged(t, func() bool { return f.offset.Load() >= 3 })
-	var setup agent.TelegramManagedSetup
+	var setup bot.TelegramManagedSetup
 	d.must(t, http.MethodGet, path, nil, &setup)
 	if setup.State != "failed" {
 		t.Fatalf("managed setup = %s, want failed", setup.State)
@@ -389,7 +389,7 @@ func TestUserKeepsExistingTelegramWhenManagedSetupDoesNotComplete(t *testing.T) 
 				waitManaged(t, func() bool { return f.offset.Load() >= 3 })
 			}
 			// Then the existing channel still answers and no rejected update fetches a token.
-			var setup agent.TelegramManagedSetup
+			var setup bot.TelegramManagedSetup
 			d.must(t, http.MethodGet, path, nil, &setup)
 			if setup.State != scenario.state || f.fetched.Load() != scenario.fetches {
 				t.Fatalf("setup = %+v, token requests = %d", setup, f.fetched.Load())

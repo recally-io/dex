@@ -27,19 +27,19 @@ test("opens the Settings index and separates Runners, Secrets, and Sources", asy
 });
 
 test("opens the four Bot settings pages", async ({ app, browser, screen }) => {
-  await app.open("/a/default/agent#instructions");
+  await app.open("/b/default/bot#instructions");
   await expect(screen.getByRole("textbox", "Bot instructions")).toBeVisible();
   const general = new URL(await browser.url());
 
-  expect(general.pathname).toBe("/a/default/agent");
+  expect(general.pathname).toBe("/b/default/bot");
   expect(general.hash).toBe("#instructions");
   await screen.getByRole("link", "Skills", { exact: true }).tap();
   await expect(screen.getByRole("heading", "Available skills")).toBeVisible();
   await expect(screen.getByRole("button", "Reload", { exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", "MCP servers")).toHaveCount(0);
-  await app.open("/a/default/integrations");
+  await app.open("/b/default/integrations");
   await expect(screen.getByRole("heading", "Integrations")).toBeVisible();
-  expect(new URL(await browser.url()).pathname).toBe("/a/default/integrations");
+  expect(new URL(await browser.url()).pathname).toBe("/b/default/integrations");
   await expect(screen.getByRole("link", "Telegram", { exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", "MCP servers")).toBeVisible();
   await screen.getByRole("button", "Reload", { exact: true }).tap();

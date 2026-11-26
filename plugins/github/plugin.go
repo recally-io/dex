@@ -95,7 +95,7 @@ func (s *service) receive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot read delivery", status)
 		return
 	}
-	_, err = AcceptWebhook(r.Context(), s.tasks, id, []byte(config.Secret), r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-GitHub-Event"), r.Header.Get("X-Hub-Signature-256"), body, Rule{IssueAgentID: config.IssueAgentID.String, HoldUnmatched: config.HoldUnmatched == 1})
+	_, err = AcceptWebhook(r.Context(), s.tasks, id, []byte(config.Secret), r.Header.Get("X-GitHub-Delivery"), r.Header.Get("X-GitHub-Event"), r.Header.Get("X-Hub-Signature-256"), body, Rule{IssueBotID: config.IssueBotID.String, HoldUnmatched: config.HoldUnmatched == 1})
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -115,17 +115,17 @@ func (s *service) SaveGitHubWebhook(ctx context.Context, req api.SaveGitHubWebho
 	if req.Body == nil || req.Body.Secret == nil || req.RepositoryId <= 0 || len(*req.Body.Secret) < 32 || len(*req.Body.Secret) > 256 {
 		return nil, fmt.Errorf("%w: use a positive repository ID and a secret of 32 to 256 bytes", errInvalid)
 	}
-	issueAgent := *cmp.Or(req.Body.IssueAgentId, new(""))
+	issueBot := *cmp.Or(req.Body.IssueBotId, new(""))
 	hold := int64(0)
 	if req.Body.HoldUnmatched != nil && *req.Body.HoldUnmatched {
 		hold = 1
 	}
-	n, err := s.q.SaveGitHubWebhook(ctx, store.SaveGitHubWebhookParams{RepositoryID: req.RepositoryId, Secret: *req.Body.Secret, IssueAgentID: sql.NullString{String: issueAgent, Valid: issueAgent != ""}, HoldUnmatched: hold})
+	n, err := s.q.SaveGitHubWebhook(ctx, store.SaveGitHubWebhookParams{RepositoryID: req.RepositoryId, Secret: *req.Body.Secret, IssueBotID: sql.NullString{String: issueBot, Valid: issueBot != ""}, HoldUnmatched: hold})
 	if err != nil {
 		return nil, err
 	}
 	if n == 0 {
-		return nil, fmt.Errorf("%w: select an active agent for new GitHub issues", errInvalid)
+		return nil, fmt.Errorf("%w: select an active bot for new GitHub issues", errInvalid)
 	}
 	return api.SaveGitHubWebhook204Response{}, nil
 }
@@ -180,7 +180,7 @@ func (s *service) BindTaskGitHubPull(ctx context.Context, req api.BindTaskGitHub
 		}
 		wait = new(tasksvc.Wait{Namespace: namespace, Object: object, Type: ReviewSubmitted, AfterAt: condition.AfterAt, Revision: condition.Revision, Alert: condition.Alert != nil && *condition.Alert})
 	}
-	if err := s.tasks.BindObject(ctx, req.AgentId, req.TaskId, namespace, object, wait); err != nil {
+	if err := s.tasks.BindObject(ctx, req.BotId, req.TaskId, namespace, object, wait); err != nil {
 		return nil, err
 	}
 	return api.BindTaskGitHubPull204Response{}, nil

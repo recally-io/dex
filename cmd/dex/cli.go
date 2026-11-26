@@ -358,7 +358,7 @@ func doctor(ctx context.Context, m service.Manager, c service.Config) error {
 	if !s.Installed {
 		report("skipped", "PATH", "no installed definition")
 	} else {
-		report("ok", "service PATH", s.Config.Path+"; agent tools use the login shell environment")
+		report("ok", "service PATH", s.Config.Path+"; bot tools use the login shell environment")
 	}
 	if runtime.GOOS == "linux" {
 		enabled, err := lingering(ctx)

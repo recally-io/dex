@@ -32,7 +32,7 @@ func (s *Service) List(ctx context.Context, c engine.TaskContext, a TaskListArgs
 	if err != nil {
 		return nil, err
 	}
-	params := sqlc.ListBotTasksParams{BotID: conv.AgentID, StatusFilter: status}
+	params := sqlc.ListBotTasksParams{BotID: conv.BotID, StatusFilter: status}
 	if conv.ParentID.Valid {
 		params.ChildSessionID = conv.ID
 	}
@@ -250,7 +250,7 @@ func taskInfoAndBlockers(ctx context.Context, q *sqlc.Queries, task sqlc.Task) (
 	}
 	info.Blocked = len(blockers) > 0
 	for _, s := range sessions {
-		link := TaskSession{ID: strconv.FormatInt(s.SessionID, 10), Title: s.Title, BotID: s.AgentID, BotName: s.AgentName, IsPrimary: s.IsPrimary == 1, LinkedAt: s.LinkedAt}
+		link := TaskSession{ID: strconv.FormatInt(s.SessionID, 10), Title: s.Title, BotID: s.BotID, BotName: s.BotName, IsPrimary: s.IsPrimary == 1, LinkedAt: s.LinkedAt}
 		info.Sessions = append(info.Sessions, link)
 		if link.IsPrimary {
 			info.Session = new(link)

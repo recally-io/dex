@@ -32,12 +32,12 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 
 	// Populate host-side skills (including .env and mcp.json that must never be synced remotely).
 	dexLevel := filepath.Join(dataDir, ".agents")
-	agentLevel := filepath.Join(dataDir, "agents", "a", ".agents")
+	botLevel := filepath.Join(dataDir, "agents", "a", ".agents")
 	hostFiles := map[string]string{
 		filepath.Join(dexLevel, "skills", "deploy", "SKILL.md"): "---\nname: deploy\ndescription: Host deploy skill\n---\nDeploy steps\n",
 		filepath.Join(dexLevel, ".env"):                         "EXPLICIT_DOTENV=from-dex-dotenv\n",
 		filepath.Join(dexLevel, "mcp.json"):                     `{"mcpServers":{}}`,
-		filepath.Join(agentLevel, ".env"):                       "AGENT_DOTENV=from-agent-dotenv\n",
+		filepath.Join(botLevel, ".env"):                         "AGENT_DOTENV=from-bot-dotenv\n",
 	}
 	for p, body := range hostFiles {
 		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
@@ -207,7 +207,7 @@ func TestUserExecutesToolsInRemotePipeEnvironment(t *testing.T) {
 	if !strings.Contains(readOut, "hello v2") {
 		t.Fatalf("remote read=%q", readOut)
 	}
-	artifactBytes, err := a.ReadWorkspaceFile(t.Context(), TaskContext{AgentID: "a"}, "sub/artifact.txt", 1024)
+	artifactBytes, err := a.ReadWorkspaceFile(t.Context(), TaskContext{BotID: "a"}, "sub/artifact.txt", 1024)
 	if err != nil || string(artifactBytes) != "hello v2\n" {
 		t.Fatalf("ReadWorkspaceFile=%q err=%v", artifactBytes, err)
 	}

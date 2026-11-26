@@ -23,7 +23,7 @@ func TestUserStopDuringModelDiscoveryKeepsCancellationDurable(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { data, err := os.ReadFile(starts); return err == nil && string(data) == "start\n" })
-	if err = r.agents.Close(t.Context()); err != nil {
+	if err = r.bots.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	next, err := engine.New(engine.Config{DataDir: r.dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true})

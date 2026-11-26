@@ -7,8 +7,8 @@ test("app opens", async ({ app, browser }) => {
 });
 
 // With the model key in the environment, uncomment:
-// test('the agent drives a flow', async ({ app, agent }) => {
+// test('the bot drives a flow', async ({ app, bot }) => {
 //   await app.open('/');
-//   await agent.act('one goal in natural language');
-//   await agent.assert('one question about the screen');
+//   await bot.act('one goal in natural language');
+//   await bot.assert('one question about the screen');
 // });

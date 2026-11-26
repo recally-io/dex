@@ -36,7 +36,7 @@ func TestUserStopCancelsActiveRunAfterClientDisconnect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.agents.CheckIdle(context.Background(), executionRef(c)) == nil })
+	waitFor(t, func() bool { return r.bots.CheckIdle(context.Background(), executionRef(c)) == nil })
 }
 
 func TestUserMaintenanceStopDefersColdCancellationUntilRelease(t *testing.T) {
@@ -56,12 +56,12 @@ func TestUserMaintenanceStopDefersColdCancellationUntilRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	starts := filepath.Join(r.dir, "starts")
-	_, err = r.agents.Submit(t.Context(), ref, engine.Input{RequestID: "cold", Content: "echo start >> " + starts + "; while :; do sleep 1; done", Kind: "message", Origin: "web", Options: options})
+	_, err = r.bots.Submit(t.Context(), ref, engine.Input{RequestID: "cold", Content: "echo start >> " + starts + "; while :; do sleep 1; done", Kind: "message", Origin: "web", Options: options})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, func() bool { data, err := os.ReadFile(starts); return err == nil && string(data) == "start\n" })
-	if err = r.agents.Close(t.Context()); err != nil {
+	if err = r.bots.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	next, err := engine.New(engine.Config{DataDir: r.dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true})

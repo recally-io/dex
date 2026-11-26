@@ -17,25 +17,25 @@ type deliveredArtifact struct {
 	URL  string `json:"url"`
 }
 
-func artifactPath(agentID, name string) string {
+func artifactPath(botID, name string) string {
 	if name == "" {
-		return "/api/agents/" + agentID + "/artifacts"
+		return "/api/bots/" + botID + "/artifacts"
 	}
-	return "/api/agents/" + agentID + "/artifacts/" + url.PathEscape(name)
+	return "/api/bots/" + botID + "/artifacts/" + url.PathEscape(name)
 }
 
-func listArtifacts(t *testing.T, d *dex, agentID string) []deliveredArtifact {
+func listArtifacts(t *testing.T, d *dex, botID string) []deliveredArtifact {
 	t.Helper()
 	var out struct {
 		Artifacts []deliveredArtifact `json:"artifacts"`
 	}
-	d.must(t, http.MethodGet, artifactPath(agentID, ""), nil, &out)
+	d.must(t, http.MethodGet, artifactPath(botID, ""), nil, &out)
 	return out.Artifacts
 }
 
-func readArtifact(t *testing.T, d *dex, agentID, name string) (http.Header, []byte) {
+func readArtifact(t *testing.T, d *dex, botID, name string) (http.Header, []byte) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+artifactPath(agentID, name), nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+artifactPath(botID, name), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestUserManagesBotArtifactDirectory(t *testing.T) {
 	if _, err := os.Stat(file); err != nil {
 		t.Fatalf("delivery must create the named bot file: %v", err)
 	}
-	if item.URL != "/api/agents/default/artifacts/report.md" {
+	if item.URL != "/api/bots/default/artifacts/report.md" {
 		t.Fatalf("file URL=%q", item.URL)
 	}
 	if err := os.WriteFile(source, []byte("source changed"), 0600); err != nil {

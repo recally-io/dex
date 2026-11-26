@@ -108,7 +108,7 @@ func TestUserTelegramPendingAttachmentReplayKeepsOneUpload(t *testing.T) {
 
 func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
 	t.Parallel()
-	// Given an attachment answered under the default agent and a second agent.
+	// Given an attachment answered under the default bot and a second bot.
 	f := newFakeTelegram(t)
 	f.files["old.txt"] = "default attachment\n"
 	data := t.TempDir()
@@ -137,11 +137,11 @@ func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
 	if err := conn.QueryRowContext(t.Context(), "SELECT id,attachments FROM submissions WHERE source_key='telegram:123:1'").Scan(&oldID, &oldAttachments); err != nil {
 		t.Fatal(err)
 	}
-	var beta apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Beta", "provider": "faux", "modelId": "shout", "thinkingLevel": "off"}, &beta, http.StatusCreated)
+	var beta apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Beta", "provider": "faux", "modelId": "shout", "thinkingLevel": "off"}, &beta, http.StatusCreated)
 	// When the saved credential moves, the new bot starts at offset zero.
-	d.must(t, http.MethodDelete, "/api/agents/default/channels/telegram", nil, nil)
-	base := "/api/agents/" + beta.ID
+	d.must(t, http.MethodDelete, "/api/bots/default/channels/telegram", nil, nil)
+	base := "/api/bots/" + beta.ID
 	d.must(t, http.MethodPut, base+"/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	f.message(2, 42, 7, "new beta input")
 	// Then the old global source is skipped and the next input reaches Beta.
@@ -170,11 +170,11 @@ func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
 			}
 		}
 		if users != 1 {
-			t.Fatalf("bot transfer native user inputs=%d; want 1 per agent", users)
+			t.Fatalf("bot transfer native user inputs=%d; want 1 per bot", users)
 		}
 	}
 	var receiptID, attachments, owner string
-	if err := conn.QueryRowContext(t.Context(), "SELECT s.id,s.attachments,c.agent_id FROM submissions s JOIN sessions c ON c.id=s.session_id WHERE s.source_key='telegram:123:1'").Scan(&receiptID, &attachments, &owner); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT s.id,s.attachments,c.bot_id FROM submissions s JOIN sessions c ON c.id=s.session_id WHERE s.source_key='telegram:123:1'").Scan(&receiptID, &attachments, &owner); err != nil {
 		t.Fatal(err)
 	}
 	if receiptID != oldID || attachments != oldAttachments || owner != "default" {
@@ -202,5 +202,5 @@ func TestUserMovesTelegramBotWithoutReplayingOldInput(t *testing.T) {
 	} else if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
-	t.Log("artifact: moved token skips old source; default receipt/upload unchanged; downloads=1; native user inputs=1 per agent; Beta answers only new input")
+	t.Log("artifact: moved token skips old source; default receipt/upload unchanged; downloads=1; native user inputs=1 per bot; Beta answers only new input")
 }

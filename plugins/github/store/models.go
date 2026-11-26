@@ -19,6 +19,6 @@ type PluginGithubReviewPull struct {
 type PluginGithubWebhookSetting struct {
 	RepositoryID  int64          `json:"repository_id"`
 	Secret        string         `json:"secret"`
-	IssueAgentID  sql.NullString `json:"issue_agent_id"`
+	IssueBotID    sql.NullString `json:"issue_bot_id"`
 	HoldUnmatched int64          `json:"hold_unmatched"`
 }

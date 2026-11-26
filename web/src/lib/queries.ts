@@ -20,25 +20,25 @@ export async function refreshSettings() {
 export async function refreshRunners() {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: [{ _id: "listRunners" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listAgentRunners" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getAgent" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listBotRunners" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listBots" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getBot" }] }),
   ]);
 }
 
-export async function refreshSessions(agentId: string) {
+export async function refreshSessions(botId: string) {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listSessions", path: { agentId } }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getSession", path: { agentId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listSessions", path: { botId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getSession", path: { botId } }] }),
   ]);
 }
 
-export async function refreshAutomations(agentId: string) {
+export async function refreshAutomations(botId: string) {
   await Promise.all([
-    refreshSessions(agentId),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomations", path: { agentId } }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getAutomation", path: { agentId } }] }),
-    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomationRuns", path: { agentId } }] }),
+    refreshSessions(botId),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomations", path: { botId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getAutomation", path: { botId } }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "listAutomationRuns", path: { botId } }] }),
     refreshBoardAttention(),
   ]);
 }

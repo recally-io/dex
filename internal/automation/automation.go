@@ -1,4 +1,4 @@
-// Package automation runs prompts on a schedule. The web UI manages automations, and later an agent
+// Package automation runs prompts on a schedule. The web UI manages automations, and later a bot
 // tool will.
 //
 // Each automation stores its next scheduled time (next_due_at). Check runs the automations whose
@@ -90,20 +90,20 @@ type Run struct {
 	Cwd      string `json:"cwd,omitempty"`
 }
 
-// Service manages automations for all agents.
+// Service manages automations for all bots.
 type Service struct {
 	q          *sqlc.Queries
 	enqueue    func(context.Context, session.AutomationInput) (session.AutomationInputResult, error)
 	now        func() time.Time
 	wakeOutbox func(context.Context, string)
 	// probe opens the SSH Runner before the run starts; nil skips the check.
-	probe  func(ctx context.Context, agentID, runnerID string) error
-	status func(ctx context.Context, agentID, runnerID string) string
+	probe  func(ctx context.Context, botID, runnerID string) error
+	status func(ctx context.Context, botID, runnerID string) string
 }
 
 // ConfigureProbe sets the check that an SSH Runner is reachable before a run. A run on an
 // unreachable host is skipped, so it never starts a session that cannot use its machine.
-func (s *Service) ConfigureProbe(probe func(ctx context.Context, agentID, runnerID string) error) {
+func (s *Service) ConfigureProbe(probe func(ctx context.Context, botID, runnerID string) error) {
 	s.probe = probe
 }
 
@@ -212,11 +212,11 @@ func millis(times []time.Time) []int64 {
 	return out
 }
 
-func (s *Service) checkTarget(ctx context.Context, agentID string, in Input) error {
+func (s *Service) checkTarget(ctx context.Context, botID string, in Input) error {
 	if in.Session != "session" {
 		return nil
 	}
-	_, err := session.AutomationTarget(ctx, s.q, agentID, targetID(in))
+	_, err := session.AutomationTarget(ctx, s.q, botID, targetID(in))
 	if errors.Is(err, session.ErrAutomationTarget) {
 		return invalid(err.Error())
 	}
@@ -228,12 +228,12 @@ func targetID(in Input) sql.NullInt64 {
 }
 
 // Create stores a new automation.
-func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automation, error) {
+func (s *Service) Create(ctx context.Context, botID string, in Input) (Automation, error) {
 	in, loc, err := clean(in)
 	if err != nil {
 		return Automation{}, err
 	}
-	if err := s.checkTarget(ctx, agentID, in); err != nil {
+	if err := s.checkTarget(ctx, botID, in); err != nil {
 		return Automation{}, err
 	}
 	if err := s.checkRunner(ctx, in.RunnerID, ""); err != nil {
@@ -241,7 +241,7 @@ func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automat
 	}
 	now := s.now()
 	row := sqlc.Automation{
-		ID: uuid.NewV7().String(), AgentID: agentID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(), NotificationRoute: "none",
+		ID: uuid.NewV7().String(), BotID: botID, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli(), NotificationRoute: "none",
 	}
 	if err := s.applyNotification(ctx, &row, in.Notification); err != nil {
 		return Automation{}, err
@@ -257,16 +257,16 @@ func (s *Service) Create(ctx context.Context, agentID string, in Input) (Automat
 }
 
 // Update changes an automation. Its next time counts from now, so a change never runs a past time.
-func (s *Service) Update(ctx context.Context, agentID string, id string, in Input) (Automation, error) {
+func (s *Service) Update(ctx context.Context, botID string, id string, in Input) (Automation, error) {
 	in, loc, err := clean(in)
 	if err != nil {
 		return Automation{}, err
 	}
-	row, err := s.get(ctx, agentID, id)
+	row, err := s.get(ctx, botID, id)
 	if err != nil {
 		return Automation{}, err
 	}
-	if err := s.checkTarget(ctx, agentID, in); err != nil {
+	if err := s.checkTarget(ctx, botID, in); err != nil {
 		return Automation{}, err
 	}
 	if err := s.checkRunner(ctx, in.RunnerID, row.RunnerID); err != nil {
@@ -283,7 +283,7 @@ func (s *Service) Update(ctx context.Context, agentID string, id string, in Inpu
 	_, err = s.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{
 		Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone,
 		Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID,
-		RunnerID: row.RunnerID, TargetSessionID: row.TargetSessionID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: agentID,
+		RunnerID: row.RunnerID, TargetSessionID: row.TargetSessionID, UpdatedAt: row.UpdatedAt, ID: row.ID, BotID: botID,
 	})
 	if err != nil {
 		return Automation{}, err
@@ -316,7 +316,7 @@ func (s *Service) applyNotification(ctx context.Context, row *sqlc.Automation, n
 		return nil
 	}
 	if n.Mode == "target" {
-		if _, err := s.q.GetAutomationNotificationTarget(ctx, sqlc.GetAutomationNotificationTargetParams{ID: n.TargetID, AgentID: row.AgentID}); err != nil {
+		if _, err := s.q.GetAutomationNotificationTarget(ctx, sqlc.GetAutomationNotificationTargetParams{ID: n.TargetID, BotID: row.BotID}); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return invalid("notification target not found")
 			}
@@ -350,27 +350,27 @@ func fill(row *sqlc.Automation, in Input, loc *time.Location, now time.Time) err
 }
 
 // Delete removes an automation and its runs. Its sessions stay.
-func (s *Service) Delete(ctx context.Context, agentID string, id string) error {
-	if _, err := s.get(ctx, agentID, id); err != nil {
+func (s *Service) Delete(ctx context.Context, botID string, id string) error {
+	if _, err := s.get(ctx, botID, id); err != nil {
 		return err
 	}
 	if err := s.q.DeleteAutomationRuns(ctx, id); err != nil {
 		return err
 	}
-	return s.q.DeleteAutomation(ctx, sqlc.DeleteAutomationParams{ID: id, AgentID: agentID})
+	return s.q.DeleteAutomation(ctx, sqlc.DeleteAutomationParams{ID: id, BotID: botID})
 }
 
 // Get returns an automation, or ErrNotFound.
-func (s *Service) Get(ctx context.Context, agentID string, id string) (Automation, error) {
-	row, err := s.get(ctx, agentID, id)
+func (s *Service) Get(ctx context.Context, botID string, id string) (Automation, error) {
+	row, err := s.get(ctx, botID, id)
 	if err != nil {
 		return Automation{}, err
 	}
 	return s.view(ctx, row)
 }
 
-func (s *Service) get(ctx context.Context, agentID string, id string) (sqlc.Automation, error) {
-	row, err := s.q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: id, AgentID: agentID})
+func (s *Service) get(ctx context.Context, botID string, id string) (sqlc.Automation, error) {
+	row, err := s.q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: id, BotID: botID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return row, ErrNotFound
 	}
@@ -378,13 +378,13 @@ func (s *Service) get(ctx context.Context, agentID string, id string) (sqlc.Auto
 }
 
 // ListTargetCandidates returns the bot's existing sessions for the Automation picker.
-func (s *Service) ListTargetCandidates(ctx context.Context, agentID string) ([]sqlc.Session, error) {
-	return s.q.ListAutomationTargetCandidates(ctx, agentID)
+func (s *Service) ListTargetCandidates(ctx context.Context, botID string) ([]sqlc.Session, error) {
+	return s.q.ListAutomationTargetCandidates(ctx, botID)
 }
 
 // List returns all automations, oldest first.
-func (s *Service) List(ctx context.Context, agentID string) ([]Automation, error) {
-	rows, err := s.q.ListAutomations(ctx, agentID)
+func (s *Service) List(ctx context.Context, botID string) ([]Automation, error) {
+	rows, err := s.q.ListAutomations(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +415,7 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 		// The times after the next one; a time that passed while dex did not run shows as is.
 		a.NextRuns = append([]int64{first.UnixMilli()}, millis(a.Schedule.upcoming(first, first, loc, 2))...)
 	}
-	runs, err := s.Runs(ctx, row.AgentID, row.ID, 1)
+	runs, err := s.Runs(ctx, row.BotID, row.ID, 1)
 	if err != nil {
 		return a, err
 	}
@@ -426,8 +426,8 @@ func (s *Service) view(ctx context.Context, row sqlc.Automation) (Automation, er
 }
 
 // Runs returns the newest runs of an automation, at most limit.
-func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int64) ([]Run, error) {
-	if _, err := s.get(ctx, agentID, id); err != nil {
+func (s *Service) Runs(ctx context.Context, botID string, id string, limit int64) ([]Run, error) {
+	if _, err := s.get(ctx, botID, id); err != nil {
 		return nil, err
 	}
 	rows, err := s.q.ListAutomationRuns(ctx, sqlc.ListAutomationRunsParams{AutomationID: id, RowLimit: limit})
@@ -462,8 +462,8 @@ func (s *Service) Runs(ctx context.Context, agentID string, id string, limit int
 }
 
 // RunNow runs an automation outside its schedule.
-func (s *Service) RunNow(ctx context.Context, agentID string, id string) (Run, error) {
-	row, err := s.get(ctx, agentID, id)
+func (s *Service) RunNow(ctx context.Context, botID string, id string) (Run, error) {
+	row, err := s.get(ctx, botID, id)
 	if err != nil {
 		return Run{}, err
 	}
@@ -505,7 +505,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 	// run and does not store it again.
 	_, err = s.admit(ctx, row, sql.NullInt64{Int64: latest.UnixMilli(), Valid: true}, skip, nil)
 	// An archived bot keeps the due time; restore runs it if the grace period allows.
-	if errors.Is(err, session.ErrAutomationChanged) || errors.Is(err, db.ErrAgentArchived) {
+	if errors.Is(err, session.ErrAutomationChanged) || errors.Is(err, db.ErrBotArchived) {
 		return nil
 	}
 	if err != nil {
@@ -530,7 +530,7 @@ func (s *Service) check(ctx context.Context, row sqlc.Automation, now time.Time)
 // runs in a transaction.
 func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullInt64, skip string, pre *Target) (Run, error) {
 	if skip == "" && row.Session != "session" {
-		agent, err := s.q.GetAgent(ctx, row.AgentID)
+		bot, err := s.q.GetBot(ctx, row.BotID)
 		if err != nil {
 			return Run{}, err
 		}
@@ -539,7 +539,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 			return Run{}, err
 		}
 		switch {
-		case agent.ModelID == "":
+		case bot.ModelID == "":
 			skip = session.RoutineSkipNoModel
 		case busy > 0:
 			skip = session.RoutineSkipBusy
@@ -566,7 +566,7 @@ func (s *Service) admit(ctx context.Context, row sqlc.Automation, due sql.NullIn
 		key += ":" + run.ID
 	}
 	// The input stores row only while row is current: the preflight gives an edit time to commit.
-	input := session.AutomationInput{Run: params, AgentID: row.AgentID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, RunnerID: row.RunnerID, Target: pre.ID, Skip: pre.Skip, Expected: &row}
+	input := session.AutomationInput{Run: params, BotID: row.BotID, ChannelKey: key, Title: row.Name, Content: row.Prompt, Cwd: row.Cwd, RunnerID: row.RunnerID, Target: pre.ID, Skip: pre.Skip, Expected: &row}
 	result, err := s.enqueue(ctx, input)
 	if !due.Valid && errors.Is(err, session.ErrAutomationChanged) {
 		// A scheduled run checks again next minute; a manual run tells the caller.
@@ -591,13 +591,13 @@ type Target struct {
 // The input transaction compares the Runner again, so a change in between does not admit a
 // run on a Runner that it did not check.
 func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, error) {
-	agent, err := s.q.GetAgent(ctx, row.AgentID)
+	bot, err := s.q.GetBot(ctx, row.BotID)
 	if err != nil {
 		return Target{}, err
 	}
 	runnerID := row.RunnerID
 	if row.Session == "session" {
-		conv, err := session.AutomationTarget(ctx, s.q, row.AgentID, row.TargetSessionID)
+		conv, err := session.AutomationTarget(ctx, s.q, row.BotID, row.TargetSessionID)
 		if errors.Is(err, session.ErrAutomationTarget) {
 			return Target{Skip: err.Error()}, nil
 		}
@@ -606,9 +606,9 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 		}
 		runnerID = conv.RunnerID
 	}
-	id := cmp.Or(runnerID, agent.RunnerID, runner.LocalID)
-	skip, err := s.unavailable(ctx, row.AgentID, id)
-	if skip == "" && err == nil && row.Session == "session" && s.status != nil && s.status(ctx, row.AgentID, id) != "available" {
+	id := cmp.Or(runnerID, bot.RunnerID, runner.LocalID)
+	skip, err := s.unavailable(ctx, row.BotID, id)
+	if skip == "" && err == nil && row.Session == "session" && s.status != nil && s.status(ctx, row.BotID, id) != "available" {
 		skip = session.RoutineUnavailableRunner(id)
 	}
 	return Target{ID: id, Skip: skip}, err
@@ -617,7 +617,7 @@ func (s *Service) Preflight(ctx context.Context, row sqlc.Automation) (Target, e
 // unavailable returns a skip reason instead of letting the run use a different
 // Runner. It probes SSH only. Local is always available. Opening an E2B Sandbox
 // or an Outbound Machine would start the run's work.
-func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, error) {
+func (s *Service) unavailable(ctx context.Context, botID, id string) (string, error) {
 	if id == runner.LocalID {
 		return "", nil
 	}
@@ -628,7 +628,7 @@ func (s *Service) unavailable(ctx context.Context, agentID, id string) (string, 
 	if err != nil || runner.Kind(env.Kind) != runner.KindSSH || s.probe == nil {
 		return "", err
 	}
-	if err := s.probe(ctx, agentID, id); err != nil {
+	if err := s.probe(ctx, botID, id); err != nil {
 		// Probe errors can contain host details or credentials. Do not store or send them.
 		if ctx.Err() != nil {
 			return "", ctx.Err()

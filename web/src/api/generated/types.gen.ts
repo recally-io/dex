@@ -58,8 +58,8 @@ export type TaskSummary = {
 
 export type TaskSession = {
     sessionId: number;
-    agentId: string;
-    agentName: string;
+    botId: string;
+    botName: string;
     title: string;
     isPrimary: boolean;
     linkedAt: number;
@@ -229,7 +229,7 @@ export type TaskQuestion = {
     text: string;
     options: Array<string>;
     queued: boolean;
-    agentId: string;
+    botId: string;
     sessionId: number;
 };
 
@@ -357,7 +357,7 @@ export type SystemStatus = {
     backups: Array<SystemBackup>;
 };
 
-export type AgentRunners = {
+export type BotRunners = {
     runners: Array<{
         id: string;
         name: string;
@@ -367,7 +367,7 @@ export type AgentRunners = {
         desc?: string;
         kind: string;
         /**
-         * This is the default Runner of the agent.
+         * This is the default Runner of the bot.
          */
         default: boolean;
         /**
@@ -384,7 +384,7 @@ export type Session = {
      */
     channel: 'web' | 'telegram' | 'wechat' | 'feishu' | 'automation';
     /**
-     * This is the agent's main timeline.
+     * This is the bot's main timeline.
      */
     main: boolean;
     /**
@@ -400,7 +400,7 @@ export type Session = {
      */
     cwd: string;
     /**
-     * The Runner that the Session selects: "local" or a registered Runner ID. An empty value follows the default Runner of the agent.
+     * The Runner that the Session selects: "local" or a registered Runner ID. An empty value follows the default Runner of the bot.
      */
     runnerId?: string;
     title: string;
@@ -427,19 +427,19 @@ export type Session = {
     /**
      * The bot that owns this session. Only on a child session that belongs to another bot than the one in the request path. The list of the parent shows it.
      */
-    agentId?: string;
+    botId?: string;
     /**
-     * The name of the bot in agentId. Present with agentId.
+     * The name of the bot in botId. Present with botId.
      */
-    agentName?: string;
+    botName?: string;
     /**
      * The bot of the parent session. Only on a child session whose parent belongs to another bot than the one in the request path.
      */
-    parentAgentId?: string;
+    parentBotId?: string;
     /**
-     * The name of the bot in parentAgentId. Present with parentAgentId.
+     * The name of the bot in parentBotId. Present with parentBotId.
      */
-    parentAgentName?: string;
+    parentBotName?: string;
     /**
      * The latest engine observation of activity. Only the session list sets it, and only while the session is busy.
      */
@@ -464,7 +464,7 @@ export type SessionOrigin = {
 };
 
 /**
- * The settings that a session overrides. An absent field follows the agent's setting. provider and modelId are both present or both absent.
+ * The settings that a session overrides. An absent field follows the bot's setting. provider and modelId are both present or both absent.
  *
  */
 export type SessionSettings = {
@@ -488,7 +488,7 @@ export type MessageInput = {
      */
     text: string;
     /**
-     * Upload IDs from POST /api/agents/{agentId}/uploads, at most 10.
+     * Upload IDs from POST /api/bots/{botId}/uploads, at most 10.
      */
     attachments?: Array<string>;
     /**
@@ -501,14 +501,14 @@ export type MessageInput = {
      */
     answersQuestionId?: string;
     /**
-     * What happens when the agent is already working in this session. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the session is idle.
+     * What happens when the bot is already working in this session. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the session is idle.
      *
      */
     mode?: 'followUp' | 'steer' | 'reject';
 };
 
 /**
- * The question that the agent asked with ask_user. It waits for the user, or its answer waits in the queue.
+ * The question that the bot asked with ask_user. It waits for the user, or its answer waits in the queue.
  *
  */
 export type SessionQuestion = {
@@ -556,7 +556,7 @@ export type Attachment = {
     size: number;
     mimeType: string;
     /**
-     * The path in the agent workspace, uploads/<id>/<name>.
+     * The path in the bot workspace, uploads/<id>/<name>.
      */
     path: string;
 };
@@ -617,7 +617,7 @@ export type AutomationInput = {
     name: string;
     prompt: string;
     /**
-     * Existing absolute project directory. Empty uses the agent workspace.
+     * Existing absolute project directory. Empty uses the bot workspace.
      */
     cwd?: string;
     schedule: Schedule;
@@ -642,7 +642,7 @@ export type AutomationInput = {
     notification?: {
         mode: 'none' | 'default' | 'target';
         /**
-         * An authorized target owned by this agent.
+         * An authorized target owned by this bot.
          */
         targetId?: string;
     };
@@ -671,7 +671,7 @@ export type BoardAttention = {
 
 export type BoardAttentionSession = {
     id: number;
-    agentId: string;
+    botId: string;
     title: string;
     main: boolean;
     busy: boolean;
@@ -689,7 +689,7 @@ export type BoardAttentionQuestion = {
 
 export type BoardAttentionAutomation = {
     id: string;
-    agentId: string;
+    botId: string;
     name: string;
     setup: boolean;
     targetSessionId?: number;
@@ -697,7 +697,7 @@ export type BoardAttentionAutomation = {
 
 export type AutomationResultSummary = {
     runId: string;
-    agentId: string;
+    botId: string;
     automationId: string;
     automationName: string;
     sessionId: number;
@@ -730,7 +730,7 @@ export type AutomationResultList = {
 };
 
 export type AutomationResult = AutomationResultSummary & {
-    agentName: string;
+    botName: string;
     dismissed: boolean;
 };
 
@@ -855,7 +855,7 @@ export type UserItem = {
     text: string;
     at?: number;
     /**
-     * True while the message waits for the agent.
+     * True while the message waits for the bot.
      */
     queued?: boolean;
     /**
@@ -1052,7 +1052,7 @@ export type NotificationsEvent = {
 export type ChildEvent = {
     type: 'child';
     sessionId: number;
-    agentId: string;
+    botId: string;
     state: 'waiting' | 'running' | 'idle' | 'unavailable';
 };
 
@@ -1240,22 +1240,22 @@ export type Channels = {
     feishu: Feishu;
 };
 
-export type AgentActivity = {
+export type BotActivity = {
     automationFailed: boolean;
     activeSessions: number;
     runningChannels: number;
     enabledAutomations: number;
 };
 
-export type Agent = {
+export type Bot = {
     /**
-     * The agent ID.
+     * The bot ID.
      */
     readonly id?: string;
     /**
-     * Activity counts returned by GET /api/agents.
+     * Activity counts returned by GET /api/bots.
      */
-    activity?: AgentActivity;
+    activity?: BotActivity;
     /**
      * The bot name. Trim spaces before validation.
      */
@@ -1277,12 +1277,12 @@ export type Agent = {
      */
     runnerId: string;
     /**
-     * Archive time in Unix milliseconds. Absent for an active agent.
+     * Archive time in Unix milliseconds. Absent for an active bot.
      */
     readonly archivedAt?: number;
 };
 
-export type AgentInput = {
+export type BotInput = {
     /**
      * The bot name. Trim spaces before validation.
      */
@@ -1305,7 +1305,7 @@ export type AgentInput = {
     runnerId?: string;
 };
 
-export type CreateAgentInput = {
+export type CreateBotInput = {
     /**
      * The bot name. Trim spaces before validation.
      */
@@ -1430,7 +1430,7 @@ export type VaultEntry = {
 
 export type BotIntegrations = {
     /**
-     * The .agents directories, from wide to narrow. Each can hold skills/. Two levels can have the same directory.
+     * The .bots directories, from wide to narrow. Each can hold skills/. Two levels can have the same directory.
      *
      */
     levels: Array<{
@@ -1442,7 +1442,7 @@ export type BotIntegrations = {
      */
     skills: Array<Skill>;
     /**
-     * Loaded servers, or idle declarations before the agent opens.
+     * Loaded servers, or idle declarations before the bot opens.
      */
     servers: Array<McpServer>;
     warnings: Array<string>;
@@ -1451,14 +1451,14 @@ export type BotIntegrations = {
      */
     errors: Array<string>;
     /**
-     * Extension files, vault entries, shell rc files, or 1Password settings changed after the agent loaded. dex reloads the agent when all agents are idle and the configuration is valid.
+     * Extension files, vault entries, shell rc files, or 1Password settings changed after the bot loaded. dex reloads the bot when all bots are idle and the configuration is valid.
      *
      */
     reloadPending: boolean;
 };
 
 /**
- * Shared across dex or scoped to one agent.
+ * Shared across dex or scoped to one bot.
  */
 export type IntegrationScope = 'dex' | 'agent';
 
@@ -1466,7 +1466,7 @@ export type Skill = {
     name: string;
     description: string;
     /**
-     * A file level, or project for .agents/skills under the agent workspace. The prompt reads the project level under the session's cwd.
+     * A file level, or project for .agents/skills under the bot workspace. The prompt reads the project level under the session's cwd.
      *
      */
     scope: 'dex' | 'agent' | 'project';
@@ -1496,15 +1496,15 @@ export type McpServer = {
      */
     overrides: boolean;
     /**
-     * Absent for an agent entry that only turns off a global server.
+     * Absent for a bot entry that only turns off a global server.
      */
     transport?: 'stdio' | 'http';
     /**
-     * idle means that the agent has not started, so dex has not connected.
+     * idle means that the bot has not started, so dex has not connected.
      */
     state: 'idle' | 'connected' | 'failed' | 'disabled';
     /**
-     * The MCP tool names. The agent gets each tool as mcp__<server>__<tool>.
+     * The MCP tool names. The bot gets each tool as mcp__<server>__<tool>.
      */
     tools: Array<string>;
     /**
@@ -1718,7 +1718,7 @@ export type OutboxMessageList = {
     messages: Array<OutboxMessage>;
 };
 
-export type AgentWritable = {
+export type BotWritable = {
     /**
      * The bot name. Trim spaces before validation.
      */
@@ -1794,7 +1794,7 @@ export type TaskKey = string;
  */
 export type TaskRevision = number;
 
-export type AgentId = string;
+export type BotId = string;
 
 export type AutomationId = string;
 
@@ -1819,11 +1819,11 @@ export type BindTaskGitHubPullData = {
         };
     };
     path: {
-        agentId: string;
+        botId: string;
         taskId: string;
     };
     query?: never;
-    url: '/api/plugins/github/agents/{agentId}/tasks/{taskId}/pull';
+    url: '/api/plugins/github/bots/{botId}/tasks/{taskId}/pull';
 };
 
 export type BindTaskGitHubPullErrors = {
@@ -1998,9 +1998,9 @@ export type SaveEmailSourceData = {
     body: {
         secret: string;
         /**
-         * Create a Task under this agent for a new thread. Omit to disable creation.
+         * Create a Task under this bot for a new thread. Omit to disable creation.
          */
-        taskAgentId?: string;
+        taskBotId?: string;
         /**
          * Hold other unmatched messages on Board. The default ignores them.
          */
@@ -2062,9 +2062,9 @@ export type SaveWebhookSourceData = {
     body: {
         secret: string;
         /**
-         * Create a Task under this agent for an unmatched event with exactly one object. Omit to disable creation.
+         * Create a Task under this bot for an unmatched event with exactly one object. Omit to disable creation.
          */
-        taskAgentId?: string;
+        taskBotId?: string;
         /**
          * Hold other unmatched events on Board. The default ignores them.
          */
@@ -2126,9 +2126,9 @@ export type SaveGitHubWebhookData = {
     body: {
         secret: string;
         /**
-         * Create Tasks for opened Issues under this agent. Omit to disable creation.
+         * Create Tasks for opened Issues under this bot. Omit to disable creation.
          */
-        issueAgentId?: string;
+        issueBotId?: string;
         /**
          * Hold Webhook and Pull events that match no Task on Board. The default ignores them.
          */
@@ -2893,7 +2893,7 @@ export type ListHeldEventsResponse = ListHeldEventsResponses[keyof ListHeldEvent
 
 export type AttachHeldEventData = {
     body: {
-        agentId: string;
+        botId: string;
         taskId: string;
     };
     path: {
@@ -3896,10 +3896,10 @@ export type SetProviderResponse = SetProviderResponses[keyof SetProviderResponse
 export type GetChannelsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels';
+    url: '/api/bots/{botId}/channels';
 };
 
 export type GetChannelsErrors = {
@@ -3913,7 +3913,7 @@ export type GetChannelsError = GetChannelsErrors[keyof GetChannelsErrors];
 
 export type GetChannelsResponses = {
     /**
-     * Channel configuration and runtime status for this agent.
+     * Channel configuration and runtime status for this bot.
      */
     200: Channels;
 };
@@ -3923,10 +3923,10 @@ export type GetChannelsResponse = GetChannelsResponses[keyof GetChannelsResponse
 export type GetNotificationTargetsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/notification-targets';
+    url: '/api/bots/{botId}/notification-targets';
 };
 
 export type GetNotificationTargetsErrors = {
@@ -3940,7 +3940,7 @@ export type GetNotificationTargetsError = GetNotificationTargetsErrors[keyof Get
 
 export type GetNotificationTargetsResponses = {
     /**
-     * This agent's authorized notification destinations and default.
+     * This bot's authorized notification destinations and default.
      */
     200: NotificationTargets;
 };
@@ -3955,10 +3955,10 @@ export type SetPrimaryNotificationTargetData = {
         targetId: string;
     };
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/notification-targets';
+    url: '/api/bots/{botId}/notification-targets';
 };
 
 export type SetPrimaryNotificationTargetErrors = {
@@ -4009,10 +4009,10 @@ export type SetTelegramManagerResponse = SetTelegramManagerResponses[keyof SetTe
 export type BeginTelegramManagedSetupData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/telegram/managed';
+    url: '/api/bots/{botId}/channels/telegram/managed';
 };
 
 export type BeginTelegramManagedSetupErrors = {
@@ -4036,11 +4036,11 @@ export type BeginTelegramManagedSetupResponse = BeginTelegramManagedSetupRespons
 export type CancelTelegramManagedSetupData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         setupId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}';
+    url: '/api/bots/{botId}/channels/telegram/managed/{setupId}';
 };
 
 export type CancelTelegramManagedSetupErrors = {
@@ -4064,11 +4064,11 @@ export type CancelTelegramManagedSetupResponse = CancelTelegramManagedSetupRespo
 export type GetTelegramManagedSetupData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         setupId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}';
+    url: '/api/bots/{botId}/channels/telegram/managed/{setupId}';
 };
 
 export type GetTelegramManagedSetupErrors = {
@@ -4092,10 +4092,10 @@ export type GetTelegramManagedSetupResponse = GetTelegramManagedSetupResponses[k
 export type CreateTelegramPairingData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/telegram/pairing';
+    url: '/api/bots/{botId}/channels/telegram/pairing';
 };
 
 export type CreateTelegramPairingErrors = {
@@ -4126,10 +4126,10 @@ export type CreateTelegramPairingResponse = CreateTelegramPairingResponses[keyof
 export type BeginWechatLoginData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/wechat/login';
+    url: '/api/bots/{botId}/channels/wechat/login';
 };
 
 export type BeginWechatLoginErrors = {
@@ -4155,11 +4155,11 @@ export type PollWechatLoginData = {
         verifyCode?: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         loginId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/wechat/login/{loginId}/poll';
+    url: '/api/bots/{botId}/channels/wechat/login/{loginId}/poll';
 };
 
 export type PollWechatLoginErrors = {
@@ -4183,10 +4183,10 @@ export type PollWechatLoginResponse = PollWechatLoginResponses[keyof PollWechatL
 export type DeleteWechatData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/wechat';
+    url: '/api/bots/{botId}/channels/wechat';
 };
 
 export type DeleteWechatErrors = {
@@ -4210,10 +4210,10 @@ export type DeleteWechatResponse = DeleteWechatResponses[keyof DeleteWechatRespo
 export type DeleteTelegramData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/telegram';
+    url: '/api/bots/{botId}/channels/telegram';
 };
 
 export type DeleteTelegramErrors = {
@@ -4237,10 +4237,10 @@ export type DeleteTelegramResponse = DeleteTelegramResponses[keyof DeleteTelegra
 export type SetTelegramData = {
     body: TelegramInputWritable;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/telegram';
+    url: '/api/bots/{botId}/channels/telegram';
 };
 
 export type SetTelegramErrors = {
@@ -4268,10 +4268,10 @@ export type SetTelegramResponse = SetTelegramResponses[keyof SetTelegramResponse
 export type DeleteFeishuData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/feishu';
+    url: '/api/bots/{botId}/channels/feishu';
 };
 
 export type DeleteFeishuErrors = {
@@ -4295,10 +4295,10 @@ export type DeleteFeishuResponse = DeleteFeishuResponses[keyof DeleteFeishuRespo
 export type GetFeishuData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/feishu';
+    url: '/api/bots/{botId}/channels/feishu';
 };
 
 export type GetFeishuErrors = {
@@ -4322,10 +4322,10 @@ export type GetFeishuResponse = GetFeishuResponses[keyof GetFeishuResponses];
 export type SetFeishuData = {
     body: FeishuInputWritable;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/feishu';
+    url: '/api/bots/{botId}/channels/feishu';
 };
 
 export type SetFeishuErrors = {
@@ -4349,10 +4349,10 @@ export type SetFeishuResponse = SetFeishuResponses[keyof SetFeishuResponses];
 export type BeginFeishuData = {
     body: FeishuBrand;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/feishu/registration';
+    url: '/api/bots/{botId}/channels/feishu/registration';
 };
 
 export type BeginFeishuErrors = {
@@ -4376,10 +4376,10 @@ export type BeginFeishuResponse = BeginFeishuResponses[keyof BeginFeishuResponse
 export type PollFeishuData = {
     body: FeishuPoll;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/channels/feishu/registration/poll';
+    url: '/api/bots/{botId}/channels/feishu/registration/poll';
 };
 
 export type PollFeishuErrors = {
@@ -4429,41 +4429,41 @@ export type PreviewScheduleResponses = {
 
 export type PreviewScheduleResponse = PreviewScheduleResponses[keyof PreviewScheduleResponses];
 
-export type ListAgentsData = {
+export type ListBotsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/agents';
+    url: '/api/bots';
 };
 
-export type ListAgentsErrors = {
+export type ListBotsErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type ListAgentsError = ListAgentsErrors[keyof ListAgentsErrors];
+export type ListBotsError = ListBotsErrors[keyof ListBotsErrors];
 
-export type ListAgentsResponses = {
+export type ListBotsResponses = {
     /**
-     * The agents.
+     * The bots.
      */
     200: {
-        agents: Array<Agent>;
+        bots: Array<Bot>;
     };
 };
 
-export type ListAgentsResponse = ListAgentsResponses[keyof ListAgentsResponses];
+export type ListBotsResponse = ListBotsResponses[keyof ListBotsResponses];
 
-export type CreateAgentData = {
-    body: CreateAgentInput;
+export type CreateBotData = {
+    body: CreateBotInput;
     path?: never;
     query?: never;
-    url: '/api/agents';
+    url: '/api/bots';
 };
 
-export type CreateAgentErrors = {
+export type CreateBotErrors = {
     /**
      * The request failed.
      */
@@ -4474,27 +4474,27 @@ export type CreateAgentErrors = {
     default: Error;
 };
 
-export type CreateAgentError = CreateAgentErrors[keyof CreateAgentErrors];
+export type CreateBotError = CreateBotErrors[keyof CreateBotErrors];
 
-export type CreateAgentResponses = {
+export type CreateBotResponses = {
     /**
-     * The created agent with a UUID v7 ID.
+     * The created bot with a UUID v7 ID.
      */
-    201: Agent;
+    201: Bot;
 };
 
-export type CreateAgentResponse = CreateAgentResponses[keyof CreateAgentResponses];
+export type CreateBotResponse = CreateBotResponses[keyof CreateBotResponses];
 
-export type GetAgentData = {
+export type GetBotData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}';
+    url: '/api/bots/{botId}';
 };
 
-export type GetAgentErrors = {
+export type GetBotErrors = {
     /**
      * The request failed.
      */
@@ -4505,27 +4505,27 @@ export type GetAgentErrors = {
     default: Error;
 };
 
-export type GetAgentError = GetAgentErrors[keyof GetAgentErrors];
+export type GetBotError = GetBotErrors[keyof GetBotErrors];
 
-export type GetAgentResponses = {
+export type GetBotResponses = {
     /**
-     * The agent's settings.
+     * The bot's settings.
      */
-    200: Agent;
+    200: Bot;
 };
 
-export type GetAgentResponse = GetAgentResponses[keyof GetAgentResponses];
+export type GetBotResponse = GetBotResponses[keyof GetBotResponses];
 
-export type UpdateAgentData = {
-    body: AgentInput;
+export type UpdateBotData = {
+    body: BotInput;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}';
+    url: '/api/bots/{botId}';
 };
 
-export type UpdateAgentErrors = {
+export type UpdateBotErrors = {
     /**
      * The request failed.
      */
@@ -4540,54 +4540,54 @@ export type UpdateAgentErrors = {
     default: Error;
 };
 
-export type UpdateAgentError = UpdateAgentErrors[keyof UpdateAgentErrors];
+export type UpdateBotError = UpdateBotErrors[keyof UpdateBotErrors];
 
-export type UpdateAgentResponses = {
+export type UpdateBotResponses = {
     /**
-     * The saved agent.
+     * The saved bot.
      */
-    200: Agent;
+    200: Bot;
 };
 
-export type UpdateAgentResponse = UpdateAgentResponses[keyof UpdateAgentResponses];
+export type UpdateBotResponse = UpdateBotResponses[keyof UpdateBotResponses];
 
-export type ListArchivedAgentsData = {
+export type ListArchivedBotsData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/archived-agents';
+    url: '/api/archived-bots';
 };
 
-export type ListArchivedAgentsErrors = {
+export type ListArchivedBotsErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type ListArchivedAgentsError = ListArchivedAgentsErrors[keyof ListArchivedAgentsErrors];
+export type ListArchivedBotsError = ListArchivedBotsErrors[keyof ListArchivedBotsErrors];
 
-export type ListArchivedAgentsResponses = {
+export type ListArchivedBotsResponses = {
     /**
-     * The archived agents.
+     * The archived bots.
      */
     200: {
-        agents: Array<Agent>;
+        bots: Array<Bot>;
     };
 };
 
-export type ListArchivedAgentsResponse = ListArchivedAgentsResponses[keyof ListArchivedAgentsResponses];
+export type ListArchivedBotsResponse = ListArchivedBotsResponses[keyof ListArchivedBotsResponses];
 
-export type RestoreAgentData = {
+export type RestoreBotData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/archive';
+    url: '/api/bots/{botId}/archive';
 };
 
-export type RestoreAgentErrors = {
+export type RestoreBotErrors = {
     /**
      * The request failed.
      */
@@ -4598,27 +4598,27 @@ export type RestoreAgentErrors = {
     default: Error;
 };
 
-export type RestoreAgentError = RestoreAgentErrors[keyof RestoreAgentErrors];
+export type RestoreBotError = RestoreBotErrors[keyof RestoreBotErrors];
 
-export type RestoreAgentResponses = {
+export type RestoreBotResponses = {
     /**
-     * The restored agent.
+     * The restored bot.
      */
-    200: Agent;
+    200: Bot;
 };
 
-export type RestoreAgentResponse = RestoreAgentResponses[keyof RestoreAgentResponses];
+export type RestoreBotResponse = RestoreBotResponses[keyof RestoreBotResponses];
 
-export type ListAgentRunnersData = {
+export type ListBotRunnersData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/runners';
+    url: '/api/bots/{botId}/runners';
 };
 
-export type ListAgentRunnersErrors = {
+export type ListBotRunnersErrors = {
     /**
      * The request failed.
      */
@@ -4629,27 +4629,27 @@ export type ListAgentRunnersErrors = {
     default: Error;
 };
 
-export type ListAgentRunnersError = ListAgentRunnersErrors[keyof ListAgentRunnersErrors];
+export type ListBotRunnersError = ListBotRunnersErrors[keyof ListBotRunnersErrors];
 
-export type ListAgentRunnersResponses = {
+export type ListBotRunnersResponses = {
     /**
      * The session Runners.
      */
-    200: AgentRunners;
+    200: BotRunners;
 };
 
-export type ListAgentRunnersResponse = ListAgentRunnersResponses[keyof ListAgentRunnersResponses];
+export type ListBotRunnersResponse = ListBotRunnersResponses[keyof ListBotRunnersResponses];
 
-export type ResetAgentRunnerData = {
+export type ResetBotRunnerData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/runner/reset';
+    url: '/api/bots/{botId}/runner/reset';
 };
 
-export type ResetAgentRunnerErrors = {
+export type ResetBotRunnerErrors = {
     /**
      * The request failed.
      */
@@ -4668,24 +4668,24 @@ export type ResetAgentRunnerErrors = {
     default: Error;
 };
 
-export type ResetAgentRunnerError = ResetAgentRunnerErrors[keyof ResetAgentRunnerErrors];
+export type ResetBotRunnerError = ResetBotRunnerErrors[keyof ResetBotRunnerErrors];
 
-export type ResetAgentRunnerResponses = {
+export type ResetBotRunnerResponses = {
     /**
      * Reset completed.
      */
     200: Ok;
 };
 
-export type ResetAgentRunnerResponse = ResetAgentRunnerResponses[keyof ResetAgentRunnerResponses];
+export type ResetBotRunnerResponse = ResetBotRunnerResponses[keyof ResetBotRunnerResponses];
 
 export type GetMainSessionData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/main';
+    url: '/api/bots/{botId}/sessions/main';
 };
 
 export type GetMainSessionErrors = {
@@ -4713,10 +4713,10 @@ export type GetMainSessionResponse = GetMainSessionResponses[keyof GetMainSessio
 export type ListSessionsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions';
+    url: '/api/bots/{botId}/sessions';
 };
 
 export type ListSessionsErrors = {
@@ -4741,16 +4741,16 @@ export type ListSessionsResponses = {
 
 export type ListSessionsResponse = ListSessionsResponses[keyof ListSessionsResponses];
 
-export type CreateAgentSessionData = {
+export type CreateBotSessionData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions';
+    url: '/api/bots/{botId}/sessions';
 };
 
-export type CreateAgentSessionErrors = {
+export type CreateBotSessionErrors = {
     /**
      * The request failed.
      */
@@ -4761,25 +4761,25 @@ export type CreateAgentSessionErrors = {
     default: Error;
 };
 
-export type CreateAgentSessionError = CreateAgentSessionErrors[keyof CreateAgentSessionErrors];
+export type CreateBotSessionError = CreateBotSessionErrors[keyof CreateBotSessionErrors];
 
-export type CreateAgentSessionResponses = {
+export type CreateBotSessionResponses = {
     /**
      * The new or reused session.
      */
     201: Session;
 };
 
-export type CreateAgentSessionResponse = CreateAgentSessionResponses[keyof CreateAgentSessionResponses];
+export type CreateBotSessionResponse = CreateBotSessionResponses[keyof CreateBotSessionResponses];
 
 export type GetSessionData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}';
+    url: '/api/bots/{botId}/sessions/{sessionId}';
 };
 
 export type GetSessionErrors = {
@@ -4807,11 +4807,11 @@ export type GetSessionResponse = GetSessionResponses[keyof GetSessionResponses];
 export type UnarchiveSessionData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/archive';
+    url: '/api/bots/{botId}/sessions/{sessionId}/archive';
 };
 
 export type UnarchiveSessionErrors = {
@@ -4843,11 +4843,11 @@ export type UnarchiveSessionResponse = UnarchiveSessionResponses[keyof Unarchive
 export type ArchiveSessionData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/archive';
+    url: '/api/bots/{botId}/sessions/{sessionId}/archive';
 };
 
 export type ArchiveSessionErrors = {
@@ -4881,9 +4881,9 @@ export type ListDirectoriesData = {
     path?: never;
     query?: {
         path?: string;
-        agentId?: string;
+        botId?: string;
         /**
-         * A Runner ID. Omit to use the default Runner of the agent.
+         * A Runner ID. Omit to use the default Runner of the bot.
          */
         runnerId?: string;
     };
@@ -4925,15 +4925,15 @@ export type ListDirectoriesResponse = ListDirectoriesResponses[keyof ListDirecto
 export type ListRecentProjectsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: {
         /**
-         * A Runner ID. Omit to use the default Runner of the agent.
+         * A Runner ID. Omit to use the default Runner of the bot.
          */
         runnerId?: string;
     };
-    url: '/api/agents/{agentId}/projects';
+    url: '/api/bots/{botId}/projects';
 };
 
 export type ListRecentProjectsErrors = {
@@ -4951,7 +4951,7 @@ export type ListRecentProjectsError = ListRecentProjectsErrors[keyof ListRecentP
 
 export type ListRecentProjectsResponses = {
     /**
-     * Recent project paths for this agent.
+     * Recent project paths for this bot.
      */
     200: {
         projects: Array<string>;
@@ -4965,11 +4965,11 @@ export type SetSessionRunnerData = {
         runnerId: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/runner';
+    url: '/api/bots/{botId}/sessions/{sessionId}/runner';
 };
 
 export type SetSessionRunnerErrors = {
@@ -5011,11 +5011,11 @@ export type SetSessionProjectData = {
         cwd: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/project';
+    url: '/api/bots/{botId}/sessions/{sessionId}/project';
 };
 
 export type SetSessionProjectErrors = {
@@ -5051,11 +5051,11 @@ export type SetSessionProjectResponse = SetSessionProjectResponses[keyof SetSess
 export type SetSessionSettingsData = {
     body: SessionSettings;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/settings';
+    url: '/api/bots/{botId}/sessions/{sessionId}/settings';
 };
 
 export type SetSessionSettingsErrors = {
@@ -5091,11 +5091,11 @@ export type SetSessionSettingsResponse = SetSessionSettingsResponses[keyof SetSe
 export type SendMessageData = {
     body: MessageInput;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/messages';
+    url: '/api/bots/{botId}/sessions/{sessionId}/messages';
 };
 
 export type SendMessageErrors = {
@@ -5135,12 +5135,12 @@ export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponse
 export type WithdrawMessageData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
         messageId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw';
+    url: '/api/bots/{botId}/sessions/{sessionId}/messages/{messageId}/withdraw';
 };
 
 export type WithdrawMessageErrors = {
@@ -5186,11 +5186,11 @@ export type ClearContextData = {
         handoff?: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/clear';
+    url: '/api/bots/{botId}/sessions/{sessionId}/clear';
 };
 
 export type ClearContextErrors = {
@@ -5235,11 +5235,11 @@ export type ContinueSessionData = {
         id: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/continue';
+    url: '/api/bots/{botId}/sessions/{sessionId}/continue';
 };
 
 export type ContinueSessionErrors = {
@@ -5293,11 +5293,11 @@ export type ForkSessionData = {
         runnerId?: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/fork';
+    url: '/api/bots/{botId}/sessions/{sessionId}/fork';
 };
 
 export type ForkSessionErrors = {
@@ -5344,11 +5344,11 @@ export type CompactSessionData = {
         instructions?: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/compact';
+    url: '/api/bots/{botId}/sessions/{sessionId}/compact';
 };
 
 export type CompactSessionErrors = {
@@ -5386,7 +5386,7 @@ export type CompactSessionResponses = {
 export type GetSessionHistoryData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: {
@@ -5394,7 +5394,7 @@ export type GetSessionHistoryData = {
         beforeNotification?: string;
         limit?: number;
     };
-    url: '/api/agents/{agentId}/sessions/{sessionId}/history';
+    url: '/api/bots/{botId}/sessions/{sessionId}/history';
 };
 
 export type GetSessionHistoryErrors = {
@@ -5426,7 +5426,7 @@ export type GetSessionHistoryResponse = GetSessionHistoryResponses[keyof GetSess
 export type GetSessionItemData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
         itemId: string;
     };
@@ -5436,7 +5436,7 @@ export type GetSessionItemData = {
          */
         entry: number;
     };
-    url: '/api/agents/{agentId}/sessions/{sessionId}/items/{itemId}';
+    url: '/api/bots/{botId}/sessions/{sessionId}/items/{itemId}';
 };
 
 export type GetSessionItemErrors = {
@@ -5468,7 +5468,7 @@ export type GetSessionItemResponse = GetSessionItemResponses[keyof GetSessionIte
 export type AbortSessionData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: {
@@ -5477,7 +5477,7 @@ export type AbortSessionData = {
          */
         runTarget?: string;
     };
-    url: '/api/agents/{agentId}/sessions/{sessionId}/abort';
+    url: '/api/bots/{botId}/sessions/{sessionId}/abort';
 };
 
 export type AbortSessionErrors = {
@@ -5517,11 +5517,11 @@ export type AbortSessionResponse = AbortSessionResponses[keyof AbortSessionRespo
 export type ListSessionMonitorsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors';
+    url: '/api/bots/{botId}/sessions/{sessionId}/monitors';
 };
 
 export type ListSessionMonitorsErrors = {
@@ -5549,12 +5549,12 @@ export type ListSessionMonitorsResponse = ListSessionMonitorsResponses[keyof Lis
 export type CancelSessionMonitorData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
         monitorId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId}';
+    url: '/api/bots/{botId}/sessions/{sessionId}/monitors/{monitorId}';
 };
 
 export type CancelSessionMonitorErrors = {
@@ -5586,11 +5586,11 @@ export type CancelSessionMonitorResponse = CancelSessionMonitorResponses[keyof C
 export type ListSessionOutboxData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/outbox';
+    url: '/api/bots/{botId}/sessions/{sessionId}/outbox';
 };
 
 export type ListSessionOutboxErrors = {
@@ -5618,11 +5618,11 @@ export type ListSessionOutboxResponse = ListSessionOutboxResponses[keyof ListSes
 export type WatchSessionData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         sessionId: number;
     };
     query?: never;
-    url: '/api/agents/{agentId}/sessions/{sessionId}/events';
+    url: '/api/bots/{botId}/sessions/{sessionId}/events';
 };
 
 export type WatchSessionErrors = {
@@ -5648,10 +5648,10 @@ export type CreateUploadData = {
         file: Blob | File;
     };
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/uploads';
+    url: '/api/bots/{botId}/uploads';
 };
 
 export type CreateUploadErrors = {
@@ -5687,11 +5687,11 @@ export type CreateUploadResponse = CreateUploadResponses[keyof CreateUploadRespo
 export type GetUploadData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         uploadId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/uploads/{uploadId}';
+    url: '/api/bots/{botId}/uploads/{uploadId}';
 };
 
 export type GetUploadErrors = {
@@ -5719,10 +5719,10 @@ export type GetUploadResponse = GetUploadResponses[keyof GetUploadResponses];
 export type ListArtifactsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/artifacts';
+    url: '/api/bots/{botId}/artifacts';
 };
 
 export type ListArtifactsErrors = {
@@ -5752,11 +5752,11 @@ export type ListArtifactsResponse = ListArtifactsResponses[keyof ListArtifactsRe
 export type DeleteArtifactData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         artifactName: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/artifacts/{artifactName}';
+    url: '/api/bots/{botId}/artifacts/{artifactName}';
 };
 
 export type DeleteArtifactErrors = {
@@ -5784,11 +5784,11 @@ export type DeleteArtifactResponse = DeleteArtifactResponses[keyof DeleteArtifac
 export type GetArtifactData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         artifactName: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/artifacts/{artifactName}';
+    url: '/api/bots/{botId}/artifacts/{artifactName}';
 };
 
 export type GetArtifactErrors = {
@@ -5818,11 +5818,11 @@ export type RenameArtifactData = {
         name: string;
     };
     path: {
-        agentId: string;
+        botId: string;
         artifactName: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/artifacts/{artifactName}';
+    url: '/api/bots/{botId}/artifacts/{artifactName}';
 };
 
 export type RenameArtifactErrors = {
@@ -5854,10 +5854,10 @@ export type RenameArtifactResponse = RenameArtifactResponses[keyof RenameArtifac
 export type GetBotIntegrationsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/integrations';
+    url: '/api/bots/{botId}/integrations';
 };
 
 export type GetBotIntegrationsErrors = {
@@ -5887,11 +5887,11 @@ export type StartMcpOAuthData = {
         scope: IntegrationScope;
     };
     path: {
-        agentId: string;
+        botId: string;
         name: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/integrations/mcp/{name}/oauth';
+    url: '/api/bots/{botId}/integrations/mcp/{name}/oauth';
 };
 
 export type StartMcpOAuthErrors = {
@@ -5917,13 +5917,13 @@ export type StartMcpOAuthResponse = StartMcpOAuthResponses[keyof StartMcpOAuthRe
 export type DeleteVaultData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query: {
         scope: IntegrationScope;
         name: string;
     };
-    url: '/api/agents/{agentId}/vault';
+    url: '/api/bots/{botId}/vault';
 };
 
 export type DeleteVaultErrors = {
@@ -5955,10 +5955,10 @@ export type DeleteVaultResponse = DeleteVaultResponses[keyof DeleteVaultResponse
 export type ListVaultData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/vault';
+    url: '/api/bots/{botId}/vault';
 };
 
 export type ListVaultErrors = {
@@ -5986,10 +5986,10 @@ export type PutVaultData = {
         value: string;
     };
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/vault';
+    url: '/api/bots/{botId}/vault';
 };
 
 export type PutVaultErrors = {
@@ -6021,10 +6021,10 @@ export type PutVaultResponse = PutVaultResponses[keyof PutVaultResponses];
 export type ReloadBotIntegrationsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/integrations/reload';
+    url: '/api/bots/{botId}/integrations/reload';
 };
 
 export type ReloadBotIntegrationsErrors = {
@@ -6060,10 +6060,10 @@ export type ReloadBotIntegrationsResponse = ReloadBotIntegrationsResponses[keyof
 export type ListAutomationsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations';
+    url: '/api/bots/{botId}/automations';
 };
 
 export type ListAutomationsErrors = {
@@ -6091,10 +6091,10 @@ export type ListAutomationsResponse = ListAutomationsResponses[keyof ListAutomat
 export type CreateAutomationData = {
     body: AutomationInput;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations';
+    url: '/api/bots/{botId}/automations';
 };
 
 export type CreateAutomationErrors = {
@@ -6126,10 +6126,10 @@ export type CreateAutomationResponse = CreateAutomationResponses[keyof CreateAut
 export type ListAutomationTargetsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations/targets';
+    url: '/api/bots/{botId}/automations/targets';
 };
 
 export type ListAutomationTargetsResponses = {
@@ -6146,11 +6146,11 @@ export type ListAutomationTargetsResponse = ListAutomationTargetsResponses[keyof
 export type DeleteAutomationData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations/{automationId}';
+    url: '/api/bots/{botId}/automations/{automationId}';
 };
 
 export type DeleteAutomationErrors = {
@@ -6178,11 +6178,11 @@ export type DeleteAutomationResponse = DeleteAutomationResponses[keyof DeleteAut
 export type GetAutomationData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations/{automationId}';
+    url: '/api/bots/{botId}/automations/{automationId}';
 };
 
 export type GetAutomationErrors = {
@@ -6210,11 +6210,11 @@ export type GetAutomationResponse = GetAutomationResponses[keyof GetAutomationRe
 export type UpdateAutomationData = {
     body: AutomationInput;
     path: {
-        agentId: string;
+        botId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations/{automationId}';
+    url: '/api/bots/{botId}/automations/{automationId}';
 };
 
 export type UpdateAutomationErrors = {
@@ -6246,11 +6246,11 @@ export type UpdateAutomationResponse = UpdateAutomationResponses[keyof UpdateAut
 export type RunAutomationData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations/{automationId}/run';
+    url: '/api/bots/{botId}/automations/{automationId}/run';
 };
 
 export type RunAutomationErrors = {
@@ -6278,11 +6278,11 @@ export type RunAutomationResponse = RunAutomationResponses[keyof RunAutomationRe
 export type ListAutomationRunsData = {
     body?: never;
     path: {
-        agentId: string;
+        botId: string;
         automationId: string;
     };
     query?: never;
-    url: '/api/agents/{agentId}/automations/{automationId}/runs';
+    url: '/api/bots/{botId}/automations/{automationId}/runs';
 };
 
 export type ListAutomationRunsErrors = {

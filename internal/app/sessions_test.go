@@ -26,7 +26,7 @@ type sessionInfo struct {
 func (d *dex) newSession(t *testing.T) sessionInfo {
 	t.Helper()
 	var c sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/default/sessions", nil, &c, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/sessions", nil, &c, http.StatusCreated)
 	return c
 }
 
@@ -35,7 +35,7 @@ func sessionFixture(t *testing.T, d *dex, key string, at int64) int64 {
 	t.Helper()
 	q := sqlc.New(sessionDB(t, d))
 	c, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{
-		AgentID: "default", ChannelKey: key, CreatedAt: at,
+		BotID: "default", ChannelKey: key, CreatedAt: at,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestUserCreatesAndReusesEmptySessionSession(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 6 {
 		wg.Go(func() {
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/sessions", nil)
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/bots/default/sessions", nil)
 			if err != nil {
 				t.Error(err)
 				return
@@ -91,7 +91,7 @@ func TestUserCreatesAndReusesEmptySessionSession(t *testing.T) {
 	d.watch(t, first.ID).until(t, "first Session answer", answered("echo: "+text))
 	d.send(t, first.ID, "keep the title")
 	d.watch(t, first.ID).until(t, "second Session answer", answered("echo: keep the title"))
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", first.ID), nil, &first)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", first.ID), nil, &first)
 	if first.Title != strings.Repeat("会", 59)+"…" {
 		t.Fatalf("first-message title changed: %q", first.Title)
 	}
@@ -144,7 +144,7 @@ func TestUserSessionContextAndClearStaySeparateFromMain(t *testing.T) {
 	var page struct {
 		Items []item `json:"items"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991&limit=100", side), nil, &page)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/history?before=9007199254740991&limit=100", side), nil, &page)
 	for _, it := range before {
 		if !slices.ContainsFunc(page.Items, func(got item) bool { return got.ID == it.ID && got.Text == it.Text }) {
 			t.Fatalf("Session history lost %+v: %+v", it, page.Items)
@@ -186,7 +186,7 @@ func TestUserChildResultReturnsToItsSessionSession(t *testing.T) {
 	var page struct {
 		Items []item `json:"items"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991&limit=100", side), nil, &page)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/history?before=9007199254740991&limit=100", side), nil, &page)
 	if !slices.ContainsFunc(page.Items, func(it item) bool {
 		return it.Kind == "session_result" && it.ID == child.ResultID && it.Text == "" && it.Status == "done"
 	}) {
@@ -224,8 +224,8 @@ func TestUserStopAndClearRespectSessionSessionScope(t *testing.T) {
 	d.send(t, side, taskGate(t, dir, "scope-session-turn"))
 	waitTaskFile(t, filepath.Join(dir, "scope-session-turn.pid"))
 	queued := d.send(t, side, "echo must-not-run")
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/clear", side), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", side), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/clear", side), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", side), nil, nil)
 	waitExecution(t, conn, side, "scope-session-task", "cancelled")
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-session-task.pid"))
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-session-turn.pid"))
@@ -251,7 +251,7 @@ func TestUserStopAndClearRespectSessionSessionScope(t *testing.T) {
 	waitTaskFile(t, filepath.Join(dir, "scope-session-next-turn.pid"))
 	mainQueued := d.send(t, main, "echo main-kept")
 	target := d.watch(t, main).activeRunTarget(t)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort?runTarget=%s", main, url.QueryEscape(target)), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort?runTarget=%s", main, url.QueryEscape(target)), nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-main-turn.pid"))
 	waitResultSubmission(t, conn, mainQueued, "done")
 	waitExecution(t, conn, main, "scope-main-task", "running")
@@ -263,7 +263,7 @@ func TestUserStopAndClearRespectSessionSessionScope(t *testing.T) {
 			t.Fatalf("main Stop crossed into %s", gate)
 		}
 	}
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", side), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", side), nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-session-next.pid"))
 	waitTaskPIDGone(t, filepath.Join(dir, "scope-session-next-turn.pid"))
 	t.Logf("artifact: stopped_chat=%d preserved_main=%d withdrawn=%s", side, main, queued)
@@ -294,7 +294,7 @@ func TestUserSessionListShowsOrderedSummariesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the caller lists Sessions, rows follow activity time with a stable ID tie-break.
-	status, raw := d.call(t, http.MethodGet, "/api/agents/default/sessions", nil)
+	status, raw := d.call(t, http.MethodGet, "/api/bots/default/sessions", nil)
 	if status != http.StatusOK || strings.Contains(raw, `"report":`) || strings.Contains(raw, "private report") || strings.Contains(raw, "private transcript") || strings.Contains(raw, `"items":`) {
 		t.Fatalf("session summaries: %d %s", status, raw)
 	}
@@ -357,7 +357,7 @@ func TestUserSeesSessionActivityThroughSettlement(t *testing.T) {
 			var list struct {
 				Sessions []sessionInfo `json:"sessions"`
 			}
-			d.must(t, http.MethodGet, "/api/agents/default/sessions", nil, &list)
+			d.must(t, http.MethodGet, "/api/bots/default/sessions", nil, &list)
 			var ids []int64
 			for _, c := range list.Sessions {
 				ids = append(ids, c.ID)
@@ -372,13 +372,13 @@ func TestUserSeesSessionActivityThroughSettlement(t *testing.T) {
 					want = tc.want
 				}
 				var detail sessionInfo
-				d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", c.ID), nil, &detail)
+				d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", c.ID), nil, &detail)
 				if c.UpdatedAt != want || detail.UpdatedAt != want {
 					t.Errorf("session %d activity: list=%d detail=%d want=%d", c.ID, c.UpdatedAt, detail.UpdatedAt, want)
 				}
 			}
 			// Main uses its own settlement, without inheriting child times.
-			for _, path := range []string{"/api/agents/default/sessions/main", fmt.Sprintf("/api/agents/default/sessions/%d", main)} {
+			for _, path := range []string{"/api/bots/default/sessions/main", fmt.Sprintf("/api/bots/default/sessions/%d", main)} {
 				var c sessionInfo
 				d.must(t, http.MethodGet, path, nil, &c)
 				if c.ID != main || !c.Main || c.UpdatedAt != 60 {

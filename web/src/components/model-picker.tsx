@@ -1,14 +1,14 @@
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { useState, type ReactElement } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  getAgentOptions,
+  getBotOptions,
   getSettingsOptions,
   listModelsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import type { Model, Settings, ThinkingLevel } from "../api/generated/types.gen";
-import { saveModel, thinkingNames } from "../lib/agent";
+import { saveModel, thinkingNames } from "../lib/bot";
 import { useApp } from "../lib/app-state";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Command, CommandInput, CommandList, CommandGroup, CommandItem } from "./ui/command";
@@ -87,7 +87,7 @@ export function ModelPicker({
   side?: "top" | "bottom";
   thinking?: ThinkingOptions;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const { notify } = useApp();
   const [open, setOpen] = useState(false);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -97,7 +97,7 @@ export function ModelPicker({
       override
         ? override.save(model)
         : model
-          ? saveModel(agentId, model.provider, model.id)
+          ? saveModel(botId, model.provider, model.id)
           : Promise.resolve(),
     onSuccess: (_, model) => {
       if (!thinking) setOpen(false);
@@ -163,38 +163,38 @@ function ModelList({
   onPick: (model: Model | null, current: boolean) => void;
   onLeave: () => void;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const settings = useQuery(getSettingsOptions());
-  const agentQuery = useQuery({ ...getAgentOptions({ path: { agentId } }), enabled: !override });
+  const botQuery = useQuery({ ...getBotOptions({ path: { botId } }), enabled: !override });
   const models = useQuery({ ...listModelsOptions(), refetchOnMount: "always" });
   const { draft } = useApp();
   const [query, setQuery] = useState("");
   const [provider, setProvider] = useState("");
-  const agent = override ? undefined : agentQuery.data;
-  const chosen = override ? override.value : agent?.modelId ? agent : null;
+  const bot = override ? undefined : botQuery.data;
+  const chosen = override ? override.value : bot?.modelId ? bot : null;
   const current = chosen ? `${chosen.provider}/${chosen.modelId}` : "";
   const all = models.data?.models ?? [];
-  const dirty = !override && draft !== null && draft !== agent?.instructions;
+  const dirty = !override && draft !== null && draft !== bot?.instructions;
   const busy = pending !== undefined || thinking?.pending === true;
 
-  if (settings.isPending || models.isPending || (!override && agentQuery.isPending))
+  if (settings.isPending || models.isPending || (!override && botQuery.isPending))
     return (
       <div role="status" className="flex items-center gap-2 p-3 text-[12.5px] text-muted-foreground">
         <Spinner /> Loading models…
       </div>
     );
 
-  if (settings.isError || models.isError || (!override && agentQuery.isError))
+  if (settings.isError || models.isError || (!override && botQuery.isError))
     return (
       <div className="p-2">
         <Failure
           title="Could not load the models"
-          error={settings.error ?? models.error ?? (!override ? agentQuery.error : null)}
+          error={settings.error ?? models.error ?? (!override ? botQuery.error : null)}
           retry={() => {
             void settings.refetch();
             void models.refetch();
 
-            if (!override) void agentQuery.refetch();
+            if (!override) void botQuery.refetch();
           }}
         />
       </div>

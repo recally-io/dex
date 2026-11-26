@@ -17,9 +17,9 @@ func testMCPStore(t *testing.T, data string) *MCPStore {
 	return NewMCPStore(conn)
 }
 
-func testSetMCP(t *testing.T, store *MCPStore, agentID, name string, config serverConfig) {
+func testSetMCP(t *testing.T, store *MCPStore, botID, name string, config serverConfig) {
 	t.Helper()
-	if err := store.set(t.Context(), agentID, name, config); err != nil {
+	if err := store.set(t.Context(), botID, name, config); err != nil {
 		t.Fatal(err)
 	}
 }

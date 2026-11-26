@@ -1,4 +1,4 @@
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import type { ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { BotIntegrations, McpServer, Skill } from "../api/generated/types.gen";
@@ -27,7 +27,7 @@ export function SkillsPage() {
 }
 
 export function BotSecretsPage() {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   return (
     <FramedPage title="Secrets" toolbar={<BotSettingsSwitcher segment="secrets" />}>
@@ -37,16 +37,16 @@ export function BotSecretsPage() {
           vault:NAME to share a reference with the bot.
         </Note>
       </div>
-      <Vault key={agentId} target={{ scope: "agent", agentId }} />
+      <Vault key={botId} target={{ scope: "agent", botId }} />
     </FramedPage>
   );
 }
 
 export function IntegrationCatalog({ section }: { section: "skills" | "integrations" }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const query = useQuery({
-    ...getBotIntegrationsOptions({ path: { agentId } }),
+    ...getBotIntegrationsOptions({ path: { botId } }),
     // An invalid configuration does not reload until its files change.
     refetchInterval: (q) => (q.state.data?.reloadPending && !q.state.data.errors.length ? 3000 : false),
   });
@@ -62,7 +62,7 @@ export function IntegrationCatalog({ section }: { section: "skills" | "integrati
       variant="secondary"
       size="sm"
       disabled={reload.isPending}
-      onClick={() => reload.mutate({ path: { agentId } })}
+      onClick={() => reload.mutate({ path: { botId } })}
     >
       {reload.isPending ? "Reloading…" : "Reload"}
     </Button>
@@ -159,8 +159,8 @@ function McpServers({ servers, reloadAction }: { servers: McpServer[]; reloadAct
         ))}
         empty={
           <>
-            Ask the agent to add a server with mcp_server_set. An agent declaration with disabled: true turns
-            off a dex server with the same name.
+            Ask the bot to add a server with mcp_server_set. A bot declaration with disabled: true turns off a
+            dex server with the same name.
           </>
         }
       />
@@ -214,7 +214,7 @@ const STATE: Record<McpServer["state"], { tone: "green" | "red" | "neutral"; lab
 
 function ServerRow({ server: s }: { server: McpServer }) {
   const state = s.oauth === "reauthorize" ? { tone: "red", label: "Authorization required" } : STATE[s.state];
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const authorize = useMutation({
     ...startMcpOAuthMutation(),
@@ -238,7 +238,7 @@ function ServerRow({ server: s }: { server: McpServer }) {
             size="sm"
             variant="outline"
             disabled={authorize.isPending}
-            onClick={() => authorize.mutate({ path: { agentId, name: s.name }, body: { scope: s.scope } })}
+            onClick={() => authorize.mutate({ path: { botId, name: s.name }, body: { scope: s.scope } })}
           >
             {authorize.isPending ? "Starting…" : s.oauth === "authorize" ? "Authorize" : "Reauthorize"}
           </Button>

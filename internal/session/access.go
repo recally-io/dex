@@ -48,7 +48,7 @@ func toolCallerIn(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (s
 }
 
 func toolSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Session, sqlc.Submission, error) {
-	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{BotID: r.BotID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err
 	}
@@ -66,7 +66,7 @@ func liveSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sql
 }
 
 func liveToolSource(ctx context.Context, q *sqlc.Queries, r engine.TaskContext) (sqlc.Session, sqlc.Submission, error) {
-	if err := db.RequireActive(ctx, q, r.AgentID); err != nil {
+	if err := db.RequireActive(ctx, q, r.BotID); err != nil {
 		return sqlc.Session{}, sqlc.Submission{}, err
 	}
 	conv, source, err := toolSource(ctx, q, r)

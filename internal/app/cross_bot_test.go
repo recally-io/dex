@@ -23,14 +23,14 @@ type bots struct {
 	d    *dex
 	dir  string
 	conn *sql.DB
-	b    apiAgent
+	b    apiBot
 }
 
 // botSession is a session of one bot.
 type botSession struct {
-	bots  *bots
-	agent string
-	id    int64
+	bots *bots
+	bot  string
+	id   int64
 }
 
 const crossMarkerCall = `bash {"command":"case $CROSS_MARKER in from-a-*) printf from-a;; from-b-*) printf from-b;; esac","env":{"CROSS_MARKER":"vault:CROSS_MARKER"}}`
@@ -43,8 +43,8 @@ func startBots(t *testing.T) *bots {
 	d := startDex(t, dir, "")
 	saveVault(t, d, "default", "agent", "CROSS_MARKER", "from-a-private")
 	d.setModel(t, "echo")
-	var b apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Coder", "provider": "faux", "modelId": "section", "thinkingLevel": "off", "instructions": "Instruction marker of Coder"}, &b, http.StatusCreated)
+	var b apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Coder", "provider": "faux", "modelId": "section", "thinkingLevel": "off", "instructions": "Instruction marker of Coder"}, &b, http.StatusCreated)
 	saveVault(t, d, b.ID, "agent", "CROSS_MARKER", "from-b-private")
 	if status, body := d.reload(t); status != http.StatusOK {
 		t.Fatalf("reload: %d %s", status, body)
@@ -53,21 +53,21 @@ func startBots(t *testing.T) *bots {
 }
 
 // session opens a session of the bot whose own model is "spawn". The bot keeps its default model.
-func (s *bots) session(agent string) botSession {
+func (s *bots) session(bot string) botSession {
 	s.t.Helper()
 	var c sessionInfo
-	s.d.must(s.t, http.MethodPost, "/api/agents/"+agent+"/sessions", nil, &c, http.StatusCreated)
-	s.d.must(s.t, http.MethodPut, fmt.Sprintf("/api/agents/%s/sessions/%d/settings", agent, c.ID), map[string]string{"provider": "faux", "modelId": "spawn", "thinkingLevel": "off"}, nil)
-	return botSession{bots: s, agent: agent, id: c.ID}
+	s.d.must(s.t, http.MethodPost, "/api/bots/"+bot+"/sessions", nil, &c, http.StatusCreated)
+	s.d.must(s.t, http.MethodPut, fmt.Sprintf("/api/bots/%s/sessions/%d/settings", bot, c.ID), map[string]string{"provider": "faux", "modelId": "spawn", "thinkingLevel": "off"}, nil)
+	return botSession{bots: s, bot: bot, id: c.ID}
 }
 
 // echoSession opens a session of the bot on the model "echo" and waits for its first answer.
-func (s *bots) echoSession(agent, text string) botSession {
+func (s *bots) echoSession(bot, text string) botSession {
 	s.t.Helper()
 	var c sessionInfo
-	s.d.must(s.t, http.MethodPost, "/api/agents/"+agent+"/sessions", nil, &c, http.StatusCreated)
-	s.d.must(s.t, http.MethodPut, fmt.Sprintf("/api/agents/%s/sessions/%d/settings", agent, c.ID), map[string]string{"provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
-	session := botSession{bots: s, agent: agent, id: c.ID}
+	s.d.must(s.t, http.MethodPost, "/api/bots/"+bot+"/sessions", nil, &c, http.StatusCreated)
+	s.d.must(s.t, http.MethodPut, fmt.Sprintf("/api/bots/%s/sessions/%d/settings", bot, c.ID), map[string]string{"provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
+	session := botSession{bots: s, bot: bot, id: c.ID}
 	session.send(text)
 	session.watch().until(s.t, "answer to "+text, answeredWith("echo: "+text))
 	return session
@@ -76,13 +76,13 @@ func (s *bots) echoSession(agent, text string) botSession {
 func (c botSession) send(text string) string {
 	c.bots.t.Helper()
 	id := uuid.NewV7().String()
-	c.bots.d.must(c.bots.t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", c.agent, c.id), map[string]string{"id": id, "text": text}, nil, http.StatusAccepted)
+	c.bots.d.must(c.bots.t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/messages", c.bot, c.id), map[string]string{"id": id, "text": text}, nil, http.StatusAccepted)
 	return id
 }
 
 func (c botSession) watch() *watcher {
 	c.bots.t.Helper()
-	return c.bots.d.watchPath(c.bots.t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", c.agent, c.id))
+	return c.bots.d.watchPath(c.bots.t, fmt.Sprintf("/api/bots/%s/sessions/%d/events", c.bot, c.id))
 }
 
 // call lets the session call one session tool through the model "spawn" and returns the answer.
@@ -126,14 +126,14 @@ func (c botSession) operate(tool string, args map[string]any) childRef {
 }
 
 type sessionRow struct {
-	agent, model, cwd string
-	parent            sql.NullInt64
+	bot, model, cwd string
+	parent          sql.NullInt64
 }
 
 func (s *bots) conversation(id int64) sessionRow {
 	s.t.Helper()
 	var r sessionRow
-	if err := s.conn.QueryRowContext(s.t.Context(), `SELECT agent_id, model_id, cwd, parent_id FROM sessions WHERE id = ?`, id).Scan(&r.agent, &r.model, &r.cwd, &r.parent); err != nil {
+	if err := s.conn.QueryRowContext(s.t.Context(), `SELECT bot_id, model_id, cwd, parent_id FROM sessions WHERE id = ?`, id).Scan(&r.bot, &r.model, &r.cwd, &r.parent); err != nil {
 		s.t.Fatal(err)
 	}
 	return r
@@ -160,7 +160,7 @@ func TestUserBotCreatesChildSessionInAnotherBot(t *testing.T) {
 		t.Fatalf("session_new named another bot: %+v", child)
 	}
 	conv := s.conversation(child.conversation(t))
-	if conv.agent != s.b.ID || conv.parent.Int64 != parent.id || !conv.parent.Valid {
+	if conv.bot != s.b.ID || conv.parent.Int64 != parent.id || !conv.parent.Valid {
 		t.Fatalf("child conversation: %+v", conv)
 	}
 	// And the child ran with the vault value of B, and the result reached the conversation of A once.
@@ -178,7 +178,7 @@ func TestUserBotCreatesChildSessionInAnotherBot(t *testing.T) {
 	if got, _ := resultBody(t, rows[1].content)["answer"].(string); !strings.Contains(got, "Instruction marker of Coder") {
 		t.Fatalf("child instructions: %v", got)
 	}
-	if conv = s.conversation(second.conversation(t)); conv.agent != s.b.ID || conv.model != "section" || conv.cwd != "" {
+	if conv = s.conversation(second.conversation(t)); conv.bot != s.b.ID || conv.model != "section" || conv.cwd != "" {
 		t.Fatalf("child defaults: %+v", conv)
 	}
 	// And a child with no bot stays in A, with the settings of its parent.
@@ -236,7 +236,7 @@ func TestUserParentOperatesItsChildInAnotherBot(t *testing.T) {
 	waitResults(t, s.conn, parent.id, 3)
 	// And a fork of the child belongs to B and to the same parent.
 	fork := parent.operate("session_fork", map[string]any{"id": child.ID, "message": "echo forked"})
-	if conv := s.conversation(fork.conversation(t)); conv.agent != s.b.ID || conv.parent.Int64 != parent.id || fork.Bot != "Coder" {
+	if conv := s.conversation(fork.conversation(t)); conv.bot != s.b.ID || conv.parent.Int64 != parent.id || fork.Bot != "Coder" {
 		t.Fatalf("fork: %+v %+v", fork, conv)
 	}
 	rows = waitResults(t, s.conn, parent.id, 4)
@@ -264,7 +264,7 @@ func TestUserOnlyTheParentOperatesAChildInAnotherBot(t *testing.T) {
 			{"session_fork", map[string]any{"id": child.ID, "message": "intrude"}},
 		} {
 			if got := caller.call(call.tool, call.args); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "not found") {
-				t.Fatalf("%s from a session of %s: %s", call.tool, caller.agent, got)
+				t.Fatalf("%s from a session of %s: %s", call.tool, caller.bot, got)
 			}
 		}
 	}
@@ -319,7 +319,7 @@ func TestUserParentsStopChildrenInEachOthersBotsWithoutDeadlock(t *testing.T) {
 	for i, parent := range parents {
 		wg.Go(func() {
 			// Goroutines must not call t.Fatal: the status is checked after Wait.
-			statuses[i], _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/abort", parent.agent, parent.id), nil)
+			statuses[i], _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/abort", parent.bot, parent.id), nil)
 		})
 	}
 	wg.Wait()
@@ -342,23 +342,23 @@ func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 	t.Parallel()
 	// Given Main started a gated child in each bot and now has a gated turn of its own.
 	s := startBots(t)
-	main := botSession{bots: s, agent: "default", id: s.d.mainSession(t)}
-	path := fmt.Sprintf("/api/agents/default/sessions/%d", main.id)
+	main := botSession{bots: s, bot: "default", id: s.d.mainSession(t)}
+	path := fmt.Sprintf("/api/bots/default/sessions/%d", main.id)
 	setModel := func(model string) {
 		s.d.must(t, http.MethodPut, path+"/settings", map[string]string{"provider": "faux", "modelId": model, "thinkingLevel": "off"}, nil)
 	}
 	setModel("spawn")
 	children := []struct {
-		bot, agent, gate string
-		id               int64
+		botName, bot, gate string
+		id                 int64
 	}{
-		{agent: "default", gate: "main-local-child"},
-		{bot: "Coder", agent: s.b.ID, gate: "main-cross-child"},
+		{bot: "default", gate: "main-local-child"},
+		{botName: "Coder", bot: s.b.ID, gate: "main-cross-child"},
 	}
 	for i, child := range children {
 		args := map[string]any{"title": child.gate, "message": taskGate(t, s.dir, child.gate), "provider": "faux", "modelId": "bash"}
-		if child.bot != "" {
-			args["bot"] = child.bot
+		if child.botName != "" {
+			args["bot"] = child.botName
 		}
 		children[i].id = main.newChild(args).conversation(t)
 		waitTaskFile(t, filepath.Join(s.dir, child.gate+".pid"))
@@ -376,7 +376,7 @@ func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 		s.d.must(t, http.MethodPost, path+"/abort?runTarget="+url.QueryEscape(target), nil, nil, status)
 	}
 	for _, child := range children {
-		target := (botSession{bots: s, agent: child.agent, id: child.id}).watch().activeRunTarget(t)
+		target := (botSession{bots: s, bot: child.bot, id: child.id}).watch().activeRunTarget(t)
 		abort(path, target, http.StatusConflict)
 		if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
 			t.Fatalf("foreign target stopped %s", child.gate)
@@ -384,7 +384,7 @@ func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 	}
 	w := main.watch()
 	first := w.activeRunTarget(t)
-	abort(fmt.Sprintf("/api/agents/%s/sessions/%d", s.b.ID, main.id), first, http.StatusNotFound)
+	abort(fmt.Sprintf("/api/bots/%s/sessions/%d", s.b.ID, main.id), first, http.StatusNotFound)
 	abort(path, first, http.StatusOK)
 	waitTaskPIDGone(t, mainPID)
 
@@ -406,7 +406,7 @@ func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 	}
 	// A supplied but empty target must not turn into session cancellation.
 	child := children[0]
-	childPath := fmt.Sprintf("/api/agents/%s/sessions/%d", child.agent, child.id)
+	childPath := fmt.Sprintf("/api/bots/%s/sessions/%d", child.bot, child.id)
 	abort(childPath, "", http.StatusConflict)
 	if taskPIDGone(t, filepath.Join(s.dir, child.gate+".pid")) {
 		t.Fatal("empty target stopped the child")
@@ -416,7 +416,7 @@ func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 	waitTaskPIDGone(t, filepath.Join(s.dir, child.gate+".pid"))
 	child = children[1]
 	releaseResultGate(t, s.dir, child.gate)
-	(botSession{bots: s, agent: child.agent, id: child.id}).watch().until(t, "cross-bot child answer", answeredWith("bash: gate released"))
+	(botSession{bots: s, bot: child.bot, id: child.id}).watch().until(t, "cross-bot child answer", answeredWith("bash: gate released"))
 }
 
 // crossBotSession is a session in the list of the web API. The bot fields are set only when the session
@@ -424,19 +424,19 @@ func TestUserMainStopPreservesNextTurnAndChildren(t *testing.T) {
 type crossBotSession struct {
 	ID                int64  `json:"id"`
 	ParentID          *int64 `json:"parentId"`
-	AgentID           string `json:"agentId"`
-	AgentName         string `json:"agentName"`
-	ParentAgentID     string `json:"parentAgentId"`
-	ParentAgentName   string `json:"parentAgentName"`
+	BotID             string `json:"botId"`
+	BotName           string `json:"botName"`
+	ParentBotID       string `json:"parentBotId"`
+	ParentBotName     string `json:"parentBotName"`
 	StoppedWithParent *bool  `json:"stoppedWithParent"`
 }
 
-func (s *bots) webList(agent string) map[int64]crossBotSession {
+func (s *bots) webList(bot string) map[int64]crossBotSession {
 	s.t.Helper()
 	var list struct {
 		Sessions []crossBotSession `json:"sessions"`
 	}
-	s.d.must(s.t, http.MethodGet, "/api/agents/"+agent+"/sessions", nil, &list)
+	s.d.must(s.t, http.MethodGet, "/api/bots/"+bot+"/sessions", nil, &list)
 	out := map[int64]crossBotSession{}
 	for _, c := range list.Sessions {
 		out[c.ID] = c
@@ -457,7 +457,7 @@ func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing
 		child := parent.newChild(map[string]any{"bot": targets[i], "title": name, "message": taskGate(t, s.dir, name), "provider": "faux", "modelId": "bash"})
 		children[i] = child.conversation(t)
 		waitTaskFile(t, filepath.Join(s.dir, name+".pid"))
-		botSession{bots: s, agent: targets[i], id: children[i]}.send("echo user queued")
+		botSession{bots: s, bot: targets[i], id: children[i]}.send("echo user queued")
 		parent.operate("session_send", map[string]any{"id": child.ID, "message": "echo parent queued"})
 	}
 	// When both parents are stopped at once, while the user writes to both children,
@@ -466,10 +466,10 @@ func TestUserParentsWithdrawMixedInputInEachOthersBotsWithoutDeadlock(t *testing
 	for i, parent := range parents {
 		wg.Go(func() {
 			// Goroutines must not call t.Fatal: the status is checked after Wait.
-			statuses[i], _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/abort", parent.agent, parent.id), nil)
+			statuses[i], _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/abort", parent.bot, parent.id), nil)
 		})
 		wg.Go(func() {
-			_, _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", targets[i], children[i]), map[string]string{"id": uuid.NewV7().String(), "text": "echo user later"})
+			_, _ = s.d.call(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/messages", targets[i], children[i]), map[string]string{"id": uuid.NewV7().String(), "text": "echo user later"})
 		})
 	}
 	wg.Wait()
@@ -502,10 +502,10 @@ func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	childA, childB := inA.conversation(t), inB.conversation(t)
 	// When the web lists the sessions of A, the child in B shows with its bot, and the child in A does not.
 	listA := s.webList("default")
-	if got := listA[childB]; got.AgentID != s.b.ID || got.AgentName != "Coder" || got.ParentID == nil || *got.ParentID != parent.id || got.ParentAgentID != "" {
+	if got := listA[childB]; got.BotID != s.b.ID || got.BotName != "Coder" || got.ParentID == nil || *got.ParentID != parent.id || got.ParentBotID != "" {
 		t.Fatalf("child in B, list of A: %+v", got)
 	}
-	if got, ok := listA[childA]; !ok || got.AgentID != "" || got.ParentAgentID != "" {
+	if got, ok := listA[childA]; !ok || got.BotID != "" || got.ParentBotID != "" {
 		t.Fatalf("child in A, list of A: %+v", got)
 	}
 	// And the session of B that has no parent in A stays out of the list of A.
@@ -514,7 +514,7 @@ func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	}
 	// And the list of B shows the child in B with the bot of its parent.
 	listB := s.webList(s.b.ID)
-	if got := listB[childB]; got.AgentID != "" || got.ParentAgentID != "default" || got.ParentAgentName != "Dex" {
+	if got := listB[childB]; got.BotID != "" || got.ParentBotID != "default" || got.ParentBotName != "Dex" {
 		t.Fatalf("child in B, list of B: %+v", got)
 	}
 	if _, ok := listB[childA]; ok {
@@ -522,8 +522,8 @@ func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	}
 	// And a single session read in B names the bot of its parent.
 	var one crossBotSession
-	s.d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/sessions/%d", s.b.ID, childB), nil, &one)
-	if one.ParentAgentID != "default" || one.ParentAgentName != "Dex" {
+	s.d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/%s/sessions/%d", s.b.ID, childB), nil, &one)
+	if one.ParentBotID != "default" || one.ParentBotName != "Dex" {
 		t.Fatalf("child in B, session of B: %+v", one)
 	}
 	// And the result in A names the child Session in B that the session list resolves.
@@ -610,8 +610,8 @@ func TestUserSessionSearchCoversOneBotOrAllBots(t *testing.T) {
 	if got := searcher.call("session_search", map[string]any{"query": "zebra", "session": "all", "bot": "Nobody"}); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "no bot has") {
 		t.Fatalf("unknown bot: %s", got)
 	}
-	var twin apiAgent
-	s.d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Coder", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &twin, http.StatusCreated)
+	var twin apiBot
+	s.d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Coder", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &twin, http.StatusCreated)
 	if got := searcher.call("session_search", map[string]any{"query": "zebra", "session": "all", "bot": "Coder"}); !strings.Contains(got, "2 bots have the name") || !strings.Contains(got, twin.ID) || !strings.Contains(got, s.b.ID) {
 		t.Fatalf("ambiguous bot: %s", got)
 	}
@@ -685,7 +685,7 @@ func TestUserChildLinksFilesInItsOwnBot(t *testing.T) {
 		t.Fatalf("child file=%q", body)
 	}
 	url := artifactPath(s.b.ID, "report.markdown")
-	s.d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%s/events", s.b.ID, child.ID)).until(t, "child returns actual bot URL", answeredWith(url))
+	s.d.watchPath(t, fmt.Sprintf("/api/bots/%s/sessions/%s/events", s.b.ID, child.ID)).until(t, "child returns actual bot URL", answeredWith(url))
 	s.d.must(t, http.MethodGet, artifactPath("default", "report.markdown"), nil, nil, http.StatusNotFound)
 }
 
@@ -705,8 +705,8 @@ func TestUserChildUsesTargetBotRuntimeContext(t *testing.T) {
 	parent := s.session("default")
 	project := t.TempDir()
 	writeSkill(t, filepath.Join(project, ".agents", "skills"), "parent-project-only", "description: Parent project marker")
-	s.d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/project", parent.id), map[string]string{"cwd": project}, nil)
-	s.d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/settings", parent.id), map[string]string{"provider": "faux", "modelId": "spawn", "thinkingLevel": "high"}, nil)
+	s.d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/project", parent.id), map[string]string{"cwd": project}, nil)
+	s.d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/settings", parent.id), map[string]string{"provider": "faux", "modelId": "spawn", "thinkingLevel": "high"}, nil)
 	run := func(model, message string) string {
 		t.Helper()
 		n := len(resultRows(t, s.conn, parent.id))

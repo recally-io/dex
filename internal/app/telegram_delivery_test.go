@@ -48,7 +48,7 @@ func TestUserReceivesNativeTelegramFile(t *testing.T) {
 	d := startTelegram(t, f, data, 42)
 	d.setModel(t, "tool")
 	telegramSource(t, data, "report.csv", []byte("name,count\ndex,2\n"))
-	// When the agent explicitly delivers the file for this Telegram input.
+	// When the bot explicitly delivers the file for this Telegram input.
 	f.message(1, 42, 7, `deliver_file {"path":"report.csv"}`)
 	// Then Telegram receives the bytes as a document, and Artifacts keeps its disk entry.
 	media := nextTelegramMedia(t, f.mediaSent)

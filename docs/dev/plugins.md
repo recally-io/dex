@@ -110,6 +110,10 @@ file in a transaction, so a failed file leaves no table and no version. Turning
 a plugin off keeps its tables and rows. When it is on again, dex applies only
 the new versions. dex has no uninstall step.
 
+To roll back the Bot rename, roll back plugin version 2 for each migrated
+plugin before you roll back the core rename. SQLite changes the foreign-key
+target back to `agents` when the core table changes its name.
+
 ## Add a plugin
 
 1. Add `plugins/<name>` with `New(plugin.Deps) plugin.Plugin`.
@@ -157,7 +161,7 @@ checks, so Dex does not record those suites.
 The controller accepts signed deliveries at `POST /hooks/github/{repositoryId}`.
 An administrator saves or rotates a write-only secret with
 `PUT /api/plugins/github/webhooks/{repositoryId}` and disables the hook with
-`DELETE` on the same path. Set `issueAgentId` to an active bot on the same PUT
+`DELETE` on the same path. Set `issueBotId` to an active bot on the same PUT
 to create Tasks for signed `issues.opened` deliveries. Omit it to disable Task
 creation. Set `holdUnmatched` to hold Webhook and Pull events that match no
 Task. The poller reads this flag from the Webhook configuration of the
@@ -180,7 +184,7 @@ A failed pull leaves the checkpoint unchanged. A retry does not duplicate
 previously committed reviews.
 
 The owner can bind a PR to a Task with
-`PUT /api/plugins/github/agents/{agentId}/tasks/{taskId}/pull`. Dex stores the
+`PUT /api/plugins/github/bots/{botId}/tasks/{taskId}/pull`. Dex stores the
 PR link and optional review wait in one transaction. Reviews on the linked
 PR go to the Task timeline. Only a review of the specified revision, submitted
 after the wait boundary, resolves that wait. Binding does not start a run.
@@ -199,7 +203,7 @@ body has `type`, `objects` (1 to 16 typed references), and `occurredAt` (RFC
 3339). Optional fields are `changeKey`, `revision`, `title`, `content`, and an
 HTTPS `sourceUrl`. The namespace is `webhook/<sourceId>`. Dex sets it on the
 server, so a source cannot reach the objects of GitHub or another source. The
-author class is `SOURCE`. Set `taskAgentId` to create a Task for an unmatched
+author class is `SOURCE`. Set `taskBotId` to create a Task for an unmatched
 event with exactly one object, with `title` as the Task title. Set
 `holdUnmatched` to hold other unmatched events. The hook accepts a body of at
 most 2 MiB. The source uses the same event store, routing, holds, and Task
@@ -224,7 +228,7 @@ part. Dex decodes quoted-printable and base64, and drops HTML parts, files, and
 bytes that are not UTF-8. The From header stays in the text only, because
 anyone can forge it.
 
-Set `taskAgentId` to create a Task for a new thread, which has one object. A
+Set `taskBotId` to create a Task for a new thread, which has one object. A
 reply finds the Task of a linked reference. A message whose references link to
 different Tasks is a conflict. A reply to a thread that Dex never saw has more
 than one object, so Dex holds it with `holdUnmatched` or ignores it. A message

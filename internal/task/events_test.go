@@ -15,7 +15,7 @@ func TestUserSeesOneSourceChangeAndItsWaitAfterRestart(t *testing.T) {
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	s, conn, woken := openEventStore(t, path)
-	if _, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+	if _, err := s.q.CreateBot(ctx, sqlc.CreateBotParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	task, err := s.CreateTask(ctx, Owner, OriginUser, CreateTaskParams{AssigneeBotID: "default", Title: "Review the change"})
@@ -96,7 +96,7 @@ func TestUserSeesOneSourceChangeAndItsWaitAfterRestart(t *testing.T) {
 func TestUserGetsNoAlertWithoutAnAlertRule(t *testing.T) {
 	ctx := t.Context()
 	s, conn, woken := openEventStore(t, filepath.Join(t.TempDir(), "control.sqlite"))
-	if _, err := s.q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+	if _, err := s.q.CreateBot(ctx, sqlc.CreateBotParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	const namespace = "test/account"

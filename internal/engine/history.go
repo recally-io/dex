@@ -10,15 +10,15 @@ import (
 )
 
 // History reads durable entries. A page extends through the oldest result's assistant call.
-func (a *Agents) History(ctx context.Context, ref Ref, before int64, limit int) (History, error) {
+func (a *Bots) History(ctx context.Context, ref Ref, before int64, limit int) (History, error) {
 	out := History{Items: []Item{}}
 	if before <= 0 || limit <= 0 {
 		return out, fmt.Errorf("%w: history requires positive before and limit", ErrInvalidInput)
 	}
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return out, err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return out, err
@@ -71,14 +71,14 @@ func answer(e durable.EntryRecord) bool {
 
 // Detail returns one committed item with its full tool output or thought, for an item that brief
 // cut. entryID is the entry of the item: for a tool, the entry of its call.
-func (a *Agents) Detail(ctx context.Context, ref Ref, entryID int64, itemID string) (Item, error) {
+func (a *Bots) Detail(ctx context.Context, ref Ref, entryID int64, itemID string) (Item, error) {
 	if entryID <= 0 || itemID == "" {
 		return Item{}, fmt.Errorf("%w: detail requires an entry and an item", ErrInvalidInput)
 	}
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return Item{}, err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return Item{}, err

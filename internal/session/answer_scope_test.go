@@ -9,27 +9,27 @@ import (
 
 func TestUserAnswerDedupIsScopedToChild(t *testing.T) {
 	r := startNative(t, "echo")
-	if err := r.q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "other", Name: "Other"}); err != nil {
+	if err := r.q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "other", Name: "Other"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "other", Name: "Other", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
+	if err := r.q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "other", Name: "Other", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	var answers []int64
-	for _, agent := range []string{"bot", "other"} {
-		parent, err := r.service.Main(t.Context(), agent)
+	for _, bot := range []string{"bot", "other"} {
+		parent, err := r.service.Main(t.Context(), bot)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ref, err := r.service.execution(t.Context(), parent.ID, agent, engine.Options{Model: engine.ModelRef{Provider: "faux", ModelID: "echo"}, ThinkingLevel: "off"})
+		ref, err := r.service.execution(t.Context(), parent.ID, bot, engine.Options{Model: engine.ModelRef{Provider: "faux", ModelID: "echo"}, ThinkingLevel: "off"})
 		if err != nil {
 			t.Fatal(err)
 		}
-		source := agent + "-source"
+		source := bot + "-source"
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: source, SessionID: parent.ID, Content: "delegate", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 			t.Fatal(err)
 		}
-		call := engine.TaskContext{AgentID: agent, ConversationID: ref.ID, SourceRequestID: source, Key: agent + "/scope"}
+		call := engine.TaskContext{BotID: bot, ConversationID: ref.ID, SourceRequestID: source, Key: bot + "/scope"}
 		if _, err := r.service.ToolSessionNew(t.Context(), call, NewArgs{Title: "Child", Message: "same"}); err != nil {
 			t.Fatal(err)
 		}
@@ -43,7 +43,7 @@ func TestUserAnswerDedupIsScopedToChild(t *testing.T) {
 			t.Fatal(err)
 		}
 		if count != 1 {
-			t.Fatalf("agent %s did not receive its child result", agent)
+			t.Fatalf("bot %s did not receive its child result", bot)
 		}
 		result := receipt(t, r, "result:"+turn)
 		if !result.NativeAnswerID.Valid || !result.ResultChildID.Valid {

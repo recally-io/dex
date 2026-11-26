@@ -41,9 +41,9 @@ func RoutineRemovedRunner(id string) string {
 
 // AutomationInput binds one run record to its durable message intent.
 type AutomationInput struct {
-	Expected                                 *sqlc.Automation
-	Run                                      sqlc.CreateAutomationRunParams
-	AgentID, ChannelKey, Title, Content, Cwd string
+	Expected                               *sqlc.Automation
+	Run                                    sqlc.CreateAutomationRunParams
+	BotID, ChannelKey, Title, Content, Cwd string
 	// RunnerID is the Runner of the Automation: empty follows the bot.
 	RunnerID string
 	// Target is the effective Runner that the preflight checked, and Skip is its reason to
@@ -52,19 +52,19 @@ type AutomationInput struct {
 }
 
 // AutomationTargetEligible applies the same rule to saves, admission, and the session picker.
-func AutomationTargetEligible(conv sqlc.Session, agentID string) bool {
-	return conv.AgentID == agentID && !conv.ArchivedAt.Valid && acceptsInput(conv.ChannelKey, conv.ParentID)
+func AutomationTargetEligible(conv sqlc.Session, botID string) bool {
+	return conv.BotID == botID && !conv.ArchivedAt.Valid && acceptsInput(conv.ChannelKey, conv.ParentID)
 }
 
 // ErrAutomationTarget identifies a binding that cannot accept an Automation input.
 var ErrAutomationTarget = errors.New(routineSkipTargetSession)
 
-func AutomationTarget(ctx context.Context, q *sqlc.Queries, agentID string, id sql.NullInt64) (sqlc.Session, error) {
+func AutomationTarget(ctx context.Context, q *sqlc.Queries, botID string, id sql.NullInt64) (sqlc.Session, error) {
 	if !id.Valid {
 		return sqlc.Session{}, ErrAutomationTarget
 	}
 	conv, err := q.GetSession(ctx, id.Int64)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && !AutomationTargetEligible(conv, agentID)) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !AutomationTargetEligible(conv, botID)) {
 		return sqlc.Session{}, ErrAutomationTarget
 	}
 	return conv, err
@@ -123,7 +123,7 @@ func bindAutomationRunner(ctx context.Context, q *sqlc.Queries, conv sqlc.Sessio
 		if conv.RunnerID == in.RunnerID {
 			return conv, nil
 		}
-		n, err := q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{RunnerID: in.RunnerID, ID: conv.ID, AgentID: in.AgentID})
+		n, err := q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{RunnerID: in.RunnerID, ID: conv.ID, BotID: in.BotID})
 		if err != nil || n == 1 {
 			return conv, err
 		}
@@ -131,11 +131,11 @@ func bindAutomationRunner(ctx context.Context, q *sqlc.Queries, conv sqlc.Sessio
 	if err := q.RetireAutomationSession(ctx, sqlc.RetireAutomationSessionParams{ChannelKey: in.ChannelKey + ":" + in.Run.ID, ID: conv.ID}); err != nil {
 		return conv, err
 	}
-	conv, err = q.EnsureSession(ctx, sqlc.EnsureSessionParams{AgentID: in.AgentID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
+	conv, err = q.EnsureSession(ctx, sqlc.EnsureSessionParams{BotID: in.BotID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
 	if err != nil {
 		return conv, err
 	}
-	n, err := q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{RunnerID: in.RunnerID, ID: conv.ID, AgentID: in.AgentID})
+	n, err := q.SetSessionRunner(ctx, sqlc.SetSessionRunnerParams{RunnerID: in.RunnerID, ID: conv.ID, BotID: in.BotID})
 	if err == nil && n != 1 {
 		err = fmt.Errorf("could not set Runner %q for Automation session %d", in.RunnerID, conv.ID)
 	}
@@ -150,13 +150,13 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 	if err := q.LockAutomationTools(ctx); err != nil {
 		return AutomationInputResult{}, err
 	}
-	if err := db.RequireActive(ctx, q, in.AgentID); err != nil {
+	if err := db.RequireActive(ctx, q, in.BotID); err != nil {
 		return AutomationInputResult{}, err
 	}
 	var current sqlc.Automation
 	if in.Expected != nil {
 		var err error
-		current, err = q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: in.Expected.ID, AgentID: in.Expected.AgentID})
+		current, err = q.GetAutomation(ctx, sqlc.GetAutomationParams{ID: in.Expected.ID, BotID: in.Expected.BotID})
 		expected := *in.Expected
 		if current.Session == "session" && !current.TargetSessionID.Valid {
 			// ON DELETE SET NULL invalidates the binding, not the scheduled snapshot.
@@ -170,7 +170,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		}
 	}
 	// Resolve the target and its settings under the writer, without changing the conversation.
-	bot, err := q.GetAgent(ctx, in.AgentID)
+	bot, err := q.GetBot(ctx, in.BotID)
 	if err != nil {
 		return AutomationInputResult{}, err
 	}
@@ -178,7 +178,7 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 	var conv sqlc.Session
 	ranIn, cwd := effectiveRunner(bot, in.RunnerID), in.Cwd
 	if bound && in.Skip != RoutineSkipMissed {
-		conv, err = AutomationTarget(ctx, q, in.AgentID, current.TargetSessionID)
+		conv, err = AutomationTarget(ctx, q, in.BotID, current.TargetSessionID)
 		switch {
 		case errors.Is(err, ErrAutomationTarget):
 			in.Skip, in.Target = routineSkipTargetSession, ""
@@ -217,14 +217,14 @@ func StoreAutomationInput(ctx context.Context, q *sqlc.Queries, in AutomationInp
 		return AutomationInputResult{}, err
 	}
 	if !bound {
-		conv, err = q.EnsureSession(ctx, sqlc.EnsureSessionParams{AgentID: in.AgentID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
+		conv, err = q.EnsureSession(ctx, sqlc.EnsureSessionParams{BotID: in.BotID, ChannelKey: in.ChannelKey, Title: in.Title, CreatedAt: in.Run.CreatedAt})
 		if err != nil {
 			return AutomationInputResult{}, err
 		}
 		if conv, err = bindAutomationRunner(ctx, q, conv, in, ranIn); err != nil {
 			return AutomationInputResult{}, err
 		}
-		if err = q.SetSessionCwd(ctx, sqlc.SetSessionCwdParams{ID: conv.ID, AgentID: in.AgentID, Cwd: in.Cwd}); err != nil {
+		if err = q.SetSessionCwd(ctx, sqlc.SetSessionCwdParams{ID: conv.ID, BotID: in.BotID, Cwd: in.Cwd}); err != nil {
 			return AutomationInputResult{}, err
 		}
 	}

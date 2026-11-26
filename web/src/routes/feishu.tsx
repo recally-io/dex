@@ -1,4 +1,4 @@
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,9 +17,9 @@ import { Confirm } from "../components/confirm";
 import type { FeishuSetup } from "../api/generated/types.gen";
 
 export function FeishuChannel() {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const client = useQueryClient();
-  const saved = useQuery({ ...getFeishuOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const saved = useQuery({ ...getFeishuOptions({ path: { botId } }), refetchInterval: 3000 });
   const [selectedBrand, setBrand] = useState<string | null>(null);
   const brand = selectedBrand ?? saved.data?.brand ?? "feishu";
   const [editedAppId, setAppId] = useState<string | null>(null);
@@ -32,10 +32,10 @@ export function FeishuChannel() {
   const [expires, setExpires] = useState(0);
 
   const refresh = () =>
-    client.invalidateQueries({ queryKey: getFeishuOptions({ path: { agentId } }).queryKey });
+    client.invalidateQueries({ queryKey: getFeishuOptions({ path: { botId } }).queryKey });
 
   const begin = useMutation({
-    ...beginFeishuMutation({ path: { agentId } }),
+    ...beginFeishuMutation({ path: { botId } }),
     onSuccess: (data) => {
       setQrError("");
       setSetup(data);
@@ -44,7 +44,7 @@ export function FeishuChannel() {
   });
 
   const poll = useMutation({
-    ...pollFeishuMutation({ path: { agentId } }),
+    ...pollFeishuMutation({ path: { botId } }),
     onSuccess: (data) => {
       if (data.status === "created") {
         setSetup(null);
@@ -54,7 +54,7 @@ export function FeishuChannel() {
   });
 
   const save = useMutation({
-    ...setFeishuMutation({ path: { agentId } }),
+    ...setFeishuMutation({ path: { botId } }),
     onSuccess: (data) => {
       setAppSecret("");
       setAppId(null);
@@ -66,7 +66,7 @@ export function FeishuChannel() {
   });
 
   const remove = useMutation({
-    ...deleteFeishuMutation({ path: { agentId } }),
+    ...deleteFeishuMutation({ path: { botId } }),
     onSuccess: () => {
       setOff(false);
       setSetup(null);
@@ -99,13 +99,13 @@ export function FeishuChannel() {
         if (Date.now() >= expires) {
           setSetup(null);
           setQrError("The QR code expired. Create a new QR code.");
-        } else pollApp({ path: { agentId }, body: { session } });
+        } else pollApp({ path: { botId }, body: { session } });
       },
       Math.max(1, interval) * 1000,
     );
 
     return () => window.clearTimeout(timer);
-  }, [agentId, session, interval, pending, pollFailed, pollApp, expires]);
+  }, [botId, session, interval, pending, pollFailed, pollApp, expires]);
   const busy = begin.isPending || save.isPending || remove.isPending;
 
   const connected = !!saved.data?.enabled;
@@ -133,7 +133,7 @@ export function FeishuChannel() {
           disabled={busy || !!session}
           onClick={() => {
             poll.reset();
-            begin.mutate({ path: { agentId }, body: { brand } });
+            begin.mutate({ path: { botId }, body: { brand } });
           }}
         >
           Create QR code
@@ -175,7 +175,7 @@ export function FeishuChannel() {
           onSubmit={(e) => {
             e.preventDefault();
             setSetup(null);
-            save.mutate({ path: { agentId }, body: { appId, appSecret, brand, reactions } });
+            save.mutate({ path: { botId }, body: { appId, appSecret, brand, reactions } });
           }}
         >
           <Field label="App ID">
@@ -284,7 +284,7 @@ export function FeishuChannel() {
           description="dex stops the bot and forgets its credentials. Past chats stay."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
-          onConfirm={() => remove.mutate({ path: { agentId } })}
+          onConfirm={() => remove.mutate({ path: { botId } })}
           pending={remove.isPending}
           error={remove.isError ? remove.error : undefined}
         />

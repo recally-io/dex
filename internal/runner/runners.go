@@ -22,7 +22,7 @@ var ErrRunnerCredential = errors.New("the machine certificate is not valid")
 var ErrRunnerConflict = errors.New("this environment already has a machine; revoke it before connecting another machine")
 
 // runnerGrace is how long a call waits for its machine to connect again before it fails.
-// The machine agent dials again one second after a lost session.
+// The machine bot dials again one second after a lost session.
 const runnerGrace = 10 * time.Second
 
 // Runners owns the enrollment and the live sessions of remote machines. The HTTP routes

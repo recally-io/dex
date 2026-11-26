@@ -33,7 +33,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 				}),
 				ai.FauxAssistantMessage(ai.FauxContentString("one batch answer"), ai.FauxAssistantMessageOptions{}),
 			})
-			r.agents.Catalog.Models.SetProvider(provider.Provider())
+			r.bots.Catalog.Models.SetProvider(provider.Provider())
 			child, err := r.service.ToolSessionNew(t.Context(), source, NewArgs{Title: "Batch", Message: "root", Provider: "review-boundary", ModelID: "model"})
 			if err != nil {
 				t.Fatal(err)
@@ -221,8 +221,8 @@ func TestUserFollowUpQueueAllBatchesSameOriginWakes(t *testing.T) {
 			return ai.FauxAssistantMessage(ai.FauxContentString("batched followup"), ai.FauxAssistantMessageOptions{}), nil
 		}),
 	})
-	r.agents.Catalog.Models.SetProvider(provider.Provider())
-	if _, err := r.conn.ExecContext(t.Context(), `UPDATE agents SET model_provider=?, model_id=? WHERE id='bot'`, "followup-batch", "model"); err != nil {
+	r.bots.Catalog.Models.SetProvider(provider.Provider())
+	if _, err := r.conn.ExecContext(t.Context(), `UPDATE bots SET model_provider=?, model_id=? WHERE id='bot'`, "followup-batch", "model"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.service.Post(t.Context(), "bot", MainKey, "", "first-msg", "start"); err != nil {

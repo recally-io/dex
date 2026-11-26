@@ -1,5 +1,5 @@
 import { getBoardAttentionOptions, listHeldEventsOptions } from "../api/generated/@tanstack/react-query.gen";
-import type { AgentActivity, BoardAttention, HeldEvent } from "../api/generated/types.gen";
+import type { BotActivity, BoardAttention, HeldEvent } from "../api/generated/types.gen";
 
 export const boardAttentionOptions = () => ({ ...getBoardAttentionOptions(), refetchInterval: 10_000 });
 export const heldEventsOptions = () => ({ ...listHeldEventsOptions(), refetchInterval: 10_000 });
@@ -9,7 +9,7 @@ export function attentionItems(
   heldEvents?: { events: HeldEvent[]; total: number },
   bot?: string,
 ) {
-  const forBot = ({ agentId }: { agentId: string }) => !bot || agentId === bot;
+  const forBot = ({ botId }: { botId: string }) => !bot || botId === bot;
   const sessions = (attention?.sessions ?? []).filter(forBot);
 
   const questions = sessions.flatMap((session) =>
@@ -38,11 +38,11 @@ export function attentionItems(
 export type BotStatus = "needs" | "working" | undefined;
 
 export function botStatus(
-  agentId: string,
+  botId: string,
   attention: BoardAttention | undefined,
-  activity: Pick<AgentActivity, "activeSessions"> | undefined,
+  activity: Pick<BotActivity, "activeSessions"> | undefined,
 ): BotStatus {
-  const items = attentionItems(attention, undefined, agentId);
+  const items = attentionItems(attention, undefined, botId);
 
   if (items.count) return "needs";
 

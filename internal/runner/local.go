@@ -35,25 +35,25 @@ func newLocalProvider(dataDir, home string) *localProvider {
 	return &localProvider{dataDir: filepath.Clean(dataDir), home: cleanHome}
 }
 
-func (p *localProvider) Open(ctx context.Context, agentID, runnerID string) (Handle, error) {
+func (p *localProvider) Open(ctx context.Context, botID, runnerID string) (Handle, error) {
 	if err := localOnly(runnerID); err != nil {
 		return nil, err
 	}
-	l, err := p.open(ctx, agentID)
+	l, err := p.open(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
 	return stampedHandle{lease: l, stamp: localStamp}, nil
 }
 
-func (p *localProvider) open(ctx context.Context, agentID string) (lease, error) {
+func (p *localProvider) open(ctx context.Context, botID string) (lease, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := validateAgentID(agentID); err != nil {
+	if err := validateBotID(botID); err != nil {
 		return nil, err
 	}
-	workspace := filepath.Join(p.dataDir, "agents", agentID, "workspace")
+	workspace := filepath.Join(p.dataDir, "agents", botID, "workspace")
 	if err := os.MkdirAll(workspace, 0o700); err != nil {
 		return nil, err
 	}
@@ -106,9 +106,9 @@ func (h *localHandle) Env(ctx context.Context, cwd string, extraEnv map[string]s
 
 func (h *localHandle) Close(context.Context) error { return nil }
 
-func validateAgentID(agentID string) error {
-	if agentID == "" || agentID == "." || agentID == ".." || strings.ContainsAny(agentID, `/\`) {
-		return errors.New("invalid agent ID")
+func validateBotID(botID string) error {
+	if botID == "" || botID == "." || botID == ".." || strings.ContainsAny(botID, `/\`) {
+		return errors.New("invalid bot ID")
 	}
 	return nil
 }

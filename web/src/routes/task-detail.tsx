@@ -19,7 +19,7 @@ import {
 import {
   getHealthOptions,
   getTaskOptions,
-  listAgentsOptions,
+  listBotsOptions,
   listTaskExecutionsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import {
@@ -33,7 +33,7 @@ import {
   updateTask,
 } from "../api/generated/sdk.gen";
 import type {
-  Agent,
+  Bot,
   TaskDetail,
   TaskEntry,
   TaskExecution,
@@ -47,7 +47,7 @@ import type {
   TaskUpdate,
   TaskWait,
 } from "../api/generated/types.gen";
-import { AgentAvatar } from "../components/agent-avatar";
+import { BotAvatar } from "../components/bot-avatar";
 import { Modal } from "../components/dialog";
 import { Failure, Loading } from "../components/feedback";
 import { Field, Select } from "../components/form";
@@ -77,7 +77,7 @@ type ActiveDialog = "rename" | "reviewer" | "subtask" | "dependency" | "github" 
 
 export function TaskDetailPage({ taskKey }: { taskKey: string }) {
   const detail = useQuery(getTaskOptions({ path: { taskKey } }));
-  const bots = useQuery(listAgentsOptions()).data?.agents ?? [];
+  const bots = useQuery(listBotsOptions()).data?.bots ?? [];
 
   if (detail.isPending) {
     return (
@@ -114,14 +114,14 @@ export function TaskDetailPage({ taskKey }: { taskKey: string }) {
   return <TaskWorkspace detail={detail.data} bots={bots} />;
 }
 
-function TaskWorkspace({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
+function TaskWorkspace({ detail, bots }: { detail: TaskDetail; bots: Bot[] }) {
   const { task } = detail;
   const open = !isClosed(task.status);
   const client = useQueryClient();
   const health = useQuery(getHealthOptions());
   const [dialog, setDialog] = useState<ActiveDialog>(null);
 
-  const botById = new Map<string | undefined, Agent>(bots.map((bot) => [bot.id, bot]));
+  const botById = new Map<string | undefined, Bot>(bots.map((bot) => [bot.id, bot]));
 
   const botOf = (id: string) => {
     const found = botById.get(id);
@@ -309,7 +309,7 @@ function TaskWorkspace({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) 
           }
         >
           <GitHubPullForm
-            path={{ agentId: task.assigneeBotId, taskId: task.id }}
+            path={{ botId: task.assigneeBotId, taskId: task.id }}
             onLinked={() => setDialog(null)}
           />
         </Modal>
@@ -341,9 +341,9 @@ function TaskPropertyStrip({
   onOpenDialog,
 }: {
   task: TaskSummary;
-  assignee: Pick<Agent, "id" | "name">;
-  bots: Agent[];
-  botOf: (id: string) => Pick<Agent, "id" | "name">;
+  assignee: Pick<Bot, "id" | "name">;
+  bots: Bot[];
+  botOf: (id: string) => Pick<Bot, "id" | "name">;
   pending: boolean;
   canSplit: boolean;
   hasParent: boolean;
@@ -399,7 +399,7 @@ function TaskPropertyStrip({
 
         <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
           <PopoverTrigger disabled={pending} className={pillClass} aria-label="Assignee Bot">
-            <AgentAvatar agent={assignee} className="size-4 text-[9px]" />
+            <BotAvatar bot={assignee} className="size-4 text-[9px]" />
             <span className="font-medium">{assignee.name}</span>
             <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
           </PopoverTrigger>
@@ -415,7 +415,7 @@ function TaskPropertyStrip({
                 }}
                 className="flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-[13px] hover:bg-accent"
               >
-                <AgentAvatar agent={bot} className="size-4 text-[9px]" />
+                <BotAvatar bot={bot} className="size-4 text-[9px]" />
                 <span className="min-w-0 flex-1 truncate">{bot.name}</span>
                 {bot.id === task.assigneeBotId ? <Check className="size-3.5 text-foreground" /> : null}
               </button>
@@ -586,11 +586,11 @@ function BlockerActionCard({ detail }: { detail: TaskDetail }) {
   const answer = useMutation({
     mutationFn: ({ question, text }: { question: TaskQuestion; text: string }) =>
       sendMessage({
-        path: { agentId: question.agentId, sessionId: question.sessionId },
+        path: { botId: question.botId, sessionId: question.sessionId },
         body: { id: newId(), text, answersQuestionId: question.id },
         throwOnError: true,
       }),
-    onSuccess: (_, { question }) => Promise.all([invalidateTasks(client), refreshSessions(question.agentId)]),
+    onSuccess: (_, { question }) => Promise.all([invalidateTasks(client), refreshSessions(question.botId)]),
   });
 
   const waits = detail.blockers.filter((blocker) => blocker.kind === "wait");
@@ -697,8 +697,8 @@ function TaskContextCards({
                         }
                       />
                       <Link
-                        to="/a/$agentId/s/$sessionId"
-                        params={{ agentId: session.agentId, sessionId: String(session.sessionId) }}
+                        to="/b/$botId/s/$sessionId"
+                        params={{ botId: session.botId, sessionId: String(session.sessionId) }}
                         className="truncate font-medium text-foreground hover:underline"
                       >
                         {session.title || "Untitled session"}
@@ -706,7 +706,7 @@ function TaskContextCards({
                       {session.isPrimary ? <Badge variant="secondary">Primary</Badge> : null}
                     </div>
                     <div className="flex shrink-0 items-center gap-2 text-[12px] text-muted-foreground">
-                      <span>{session.agentName}</span>
+                      <span>{session.botName}</span>
                       <span aria-hidden>·</span>
                       <span className="capitalize">{session.state}</span>
                     </div>
@@ -948,7 +948,7 @@ function TaskTimeline({
   botOf,
 }: {
   entries: TaskEntry[];
-  botOf: (id: string) => Pick<Agent, "id" | "name">;
+  botOf: (id: string) => Pick<Bot, "id" | "name">;
 }) {
   return (
     <section aria-label="Timeline" className="space-y-3">
@@ -1016,7 +1016,7 @@ function TaskTimeline({
                 <div className="overflow-hidden rounded-card border border-border bg-card">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/25 px-3.5 py-2 text-[12.5px]">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {bot ? <AgentAvatar agent={bot} className="size-4 text-[9px]" /> : null}
+                      {bot ? <BotAvatar bot={bot} className="size-4 text-[9px]" /> : null}
                       {isExternal ? (
                         <Badge variant="outline" className="text-[11px]">
                           External
@@ -1079,7 +1079,7 @@ function isCompactSystemEntry(entry: TaskEntry) {
   return true;
 }
 
-function compactEntrySummary(entry: TaskEntry, botOf: (id: string) => Pick<Agent, "id" | "name">) {
+function compactEntrySummary(entry: TaskEntry, botOf: (id: string) => Pick<Bot, "id" | "name">) {
   const actor =
     entry.trust === "agent" && entry.actorBotId
       ? botOf(entry.actorBotId).name
@@ -1107,7 +1107,7 @@ function compactEntrySummary(entry: TaskEntry, botOf: (id: string) => Pick<Agent
 function ThreadComposer({ task, assigneeName }: { task: TaskSummary; assigneeName: string }) {
   const [text, setText] = useState("");
   const [sentNotice, setSentNotice] = useState<string | null>(null);
-  const pending = useRef<{ id: string; text: string; agentId: string } | null>(null);
+  const pending = useRef<{ id: string; text: string; botId: string } | null>(null);
   const client = useQueryClient();
   const open = !isClosed(task.status);
 
@@ -1124,27 +1124,25 @@ function ThreadComposer({ task, assigneeName }: { task: TaskSummary; assigneeNam
   const sendToBot = useMutation({
     mutationFn: async () => {
       const message = text.trim();
-      const agentId = task.assigneeBotId;
+      const botId = task.assigneeBotId;
 
       const id =
-        pending.current?.text === message && pending.current.agentId === agentId
-          ? pending.current.id
-          : newId();
+        pending.current?.text === message && pending.current.botId === botId ? pending.current.id : newId();
 
-      pending.current = { id, text: message, agentId };
-      const main = await getMainSession({ path: { agentId }, throwOnError: true });
+      pending.current = { id, text: message, botId };
+      const main = await getMainSession({ path: { botId }, throwOnError: true });
       await sendMessage({
-        path: { agentId, sessionId: main.data.id },
+        path: { botId, sessionId: main.data.id },
         body: { id, text: message, taskId: task.id },
         throwOnError: true,
       });
 
-      return agentId;
+      return botId;
     },
-    onSuccess: async (agentId) => {
+    onSuccess: async (botId) => {
       pending.current = null;
       setText("");
-      setSentNotice(agentId);
+      setSentNotice(botId);
       await invalidateTasks(client);
     },
   });
@@ -1212,8 +1210,8 @@ function ThreadComposer({ task, assigneeName }: { task: TaskSummary; assigneeNam
         <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
           <span>Sent to {assigneeName}.</span>
           <Link
-            to="/a/$agentId"
-            params={{ agentId: sentNotice }}
+            to="/b/$botId"
+            params={{ botId: sentNotice }}
             className="inline-flex items-center gap-1 text-foreground hover:underline"
           >
             Open Main
@@ -1282,7 +1280,7 @@ function ReviewerDialog({
   onSave,
 }: {
   task: TaskSummary;
-  bots: Agent[];
+  bots: Bot[];
   pending: boolean;
   onClose: () => void;
   onSave: (kind: TaskReviewerKind, id: string) => Promise<void>;

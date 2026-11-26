@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { useAgentId } from "../lib/agent-scope";
+import type { BotSettings as Settings } from "../lib/bot-scope";
+import { useBotId } from "../lib/bot-scope";
 import type { Session, SessionSettings, Model, ThinkingLevel } from "../api/generated/types.gen";
 import { setSessionSettings } from "../api/generated/sdk.gen";
 import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { findModel, thinkingNames } from "../lib/agent";
+import { findModel, thinkingNames } from "../lib/bot";
 import { refreshSessions } from "../lib/queries";
 import { SessionActivity } from "./session-activity";
 import { SessionRunner } from "./session-runner";
@@ -46,12 +46,12 @@ export function SessionSettings({
   settings: Settings;
   started: boolean;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const models = useQuery(listModelsOptions());
   const saving = useRef(false);
   const [pending, setPending] = useState(false);
   const own = session.settings;
-  const bot = findModel(settings.agent.provider, settings.agent.modelId, models.data?.models);
+  const bot = findModel(settings.bot.provider, settings.bot.modelId, models.data?.models);
   const effective = own.modelId ? findModel(own.provider ?? "", own.modelId, models.data?.models) : bot;
 
   async function change(next: SessionSettings) {
@@ -60,8 +60,8 @@ export function SessionSettings({
     setPending(true);
 
     try {
-      await setSessionSettings({ path: { agentId, sessionId: session.id }, body: next, throwOnError: true });
-      await refreshSessions(agentId);
+      await setSessionSettings({ path: { botId, sessionId: session.id }, body: next, throwOnError: true });
+      await refreshSessions(botId);
     } finally {
       saving.current = false;
       setPending(false);
@@ -81,7 +81,7 @@ export function SessionSettings({
         side="top"
         thinking={{
           value: own.thinkingLevel ?? null,
-          defaultValue: settings.agent.thinkingLevel,
+          defaultValue: settings.bot.thinkingLevel,
           levels: effective.model?.reasoning ? effective.model.thinkingLevels : [],
           pending,
           save: (thinking) => change(changed(own, { thinking })),
@@ -100,14 +100,14 @@ export function SessionSettings({
             disabled={pending}
             title={
               effective.model?.reasoning
-                ? `${effective.label} · ${thinkingNames[own.thinkingLevel ?? settings.agent.thinkingLevel]}`
+                ? `${effective.label} · ${thinkingNames[own.thinkingLevel ?? settings.bot.thinkingLevel]}`
                 : effective.label
             }
           >
             <span className="truncate">
               {effective.label}
               {effective.model?.reasoning
-                ? ` · ${thinkingNames[own.thinkingLevel ?? settings.agent.thinkingLevel]}`
+                ? ` · ${thinkingNames[own.thinkingLevel ?? settings.bot.thinkingLevel]}`
                 : ""}
             </span>
             <ChevronDown aria-hidden="true" />

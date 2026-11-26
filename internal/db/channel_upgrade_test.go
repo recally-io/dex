@@ -13,7 +13,7 @@ import (
 	"testing/fstest"
 
 	"github.com/pressly/goose/v3"
-	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
@@ -81,10 +81,10 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 
 			// Then settings, runtime state, and saved chats stay unchanged.
 			checks := map[string]string{
-				`SELECT agent_id || '|' || token || '|' || allowed_users FROM telegram_settings`:                                                      "default|7:upgrade|",
-				`SELECT token || '|' || base_url || '|' || bot_id || '|' || owner FROM wechat_settings`:                                               "wx-token|https://example.com|wx-bot|wx-owner",
+				`SELECT bot_id || '|' || token || '|' || allowed_users FROM telegram_settings`:                                                        "default|7:upgrade|",
+				`SELECT token || '|' || base_url || '|' || wechat_bot_id || '|' || owner FROM wechat_settings`:                                        "wx-token|https://example.com|wx-bot|wx-owner",
 				`SELECT cursor || '|' || context_token || '|' || context_message_id || '|' || pause_until FROM wechat_runtime`:                        "cursor|context|18446744073709551615|123",
-				`SELECT agent_id || '|' || channel_key FROM sessions`:                                                                                 "default|peer/saved",
+				`SELECT bot_id || '|' || channel_key FROM sessions`:                                                                                   "default|peer/saved",
 				`SELECT content || '|' || status || '|' || answer FROM submissions`:                                                                   "hi|done|answer",
 				`SELECT source_key || '|' || peer || '|' || channel_key || '|' || command || '|' || answer || '|' || completed FROM channel_commands`: "command|wechat:wx-owner|peer/saved|/help|help|1",
 			}
@@ -111,7 +111,7 @@ func TestUserUpgradesMainChannelsAndPairsTelegram(t *testing.T) {
 				_, _ = w.Write([]byte(`{"ok":true,"result":{"id":7,"is_bot":true,"username":"upgrade_bot"}}`))
 			}))
 			t.Cleanup(api.Close)
-			prefs := agent.New(sqlc.New(conn), nil, api.URL, nil)
+			prefs := bot.New(sqlc.New(conn), nil, api.URL, nil)
 			link, _, err := prefs.CreateTelegramPairing(t.Context(), "default")
 			if err != nil {
 				t.Fatal(err)

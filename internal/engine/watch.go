@@ -27,11 +27,11 @@ type Watch struct {
 func (w *Watch) Close() { w.cancel(); <-w.done }
 
 // Watch captures the snapshot and subscription at the same native revision.
-func (a *Agents) Watch(ctx context.Context, ref Ref) (*Watch, error) {
-	if err := a.begin(ref.AgentID); err != nil {
+func (a *Bots) Watch(ctx context.Context, ref Ref) (*Watch, error) {
+	if err := a.begin(ref.BotID); err != nil {
 		return nil, err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	conversation, err := a.conversation(ctx, ref)
 	if err != nil {
 		return nil, err

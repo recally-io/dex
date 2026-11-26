@@ -22,16 +22,16 @@ type gatedOpen struct {
 	id               string
 }
 
-func (g *gatedOpen) Stamp(ctx context.Context, agent, id string) (string, error) {
+func (g *gatedOpen) Stamp(ctx context.Context, bot, id string) (string, error) {
 	if id == g.id {
 		return gatedRunner, nil
 	}
-	return g.Provider.Stamp(ctx, agent, id)
+	return g.Provider.Stamp(ctx, bot, id)
 }
 
-func (g *gatedOpen) Open(ctx context.Context, agent, id string) (runner.Handle, error) {
+func (g *gatedOpen) Open(ctx context.Context, bot, id string) (runner.Handle, error) {
 	if id != g.id {
-		return g.Provider.Open(ctx, agent, id)
+		return g.Provider.Open(ctx, bot, id)
 	}
 	first := false
 	g.once.Do(func() { first = true; close(g.entered) })
@@ -43,7 +43,7 @@ func (g *gatedOpen) Open(ctx context.Context, agent, id string) (runner.Handle, 
 			return nil, errors.New("first environment open failed")
 		}
 	}
-	h, err := g.Provider.Open(ctx, agent, runner.LocalID)
+	h, err := g.Provider.Open(ctx, bot, runner.LocalID)
 	if err != nil {
 		return nil, err
 	}

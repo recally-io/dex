@@ -124,7 +124,7 @@ func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
 	}
 }
 
-// The settle worker must wait for an in-flight withdrawal. Withdraw holds the agent delivery lock from
+// The settle worker must wait for an in-flight withdrawal. Withdraw holds the bot delivery lock from
 // the native abort to the receipt write, so the test holds the lock as Withdraw does.
 func TestUserWithdrawnMessageIsNotSettledByTheWorkerBeforeTheWithdrawal(t *testing.T) {
 	// Given a running gated command and a second message that waits in the native queue.
@@ -154,7 +154,7 @@ func TestUserWithdrawnMessageIsNotSettledByTheWorkerBeforeTheWithdrawal(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome, err := r.agents.Withdraw(t.Context(), engine.Ref{AgentID: "bot", ID: session.ExecutionID}, "second")
+	outcome, err := r.bots.Withdraw(t.Context(), engine.Ref{BotID: "bot", ID: session.ExecutionID}, "second")
 	if err != nil || outcome != engine.Withdrawn {
 		unlock()
 		t.Fatalf("native withdraw: %v %v", outcome, err)

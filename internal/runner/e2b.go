@@ -149,9 +149,9 @@ type e2bRuntime struct {
 	envdURL    string
 	httpClient *http.Client
 
-	mu         sync.Mutex
-	agentLocks map[string]*sync.Mutex
-	sessions   map[string]cachedE2BSession
+	mu       sync.Mutex
+	botLocks map[string]*sync.Mutex
+	sessions map[string]cachedE2BSession
 }
 
 func newE2BRuntime(q *sqlc.Queries, apiURL, envdURL string) *e2bRuntime {
@@ -160,7 +160,7 @@ func newE2BRuntime(q *sqlc.Queries, apiURL, envdURL string) *e2bRuntime {
 		apiURL:     cmp.Or(strings.TrimSpace(apiURL), defaultE2BAPIURL),
 		envdURL:    strings.TrimSpace(envdURL),
 		httpClient: newE2BHTTPClient(),
-		agentLocks: map[string]*sync.Mutex{},
+		botLocks:   map[string]*sync.Mutex{},
 		sessions:   map[string]cachedE2BSession{},
 	}
 }
@@ -207,12 +207,12 @@ func (r *e2bRuntime) probe(ctx context.Context, _ *Spec, spec Spec) (TestResult,
 	return TestResult{OK: true, Platform: platform, Arch: arch, Home: home}, nil
 }
 
-func (r *e2bRuntime) lockAgent(agentID string) func() {
+func (r *e2bRuntime) lockBot(botID string) func() {
 	r.mu.Lock()
-	mu := r.agentLocks[agentID]
+	mu := r.botLocks[botID]
 	if mu == nil {
 		mu = &sync.Mutex{}
-		r.agentLocks[agentID] = mu
+		r.botLocks[botID] = mu
 	}
 	r.mu.Unlock()
 	mu.Lock()
@@ -279,9 +279,9 @@ func reconnectSandbox(ctx context.Context, ctrl *e2bControlClient, sandboxID str
 	}
 }
 
-// acquire returns the agent's live sandbox session. It reuses a recent session, resumes the stored
+// acquire returns the bot's live sandbox session. It reuses a recent session, resumes the stored
 // sandbox, or creates a new sandbox and stores its ID.
-func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Spec) (cachedE2BSession, error) {
+func (r *e2bRuntime) acquire(ctx context.Context, botID string, spec Spec) (cachedE2BSession, error) {
 	cfg, err := r.validate(spec)
 	if err != nil {
 		return cachedE2BSession{}, err
@@ -289,10 +289,10 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Spec) (ca
 	timeoutSec := *cfg.TimeoutSeconds
 	specKey := fmt.Sprintf("%s|%d|%s|%s", spec.ID, spec.UpdatedAt, spec.Config, spec.Secret)
 
-	unlock := r.lockAgent(agentID)
+	unlock := r.lockBot(botID)
 	defer unlock()
 
-	row, err := r.q.GetAgent(ctx, agentID)
+	row, err := r.q.GetBot(ctx, botID)
 	if err != nil {
 		return cachedE2BSession{}, err
 	}
@@ -302,7 +302,7 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Spec) (ca
 	persistedID := strings.TrimSpace(row.RunnerSandboxID)
 
 	r.mu.Lock()
-	cached, hasCached := r.sessions[agentID]
+	cached, hasCached := r.sessions[botID]
 	r.mu.Unlock()
 	if hasCached && cached.specKey == specKey && cached.sandboxID == persistedID && cached.sandboxID != "" && time.Since(cached.connectedAt) < e2bConnectCacheTTL {
 		return cached, nil
@@ -322,15 +322,15 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Spec) (ca
 	}
 	if sb == nil {
 		sb, err = ctrl.createSandbox(ctx, cfg.Template, timeoutSec, cfg.autoPauseEnabled(), map[string]string{
-			"dex_agent_id":  agentID,
+			"dex_agent_id":  botID,
 			"dex_runner_id": spec.ID,
 		})
 		if err != nil {
 			return cachedE2BSession{}, err
 		}
-		if err := r.q.SetAgentRunnerSandboxID(ctx, sqlc.SetAgentRunnerSandboxIDParams{
+		if err := r.q.SetBotRunnerSandboxID(ctx, sqlc.SetBotRunnerSandboxIDParams{
 			SandboxID: sb.SandboxID,
-			AgentID:   agentID,
+			BotID:     botID,
 			RunnerID:  spec.ID,
 		}); err != nil {
 			return cachedE2BSession{}, err
@@ -364,19 +364,19 @@ func (r *e2bRuntime) acquire(ctx context.Context, agentID string, spec Spec) (ca
 		connectedAt: time.Now(),
 	}
 	r.mu.Lock()
-	r.sessions[agentID] = session
+	r.sessions[botID] = session
 	r.mu.Unlock()
 	return session, nil
 }
 
-func (r *e2bRuntime) open(ctx context.Context, agentID string, spec Spec) (lease, error) {
-	session, err := r.acquire(ctx, agentID, spec)
+func (r *e2bRuntime) open(ctx context.Context, botID string, spec Spec) (lease, error) {
+	session, err := r.acquire(ctx, botID, spec)
 	if err != nil {
 		return nil, err
 	}
 	return &e2bHandle{
 		rt:         r,
-		agentID:    agentID,
+		botID:      botID,
 		spec:       spec,
 		home:       session.home,
 		workspace:  session.workspace,
@@ -386,14 +386,14 @@ func (r *e2bRuntime) open(ctx context.Context, agentID string, spec Spec) (lease
 
 // openOverride owns one sandbox for the lifetime of the lease. It never reads or writes the
 // bot's persisted default sandbox ID. Disable auto-pause so an abandoned lease expires after a crash.
-func (r *e2bRuntime) openOverride(ctx context.Context, agentID string, spec Spec) (_ lease, resultErr error) {
+func (r *e2bRuntime) openOverride(ctx context.Context, botID string, spec Spec) (_ lease, resultErr error) {
 	cfg, err := r.validate(spec)
 	if err != nil {
 		return nil, err
 	}
 	ctrl := r.control(cfg, spec.Secret)
 	sb, err := ctrl.createSandbox(ctx, cfg.Template, *cfg.TimeoutSeconds, false, map[string]string{
-		"dex_agent_id": agentID, "dex_runner_id": spec.ID,
+		"dex_agent_id": botID, "dex_runner_id": spec.ID,
 	})
 	if err != nil {
 		return nil, err
@@ -418,7 +418,7 @@ func (r *e2bRuntime) openOverride(ctx context.Context, agentID string, spec Spec
 		return nil, err
 	}
 	return &e2bHandle{
-		rt: r, agentID: agentID, spec: spec, home: home, workspace: workspace, timeoutSec: *cfg.TimeoutSeconds,
+		rt: r, botID: botID, spec: spec, home: home, workspace: workspace, timeoutSec: *cfg.TimeoutSeconds,
 		override: override,
 	}, nil
 }
@@ -494,22 +494,22 @@ func (*e2bRuntime) disposable() bool { return true }
 // identity is constant: the stored spec and sandbox ID describe the whole E2B state.
 func (*e2bRuntime) identity(context.Context, string) (string, error) { return "", nil }
 
-// release kills the agent's sandbox in spec's environment. It clears the stored sandbox ID only
+// release kills the bot's sandbox in spec's environment. It clears the stored sandbox ID only
 // when the row still names that sandbox, so a sandbox that a later open stored stays.
-func (r *e2bRuntime) release(ctx context.Context, agentID string, spec Spec, sandboxID string) error {
-	unlock := r.lockAgent(agentID)
+func (r *e2bRuntime) release(ctx context.Context, botID string, spec Spec, sandboxID string) error {
+	unlock := r.lockBot(botID)
 	defer unlock()
 
 	r.mu.Lock()
-	if s, ok := r.sessions[agentID]; ok && s.envID == spec.ID && (sandboxID == "" || s.sandboxID == sandboxID) {
+	if s, ok := r.sessions[botID]; ok && s.envID == spec.ID && (sandboxID == "" || s.sandboxID == sandboxID) {
 		sandboxID = s.sandboxID
-		delete(r.sessions, agentID)
+		delete(r.sessions, botID)
 	}
 	r.mu.Unlock()
 	if sandboxID == "" {
 		return nil
 	}
-	if err := r.q.ClearAgentRunnerSandboxID(ctx, sqlc.ClearAgentRunnerSandboxIDParams{AgentID: agentID, SandboxID: sandboxID}); err != nil {
+	if err := r.q.ClearBotRunnerSandboxID(ctx, sqlc.ClearBotRunnerSandboxIDParams{BotID: botID, SandboxID: sandboxID}); err != nil {
 		return err
 	}
 	cfg, err := r.validate(spec)
@@ -534,7 +534,7 @@ func resolveE2BWorkspace(configured, home string) string {
 
 type e2bHandle struct {
 	rt         *e2bRuntime
-	agentID    string
+	botID      string
 	spec       Spec
 	home       string
 	workspace  string
@@ -562,7 +562,7 @@ func (h *e2bHandle) Env(ctx context.Context, cwd string, extraEnv map[string]str
 	if trimmed := strings.TrimSpace(cwd); trimmed != "" {
 		resolvedCwd = resolveE2BTarget(h.home, h.workspace, trimmed)
 	}
-	id := "e2b:" + h.agentID
+	id := "e2b:" + h.botID
 	if h.override != nil {
 		id += ":" + h.override.id
 	}

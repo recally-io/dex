@@ -18,7 +18,7 @@ func sendMode(t *testing.T, d *dex, sessionID int64, id, text, mode string, want
 	if mode != "" {
 		body["mode"] = mode
 	}
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID), body, nil, want)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", sessionID), body, nil, want)
 }
 
 func queuedSteer(id string) func(*transcript) bool {
@@ -70,7 +70,7 @@ func TestUserMessageReplayRejectsChanges(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw), &file); err != nil {
 		t.Fatal(err)
 	}
-	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", second)
+	path := fmt.Sprintf("/api/bots/default/sessions/%d/messages", second)
 	fileID := uuid.NewV7().String()
 	body := map[string]any{"id": fileID, "text": "file", "attachments": []string{file.ID}}
 	d.must(t, http.MethodPost, path, body, nil, http.StatusAccepted)

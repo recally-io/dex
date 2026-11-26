@@ -1,5 +1,5 @@
-// Command dex runs the HTTP API, web UI, and native agent runtime in one process.
-// Agent settings are in the web UI; the optional environment variables
+// Command dex runs the HTTP API, web UI, and native bot runtime in one process.
+// Bot settings are in the web UI; the optional environment variables
 // are DEX_DATA_DIR (default ~/.dex), DEX_ADDR (default 127.0.0.1:8787), and DEX_TOKEN.
 package main
 

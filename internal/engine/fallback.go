@@ -9,29 +9,29 @@ import (
 	"github.com/MichaelKinsy/PiG/durable"
 )
 
-func (a *Agents) modelsFor(agentID string) durable.Models {
-	return &agentModels{
+func (a *Bots) modelsFor(botID string) durable.Models {
+	return &botModels{
 		Models:  a.Catalog.Models,
 		catalog: a.Catalog,
 		fallback: func(ctx context.Context) ModelRef {
 			if a.config.FallbackModel == nil {
 				return ModelRef{}
 			}
-			return a.config.FallbackModel(ctx, agentID)
+			return a.config.FallbackModel(ctx, botID)
 		},
 	}
 }
 
-// agentModels wraps *ai.Models so a missing or failing primary model falls back to the bot's
+// botModels wraps *ai.Models so a missing or failing primary model falls back to the bot's
 // configured fallback model before any response content has streamed. Embedding *ai.Models
 // preserves optional PiG interfaces (ModelsLister, ModelsCatalog).
-type agentModels struct {
+type botModels struct {
 	*ai.Models
 	catalog  *Catalog
 	fallback func(context.Context) ModelRef
 }
 
-func (m *agentModels) GetModel(provider, id string) *ai.Model {
+func (m *botModels) GetModel(provider, id string) *ai.Model {
 	if resolved := m.Models.GetModel(provider, id); resolved != nil {
 		return resolved
 	}
@@ -42,11 +42,11 @@ func (m *agentModels) GetModel(provider, id string) *ai.Model {
 	return m.Models.GetModel(fb.Provider, fb.ModelID)
 }
 
-func (m *agentModels) CompleteSimple(ctx context.Context, model *ai.Model, request ai.Context, options ...ai.StreamOptions) *ai.AssistantMessage {
+func (m *botModels) CompleteSimple(ctx context.Context, model *ai.Model, request ai.Context, options ...ai.StreamOptions) *ai.AssistantMessage {
 	return m.StreamSimple(ctx, model, request, options...).Result()
 }
 
-func (m *agentModels) StreamSimple(ctx context.Context, model *ai.Model, request ai.Context, options ...ai.StreamOptions) *ai.AssistantMessageEventStream {
+func (m *botModels) StreamSimple(ctx context.Context, model *ai.Model, request ai.Context, options ...ai.StreamOptions) *ai.AssistantMessageEventStream {
 	fbRef := m.fallback(ctx)
 	if model == nil || fbRef.ModelID == "" || (model.ProviderID() == fbRef.Provider && model.ID == fbRef.ModelID) {
 		return m.Models.StreamSimple(ctx, model, request, options...)
@@ -69,7 +69,7 @@ func (m *agentModels) StreamSimple(ctx context.Context, model *ai.Model, request
 	return out
 }
 
-func (m *agentModels) streamWithFallback(
+func (m *botModels) streamWithFallback(
 	ctx context.Context,
 	out *ai.AssistantMessageEventStream,
 	primaryModel, fallbackModel *ai.Model,

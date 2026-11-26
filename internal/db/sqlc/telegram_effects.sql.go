@@ -50,9 +50,9 @@ func (q *Queries) CompleteTelegramEffect(ctx context.Context, arg CompleteTelegr
 }
 
 const createTelegramEffect = `-- name: CreateTelegramEffect :execrows
-INSERT INTO telegram_effects(operation_key,agent_id,account_id,sender_id,peer,source_key,kind,input_json,state,created_at)
+INSERT INTO telegram_effects(operation_key,bot_id,account_id,sender_id,peer,source_key,kind,input_json,state,created_at)
 SELECT ?1,a.id,?2,?3,?4,?5,?6,?7,'ready',?8
-FROM agents a JOIN telegram_settings t ON t.agent_id=a.id
+FROM bots a JOIN telegram_settings t ON t.bot_id=a.id
 WHERE a.id=?9 AND a.archived_at IS NULL
 AND substr(t.token,1,instr(t.token,':')-1)=?2
 AND instr(','||replace(t.allowed_users,' ','')||',',','||?3||',')>0
@@ -68,7 +68,7 @@ type CreateTelegramEffectParams struct {
 	Kind         string `json:"kind"`
 	InputJson    string `json:"input_json"`
 	CreatedAt    int64  `json:"created_at"`
-	AgentID      string `json:"agent_id"`
+	BotID        string `json:"bot_id"`
 }
 
 func (q *Queries) CreateTelegramEffect(ctx context.Context, arg CreateTelegramEffectParams) (int64, error) {
@@ -81,7 +81,7 @@ func (q *Queries) CreateTelegramEffect(ctx context.Context, arg CreateTelegramEf
 		arg.Kind,
 		arg.InputJson,
 		arg.CreatedAt,
-		arg.AgentID,
+		arg.BotID,
 	)
 	if err != nil {
 		return 0, err
@@ -91,16 +91,16 @@ func (q *Queries) CreateTelegramEffect(ctx context.Context, arg CreateTelegramEf
 
 const discardTelegramInputEffects = `-- name: DiscardTelegramInputEffects :exec
 UPDATE telegram_effects SET state='discarded',body=NULL
-WHERE agent_id=? AND (input_json<>'{}' OR body IS NOT NULL OR state IN ('ready','processing'))
+WHERE bot_id=? AND (input_json<>'{}' OR body IS NOT NULL OR state IN ('ready','processing'))
 `
 
-func (q *Queries) DiscardTelegramInputEffects(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, discardTelegramInputEffects, agentID)
+func (q *Queries) DiscardTelegramInputEffects(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, discardTelegramInputEffects, botID)
 	return err
 }
 
 const getTelegramEffect = `-- name: GetTelegramEffect :one
-SELECT operation_key, agent_id, account_id, sender_id, peer, source_key, kind, input_json, state, text, body, name, result_json, error, created_at FROM telegram_effects WHERE operation_key=?
+SELECT operation_key, bot_id, account_id, sender_id, peer, source_key, kind, input_json, state, text, body, name, result_json, error, created_at FROM telegram_effects WHERE operation_key=?
 `
 
 func (q *Queries) GetTelegramEffect(ctx context.Context, operationKey string) (TelegramEffect, error) {
@@ -108,7 +108,7 @@ func (q *Queries) GetTelegramEffect(ctx context.Context, operationKey string) (T
 	var i TelegramEffect
 	err := row.Scan(
 		&i.OperationKey,
-		&i.AgentID,
+		&i.BotID,
 		&i.AccountID,
 		&i.SenderID,
 		&i.Peer,
@@ -128,7 +128,7 @@ func (q *Queries) GetTelegramEffect(ctx context.Context, operationKey string) (T
 
 const listDiscardedTelegramEffectInputs = `-- name: ListDiscardedTelegramEffectInputs :many
 SELECT operation_key,input_json,source_key FROM telegram_effects
-WHERE agent_id=? AND state='discarded' AND input_json<>'{}'
+WHERE bot_id=? AND state='discarded' AND input_json<>'{}'
 `
 
 type ListDiscardedTelegramEffectInputsRow struct {
@@ -137,8 +137,8 @@ type ListDiscardedTelegramEffectInputsRow struct {
 	SourceKey    string `json:"source_key"`
 }
 
-func (q *Queries) ListDiscardedTelegramEffectInputs(ctx context.Context, agentID string) ([]ListDiscardedTelegramEffectInputsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listDiscardedTelegramEffectInputs, agentID)
+func (q *Queries) ListDiscardedTelegramEffectInputs(ctx context.Context, botID string) ([]ListDiscardedTelegramEffectInputsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listDiscardedTelegramEffectInputs, botID)
 	if err != nil {
 		return nil, err
 	}

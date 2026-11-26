@@ -24,14 +24,14 @@ func Writable(key string) bool {
 }
 
 // Create reuses an empty Session without opening an execution context or requiring a model.
-func (s *Service) Create(ctx context.Context, agentID string) (Session, error) {
+func (s *Service) Create(ctx context.Context, botID string) (Session, error) {
 	c, err := s.q.EnsureEmptySession(ctx, sqlc.EnsureEmptySessionParams{
-		AgentID: agentID, ChannelKey: sessionPrefix + uuid.NewV7().String(), CreatedAt: s.now().UnixMilli(),
+		BotID: botID, ChannelKey: sessionPrefix + uuid.NewV7().String(), CreatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
 		return Session{}, err
 	}
-	return s.Get(ctx, agentID, c.ID)
+	return s.Get(ctx, botID, c.ID)
 }
 
 // ErrNotArchivable is an archive request for Main or a read-only kind.
@@ -39,8 +39,8 @@ var ErrNotArchivable = errors.New("only separate Web sessions and child sessions
 
 // SetArchived archives or restores a session. It changes only the list state: messages,
 // records, files and running work stay, and a child session result still returns to the session.
-func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, archived bool) (Session, error) {
-	c, err := s.Get(ctx, agentID, id)
+func (s *Service) SetArchived(ctx context.Context, botID string, id int64, archived bool) (Session, error) {
+	c, err := s.Get(ctx, botID, id)
 	if err != nil {
 		return Session{}, err
 	}
@@ -48,19 +48,19 @@ func (s *Service) SetArchived(ctx context.Context, agentID string, id int64, arc
 		return Session{}, ErrNotArchivable
 	}
 	if archived {
-		err = s.archive(ctx, agentID, id)
+		err = s.archive(ctx, botID, id)
 	} else {
-		err = s.q.UnarchiveSession(ctx, sqlc.UnarchiveSessionParams{ID: id, AgentID: agentID})
+		err = s.q.UnarchiveSession(ctx, sqlc.UnarchiveSessionParams{ID: id, BotID: botID})
 	}
 	if err != nil {
 		return Session{}, err
 	}
-	return s.Get(ctx, agentID, id)
+	return s.Get(ctx, botID, id)
 }
 
 // archive also dismisses the session's question: nobody sees it any more. It takes the same writer
 // as ask_user, so a question cannot open after the archive commits.
-func (s *Service) archive(ctx context.Context, agentID string, id int64) error {
+func (s *Service) archive(ctx context.Context, botID string, id int64) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
@@ -69,7 +69,7 @@ func (s *Service) archive(ctx context.Context, agentID string, id int64) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := s.now().UnixMilli()
-	if err := q.ArchiveSession(ctx, sqlc.ArchiveSessionParams{ArchivedAt: sql.NullInt64{Int64: now, Valid: true}, ID: id, AgentID: agentID}); err != nil {
+	if err := q.ArchiveSession(ctx, sqlc.ArchiveSessionParams{ArchivedAt: sql.NullInt64{Int64: now, Valid: true}, ID: id, BotID: botID}); err != nil {
 		return err
 	}
 	if err := q.DismissQuestions(ctx, sqlc.DismissQuestionsParams{SessionID: id, Now: sql.NullInt64{Int64: now, Valid: true}}); err != nil {
@@ -82,15 +82,15 @@ var ErrSessionBusy = errors.New("the timeline is busy; wait for its replies befo
 var ErrResetID = errors.New("the reset ID belongs to another input")
 
 // ExistingMain reads the main conversation without creating one.
-func (s *Service) ExistingMain(ctx context.Context, agentID string) (*Session, error) {
-	row, err := s.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{AgentID: agentID, ChannelKey: MainKey})
+func (s *Service) ExistingMain(ctx context.Context, botID string) (*Session, error) {
+	row, err := s.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{BotID: botID, ChannelKey: MainKey})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	main, err := s.Get(ctx, agentID, row.ID)
+	main, err := s.Get(ctx, botID, row.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -98,29 +98,29 @@ func (s *Service) ExistingMain(ctx context.Context, agentID string) (*Session, e
 }
 
 // Main creates only the control record. The execution conversation opens on first use.
-func (s *Service) Main(ctx context.Context, agentID string) (Session, error) {
-	agent, err := s.q.GetAgent(ctx, agentID)
+func (s *Service) Main(ctx context.Context, botID string) (Session, error) {
+	bot, err := s.q.GetBot(ctx, botID)
 	if err != nil {
 		return Session{}, err
 	}
 	c, err := s.q.EnsureSession(ctx, sqlc.EnsureSessionParams{
-		AgentID: agentID, ChannelKey: MainKey, Title: agent.Name, CreatedAt: s.now().UnixMilli(),
+		BotID: botID, ChannelKey: MainKey, Title: bot.Name, CreatedAt: s.now().UnixMilli(),
 	})
 	if err != nil {
 		return Session{}, err
 	}
-	return s.Get(ctx, agentID, c.ID)
+	return s.Get(ctx, botID, c.ID)
 }
 
 // Clear stores a reset only when both owners are idle. Delivery cannot pass this check. A
 // handoff is the first message of the new context; it does not start a run.
-func (s *Service) Clear(ctx context.Context, agentID string, sessionID int64, requestID, origin, handoff string) error {
+func (s *Service) Clear(ctx context.Context, botID string, sessionID int64, requestID, origin, handoff string) error {
 	unlock, err := s.lockSession(ctx, sessionID)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	c, err := s.Get(ctx, agentID, sessionID)
+	c, err := s.Get(ctx, botID, sessionID)
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func (s *Service) Clear(ctx context.Context, agentID string, sessionID int64, re
 		return ErrSessionBusy
 	}
 	if c.ExecutionID != 0 {
-		if err := s.engine.CheckIdle(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}); err != nil {
+		if err := s.engine.CheckIdle(ctx, engine.Ref{BotID: botID, ID: c.ExecutionID}); err != nil {
 			if errors.Is(err, engine.ErrBusy) {
 				return ErrSessionBusy
 			}
@@ -163,11 +163,11 @@ func (s *Service) Clear(ctx context.Context, agentID string, sessionID int64, re
 			return err
 		}
 		q := s.q.WithTx(tx)
-		if err := checkTelegramControl(ctx, q, strings.TrimPrefix(requestID, "channel:"), agentID, sessionID); err != nil {
+		if err := checkTelegramControl(ctx, q, strings.TrimPrefix(requestID, "channel:"), botID, sessionID); err != nil {
 			return err
 		}
-		if archived, err := q.SessionAgentArchived(ctx, sessionID); err != nil || archived != 0 {
-			return cmp.Or(err, db.ErrAgentArchived)
+		if archived, err := q.SessionBotArchived(ctx, sessionID); err != nil || archived != 0 {
+			return cmp.Or(err, db.ErrBotArchived)
 		}
 		pending, err := q.CountPendingSession(ctx, sessionID)
 		if err != nil {
@@ -196,10 +196,10 @@ func (s *Service) Clear(ctx context.Context, agentID string, sessionID int64, re
 			return err
 		}
 		if c.ChannelKey == MainKey {
-			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
+			if err := q.DiscardTelegramInputEffects(ctx, botID); err != nil {
 				return err
 			}
-			if err := q.DiscardPrivateTelegramAlbums(ctx, agentID); err != nil {
+			if err := q.DiscardPrivateTelegramAlbums(ctx, botID); err != nil {
 				return err
 			}
 		}
@@ -238,10 +238,10 @@ func inputOrigin(key string) string {
 var ErrSettingsForbidden = errors.New("this session is read-only; its model cannot change")
 
 // SetSession replaces the settings that the session overrides. The next message of the session uses them.
-func (s *Service) SetSession(ctx context.Context, agentID string, sessionID int64, c Settings) error {
+func (s *Service) SetSession(ctx context.Context, botID string, sessionID int64, c Settings) error {
 	// One rule with SetProject: a session that accepts input accepts settings. Automation sessions
 	// take no input but keep their own model for the next run.
-	session, err := s.Get(ctx, agentID, sessionID)
+	session, err := s.Get(ctx, botID, sessionID)
 	if err != nil {
 		return err
 	}
@@ -254,6 +254,6 @@ func (s *Service) SetSession(ctx context.Context, agentID string, sessionID int6
 		}
 	}
 	return s.q.SetSessionSettings(ctx, sqlc.SetSessionSettingsParams{
-		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: sessionID, AgentID: agentID,
+		ModelProvider: c.Provider, ModelID: c.ModelID, ThinkingLevel: c.ThinkingLevel, ID: sessionID, BotID: botID,
 	})
 }

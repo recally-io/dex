@@ -26,8 +26,8 @@ type Origin struct {
 // before entryID, the fork is an empty Session with the same settings. Files on disk stay as they are.
 // A non-empty runnerID (local or an SSH environment) selects the environment of the fork;
 // empty keeps the selection of the source.
-func (s *Service) Fork(ctx context.Context, agentID string, sessionID, entryID int64, before bool, requestID, runnerID string) (Session, error) {
-	c, err := s.Get(ctx, agentID, sessionID)
+func (s *Service) Fork(ctx context.Context, botID string, sessionID, entryID int64, before bool, requestID, runnerID string) (Session, error) {
+	c, err := s.Get(ctx, botID, sessionID)
 	if err != nil {
 		return Session{}, err
 	}
@@ -41,7 +41,7 @@ func (s *Service) Fork(ctx context.Context, agentID string, sessionID, entryID i
 	target := cmp.Or(runnerID, conv.RunnerID)
 	if requestID != "" {
 		if receipt, err := s.q.GetForkReceipt(ctx, requestID); err == nil {
-			return s.forkReplay(ctx, agentID, receipt, sessionID, entryID, before, target)
+			return s.forkReplay(ctx, botID, receipt, sessionID, entryID, before, target)
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return Session{}, err
 		}
@@ -68,12 +68,12 @@ func (s *Service) Fork(ctx context.Context, agentID string, sessionID, entryID i
 		if err != nil {
 			return Session{}, err
 		}
-		return s.forkReplay(ctx, agentID, receipt, sessionID, entryID, before, target)
+		return s.forkReplay(ctx, botID, receipt, sessionID, entryID, before, target)
 	}
 	if err != nil {
 		return Session{}, err
 	}
-	return s.Get(ctx, agentID, fork.ID)
+	return s.Get(ctx, botID, fork.ID)
 }
 
 // ErrOperationID means an operation ID was reused for different parameters.
@@ -83,7 +83,7 @@ var errRepeatedFork = errors.New("fork receipt already exists")
 
 // forkReplay returns the fork of receipt when the retry asks for the same fork. A fork cannot
 // change its environment, so its row tells the environment that the first call selected.
-func (s *Service) forkReplay(ctx context.Context, agentID string, receipt sqlc.ForkReceipt, sessionID, entryID int64, before bool, runnerID string) (Session, error) {
+func (s *Service) forkReplay(ctx context.Context, botID string, receipt sqlc.ForkReceipt, sessionID, entryID int64, before bool, runnerID string) (Session, error) {
 	if receipt.SourceID != sessionID || receipt.EntryID != entryID || receipt.BeforeEntry != boolInt(before) {
 		return Session{}, ErrOperationID
 	}
@@ -94,7 +94,7 @@ func (s *Service) forkReplay(ctx context.Context, agentID string, receipt sqlc.F
 	if fork.RunnerID != runnerID {
 		return Session{}, ErrOperationID
 	}
-	return s.Get(ctx, agentID, receipt.ForkID)
+	return s.Get(ctx, botID, receipt.ForkID)
 }
 
 // fork copies the history of conv into a new Session that has the parent of conv and runs in
@@ -109,7 +109,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Session, entryID int64, be
 	if !conv.ExecutionID.Valid {
 		return sqlc.Session{}, fmt.Errorf("%w: entry %d is not in this session", engine.ErrInvalidInput, entryID)
 	}
-	bot, err := s.q.GetAgent(ctx, conv.AgentID)
+	bot, err := s.q.GetBot(ctx, conv.BotID)
 	if err != nil {
 		return sqlc.Session{}, err
 	}
@@ -128,7 +128,7 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Session, entryID int64, be
 		text, err := s.moveNotice(ctx, ran, to)
 		return engine.Move{From: ran, Text: text}, err
 	}
-	ref, copied, err := s.engine.Fork(ctx, engine.Ref{AgentID: conv.AgentID, ID: conv.ExecutionID.Int64}, entryID, before, move)
+	ref, copied, err := s.engine.Fork(ctx, engine.Ref{BotID: conv.BotID, ID: conv.ExecutionID.Int64}, entryID, before, move)
 	if err != nil {
 		return sqlc.Session{}, err
 	}
@@ -147,14 +147,14 @@ func (s *Service) fork(ctx context.Context, conv sqlc.Session, entryID int64, be
 	}
 	defer func() { _ = tx.Rollback() }()
 	// The notice and the cwd depend on the environment of the bot, which can change meanwhile.
-	if bot, err = q.GetAgent(ctx, conv.AgentID); err != nil {
+	if bot, err = q.GetBot(ctx, conv.BotID); err != nil {
 		return sqlc.Session{}, err
 	}
 	if effectiveRunner(bot, conv.RunnerID) != from || effectiveRunner(bot, runnerID) != to {
 		return sqlc.Session{}, fmt.Errorf("%w: the environment of the bot changed during the fork; fork again", engine.ErrBusy)
 	}
 	fork, err := q.CreateFork(ctx, sqlc.CreateForkParams{
-		AgentID: conv.AgentID, ChannelKey: sessionPrefix + uuid.NewV7().String(), Title: title,
+		BotID: conv.BotID, ChannelKey: sessionPrefix + uuid.NewV7().String(), Title: title,
 		ModelProvider: conv.ModelProvider, ModelID: conv.ModelID, ThinkingLevel: conv.ThinkingLevel, Cwd: cwd, RunnerID: runnerID,
 		ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: copied}, ForkedFrom: sql.NullInt64{Int64: conv.ID, Valid: true}, ParentID: conv.ParentID,
 		CreatedAt: s.now().UnixMilli(),

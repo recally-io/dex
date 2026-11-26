@@ -29,7 +29,7 @@ type Config struct {
 	Channel    string `json:"channel"`
 }
 
-// EnvironmentPath keeps service commands separate from the agent's login shell environment.
+// EnvironmentPath keeps service commands separate from the bot's login shell environment.
 // Daily updates also need the gh executable selected by the install command.
 func EnvironmentPath(autoUpdate bool) (string, error) {
 	path := "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"

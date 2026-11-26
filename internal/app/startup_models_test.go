@@ -57,7 +57,7 @@ data: [DONE]
 	first.must(t, http.MethodPut, "/api/settings/providers/lan", map[string]any{"api": "openai-completions", "baseUrl": endpoint.URL, "apiKey": "SECRET"}, nil)
 	first.must(t, http.MethodPut, "/api/settings/providers/fixed", map[string]any{"api": "openai-completions", "baseUrl": endpoint.URL, "models": []string{"static"}}, nil)
 	first.must(t, http.MethodPut, "/api/settings/providers/openai", map[string]any{"apiKey": "SECRET"}, nil)
-	first.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "lan", "modelId": "remote", "thinkingLevel": "off"}, nil)
+	first.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "lan", "modelId": "remote", "thinkingLevel": "off"}, nil)
 	savedSession := first.newSessionWithMessage(t, "before restart")
 	first.watch(t, savedSession).until(t, "saved native dynamic conversation", answered("remote answer"))
 	first.stop()
@@ -122,17 +122,17 @@ func TestUserStartupServesHTTPAndRetainsPendingAdmissionDuringDiscovery(t *testi
 		t.Fatalf("saved static models or builtin credentials were not registered: %v", models)
 	}
 	// Cold runtime operations return retryable 503 without changing saved settings.
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991&limit=100", savedSession), nil, nil, http.StatusServiceUnavailable)
-	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil, http.StatusServiceUnavailable)
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Must not save", "provider": "lan", "modelId": "remote", "thinkingLevel": "off"}, nil, http.StatusServiceUnavailable)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/history?before=9007199254740991&limit=100", savedSession), nil, nil, http.StatusServiceUnavailable)
+	d.must(t, http.MethodPost, "/api/bots/default/integrations/reload", nil, nil, http.StatusServiceUnavailable)
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Must not save", "provider": "lan", "modelId": "remote", "thinkingLevel": "off"}, nil, http.StatusServiceUnavailable)
 	var saved struct {
 		Name     string `json:"name"`
 		Provider string `json:"provider"`
 		ModelID  string `json:"modelId"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &saved)
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &saved)
 	if saved.Name != "Dex" || saved.Provider != "lan" || saved.ModelID != "remote" {
-		t.Fatalf("pending validation changed saved agent: %+v", saved)
+		t.Fatalf("pending validation changed saved bot: %+v", saved)
 	}
 	// When input arrives before the cold harness can safely resume, its receipt stays pending.
 	id := d.send(t, savedSession, "after discovery")

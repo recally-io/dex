@@ -10,7 +10,7 @@ its own document, listed in [Subsystems](#subsystems).
 
 Source: [architecture.puml](../assets/src/architecture.puml).
 
-dex runs HTTP, channels, business services, and agent execution in one Go
+dex runs HTTP, channels, business services, and bot execution in one Go
 process. Business services call `internal/engine` directly. The engine uses
 [PiG](https://github.com/MichaelKinsy/PiG) for durable execution, model access,
 and MCP. The browser receives typed transcript events through SSE.
@@ -25,7 +25,7 @@ package ownership. `internal/app` connects the services. Business services call
 `internal/engine`. Platform adapters implement the `internal/channel` contract.
 `internal/channel/delivery` owns commands, the durable Webhook Queue, and
 reply delivery. Telegram accepts only private chats. The engine uses one
-native store per agent.
+native store per bot.
 Optional [inbound webhooks](channels.md#inbound-webhooks) commit events before
 acknowledging them and use the same platform receive functions. The engine does
 not import dex business packages. Each business package defines its model tools.
@@ -39,7 +39,7 @@ Use `process_start` for supervised long work. It has its own timeout defaults.
 Other tools do not receive the bash or background timeout defaults. MCP calls have
 a 600-second timeout, but remote work can continue after cancellation. A generic
 deadline cannot safely stop a tool that ignores cancellation.
-Agent execution itself stays in dex. There is no backend subprocess or serialized internal protocol.
+Bot execution itself stays in dex. There is no backend subprocess or serialized internal protocol.
 
 ## Service and updates
 
@@ -48,7 +48,7 @@ service. A host that is not loopback makes the API require the access token.
 Definitions store serve
 arguments, a small service PATH, and a configuration record that permits partial
 reinstall across template changes. Install does not copy the shell PATH. Daily
-updates add only the selected `gh` directory. Agent tools use the login shell
+updates add only the selected `gh` directory. Bot tools use the login shell
 environment separately.
 
 `internal/update` verifies GitHub release assets (falling back to unauthenticated
@@ -78,15 +78,15 @@ runner assets for that tag through `/machine/{id}/release/{file}` after machine
 authentication. It streams assets to disk and verifies each archive before it
 adds the archive to the cache. The cache keeps past tags until an operator
 removes them. `dex-agent` uses the same executable verification and replacement
-code as `dex`. If re-exec fails, the agent restores the previous binary.
+code as `dex`. If re-exec fails, `dex-agent` restores the previous binary.
 
 New transcript acquisition uses the engine maintenance admission gate because
-opening an agent can resume stored work. Existing subscriptions remain
+opening a bot can resume stored work. Existing subscriptions remain
 independent of new admission.
 `GET /api/health` exposes native readiness as `runtimeReady`.
 Startup registers saved credentials and static models before it serves HTTP.
 Network model discovery runs in the background. Health and Settings remain
-available while discovery is pending. A cold agent cannot open during discovery
+available while discovery is pending. A cold bot cannot open during discovery
 because opening resumes all its stored conversations. Its input receipts stay
 pending and reconcile when discovery finishes. Direct history, reload, and
 model checks that need discovery return `503`. SSE clients reconnect.
@@ -98,18 +98,19 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 
 ## Data ownership
 
-`control.sqlite` holds business facts: settings, agents, sessions, input
+`control.sqlite` holds business facts: settings, bots, sessions, input
 receipts, channel pairings, the Webhook Queue (`channel_webhook_queue`), the Outbox,
 Tasks and their ledger (`tasks` and `task_entries`),
 and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
-start ([plugins](plugins.md#plugin-migrations)). Each agent has
-`agents/<id>/state.sqlite`, which holds native admission, runs, transcripts,
-and tool calls. Only the engine opens an agent execution store, and business
+start ([plugins](plugins.md#plugin-migrations)). The Bot directory remains
+`<data dir>/agents/<id>/` across upgrades. It holds `workspace/`, `artifacts/`,
+`.agents/`, and `state.sqlite`. The last file holds native admission, runs,
+transcripts, and tool calls. Only the engine opens a bot execution store, and business
 code calls typed engine methods instead of reading it.
 
 The default data directory is `~/.dex` (`DEX_DATA_DIR`). Only the engine opens
-each agent execution store. Run one dex process per data directory.
+each bot execution store. Run one dex process per data directory.
 
 ## Message flow
 
@@ -117,12 +118,12 @@ each agent execution store. Run one dex process per data directory.
 
 Source: [message-flow.puml](../assets/src/message-flow.puml)
 
-1. The browser opens `GET /api/agents/{agentId}/sessions/main`, then sends
-   `POST /api/agents/{agentId}/sessions/{sessionId}/messages` with a client UUID.
+1. The browser opens `GET /api/bots/{botId}/sessions/main`, then sends
+   `POST /api/bots/{botId}/sessions/{sessionId}/messages` with a client UUID.
    `session.Service.Send` rejects ordinary input when no model is selected.
    It records the input intent and origin in `control.sqlite`.
 2. The session service creates an execution conversation on first use and stores
-   its reference. It calls `Agents.Submit` with the UUID as the stable native
+   its reference. It calls `Bots.Submit` with the UUID as the stable native
    request ID. PiG commits admission before it returns a handle. Only then
    does the session service set `admitted_at` on the business receipt.
 3. If admission or the receipt write fails, reconciliation retries the same
@@ -172,7 +173,7 @@ instructions before the native call. The native transaction commits a request
 record with the compaction task. Every retry calls native admission again, so a
 control receipt alone cannot suppress a task that did not commit. A synchronous
 failure can be retried with the same ID. A crash after native commit does not
-create a second task. The control receipt also prevents reuse across agents.
+create a second task. The control receipt also prevents reuse across bots.
 
 A client retry with the same UUID reuses the input intent and native admission.
 The session, input kind, text, attachments and send mode must match the first request.
@@ -186,7 +187,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
 
 | Document                                              | Covers                                                                 |
 | ----------------------------------------------------- | ---------------------------------------------------------------------- |
-| [Agents](agents.md)                                   | Agents and the HTTP API, settings, memory, and bot tools               |
+| [Bots](bots.md)                                       | Bots and the HTTP API, settings, memory, and bot tools                 |
 | [Sessions](sessions.md)                               | Main, Web sessions, child sessions, internal delegation, and Runners   |
 | [Tasks](tasks.md)                                     | Board, the Task ledger, access rules, Sources, and external runs       |
 | [Plugins](plugins.md)                                 | Optional Task sources: GitHub, Webhook, email, and the plugin boundary |
@@ -210,7 +211,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
   A pending receipt that never reached PiG is retried too.
 - **Crash between execution creation and saving its reference.** An empty
   native conversation can remain. The next attempt creates a conversation.
-- **A native watch ends or an agent reloads.** The SSE connection closes.
+- **A native watch ends or a bot reloads.** The SSE connection closes.
   The browser reconnects and receives a new snapshot.
 - **Model or tool error.** The submission becomes `unanswered` with a reason.
   The transcript shows an error item. A tool call that ended without a result
@@ -237,8 +238,8 @@ Each subsystem has its own document. This overview gives only the boundaries.
 
 ## Security
 
-In `local` mode, agent tools (`read`, `write`, `edit`, `bash`) run on the host
-without a sandbox, inside the selected project directory or agent workspace.
+In `local` mode, bot tools (`read`, `write`, `edit`, `bash`) run on the host
+without a sandbox, inside the selected project directory or bot workspace.
 Bots that use a remote Runner inherit its process environment.
 dex sends the configured 1Password credentials and only the vault values that
 an individual command requests. The HTTP server listens on
@@ -248,7 +249,7 @@ needs the access token.
 A chat channel must allow only known user IDs: the settings refuse a
 Telegram bot without allowed users. WeChat captures the owner ID from QR
 confirmation and rejects a login without that ID. Other WeChat senders never
-reach the agent. The API refuses cross-site writes
+reach the bot. The API refuses cross-site writes
 (`http.CrossOriginProtection`), so another web page in the user's browser
 cannot send messages or change settings. [Channel approval pages](channels.md#owner-channel-tools)
 use the same cross-origin check. When dex requires sign-in, channel approval
@@ -262,14 +263,14 @@ directory with mode 0700. The API never returns a key or a token.
 
 Uploads: a file name with a path, a control character, or more than 255
 bytes is refused. An upload ID must be a UUID in its normal form, so it
-cannot leave the uploads directory. `GET /api/agents/{agentId}/uploads/{id}` sends PNG, JPEG,
+cannot leave the uploads directory. `GET /api/bots/{botId}/uploads/{id}` sends PNG, JPEG,
 GIF and WebP inline with their type, and every other file as
 `application/octet-stream` with `Content-Disposition: attachment`. All
 responses have `X-Content-Type-Options: nosniff`, so an uploaded HTML or SVG
 file does not run in the dex origin.
 
 A stdio MCP server runs on the control host as the dex user, without a
-sandbox. It gets the explicit agent environment plus its own `env`.
+sandbox. It gets the explicit bot environment plus its own `env`.
 `control.sqlite` stores any plain MCP credentials in declarations as plain
 text, within the same trust boundary as provider keys. Use vault references
 in `env` and `headers`. The Integrations API and `mcp_server_list` show status,
@@ -283,7 +284,7 @@ MCP endpoint.
 
 Every session reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to
-later sessions; the rules tell the agent that memory is data, not instructions,
+later sessions; the rules tell the bot that memory is data, not instructions,
 and git history shows each change.
 
 Control does not log the Telegram token. Bot API errors drop the request URL,
@@ -293,7 +294,7 @@ can override variables explicitly. The engine does not change the dex process
 environment. The login shell starts from six process keys, so dex settings
 such as `DEX_TOKEN` do not reach tools unless a shell rc file exports them.
 
-The [vault](skills-and-integrations.md#secret-vault) encrypts shared and agent-level
+The [vault](skills-and-integrations.md#secret-vault) encrypts shared and bot-level
 secrets with age. Only the control host resolves references. It passes values
 in the process environment, not in command arguments. It masks exact values
 in final tool results and Process wake-ups. Local tools run as the dex
@@ -301,14 +302,14 @@ user and have the same access to the control files as that user.
 
 ## Limits
 
-- Harnesses stay open until shutdown or reload of that agent.
+- Harnesses stay open until shutdown or reload of that bot.
 - The memory repo is local; dex does not pull or push. Two sessions that change
   the memory at the same time can land in one commit, under the source of
   the session that settles first.
 - An MCP server that drops its connection stays down until a reload.
 - dex does not delete uploads. A file that the user removes before sending,
   or that a message never uses, stays in `workspace/uploads/`. The files are
-  in the agent workspace, so the agent's tools can change or delete them; the
+  in the bot workspace, so the bot's tools can change or delete them; the
   transcript then shows the changed file, or a broken link.
 
 ## Simplification review
@@ -318,7 +319,7 @@ state. Business services own receipts, channel reply delivery, child session lin
 settings. Business code calls typed methods and never reads execution SQLite.
 The two stores retain separate responsibilities inside one process.
 
-The API uses the automation service types and `settings.Agent` through
+The API uses the automation service types and `bot.Bot` through
 OpenAPI `x-go-type` declarations. The generated API depends on those services;
 the services do not depend on HTTP types. This removes a second model and the
 field conversion layer. The Go JSON tags must match the OpenAPI schema. HTTP

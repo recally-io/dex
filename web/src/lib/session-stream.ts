@@ -1,4 +1,4 @@
-import { useAgentId } from "./agent-scope";
+import { useBotId } from "./bot-scope";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSessionOptions } from "../api/generated/@tanstack/react-query.gen";
@@ -9,9 +9,9 @@ import { checkSession } from "./session";
 
 // A reconnect replaces live items with a snapshot and keeps the loaded history prefix.
 export function useSessionStream(sessionId: number) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const queryClient = useQueryClient();
-  const session = useQuery(getSessionOptions({ path: { agentId, sessionId } }));
+  const session = useQuery(getSessionOptions({ path: { botId, sessionId } }));
   const [state, setState] = useState(emptySessionState);
   const [queued, setQueued] = useState<UserItem[]>([]);
   const [connection, setConnection] = useState<"connecting" | "ready" | "error">("connecting");
@@ -27,7 +27,7 @@ export function useSessionStream(sessionId: number) {
       source?.close();
       snapshotSeen = false;
       setConnection("connecting");
-      source = new EventSource(`/api/agents/${encodeURIComponent(agentId)}/sessions/${sessionId}/events`);
+      source = new EventSource(`/api/bots/${encodeURIComponent(botId)}/sessions/${sessionId}/events`);
       source.onopen = () => {
         setConnection("connecting");
         setState((previous) => ({ ...previous, children: undefined }));
@@ -47,7 +47,7 @@ export function useSessionStream(sessionId: number) {
           if (event.type === "snapshot") snapshotSeen = true;
 
           if (event.type === "snapshot" || (event.type === "run" && !event.running))
-            void queryClient.invalidateQueries({ queryKey: [{ _id: "listArtifacts", path: { agentId } }] });
+            void queryClient.invalidateQueries({ queryKey: [{ _id: "listArtifacts", path: { botId } }] });
           setState((previous) => applySessionEvent(previous, event));
 
           if (event.type === "snapshot")
@@ -69,7 +69,7 @@ export function useSessionStream(sessionId: number) {
               event.item.name === "set_project" &&
               event.item.status !== "running")
           )
-            void refreshSessions(agentId);
+            void refreshSessions(botId);
         } catch {
           source.close();
           setConnection("error");
@@ -91,7 +91,7 @@ export function useSessionStream(sessionId: number) {
       reconnect.current = null;
       source.close();
     };
-  }, [agentId, sessionId, session.isSuccess, queryClient]);
+  }, [botId, sessionId, session.isSuccess, queryClient]);
 
   return { session, state, setState, queued, setQueued, connection, streamError, reconnect };
 }
