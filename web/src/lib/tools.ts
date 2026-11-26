@@ -1,6 +1,7 @@
 // Tool arguments arrive as JSON values of any type.
 /* eslint-disable anti-slop/no-runtime-typeof */
 import type { Item, ToolItem } from "../api/generated/types.gen";
+import { isSystemInput, isTurnStart, type SystemInput } from "./chat-state";
 
 type ThinkingItem = Extract<Item, { kind: "thinking" }>;
 
@@ -9,27 +10,27 @@ export type Step = ThinkingItem | ToolItem;
 
 export type ContentBlock =
   | { kind: "steps"; steps: Step[]; key: string; last: number }
-  | { kind: "item"; item: Exclude<Item, { kind: "tool" | "task" | "thinking" }>; index: number };
+  | { kind: "item"; item: Exclude<Item, Step | SystemInput>; index: number };
 
-type TaskBlock = { kind: "task"; item: Extract<Item, { kind: "task" }>; blocks: ContentBlock[] };
+export type SystemBlock = { kind: "system"; item: SystemInput; blocks: ContentBlock[] };
 
-type Block = ContentBlock | TaskBlock;
+type Block = ContentBlock | SystemBlock;
 
-// A result owns the items up to the next input. Keep original indices for Retry and streaming.
+// A system input owns the items up to the next turn. Keep indices for Retry and streaming.
 export function blocks(items: Item[]): Block[] {
   const out: Block[] = [];
-  let task: TaskBlock | undefined;
+  let system: SystemBlock | undefined;
 
   items.forEach((item, index) => {
-    if (item.kind === "task") {
-      task = { kind: "task", item, blocks: [] };
-      out.push(task);
+    if (isSystemInput(item)) {
+      system = { kind: "system", item, blocks: [] };
+      out.push(system);
 
       return;
     }
 
-    if (item.kind === "user" || item.kind === "boundary") task = undefined;
-    const target = task?.blocks ?? out;
+    if (isTurnStart(item)) system = undefined;
+    const target = system?.blocks ?? out;
     const last = target.at(-1);
 
     if (item.kind !== "tool" && item.kind !== "thinking") target.push({ kind: "item", item, index });

@@ -112,7 +112,7 @@ func TestUserTaskChildExecutionSettlesWithoutTaskWake(t *testing.T) {
 				t.Errorf("settlement or replay wrote %d Task ledger entries", after-before)
 			}
 			var results, wakes int
-			err = r.conn.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE kind = 'task_result' AND conversation_id = ?), count(*) FILTER (WHERE kind = 'task_wake') FROM submissions`, parent).Scan(&results, &wakes)
+			err = r.conn.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE kind = 'session_result' AND conversation_id = ?), count(*) FILTER (WHERE kind = 'task_wake') FROM submissions`, parent).Scan(&results, &wakes)
 			if err != nil || results != tc.results || wakes != 0 {
 				t.Fatalf("parent got %d child results and %d Task wakes, want %d and 0 (query: %v)", results, wakes, tc.results, err)
 			}

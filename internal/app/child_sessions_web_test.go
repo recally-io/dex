@@ -50,7 +50,7 @@ func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 	// When the web reads the result mark, it can open the canonical child Session URL.
 	d.watch(t, parent).until(t, "linked child result", func(tr *transcript) bool {
 		for _, it := range tr.items {
-			if it.Kind == "task" && it.TaskID == turn {
+			if it.Kind == "session_result" && it.ID == "result:"+turn {
 				return it.ChildSessionID == child.conversation(t)
 			}
 		}

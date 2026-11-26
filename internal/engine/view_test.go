@@ -84,19 +84,39 @@ func TestUserTranscriptToolEndBeforeResult(t *testing.T) {
 	}
 }
 
-func TestUserSeesOutcomesOfTaskResults(t *testing.T) {
-	// The projection keeps the answer out. The child session holds it.
+func TestUserSeesDistinctSystemInputsInOldAndNewTranscripts(t *testing.T) {
+	// Given saved inputs from both sides of the upgrade, including a pending legacy result
+	// that the new engine admitted without changing its payload.
 	for _, tc := range []struct {
-		name, content, wantStatus, wantReason string
+		name, entryKind, oldKind, id, content string
+		want                                  Item
 	}{
-		{"done", `{"task-result":{"outcome":"done","answer":"private report"}}`, "done", ""},
-		{"failed", `{"task-result":{"outcome":"failed","reason":"model down"}}`, "failed", "model down"},
+		{"result", "dex.session_result", "", "result:1", `{"session-result":{"session":"7","title":"Inspect","outcome":"done","answer":"private report"}}`,
+			Item{Kind: "session_result", Title: "Inspect", Status: "done", ChildSessionID: 7}},
+		{"legacy-report", "dex.task_result", "task_result", "report:1", `{"task-result":{"outcome":"failed","reason":"model down"}}`,
+			Item{Kind: "session_result", Title: "Session result", Status: "failed", Reason: "model down"}},
+		{"pending-legacy-report", "dex.session_result", "", "report:2", `{"task-result":{"outcome":"failed","reason":"model down"}}`,
+			Item{Kind: "session_result", Title: "Session result", Status: "failed", Reason: "model down"}},
+		{"process", "dex.wake", "", "background:p:exit", `{"background-result":{"label":"Compile","event":"timed_out","notice":"time limit","output":"private output"}}`,
+			Item{Kind: "wake", Title: "Compile", Status: "timed_out", Reason: "time limit"}},
+		{"legacy-monitor", "dex.task_result", "task_result", "monitor:m:1", "[Monitor check changed: m]\nprivate prompt",
+			Item{Kind: "wake", Title: "Monitor", Status: "check changed"}},
+		{"board", "dex.task_wake", "", "task-wake:1", "private pointers", Item{Kind: "task_wake", Title: "Task wake"}},
+		{"legacy-board", "dex.task_result", "task_wake", "task-wake:2", "private pointers", Item{Kind: "task_wake", Title: "Task wake"}},
+		{"legacy-alert", "dex.task_result", "task_result", "task-alert:1", "private alert", Item{Kind: "session_result", Title: "Session result", Alert: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			entry := transcriptEntry(1, "dex.task_result", ai.UserMessage{Content: ai.UserText(tc.content)}, delta.JsonObjectOf("requestId", "result-1", "kind", "task_result"))
-			item := (projection{entries: []durable.EntryRecord{entry}}).event().Items[0]
-			if item.Text != "" || item.Status != tc.wantStatus || item.Reason != tc.wantReason {
-				t.Fatalf("result = %#v", item)
+			entry := transcriptEntry(1, tc.entryKind, ai.UserMessage{Content: ai.UserText(tc.content)}, delta.JsonObjectOf("requestId", tc.id, "kind", tc.oldKind))
+			want := tc.want
+			want.ID, want.EntryID = tc.id, 1
+
+			// When the saved history is projected, only its display fields are visible.
+			got := (projection{entries: []durable.EntryRecord{entry}}).event().Items
+			if !reflect.DeepEqual(got, []Item{want}) {
+				t.Fatalf("transcript = %+v, want %+v", got, want)
+			}
+			if !historyBoundary(entry) {
+				t.Fatal("a system input must start a history page")
 			}
 		})
 	}
@@ -116,7 +136,7 @@ func TestUserTranscriptResetHistoryAndTaskMarkers(t *testing.T) {
 	if got := snapshot.Items[0]; got.Kind != "boundary" || got.Boundary != "reset" || got.At != 7 {
 		t.Fatalf("reset = %#v", got)
 	}
-	if got := snapshot.Items[1]; got.Kind != "task" || got.TaskID != "task-1" || got.Title != "Inspect" || got.Text != "" || got.Status != "done" {
+	if got := snapshot.Items[1]; got.Kind != "session_result" || got.ChildSessionID != 7 || got.Title != "Inspect" || got.Text != "" || got.Status != "done" {
 		t.Fatalf("task = %#v", got)
 	}
 	// An older page and an active snapshot assign the same committed ID.

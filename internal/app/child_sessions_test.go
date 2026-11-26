@@ -100,7 +100,7 @@ func (r childRef) conversation(t *testing.T) int64 {
 
 func resultRows(t *testing.T, conn *sql.DB, parent int64) []resultRow {
 	t.Helper()
-	rows, err := conn.QueryContext(t.Context(), `SELECT id, status, content, coalesce(answer, '') FROM submissions WHERE conversation_id = ? AND kind = 'task_result' ORDER BY rowid`, parent)
+	rows, err := conn.QueryContext(t.Context(), `SELECT id, status, content, coalesce(answer, '') FROM submissions WHERE conversation_id = ? AND kind = 'session_result' ORDER BY rowid`, parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func waitDoneChildTurns(t *testing.T, conn *sql.DB, child int64, n int) []childT
 func resultBody(t *testing.T, content string) map[string]any {
 	t.Helper()
 	var body struct {
-		Result map[string]any `json:"task-result"`
+		Result map[string]any `json:"session-result"`
 	}
 	if err := json.Unmarshal([]byte(content), &body); err != nil || body.Result == nil {
 		t.Fatalf("result content %q: %v", content, err)
@@ -203,7 +203,7 @@ func TestUserChildSessionSendsOneResultToItsParent(t *testing.T) {
 	if body["session"] != child.ID || body["title"] != "Echo" || body["outcome"] != "done" || body["answer"] != "echo: hello child" {
 		t.Fatalf("result body: %v", body)
 	}
-	if !strings.HasPrefix(rows[0].answer, "task-result: ") {
+	if !strings.HasPrefix(rows[0].answer, "session-result: ") {
 		t.Fatalf("parent did not process the result: %+v", rows[0])
 	}
 	var parentID sql.NullInt64
@@ -235,7 +235,7 @@ func TestUserChildSessionSendRunsAgainAndSendsAnotherResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	firstRows := waitResults(t, conn, parent, 1)
-	if !strings.HasPrefix(firstRows[0].answer, "task-result: ") || !strings.Contains(firstRows[0].answer, "echo: first") {
+	if !strings.HasPrefix(firstRows[0].answer, "session-result: ") || !strings.Contains(firstRows[0].answer, "echo: first") {
 		t.Fatalf("first result processed internally: %+v", firstRows[0])
 	}
 	// When the parent sends another message to the same child.
@@ -623,7 +623,7 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	if !found {
 		t.Fatal("the child was not found")
 	}
-	for _, query := range []string{"task-result", "outcome"} {
+	for _, query := range []string{"session-result", "outcome"} {
 		if got := searchSessions(t, d, searcher, map[string]any{"query": query, "session": "all"}); len(got) != 0 {
 			t.Fatalf("%q matched a result row: %+v", query, got)
 		}

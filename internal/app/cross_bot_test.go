@@ -530,7 +530,7 @@ func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	turn := waitDoneChildTurns(t, s.conn, childB, 1)[0].id
 	s.d.watch(t, parent.id).until(t, "linked cross-Bot result", func(tr *transcript) bool {
 		for _, it := range tr.items {
-			if it.Kind == "task" && it.TaskID == turn {
+			if it.Kind == "session_result" && it.ID == "result:"+turn {
 				return it.ChildSessionID == childB
 			}
 		}

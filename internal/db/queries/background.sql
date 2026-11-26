@@ -49,7 +49,7 @@ UPDATE background_commands SET state = 'unknown' WHERE state IN ('starting', 'ru
 -- follows the event, so a replay does not store a second input. An archived bot takes no input: the
 -- condition is part of the insert, so an archive cannot slip between a check and the write.
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
-SELECT @id, b.conversation_id, @content, 'null', @id, s.origin, 'scheduler', '', '', 'task_result', 'pending', @created_at, s.channel_context
+SELECT @id, b.conversation_id, @content, 'null', @id, s.origin, 'scheduler', '', '', 'wake', 'pending', @created_at, s.channel_context
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
 JOIN conversations c ON c.id = b.conversation_id

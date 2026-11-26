@@ -36,9 +36,10 @@ func openTools(t *testing.T) (*Service, *sql.DB) {
 	}
 	if _, err := conn.ExecContext(ctx, `INSERT INTO submissions (id, conversation_id, content, status, created_at, kind, origin, producer) VALUES
 		('user', 1, 'x', 'done', 1, 'message', 'web', 'user'),
-		('result', 1, 'x', 'done', 1, 'task_result', 'task', 'sub_session'),
-		('alert', 1, 'x', 'done', 1, 'task_result', 'web', 'plugin'),
+		('result', 1, 'x', 'done', 1, 'session_result', 'task', 'sub_session'),
+		('alert', 1, 'x', 'done', 1, 'session_result', 'web', 'plugin'),
 		('wake', 1, 'x', 'done', 1, 'task_wake', 'web', 'plugin'),
+		('system-wake', 1, 'x', 'done', 1, 'wake', 'web', 'scheduler'),
 		('reviewer-user', 2, 'x', 'done', 1, 'message', 'web', 'user'),
 		('reviewer-wake', 2, 'x', 'done', 1, 'task_wake', 'web', 'plugin'),
 		('other-user', 3, 'x', 'done', 1, 'message', 'web', 'user'),
@@ -101,6 +102,10 @@ func TestUserTaskToolsEnforceActorAndOrigin(t *testing.T) {
 		}},
 		{"cancel on user turn", tasksvc.ErrForbidden, func() error {
 			_, err := s.Update(ctx, main("user", "cancel"), TaskUpdateArgs{ID: task.Key, Status: "cancelled"})
+			return err
+		}},
+		{"post from Monitor or Process wake", tasksvc.ErrForbidden, func() error {
+			_, err := s.Post(ctx, main("system-wake", "post-system-wake"), TaskPostArgs{ID: task.Key, Content: "No"})
 			return err
 		}},
 		{"post from plugin alert", tasksvc.ErrForbidden, func() error {

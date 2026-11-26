@@ -827,8 +827,12 @@ export type BoundaryItem = {
 export type Item = ({
     kind: 'user';
 } & UserItem) | ({
-    kind: 'task';
-} & TaskItem) | ({
+    kind: 'session_result';
+} & SessionResultItem) | ({
+    kind: 'wake';
+} & WakeItem) | ({
+    kind: 'task_wake';
+} & TaskWakeItem) | ({
     kind: 'thinking';
 } & ThinkingItem) | ({
     kind: 'tool';
@@ -863,34 +867,72 @@ export type UserItem = {
 };
 
 /**
- * Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
+ * Marks a child session result or report. The answer stays in the child session.
  */
-export type TaskItem = {
-    kind: 'task';
+export type SessionResultItem = {
+    kind: 'session_result';
     id: string;
     entryId?: number;
     at?: number;
     title: string;
     /**
-     * The outcome of the child session turn. The answer stays in the child session.
-     */
-    status?: string;
-    /**
-     * The reason the child session turn failed or was interrupted.
-     */
-    reason?: string;
-    /**
-     * The input ID of the child session turn, or the ID of an old task.
-     */
-    taskId: string;
-    /**
-     * The child Session ID, when the saved result includes it.
+     * The child session ID, when the saved result includes it.
      */
     childSessionId?: number;
     /**
-     * True for a Task alert on Main. The title is the Task title, and taskId is empty. The alert has only event metadata.
+     * The outcome of the child session turn.
+     */
+    status?: string;
+    /**
+     * Why the turn failed or stopped.
+     */
+    reason?: string;
+    /**
+     * True for a saved legacy Task alert.
      */
     alert?: boolean;
+    /**
+     * True while the input waits for the Bot.
+     */
+    queued?: boolean;
+};
+
+/**
+ * Marks an input from a Monitor or Process.
+ */
+export type WakeItem = {
+    kind: 'wake';
+    id: string;
+    entryId?: number;
+    at?: number;
+    title: string;
+    /**
+     * The Monitor or Process event.
+     */
+    status?: string;
+    /**
+     * An optional notice about the event.
+     */
+    reason?: string;
+    /**
+     * True while the input waits for the Bot.
+     */
+    queued?: boolean;
+};
+
+/**
+ * Marks a wake for one or more updates on the Board.
+ */
+export type TaskWakeItem = {
+    kind: 'task_wake';
+    id: string;
+    entryId?: number;
+    at?: number;
+    title: 'Task wake';
+    /**
+     * True while the input waits for the Bot.
+     */
+    queued?: boolean;
 };
 
 export type ThinkingItem = {

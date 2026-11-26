@@ -31,7 +31,7 @@ func TestUserMainReadsATaskAlertWithoutExternalText(t *testing.T) {
 		return i >= 0 && !tr.running
 	})
 	t.Logf("artifact: Main items=%+v", w.tr.items)
-	if mark := w.tr.items[0]; mark.Kind != "task" || !mark.Alert || mark.Title != "Task wake" {
+	if mark := w.tr.items[0]; mark.Kind != "task_wake" || mark.Title != "Task wake" {
 		t.Fatalf("Main must show the input as a Task wake: %+v", mark)
 	}
 	for _, want := range []string{`\"taskKey\":\"T-1\"`, `\"reason\":\"assigned\"`, `\"highWaterEntryId\":`} {

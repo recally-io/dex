@@ -175,12 +175,11 @@ test("user sees a result as one line without the answer", async () => {
   });
 
   const items: Item[] = [
-    { kind: "task", id: "r1", taskId: "t1", title: "Check logs", childSessionId: 7 },
+    { kind: "session_result", id: "r1", title: "Check logs", childSessionId: 7 },
     { kind: "assistant", id: "a1", text: "Main reply" },
     {
-      kind: "task",
+      kind: "session_result",
       id: "r2",
-      taskId: "t2",
       title: "Build",
       status: "failed",
       reason: "model down",
@@ -206,7 +205,7 @@ test("user sees a result as one line without the answer", async () => {
       ThreadContext.Provider,
       { value: { open: () => {} } },
       createElement(ResultLine, {
-        item: { kind: "task", id: "r", taskId: "t", title: "Check logs", childSessionId: 7 },
+        item: { kind: "session_result", id: "r", title: "Check logs", childSessionId: 7 },
       }),
     ),
     client,
@@ -282,9 +281,9 @@ test("user sees preparation before a child exists and running without text", asy
   expect(html).not.toContain("Waiting for model");
 });
 
-test("user sees silent system turn trace folded under task mark", async () => {
+test("user sees a silent Process trace folded under its wake", async () => {
   const items: Item[] = [
-    { kind: "task", id: "r1", taskId: "t1", title: "Background wake" },
+    { kind: "wake", id: "r1", title: "Build", status: "timed_out", reason: "Time limit" },
     {
       kind: "tool",
       id: "tool-1",
@@ -299,8 +298,21 @@ test("user sees silent system turn trace folded under task mark", async () => {
     createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
   );
 
+  expect(html).toContain("Build</span> · timed out: Time limit");
   expect(html).toContain("<details");
   expect(html).toContain("Internal trace (silent)");
+  expect(html).not.toContain("View session");
+});
+
+test("user can open the Board from a Task wake", async () => {
+  const items: Item[] = [{ kind: "task_wake", id: "board", title: "Task wake" }];
+
+  const html = await render(
+    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+  );
+
+  expect(html).toMatch(/<a\b[^>]*href="\/board"[^>]*>Task wake<\/a>/);
+  expect(html).not.toContain("View session");
 });
 
 test("user sees a child report to its parent as a step, never as a thread line", async () => {
@@ -314,10 +326,9 @@ test("user sees a child report to its parent as a step, never as a thread line",
   });
 
   const mark = (id: string): Item => ({
-    kind: "task",
+    kind: "wake",
     id: `${id}-mark`,
-    taskId: id,
-    title: "Background wake",
+    title: "Monitor",
   });
 
   const transcript = (...tools: ToolItem[]) =>
@@ -389,7 +400,7 @@ test("user sees a child report to its parent as a step, never as a thread line",
 
 test("user sees a Task alert on Main with the Task title", async () => {
   const items: Item[] = [
-    { kind: "task", id: "task-alert:e1", taskId: "", title: "GitHub issue #1", alert: true },
+    { kind: "session_result", id: "task-alert:e1", title: "GitHub issue #1", alert: true },
   ];
 
   const html = await render(

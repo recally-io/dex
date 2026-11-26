@@ -13,10 +13,10 @@ func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
 
-	// Given a done System Turn (task_result) without notify_user or ask_user.
+	// Given a done System Turn (session_result) without notify_user or ask_user.
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-		ID: "sys-quiet-1", ConversationID: conv, Content: "task result payload",
-		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
+		ID: "sys-quiet-1", ConversationID: conv, Content: "session result payload",
+		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "session_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -37,8 +37,8 @@ func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 
 	// When a System Turn settles with an unhandled failure (e.g. model_error).
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-		ID: "sys-fail-1", ConversationID: conv, Content: "task result payload",
-		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 2,
+		ID: "sys-fail-1", ConversationID: conv, Content: "session result payload",
+		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "session_result", CreatedAt: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "sys-notify-src", ConversationID: conv, Content: "wake",
-		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "telegram:42", Producer: "scheduler", Kind: "wake", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "child-bg-wake", ConversationID: childID, Content: "bg done",
-		Attachments: "null", Origin: "web", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "web", Producer: "scheduler", Kind: "wake", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sub.ConversationID != parent || sub.Kind != "task_result" || !strings.Contains(sub.Content, "explicit child escalation") {
+	if sub.ConversationID != parent || sub.Kind != "session_result" || !strings.Contains(sub.Content, "explicit child escalation") {
 		t.Fatalf("unexpected parent report submission: %+v", sub)
 	}
 }

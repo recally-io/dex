@@ -192,7 +192,9 @@ func TestUserGetsAWakeUpWithTheExitStatusWhenABackgroundCommandEnds(t *testing.T
 	}
 	// And the transcript marks the wake-up with the label, and links no child session.
 	d.watch(t, chat).until(t, "the wake-up in the transcript", func(tr *transcript) bool {
-		return slices.ContainsFunc(tr.items, func(i item) bool { return i.Kind == "task" && i.Title == "build" && i.TaskID == "" })
+		return slices.ContainsFunc(tr.items, func(i item) bool {
+			return i.Kind == "wake" && i.Title == "build" && i.Status == "exited" && i.ChildSessionID == 0
+		})
 	})
 	// And the output file has the whole output, and the list shows the end.
 	data, err := os.ReadFile(info.OutputFile)
@@ -419,7 +421,7 @@ func TestUserDoesNotSeeAWithdrawnWakeUpAsTheirOwnMessage(t *testing.T) {
 			if it.Kind == "user" && strings.Contains(it.Text, "background-result") {
 				t.Fatalf("%s shows the wake-up as a message of the user: %+v", source, it)
 			}
-			marker = marker || it.Kind == "task" && it.Title == "ci" && it.TaskID == ""
+			marker = marker || it.Kind == "wake" && it.Title == "ci" && it.ChildSessionID == 0
 		}
 		if !marker {
 			t.Fatalf("%s has no background result marker: %+v", source, items)
@@ -453,7 +455,7 @@ func TestUserParentReadsTheCutAnswerOfAChildTurn(t *testing.T) {
 				var body struct {
 					Result struct {
 						Turn string `json:"turn"`
-					} `json:"task-result"`
+					} `json:"session-result"`
 				}
 				if err := json.Unmarshal([]byte(row.content), &body); err == nil {
 					turn = body.Result.Turn
@@ -490,7 +492,7 @@ func TestUserChildBackgroundWakeDoesNotAutoEscalateToParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the background command finishes, the child receives its wake-up,
-	// and the parent receives no extra auto-escalated task_result.
+	// and the parent receives no extra automatic session result.
 	childID, err := strconv.ParseInt(child.ID, 10, 64)
 	if err != nil {
 		t.Fatal(err)

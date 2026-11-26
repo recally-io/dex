@@ -388,7 +388,7 @@ func monitorChain(ctx context.Context, q *sqlc.Queries, source sqlc.Submission) 
 		if source.Kind == "message" && userOrigin(source.Origin) {
 			return source.ID, depth, nil
 		}
-		if source.Kind == "task_result" && source.SourceKey.String == source.ID {
+		if source.Kind == "wake" && source.SourceKey.String == source.ID {
 			if event, ok := strings.CutPrefix(source.ID, "background:"); ok {
 				id, _, _ := strings.Cut(event, ":")
 				command, err := q.GetBackgroundCommand(ctx, id)
@@ -448,7 +448,7 @@ func (s *Service) authorizeMonitor(ctx context.Context, caller engine.TaskContex
 		return err
 	}
 	// A user request is not a monitor event just because its ID uses the prefix.
-	if source.Kind != "task_result" || source.SourceKey.String != source.ID {
+	if source.Kind != "wake" || source.SourceKey.String != source.ID {
 		return nil
 	}
 	row, err := monitorForEvent(ctx, s.q, source.ID)

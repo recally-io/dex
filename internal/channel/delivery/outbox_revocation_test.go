@@ -51,7 +51,7 @@ UPDATE conversations SET parent_id=1 WHERE id=2;
 INSERT INTO submissions (id,conversation_id,content,status,source_key,origin,kind,channel_context,created_at) VALUES
     ('original',1,'Delegate','done','original-key','telegram:42','message','{"accountId":"123","senderId":"42"}',1),
     ('child-turn',2,'Do work','done',NULL,'task','message','{}',2),
-    ('result:child-turn',1,'Canonical result','done',NULL,'telegram:42','task_result','{"accountId":"123","senderId":"42"}',3);
+    ('result:child-turn',1,'Canonical result','done',NULL,'telegram:42','session_result','{"accountId":"123","senderId":"42"}',3);
 UPDATE submissions SET parent_request_id='original' WHERE id='child-turn';
 INSERT INTO outbox_messages (id,event_id,agent_id,conversation_id,source_submission_id,kind,peer,channel_context,body,created_at)
 VALUES ('final','notify:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4);`); err != nil {

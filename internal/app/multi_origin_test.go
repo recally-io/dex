@@ -60,17 +60,17 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	}
 	content := "bash " + string(args)
 	// The faux model reads the child result as a gated bash command.
-	if _, err := conn.ExecContext(t.Context(), `CREATE TRIGGER gate_child_result AFTER INSERT ON submissions WHEN NEW.kind='task_result' BEGIN UPDATE submissions SET content=`+"'"+strings.ReplaceAll(content, "'", "''")+"'"+` WHERE id=NEW.id; END`); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `CREATE TRIGGER gate_child_result AFTER INSERT ON submissions WHEN NEW.kind='session_result' BEGIN UPDATE submissions SET content=`+"'"+strings.ReplaceAll(content, "'", "''")+"'"+` WHERE id=NEW.id; END`); err != nil {
 		t.Fatal(err)
 	}
 	d.setModel(t, "tool")
 	child.open()
 	run.waitStarted(t)
 	var resultID, origin, kind string
-	if err := conn.QueryRowContext(t.Context(), "SELECT id, origin, kind FROM submissions WHERE conversation_id=? AND kind='task_result'", main).Scan(&resultID, &origin, &kind); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT id, origin, kind FROM submissions WHERE conversation_id=? AND kind='session_result'", main).Scan(&resultID, &origin, &kind); err != nil {
 		t.Fatal(err)
 	}
-	if origin != "task" || kind != "task_result" {
+	if origin != "task" || kind != "session_result" {
 		t.Fatalf("child result = %s %s", origin, kind)
 	}
 	steer := uuid.NewV7().String()

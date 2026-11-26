@@ -174,7 +174,7 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 		Answer:  bodyText,
 	}
 	content, err := json.Marshal(struct {
-		Result sessionResult `json:"task-result"`
+		Result sessionResult `json:"session-result"`
 	}{body})
 	if err != nil {
 		return "", err
@@ -189,7 +189,7 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 		Attachments:    "null",
 		Origin:         cmp.Or(source.Origin, "web"),
 		Producer:       ProducerSubSession,
-		Kind:           "task_result",
+		Kind:           "session_result",
 		CreatedAt:      now,
 	}); err != nil {
 		return "", err

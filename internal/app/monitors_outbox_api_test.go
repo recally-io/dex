@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -152,8 +153,13 @@ DETACH DATABASE fixture;`); err != nil {
 		t.Fatalf("legacy identity was lost: %q %q %q %v", completed, operation, source, err)
 	}
 	var total int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE conversation_id = ? AND kind = 'task_result'`, chatID).Scan(&total); err != nil || total != 1 {
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE conversation_id = ? AND kind = 'wake'`, chatID).Scan(&total); err != nil || total != 1 {
 		t.Fatalf("expected one follow-up across both boots, got %d (%v)", total, err)
 	}
+	d.watch(t, chatID).until(t, "Monitor wake in the transcript after restart", func(tr *transcript) bool {
+		return slices.ContainsFunc(tr.items, func(mark item) bool {
+			return mark.ID == "monitor:legacy-armed:1" && mark.Kind == "wake" && mark.Title == "Monitor" && mark.Status == "due" && mark.Text == ""
+		})
+	})
 	d.must(t, http.MethodGet, chatPath(chatID, "timers"), nil, nil, http.StatusNotFound)
 }

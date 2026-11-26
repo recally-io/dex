@@ -622,6 +622,21 @@ func (e RunnerKind) Valid() bool {
 	}
 }
 
+// Defines values for SessionResultItemKind.
+const (
+	SessionResult SessionResultItemKind = "session_result"
+)
+
+// Valid indicates whether the value is a known member of the SessionResultItemKind enum.
+func (e SessionResultItemKind) Valid() bool {
+	switch e {
+	case SessionResult:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SkillScope.
 const (
 	SkillScopeAgent   SkillScope = "agent"
@@ -967,21 +982,6 @@ func (e TaskExecutionFinishOutcome) Valid() bool {
 	}
 }
 
-// Defines values for TaskItemKind.
-const (
-	Task TaskItemKind = "task"
-)
-
-// Valid indicates whether the value is a known member of the TaskItemKind enum.
-func (e TaskItemKind) Valid() bool {
-	switch e {
-	case Task:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for TaskReviewDecision.
 const (
 	TaskReviewDecisionApprove        TaskReviewDecision = "approve"
@@ -1120,6 +1120,36 @@ func (e TaskStatus) Valid() bool {
 	}
 }
 
+// Defines values for TaskWakeItemKind.
+const (
+	TaskWakeItemKindTaskWake TaskWakeItemKind = "task_wake"
+)
+
+// Valid indicates whether the value is a known member of the TaskWakeItemKind enum.
+func (e TaskWakeItemKind) Valid() bool {
+	switch e {
+	case TaskWakeItemKindTaskWake:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskWakeItemTitle.
+const (
+	TaskWakeItemTitleTaskWake TaskWakeItemTitle = "Task wake"
+)
+
+// Valid indicates whether the value is a known member of the TaskWakeItemTitle enum.
+func (e TaskWakeItemTitle) Valid() bool {
+	switch e {
+	case TaskWakeItemTitleTaskWake:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TelegramTransport.
 const (
 	TelegramTransportPolling TelegramTransport = "polling"
@@ -1249,6 +1279,21 @@ const (
 func (e UserItemKind) Valid() bool {
 	switch e {
 	case User:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WakeItemKind.
+const (
+	Wake WakeItemKind = "wake"
+)
+
+// Valid indicates whether the value is a known member of the WakeItemKind enum.
+func (e WakeItemKind) Valid() bool {
+	switch e {
+	case Wake:
 		return true
 	default:
 		return false
@@ -2128,6 +2173,32 @@ type SentMessage struct {
 	SubmissionId string `json:"submissionId"`
 }
 
+// SessionResultItem Marks a child session result or report. The answer stays in the child session.
+type SessionResultItem struct {
+	// Alert True for a saved legacy Task alert.
+	Alert *bool  `json:"alert,omitempty"`
+	At    *int64 `json:"at,omitempty"`
+
+	// ChildSessionId The child session ID, when the saved result includes it.
+	ChildSessionId *int64                `json:"childSessionId,omitempty"`
+	EntryId        *int64                `json:"entryId,omitempty"`
+	Id             string                `json:"id"`
+	Kind           SessionResultItemKind `json:"kind"`
+
+	// Queued True while the input waits for the Bot.
+	Queued *bool `json:"queued,omitempty"`
+
+	// Reason Why the turn failed or stopped.
+	Reason *string `json:"reason,omitempty"`
+
+	// Status The outcome of the child session turn.
+	Status *string `json:"status,omitempty"`
+	Title  string  `json:"title"`
+}
+
+// SessionResultItemKind defines model for SessionResultItem.Kind.
+type SessionResultItemKind string
+
 // Settings defines model for Settings.
 type Settings struct {
 	// Apis The APIs of custom providers, ID → name.
@@ -2442,32 +2513,6 @@ type TaskExternalTask struct {
 	Task       TaskRef     `json:"task"`
 }
 
-// TaskItem Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
-type TaskItem struct {
-	// Alert True for a Task alert on Main. The title is the Task title, and taskId is empty. The alert has only event metadata.
-	Alert *bool  `json:"alert,omitempty"`
-	At    *int64 `json:"at,omitempty"`
-
-	// ChildSessionId The child Session ID, when the saved result includes it.
-	ChildSessionId *int64       `json:"childSessionId,omitempty"`
-	EntryId        *int64       `json:"entryId,omitempty"`
-	Id             string       `json:"id"`
-	Kind           TaskItemKind `json:"kind"`
-
-	// Reason The reason the child session turn failed or was interrupted.
-	Reason *string `json:"reason,omitempty"`
-
-	// Status The outcome of the child session turn. The answer stays in the child session.
-	Status *string `json:"status,omitempty"`
-
-	// TaskId The input ID of the child session turn, or the ID of an old task.
-	TaskId string `json:"taskId"`
-	Title  string `json:"title"`
-}
-
-// TaskItemKind defines model for TaskItem.Kind.
-type TaskItemKind string
-
 // TaskLink An external object linked to the Task, such as a GitHub PR. The source that owns the namespace gives the meaning of type and key.
 type TaskLink struct {
 	Key       string     `json:"key"`
@@ -2593,6 +2638,24 @@ type TaskWait struct {
 	Resolved bool   `json:"resolved"`
 	Revision string `json:"revision"`
 }
+
+// TaskWakeItem Marks a wake for one or more updates on the Board.
+type TaskWakeItem struct {
+	At      *int64           `json:"at,omitempty"`
+	EntryId *int64           `json:"entryId,omitempty"`
+	Id      string           `json:"id"`
+	Kind    TaskWakeItemKind `json:"kind"`
+
+	// Queued True while the input waits for the Bot.
+	Queued *bool             `json:"queued,omitempty"`
+	Title  TaskWakeItemTitle `json:"title"`
+}
+
+// TaskWakeItemKind defines model for TaskWakeItem.Kind.
+type TaskWakeItemKind string
+
+// TaskWakeItemTitle defines model for TaskWakeItem.Title.
+type TaskWakeItemTitle string
 
 // Telegram defines model for Telegram.
 type Telegram struct {
@@ -2744,6 +2807,27 @@ type VaultEntry struct {
 	Scope     IntegrationScope `json:"scope"`
 	UpdatedAt time.Time        `json:"updatedAt"`
 }
+
+// WakeItem Marks an input from a Monitor or Process.
+type WakeItem struct {
+	At      *int64       `json:"at,omitempty"`
+	EntryId *int64       `json:"entryId,omitempty"`
+	Id      string       `json:"id"`
+	Kind    WakeItemKind `json:"kind"`
+
+	// Queued True while the input waits for the Bot.
+	Queued *bool `json:"queued,omitempty"`
+
+	// Reason An optional notice about the event.
+	Reason *string `json:"reason,omitempty"`
+
+	// Status The Monitor or Process event.
+	Status *string `json:"status,omitempty"`
+	Title  string  `json:"title"`
+}
+
+// WakeItemKind defines model for WakeItem.Kind.
+type WakeItemKind string
 
 // Wechat defines model for Wechat.
 type Wechat = agent.Wechat
@@ -3423,31 +3507,99 @@ func (t *Item) MergeUserItem(v UserItem) error {
 	return err
 }
 
-// AsTaskItem returns the union data inside the Item as a TaskItem
-func (t Item) AsTaskItem() (TaskItem, error) {
-	var body TaskItem
+// AsSessionResultItem returns the union data inside the Item as a SessionResultItem
+func (t Item) AsSessionResultItem() (SessionResultItem, error) {
+	var body SessionResultItem
 	err := json.Unmarshal(t.union, &body)
 	return body, err
 }
 
-// FromTaskItem overwrites any union data inside the Item as the provided TaskItem
-func (t *Item) FromTaskItem(v TaskItem) error {
+// FromSessionResultItem overwrites any union data inside the Item as the provided SessionResultItem
+func (t *Item) FromSessionResultItem(v SessionResultItem) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	b, err = runtime.JSONMerge(b, []byte(`{"kind":"task"}`))
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"session_result"}`))
 	t.union = b
 	return err
 }
 
-// MergeTaskItem performs a merge with any union data inside the Item, using the provided TaskItem
-func (t *Item) MergeTaskItem(v TaskItem) error {
+// MergeSessionResultItem performs a merge with any union data inside the Item, using the provided SessionResultItem
+func (t *Item) MergeSessionResultItem(v SessionResultItem) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	b, err = runtime.JSONMerge(b, []byte(`{"kind":"task"}`))
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"session_result"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsWakeItem returns the union data inside the Item as a WakeItem
+func (t Item) AsWakeItem() (WakeItem, error) {
+	var body WakeItem
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromWakeItem overwrites any union data inside the Item as the provided WakeItem
+func (t *Item) FromWakeItem(v WakeItem) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"wake"}`))
+	t.union = b
+	return err
+}
+
+// MergeWakeItem performs a merge with any union data inside the Item, using the provided WakeItem
+func (t *Item) MergeWakeItem(v WakeItem) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"wake"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTaskWakeItem returns the union data inside the Item as a TaskWakeItem
+func (t Item) AsTaskWakeItem() (TaskWakeItem, error) {
+	var body TaskWakeItem
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTaskWakeItem overwrites any union data inside the Item as the provided TaskWakeItem
+func (t *Item) FromTaskWakeItem(v TaskWakeItem) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"task_wake"}`))
+	t.union = b
+	return err
+}
+
+// MergeTaskWakeItem performs a merge with any union data inside the Item, using the provided TaskWakeItem
+func (t *Item) MergeTaskWakeItem(v TaskWakeItem) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"task_wake"}`))
 	if err != nil {
 		return err
 	}
@@ -3647,14 +3799,18 @@ func (t Item) ValueByDiscriminator() (interface{}, error) {
 		return t.AsBoundaryItem()
 	case "error":
 		return t.AsErrorItem()
-	case "task":
-		return t.AsTaskItem()
+	case "session_result":
+		return t.AsSessionResultItem()
+	case "task_wake":
+		return t.AsTaskWakeItem()
 	case "thinking":
 		return t.AsThinkingItem()
 	case "tool":
 		return t.AsToolItem()
 	case "user":
 		return t.AsUserItem()
+	case "wake":
+		return t.AsWakeItem()
 	default:
 		return nil, errors.New("unknown discriminator value: " + discriminator)
 	}

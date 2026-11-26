@@ -184,7 +184,7 @@ func TestUserReassignsBlockedTaskAndAnswersInOriginalMain(t *testing.T) {
 	d.must(t, http.MethodGet, "/api/agents/"+coder.ID+"/chats/main", nil, &newMain)
 	w := d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%d/events", coder.ID, newMain.ID))
 	w.until(t, "assigned wake on the new Main", func(tr *transcript) bool {
-		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "task" && it.Alert && it.Title == "Task wake" })
+		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "task_wake" && it.Title == "Task wake" })
 	})
 	var list api.TaskList
 	d.must(t, http.MethodGet, tasks+"?blocked=true&botId="+coder.ID, nil, &list)

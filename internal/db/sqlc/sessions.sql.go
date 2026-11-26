@@ -98,7 +98,7 @@ func (q *Queries) CreateParentTurn(ctx context.Context, arg CreateParentTurnPara
 
 const createTurnResult = `-- name: CreateTurnResult :execrows
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
-SELECT ?1, c.parent_id, ?2, 'null', ?1, 'task', 'sub_session', '', '', 'task_result', 'pending', ?3, c.id, ?4, '{}', 0
+SELECT ?1, c.parent_id, ?2, 'null', ?1, 'task', 'sub_session', '', '', 'session_result', 'pending', ?3, c.id, ?4, '{}', 0
 FROM submissions turn
 JOIN conversations c ON c.id = turn.conversation_id
 WHERE turn.id = ?5 AND c.parent_id IS NOT NULL
@@ -141,7 +141,7 @@ func (q *Queries) FinishParentInputStop(ctx context.Context, id string) error {
 const getTurn = `-- name: GetTurn :one
 SELECT s.id, s.conversation_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
-WHERE s.id = ? AND (s.kind = 'message' OR (s.kind = 'task_result' AND s.id LIKE 'background:%'))
+WHERE s.id = ? AND (s.kind = 'message' OR (s.kind = 'wake' AND s.id LIKE 'background:%'))
 `
 
 type GetTurnRow struct {

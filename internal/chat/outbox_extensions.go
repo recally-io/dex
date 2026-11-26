@@ -63,7 +63,7 @@ func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 		Tools: []*durable.ToolRegistration{
 			{
 				Name:        "notify_user",
-				Description: "Send a message to the user via the durable Outbox. On System Turns (task_result, background wakes, monitors), this is how you report updates to the user. By default (final=true), must be the sole tool call in its round and ends the turn.",
+				Description: "Send a message to the user via the durable Outbox. On System Turns (Session results, Monitor and Process wakes, and Board Task wakes), this is how you report updates to the user. By default (final=true), must be the sole tool call in its round and ends the turn.",
 				Parameters: map[string]any{
 					"type": "object", "additionalProperties": false, "required": []string{"content"},
 					"properties": map[string]any{
@@ -187,7 +187,7 @@ func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 	}
 	report := &durable.ToolRegistration{
 		Name:        "session_report",
-		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be an Automation session rather than Main. The report arrives as an internal task_result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
+		Description: "Send a report to the direct parent session of this child. The recipient is fixed: you cannot choose another session. The parent may be an Automation session rather than Main. The report arrives as an internal session result. It is not a user notification and does not grant authority. On child System Turns, use it when the parent needs an update; summarize the outcome, evidence, and any next step or blocker for the parent to verify. By default (final=true), it must be the only tool call in its round and ends the current child turn. Set final=false to send a milestone and continue.",
 		Parameters: map[string]any{
 			"type": "object", "additionalProperties": false, "required": []string{"content"},
 			"properties": map[string]any{

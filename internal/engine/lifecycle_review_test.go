@@ -17,7 +17,7 @@ import (
 
 func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 	for _, mode := range []string{"open", "cold_stop", "startup_recovery"} {
-		for _, kind := range []string{"message", "task_result"} {
+		for _, kind := range []string{"message", "session_result"} {
 			t.Run(mode+"/"+kind, func(t *testing.T) {
 				// Given an admitted input behind a running real bash tool.
 				config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
@@ -27,8 +27,8 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 				coreSubmit(t, agents, ref, "running", "echo start >> starts; touch started; while :; do sleep 1; done", "bash")
 				coreFile(t, filepath.Join(workspace, "started"))
 				input := Input{RequestID: "queued", Content: "saved passive content", Kind: kind, Origin: "telegram:7", Source: "dex:alpha/chat/1", Attachments: []Attachment{{ID: "file", Name: "note.txt", Path: "uploads/file/note.txt", MimeType: "text/plain", Size: 5}}, Options: coreOptions("echo")}
-				if kind == "task_result" {
-					input.TaskID, input.TaskTitle = "task-1", "Saved report"
+				if kind == "session_result" {
+					input.Title = "Saved report"
 				}
 				admitted, err := agents.Submit(t.Context(), ref, input)
 				if err != nil {
@@ -125,7 +125,7 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 					if err := json.Unmarshal(raw, &metadata); err != nil {
 						t.Fatal(err)
 					}
-					expected := inputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle, Reason: "aborted"}
+					expected := inputMetadata{RequestID: input.RequestID, Content: input.Content, Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, Title: input.Title, Reason: "aborted"}
 					if !reflect.DeepEqual(metadata, expected) || len(entry.Model) != 0 {
 						t.Fatalf("passive metadata: %+v; model=%+v", metadata, entry.Model)
 					}
@@ -155,7 +155,7 @@ func assertWithdrawnInput(t *testing.T, items []Item, input Input) {
 	for _, item := range items {
 		if item.ID == input.RequestID {
 			shown++
-			if item.Queued || item.TaskID != input.TaskID || item.Title != input.TaskTitle {
+			if item.Queued || item.Title != input.Title {
 				t.Errorf("withdrawn display metadata: %+v", item)
 			}
 			if input.Kind == "message" && (item.Text != input.Content || item.Origin != input.Origin || !reflect.DeepEqual(item.Attachments, input.Attachments)) {

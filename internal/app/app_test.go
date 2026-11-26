@@ -193,7 +193,6 @@ func (d *dex) chats(t *testing.T) []chatInfo {
 type item struct {
 	Origin         string `json:"origin"`
 	Kind           string `json:"kind"`
-	TaskID         string `json:"taskId"`
 	ChildSessionID int64  `json:"childSessionId"`
 	Title          string `json:"title"`
 	// Alert marks a Task alert on Main.

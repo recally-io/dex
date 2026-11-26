@@ -33,7 +33,7 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 			running := coreSubmit(t, agents, ref, "running", "touch started; while [ ! -f release ]; do sleep 0.02; done", "bash")
 			coreFile(t, filepath.Join(workspace, "started"))
 			const pointers = `{"highWaterEntryId":42,"items":[{"taskKey":"T-42","reason":"assigned"}]}`
-			wake := Input{RequestID: "board-wake", Kind: "task_wake", Origin: "web", Content: pointers, TaskID: "T-42", Options: coreOptions("context")}
+			wake := Input{RequestID: "board-wake", Kind: "task_wake", Origin: "web", Content: pointers, Options: coreOptions("context")}
 			owner := Input{RequestID: "owner", Kind: "message", Origin: "telegram:7", Content: "Owner message", Options: coreOptions("context")}
 			order := []Input{owner, wake}
 			if wakeFirst {
@@ -181,7 +181,7 @@ func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
 func assertBoardWakeMark(t *testing.T, items []Item, id string, queued bool) {
 	t.Helper()
 	item, ok := find(items, id)
-	if !ok || item.Kind != "task" || item.Title != "Task wake" || !item.Alert || item.Text != "" || item.TaskID != "" || item.Queued != queued {
+	if !ok || item.Kind != "task_wake" || item.Title != "Task wake" || item.Alert || item.Text != "" || item.ChildSessionID != 0 || item.Queued != queued {
 		t.Fatalf("Task wake mark: found=%t item=%+v, want unlinked system mark (queued=%t)", ok, item, queued)
 	}
 }

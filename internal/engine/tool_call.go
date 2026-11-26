@@ -159,7 +159,7 @@ func runInputRequestIDs(ctx context.Context, api durable.ToolExecutionApi) ([]st
 				return nil, err
 			}
 			for _, entry := range page.Items {
-				if entry.Kind != "dex.user" && entry.Kind != "dex.task_result" {
+				if !isDexInputEntry(entry.Kind) {
 					continue
 				}
 				data, err := durable.FromJsonValue[struct {
@@ -250,7 +250,7 @@ func taskSource(ctx context.Context, api durable.ToolExecutionApi) (string, erro
 				return nil, err
 			}
 			for _, entry := range page.Items {
-				if entry.Kind != "dex.user" && entry.Kind != "dex.task_result" {
+				if !isDexInputEntry(entry.Kind) {
 					continue
 				}
 				data, err := durable.FromJsonValue[struct {

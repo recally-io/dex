@@ -222,7 +222,7 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 			waitResultSubmission(t, conn, web, "done")
 			webTask := waitExecution(t, conn, main, "Web result", "done")
 			webResult := waitResultSubmission(t, conn, webTask.ResultID, "done")
-			// When the old channel work completes, its task_result stays internal (origin=task) without auto-sending to the channel.
+			// When the old channel work completes, its session_result stays internal (origin=task) without auto-sending to the channel.
 			resultID := work.ResultID
 			result := waitResultSubmission(t, conn, resultID, "done")
 			assertSubmissionOrigin(t, conn, resultID, "task")
@@ -231,7 +231,7 @@ func TestUserChannelMainTaskResultsFollowTheirSource(t *testing.T) {
 				t.Fatal(err)
 			}
 			if outboxCount != 0 {
-				t.Fatalf("fail-quiet task_result must not auto-queue outbox messages, got %d", outboxCount)
+				t.Fatalf("fail-quiet session_result must not auto-queue outbox messages, got %d", outboxCount)
 			}
 			for _, sent := range e.sends() {
 				if sent.Text == webResult.answer {

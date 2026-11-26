@@ -25,10 +25,22 @@ type ChatState = {
 
 export const emptyChatState: ChatState = { items: [], running: false };
 
+export type SystemInput = Extract<Item, { kind: "session_result" | "wake" | "task_wake" }>;
+
+export function isSystemInput(item: Item): item is SystemInput {
+  return item.kind === "session_result" || item.kind === "wake" || item.kind === "task_wake";
+}
+
+export function isTurnStart(item: Item): item is SystemInput | Extract<Item, { kind: "user" | "boundary" }> {
+  return item.kind === "user" || item.kind === "boundary" || isSystemInput(item);
+}
+
+export function isQueued(item: Item) {
+  return "queued" in item && !!item.queued;
+}
+
 export function retryMessage(items: Item[], index: number) {
-  const input = items
-    .slice(0, index)
-    .findLast((item) => item.kind === "user" || item.kind === "task" || item.kind === "boundary");
+  const input = items.slice(0, index).findLast(isTurnStart);
 
   return input?.kind === "user" ? input : undefined;
 }
@@ -79,19 +91,18 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
     case "item": {
       const index = state.items.findIndex((item) => item.id === event.item.id);
 
-      const queued = state.items.findIndex((item) => item.kind === "user" && item.queued);
+      const queued = state.items.findIndex(isQueued);
 
       if (index >= 0) {
         const items = state.items.map((item, i) => (i === index ? event.item : item));
 
-        if (event.item.kind === "user" && !event.item.queued && queued >= 0 && index > queued)
+        if (isTurnStart(event.item) && !isQueued(event.item) && queued >= 0 && index > queued)
           items.splice(queued, 0, ...items.splice(index, 1));
 
         return { ...state, items, history: state.history?.filter((item) => item.id !== event.item.id) };
       }
 
-      const at =
-        !(event.item.kind === "user" && event.item.queued) && queued >= 0 ? queued : state.items.length;
+      const at = !isQueued(event.item) && queued >= 0 ? queued : state.items.length;
 
       const items = state.items.toSpliced(at, 0, event.item);
 
@@ -126,7 +137,7 @@ function mergeItems(earlier: Item[], current: Item[]): Item[] {
       (other) => other.entryId !== undefined && item.entryId !== undefined && other.entryId > item.entryId,
     );
 
-    const queued = items.findIndex((other) => other.kind === "user" && other.queued);
+    const queued = items.findIndex(isQueued);
     items.splice(at >= 0 ? at : queued >= 0 ? queued : items.length, 0, item);
   }
 
@@ -141,11 +152,7 @@ function mergeItems(earlier: Item[], current: Item[]): Item[] {
     const inputAt = input.at;
 
     const at = items.findIndex(
-      (item) =>
-        (item.kind === "user" && item.queued) ||
-        ((item.kind === "user" || item.kind === "task" || item.kind === "boundary") &&
-          item.at !== undefined &&
-          item.at > inputAt),
+      (item) => isQueued(item) || (isTurnStart(item) && item.at !== undefined && item.at > inputAt),
     );
 
     items.splice(at >= 0 ? at : items.length, 0, ...group);

@@ -149,7 +149,7 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (i
 
 const createMonitorSubmission = `-- name: CreateMonitorSubmission :execrows
 INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context, when_busy)
-SELECT ?1, t.conversation_id, ?2, 'null', ?1, root.origin, 'scheduler', '', '', 'task_result', 'pending', ?3, root.channel_context, 'followUp'
+SELECT ?1, t.conversation_id, ?2, 'null', ?1, root.origin, 'scheduler', '', '', 'wake', 'pending', ?3, root.channel_context, 'followUp'
 FROM monitors t JOIN submissions root ON root.id = t.root_request_id
 WHERE t.id = ?4
 ON CONFLICT DO NOTHING
@@ -407,7 +407,7 @@ func (q *Queries) ListMonitorsByConversation(ctx context.Context, conversationID
 
 const listPendingMonitorEvents = `-- name: ListPendingMonitorEvents :many
 SELECT s.id FROM monitors m JOIN submissions s ON s.conversation_id = m.conversation_id
-WHERE m.id = ? AND s.kind = 'task_result' AND s.source_key = s.id
+WHERE m.id = ? AND s.kind = 'wake' AND s.source_key = s.id
   AND (s.status = 'pending' OR (s.status = 'unanswered' AND s.reason = 'aborted'))
   AND (s.id = m.fire_submission_id OR substr(s.id, 1, length(m.id) + 9) = 'monitor:' || m.id || ':')
 ORDER BY s.rowid

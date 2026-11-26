@@ -57,10 +57,11 @@ func ExternalAgent(executionID string) Actor {
 type Origin string
 
 const (
-	OriginUser       Origin = "user"
-	OriginTaskWake   Origin = "task_wake"
-	OriginTaskResult Origin = "task_result"
-	OriginOther      Origin = "other"
+	OriginUser          Origin = "user"
+	OriginTaskWake      Origin = "task_wake"
+	OriginSessionResult Origin = "session_result"
+	OriginWake          Origin = "wake"
+	OriginOther         Origin = "other"
 )
 
 type Action string
@@ -129,7 +130,7 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		if owner {
 			return user, nil
 		}
-		if !interactive && origin != OriginTaskResult {
+		if !interactive && origin != OriginSessionResult {
 			return false, nil
 		}
 		if main || chat {

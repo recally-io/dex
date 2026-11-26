@@ -84,8 +84,10 @@ func taskOrigin(source sqlc.Submission) tasksvc.Origin {
 		return tasksvc.OriginUser
 	case source.Kind == "task_wake":
 		return tasksvc.OriginTaskWake
-	case source.Producer == chat.ProducerSubSession && (source.Kind == "task_result" || source.Kind == "message" && source.ParentRequestID.Valid):
-		return tasksvc.OriginTaskResult
+	case source.Producer == chat.ProducerSubSession && (source.Kind == "session_result" || source.Kind == "message" && source.ParentRequestID.Valid):
+		return tasksvc.OriginSessionResult
+	case source.Kind == "wake":
+		return tasksvc.OriginWake
 	default:
 		return tasksvc.OriginOther
 	}

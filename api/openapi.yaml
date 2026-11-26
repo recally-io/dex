@@ -4029,7 +4029,9 @@ components:
     Item:
       oneOf:
         - $ref: "#/components/schemas/UserItem"
-        - $ref: "#/components/schemas/TaskItem"
+        - $ref: "#/components/schemas/SessionResultItem"
+        - $ref: "#/components/schemas/WakeItem"
+        - $ref: "#/components/schemas/TaskWakeItem"
         - $ref: "#/components/schemas/ThinkingItem"
         - $ref: "#/components/schemas/ToolItem"
         - $ref: "#/components/schemas/AssistantItem"
@@ -4039,7 +4041,9 @@ components:
         propertyName: kind
         mapping:
           user: "#/components/schemas/UserItem"
-          task: "#/components/schemas/TaskItem"
+          session_result: "#/components/schemas/SessionResultItem"
+          wake: "#/components/schemas/WakeItem"
+          task_wake: "#/components/schemas/TaskWakeItem"
           thinking: "#/components/schemas/ThinkingItem"
           tool: "#/components/schemas/ToolItem"
           assistant: "#/components/schemas/AssistantItem"
@@ -4070,38 +4074,68 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Attachment" }
 
-    TaskItem:
+    SessionResultItem:
       type: object
-      description: >-
-        Marks the result of a child session turn. Items after this mark belong to the result
-        until the next user or task item. The mark does not confirm that the
-        work reached its goal.
-      required: [kind, id, title, taskId]
+      description: Marks a child session result or report. The answer stays in the child session.
+      required: [kind, id, title]
       properties:
-        kind: { type: string, enum: [task] }
+        kind: { type: string, enum: [session_result] }
         id: { type: string }
         entryId: { type: integer, format: int64 }
         at: { type: integer, format: int64 }
         title: { type: string }
-        status:
-          type: string
-          description: The outcome of the child session turn. The answer stays in the child session.
-        reason:
-          type: string
-          description: The reason the child session turn failed or was interrupted.
-
-        taskId:
-          type: string
-          description: The input ID of the child session turn, or the ID of an old task.
         childSessionId:
           type: integer
           format: int64
-          description: The child Session ID, when the saved result includes it.
-        alert:
-          type: boolean
-          description: >-
-            True for a Task alert on Main. The title is the Task title, and taskId is empty. The
-            alert has only event metadata.
+          description: The child session ID, when the saved result includes it.
+        status: {
+          type: string,
+          description: The outcome of the child session turn.,
+        }
+        reason: { type: string, description: Why the turn failed or stopped. }
+        alert: {
+          type: boolean,
+          description: True for a saved legacy Task alert.,
+        }
+        queued: {
+          type: boolean,
+          description: True while the input waits for the Bot.,
+        }
+
+    WakeItem:
+      type: object
+      description: Marks an input from a Monitor or Process.
+      required: [kind, id, title]
+      properties:
+        kind: { type: string, enum: [wake] }
+        id: { type: string }
+        entryId: { type: integer, format: int64 }
+        at: { type: integer, format: int64 }
+        title: { type: string }
+        status: { type: string, description: The Monitor or Process event. }
+        reason: {
+          type: string,
+          description: An optional notice about the event.,
+        }
+        queued: {
+          type: boolean,
+          description: True while the input waits for the Bot.,
+        }
+
+    TaskWakeItem:
+      type: object
+      description: Marks a wake for one or more updates on the Board.
+      required: [kind, id, title]
+      properties:
+        kind: { type: string, enum: [task_wake] }
+        id: { type: string }
+        entryId: { type: integer, format: int64 }
+        at: { type: integer, format: int64 }
+        title: { type: string, enum: ["Task wake"] }
+        queued: {
+          type: boolean,
+          description: True while the input waits for the Bot.,
+        }
 
     ThinkingItem:
       type: object

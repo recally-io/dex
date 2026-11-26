@@ -822,14 +822,13 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	if taskWake {
 		// Keep the mutable wake in control storage while Main is busy.
 		input.WhenBusy = "reject"
-		input.TaskTitle = "Task wake"
 		input.Content = current.Content
 		input.RefreshContent = func(ctx context.Context) (string, error) { return s.snapshotTaskWake(ctx, p.ID) }
 	}
 	if input.Origin == "automation" && input.Kind == "message" && !input.Automation {
 		input.ModelSuffix = BoundRoutineCheckSuffix
 	}
-	if input.Kind == "task_result" && isMonitorEvent(input.RequestID) {
+	if input.Kind == "wake" && isMonitorEvent(input.RequestID) {
 		input.RequireRunner = true
 		input.ValidateAdmission = func(ctx context.Context, ref engine.Ref) error {
 			caller := engine.TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: p.ID}
@@ -840,7 +839,6 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		}
 	}
 	// A Task wake carries only its own Task pointers, even when it links one Task.
-	var modelTaskTitle string
 	if input.Main && !taskWake {
 		taskID, err := taskForInput(ctx, s.q, p.ID)
 		if err != nil {
@@ -851,11 +849,14 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 			if err != nil {
 				return err
 			}
-			modelTaskTitle, err = tasksvc.ModelTitle(ctx, s.q, task)
+			title, err := tasksvc.ModelTitle(ctx, s.q, task)
 			if err != nil {
 				return err
 			}
-			input.TaskContext = fmt.Sprintf("%q (ID %s)", modelTaskTitle, task.ID)
+			input.TaskContext = fmt.Sprintf("%q (ID %s)", title, task.ID)
+			if input.Kind == "session_result" || input.Kind == "wake" {
+				input.Title = title
+			}
 		}
 	}
 	if input.Child {
@@ -867,12 +868,6 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 			if err != nil {
 				return err
 			}
-		}
-	}
-	if p.Kind == "task_result" {
-		input.TaskID, input.TaskTitle = resultLabel(p.Content)
-		if modelTaskTitle != "" {
-			input.TaskTitle = modelTaskTitle
 		}
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)

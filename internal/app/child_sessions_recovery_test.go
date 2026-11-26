@@ -323,8 +323,8 @@ func TestUserParentSteerOfUserRunReportsInterruption(t *testing.T) {
 func TestUserResultInsertFailureKeepsInputPending(t *testing.T) {
 	t.Parallel()
 	for _, trigger := range []string{
-		`CREATE TRIGGER block_result BEFORE INSERT ON submissions WHEN NEW.kind = 'task_result' BEGIN SELECT RAISE(FAIL, 'result unavailable'); END`,
-		`CREATE TRIGGER block_result BEFORE INSERT ON submissions WHEN NEW.kind = 'task_result' BEGIN SELECT RAISE(ABORT, 'other constraint'); END`,
+		`CREATE TRIGGER block_result BEFORE INSERT ON submissions WHEN NEW.kind = 'session_result' BEGIN SELECT RAISE(FAIL, 'result unavailable'); END`,
+		`CREATE TRIGGER block_result BEFORE INSERT ON submissions WHEN NEW.kind = 'session_result' BEGIN SELECT RAISE(ABORT, 'other constraint'); END`,
 	} {
 		t.Run(trigger, func(t *testing.T) {
 			dir := t.TempDir()

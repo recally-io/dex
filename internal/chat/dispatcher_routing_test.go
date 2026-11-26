@@ -36,11 +36,11 @@ func TestUserPureBackgroundRunNeverAutoSendsAndMixedRunRoutesToLastUser(t *testi
 	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		ID:             bgID,
 		ConversationID: conv,
-		Content:        `{"task-result":{"session":"2","title":"Worker","turn":"child-1","outcome":"done","answer":"ok"}}`,
+		Content:        `{"session-result":{"session":"2","title":"Worker","turn":"child-1","outcome":"done","answer":"ok"}}`,
 		Attachments:    "null",
 		Origin:         "telegram:42",
 		Producer:       ProducerSubSession,
-		Kind:           "task_result",
+		Kind:           "session_result",
 		CreatedAt:      10,
 	}); err != nil {
 		t.Fatal(err)
@@ -79,11 +79,11 @@ func TestUserPureBackgroundRunNeverAutoSendsAndMixedRunRoutesToLastUser(t *testi
 	if _, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 		ID:             bgMixedID,
 		ConversationID: conv,
-		Content:        `{"task-result":{"session":"2","title":"Worker","turn":"child-2","outcome":"done","answer":"ok"}}`,
+		Content:        `{"session-result":{"session":"2","title":"Worker","turn":"child-2","outcome":"done","answer":"ok"}}`,
 		Attachments:    "null",
 		Origin:         "telegram:42",
 		Producer:       ProducerSubSession,
-		Kind:           "task_result",
+		Kind:           "session_result",
 		CreatedAt:      21,
 	}); err != nil {
 		t.Fatal(err)

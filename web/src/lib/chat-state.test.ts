@@ -46,12 +46,16 @@ describe("chat retry", () => {
 
   const failure: Item = { kind: "error", id: "run:error", reason: "Provider failed" };
 
-  test("user does not retry an earlier message when a background result fails", () => {
-    // Given a user message followed by a hidden report's response.
+  test.each([
+    { kind: "session_result", id: "result", title: "Check logs" },
+    { kind: "wake", id: "monitor", title: "Monitor" },
+    { kind: "task_wake", id: "board", title: "Task wake" },
+  ] satisfies Item[])("user does not resend an earlier message when a $kind turn fails", (input) => {
+    // Given a user message followed by a system input.
     const items: Item[] = [
       message,
       { kind: "assistant", id: "answer", text: "I will report back." },
-      { kind: "task", id: "result", taskId: "task-1", title: "Check logs" },
+      input,
       failure,
     ];
 
@@ -215,9 +219,25 @@ describe("earlier transcript pages", () => {
 });
 
 describe("chat transcript", () => {
-  test("user can queue a question while a background result keeps its output", () => {
+  test("a pending wake stays after the output of the current turn until the Bot reads it", () => {
+    const wake: Item = { kind: "wake", id: "monitor", title: "Monitor", queued: true };
+    const user: Item = { kind: "user", id: "next", text: "Next request", queued: true };
+    let state = applyChatEvent(emptyChatState, { type: "snapshot", running: true, items: [wake, user] });
+
+    const answer: Item = { kind: "assistant", id: "answer", text: "Current reply" };
+    state = applyChatEvent(state, { type: "item", item: answer });
+
+    expect(state.items.map((item) => item.id)).toEqual(["answer", "monitor", "next"]);
+
+    state = applyChatEvent(state, { type: "item", item: { ...wake, queued: false, entryId: 7 } });
+
+    expect(state.items.map((item) => item.id)).toEqual(["answer", "monitor", "next"]);
+    expect(state.items[1]).toMatchObject({ entryId: 7, queued: false });
+  });
+
+  test("user can queue a question while a system turn keeps its output", () => {
     // Given a result that is still running when the next question is queued.
-    const result: Item = { kind: "task", id: "result", taskId: "task-1", title: "Check logs" };
+    const result: Item = { kind: "wake", id: "result", title: "Check logs" };
     const question: Item = { kind: "user", id: "next", text: "What does HTTP 202 mean?", queued: true };
 
     const initial = applyChatEvent(emptyChatState, {
@@ -255,8 +275,8 @@ describe("chat transcript", () => {
   test.each([
     ["user", true],
     ["user", false],
-    ["task", true],
-    ["task", false],
+    ["session_result", true],
+    ["session_result", false],
   ] as const)(
     "user sees a failed question with its own error after a %s input (queued shown: %s)",
     (kind, queuedShown) => {
@@ -264,7 +284,7 @@ describe("chat transcript", () => {
       const input: Item =
         kind === "user"
           ? { kind, id: "earlier", text: "Earlier question" }
-          : { kind, id: "earlier", taskId: "task-1", title: "Check logs" };
+          : { kind, id: "earlier", title: "Check logs" };
 
       const first: Item = { kind: "user", id: "first", text: "First question", queued: true };
       const second: Item = { kind: "user", id: "second", text: "Second question", queued: true };

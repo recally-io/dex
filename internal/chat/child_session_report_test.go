@@ -88,7 +88,7 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 	}
 	reports := func(parent int64) []sqlc.Submission {
 		t.Helper()
-		rows, err := r.conn.QueryContext(t.Context(), `SELECT id, content FROM submissions WHERE conversation_id = ? AND id LIKE 'report:%' AND kind = 'task_result' ORDER BY rowid`, parent)
+		rows, err := r.conn.QueryContext(t.Context(), `SELECT id, content FROM submissions WHERE conversation_id = ? AND id LIKE 'report:%' AND kind = 'session_result' ORDER BY rowid`, parent)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +147,7 @@ func TestUserChildSessionReportTargetsOnlyItsDirectParent(t *testing.T) {
 		t.Helper()
 		provider.SetResponses(steps)
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
-			ID: id, ConversationID: childID, Content: "Local check finished.", Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
+			ID: id, ConversationID: childID, Content: "Local check finished.", Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "wake", CreatedAt: 1,
 		}); err != nil {
 			t.Fatal(err)
 		}
