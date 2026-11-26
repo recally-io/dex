@@ -222,13 +222,13 @@ func (l *Ledger) LinkSession(ctx context.Context, actor Actor, task sqlc.Task, c
 	exec, err := l.q.LinkTaskSession(ctx, sqlc.LinkTaskSessionParams{TaskID: task.ID, ConversationID: conversationID, LinkedAt: now})
 	added := err == nil
 	if errors.Is(err, sql.ErrNoRows) {
-		exec, err = l.q.GetTaskSession(ctx, sqlc.GetTaskSessionParams{TaskID: task.ID, ConversationID: sql.NullInt64{Int64: conversationID, Valid: true}})
+		exec, err = l.q.GetTaskSession(ctx, sqlc.GetTaskSessionParams{TaskID: task.ID, ConversationID: conversationID})
 	}
 	if err != nil {
 		return err
 	}
 	// A Task can link to a child after its first turn has already settled.
-	if err := l.q.ProjectTaskChildExecution(ctx, conversationID); err != nil {
+	if err := l.q.ProjectTaskChildSession(ctx, conversationID); err != nil {
 		return err
 	}
 	changePrimary := promote && exec.IsPrimary == 0

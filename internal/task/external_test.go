@@ -23,7 +23,7 @@ func TestUserExternalLeaseAndResume(t *testing.T) {
 	if err := conn.QueryRowContext(ctx, "SELECT token_hash FROM task_execution_tokens WHERE execution_id = ?", issue.Execution.ID).Scan(&hash); err != nil || hash != fmt.Sprintf("%x", sha256.Sum256([]byte(issue.TaskToken))) {
 		t.Fatalf("token digest did not match: %v", err)
 	}
-	boardExec(t, conn, "UPDATE task_executions SET lease_expires_at = 1 WHERE id = ?", issue.Execution.ID)
+	boardExec(t, conn, "UPDATE task_external_runs SET lease_expires_at = 1 WHERE id = ?", issue.Execution.ID)
 	if _, err := svc.ExternalHeartbeat(ctx, issue.TaskToken, tasksvc.ExternalHeartbeat{}); !errors.Is(err, tasksvc.ErrClaimLost) {
 		t.Fatalf("expired heartbeat: %v", err)
 	}

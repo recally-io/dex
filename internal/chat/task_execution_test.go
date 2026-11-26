@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"database/sql"
 	"strconv"
 	"testing"
 
@@ -45,9 +44,9 @@ func TestUserTaskChildExecutionSettlesWithoutTaskWake(t *testing.T) {
 				t.Fatal(err)
 			}
 			turn := turnID(source.Key)
-			getExecution := func() sqlc.TaskExecution {
+			getExecution := func() sqlc.TaskSession {
 				t.Helper()
-				row, err := r.q.GetTaskSession(ctx, sqlc.GetTaskSessionParams{TaskID: task.ID, ConversationID: sql.NullInt64{Int64: childID, Valid: true}})
+				row, err := r.q.GetTaskSession(ctx, sqlc.GetTaskSessionParams{TaskID: task.ID, ConversationID: childID})
 				if err != nil {
 					t.Fatal(err)
 				}

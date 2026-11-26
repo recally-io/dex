@@ -93,7 +93,7 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 	if heartbeat.GitBranch == nil || *heartbeat.GitBranch != "topic" || heartbeat.LastHeartbeatAt == nil {
 		t.Fatalf("heartbeat: %+v", heartbeat)
 	}
-	if _, err := conn.ExecContext(t.Context(), `UPDATE task_executions SET lease_expires_at = 1 WHERE id = ?`, initial.Execution.Id); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `UPDATE task_external_runs SET lease_expires_at = 1 WHERE id = ?`, initial.Execution.Id); err != nil {
 		t.Fatal(err)
 	}
 	var failure api.Error
@@ -116,6 +116,27 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 	request("GET", "/api/tasks/executions?kind=external_agent&state=completed&taskKey="+first.Key, owner, "", 200, &list)
 	if len(list.Executions) != 1 || list.Executions[0].Id != initial.Execution.Id {
 		t.Fatalf("filtered executions: %+v", list)
+	}
+
+	// The execution list still includes Session links when no kind is selected.
+	q := sqlc.New(conn)
+	conv, err := q.EnsureConversation(t.Context(), sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: "chat:list", Title: "List"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, err := q.LinkTaskSession(t.Context(), sqlc.LinkTaskSessionParams{TaskID: first.Id, ConversationID: conv.ID, LinkedAt: initial.Execution.StartedAt + 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listPath := "/api/tasks/executions?taskKey=" + first.Key
+	request("GET", listPath, owner, "", 200, &list)
+	if len(list.Executions) != 2 || list.Executions[0].Id != link.ID || list.Executions[1].Id != initial.Execution.Id {
+		t.Fatalf("combined execution list: %+v", list)
+	}
+	request("GET", listPath+"&kind=dex_session&state=running", owner, "", 200, &list)
+	if len(list.Executions) != 1 || list.Executions[0].Kind != api.DexSession || list.Executions[0].LeaseEpoch != 0 ||
+		list.Executions[0].TaskKey == nil || *list.Executions[0].TaskKey != first.Key {
+		t.Fatalf("Session execution list: %+v", list)
 	}
 }
 

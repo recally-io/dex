@@ -863,7 +863,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		input.Changed = func() { s.signal(conv.ID) }
 		if Writable(conv.ChannelKey) {
 			input.ChildHasTask, err = s.q.HasBoundTaskSession(ctx, sqlc.HasBoundTaskSessionParams{
-				ConversationID: sql.NullInt64{Int64: conv.ID, Valid: true}, BotID: p.AgentID,
+				ConversationID: conv.ID, BotID: p.AgentID,
 			})
 			if err != nil {
 				return err

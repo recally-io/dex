@@ -61,7 +61,7 @@ package "dex control plane" as ctrl {
   rectangle "Task wake delivery\nAt most one unadmitted wake per Main" as wake
   rectangle "internal/chat + internal/engine\nPer-session delivery gate + PiG Harness" as runtime
 }
-database "control.sqlite\ntasks and task_numbers (T-N)\ntask_entries (AUTOINCREMENT)\ntask_executions, task_dependencies" as cdb
+database "control.sqlite\ntasks and task_numbers (T-N)\ntask_entries (AUTOINCREMENT)\ntask_sessions, task_external_runs\ntask_dependencies" as cdb
 database "agents/<id>/state.sqlite\nNative PiG runs & transcripts" as adb
 ui --> core : /api/tasks + If-Match
 ui <-- sse : Live board updates

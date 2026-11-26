@@ -172,7 +172,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			return withdrawal{}, err
 		}
 		if stopped > 0 && c.ParentID.Valid {
-			if err := q.ProjectTaskChildExecution(ctx, c.ID); err != nil {
+			if err := q.ProjectTaskChildSession(ctx, c.ID); err != nil {
 				return withdrawal{}, err
 			}
 		}
@@ -283,5 +283,5 @@ func stopParentInput(ctx context.Context, q *sqlc.Queries, childID int64, reques
 	if err != nil || stopped == 0 {
 		return err
 	}
-	return q.ProjectTaskChildExecution(ctx, childID)
+	return q.ProjectTaskChildSession(ctx, childID)
 }

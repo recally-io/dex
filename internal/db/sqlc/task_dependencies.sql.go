@@ -84,12 +84,12 @@ func (q *Queries) GetRelatedTaskByNumber(ctx context.Context, number int64) (Tas
 }
 
 const hasBoundTaskSession = `-- name: HasBoundTaskSession :one
-SELECT EXISTS (SELECT 1 FROM task_executions WHERE kind = 'dex_session' AND conversation_id = ? AND bot_id = ?)
+SELECT EXISTS (SELECT 1 FROM task_sessions WHERE conversation_id = ? AND bot_id = ?)
 `
 
 type HasBoundTaskSessionParams struct {
-	ConversationID sql.NullInt64 `json:"conversation_id"`
-	BotID          string        `json:"bot_id"`
+	ConversationID int64  `json:"conversation_id"`
+	BotID          string `json:"bot_id"`
 }
 
 func (q *Queries) HasBoundTaskSession(ctx context.Context, arg HasBoundTaskSessionParams) (bool, error) {

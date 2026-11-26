@@ -9,36 +9,32 @@ import (
 	"context"
 )
 
-const projectTaskChildExecution = `-- name: ProjectTaskChildExecution :exec
-UPDATE task_executions
+const projectTaskChildSession = `-- name: ProjectTaskChildSession :exec
+UPDATE task_sessions
 SET (turn_request_id, state, ended_at) = (
   SELECT s.id, CASE
     WHEN s.status = 'done' THEN 'completed'
     WHEN s.reason IN ('stopped', 'aborted', 'withdrawn', 'reset') THEN 'cancelled'
     ELSE 'failed'
   END, s.settled_at
-  FROM submissions s WHERE s.id = (
-    SELECT first.id FROM submissions first WHERE first.conversation_id = task_executions.conversation_id
-      AND first.kind = 'message' AND first.parent_request_id IS NOT NULL ORDER BY first.rowid LIMIT 1
-  )
+  FROM submissions s WHERE s.conversation_id = task_sessions.conversation_id
+    AND s.kind = 'message' AND s.parent_request_id IS NOT NULL ORDER BY s.rowid LIMIT 1
 )
-WHERE conversation_id = CAST(?1 AS INTEGER)
-  AND kind = 'dex_session' AND state = 'running'
+WHERE task_sessions.conversation_id = ?1 AND task_sessions.state = 'running'
+  AND EXISTS (SELECT 1 FROM conversations c WHERE c.id = task_sessions.conversation_id AND c.parent_id IS NOT NULL)
   AND EXISTS (
     SELECT 1 FROM (
       SELECT s.id, s.status, s.settled_at FROM submissions s
-      JOIN conversations c ON c.id = s.conversation_id
-      WHERE s.conversation_id = task_executions.conversation_id AND c.parent_id IS NOT NULL
+      WHERE s.conversation_id = task_sessions.conversation_id
         AND s.kind = 'message' AND s.parent_request_id IS NOT NULL ORDER BY s.rowid LIMIT 1
     ) first_turn
     WHERE first_turn.status <> 'pending' AND first_turn.settled_at IS NOT NULL
-      AND task_executions.turn_request_id IN ('', first_turn.id)
+      AND task_sessions.turn_request_id IN ('', first_turn.id)
   )
 `
 
-// Keep the first parent turn's outcome. For migrated links with no turn ID,
-// use the first parent turn in receipt order.
-func (q *Queries) ProjectTaskChildExecution(ctx context.Context, conversationID int64) error {
-	_, err := q.db.ExecContext(ctx, projectTaskChildExecution, conversationID)
+// Select the first parent turn before checking settlement. A later turn cannot replace it.
+func (q *Queries) ProjectTaskChildSession(ctx context.Context, conversationID int64) error {
+	_, err := q.db.ExecContext(ctx, projectTaskChildSession, conversationID)
 	return err
 }

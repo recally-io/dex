@@ -23,8 +23,10 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 
 	// Given a user-authorized Task with a reviewer, a linked Session and an external run.
 	task := createBoardTestTask(t, svc, "Review the patch", "in_progress", "reviewer")
-	boardExec(t, conn, `INSERT INTO task_executions (id, task_id, bot_id, kind, conversation_id, started_at)
-		VALUES ('session-run', ?, 'linked', 'dex_session', 4, 1), ('external-run', ?, 'linked', 'external_agent', NULL, 1)`, task.ID, task.ID)
+	boardExec(t, conn, `INSERT INTO task_sessions (id, task_id, bot_id, conversation_id, started_at)
+		VALUES ('session-run', ?, 'linked', 4, 1)`, task.ID)
+	boardExec(t, conn, `INSERT INTO task_external_runs (id, task_id, bot_id, harness, started_at)
+		VALUES ('external-run', ?, 'linked', 'codex', 1)`, task.ID)
 	task = storedTask(t, q, task.ID)
 	unrelated := createBoardTestTask(t, svc, "Unrelated task", "ready", "")
 	boardExec(t, conn, `UPDATE tasks SET creator_kind = 'source', authorized_by_root_id = NULL WHERE id = ?`, unrelated.ID)

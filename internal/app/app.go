@@ -274,7 +274,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) {
 		hub.Changed(id)
 		if taskEvents.HasSubscribers() {
-			linked, err := q.HasTaskConversation(runCtx, sql.NullInt64{Int64: id, Valid: true})
+			linked, err := q.HasTaskConversation(runCtx, id)
 			if err != nil && runCtx.Err() == nil {
 				slog.Error("check Task conversation", "err", err)
 			}
