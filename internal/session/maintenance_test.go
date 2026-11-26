@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserMaintenanceReportsClosedEngine(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.bots.Close(t.Context()); err != nil {
 		t.Fatal(err)
@@ -19,6 +20,7 @@ func TestUserMaintenanceReportsClosedEngine(t *testing.T) {
 }
 
 func TestUserMaintenanceDoesNotReleaseAnUnconfirmedPause(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.bots.Quiesce(t.Context()); err != nil {
 		t.Fatal(err)
@@ -36,6 +38,7 @@ func TestUserMaintenanceDoesNotReleaseAnUnconfirmedPause(t *testing.T) {
 }
 
 func TestUserMaintenanceRenewalKeepsAdmissionPaused(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
@@ -52,6 +55,7 @@ func TestUserMaintenanceRenewalKeepsAdmissionPaused(t *testing.T) {
 }
 
 func TestUserMaintenanceRejectsWebInputWithoutSavingIt(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)

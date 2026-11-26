@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
 
@@ -51,6 +52,7 @@ func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 }
 
 func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
 	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
@@ -120,6 +122,7 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 }
 
 func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, NewArgs{Title: "Worker", Message: "init"})

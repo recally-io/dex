@@ -21,6 +21,7 @@ import (
 )
 
 func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
+	t.Parallel()
 	for _, cut := range []string{"before intent", "before report commit", "after report commit"} {
 		t.Run(cut, func(t *testing.T) {
 			// Given an admitted child report before restart.

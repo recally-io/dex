@@ -54,6 +54,7 @@ func answer(t *testing.T, r *nativeTest, questionID, origin, text string) error 
 }
 
 func TestOwnerApprovalArchivesBotBeforeTheModelReadsTheAnswer(t *testing.T) {
+	t.Parallel()
 	// Given a question that asks to archive a bot, and the bot is still active.
 	r, _, source := archiveFixture(t)
 	q := askArchive(t, r, source)
@@ -86,6 +87,7 @@ func TestOwnerApprovalArchivesBotBeforeTheModelReadsTheAnswer(t *testing.T) {
 }
 
 func TestOwnerAnswersThatDoNotApproveLeaveTheBotActive(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct{ name, origin, text string }{
 		{"cancel option", "web", "Cancel"},
 		{"different case", "web", "archive coder"},
@@ -119,6 +121,7 @@ func TestOwnerAnswersThatDoNotApproveLeaveTheBotActive(t *testing.T) {
 }
 
 func TestPlainQuestionWithTheSameWordsArchivesNothing(t *testing.T) {
+	t.Parallel()
 	// Given ask_user with the text and options of an archive question.
 	r, _, source := archiveFixture(t)
 	q, err := r.service.ToolAskUser(t.Context(), source, AskUserArgs{Question: `Archive bot "Coder"?`, Options: []string{approve, "Cancel"}})
@@ -137,6 +140,7 @@ func TestPlainQuestionWithTheSameWordsArchivesNothing(t *testing.T) {
 }
 
 func TestBotArchiveToolReplayNeverArchives(t *testing.T) {
+	t.Parallel()
 	// Given a saved archive question.
 	r, _, source := archiveFixture(t)
 	first := askArchive(t, r, source)
@@ -167,6 +171,7 @@ func TestBotArchiveToolReplayNeverArchives(t *testing.T) {
 }
 
 func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
+	t.Parallel()
 	r, _, source := archiveFixture(t)
 	ask := func(key, id string) error {
 		source.Key = key
@@ -202,6 +207,7 @@ func TestBotArchiveRefusesDefaultSelfAndBusyBots(t *testing.T) {
 }
 
 func TestBotBecomingBusyAfterTheQuestionIsNotArchivedOnApproval(t *testing.T) {
+	t.Parallel()
 	// Given an open question for an idle bot.
 	r, _, source := archiveFixture(t)
 	q := askArchive(t, r, source)
@@ -227,6 +233,7 @@ func TestBotBecomingBusyAfterTheQuestionIsNotArchivedOnApproval(t *testing.T) {
 }
 
 func TestDecidedActionAnswerCannotBeWithdrawnOrReopened(t *testing.T) {
+	t.Parallel()
 	// Given an approved answer that archived a bot.
 	r, sessionID, source := archiveFixture(t)
 	q := askArchive(t, r, source)
@@ -254,6 +261,7 @@ func TestDecidedActionAnswerCannotBeWithdrawnOrReopened(t *testing.T) {
 }
 
 func TestBotToolCallerNeedsAPersonInMainOrASession(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	type conversation struct {
 		key, origin string
@@ -302,6 +310,7 @@ func TestBotToolCallerNeedsAPersonInMainOrASession(t *testing.T) {
 
 // A child session has a Session key, so only its stored parent tells it from a Session.
 func TestBotToolCallerRefusesAChildSessionWithASessionKey(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, NewArgs{Title: "Child", Message: "work"})
@@ -334,6 +343,7 @@ func TestBotToolCallerRefusesAChildSessionWithASessionKey(t *testing.T) {
 }
 
 func TestOwnerApprovalIgnoresSurroundingWhitespace(t *testing.T) {
+	t.Parallel()
 	for _, text := range []string{approve + " ", "\n" + approve, approve + "\u00a0", " \t" + approve + "\r\n"} {
 		t.Run(strconv.Quote(text), func(t *testing.T) {
 			// Given an open question that asks to archive a bot.

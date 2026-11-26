@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	now := r.service.now()
 	r.service.now = func() time.Time { return now }
@@ -95,6 +96,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 }
 
 func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	now := r.service.now()
 	r.service.now = func() time.Time { return now }
@@ -174,6 +176,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 }
 
 func TestUserAutomationOutboxSkipsUnchanged(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
 	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {

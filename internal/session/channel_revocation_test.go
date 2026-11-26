@@ -7,6 +7,7 @@ import (
 )
 
 func TestUserCanReceiveAnEventOnMultiplePairedChannels(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	conv, _ := taskParent(t, r)

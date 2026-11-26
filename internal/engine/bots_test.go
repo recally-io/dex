@@ -88,6 +88,7 @@ func coreFile(t *testing.T, path string) {
 }
 
 func TestUserNativeSubmissionSurvivesReopen(t *testing.T) {
+	t.Parallel()
 	// Given a native Harness and real SQLite with an admitted input.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	a := coreEngine(t, config)
@@ -149,6 +150,7 @@ func TestUserNativeSubmissionSurvivesReopen(t *testing.T) {
 }
 
 func TestUserStopWithdrawsQueuedInputWithoutModelContext(t *testing.T) {
+	t.Parallel()
 	// Given a real bash tool that keeps the first input running.
 	a := coreEngine(t, Config{})
 	ref := coreCreate(t, a, "alpha", coreOptions("bash"))
@@ -233,6 +235,7 @@ func TestUserBashUsesExplicitBotEnvironment(t *testing.T) {
 }
 
 func TestUserMaintenanceGateAndWaitCancellation(t *testing.T) {
+	t.Parallel()
 	a := coreEngine(t, Config{})
 	ref := coreCreate(t, a, "alpha", coreOptions("echo"))
 	if err := a.Quiesce(t.Context()); err != nil {
@@ -254,6 +257,7 @@ func TestUserMaintenanceGateAndWaitCancellation(t *testing.T) {
 }
 
 func TestUserRestartDoesNotRepeatBackgroundExecution(t *testing.T) {
+	t.Parallel()
 	// Given an interrupted background execution with a visible external action.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	a := coreEngine(t, config)
@@ -292,6 +296,7 @@ func TestUserRestartDoesNotRepeatBackgroundExecution(t *testing.T) {
 }
 
 func TestUserShutdownWaitsForPendingMemoryCommit(t *testing.T) {
+	t.Parallel()
 	// Given a real git commit held by a clean filter after the model has settled.
 	a := coreEngine(t, Config{})
 	ref := coreCreate(t, a, "alpha", coreOptions("bash"))
@@ -342,6 +347,7 @@ func TestUserShutdownWaitsForPendingMemoryCommit(t *testing.T) {
 }
 
 func TestUserQueuedInputContinuesAfterModelFailure(t *testing.T) {
+	t.Parallel()
 	// Given a provider response held until the next input is durably queued.
 	a := coreEngine(t, Config{})
 	entered, release := make(chan struct{}), make(chan struct{})

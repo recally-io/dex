@@ -12,6 +12,7 @@ import (
 )
 
 func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
+	t.Parallel()
 	// Given main history with no channel reply or pending input.
 	conn, err := Open(t.Context(), filepath.Join(t.TempDir(), "control.sqlite"))
 	if err != nil {
@@ -80,6 +81,7 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 }
 
 func TestUserTelegramPendingResetDoesNotHoldFollowingReply(t *testing.T) {
+	t.Parallel()
 	// Given an earlier pending input and a later reply to the same peer.
 	ctx := t.Context()
 	conn, err := Open(ctx, filepath.Join(t.TempDir(), "control.sqlite"))

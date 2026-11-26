@@ -53,6 +53,7 @@ func TestUserCatalogDiscoversModelsAndReplacesCredentials(t *testing.T) {
 	}
 }
 func TestUserBedrockModelsHaveARegisteredProvider(t *testing.T) {
+	t.Parallel()
 	catalog := newCatalog(false, "")
 	defer catalog.Models.Close()
 	models := ai.GetBuiltinModels("amazon-bedrock")
@@ -69,6 +70,7 @@ func TestUserBedrockModelsHaveARegisteredProvider(t *testing.T) {
 }
 
 func TestUserFakeProviderStreamsWithoutCredentials(t *testing.T) {
+	t.Parallel()
 	catalog := newCatalog(true, "")
 	defer catalog.Models.Close()
 	for _, id := range []string{"echo", "shout", "think", "context"} {
@@ -80,6 +82,7 @@ func TestUserFakeProviderStreamsWithoutCredentials(t *testing.T) {
 	}
 }
 func TestUserDiscoveryFailureDoesNotExposeSecrets(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "SECRET", http.StatusServiceUnavailable) }))
 	defer server.Close()
 	catalog := newCatalog(false, "")
@@ -95,6 +98,7 @@ func TestUserDiscoveryFailureDoesNotExposeSecrets(t *testing.T) {
 }
 
 func TestUserCustomAPIsUseTheirDiscoveryContracts(t *testing.T) {
+	t.Parallel()
 	for _, api := range []string{"openai-completions", "openai-responses", "anthropic-messages"} {
 		t.Run(api, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

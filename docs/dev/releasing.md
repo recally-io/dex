@@ -8,11 +8,16 @@ drift, web, Go lint and tests, and native checks and cross-builds.
 
 Three app jobs partition the `internal/app` tests and run them without the
 race detector, because it made them several times slower for little gain.
-Four session jobs partition the `internal/session` tests and run them with the race
-detector. The Go job uses `check:go without-integration` for all other
-packages; local `check:go` still runs every package. Run
-`mise run check:go-shard ./internal/session 0 4` to repeat the first session
-partition locally, or `mise run check:app` for all app tests. The app and session
+An engine job runs `internal/engine` with the race detector, and two session
+jobs partition `internal/session` with the race detector; neither embeds the
+web UI, so they skip the frontend install and build. The Go job uses
+`check:go without-integration` for lint, builds, `internal/db` (without
+`-race`, since its migration tests run `modernc.org/sqlite` without package
+goroutines and warm the shared fresh-database test template), and all other
+packages with `-race`; local `check:go` still runs every package. Run
+`mise run check:go-shard ./internal/session 0 2` to repeat the first session
+partition locally, `mise run check:go-shard ./internal/engine 0 1` for engine
+tests, or `mise run check:app` for all app tests. The app, engine, and session
 jobs save their JSON timings as a seven-day artifact. The jobs share the main
 Go cache without saving duplicate archives. Before the save on `main`, the Go
 and native jobs delete the cache entries that they did not use, so the cache

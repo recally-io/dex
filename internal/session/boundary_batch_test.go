@@ -17,6 +17,7 @@ import (
 )
 
 func TestUserFinalBoundaryBatch(t *testing.T) {
+	t.Parallel()
 	for _, withdrawFirst := range []bool{false, true} {
 		t.Run(fmt.Sprint("withdrawFirst=", withdrawFirst), func(t *testing.T) {
 			r := startNative(t, "echo")
@@ -100,6 +101,7 @@ func TestUserFinalBoundaryBatch(t *testing.T) {
 }
 
 func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	child, err := r.service.ToolSessionNew(t.Context(), source, NewArgs{Title: "Maintenance", Message: "first"})
@@ -148,6 +150,7 @@ func TestUserMixedParentStopDuringMaintenance(t *testing.T) {
 }
 
 func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "bash")
 	parent, source := taskParent(t, r)
 	marker := filepath.Join(r.dir, "root-started")
@@ -197,6 +200,7 @@ func TestUserInputAfterStopSnapshotSurvives(t *testing.T) {
 }
 
 func TestUserFollowUpQueueAllBatchesSameOriginWakes(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
 	entered, release := make(chan struct{}), make(chan struct{})

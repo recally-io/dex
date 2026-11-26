@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
+	t.Parallel()
 	for _, wakeFirst := range []bool{true, false} {
 		name := "owner-first"
 		if wakeFirst {
@@ -111,6 +112,7 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 }
 
 func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
+	t.Parallel()
 	// Given a stale input and a refresh that can reject or supply a newer snapshot.
 	blocked := errors.New("admission blocked")
 	refreshErr := errors.New("could not save snapshot")

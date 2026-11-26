@@ -44,6 +44,7 @@ func taskInput(t *testing.T, r *nativeTest, id string) sqlc.ListPendingSubmissio
 }
 
 func TestUserSessionNewReplayKeepsIdentity(t *testing.T) {
+	t.Parallel()
 	// Given a parent run that calls session_new.
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
@@ -75,6 +76,7 @@ func TestUserSessionNewReplayKeepsIdentity(t *testing.T) {
 }
 
 func TestUserSessionNewReplayKeepsTheSavedDirectory(t *testing.T) {
+	t.Parallel()
 	// Given a call that created a child in project A.
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
@@ -112,6 +114,7 @@ func TestUserSessionNewReplayKeepsTheSavedDirectory(t *testing.T) {
 }
 
 func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
+	t.Parallel()
 	// Given a child of bot and a session of another bot.
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
@@ -167,6 +170,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 }
 
 func TestUserSessionStopReplayKeepsLaterWork(t *testing.T) {
+	t.Parallel()
 	// Given a child that the parent stopped, and work that the parent sent to it afterwards.
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
@@ -200,6 +204,7 @@ func TestUserSessionStopReplayKeepsLaterWork(t *testing.T) {
 }
 
 func TestUserConcurrentSessionForkWithOneKeyCreatesOneFork(t *testing.T) {
+	t.Parallel()
 	// Given a child that has a finished turn.
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)

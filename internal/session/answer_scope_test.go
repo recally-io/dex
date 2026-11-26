@@ -8,6 +8,7 @@ import (
 )
 
 func TestUserAnswerDedupIsScopedToChild(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "other", Name: "Other"}); err != nil {
 		t.Fatal(err)

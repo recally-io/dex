@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserAutomationUpgradeDoesNotInventSuccessfulReports(t *testing.T) {
+	t.Parallel()
 	// Given old completed, orphaned, pending, and skipped runs without reports.
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	old, err := sql.Open("sqlite", "file:"+path)

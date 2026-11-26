@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserUpgradesAndRollsBackRetiredStorage(t *testing.T) {
+	t.Parallel()
 	// Given retired storage, a delivery receipt, and an entry with no recorded author.
 	ctx := t.Context()
 	conn, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "control.sqlite")+"?_pragma=foreign_keys(1)")

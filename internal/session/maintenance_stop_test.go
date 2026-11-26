@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserStopCancelsActiveRunAfterClientDisconnect(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "bash")
 	marker := filepath.Join(r.dir, "started")
 	id, err := r.service.Post(t.Context(), "bot", MainKey, "", "running", "touch "+marker+"; sleep 60")
@@ -40,6 +41,7 @@ func TestUserStopCancelsActiveRunAfterClientDisconnect(t *testing.T) {
 }
 
 func TestUserMaintenanceStopDefersColdCancellationUntilRelease(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "bash")
 	c, err := r.service.Main(t.Context(), "bot")
 	if err != nil {

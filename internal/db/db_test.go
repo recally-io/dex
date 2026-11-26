@@ -1,15 +1,81 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"io/fs"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/pressly/goose/v3"
 )
 
+func TestOpenFreshTemplateMatchesMigratedSchemaAndHandlesConcurrency(t *testing.T) {
+	t.Parallel()
+	const count = 4
+	var wg sync.WaitGroup
+	errs := make(chan error, count)
+	for range count {
+		wg.Go(func() {
+			path := filepath.Join(t.TempDir(), "control.sqlite")
+			conn, err := Open(t.Context(), path)
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer func() { _ = conn.Close() }()
+			var journalMode string
+			if err := conn.QueryRowContext(t.Context(), `PRAGMA journal_mode`).Scan(&journalMode); err != nil {
+				errs <- err
+				return
+			}
+			if journalMode != "wal" {
+				errs <- context.Canceled
+				t.Errorf("journal_mode = %q, want wal", journalMode)
+				return
+			}
+			var fk int
+			if err := conn.QueryRowContext(t.Context(), `PRAGMA foreign_keys`).Scan(&fk); err != nil {
+				errs <- err
+				return
+			}
+			if fk != 1 {
+				t.Errorf("foreign_keys = %d, want 1", fk)
+			}
+			var check string
+			if err := conn.QueryRowContext(t.Context(), `PRAGMA integrity_check`).Scan(&check); err != nil {
+				errs <- err
+				return
+			}
+			if check != "ok" {
+				t.Errorf("integrity_check = %q, want ok", check)
+			}
+			// Reopening the same path must use the existing database cleanly.
+			reopened, err := Open(t.Context(), path)
+			if err != nil {
+				errs <- err
+				return
+			}
+			_ = reopened.Close()
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	canceled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := Open(canceled, filepath.Join(t.TempDir(), "canceled.sqlite")); err == nil {
+		t.Fatal("expected canceled Open to fail")
+	}
+}
+
 func TestMigrationKeepsChatsOnTheAgentSettings(t *testing.T) {
+	t.Parallel()
 	// Given a database of the schema before chat settings, with a chat and a message
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	old, err := sql.Open("sqlite", "file:"+path)
@@ -65,6 +131,7 @@ func TestMigrationKeepsChatsOnTheAgentSettings(t *testing.T) {
 }
 
 func TestUserUpgradeDoesNotResendOldChannelAnswers(t *testing.T) {
+	t.Parallel()
 	// Given version 9 with a settled Telegram answer and a pending message.
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	old, err := sql.Open("sqlite", "file:"+path)

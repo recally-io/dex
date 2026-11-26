@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserDreamUsesNativeToolToReadItsEvidence(t *testing.T) {
+	t.Parallel()
 	// Given a dream with a clipped source record in the real control database.
 	r := startNative(t, "tool")
 	ctx := t.Context()
@@ -48,6 +49,7 @@ func TestUserDreamUsesNativeToolToReadItsEvidence(t *testing.T) {
 }
 
 func TestUserDreamReadsOnlyItsOwnIncludedMessage(t *testing.T) {
+	t.Parallel()
 	// Given a settled long message and a dream containing its truncated record.
 	r := startNative(t, "echo")
 	ctx := t.Context()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Lint, build, and test the Go code; internal/app runs without -race (builds embedded assets first)"
+#MISE description="Lint, build, and test the Go code; internal/db and internal/app run without -race (builds embedded assets first)"
 #MISE depends=["build:web"]
 set -euo pipefail
 
@@ -12,14 +12,23 @@ esac
 packages=()
 while IFS= read -r package; do
   if [[ "$package" == github.com/recally-io/dex/internal/app ]]; then continue; fi
-  if [[ "$mode" == without-integration && "$package" == github.com/recally-io/dex/internal/session ]]; then continue; fi
+  if [[ "$package" == github.com/recally-io/dex/internal/db ]]; then continue; fi
+  if [[ "$mode" == without-integration ]]; then
+    case "$package" in
+      github.com/recally-io/dex/internal/session|github.com/recally-io/dex/internal/engine) continue ;;
+    esac
+  fi
   packages+=("$package")
 done <<< "$(go list ./...)"
 
 golangci-lint fmt --diff
 golangci-lint run
 go build ./...
-go test -race -timeout 20m "${packages[@]}"
+# internal/db tests historical SQLite migrations with modernc.org/sqlite, which is ~25x slower under
+# -race and has no package goroutines. Running it first also warms the shared fresh DB test template
+# in os.TempDir() without -race overhead before the race-instrumented packages run.
+go test ./internal/db
+go test -race -timeout 15m "${packages[@]}"
 # internal/app runs without the race detector, as in check:app.
 if [[ "$mode" == all ]]; then
   go test ./internal/app

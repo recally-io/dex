@@ -15,6 +15,7 @@ import (
 )
 
 func TestUserStopDuringModelDiscoveryKeepsCancellationDurable(t *testing.T) {
+	t.Parallel()
 	// Given stored native work and a cold engine waiting for model discovery.
 	r := startNative(t, "bash")
 	starts := filepath.Join(r.dir, "starts")

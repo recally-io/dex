@@ -14,6 +14,7 @@ import (
 )
 
 func TestUserKeepsQuotedQuestionsAfterAgentScopeUpgrade(t *testing.T) {
+	t.Parallel()
 	// Given a database with a question mapping from before agent-scoped remote IDs.
 	entries, err := os.ReadDir("migrations")
 	if err != nil {

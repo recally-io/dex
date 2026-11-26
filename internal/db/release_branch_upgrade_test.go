@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserUpgradesFromAReleaseBranchThatSkippedMainMigrations(t *testing.T) {
+	t.Parallel()
 	// Given a database from v0.19.1. Its release branch applied runner_workspaces, which has a
 	// later version than the Task Inbox migrations that main added before it.
 	entries, err := os.ReadDir("migrations")

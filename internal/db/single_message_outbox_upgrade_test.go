@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserUpgradeDoesNotReplayPartiallySentOutbox(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	old, err := sql.Open("sqlite", path)

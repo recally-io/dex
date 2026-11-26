@@ -60,6 +60,7 @@ func holdBotMCP(t *testing.T, r *nativeTest) (<-chan struct{}, func()) {
 }
 
 func TestUserWarmBotSendCompletesDuringOtherBotLoading(t *testing.T) {
+	t.Parallel()
 	for _, reload := range []bool{false, true} {
 		name := "cold open"
 		if reload {
@@ -115,6 +116,7 @@ func TestUserWarmBotSendCompletesDuringOtherBotLoading(t *testing.T) {
 }
 
 func TestUserBackgroundRecoverySkipsOtherBotLoading(t *testing.T) {
+	t.Parallel()
 	// Given pending inputs for a cold bot and a warm bot.
 	r := startNative(t, "echo")
 	warmOtherBot(t, r)
@@ -139,11 +141,11 @@ func TestUserBackgroundRecoverySkipsOtherBotLoading(t *testing.T) {
 	defer release()
 	select {
 	case <-entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("recovery did not reach MCP")
 	}
 	// Then the warm bot's durable work completes before the cold bot opens.
-	deadline := time.NewTimer(2 * time.Second)
+	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()
@@ -160,6 +162,7 @@ func TestUserBackgroundRecoverySkipsOtherBotLoading(t *testing.T) {
 }
 
 func TestUserCancelledWaitForSharedReloadKeepsOrderedDurableInputs(t *testing.T) {
+	t.Parallel()
 	// Given a bot whose reload is held at a real MCP handshake.
 	r := startNative(t, "context")
 	entered, release := holdBotMCP(t, r)
@@ -192,7 +195,7 @@ func TestUserCancelledWaitForSharedReloadKeepsOrderedDurableInputs(t *testing.T)
 			if err != nil {
 				t.Fatalf("durable input %s rejected: %v", id, err)
 			}
-		case <-time.After(2 * time.Second):
+		case <-time.After(10 * time.Second):
 			stop()
 			t.Fatal("cancelled Send did not return")
 		}
@@ -218,6 +221,7 @@ func TestUserCancelledWaitForSharedReloadKeepsOrderedDurableInputs(t *testing.T)
 }
 
 func TestUserMaintenanceAndReloadRemainMutuallyExclusive(t *testing.T) {
+	t.Parallel()
 	// Given a bot whose Reload is held at a real MCP handshake.
 	r := startNative(t, "echo")
 	entered, release := holdBotMCP(t, r)
@@ -275,6 +279,7 @@ func TestUserMaintenanceAndReloadRemainMutuallyExclusive(t *testing.T) {
 }
 
 func TestUserMaintenanceConfirmationOrdersWebReceiptCreation(t *testing.T) {
+	t.Parallel()
 	// Given a web input committed before maintenance confirms its lease.
 	r := startNative(t, "echo")
 	committed, release := make(chan struct{}), make(chan struct{})
@@ -334,6 +339,7 @@ func TestUserMaintenanceConfirmationOrdersWebReceiptCreation(t *testing.T) {
 }
 
 func TestUserReconcilerShutdownJoinsColdBotWorker(t *testing.T) {
+	t.Parallel()
 	// Given a durable pending input that needs a cold MCP connection.
 	r := startNative(t, "echo")
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
@@ -353,14 +359,14 @@ func TestUserReconcilerShutdownJoinsColdBotWorker(t *testing.T) {
 	defer func() { release(); cancel(); <-done }()
 	select {
 	case <-entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("worker did not reach MCP")
 	}
 	// When the process cancels reconciliation, Run joins its worker before returning.
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not cancel and join its cold worker")
 	}
 	// Then durable work remains available for a later service instance.
@@ -374,6 +380,7 @@ func TestUserReconcilerShutdownJoinsColdBotWorker(t *testing.T) {
 }
 
 func TestUserTaskResultWakeRunsWhileOtherBotLoads(t *testing.T) {
+	t.Parallel()
 	// Given an idle warm parent and its child session that has not answered.
 	r := startNative(t, "echo")
 	warmOtherBot(t, r)
@@ -412,7 +419,7 @@ func TestUserTaskResultWakeRunsWhileOtherBotLoads(t *testing.T) {
 	defer release()
 	select {
 	case <-entered:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("cold worker did not reach MCP")
 	}
 	// When the real child run finishes, its result wakes the parent without ordinary input.
@@ -421,7 +428,7 @@ func TestUserTaskResultWakeRunsWhileOtherBotLoads(t *testing.T) {
 	}
 	awaitReceipt(t, r, turn)
 	resultID := "result:" + turn
-	deadline := time.NewTimer(2 * time.Second)
+	deadline := time.NewTimer(10 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(10 * time.Millisecond)
 	defer tick.Stop()

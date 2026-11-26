@@ -12,6 +12,7 @@ import (
 )
 
 func TestUserLateTaskStopLeavesSuccessorRunning(t *testing.T) {
+	t.Parallel()
 	// Given a finished task and a successor running in the same session.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	a := coreEngine(t, config)
@@ -52,6 +53,7 @@ func TestUserLateTaskStopLeavesSuccessorRunning(t *testing.T) {
 }
 
 func TestUserMainStopResumesNativeInboxAfterRestart(t *testing.T) {
+	t.Parallel()
 	// Given a run with a follow-up whose execution is durable but has not started.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	a := coreEngine(t, config)

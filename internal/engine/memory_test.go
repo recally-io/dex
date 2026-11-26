@@ -11,6 +11,7 @@ import (
 )
 
 func TestUserMemoryRecoversChangesAndRefreshesPrompt(t *testing.T) {
+	t.Parallel()
 	// Given a new local memory repository.
 	repo := newMemoryRepo(filepath.Join(t.TempDir(), "memory"), nil)
 	if err := repo.Open(t.Context()); err != nil {
@@ -49,6 +50,7 @@ func TestUserMemoryRecoversChangesAndRefreshesPrompt(t *testing.T) {
 	}
 }
 func TestUserMemoryCreatesNestedRepository(t *testing.T) {
+	t.Parallel()
 	root := newMemoryRepo(t.TempDir(), nil)
 	if err := root.Open(t.Context()); err != nil {
 		t.Fatal(err)

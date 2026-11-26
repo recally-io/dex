@@ -25,6 +25,7 @@ func transcriptEntry(id int64, kind string, msg ai.Message, data any) durable.En
 }
 
 func TestUserTranscriptStreamsTextAndCommitsStableItems(t *testing.T) {
+	t.Parallel()
 	// Given a partial answer, the projection exposes append events for text growth.
 	partial := transcriptAssistant("Hel")
 	p := projection{live: harness.LiveState{Run: &harness.LiveRun{}, Generation: &harness.LiveGeneration{Message: &partial}}}
@@ -56,6 +57,7 @@ func TestUserTranscriptStreamsTextAndCommitsStableItems(t *testing.T) {
 }
 
 func TestUserTranscriptToolEndBeforeResult(t *testing.T) {
+	t.Parallel()
 	// Given a committed tool call in a live run.
 	call := transcriptAssistant("")
 	call.Content = []ai.AssistantContentBlock{ai.ToolCall{ID: "call", Name: "bash", Arguments: map[string]any{"command": "ls"}}}
@@ -85,6 +87,7 @@ func TestUserTranscriptToolEndBeforeResult(t *testing.T) {
 }
 
 func TestUserSeesDistinctSystemInputsInOldAndNewTranscripts(t *testing.T) {
+	t.Parallel()
 	// Given saved inputs from both sides of the upgrade, including a pending legacy result
 	// that the new engine admitted without changing its payload.
 	for _, tc := range []struct {
@@ -123,6 +126,7 @@ func TestUserSeesDistinctSystemInputsInOldAndNewTranscripts(t *testing.T) {
 }
 
 func TestUserTranscriptResetHistoryAndTaskMarkers(t *testing.T) {
+	t.Parallel()
 	// Given a reset, a durable task marker, and its answer in unordered snapshot entries.
 	reset := transcriptEntry(21, "pi.reset", nil, delta.JsonObjectOf("at", float64(7)))
 	reset.Head = new(durable.EntryId(21))
@@ -150,6 +154,7 @@ func TestUserTranscriptResetHistoryAndTaskMarkers(t *testing.T) {
 }
 
 func TestUserTranscriptQueuedAndWithdrawnInputs(t *testing.T) {
+	t.Parallel()
 	// Given the native inbox carries display metadata and attachments.
 	data := delta.JsonObjectOf("requestId", "r1", "content", "look", "origin", "web", "attachments", []any{delta.JsonObjectOf("id", "u1", "name", "a.png", "size", float64(3), "mimeType", "image/png", "path", "uploads/u1/a.png")})
 	queued := harness.InboxItem{Id: 1, Mode: harness.InboxFollowUp, Entry: delta.JsonObjectOf("kind", "dex.user", "data", data)}
@@ -174,6 +179,7 @@ func TestUserTranscriptQueuedAndWithdrawnInputs(t *testing.T) {
 }
 
 func TestUserTranscriptJSONRequiredEmptyFields(t *testing.T) {
+	t.Parallel()
 	for _, event := range []Event{{Type: "snapshot", Items: []Item{}}, {Type: "run", Running: false}, {Type: "item", Item: &Item{Kind: "tool", ID: "call", Name: "bash", Status: "running"}}, {Type: "item", Item: &Item{Kind: "assistant", ID: "partial"}}} {
 		raw, err := json.Marshal(event)
 		if err != nil {
@@ -207,6 +213,7 @@ func TestUserTranscriptJSONRequiredEmptyFields(t *testing.T) {
 }
 
 func TestUserTranscriptModelErrorsAndRetries(t *testing.T) {
+	t.Parallel()
 	failed := transcriptAssistant("")
 	failed.Content = nil
 	failed.StopReason = "error"

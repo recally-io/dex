@@ -10,6 +10,7 @@ import (
 )
 
 func TestUserKeepsAutomationAndRunnerDataAcrossMigration(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	conn, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "control.sqlite")+"?_pragma=foreign_keys(1)")
 	if err != nil {

@@ -20,6 +20,7 @@ func submissionCount(t *testing.T, r *nativeTest) int {
 
 // A callback that was already running when the owner archived the bot must not start new work.
 func TestArchivedBotRejectsLateChannelInput(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := db.ArchiveBot(t.Context(), r.q, "bot", time.Now()); err != nil {
 		t.Fatal(err)
@@ -38,6 +39,7 @@ func TestArchivedBotRejectsLateChannelInput(t *testing.T) {
 // The scheduler read a due routine, then the owner archived the idle bot. The routine did not
 // change, so the snapshot check passes; the archive check must stop the run.
 func TestArchivedBotRejectsSchedulerSnapshot(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	now := time.Now().UnixMilli()
 	if _, err := r.conn.ExecContext(t.Context(), `INSERT INTO automations(id,bot_id,name,prompt,schedule,time_zone,session,enabled,next_due_at,created_at,updated_at) VALUES('auto','bot','Check','late scheduled input','{"kind":"once","at":1}','UTC','new',1,1,?,?)`, now, now); err != nil {
@@ -63,6 +65,7 @@ func TestArchivedBotRejectsSchedulerSnapshot(t *testing.T) {
 
 // Input first orders the archive after it: the bot is busy. The archive then fails.
 func TestInputBeforeArchiveMakesTheBotBusy(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	if err := r.service.SubmitMessage(t.Context(), "bot", "telegram:42", "first", Message{Content: "hello"}); err != nil {
 		t.Fatal(err)
@@ -75,6 +78,7 @@ func TestInputBeforeArchiveMakesTheBotBusy(t *testing.T) {
 // A child session turn or a result is input too. The caller's run is live here, because the
 // archive guard would refuse the bot; the guard is forced to prove the writers check by themselves.
 func TestArchivedBotRejectsChildSessionInput(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
 	if _, err := r.conn.ExecContext(t.Context(), "UPDATE bots SET archived_at = 1 WHERE id = 'bot'"); err != nil {

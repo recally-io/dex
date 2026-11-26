@@ -9,6 +9,7 @@ import (
 )
 
 func TestUserSubmissionReplayNeedsNoCurrentModel(t *testing.T) {
+	t.Parallel()
 	// Given a completed native input with durable source metadata.
 	a := coreEngine(t, Config{})
 	ref := coreCreate(t, a, "alpha", coreOptions("echo"))

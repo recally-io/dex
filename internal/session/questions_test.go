@@ -15,6 +15,7 @@ import (
 var askArgs = AskUserArgs{Question: "Which one?", Options: []string{"first", "second"}}
 
 func TestUserQuestionReplayReturnsTheStoredQuestion(t *testing.T) {
+	t.Parallel()
 	// Given a question that the tool saved.
 	r := startNative(t, "echo")
 	_, source := taskParent(t, r)
@@ -35,6 +36,7 @@ func TestUserQuestionReplayReturnsTheStoredQuestion(t *testing.T) {
 }
 
 func TestUserQuestionIsRefusedWhenItCannotBeAnswered(t *testing.T) {
+	t.Parallel()
 	r := startNative(t, "echo")
 	sessionID, source := taskParent(t, r)
 
@@ -80,6 +82,7 @@ func TestUserQuestionIsRefusedWhenItCannotBeAnswered(t *testing.T) {
 }
 
 func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
+	t.Parallel()
 	// Given a question whose answer waits as a pending input.
 	r := startNative(t, "echo")
 	sessionID, source := taskParent(t, r)
@@ -127,6 +130,7 @@ func TestUserAnswerThatNeverRanOpensItsQuestionAgain(t *testing.T) {
 // The settle worker must wait for an in-flight withdrawal. Withdraw holds the bot delivery lock from
 // the native abort to the receipt write, so the test holds the lock as Withdraw does.
 func TestUserWithdrawnMessageIsNotSettledByTheWorkerBeforeTheWithdrawal(t *testing.T) {
+	t.Parallel()
 	// Given a running gated command and a second message that waits in the native queue.
 	r := startNative(t, "bash")
 	release := filepath.Join(t.TempDir(), "release")

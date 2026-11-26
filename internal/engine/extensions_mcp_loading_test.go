@@ -13,6 +13,7 @@ import (
 )
 
 func TestUserMCPDisconnectDuringLoadingKeepsFailedStatus(t *testing.T) {
+	t.Parallel()
 	if role := os.Getenv("DEX_LOADING_MCP_CHILD"); role != "" {
 		dir := os.Getenv("MCP_DIR")
 		ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
