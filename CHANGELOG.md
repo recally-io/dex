@@ -7,21 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.20.0-rc.7] - 2026-11-26
+
+### Added
+
+- **Task Board**: Add the unified Task ledger (`T-N` keys, Board and Task detail views, Needs you attention queue, live SSE updates), Task decomposition (subtasks and sibling dependencies), cross-Bot handoffs, multi-bot/multi-session links, and external runs (`dex task`, lease tokens, `/api/tasks/*`) (#337, #341, #347, #348, #349, #355).
+- **Channels & Integrations**: Add Telegram managed bot setup (#320), optional inbound webhooks for Telegram and Feishu (#319), owner-scoped channel management tools (#317), and browser OAuth for remote HTTP MCP servers (#321).
+- **Browser E2E**: Add main-path end-to-end browser coverage across Bots, Sessions, Board/Tasks, Automations, and Settings, and restore active Bot and Session navigation state (#366).
+
 ### Changed
 
-- **Tool discovery**: Enable `tool_search` in owner sessions without MCP. Search built-in tools and available MCP tools without changing session permissions.
-- **Memory**: Rename `read_dream_message` to `memory_source_read`. It still reads only the sources supplied for the current consolidation run.
-- **Child sessions**: Rename `report_parent` to `session_report`. It takes only `content` and `final` and reports to the direct parent as an internal result. The parent `session_send` is unchanged. The retired tool name does not resume pending calls. Reports already sent stay in the parent's history.
+- **Canonical naming & routes**: Align database, API, CLI, and Web UI terminology to **Bots** (`/api/bots*`, `/b/$botId`), **Sessions** (`/api/bots/{id}/sessions*`, `/b/$botId/s/$sessionId`), **Runners** (`local`, `runner`, `ssh`, `e2b`), **Automations**, **Secrets**, **Skills**, and **Integrations**, and reorganize Settings (#333, #338, #339, #340, #350, #352, #362, #364, #365).
+- **Execution & delivery architecture**: Unify inbound receipts on `submissions`, split `session_result` / `wake` / `task_wake` receipts, move Outbox delivery ownership to `outbox_messages` (one platform message per delivery), route completed runs by last placed user input, split `process_*` tools from `monitor_set`, split `task_sessions` and `task_external_runs`, and admit Sessions while a cold default Runner opens (#314, #315, #316, #322, #324, #326, #327, #328, #329, #330, #335, #357, #359, #361, #362).
+- **CI & test performance**: Cache a real migrated SQLite template for fresh test databases, parallelize isolated tests, and split `Engine race tests` (#367).
 
 ### Removed
 
-- **Telegram**: Remove the `telegram_message` tool and agent speech output. Normal replies, previews, status reactions, and incoming audio transcription are unchanged.
-- **System turns**: Remove `stay_silent`. Top-level system turns still finish without sending a message by default. Delegated child turns return their results, and an unmet channel commitment is recorded as a missed follow-up.
+- **Telegram group chats & legacy compatibility**: Retire Telegram group chats (sealing pending work on upgrade), follow-up commitment tracking, `/api/inbox/*`, retired child tool aliases, and pre-Board compatibility columns and paths (#323, #331, #336, #353, #356).
 
-### Fixed
+### Upgrade and rollback
 
-- **Remote Machines**: Allow multiple bots to share a runner. Each bot starts in `workspaces/<bot-id>/workspace` under the runner state directory. Dex leaves files in the old `workspace/` directory in place (#230).
-  - **Rollback to v0.19.0**: Back up `control.sqlite` before the upgrade. Replacing the binary alone does not restore the single-bot limit. Before starting v0.19.0, restore the pre-upgrade database backup or reduce each runner to at most one active bot and apply the database downgrade. Restoring the backup discards database changes since the backup. v0.19.0 uses `workspace/` again and does not move files from the new directories.
+- This release applies schema migrations since `v0.20.0-rc.6` (Task Board tables, `agents` to `bots`, `conversations` to `sessions`, `task_executions` split, Outbox and Runner cleanups, and plugin table renames) while keeping on-disk bot directories (`<dataDir>/agents/<id>/`) in place. Back up the data directory before upgrading. To roll back to `v0.20.0-rc.6`, stop Dex and restore the pre-upgrade backup. This discards changes made after the backup.
 
 ## [v0.19.0] - 2026-11-21
 
@@ -85,7 +91,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Telegram**: Remove legacy text and delivery shims (#166).
 
-[Unreleased]: https://github.com/recally-io/dex/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/vaayne/dex/compare/v0.20.0-rc.7...HEAD
+[v0.20.0-rc.7]: https://github.com/vaayne/dex/compare/v0.20.0-rc.6...v0.20.0-rc.7
 [v0.19.0]: https://github.com/recally-io/dex/compare/v0.18.0...v0.19.0
 [v0.18.0]: https://github.com/recally-io/dex/compare/v0.17.0...v0.18.0
 [v0.17.0]: https://github.com/recally-io/dex/compare/v0.16.1...v0.17.0
