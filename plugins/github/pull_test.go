@@ -11,7 +11,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/github/store"
 )
 
@@ -30,8 +30,8 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 	if _, err := q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	tasks := worktask.New(conn, nil)
-	task, err := tasks.Create(ctx, "default", "Review")
+	tasks := tasksvc.New(conn, nil)
+	task, err := tasks.CreateTask(ctx, tasksvc.Owner, tasksvc.OriginUser, tasksvc.CreateTaskParams{AssigneeBotID: "default", Title: "Review"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,8 +103,8 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 	if err := p.pull(ctx, current()); err != nil {
 		t.Fatal(err)
 	}
-	detail, err := tasks.Detail(ctx, "default", task.ID)
-	if err != nil || len(detail.Entries) != 1 {
+	detail, err := tasks.Detail(ctx, task.ID)
+	if err != nil || len(detail.Entries) != 3 {
 		t.Fatalf("expected one Task entry: %d, %v", len(detail.Entries), err)
 	}
 }

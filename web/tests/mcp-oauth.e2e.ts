@@ -6,11 +6,7 @@ import type { AddressInfo } from "node:net";
 
 const contentType = { "content-type": "application/json" };
 
-test("authorizes an MCP connection and follows the legacy callback to Integrations", async ({
-  app,
-  browser,
-  screen,
-}) => {
+test("authorizes an MCP connection and returns to Bot Integrations", async ({ app, browser, screen }) => {
   await app.open("/");
 
   const dex = new URL(await browser.url()).origin;

@@ -158,7 +158,7 @@ func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUs
 		if action != nil || conv.ChannelKey != MainKey {
 			return QuestionInfo{}, errQuestionOpen
 		}
-		taskID, err := workTaskForInput(ctx, q, source.ID)
+		taskID, err := taskForInput(ctx, q, source.ID)
 		if err != nil {
 			return QuestionInfo{}, err
 		}

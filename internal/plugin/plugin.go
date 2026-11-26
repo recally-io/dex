@@ -9,13 +9,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 // Deps are the core services that a plugin can use.
 type Deps struct {
-	DB        *sql.DB
-	WorkTasks *worktask.Service
+	DB    *sql.DB
+	Tasks *tasksvc.Service
 }
 
 // Factory builds a plugin when dex starts.
@@ -31,7 +31,7 @@ type Plugin struct {
 	// API serves /api/plugins/<Name>/ behind the access token.
 	API   http.Handler
 	Jobs  []Job
-	Tools []worktask.LinkTool
+	Tools []tasksvc.LinkTool
 	// Migrations holds migrations/*.sql, the schema of the plugin. See Migrate.
 	Migrations fs.FS
 }

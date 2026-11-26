@@ -16,7 +16,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/github/api"
 	"github.com/recally-io/dex/plugins/github/store"
 )
@@ -25,7 +25,7 @@ var errInvalid = errors.New("invalid request")
 
 // New makes the GitHub plugin: the signed Webhook, review Pull, issue Tasks, check suites, and PR links.
 func New(deps plugin.Deps) plugin.Plugin {
-	s := &service{q: store.New(deps.DB), tasks: deps.WorkTasks}
+	s := &service{q: store.New(deps.DB), tasks: deps.Tasks}
 	hooks := http.NewServeMux()
 	// Users paste this URL into GitHub, so it must not change.
 	hooks.HandleFunc("POST /hooks/github/{repositoryId}", s.receive)
@@ -37,11 +37,11 @@ func New(deps plugin.Deps) plugin.Plugin {
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, errInvalid), errors.Is(err, worktask.ErrInvalid):
+			case errors.Is(err, errInvalid), errors.Is(err, tasksvc.ErrInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, sql.ErrNoRows):
 				status = http.StatusNotFound
-			case errors.Is(err, worktask.ErrObjectConflict):
+			case errors.Is(err, tasksvc.ErrObjectConflict):
 				status = http.StatusConflict
 			default:
 				slog.Error("github plugin api", "err", err)
@@ -53,13 +53,13 @@ func New(deps plugin.Deps) plugin.Plugin {
 	return plugin.Plugin{
 		Name: "github", Hooks: hooks, HookLimit: MaxPayload, API: routes, Migrations: Migrations,
 		Jobs:  []plugin.Job{{Name: "review-pull", Every: time.Minute, Run: pull.Check}},
-		Tools: []worktask.LinkTool{pullTool},
+		Tools: []tasksvc.LinkTool{pullTool},
 	}
 }
 
 type service struct {
 	q     *store.Queries
-	tasks *worktask.Service
+	tasks *tasksvc.Service
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
@@ -101,7 +101,7 @@ func (s *service) receive(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, ErrSignature):
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
-	case errors.Is(err, ErrPayload), errors.Is(err, worktask.ErrInvalid):
+	case errors.Is(err, ErrPayload), errors.Is(err, tasksvc.ErrInvalid):
 		http.Error(w, "invalid delivery", http.StatusBadRequest)
 	default:
 		slog.Error("store GitHub webhook delivery", "repository", id, "err", err)
@@ -173,12 +173,12 @@ func (s *service) BindTaskGitHubPull(ctx context.Context, req api.BindTaskGitHub
 		return nil, errInvalid
 	}
 	namespace, object := Namespace(req.Body.RepositoryId), PullRequest(req.Body.PullNumber)
-	var wait *worktask.Wait
+	var wait *tasksvc.Wait
 	if condition := req.Body.Wait; condition != nil {
 		if condition.Revision == "" || strings.TrimSpace(condition.Revision) != condition.Revision {
 			return nil, errInvalid
 		}
-		wait = new(worktask.Wait{Namespace: namespace, Object: object, Type: ReviewSubmitted, AfterAt: condition.AfterAt, Revision: condition.Revision, Alert: condition.Alert != nil && *condition.Alert})
+		wait = new(tasksvc.Wait{Namespace: namespace, Object: object, Type: ReviewSubmitted, AfterAt: condition.AfterAt, Revision: condition.Revision, Alert: condition.Alert != nil && *condition.Alert})
 	}
 	if err := s.tasks.BindObject(ctx, req.AgentId, req.TaskId, namespace, object, wait); err != nil {
 		return nil, err
@@ -187,7 +187,7 @@ func (s *service) BindTaskGitHubPull(ctx context.Context, req api.BindTaskGitHub
 }
 
 // pullTool replaces githubPull of task_update. The core writes the link with its replay record.
-var pullTool = worktask.LinkTool{
+var pullTool = tasksvc.LinkTool{
 	Name:        "task_link_github_pull",
 	Description: "Link a GitHub PR to a Task. waitRevision also waits for a new review of that commit.",
 	Rules:       "When a child reports a GitHub PR for a Task, link it with task_link_github_pull. Set alertMain when the next step needs the review.",
@@ -198,7 +198,7 @@ var pullTool = worktask.LinkTool{
 		"waitRevision": map[string]any{"type": "string", "minLength": 1, "description": "A commit SHA. A review of it by an owner, member, or collaborator resolves the wait."},
 		"alertMain":    map[string]any{"type": "boolean", "description": "Send Main a Task alert when the review arrives. Use it when the next step needs the review. The default is false."},
 	},
-	Parse: func(raw []byte) (worktask.Link, error) {
+	Parse: func(raw []byte) (tasksvc.Link, error) {
 		var a struct {
 			RepositoryID int64  `json:"repositoryId"`
 			PullNumber   int64  `json:"pullNumber"`
@@ -206,9 +206,9 @@ var pullTool = worktask.LinkTool{
 			AlertMain    bool   `json:"alertMain"`
 		}
 		if err := json.Unmarshal(raw, &a); err != nil || a.RepositoryID <= 0 || a.PullNumber <= 0 || strings.TrimSpace(a.WaitRevision) != a.WaitRevision || len(a.WaitRevision) > 512 {
-			return worktask.Link{}, errors.New("give a numeric repositoryId, a pullNumber, and an optional commit SHA")
+			return tasksvc.Link{}, errors.New("give a numeric repositoryId, a pullNumber, and an optional commit SHA")
 		}
-		link := worktask.Link{Namespace: Namespace(a.RepositoryID), Object: PullRequest(a.PullNumber), Alert: a.AlertMain, Name: fmt.Sprintf("PR %d of repository %d", a.PullNumber, a.RepositoryID)}
+		link := tasksvc.Link{Namespace: Namespace(a.RepositoryID), Object: PullRequest(a.PullNumber), Alert: a.AlertMain, Name: fmt.Sprintf("PR %d of repository %d", a.PullNumber, a.RepositoryID)}
 		if a.WaitRevision != "" {
 			link.WaitEvent, link.WaitRevision = ReviewSubmitted, a.WaitRevision
 		}

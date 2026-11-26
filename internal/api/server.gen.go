@@ -58,399 +58,6 @@ func (e AssistantItemKind) Valid() bool {
 	}
 }
 
-// Defines values for BoardEntryCreateKind.
-const (
-	BoardEntryCreateKindArtifact BoardEntryCreateKind = "artifact"
-	BoardEntryCreateKindNote     BoardEntryCreateKind = "note"
-)
-
-// Valid indicates whether the value is a known member of the BoardEntryCreateKind enum.
-func (e BoardEntryCreateKind) Valid() bool {
-	switch e {
-	case BoardEntryCreateKindArtifact:
-		return true
-	case BoardEntryCreateKindNote:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardEntryCreateTag.
-const (
-	Brief    BoardEntryCreateTag = "brief"
-	Decision BoardEntryCreateTag = "decision"
-	Handoff  BoardEntryCreateTag = "handoff"
-	Update   BoardEntryCreateTag = "update"
-)
-
-// Valid indicates whether the value is a known member of the BoardEntryCreateTag enum.
-func (e BoardEntryCreateTag) Valid() bool {
-	switch e {
-	case Brief:
-		return true
-	case Decision:
-		return true
-	case Handoff:
-		return true
-	case Update:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardExecutionKind.
-const (
-	DexSession    BoardExecutionKind = "dex_session"
-	ExternalAgent BoardExecutionKind = "external_agent"
-)
-
-// Valid indicates whether the value is a known member of the BoardExecutionKind enum.
-func (e BoardExecutionKind) Valid() bool {
-	switch e {
-	case DexSession:
-		return true
-	case ExternalAgent:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardExecutionState.
-const (
-	BoardExecutionStateCancelled  BoardExecutionState = "cancelled"
-	BoardExecutionStateCompleted  BoardExecutionState = "completed"
-	BoardExecutionStateDispatched BoardExecutionState = "dispatched"
-	BoardExecutionStateFailed     BoardExecutionState = "failed"
-	BoardExecutionStateIdle       BoardExecutionState = "idle"
-	BoardExecutionStateRunning    BoardExecutionState = "running"
-	BoardExecutionStateStale      BoardExecutionState = "stale"
-)
-
-// Valid indicates whether the value is a known member of the BoardExecutionState enum.
-func (e BoardExecutionState) Valid() bool {
-	switch e {
-	case BoardExecutionStateCancelled:
-		return true
-	case BoardExecutionStateCompleted:
-		return true
-	case BoardExecutionStateDispatched:
-		return true
-	case BoardExecutionStateFailed:
-		return true
-	case BoardExecutionStateIdle:
-		return true
-	case BoardExecutionStateRunning:
-		return true
-	case BoardExecutionStateStale:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardExecutionAttachHarness.
-const (
-	ClaudeCode BoardExecutionAttachHarness = "claude-code"
-	Codex      BoardExecutionAttachHarness = "codex"
-	Custom     BoardExecutionAttachHarness = "custom"
-	Opencode   BoardExecutionAttachHarness = "opencode"
-)
-
-// Valid indicates whether the value is a known member of the BoardExecutionAttachHarness enum.
-func (e BoardExecutionAttachHarness) Valid() bool {
-	switch e {
-	case ClaudeCode:
-		return true
-	case Codex:
-		return true
-	case Custom:
-		return true
-	case Opencode:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardExecutionFinishOutcome.
-const (
-	BoardExecutionFinishOutcomeCompleted BoardExecutionFinishOutcome = "completed"
-	BoardExecutionFinishOutcomeFailed    BoardExecutionFinishOutcome = "failed"
-)
-
-// Valid indicates whether the value is a known member of the BoardExecutionFinishOutcome enum.
-func (e BoardExecutionFinishOutcome) Valid() bool {
-	switch e {
-	case BoardExecutionFinishOutcomeCompleted:
-		return true
-	case BoardExecutionFinishOutcomeFailed:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardReviewDecision.
-const (
-	BoardReviewDecisionApprove        BoardReviewDecision = "approve"
-	BoardReviewDecisionRequestChanges BoardReviewDecision = "request_changes"
-)
-
-// Valid indicates whether the value is a known member of the BoardReviewDecision enum.
-func (e BoardReviewDecision) Valid() bool {
-	switch e {
-	case BoardReviewDecisionApprove:
-		return true
-	case BoardReviewDecisionRequestChanges:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardReviewerKind.
-const (
-	BoardReviewerKindBot   BoardReviewerKind = "bot"
-	BoardReviewerKindEmpty BoardReviewerKind = ""
-	BoardReviewerKindOwner BoardReviewerKind = "owner"
-)
-
-// Valid indicates whether the value is a known member of the BoardReviewerKind enum.
-func (e BoardReviewerKind) Valid() bool {
-	switch e {
-	case BoardReviewerKindBot:
-		return true
-	case BoardReviewerKindEmpty:
-		return true
-	case BoardReviewerKindOwner:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardStatus.
-const (
-	BoardStatusBacklog    BoardStatus = "backlog"
-	BoardStatusCancelled  BoardStatus = "cancelled"
-	BoardStatusDone       BoardStatus = "done"
-	BoardStatusInProgress BoardStatus = "in_progress"
-	BoardStatusInReview   BoardStatus = "in_review"
-	BoardStatusReady      BoardStatus = "ready"
-)
-
-// Valid indicates whether the value is a known member of the BoardStatus enum.
-func (e BoardStatus) Valid() bool {
-	switch e {
-	case BoardStatusBacklog:
-		return true
-	case BoardStatusCancelled:
-		return true
-	case BoardStatusDone:
-		return true
-	case BoardStatusInProgress:
-		return true
-	case BoardStatusInReview:
-		return true
-	case BoardStatusReady:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskBlockerKind.
-const (
-	BoardTaskBlockerKindDependency BoardTaskBlockerKind = "dependency"
-	BoardTaskBlockerKindQuestion   BoardTaskBlockerKind = "question"
-	BoardTaskBlockerKindWait       BoardTaskBlockerKind = "wait"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskBlockerKind enum.
-func (e BoardTaskBlockerKind) Valid() bool {
-	switch e {
-	case BoardTaskBlockerKindDependency:
-		return true
-	case BoardTaskBlockerKindQuestion:
-		return true
-	case BoardTaskBlockerKindWait:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskCreateStatus.
-const (
-	BoardTaskCreateStatusBacklog    BoardTaskCreateStatus = "backlog"
-	BoardTaskCreateStatusInProgress BoardTaskCreateStatus = "in_progress"
-	BoardTaskCreateStatusReady      BoardTaskCreateStatus = "ready"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskCreateStatus enum.
-func (e BoardTaskCreateStatus) Valid() bool {
-	switch e {
-	case BoardTaskCreateStatusBacklog:
-		return true
-	case BoardTaskCreateStatusInProgress:
-		return true
-	case BoardTaskCreateStatusReady:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskEntryDecision.
-const (
-	BoardTaskEntryDecisionApprove        BoardTaskEntryDecision = "approve"
-	BoardTaskEntryDecisionRequestChanges BoardTaskEntryDecision = "request_changes"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskEntryDecision enum.
-func (e BoardTaskEntryDecision) Valid() bool {
-	switch e {
-	case BoardTaskEntryDecisionApprove:
-		return true
-	case BoardTaskEntryDecisionRequestChanges:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskEntryKind.
-const (
-	BoardTaskEntryKindArtifact  BoardTaskEntryKind = "artifact"
-	BoardTaskEntryKindAssign    BoardTaskEntryKind = "assign"
-	BoardTaskEntryKindExecution BoardTaskEntryKind = "execution"
-	BoardTaskEntryKindExternal  BoardTaskEntryKind = "external"
-	BoardTaskEntryKindNote      BoardTaskEntryKind = "note"
-	BoardTaskEntryKindReview    BoardTaskEntryKind = "review"
-	BoardTaskEntryKindStatus    BoardTaskEntryKind = "status"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskEntryKind enum.
-func (e BoardTaskEntryKind) Valid() bool {
-	switch e {
-	case BoardTaskEntryKindArtifact:
-		return true
-	case BoardTaskEntryKindAssign:
-		return true
-	case BoardTaskEntryKindExecution:
-		return true
-	case BoardTaskEntryKindExternal:
-		return true
-	case BoardTaskEntryKindNote:
-		return true
-	case BoardTaskEntryKindReview:
-		return true
-	case BoardTaskEntryKindStatus:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskEntryTrust.
-const (
-	BoardTaskEntryTrustAgent    BoardTaskEntryTrust = "agent"
-	BoardTaskEntryTrustExternal BoardTaskEntryTrust = "external"
-	BoardTaskEntryTrustOwner    BoardTaskEntryTrust = "owner"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskEntryTrust enum.
-func (e BoardTaskEntryTrust) Valid() bool {
-	switch e {
-	case BoardTaskEntryTrustAgent:
-		return true
-	case BoardTaskEntryTrustExternal:
-		return true
-	case BoardTaskEntryTrustOwner:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskSessionState.
-const (
-	BoardTaskSessionStateCancelled  BoardTaskSessionState = "cancelled"
-	BoardTaskSessionStateCompleted  BoardTaskSessionState = "completed"
-	BoardTaskSessionStateDispatched BoardTaskSessionState = "dispatched"
-	BoardTaskSessionStateFailed     BoardTaskSessionState = "failed"
-	BoardTaskSessionStateIdle       BoardTaskSessionState = "idle"
-	BoardTaskSessionStateRunning    BoardTaskSessionState = "running"
-	BoardTaskSessionStateStale      BoardTaskSessionState = "stale"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskSessionState enum.
-func (e BoardTaskSessionState) Valid() bool {
-	switch e {
-	case BoardTaskSessionStateCancelled:
-		return true
-	case BoardTaskSessionStateCompleted:
-		return true
-	case BoardTaskSessionStateDispatched:
-		return true
-	case BoardTaskSessionStateFailed:
-		return true
-	case BoardTaskSessionStateIdle:
-		return true
-	case BoardTaskSessionStateRunning:
-		return true
-	case BoardTaskSessionStateStale:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskSplitReviewer.
-const (
-	BoardTaskSplitReviewerCreator BoardTaskSplitReviewer = "creator"
-	BoardTaskSplitReviewerNone    BoardTaskSplitReviewer = "none"
-	BoardTaskSplitReviewerOwner   BoardTaskSplitReviewer = "owner"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskSplitReviewer enum.
-func (e BoardTaskSplitReviewer) Valid() bool {
-	switch e {
-	case BoardTaskSplitReviewerCreator:
-		return true
-	case BoardTaskSplitReviewerNone:
-		return true
-	case BoardTaskSplitReviewerOwner:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for BoardTaskSplitStatus.
-const (
-	BoardTaskSplitStatusBacklog    BoardTaskSplitStatus = "backlog"
-	BoardTaskSplitStatusInProgress BoardTaskSplitStatus = "in_progress"
-	BoardTaskSplitStatusReady      BoardTaskSplitStatus = "ready"
-)
-
-// Valid indicates whether the value is a known member of the BoardTaskSplitStatus enum.
-func (e BoardTaskSplitStatus) Valid() bool {
-	switch e {
-	case BoardTaskSplitStatusBacklog:
-		return true
-	case BoardTaskSplitStatusInProgress:
-		return true
-	case BoardTaskSplitStatusReady:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for BoundaryItemBoundary.
 const (
 	BoundaryItemBoundaryCompaction  BoundaryItemBoundary = "compaction"
@@ -555,16 +162,16 @@ func (e ChatQuestionAction) Valid() bool {
 
 // Defines values for ChatQuestionStatus.
 const (
-	ChatQuestionStatusAnswered ChatQuestionStatus = "answered"
-	ChatQuestionStatusOpen     ChatQuestionStatus = "open"
+	Answered ChatQuestionStatus = "answered"
+	Open     ChatQuestionStatus = "open"
 )
 
 // Valid indicates whether the value is a known member of the ChatQuestionStatus enum.
 func (e ChatQuestionStatus) Valid() bool {
 	switch e {
-	case ChatQuestionStatusAnswered:
+	case Answered:
 		return true
-	case ChatQuestionStatusOpen:
+	case Open:
 		return true
 	default:
 		return false
@@ -1102,6 +709,255 @@ func (e SystemUpdateChannel) Valid() bool {
 	}
 }
 
+// Defines values for TaskBlockerKind.
+const (
+	TaskBlockerKindDependency TaskBlockerKind = "dependency"
+	TaskBlockerKindQuestion   TaskBlockerKind = "question"
+	TaskBlockerKindWait       TaskBlockerKind = "wait"
+)
+
+// Valid indicates whether the value is a known member of the TaskBlockerKind enum.
+func (e TaskBlockerKind) Valid() bool {
+	switch e {
+	case TaskBlockerKindDependency:
+		return true
+	case TaskBlockerKindQuestion:
+		return true
+	case TaskBlockerKindWait:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskCreateStatus.
+const (
+	TaskCreateStatusBacklog    TaskCreateStatus = "backlog"
+	TaskCreateStatusInProgress TaskCreateStatus = "in_progress"
+	TaskCreateStatusReady      TaskCreateStatus = "ready"
+)
+
+// Valid indicates whether the value is a known member of the TaskCreateStatus enum.
+func (e TaskCreateStatus) Valid() bool {
+	switch e {
+	case TaskCreateStatusBacklog:
+		return true
+	case TaskCreateStatusInProgress:
+		return true
+	case TaskCreateStatusReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskEntryDecision.
+const (
+	TaskEntryDecisionApprove        TaskEntryDecision = "approve"
+	TaskEntryDecisionRequestChanges TaskEntryDecision = "request_changes"
+)
+
+// Valid indicates whether the value is a known member of the TaskEntryDecision enum.
+func (e TaskEntryDecision) Valid() bool {
+	switch e {
+	case TaskEntryDecisionApprove:
+		return true
+	case TaskEntryDecisionRequestChanges:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskEntryKind.
+const (
+	TaskEntryKindArtifact  TaskEntryKind = "artifact"
+	TaskEntryKindAssign    TaskEntryKind = "assign"
+	TaskEntryKindExecution TaskEntryKind = "execution"
+	TaskEntryKindExternal  TaskEntryKind = "external"
+	TaskEntryKindNote      TaskEntryKind = "note"
+	TaskEntryKindReview    TaskEntryKind = "review"
+	TaskEntryKindStatus    TaskEntryKind = "status"
+)
+
+// Valid indicates whether the value is a known member of the TaskEntryKind enum.
+func (e TaskEntryKind) Valid() bool {
+	switch e {
+	case TaskEntryKindArtifact:
+		return true
+	case TaskEntryKindAssign:
+		return true
+	case TaskEntryKindExecution:
+		return true
+	case TaskEntryKindExternal:
+		return true
+	case TaskEntryKindNote:
+		return true
+	case TaskEntryKindReview:
+		return true
+	case TaskEntryKindStatus:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskEntryTrust.
+const (
+	TaskEntryTrustAgent    TaskEntryTrust = "agent"
+	TaskEntryTrustExternal TaskEntryTrust = "external"
+	TaskEntryTrustOwner    TaskEntryTrust = "owner"
+)
+
+// Valid indicates whether the value is a known member of the TaskEntryTrust enum.
+func (e TaskEntryTrust) Valid() bool {
+	switch e {
+	case TaskEntryTrustAgent:
+		return true
+	case TaskEntryTrustExternal:
+		return true
+	case TaskEntryTrustOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskEntryCreateKind.
+const (
+	TaskEntryCreateKindArtifact TaskEntryCreateKind = "artifact"
+	TaskEntryCreateKindNote     TaskEntryCreateKind = "note"
+)
+
+// Valid indicates whether the value is a known member of the TaskEntryCreateKind enum.
+func (e TaskEntryCreateKind) Valid() bool {
+	switch e {
+	case TaskEntryCreateKindArtifact:
+		return true
+	case TaskEntryCreateKindNote:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskEntryCreateTag.
+const (
+	Brief    TaskEntryCreateTag = "brief"
+	Decision TaskEntryCreateTag = "decision"
+	Handoff  TaskEntryCreateTag = "handoff"
+	Update   TaskEntryCreateTag = "update"
+)
+
+// Valid indicates whether the value is a known member of the TaskEntryCreateTag enum.
+func (e TaskEntryCreateTag) Valid() bool {
+	switch e {
+	case Brief:
+		return true
+	case Decision:
+		return true
+	case Handoff:
+		return true
+	case Update:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskExecutionKind.
+const (
+	DexSession    TaskExecutionKind = "dex_session"
+	ExternalAgent TaskExecutionKind = "external_agent"
+)
+
+// Valid indicates whether the value is a known member of the TaskExecutionKind enum.
+func (e TaskExecutionKind) Valid() bool {
+	switch e {
+	case DexSession:
+		return true
+	case ExternalAgent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskExecutionState.
+const (
+	TaskExecutionStateCancelled  TaskExecutionState = "cancelled"
+	TaskExecutionStateCompleted  TaskExecutionState = "completed"
+	TaskExecutionStateDispatched TaskExecutionState = "dispatched"
+	TaskExecutionStateFailed     TaskExecutionState = "failed"
+	TaskExecutionStateIdle       TaskExecutionState = "idle"
+	TaskExecutionStateRunning    TaskExecutionState = "running"
+	TaskExecutionStateStale      TaskExecutionState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the TaskExecutionState enum.
+func (e TaskExecutionState) Valid() bool {
+	switch e {
+	case TaskExecutionStateCancelled:
+		return true
+	case TaskExecutionStateCompleted:
+		return true
+	case TaskExecutionStateDispatched:
+		return true
+	case TaskExecutionStateFailed:
+		return true
+	case TaskExecutionStateIdle:
+		return true
+	case TaskExecutionStateRunning:
+		return true
+	case TaskExecutionStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskExecutionAttachHarness.
+const (
+	ClaudeCode TaskExecutionAttachHarness = "claude-code"
+	Codex      TaskExecutionAttachHarness = "codex"
+	Custom     TaskExecutionAttachHarness = "custom"
+	Opencode   TaskExecutionAttachHarness = "opencode"
+)
+
+// Valid indicates whether the value is a known member of the TaskExecutionAttachHarness enum.
+func (e TaskExecutionAttachHarness) Valid() bool {
+	switch e {
+	case ClaudeCode:
+		return true
+	case Codex:
+		return true
+	case Custom:
+		return true
+	case Opencode:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskExecutionFinishOutcome.
+const (
+	TaskExecutionFinishOutcomeCompleted TaskExecutionFinishOutcome = "completed"
+	TaskExecutionFinishOutcomeFailed    TaskExecutionFinishOutcome = "failed"
+)
+
+// Valid indicates whether the value is a known member of the TaskExecutionFinishOutcome enum.
+func (e TaskExecutionFinishOutcome) Valid() bool {
+	switch e {
+	case TaskExecutionFinishOutcomeCompleted:
+		return true
+	case TaskExecutionFinishOutcomeFailed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TaskItemKind.
 const (
 	Task TaskItemKind = "task"
@@ -1111,6 +967,150 @@ const (
 func (e TaskItemKind) Valid() bool {
 	switch e {
 	case Task:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskReviewDecision.
+const (
+	TaskReviewDecisionApprove        TaskReviewDecision = "approve"
+	TaskReviewDecisionRequestChanges TaskReviewDecision = "request_changes"
+)
+
+// Valid indicates whether the value is a known member of the TaskReviewDecision enum.
+func (e TaskReviewDecision) Valid() bool {
+	switch e {
+	case TaskReviewDecisionApprove:
+		return true
+	case TaskReviewDecisionRequestChanges:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskReviewerKind.
+const (
+	TaskReviewerKindBot   TaskReviewerKind = "bot"
+	TaskReviewerKindEmpty TaskReviewerKind = ""
+	TaskReviewerKindOwner TaskReviewerKind = "owner"
+)
+
+// Valid indicates whether the value is a known member of the TaskReviewerKind enum.
+func (e TaskReviewerKind) Valid() bool {
+	switch e {
+	case TaskReviewerKindBot:
+		return true
+	case TaskReviewerKindEmpty:
+		return true
+	case TaskReviewerKindOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskSessionState.
+const (
+	TaskSessionStateCancelled  TaskSessionState = "cancelled"
+	TaskSessionStateCompleted  TaskSessionState = "completed"
+	TaskSessionStateDispatched TaskSessionState = "dispatched"
+	TaskSessionStateFailed     TaskSessionState = "failed"
+	TaskSessionStateIdle       TaskSessionState = "idle"
+	TaskSessionStateRunning    TaskSessionState = "running"
+	TaskSessionStateStale      TaskSessionState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the TaskSessionState enum.
+func (e TaskSessionState) Valid() bool {
+	switch e {
+	case TaskSessionStateCancelled:
+		return true
+	case TaskSessionStateCompleted:
+		return true
+	case TaskSessionStateDispatched:
+		return true
+	case TaskSessionStateFailed:
+		return true
+	case TaskSessionStateIdle:
+		return true
+	case TaskSessionStateRunning:
+		return true
+	case TaskSessionStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskSplitReviewer.
+const (
+	TaskSplitReviewerCreator TaskSplitReviewer = "creator"
+	TaskSplitReviewerNone    TaskSplitReviewer = "none"
+	TaskSplitReviewerOwner   TaskSplitReviewer = "owner"
+)
+
+// Valid indicates whether the value is a known member of the TaskSplitReviewer enum.
+func (e TaskSplitReviewer) Valid() bool {
+	switch e {
+	case TaskSplitReviewerCreator:
+		return true
+	case TaskSplitReviewerNone:
+		return true
+	case TaskSplitReviewerOwner:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskSplitStatus.
+const (
+	TaskSplitStatusBacklog    TaskSplitStatus = "backlog"
+	TaskSplitStatusInProgress TaskSplitStatus = "in_progress"
+	TaskSplitStatusReady      TaskSplitStatus = "ready"
+)
+
+// Valid indicates whether the value is a known member of the TaskSplitStatus enum.
+func (e TaskSplitStatus) Valid() bool {
+	switch e {
+	case TaskSplitStatusBacklog:
+		return true
+	case TaskSplitStatusInProgress:
+		return true
+	case TaskSplitStatusReady:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskStatus.
+const (
+	TaskStatusBacklog    TaskStatus = "backlog"
+	TaskStatusCancelled  TaskStatus = "cancelled"
+	TaskStatusDone       TaskStatus = "done"
+	TaskStatusInProgress TaskStatus = "in_progress"
+	TaskStatusInReview   TaskStatus = "in_review"
+	TaskStatusReady      TaskStatus = "ready"
+)
+
+// Valid indicates whether the value is a known member of the TaskStatus enum.
+func (e TaskStatus) Valid() bool {
+	switch e {
+	case TaskStatusBacklog:
+		return true
+	case TaskStatusCancelled:
+		return true
+	case TaskStatusDone:
+		return true
+	case TaskStatusInProgress:
+		return true
+	case TaskStatusInReview:
+		return true
+	case TaskStatusReady:
 		return true
 	default:
 		return false
@@ -1276,51 +1276,6 @@ func (e UserItemKind) Valid() bool {
 	}
 }
 
-// Defines values for WorkTaskEntryAuthor.
-const (
-	WorkTaskEntryAuthorAgent    WorkTaskEntryAuthor = "agent"
-	WorkTaskEntryAuthorExternal WorkTaskEntryAuthor = "external"
-	WorkTaskEntryAuthorOwner    WorkTaskEntryAuthor = "owner"
-	WorkTaskEntryAuthorUnknown  WorkTaskEntryAuthor = "unknown"
-)
-
-// Valid indicates whether the value is a known member of the WorkTaskEntryAuthor enum.
-func (e WorkTaskEntryAuthor) Valid() bool {
-	switch e {
-	case WorkTaskEntryAuthorAgent:
-		return true
-	case WorkTaskEntryAuthorExternal:
-		return true
-	case WorkTaskEntryAuthorOwner:
-		return true
-	case WorkTaskEntryAuthorUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for WorkTaskLifecycle.
-const (
-	WorkTaskLifecycleCancelled WorkTaskLifecycle = "cancelled"
-	WorkTaskLifecycleCompleted WorkTaskLifecycle = "completed"
-	WorkTaskLifecycleOpen      WorkTaskLifecycle = "open"
-)
-
-// Valid indicates whether the value is a known member of the WorkTaskLifecycle enum.
-func (e WorkTaskLifecycle) Valid() bool {
-	switch e {
-	case WorkTaskLifecycleCancelled:
-		return true
-	case WorkTaskLifecycleCompleted:
-		return true
-	case WorkTaskLifecycleOpen:
-		return true
-	default:
-		return false
-	}
-}
-
 // Agent defines model for Agent.
 type Agent = agent.Agent
 
@@ -1396,277 +1351,6 @@ type AutomationTarget struct {
 	Id    int64  `json:"id"`
 	Main  bool   `json:"main"`
 	Title string `json:"title"`
-}
-
-// BoardDependencyCreate defines model for BoardDependencyCreate.
-type BoardDependencyCreate struct {
-	DependsOn string `json:"dependsOn"`
-}
-
-// BoardEntryCreate defines model for BoardEntryCreate.
-type BoardEntryCreate struct {
-	Content string                `json:"content"`
-	Kind    *BoardEntryCreateKind `json:"kind,omitempty"`
-	Tag     *BoardEntryCreateTag  `json:"tag,omitempty"`
-}
-
-// BoardEntryCreateKind defines model for BoardEntryCreate.Kind.
-type BoardEntryCreateKind string
-
-// BoardEntryCreateTag defines model for BoardEntryCreate.Tag.
-type BoardEntryCreateTag string
-
-// BoardEvent defines model for BoardEvent.
-type BoardEvent struct {
-	TaskId string `json:"taskId"`
-}
-
-// BoardExecution defines model for BoardExecution.
-type BoardExecution struct {
-	BotId             string              `json:"botId"`
-	DispatchId        *string             `json:"dispatchId,omitempty"`
-	EndedAt           *int64              `json:"endedAt,omitempty"`
-	ExternalSessionId *string             `json:"externalSessionId,omitempty"`
-	GitBranch         *string             `json:"gitBranch,omitempty"`
-	Harness           *string             `json:"harness,omitempty"`
-	Hostname          *string             `json:"hostname,omitempty"`
-	Id                string              `json:"id"`
-	Kind              BoardExecutionKind  `json:"kind"`
-	LastHeartbeatAt   *int64              `json:"lastHeartbeatAt,omitempty"`
-	LeaseEpoch        int64               `json:"leaseEpoch"`
-	LeaseExpiresAt    *int64              `json:"leaseExpiresAt,omitempty"`
-	MachineId         *string             `json:"machineId,omitempty"`
-	RunnerName        *string             `json:"runnerName,omitempty"`
-	StartedAt         int64               `json:"startedAt"`
-	State             BoardExecutionState `json:"state"`
-	TaskKey           *string             `json:"taskKey,omitempty"`
-	WorkspacePath     *string             `json:"workspacePath,omitempty"`
-}
-
-// BoardExecutionKind defines model for BoardExecution.Kind.
-type BoardExecutionKind string
-
-// BoardExecutionState defines model for BoardExecution.State.
-type BoardExecutionState string
-
-// BoardExecutionAttach defines model for BoardExecutionAttach.
-type BoardExecutionAttach struct {
-	ExternalSessionId *string                      `json:"externalSessionId,omitempty"`
-	GitBranch         *string                      `json:"gitBranch,omitempty"`
-	Harness           *BoardExecutionAttachHarness `json:"harness,omitempty"`
-	HostMeta          *BoardExecutionHost          `json:"hostMeta,omitempty"`
-	LeaseSeconds      *int64                       `json:"leaseSeconds,omitempty"`
-	MachineId         *string                      `json:"machineId,omitempty"`
-	WorkspacePath     *string                      `json:"workspacePath,omitempty"`
-}
-
-// BoardExecutionAttachHarness defines model for BoardExecutionAttach.Harness.
-type BoardExecutionAttachHarness string
-
-// BoardExecutionFinish defines model for BoardExecutionFinish.
-type BoardExecutionFinish struct {
-	Outcome BoardExecutionFinishOutcome `json:"outcome"`
-	Summary *string                     `json:"summary,omitempty"`
-}
-
-// BoardExecutionFinishOutcome defines model for BoardExecutionFinish.Outcome.
-type BoardExecutionFinishOutcome string
-
-// BoardExecutionHeartbeat defines model for BoardExecutionHeartbeat.
-type BoardExecutionHeartbeat struct {
-	ExternalSessionId *string `json:"externalSessionId,omitempty"`
-	GitBranch         *string `json:"gitBranch,omitempty"`
-	LeaseSeconds      *int64  `json:"leaseSeconds,omitempty"`
-}
-
-// BoardExecutionHost defines model for BoardExecutionHost.
-type BoardExecutionHost struct {
-	Hostname *string `json:"hostname,omitempty"`
-}
-
-// BoardExecutionList defines model for BoardExecutionList.
-type BoardExecutionList struct {
-	Executions []BoardExecution `json:"executions"`
-}
-
-// BoardExternalTask defines model for BoardExternalTask.
-type BoardExternalTask struct {
-	Entries      []BoardTaskEntry `json:"entries"`
-	NextAfterSeq int64            `json:"nextAfterSeq"`
-	Task         BoardTaskRef     `json:"task"`
-}
-
-// BoardReview defines model for BoardReview.
-type BoardReview struct {
-	Decision  BoardReviewDecision `json:"decision"`
-	Note      *string             `json:"note,omitempty"`
-	ReviewSeq *int64              `json:"reviewSeq,omitempty"`
-}
-
-// BoardReviewDecision defines model for BoardReview.Decision.
-type BoardReviewDecision string
-
-// BoardReviewerKind defines model for BoardReviewerKind.
-type BoardReviewerKind string
-
-// BoardStatus defines model for BoardStatus.
-type BoardStatus string
-
-// BoardTaskBlocker defines model for BoardTaskBlocker.
-type BoardTaskBlocker struct {
-	EventType     *string              `json:"eventType,omitempty"`
-	Kind          BoardTaskBlockerKind `json:"kind"`
-	Namespace     *string              `json:"namespace,omitempty"`
-	ObjectKey     *string              `json:"objectKey,omitempty"`
-	ObjectType    *string              `json:"objectType,omitempty"`
-	Question      *string              `json:"question,omitempty"`
-	QuestionId    *string              `json:"questionId,omitempty"`
-	QueuePosition *int64               `json:"queuePosition,omitempty"`
-	TaskKey       *string              `json:"taskKey,omitempty"`
-	WaitId        *int64               `json:"waitId,omitempty"`
-}
-
-// BoardTaskBlockerKind defines model for BoardTaskBlocker.Kind.
-type BoardTaskBlockerKind string
-
-// BoardTaskCreate defines model for BoardTaskCreate.
-type BoardTaskCreate struct {
-	AssigneeBotId string                 `json:"assigneeBotId"`
-	Note          *string                `json:"note,omitempty"`
-	ReviewerId    *string                `json:"reviewerId,omitempty"`
-	ReviewerKind  *BoardReviewerKind     `json:"reviewerKind,omitempty"`
-	Status        *BoardTaskCreateStatus `json:"status,omitempty"`
-	Title         string                 `json:"title"`
-}
-
-// BoardTaskCreateStatus defines model for BoardTaskCreate.Status.
-type BoardTaskCreateStatus string
-
-// BoardTaskDetail defines model for BoardTaskDetail.
-type BoardTaskDetail struct {
-	Blockers     []BoardTaskBlocker  `json:"blockers"`
-	CanSplit     bool                `json:"canSplit"`
-	Dependencies []BoardTaskRef      `json:"dependencies"`
-	Entries      []BoardTaskEntry    `json:"entries"`
-	Links        []WorkTaskLink      `json:"links"`
-	ParentTask   *BoardTaskRef       `json:"parentTask,omitempty"`
-	Questions    []BoardTaskQuestion `json:"questions"`
-	Sessions     []BoardTaskSession  `json:"sessions"`
-	Subtasks     []BoardTaskRef      `json:"subtasks"`
-	Task         BoardTaskSummary    `json:"task"`
-}
-
-// BoardTaskEntry defines model for BoardTaskEntry.
-type BoardTaskEntry struct {
-	ActorBotId string                  `json:"actorBotId"`
-	ActorKind  string                  `json:"actorKind"`
-	Content    string                  `json:"content"`
-	CreatedAt  int64                   `json:"createdAt"`
-	Decision   *BoardTaskEntryDecision `json:"decision,omitempty"`
-	EventId    *string                 `json:"eventId,omitempty"`
-	Id         int64                   `json:"id"`
-	Kind       BoardTaskEntryKind      `json:"kind"`
-	Seq        int64                   `json:"seq"`
-	Status     *BoardStatus            `json:"status,omitempty"`
-	Tag        string                  `json:"tag"`
-	Trust      BoardTaskEntryTrust     `json:"trust"`
-}
-
-// BoardTaskEntryDecision defines model for BoardTaskEntry.Decision.
-type BoardTaskEntryDecision string
-
-// BoardTaskEntryKind defines model for BoardTaskEntry.Kind.
-type BoardTaskEntryKind string
-
-// BoardTaskEntryTrust defines model for BoardTaskEntry.Trust.
-type BoardTaskEntryTrust string
-
-// BoardTaskList defines model for BoardTaskList.
-type BoardTaskList struct {
-	Tasks []BoardTaskSummary `json:"tasks"`
-}
-
-// BoardTaskQuestion defines model for BoardTaskQuestion.
-type BoardTaskQuestion struct {
-	AgentId        string   `json:"agentId"`
-	ConversationId int64    `json:"conversationId"`
-	Id             string   `json:"id"`
-	Options        []string `json:"options"`
-	Queued         bool     `json:"queued"`
-	Text           string   `json:"text"`
-}
-
-// BoardTaskRef defines model for BoardTaskRef.
-type BoardTaskRef struct {
-	AssigneeBotId string      `json:"assigneeBotId"`
-	Key           string      `json:"key"`
-	Status        BoardStatus `json:"status"`
-	Title         string      `json:"title"`
-}
-
-// BoardTaskSession defines model for BoardTaskSession.
-type BoardTaskSession struct {
-	AgentId        string                `json:"agentId"`
-	AgentName      string                `json:"agentName"`
-	ConversationId int64                 `json:"conversationId"`
-	EndedAt        *int64                `json:"endedAt,omitempty"`
-	IsPrimary      bool                  `json:"isPrimary"`
-	LinkedAt       int64                 `json:"linkedAt"`
-	State          BoardTaskSessionState `json:"state"`
-	Title          string                `json:"title"`
-}
-
-// BoardTaskSessionState defines model for BoardTaskSession.State.
-type BoardTaskSessionState string
-
-// BoardTaskSplit defines model for BoardTaskSplit.
-type BoardTaskSplit struct {
-	AssigneeBotId *string                 `json:"assigneeBotId,omitempty"`
-	DependsOn     *[]string               `json:"dependsOn,omitempty"`
-	Note          *string                 `json:"note,omitempty"`
-	Reviewer      *BoardTaskSplitReviewer `json:"reviewer,omitempty"`
-	Status        *BoardTaskSplitStatus   `json:"status,omitempty"`
-	Title         string                  `json:"title"`
-}
-
-// BoardTaskSplitReviewer defines model for BoardTaskSplit.Reviewer.
-type BoardTaskSplitReviewer string
-
-// BoardTaskSplitStatus defines model for BoardTaskSplit.Status.
-type BoardTaskSplitStatus string
-
-// BoardTaskSummary defines model for BoardTaskSummary.
-type BoardTaskSummary struct {
-	AssigneeBotId  string            `json:"assigneeBotId"`
-	Blocked        bool              `json:"blocked"`
-	BlockerCount   int64             `json:"blockerCount"`
-	CreatedAt      int64             `json:"createdAt"`
-	Id             string            `json:"id"`
-	Key            string            `json:"key"`
-	Number         int64             `json:"number"`
-	PrimarySession *BoardTaskSession `json:"primarySession,omitempty"`
-	ReviewSeq      int64             `json:"reviewSeq"`
-	ReviewerId     string            `json:"reviewerId"`
-	ReviewerKind   BoardReviewerKind `json:"reviewerKind"`
-	Revision       int64             `json:"revision"`
-	Status         BoardStatus       `json:"status"`
-	Title          string            `json:"title"`
-	UpdatedAt      int64             `json:"updatedAt"`
-}
-
-// BoardTaskUpdate defines model for BoardTaskUpdate.
-type BoardTaskUpdate struct {
-	AssigneeBotId *string            `json:"assigneeBotId,omitempty"`
-	ReviewerId    *string            `json:"reviewerId,omitempty"`
-	ReviewerKind  *BoardReviewerKind `json:"reviewerKind,omitempty"`
-	Status        *BoardStatus       `json:"status,omitempty"`
-	Title         *string            `json:"title,omitempty"`
-}
-
-// BoardTokenIssue defines model for BoardTokenIssue.
-type BoardTokenIssue struct {
-	BoardToken string         `json:"boardToken"`
-	Execution  BoardExecution `json:"execution"`
 }
 
 // BoundaryItem defines model for BoundaryItem.
@@ -2066,6 +1750,27 @@ type HistoryPage struct {
 // InboxItem defines model for InboxItem.
 type InboxItem = automation.InboxItem
 
+// InboxSummary defines model for InboxSummary.
+type InboxSummary struct {
+	Automations []InboxSummaryAutomation `json:"automations"`
+	Inbox       []InboxItem              `json:"inbox"`
+	Sessions    []InboxSummarySession    `json:"sessions"`
+	TaskReviews []TaskRef                `json:"taskReviews"`
+}
+
+// InboxSummaryAutomation defines model for InboxSummaryAutomation.
+type InboxSummaryAutomation struct {
+	AgentId    string     `json:"agentId"`
+	Automation Automation `json:"automation"`
+	Setup      bool       `json:"setup"`
+}
+
+// InboxSummarySession defines model for InboxSummarySession.
+type InboxSummarySession struct {
+	AgentId string `json:"agentId"`
+	Chat    Chat   `json:"chat"`
+}
+
 // Item defines model for Item.
 type Item struct {
 	union json.RawMessage
@@ -2131,11 +1836,11 @@ type MessageInput struct {
 	// Mode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
 	Mode *MessageInputMode `json:"mode,omitempty"`
 
+	// TaskId Selects a Task for a Main message by key (for example, T-42) or UUID.
+	TaskId *string `json:"taskId,omitempty"`
+
 	// Text 1 to 32000 characters. It can be empty when the message has an attachment.
 	Text string `json:"text"`
-
-	// WorkTaskId Selects a Task of this agent for a Main message.
-	WorkTaskId *string `json:"workTaskId,omitempty"`
 }
 
 // MessageInputMode What happens when the agent is already working in this chat. followUp waits until the current run ends. steer joins the current run after its current tool step. reject answers 409 and the message does not run. A retry must use the same mode. An omitted mode is equal to followUp. When dex cannot admit a reject message at once, it answers 202 and admits it later; the message then runs only if the chat is idle.
@@ -2536,14 +2241,184 @@ type SystemStatusState string
 // SystemUpdateChannel defines model for SystemUpdateChannel.
 type SystemUpdateChannel string
 
+// TaskBlocker defines model for TaskBlocker.
+type TaskBlocker struct {
+	EventType     *string         `json:"eventType,omitempty"`
+	Kind          TaskBlockerKind `json:"kind"`
+	Namespace     *string         `json:"namespace,omitempty"`
+	ObjectKey     *string         `json:"objectKey,omitempty"`
+	ObjectType    *string         `json:"objectType,omitempty"`
+	Question      *string         `json:"question,omitempty"`
+	QuestionId    *string         `json:"questionId,omitempty"`
+	QueuePosition *int64          `json:"queuePosition,omitempty"`
+	TaskKey       *string         `json:"taskKey,omitempty"`
+	WaitId        *int64          `json:"waitId,omitempty"`
+}
+
+// TaskBlockerKind defines model for TaskBlocker.Kind.
+type TaskBlockerKind string
+
+// TaskCreate defines model for TaskCreate.
+type TaskCreate struct {
+	AssigneeBotId string            `json:"assigneeBotId"`
+	Note          *string           `json:"note,omitempty"`
+	ReviewerId    *string           `json:"reviewerId,omitempty"`
+	ReviewerKind  *TaskReviewerKind `json:"reviewerKind,omitempty"`
+	Status        *TaskCreateStatus `json:"status,omitempty"`
+	Title         string            `json:"title"`
+}
+
+// TaskCreateStatus defines model for TaskCreate.Status.
+type TaskCreateStatus string
+
+// TaskDependencyCreate defines model for TaskDependencyCreate.
+type TaskDependencyCreate struct {
+	DependsOn string `json:"dependsOn"`
+}
+
+// TaskDetail defines model for TaskDetail.
+type TaskDetail struct {
+	Blockers     []TaskBlocker  `json:"blockers"`
+	CanSplit     bool           `json:"canSplit"`
+	Dependencies []TaskRef      `json:"dependencies"`
+	Entries      []TaskEntry    `json:"entries"`
+	Links        []TaskLink     `json:"links"`
+	ParentTask   *TaskRef       `json:"parentTask,omitempty"`
+	Questions    []TaskQuestion `json:"questions"`
+	Sessions     []TaskSession  `json:"sessions"`
+	Subtasks     []TaskRef      `json:"subtasks"`
+	Task         TaskSummary    `json:"task"`
+}
+
+// TaskEntry defines model for TaskEntry.
+type TaskEntry struct {
+	ActorBotId string             `json:"actorBotId"`
+	ActorKind  string             `json:"actorKind"`
+	Content    string             `json:"content"`
+	CreatedAt  int64              `json:"createdAt"`
+	Decision   *TaskEntryDecision `json:"decision,omitempty"`
+	EventId    *string            `json:"eventId,omitempty"`
+	Id         int64              `json:"id"`
+	Kind       TaskEntryKind      `json:"kind"`
+	Seq        int64              `json:"seq"`
+	Status     *TaskStatus        `json:"status,omitempty"`
+	Tag        string             `json:"tag"`
+	Trust      TaskEntryTrust     `json:"trust"`
+}
+
+// TaskEntryDecision defines model for TaskEntry.Decision.
+type TaskEntryDecision string
+
+// TaskEntryKind defines model for TaskEntry.Kind.
+type TaskEntryKind string
+
+// TaskEntryTrust defines model for TaskEntry.Trust.
+type TaskEntryTrust string
+
+// TaskEntryCreate defines model for TaskEntryCreate.
+type TaskEntryCreate struct {
+	Content string               `json:"content"`
+	Kind    *TaskEntryCreateKind `json:"kind,omitempty"`
+	Tag     *TaskEntryCreateTag  `json:"tag,omitempty"`
+}
+
+// TaskEntryCreateKind defines model for TaskEntryCreate.Kind.
+type TaskEntryCreateKind string
+
+// TaskEntryCreateTag defines model for TaskEntryCreate.Tag.
+type TaskEntryCreateTag string
+
+// TaskEvent defines model for TaskEvent.
+type TaskEvent struct {
+	TaskId string `json:"taskId"`
+}
+
+// TaskExecution defines model for TaskExecution.
+type TaskExecution struct {
+	BotId             string             `json:"botId"`
+	DispatchId        *string            `json:"dispatchId,omitempty"`
+	EndedAt           *int64             `json:"endedAt,omitempty"`
+	ExternalSessionId *string            `json:"externalSessionId,omitempty"`
+	GitBranch         *string            `json:"gitBranch,omitempty"`
+	Harness           *string            `json:"harness,omitempty"`
+	Hostname          *string            `json:"hostname,omitempty"`
+	Id                string             `json:"id"`
+	Kind              TaskExecutionKind  `json:"kind"`
+	LastHeartbeatAt   *int64             `json:"lastHeartbeatAt,omitempty"`
+	LeaseEpoch        int64              `json:"leaseEpoch"`
+	LeaseExpiresAt    *int64             `json:"leaseExpiresAt,omitempty"`
+	MachineId         *string            `json:"machineId,omitempty"`
+	RunnerName        *string            `json:"runnerName,omitempty"`
+	StartedAt         int64              `json:"startedAt"`
+	State             TaskExecutionState `json:"state"`
+	TaskKey           *string            `json:"taskKey,omitempty"`
+	WorkspacePath     *string            `json:"workspacePath,omitempty"`
+}
+
+// TaskExecutionKind defines model for TaskExecution.Kind.
+type TaskExecutionKind string
+
+// TaskExecutionState defines model for TaskExecution.State.
+type TaskExecutionState string
+
+// TaskExecutionAttach defines model for TaskExecutionAttach.
+type TaskExecutionAttach struct {
+	ExternalSessionId *string                     `json:"externalSessionId,omitempty"`
+	GitBranch         *string                     `json:"gitBranch,omitempty"`
+	Harness           *TaskExecutionAttachHarness `json:"harness,omitempty"`
+	HostMeta          *TaskExecutionHost          `json:"hostMeta,omitempty"`
+	LeaseSeconds      *int64                      `json:"leaseSeconds,omitempty"`
+	MachineId         *string                     `json:"machineId,omitempty"`
+	WorkspacePath     *string                     `json:"workspacePath,omitempty"`
+}
+
+// TaskExecutionAttachHarness defines model for TaskExecutionAttach.Harness.
+type TaskExecutionAttachHarness string
+
+// TaskExecutionFinish defines model for TaskExecutionFinish.
+type TaskExecutionFinish struct {
+	Outcome TaskExecutionFinishOutcome `json:"outcome"`
+	Summary *string                    `json:"summary,omitempty"`
+}
+
+// TaskExecutionFinishOutcome defines model for TaskExecutionFinish.Outcome.
+type TaskExecutionFinishOutcome string
+
+// TaskExecutionHeartbeat defines model for TaskExecutionHeartbeat.
+type TaskExecutionHeartbeat struct {
+	ExternalSessionId *string `json:"externalSessionId,omitempty"`
+	GitBranch         *string `json:"gitBranch,omitempty"`
+	LeaseSeconds      *int64  `json:"leaseSeconds,omitempty"`
+}
+
+// TaskExecutionHost defines model for TaskExecutionHost.
+type TaskExecutionHost struct {
+	Hostname *string `json:"hostname,omitempty"`
+}
+
+// TaskExecutionList defines model for TaskExecutionList.
+type TaskExecutionList struct {
+	Executions []TaskExecution `json:"executions"`
+}
+
+// TaskExternalTask defines model for TaskExternalTask.
+type TaskExternalTask struct {
+	Entries      []TaskEntry `json:"entries"`
+	NextAfterSeq int64       `json:"nextAfterSeq"`
+	Task         TaskRef     `json:"task"`
+}
+
 // TaskItem Marks the result of a child session turn. Items after this mark belong to the result until the next user or task item. The mark does not confirm that the work reached its goal.
 type TaskItem struct {
 	// Alert True for a Task alert on Main. The title is the Task title, and taskId is empty. The alert has only event metadata.
-	Alert   *bool        `json:"alert,omitempty"`
-	At      *int64       `json:"at,omitempty"`
-	EntryId *int64       `json:"entryId,omitempty"`
-	Id      string       `json:"id"`
-	Kind    TaskItemKind `json:"kind"`
+	Alert *bool  `json:"alert,omitempty"`
+	At    *int64 `json:"at,omitempty"`
+
+	// ChildSessionId The child Session ID, when the saved result includes it.
+	ChildSessionId *int64       `json:"childSessionId,omitempty"`
+	EntryId        *int64       `json:"entryId,omitempty"`
+	Id             string       `json:"id"`
+	Kind           TaskItemKind `json:"kind"`
 
 	// Reason The reason the child session turn failed or was interrupted.
 	Reason *string `json:"reason,omitempty"`
@@ -2551,13 +2426,139 @@ type TaskItem struct {
 	// Status The outcome of the child session turn. The answer stays in the child session.
 	Status *string `json:"status,omitempty"`
 
-	// TaskId The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
+	// TaskId The input ID of the child session turn, or the ID of an old task.
 	TaskId string `json:"taskId"`
 	Title  string `json:"title"`
 }
 
 // TaskItemKind defines model for TaskItem.Kind.
 type TaskItemKind string
+
+// TaskLink An external object linked to the Task, such as a GitHub PR. The source that owns the namespace gives the meaning of type and key.
+type TaskLink struct {
+	Key       string     `json:"key"`
+	Namespace string     `json:"namespace"`
+	Type      string     `json:"type"`
+	Waits     []TaskWait `json:"waits"`
+}
+
+// TaskList defines model for TaskList.
+type TaskList struct {
+	Tasks []TaskSummary `json:"tasks"`
+}
+
+// TaskQuestion defines model for TaskQuestion.
+type TaskQuestion struct {
+	AgentId        string   `json:"agentId"`
+	ConversationId int64    `json:"conversationId"`
+	Id             string   `json:"id"`
+	Options        []string `json:"options"`
+	Queued         bool     `json:"queued"`
+	Text           string   `json:"text"`
+}
+
+// TaskRef defines model for TaskRef.
+type TaskRef struct {
+	AssigneeBotId string     `json:"assigneeBotId"`
+	Key           string     `json:"key"`
+	Status        TaskStatus `json:"status"`
+	Title         string     `json:"title"`
+}
+
+// TaskReview defines model for TaskReview.
+type TaskReview struct {
+	Decision  TaskReviewDecision `json:"decision"`
+	Note      *string            `json:"note,omitempty"`
+	ReviewSeq *int64             `json:"reviewSeq,omitempty"`
+}
+
+// TaskReviewDecision defines model for TaskReview.Decision.
+type TaskReviewDecision string
+
+// TaskReviewerKind defines model for TaskReviewerKind.
+type TaskReviewerKind string
+
+// TaskSession defines model for TaskSession.
+type TaskSession struct {
+	AgentId        string           `json:"agentId"`
+	AgentName      string           `json:"agentName"`
+	ConversationId int64            `json:"conversationId"`
+	EndedAt        *int64           `json:"endedAt,omitempty"`
+	IsPrimary      bool             `json:"isPrimary"`
+	LinkedAt       int64            `json:"linkedAt"`
+	State          TaskSessionState `json:"state"`
+	Title          string           `json:"title"`
+}
+
+// TaskSessionState defines model for TaskSession.State.
+type TaskSessionState string
+
+// TaskSplit defines model for TaskSplit.
+type TaskSplit struct {
+	AssigneeBotId *string            `json:"assigneeBotId,omitempty"`
+	DependsOn     *[]string          `json:"dependsOn,omitempty"`
+	Note          *string            `json:"note,omitempty"`
+	Reviewer      *TaskSplitReviewer `json:"reviewer,omitempty"`
+	Status        *TaskSplitStatus   `json:"status,omitempty"`
+	Title         string             `json:"title"`
+}
+
+// TaskSplitReviewer defines model for TaskSplit.Reviewer.
+type TaskSplitReviewer string
+
+// TaskSplitStatus defines model for TaskSplit.Status.
+type TaskSplitStatus string
+
+// TaskStatus defines model for TaskStatus.
+type TaskStatus string
+
+// TaskSummary defines model for TaskSummary.
+type TaskSummary struct {
+	AssigneeBotId  string           `json:"assigneeBotId"`
+	Blocked        bool             `json:"blocked"`
+	BlockerCount   int64            `json:"blockerCount"`
+	CreatedAt      int64            `json:"createdAt"`
+	Id             string           `json:"id"`
+	Key            string           `json:"key"`
+	Number         int64            `json:"number"`
+	PrimarySession *TaskSession     `json:"primarySession,omitempty"`
+	ReviewSeq      int64            `json:"reviewSeq"`
+	ReviewerId     string           `json:"reviewerId"`
+	ReviewerKind   TaskReviewerKind `json:"reviewerKind"`
+	Revision       int64            `json:"revision"`
+	Status         TaskStatus       `json:"status"`
+	Title          string           `json:"title"`
+	UpdatedAt      int64            `json:"updatedAt"`
+}
+
+// TaskTokenIssue defines model for TaskTokenIssue.
+type TaskTokenIssue struct {
+	Execution TaskExecution `json:"execution"`
+	TaskToken string        `json:"taskToken"`
+}
+
+// TaskUpdate defines model for TaskUpdate.
+type TaskUpdate struct {
+	AssigneeBotId *string           `json:"assigneeBotId,omitempty"`
+	ReviewerId    *string           `json:"reviewerId,omitempty"`
+	ReviewerKind  *TaskReviewerKind `json:"reviewerKind,omitempty"`
+	Status        *TaskStatus       `json:"status,omitempty"`
+	Title         *string           `json:"title,omitempty"`
+}
+
+// TaskWait defines model for TaskWait.
+type TaskWait struct {
+	AfterAt int64 `json:"afterAt"`
+
+	// Alert Main gets a Task alert when the wait resolves.
+	Alert bool `json:"alert"`
+
+	// Event The event type that resolves the wait.
+	Event    string `json:"event"`
+	Id       int64  `json:"id"`
+	Resolved bool   `json:"resolved"`
+	Revision string `json:"revision"`
+}
 
 // Telegram defines model for Telegram.
 type Telegram struct {
@@ -2731,121 +2732,23 @@ type WithdrawnMessage struct {
 	Text        string       `json:"text"`
 }
 
-// Work defines model for Work.
-type Work struct {
-	Automations []WorkAutomation `json:"automations"`
-	Inbox       []InboxItem      `json:"inbox"`
-	Sessions    []WorkSession    `json:"sessions"`
-	TaskReviews []BoardTaskRef   `json:"taskReviews"`
-}
-
-// WorkAutomation defines model for WorkAutomation.
-type WorkAutomation struct {
-	AgentId    string     `json:"agentId"`
-	Automation Automation `json:"automation"`
-	Setup      bool       `json:"setup"`
-}
-
-// WorkSession defines model for WorkSession.
-type WorkSession struct {
-	AgentId string `json:"agentId"`
-	Chat    Chat   `json:"chat"`
-}
-
-// WorkTask defines model for WorkTask.
-type WorkTask struct {
-	AgentId   string            `json:"agentId"`
-	CreatedAt int64             `json:"createdAt"`
-	Id        string            `json:"id"`
-	Lifecycle WorkTaskLifecycle `json:"lifecycle"`
-	Title     string            `json:"title"`
-	UpdatedAt int64             `json:"updatedAt"`
-}
-
-// WorkTaskEntry defines model for WorkTaskEntry.
-type WorkTaskEntry struct {
-	// Author Who wrote the entry. Unknown marks an entry from before authors were recorded.
-	Author    WorkTaskEntryAuthor `json:"author"`
-	Content   string              `json:"content"`
-	CreatedAt int64               `json:"createdAt"`
-
-	// EventId Present for an external timeline entry.
-	EventId *string `json:"eventId,omitempty"`
-	Id      int64   `json:"id"`
-}
-
-// WorkTaskEntryAuthor Who wrote the entry. Unknown marks an entry from before authors were recorded.
-type WorkTaskEntryAuthor string
-
-// WorkTaskLifecycle defines model for WorkTaskLifecycle.
-type WorkTaskLifecycle string
-
-// WorkTaskLink An external object linked to the Task, such as a GitHub PR. The source that owns the namespace gives the meaning of type and key.
-type WorkTaskLink struct {
-	Key       string         `json:"key"`
-	Namespace string         `json:"namespace"`
-	Type      string         `json:"type"`
-	Waits     []WorkTaskWait `json:"waits"`
-}
-
-// WorkTaskQuestion defines model for WorkTaskQuestion.
-type WorkTaskQuestion struct {
-	Id      string   `json:"id"`
-	Options []string `json:"options"`
-	Queued  bool     `json:"queued"`
-	Text    string   `json:"text"`
-}
-
-// WorkTaskSession The primary work Session of the Task.
-type WorkTaskSession struct {
-	AgentId string `json:"agentId"`
-	Id      int64  `json:"id"`
-	Title   string `json:"title"`
-}
-
-// WorkTaskSessionLink defines model for WorkTaskSessionLink.
-type WorkTaskSessionLink struct {
-	AgentId        string `json:"agentId"`
-	AgentName      string `json:"agentName"`
-	ConversationId int64  `json:"conversationId"`
-	IsPrimary      bool   `json:"isPrimary"`
-
-	// LinkedAt Unix time in milliseconds.
-	LinkedAt int64  `json:"linkedAt"`
-	Title    string `json:"title"`
-}
-
-// WorkTaskWait defines model for WorkTaskWait.
-type WorkTaskWait struct {
-	AfterAt int64 `json:"afterAt"`
-
-	// Alert Main gets a Task alert when the wait resolves.
-	Alert bool `json:"alert"`
-
-	// Event The event type that resolves the wait.
-	Event    string `json:"event"`
-	Id       int64  `json:"id"`
-	Resolved bool   `json:"resolved"`
-	Revision string `json:"revision"`
-}
-
 // AgentId defines model for AgentId.
 type AgentId = string
 
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
-// BoardRevision defines model for BoardRevision.
-type BoardRevision = int64
-
-// BoardTaskKey defines model for BoardTaskKey.
-type BoardTaskKey = string
-
 // ChatId defines model for ChatId.
 type ChatId = int64
 
 // EnvironmentId defines model for EnvironmentId.
 type EnvironmentId = string
+
+// TaskKey defines model for TaskKey.
+type TaskKey = string
+
+// TaskRevision defines model for TaskRevision.
+type TaskRevision = int64
 
 // RenameArtifactJSONBody defines parameters for RenameArtifact.
 type RenameArtifactJSONBody struct {
@@ -2929,21 +2832,6 @@ type StartMcpOAuthJSONBody struct {
 	Scope ExtensionScope `json:"scope"`
 }
 
-// CreateWorkTaskJSONBody defines parameters for CreateWorkTask.
-type CreateWorkTaskJSONBody struct {
-	Title string `json:"title"`
-}
-
-// SetWorkTaskLifecycleJSONBody defines parameters for SetWorkTaskLifecycle.
-type SetWorkTaskLifecycleJSONBody struct {
-	Lifecycle WorkTaskLifecycle `json:"lifecycle"`
-}
-
-// AppendWorkTaskNoteJSONBody defines parameters for AppendWorkTaskNote.
-type AppendWorkTaskNoteJSONBody struct {
-	Content string `json:"content"`
-}
-
 // SetPrimaryNotificationTargetJSONBody defines parameters for SetPrimaryNotificationTarget.
 type SetPrimaryNotificationTargetJSONBody struct {
 	// TargetId Empty clears the default.
@@ -2976,68 +2864,6 @@ type PutVaultJSONBody struct {
 	Value *string        `json:"value,omitempty"`
 }
 
-// WatchBoardParams defines parameters for WatchBoard.
-type WatchBoardParams struct {
-	After       *int64  `form:"after,omitempty" json:"after,omitempty"`
-	LastEventID *string `json:"Last-Event-ID,omitempty"`
-}
-
-// ListBoardExecutionsParams defines parameters for ListBoardExecutions.
-type ListBoardExecutionsParams struct {
-	TaskKey   *string `form:"taskKey,omitempty" json:"taskKey,omitempty"`
-	MachineId *string `form:"machineId,omitempty" json:"machineId,omitempty"`
-	Kind      *string `form:"kind,omitempty" json:"kind,omitempty"`
-	State     *string `form:"state,omitempty" json:"state,omitempty"`
-}
-
-// ReadBoardExternalTaskParams defines parameters for ReadBoardExternalTask.
-type ReadBoardExternalTaskParams struct {
-	AfterSeq *int64 `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
-	Limit    *int64 `form:"limit,omitempty" json:"limit,omitempty"`
-}
-
-// ListBoardTasksParams defines parameters for ListBoardTasks.
-type ListBoardTasksParams struct {
-	BotId    *string      `form:"botId,omitempty" json:"botId,omitempty"`
-	Status   *BoardStatus `form:"status,omitempty" json:"status,omitempty"`
-	Blocked  *bool        `form:"blocked,omitempty" json:"blocked,omitempty"`
-	InReview *bool        `form:"inReview,omitempty" json:"inReview,omitempty"`
-
-	// Source A linked Source namespace or its prefix before a slash.
-	Source        *string `form:"source,omitempty" json:"source,omitempty"`
-	IncludeClosed *bool   `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
-}
-
-// UpdateBoardTaskParams defines parameters for UpdateBoardTask.
-type UpdateBoardTaskParams struct {
-	// IfMatch The expected Task revision as a decimal integer.
-	IfMatch *BoardRevision `json:"If-Match,omitempty"`
-}
-
-// AddBoardDependencyParams defines parameters for AddBoardDependency.
-type AddBoardDependencyParams struct {
-	// IfMatch The expected Task revision as a decimal integer.
-	IfMatch *BoardRevision `json:"If-Match,omitempty"`
-}
-
-// RemoveBoardDependencyParams defines parameters for RemoveBoardDependency.
-type RemoveBoardDependencyParams struct {
-	// IfMatch The expected Task revision as a decimal integer.
-	IfMatch *BoardRevision `json:"If-Match,omitempty"`
-}
-
-// CreateBoardEntryParams defines parameters for CreateBoardEntry.
-type CreateBoardEntryParams struct {
-	// IfMatch The expected Task revision as a decimal integer.
-	IfMatch *BoardRevision `json:"If-Match,omitempty"`
-}
-
-// SplitBoardTaskParams defines parameters for SplitBoardTask.
-type SplitBoardTaskParams struct {
-	// IfMatch The expected Task revision as a decimal integer.
-	IfMatch *BoardRevision `json:"If-Match,omitempty"`
-}
-
 // ListDirectoriesParams defines parameters for ListDirectories.
 type ListDirectoriesParams struct {
 	Path    *string `form:"path,omitempty" json:"path,omitempty"`
@@ -3056,11 +2882,6 @@ type ListInboxParams struct {
 type AttachHeldEventJSONBody struct {
 	AgentId string `json:"agentId"`
 	TaskId  string `json:"taskId"`
-}
-
-// ListWorkTasksParams defines parameters for ListWorkTasks.
-type ListWorkTasksParams struct {
-	IncludeClosed *bool `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
 }
 
 // SetPluginJSONBody defines parameters for SetPlugin.
@@ -3087,6 +2908,68 @@ type UpdateSystemSettingsJSONBody struct {
 type UpgradeSystemJSONBody struct {
 	Force   *bool   `json:"force,omitempty"`
 	Version *string `json:"version,omitempty"`
+}
+
+// ListTasksParams defines parameters for ListTasks.
+type ListTasksParams struct {
+	BotId    *string     `form:"botId,omitempty" json:"botId,omitempty"`
+	Status   *TaskStatus `form:"status,omitempty" json:"status,omitempty"`
+	Blocked  *bool       `form:"blocked,omitempty" json:"blocked,omitempty"`
+	InReview *bool       `form:"inReview,omitempty" json:"inReview,omitempty"`
+
+	// Source A linked Source namespace or its prefix before a slash.
+	Source        *string `form:"source,omitempty" json:"source,omitempty"`
+	IncludeClosed *bool   `form:"includeClosed,omitempty" json:"includeClosed,omitempty"`
+}
+
+// StreamTaskEventsParams defines parameters for StreamTaskEvents.
+type StreamTaskEventsParams struct {
+	After       *int64  `form:"after,omitempty" json:"after,omitempty"`
+	LastEventID *string `json:"Last-Event-ID,omitempty"`
+}
+
+// ListTaskExecutionsParams defines parameters for ListTaskExecutions.
+type ListTaskExecutionsParams struct {
+	TaskKey   *string `form:"taskKey,omitempty" json:"taskKey,omitempty"`
+	MachineId *string `form:"machineId,omitempty" json:"machineId,omitempty"`
+	Kind      *string `form:"kind,omitempty" json:"kind,omitempty"`
+	State     *string `form:"state,omitempty" json:"state,omitempty"`
+}
+
+// ReadTaskExternalTaskParams defines parameters for ReadTaskExternalTask.
+type ReadTaskExternalTaskParams struct {
+	AfterSeq *int64 `form:"afterSeq,omitempty" json:"afterSeq,omitempty"`
+	Limit    *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// UpdateTaskParams defines parameters for UpdateTask.
+type UpdateTaskParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *TaskRevision `json:"If-Match,omitempty"`
+}
+
+// AddTaskDependencyParams defines parameters for AddTaskDependency.
+type AddTaskDependencyParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *TaskRevision `json:"If-Match,omitempty"`
+}
+
+// RemoveTaskDependencyParams defines parameters for RemoveTaskDependency.
+type RemoveTaskDependencyParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *TaskRevision `json:"If-Match,omitempty"`
+}
+
+// CreateTaskEntryParams defines parameters for CreateTaskEntry.
+type CreateTaskEntryParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *TaskRevision `json:"If-Match,omitempty"`
+}
+
+// SplitTaskParams defines parameters for SplitTask.
+type SplitTaskParams struct {
+	// IfMatch The expected Task revision as a decimal integer.
+	IfMatch *TaskRevision `json:"If-Match,omitempty"`
 }
 
 // SetTelegramManagerJSONBody defines parameters for SetTelegramManager.
@@ -3151,15 +3034,6 @@ type SetChatSettingsJSONRequestBody = ChatSettings
 // StartMcpOAuthJSONRequestBody defines body for StartMcpOAuth for application/json ContentType.
 type StartMcpOAuthJSONRequestBody StartMcpOAuthJSONBody
 
-// CreateWorkTaskJSONRequestBody defines body for CreateWorkTask for application/json ContentType.
-type CreateWorkTaskJSONRequestBody CreateWorkTaskJSONBody
-
-// SetWorkTaskLifecycleJSONRequestBody defines body for SetWorkTaskLifecycle for application/json ContentType.
-type SetWorkTaskLifecycleJSONRequestBody SetWorkTaskLifecycleJSONBody
-
-// AppendWorkTaskNoteJSONRequestBody defines body for AppendWorkTaskNote for application/json ContentType.
-type AppendWorkTaskNoteJSONRequestBody AppendWorkTaskNoteJSONBody
-
 // SetPrimaryNotificationTargetJSONRequestBody defines body for SetPrimaryNotificationTarget for application/json ContentType.
 type SetPrimaryNotificationTargetJSONRequestBody SetPrimaryNotificationTargetJSONBody
 
@@ -3171,39 +3045,6 @@ type PutVaultJSONRequestBody PutVaultJSONBody
 
 // PreviewScheduleJSONRequestBody defines body for PreviewSchedule for application/json ContentType.
 type PreviewScheduleJSONRequestBody = ScheduleInput
-
-// ResumeBoardExecutionJSONRequestBody defines body for ResumeBoardExecution for application/json ContentType.
-type ResumeBoardExecutionJSONRequestBody = BoardExecutionAttach
-
-// PostBoardExternalEntryJSONRequestBody defines body for PostBoardExternalEntry for application/json ContentType.
-type PostBoardExternalEntryJSONRequestBody = BoardEntryCreate
-
-// FinishBoardExecutionJSONRequestBody defines body for FinishBoardExecution for application/json ContentType.
-type FinishBoardExecutionJSONRequestBody = BoardExecutionFinish
-
-// HeartbeatBoardExecutionJSONRequestBody defines body for HeartbeatBoardExecution for application/json ContentType.
-type HeartbeatBoardExecutionJSONRequestBody = BoardExecutionHeartbeat
-
-// CreateBoardTaskJSONRequestBody defines body for CreateBoardTask for application/json ContentType.
-type CreateBoardTaskJSONRequestBody = BoardTaskCreate
-
-// UpdateBoardTaskJSONRequestBody defines body for UpdateBoardTask for application/json ContentType.
-type UpdateBoardTaskJSONRequestBody = BoardTaskUpdate
-
-// AddBoardDependencyJSONRequestBody defines body for AddBoardDependency for application/json ContentType.
-type AddBoardDependencyJSONRequestBody = BoardDependencyCreate
-
-// CreateBoardEntryJSONRequestBody defines body for CreateBoardEntry for application/json ContentType.
-type CreateBoardEntryJSONRequestBody = BoardEntryCreate
-
-// AttachBoardExecutionJSONRequestBody defines body for AttachBoardExecution for application/json ContentType.
-type AttachBoardExecutionJSONRequestBody = BoardExecutionAttach
-
-// ReviewBoardTaskJSONRequestBody defines body for ReviewBoardTask for application/json ContentType.
-type ReviewBoardTaskJSONRequestBody = BoardReview
-
-// SplitBoardTaskJSONRequestBody defines body for SplitBoardTask for application/json ContentType.
-type SplitBoardTaskJSONRequestBody = BoardTaskSplit
 
 // AttachHeldEventJSONRequestBody defines body for AttachHeldEvent for application/json ContentType.
 type AttachHeldEventJSONRequestBody AttachHeldEventJSONBody
@@ -3240,6 +3081,39 @@ type UpdateSystemSettingsJSONRequestBody UpdateSystemSettingsJSONBody
 
 // UpgradeSystemJSONRequestBody defines body for UpgradeSystem for application/json ContentType.
 type UpgradeSystemJSONRequestBody UpgradeSystemJSONBody
+
+// CreateTaskJSONRequestBody defines body for CreateTask for application/json ContentType.
+type CreateTaskJSONRequestBody = TaskCreate
+
+// ResumeTaskExecutionJSONRequestBody defines body for ResumeTaskExecution for application/json ContentType.
+type ResumeTaskExecutionJSONRequestBody = TaskExecutionAttach
+
+// PostTaskExternalEntryJSONRequestBody defines body for PostTaskExternalEntry for application/json ContentType.
+type PostTaskExternalEntryJSONRequestBody = TaskEntryCreate
+
+// FinishTaskExecutionJSONRequestBody defines body for FinishTaskExecution for application/json ContentType.
+type FinishTaskExecutionJSONRequestBody = TaskExecutionFinish
+
+// HeartbeatTaskExecutionJSONRequestBody defines body for HeartbeatTaskExecution for application/json ContentType.
+type HeartbeatTaskExecutionJSONRequestBody = TaskExecutionHeartbeat
+
+// UpdateTaskJSONRequestBody defines body for UpdateTask for application/json ContentType.
+type UpdateTaskJSONRequestBody = TaskUpdate
+
+// AddTaskDependencyJSONRequestBody defines body for AddTaskDependency for application/json ContentType.
+type AddTaskDependencyJSONRequestBody = TaskDependencyCreate
+
+// CreateTaskEntryJSONRequestBody defines body for CreateTaskEntry for application/json ContentType.
+type CreateTaskEntryJSONRequestBody = TaskEntryCreate
+
+// AttachTaskExecutionJSONRequestBody defines body for AttachTaskExecution for application/json ContentType.
+type AttachTaskExecutionJSONRequestBody = TaskExecutionAttach
+
+// ReviewTaskJSONRequestBody defines body for ReviewTask for application/json ContentType.
+type ReviewTaskJSONRequestBody = TaskReview
+
+// SplitTaskJSONRequestBody defines body for SplitTask for application/json ContentType.
+type SplitTaskJSONRequestBody = TaskSplit
 
 // SetTelegramManagerJSONRequestBody defines body for SetTelegramManager for application/json ContentType.
 type SetTelegramManagerJSONRequestBody SetTelegramManagerJSONBody
@@ -3950,18 +3824,6 @@ type ServerInterface interface {
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(w http.ResponseWriter, r *http.Request, agentId string)
 
-	// (POST /api/agents/{agentId}/inbox/tasks)
-	CreateWorkTask(w http.ResponseWriter, r *http.Request, agentId string)
-
-	// (GET /api/agents/{agentId}/inbox/tasks/{taskId})
-	GetWorkTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
-
-	// (PATCH /api/agents/{agentId}/inbox/tasks/{taskId})
-	SetWorkTaskLifecycle(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
-
-	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
-	AppendWorkTaskNote(w http.ResponseWriter, r *http.Request, agentId string, taskId string)
-
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId)
 
@@ -3970,9 +3832,6 @@ type ServerInterface interface {
 
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(w http.ResponseWriter, r *http.Request, agentId string, params ListRecentProjectsParams)
-
-	// (GET /api/agents/{agentId}/turns/{turnId})
-	GetTurnChat(w http.ResponseWriter, r *http.Request, agentId string, turnId string)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(w http.ResponseWriter, r *http.Request, agentId string)
@@ -3995,57 +3854,6 @@ type ServerInterface interface {
 	// (POST /api/automations/preview)
 	PreviewSchedule(w http.ResponseWriter, r *http.Request)
 
-	// (GET /api/board/events)
-	WatchBoard(w http.ResponseWriter, r *http.Request, params WatchBoardParams)
-
-	// (GET /api/board/executions)
-	ListBoardExecutions(w http.ResponseWriter, r *http.Request, params ListBoardExecutionsParams)
-
-	// (POST /api/board/executions/{executionId}/resume)
-	ResumeBoardExecution(w http.ResponseWriter, r *http.Request, executionId string)
-
-	// (POST /api/board/external/entries)
-	PostBoardExternalEntry(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/board/external/finish)
-	FinishBoardExecution(w http.ResponseWriter, r *http.Request)
-
-	// (POST /api/board/external/heartbeat)
-	HeartbeatBoardExecution(w http.ResponseWriter, r *http.Request)
-
-	// (GET /api/board/external/task)
-	ReadBoardExternalTask(w http.ResponseWriter, r *http.Request, params ReadBoardExternalTaskParams)
-
-	// (GET /api/board/tasks)
-	ListBoardTasks(w http.ResponseWriter, r *http.Request, params ListBoardTasksParams)
-
-	// (POST /api/board/tasks)
-	CreateBoardTask(w http.ResponseWriter, r *http.Request)
-
-	// (GET /api/board/tasks/{taskKey})
-	GetBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
-
-	// (PATCH /api/board/tasks/{taskKey})
-	UpdateBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params UpdateBoardTaskParams)
-
-	// (POST /api/board/tasks/{taskKey}/dependencies)
-	AddBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params AddBoardDependencyParams)
-
-	// (DELETE /api/board/tasks/{taskKey}/dependencies/{depKey})
-	RemoveBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, depKey string, params RemoveBoardDependencyParams)
-
-	// (POST /api/board/tasks/{taskKey}/entries)
-	CreateBoardEntry(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params CreateBoardEntryParams)
-
-	// (POST /api/board/tasks/{taskKey}/executions/attach)
-	AttachBoardExecution(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
-
-	// (POST /api/board/tasks/{taskKey}/review)
-	ReviewBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey)
-
-	// (POST /api/board/tasks/{taskKey}/split)
-	SplitBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params SplitBoardTaskParams)
-
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
 
@@ -4064,8 +3872,8 @@ type ServerInterface interface {
 	// (POST /api/inbox/held-events/{eventId}/dismiss)
 	DismissHeldEvent(w http.ResponseWriter, r *http.Request, eventId string)
 
-	// (GET /api/inbox/tasks)
-	ListWorkTasks(w http.ResponseWriter, r *http.Request, params ListWorkTasksParams)
+	// (GET /api/inbox/summary)
+	GetInboxSummary(w http.ResponseWriter, r *http.Request)
 
 	// (POST /api/inbox/{runId}/dismiss)
 	DismissInboxItem(w http.ResponseWriter, r *http.Request, runId string)
@@ -4163,11 +3971,59 @@ type ServerInterface interface {
 	// (POST /api/system/upgrade)
 	UpgradeSystem(w http.ResponseWriter, r *http.Request)
 
+	// (GET /api/tasks)
+	ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams)
+
+	// (POST /api/tasks)
+	CreateTask(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/tasks/events)
+	StreamTaskEvents(w http.ResponseWriter, r *http.Request, params StreamTaskEventsParams)
+
+	// (GET /api/tasks/executions)
+	ListTaskExecutions(w http.ResponseWriter, r *http.Request, params ListTaskExecutionsParams)
+
+	// (POST /api/tasks/executions/{executionId}/resume)
+	ResumeTaskExecution(w http.ResponseWriter, r *http.Request, executionId string)
+
+	// (POST /api/tasks/external/entries)
+	PostTaskExternalEntry(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/tasks/external/finish)
+	FinishTaskExecution(w http.ResponseWriter, r *http.Request)
+
+	// (POST /api/tasks/external/heartbeat)
+	HeartbeatTaskExecution(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/tasks/external/task)
+	ReadTaskExternalTask(w http.ResponseWriter, r *http.Request, params ReadTaskExternalTaskParams)
+
+	// (GET /api/tasks/{taskKey})
+	GetTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey)
+
+	// (PATCH /api/tasks/{taskKey})
+	UpdateTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params UpdateTaskParams)
+
+	// (POST /api/tasks/{taskKey}/dependencies)
+	AddTaskDependency(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params AddTaskDependencyParams)
+
+	// (DELETE /api/tasks/{taskKey}/dependencies/{depKey})
+	RemoveTaskDependency(w http.ResponseWriter, r *http.Request, taskKey TaskKey, depKey string, params RemoveTaskDependencyParams)
+
+	// (POST /api/tasks/{taskKey}/entries)
+	CreateTaskEntry(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params CreateTaskEntryParams)
+
+	// (POST /api/tasks/{taskKey}/executions/attach)
+	AttachTaskExecution(w http.ResponseWriter, r *http.Request, taskKey TaskKey)
+
+	// (POST /api/tasks/{taskKey}/review)
+	ReviewTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey)
+
+	// (POST /api/tasks/{taskKey}/split)
+	SplitTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params SplitTaskParams)
+
 	// (PUT /api/telegram/manager)
 	SetTelegramManager(w http.ResponseWriter, r *http.Request)
-
-	// (GET /api/work)
-	GetWork(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -6069,137 +5925,6 @@ func (siw *ServerInterfaceWrapper) ReloadExtensions(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// CreateWorkTask operation middleware
-func (siw *ServerInterfaceWrapper) CreateWorkTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateWorkTask(w, r, agentId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetWorkTask operation middleware
-func (siw *ServerInterfaceWrapper) GetWorkTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetWorkTask(w, r, agentId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetWorkTaskLifecycle operation middleware
-func (siw *ServerInterfaceWrapper) SetWorkTaskLifecycle(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetWorkTaskLifecycle(w, r, agentId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AppendWorkTaskNote operation middleware
-func (siw *ServerInterfaceWrapper) AppendWorkTaskNote(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "taskId" -------------
-	var taskId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskId", r.PathValue("taskId"), &taskId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AppendWorkTaskNote(w, r, agentId, taskId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetNotificationTargets operation middleware
 func (siw *ServerInterfaceWrapper) GetNotificationTargets(w http.ResponseWriter, r *http.Request) {
 
@@ -6285,41 +6010,6 @@ func (siw *ServerInterfaceWrapper) ListRecentProjects(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListRecentProjects(w, r, agentId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetTurnChat operation middleware
-func (siw *ServerInterfaceWrapper) GetTurnChat(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "agentId" -------------
-	var agentId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "agentId", r.PathValue("agentId"), &agentId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "turnId" -------------
-	var turnId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "turnId", r.PathValue("turnId"), &turnId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "turnId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTurnChat(w, r, agentId, turnId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6525,695 +6215,6 @@ func (siw *ServerInterfaceWrapper) PreviewSchedule(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
-// WatchBoard operation middleware
-func (siw *ServerInterfaceWrapper) WatchBoard(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params WatchBoardParams
-
-	// ------------- Optional query parameter "after" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
-		}
-		return
-	}
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "Last-Event-ID" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
-		var LastEventID string
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
-			return
-		}
-
-		params.LastEventID = &LastEventID
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.WatchBoard(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListBoardExecutions operation middleware
-func (siw *ServerInterfaceWrapper) ListBoardExecutions(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListBoardExecutionsParams
-
-	// ------------- Optional query parameter "taskKey" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "taskKey", r.URL.Query(), &params.TaskKey, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "taskKey"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "machineId" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "machineId", r.URL.Query(), &params.MachineId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "machineId"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "machineId", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "kind" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "state" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListBoardExecutions(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ResumeBoardExecution operation middleware
-func (siw *ServerInterfaceWrapper) ResumeBoardExecution(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "executionId" -------------
-	var executionId string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "executionId", r.PathValue("executionId"), &executionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "executionId", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ResumeBoardExecution(w, r, executionId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PostBoardExternalEntry operation middleware
-func (siw *ServerInterfaceWrapper) PostBoardExternalEntry(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PostBoardExternalEntry(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// FinishBoardExecution operation middleware
-func (siw *ServerInterfaceWrapper) FinishBoardExecution(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.FinishBoardExecution(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// HeartbeatBoardExecution operation middleware
-func (siw *ServerInterfaceWrapper) HeartbeatBoardExecution(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.HeartbeatBoardExecution(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ReadBoardExternalTask operation middleware
-func (siw *ServerInterfaceWrapper) ReadBoardExternalTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ReadBoardExternalTaskParams
-
-	// ------------- Optional query parameter "afterSeq" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "afterSeq", r.URL.Query(), &params.AfterSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "afterSeq"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "afterSeq", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ReadBoardExternalTask(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListBoardTasks operation middleware
-func (siw *ServerInterfaceWrapper) ListBoardTasks(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListBoardTasksParams
-
-	// ------------- Optional query parameter "botId" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "botId", r.URL.Query(), &params.BotId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "botId"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "botId", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "status" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "blocked" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "blocked", r.URL.Query(), &params.Blocked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "blocked"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "blocked", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "inReview" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "inReview", r.URL.Query(), &params.InReview, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "inReview"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "inReview", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "source" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "includeClosed" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeClosed", r.URL.Query(), &params.IncludeClosed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeClosed"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeClosed", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListBoardTasks(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateBoardTask operation middleware
-func (siw *ServerInterfaceWrapper) CreateBoardTask(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateBoardTask(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetBoardTask operation middleware
-func (siw *ServerInterfaceWrapper) GetBoardTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetBoardTask(w, r, taskKey)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateBoardTask operation middleware
-func (siw *ServerInterfaceWrapper) UpdateBoardTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params UpdateBoardTaskParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch BoardRevision
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
-			return
-		}
-
-		params.IfMatch = &IfMatch
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateBoardTask(w, r, taskKey, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AddBoardDependency operation middleware
-func (siw *ServerInterfaceWrapper) AddBoardDependency(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params AddBoardDependencyParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch BoardRevision
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
-			return
-		}
-
-		params.IfMatch = &IfMatch
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AddBoardDependency(w, r, taskKey, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// RemoveBoardDependency operation middleware
-func (siw *ServerInterfaceWrapper) RemoveBoardDependency(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "depKey" -------------
-	var depKey string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "depKey", r.PathValue("depKey"), &depKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "depKey", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params RemoveBoardDependencyParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch BoardRevision
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
-			return
-		}
-
-		params.IfMatch = &IfMatch
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RemoveBoardDependency(w, r, taskKey, depKey, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateBoardEntry operation middleware
-func (siw *ServerInterfaceWrapper) CreateBoardEntry(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params CreateBoardEntryParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch BoardRevision
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
-			return
-		}
-
-		params.IfMatch = &IfMatch
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateBoardEntry(w, r, taskKey, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// AttachBoardExecution operation middleware
-func (siw *ServerInterfaceWrapper) AttachBoardExecution(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AttachBoardExecution(w, r, taskKey)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ReviewBoardTask operation middleware
-func (siw *ServerInterfaceWrapper) ReviewBoardTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ReviewBoardTask(w, r, taskKey)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SplitBoardTask operation middleware
-func (siw *ServerInterfaceWrapper) SplitBoardTask(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "taskKey" -------------
-	var taskKey BoardTaskKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params SplitBoardTaskParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch BoardRevision
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
-			return
-		}
-
-		params.IfMatch = &IfMatch
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SplitBoardTask(w, r, taskKey, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ListDirectories operation middleware
 func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *http.Request) {
 
@@ -7386,30 +6387,11 @@ func (siw *ServerInterfaceWrapper) DismissHeldEvent(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// ListWorkTasks operation middleware
-func (siw *ServerInterfaceWrapper) ListWorkTasks(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListWorkTasksParams
-
-	// ------------- Optional query parameter "includeClosed" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeClosed", r.URL.Query(), &params.IncludeClosed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeClosed"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeClosed", Err: err})
-		}
-		return
-	}
+// GetInboxSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetInboxSummary(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListWorkTasks(w, r, params)
+		siw.Handler.GetInboxSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8018,11 +7000,95 @@ func (siw *ServerInterfaceWrapper) UpgradeSystem(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
-// SetTelegramManager operation middleware
-func (siw *ServerInterfaceWrapper) SetTelegramManager(w http.ResponseWriter, r *http.Request) {
+// ListTasks operation middleware
+func (siw *ServerInterfaceWrapper) ListTasks(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTasksParams
+
+	// ------------- Optional query parameter "botId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "botId", r.URL.Query(), &params.BotId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "botId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "botId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "blocked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "blocked", r.URL.Query(), &params.Blocked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "blocked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "blocked", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "inReview" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "inReview", r.URL.Query(), &params.InReview, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "inReview"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "inReview", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "includeClosed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "includeClosed", r.URL.Query(), &params.IncludeClosed, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "includeClosed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "includeClosed", Err: err})
+		}
+		return
+	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetTelegramManager(w, r)
+		siw.Handler.ListTasks(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8032,11 +7098,602 @@ func (siw *ServerInterfaceWrapper) SetTelegramManager(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
-// GetWork operation middleware
-func (siw *ServerInterfaceWrapper) GetWork(w http.ResponseWriter, r *http.Request) {
+// CreateTask operation middleware
+func (siw *ServerInterfaceWrapper) CreateTask(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetWork(w, r)
+		siw.Handler.CreateTask(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamTaskEvents operation middleware
+func (siw *ServerInterfaceWrapper) StreamTaskEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params StreamTaskEventsParams
+
+	// ------------- Optional query parameter "after" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "after", r.URL.Query(), &params.After, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "after"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "after", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Last-Event-ID" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Last-Event-ID")]; found {
+		var LastEventID string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Last-Event-ID", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Last-Event-ID", valueList[0], &LastEventID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Last-Event-ID", Err: err})
+			return
+		}
+
+		params.LastEventID = &LastEventID
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamTaskEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTaskExecutions operation middleware
+func (siw *ServerInterfaceWrapper) ListTaskExecutions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTaskExecutionsParams
+
+	// ------------- Optional query parameter "taskKey" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "taskKey", r.URL.Query(), &params.TaskKey, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "taskKey"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "machineId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "machineId", r.URL.Query(), &params.MachineId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "machineId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "machineId", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTaskExecutions(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ResumeTaskExecution operation middleware
+func (siw *ServerInterfaceWrapper) ResumeTaskExecution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "executionId" -------------
+	var executionId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "executionId", r.PathValue("executionId"), &executionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "executionId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResumeTaskExecution(w, r, executionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostTaskExternalEntry operation middleware
+func (siw *ServerInterfaceWrapper) PostTaskExternalEntry(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostTaskExternalEntry(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FinishTaskExecution operation middleware
+func (siw *ServerInterfaceWrapper) FinishTaskExecution(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FinishTaskExecution(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// HeartbeatTaskExecution operation middleware
+func (siw *ServerInterfaceWrapper) HeartbeatTaskExecution(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.HeartbeatTaskExecution(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReadTaskExternalTask operation middleware
+func (siw *ServerInterfaceWrapper) ReadTaskExternalTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReadTaskExternalTaskParams
+
+	// ------------- Optional query parameter "afterSeq" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "afterSeq", r.URL.Query(), &params.AfterSeq, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "afterSeq"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "afterSeq", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReadTaskExternalTask(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTask operation middleware
+func (siw *ServerInterfaceWrapper) GetTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTask(w, r, taskKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTask operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateTaskParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch TaskRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTask(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTaskDependency operation middleware
+func (siw *ServerInterfaceWrapper) AddTaskDependency(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AddTaskDependencyParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch TaskRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTaskDependency(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTaskDependency operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTaskDependency(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "depKey" -------------
+	var depKey string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "depKey", r.PathValue("depKey"), &depKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "depKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RemoveTaskDependencyParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch TaskRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTaskDependency(w, r, taskKey, depKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTaskEntry operation middleware
+func (siw *ServerInterfaceWrapper) CreateTaskEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateTaskEntryParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch TaskRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTaskEntry(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AttachTaskExecution operation middleware
+func (siw *ServerInterfaceWrapper) AttachTaskExecution(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AttachTaskExecution(w, r, taskKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReviewTask operation middleware
+func (siw *ServerInterfaceWrapper) ReviewTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReviewTask(w, r, taskKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitTask operation middleware
+func (siw *ServerInterfaceWrapper) SplitTask(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "taskKey" -------------
+	var taskKey TaskKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "taskKey", r.PathValue("taskKey"), &taskKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "taskKey", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SplitTaskParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch TaskRevision
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitTask(w, r, taskKey, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetTelegramManager operation middleware
+func (siw *ServerInterfaceWrapper) SetTelegramManager(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetTelegramManager(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8166,29 +7823,24 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/tasks", wrapper.ListBoardTasks)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks", wrapper.CreateBoardTask)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/tasks/{taskKey}", wrapper.GetBoardTask)
-	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/board/tasks/{taskKey}", wrapper.UpdateBoardTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/split", wrapper.SplitBoardTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/dependencies", wrapper.AddBoardDependency)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/board/tasks/{taskKey}/dependencies/{depKey}", wrapper.RemoveBoardDependency)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/entries", wrapper.CreateBoardEntry)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/review", wrapper.ReviewBoardTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/tasks/{taskKey}/executions/attach", wrapper.AttachBoardExecution)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/executions/{executionId}/resume", wrapper.ResumeBoardExecution)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/executions", wrapper.ListBoardExecutions)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/external/task", wrapper.ReadBoardExternalTask)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/external/entries", wrapper.PostBoardExternalEntry)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/external/heartbeat", wrapper.HeartbeatBoardExecution)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/board/external/finish", wrapper.FinishBoardExecution)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/board/events", wrapper.WatchBoard)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/tasks", wrapper.ListWorkTasks)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks", wrapper.CreateWorkTask)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.GetWorkTask)
-	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.SetWorkTaskLifecycle)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/inbox/tasks/{taskId}", wrapper.AppendWorkTaskNote)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work", wrapper.GetWork)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks", wrapper.ListTasks)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks", wrapper.CreateTask)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/{taskKey}", wrapper.GetTask)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tasks/{taskKey}", wrapper.UpdateTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{taskKey}/split", wrapper.SplitTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{taskKey}/dependencies", wrapper.AddTaskDependency)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tasks/{taskKey}/dependencies/{depKey}", wrapper.RemoveTaskDependency)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{taskKey}/entries", wrapper.CreateTaskEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{taskKey}/review", wrapper.ReviewTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/{taskKey}/executions/attach", wrapper.AttachTaskExecution)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/executions/{executionId}/resume", wrapper.ResumeTaskExecution)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/executions", wrapper.ListTaskExecutions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/external/task", wrapper.ReadTaskExternalTask)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/external/entries", wrapper.PostTaskExternalEntry)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/external/heartbeat", wrapper.HeartbeatTaskExecution)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tasks/external/finish", wrapper.FinishTaskExecution)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tasks/events", wrapper.StreamTaskEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/summary", wrapper.GetInboxSummary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox", wrapper.ListInbox)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/inbox/held-events", wrapper.ListHeldEvents)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/inbox/held-events/{eventId}/attach", wrapper.AttachHeldEvent)
@@ -8253,7 +7905,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/agents/{agentId}/archive", wrapper.RestoreAgent)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/environments", wrapper.ListAgentEnvironments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/environment/reset", wrapper.ResetAgentEnvironment)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/turns/{turnId}", wrapper.GetTurnChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats/main", wrapper.GetMainChat)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.ListChats)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/agents/{agentId}/chats", wrapper.CreateChat)
@@ -11840,179 +11491,6 @@ func (response ReloadExtensionsdefaultJSONResponse) VisitReloadExtensionsRespons
 	return err
 }
 
-type CreateWorkTaskRequestObject struct {
-	AgentId string `json:"agentId"`
-	Body    *CreateWorkTaskJSONRequestBody
-}
-
-type CreateWorkTaskResponseObject interface {
-	VisitCreateWorkTaskResponse(w http.ResponseWriter) error
-}
-
-type CreateWorkTask201JSONResponse WorkTask
-
-func (response CreateWorkTask201JSONResponse) VisitCreateWorkTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateWorkTaskdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response CreateWorkTaskdefaultJSONResponse) VisitCreateWorkTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetWorkTaskRequestObject struct {
-	AgentId string `json:"agentId"`
-	TaskId  string `json:"taskId"`
-}
-
-type GetWorkTaskResponseObject interface {
-	VisitGetWorkTaskResponse(w http.ResponseWriter) error
-}
-
-type GetWorkTask200JSONResponse struct {
-	Entries   []WorkTaskEntry    `json:"entries"`
-	Links     []WorkTaskLink     `json:"links"`
-	Questions []WorkTaskQuestion `json:"questions"`
-
-	// Session The primary work Session of the Task.
-	Session *WorkTaskSession `json:"session,omitempty"`
-
-	// Sessions Linked Sessions across Bots. The primary Session comes first when present.
-	Sessions []WorkTaskSessionLink `json:"sessions"`
-	Task     WorkTask              `json:"task"`
-}
-
-func (response GetWorkTask200JSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetWorkTaskdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetWorkTaskdefaultJSONResponse) VisitGetWorkTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetWorkTaskLifecycleRequestObject struct {
-	AgentId string `json:"agentId"`
-	TaskId  string `json:"taskId"`
-	Body    *SetWorkTaskLifecycleJSONRequestBody
-}
-
-type SetWorkTaskLifecycleResponseObject interface {
-	VisitSetWorkTaskLifecycleResponse(w http.ResponseWriter) error
-}
-
-type SetWorkTaskLifecycle200JSONResponse WorkTask
-
-func (response SetWorkTaskLifecycle200JSONResponse) VisitSetWorkTaskLifecycleResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SetWorkTaskLifecycledefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response SetWorkTaskLifecycledefaultJSONResponse) VisitSetWorkTaskLifecycleResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AppendWorkTaskNoteRequestObject struct {
-	AgentId string `json:"agentId"`
-	TaskId  string `json:"taskId"`
-	Body    *AppendWorkTaskNoteJSONRequestBody
-}
-
-type AppendWorkTaskNoteResponseObject interface {
-	VisitAppendWorkTaskNoteResponse(w http.ResponseWriter) error
-}
-
-type AppendWorkTaskNote201JSONResponse WorkTaskEntry
-
-func (response AppendWorkTaskNote201JSONResponse) VisitAppendWorkTaskNoteResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AppendWorkTaskNotedefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response AppendWorkTaskNotedefaultJSONResponse) VisitAppendWorkTaskNoteResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type GetNotificationTargetsRequestObject struct {
 	AgentId AgentId `json:"agentId"`
 }
@@ -12137,60 +11615,6 @@ type ListRecentProjectsdefaultJSONResponse struct {
 }
 
 func (response ListRecentProjectsdefaultJSONResponse) VisitListRecentProjectsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTurnChatRequestObject struct {
-	AgentId string `json:"agentId"`
-	TurnId  string `json:"turnId"`
-}
-
-type GetTurnChatResponseObject interface {
-	VisitGetTurnChatResponse(w http.ResponseWriter) error
-}
-
-type GetTurnChat200JSONResponse Chat
-
-func (response GetTurnChat200JSONResponse) VisitGetTurnChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTurnChat404JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetTurnChat404JSONResponse) VisitGetTurnChatResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetTurnChatdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetTurnChatdefaultJSONResponse) VisitGetTurnChatResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -12625,1096 +12049,6 @@ func (response PreviewScheduledefaultJSONResponse) VisitPreviewScheduleResponse(
 	return err
 }
 
-type WatchBoardRequestObject struct {
-	Params WatchBoardParams
-}
-
-type WatchBoardResponseObject interface {
-	VisitWatchBoardResponse(w http.ResponseWriter) error
-}
-
-type WatchBoard200TexteventStreamResponse struct {
-	Body          io.Reader
-	ContentLength int64
-}
-
-func (response WatchBoard200TexteventStreamResponse) VisitWatchBoardResponse(w http.ResponseWriter) error {
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	if response.ContentLength != 0 {
-		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
-	}
-	w.WriteHeader(200)
-
-	if closer, ok := response.Body.(io.ReadCloser); ok {
-		defer closer.Close()
-	}
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		// If w doesn't support flushing, fall back to io.Copy.
-		_, err := io.Copy(w, response.Body)
-		return err
-	}
-	// text/event-stream messages are typically small; use a
-	// modest buffer and flush after each chunk so clients see
-	// events immediately instead of waiting on OS buffering.
-	buf := make([]byte, 4096)
-	for {
-		n, err := response.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
-				return writeErr
-			}
-			flusher.Flush()
-		}
-		if err != nil {
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-	}
-}
-
-type WatchBoard400JSONResponse struct{ ErrorJSONResponse }
-
-func (response WatchBoard400JSONResponse) VisitWatchBoardResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WatchBoard401JSONResponse Error
-
-func (response WatchBoard401JSONResponse) VisitWatchBoardResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListBoardExecutionsRequestObject struct {
-	Params ListBoardExecutionsParams
-}
-
-type ListBoardExecutionsResponseObject interface {
-	VisitListBoardExecutionsResponse(w http.ResponseWriter) error
-}
-
-type ListBoardExecutions200JSONResponse BoardExecutionList
-
-func (response ListBoardExecutions200JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListBoardExecutions400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ListBoardExecutions400JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListBoardExecutions401JSONResponse Error
-
-func (response ListBoardExecutions401JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListBoardExecutions404JSONResponse Error
-
-func (response ListBoardExecutions404JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListBoardExecutions409JSONResponse Error
-
-func (response ListBoardExecutions409JSONResponse) VisitListBoardExecutionsResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ResumeBoardExecutionRequestObject struct {
-	ExecutionId string `json:"executionId"`
-	Body        *ResumeBoardExecutionJSONRequestBody
-}
-
-type ResumeBoardExecutionResponseObject interface {
-	VisitResumeBoardExecutionResponse(w http.ResponseWriter) error
-}
-
-type ResumeBoardExecution200JSONResponse BoardTokenIssue
-
-func (response ResumeBoardExecution200JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ResumeBoardExecution400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ResumeBoardExecution400JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ResumeBoardExecution401JSONResponse Error
-
-func (response ResumeBoardExecution401JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ResumeBoardExecution404JSONResponse Error
-
-func (response ResumeBoardExecution404JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ResumeBoardExecution409JSONResponse Error
-
-func (response ResumeBoardExecution409JSONResponse) VisitResumeBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostBoardExternalEntryRequestObject struct {
-	Body *PostBoardExternalEntryJSONRequestBody
-}
-
-type PostBoardExternalEntryResponseObject interface {
-	VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error
-}
-
-type PostBoardExternalEntry201JSONResponse BoardTaskEntry
-
-func (response PostBoardExternalEntry201JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostBoardExternalEntry400JSONResponse struct{ ErrorJSONResponse }
-
-func (response PostBoardExternalEntry400JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostBoardExternalEntry401JSONResponse Error
-
-func (response PostBoardExternalEntry401JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PostBoardExternalEntry409JSONResponse Error
-
-func (response PostBoardExternalEntry409JSONResponse) VisitPostBoardExternalEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type FinishBoardExecutionRequestObject struct {
-	Body *FinishBoardExecutionJSONRequestBody
-}
-
-type FinishBoardExecutionResponseObject interface {
-	VisitFinishBoardExecutionResponse(w http.ResponseWriter) error
-}
-
-type FinishBoardExecution200JSONResponse BoardExecution
-
-func (response FinishBoardExecution200JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type FinishBoardExecution400JSONResponse struct{ ErrorJSONResponse }
-
-func (response FinishBoardExecution400JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type FinishBoardExecution401JSONResponse Error
-
-func (response FinishBoardExecution401JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type FinishBoardExecution409JSONResponse Error
-
-func (response FinishBoardExecution409JSONResponse) VisitFinishBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type HeartbeatBoardExecutionRequestObject struct {
-	Body *HeartbeatBoardExecutionJSONRequestBody
-}
-
-type HeartbeatBoardExecutionResponseObject interface {
-	VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error
-}
-
-type HeartbeatBoardExecution200JSONResponse BoardExecution
-
-func (response HeartbeatBoardExecution200JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type HeartbeatBoardExecution400JSONResponse struct{ ErrorJSONResponse }
-
-func (response HeartbeatBoardExecution400JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type HeartbeatBoardExecution401JSONResponse Error
-
-func (response HeartbeatBoardExecution401JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type HeartbeatBoardExecution409JSONResponse Error
-
-func (response HeartbeatBoardExecution409JSONResponse) VisitHeartbeatBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReadBoardExternalTaskRequestObject struct {
-	Params ReadBoardExternalTaskParams
-}
-
-type ReadBoardExternalTaskResponseObject interface {
-	VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error
-}
-
-type ReadBoardExternalTask200JSONResponse BoardExternalTask
-
-func (response ReadBoardExternalTask200JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReadBoardExternalTask400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ReadBoardExternalTask400JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReadBoardExternalTask401JSONResponse Error
-
-func (response ReadBoardExternalTask401JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReadBoardExternalTask409JSONResponse Error
-
-func (response ReadBoardExternalTask409JSONResponse) VisitReadBoardExternalTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListBoardTasksRequestObject struct {
-	Params ListBoardTasksParams
-}
-
-type ListBoardTasksResponseObject interface {
-	VisitListBoardTasksResponse(w http.ResponseWriter) error
-}
-
-type ListBoardTasks200JSONResponse BoardTaskList
-
-func (response ListBoardTasks200JSONResponse) VisitListBoardTasksResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ListBoardTasks400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ListBoardTasks400JSONResponse) VisitListBoardTasksResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateBoardTaskRequestObject struct {
-	Body *CreateBoardTaskJSONRequestBody
-}
-
-type CreateBoardTaskResponseObject interface {
-	VisitCreateBoardTaskResponse(w http.ResponseWriter) error
-}
-
-type CreateBoardTask201JSONResponse BoardTaskSummary
-
-func (response CreateBoardTask201JSONResponse) VisitCreateBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateBoardTask400JSONResponse struct{ ErrorJSONResponse }
-
-func (response CreateBoardTask400JSONResponse) VisitCreateBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateBoardTask404JSONResponse Error
-
-func (response CreateBoardTask404JSONResponse) VisitCreateBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetBoardTaskRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-}
-
-type GetBoardTaskResponseObject interface {
-	VisitGetBoardTaskResponse(w http.ResponseWriter) error
-}
-
-type GetBoardTask200JSONResponse BoardTaskDetail
-
-func (response GetBoardTask200JSONResponse) VisitGetBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetBoardTask404JSONResponse struct{ ErrorJSONResponse }
-
-func (response GetBoardTask404JSONResponse) VisitGetBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateBoardTaskRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-	Params  UpdateBoardTaskParams
-	Body    *UpdateBoardTaskJSONRequestBody
-}
-
-type UpdateBoardTaskResponseObject interface {
-	VisitUpdateBoardTaskResponse(w http.ResponseWriter) error
-}
-
-type UpdateBoardTask200JSONResponse BoardTaskSummary
-
-func (response UpdateBoardTask200JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateBoardTask400JSONResponse struct{ ErrorJSONResponse }
-
-func (response UpdateBoardTask400JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateBoardTask404JSONResponse Error
-
-func (response UpdateBoardTask404JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type UpdateBoardTask412JSONResponse Error
-
-func (response UpdateBoardTask412JSONResponse) VisitUpdateBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(412)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AddBoardDependencyRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-	Params  AddBoardDependencyParams
-	Body    *AddBoardDependencyJSONRequestBody
-}
-
-type AddBoardDependencyResponseObject interface {
-	VisitAddBoardDependencyResponse(w http.ResponseWriter) error
-}
-
-type AddBoardDependency204Response struct {
-}
-
-func (response AddBoardDependency204Response) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type AddBoardDependency400JSONResponse struct{ ErrorJSONResponse }
-
-func (response AddBoardDependency400JSONResponse) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AddBoardDependency404JSONResponse Error
-
-func (response AddBoardDependency404JSONResponse) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AddBoardDependency412JSONResponse Error
-
-func (response AddBoardDependency412JSONResponse) VisitAddBoardDependencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(412)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RemoveBoardDependencyRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-	DepKey  string       `json:"depKey"`
-	Params  RemoveBoardDependencyParams
-}
-
-type RemoveBoardDependencyResponseObject interface {
-	VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error
-}
-
-type RemoveBoardDependency204Response struct {
-}
-
-func (response RemoveBoardDependency204Response) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type RemoveBoardDependency400JSONResponse struct{ ErrorJSONResponse }
-
-func (response RemoveBoardDependency400JSONResponse) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RemoveBoardDependency404JSONResponse Error
-
-func (response RemoveBoardDependency404JSONResponse) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type RemoveBoardDependency412JSONResponse Error
-
-func (response RemoveBoardDependency412JSONResponse) VisitRemoveBoardDependencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(412)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateBoardEntryRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-	Params  CreateBoardEntryParams
-	Body    *CreateBoardEntryJSONRequestBody
-}
-
-type CreateBoardEntryResponseObject interface {
-	VisitCreateBoardEntryResponse(w http.ResponseWriter) error
-}
-
-type CreateBoardEntry201JSONResponse BoardTaskEntry
-
-func (response CreateBoardEntry201JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateBoardEntry400JSONResponse struct{ ErrorJSONResponse }
-
-func (response CreateBoardEntry400JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateBoardEntry404JSONResponse Error
-
-func (response CreateBoardEntry404JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateBoardEntry412JSONResponse Error
-
-func (response CreateBoardEntry412JSONResponse) VisitCreateBoardEntryResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(412)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AttachBoardExecutionRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-	Body    *AttachBoardExecutionJSONRequestBody
-}
-
-type AttachBoardExecutionResponseObject interface {
-	VisitAttachBoardExecutionResponse(w http.ResponseWriter) error
-}
-
-type AttachBoardExecution201JSONResponse BoardTokenIssue
-
-func (response AttachBoardExecution201JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AttachBoardExecution400JSONResponse struct{ ErrorJSONResponse }
-
-func (response AttachBoardExecution400JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AttachBoardExecution401JSONResponse Error
-
-func (response AttachBoardExecution401JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AttachBoardExecution404JSONResponse Error
-
-func (response AttachBoardExecution404JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type AttachBoardExecution409JSONResponse Error
-
-func (response AttachBoardExecution409JSONResponse) VisitAttachBoardExecutionResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReviewBoardTaskRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-	Body    *ReviewBoardTaskJSONRequestBody
-}
-
-type ReviewBoardTaskResponseObject interface {
-	VisitReviewBoardTaskResponse(w http.ResponseWriter) error
-}
-
-type ReviewBoardTask200JSONResponse BoardTaskSummary
-
-func (response ReviewBoardTask200JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReviewBoardTask400JSONResponse struct{ ErrorJSONResponse }
-
-func (response ReviewBoardTask400JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReviewBoardTask404JSONResponse Error
-
-func (response ReviewBoardTask404JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type ReviewBoardTask409JSONResponse Error
-
-func (response ReviewBoardTask409JSONResponse) VisitReviewBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SplitBoardTaskRequestObject struct {
-	TaskKey BoardTaskKey `json:"taskKey"`
-	Params  SplitBoardTaskParams
-	Body    *SplitBoardTaskJSONRequestBody
-}
-
-type SplitBoardTaskResponseObject interface {
-	VisitSplitBoardTaskResponse(w http.ResponseWriter) error
-}
-
-type SplitBoardTask201JSONResponse BoardTaskSummary
-
-func (response SplitBoardTask201JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SplitBoardTask400JSONResponse struct{ ErrorJSONResponse }
-
-func (response SplitBoardTask400JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SplitBoardTask403JSONResponse Error
-
-func (response SplitBoardTask403JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SplitBoardTask404JSONResponse Error
-
-func (response SplitBoardTask404JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type SplitBoardTask412JSONResponse Error
-
-func (response SplitBoardTask412JSONResponse) VisitSplitBoardTaskResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(412)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type ListDirectoriesRequestObject struct {
 	Params ListDirectoriesParams
 }
@@ -13965,19 +12299,16 @@ func (response DismissHeldEventdefaultJSONResponse) VisitDismissHeldEventRespons
 	return err
 }
 
-type ListWorkTasksRequestObject struct {
-	Params ListWorkTasksParams
+type GetInboxSummaryRequestObject struct {
 }
 
-type ListWorkTasksResponseObject interface {
-	VisitListWorkTasksResponse(w http.ResponseWriter) error
+type GetInboxSummaryResponseObject interface {
+	VisitGetInboxSummaryResponse(w http.ResponseWriter) error
 }
 
-type ListWorkTasks200JSONResponse struct {
-	Tasks []WorkTask `json:"tasks"`
-}
+type GetInboxSummary200JSONResponse InboxSummary
 
-func (response ListWorkTasks200JSONResponse) VisitListWorkTasksResponse(w http.ResponseWriter) error {
+func (response GetInboxSummary200JSONResponse) VisitGetInboxSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -13989,12 +12320,12 @@ func (response ListWorkTasks200JSONResponse) VisitListWorkTasksResponse(w http.R
 	return err
 }
 
-type ListWorkTasksdefaultJSONResponse struct {
+type GetInboxSummarydefaultJSONResponse struct {
 	Body       Error
 	StatusCode int
 }
 
-func (response ListWorkTasksdefaultJSONResponse) VisitListWorkTasksResponse(w http.ResponseWriter) error {
+func (response GetInboxSummarydefaultJSONResponse) VisitGetInboxSummaryResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -15539,6 +13870,1096 @@ func (response UpgradeSystemdefaultJSONResponse) VisitUpgradeSystemResponse(w ht
 	return err
 }
 
+type ListTasksRequestObject struct {
+	Params ListTasksParams
+}
+
+type ListTasksResponseObject interface {
+	VisitListTasksResponse(w http.ResponseWriter) error
+}
+
+type ListTasks200JSONResponse TaskList
+
+func (response ListTasks200JSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTasks400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListTasks400JSONResponse) VisitListTasksResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTaskRequestObject struct {
+	Body *CreateTaskJSONRequestBody
+}
+
+type CreateTaskResponseObject interface {
+	VisitCreateTaskResponse(w http.ResponseWriter) error
+}
+
+type CreateTask201JSONResponse TaskSummary
+
+func (response CreateTask201JSONResponse) VisitCreateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateTask400JSONResponse) VisitCreateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTask404JSONResponse Error
+
+func (response CreateTask404JSONResponse) VisitCreateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StreamTaskEventsRequestObject struct {
+	Params StreamTaskEventsParams
+}
+
+type StreamTaskEventsResponseObject interface {
+	VisitStreamTaskEventsResponse(w http.ResponseWriter) error
+}
+
+type StreamTaskEvents200TexteventStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response StreamTaskEvents200TexteventStreamResponse) VisitStreamTaskEventsResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		// If w doesn't support flushing, fall back to io.Copy.
+		_, err := io.Copy(w, response.Body)
+		return err
+	}
+	// text/event-stream messages are typically small; use a
+	// modest buffer and flush after each chunk so clients see
+	// events immediately instead of waiting on OS buffering.
+	buf := make([]byte, 4096)
+	for {
+		n, err := response.Body.Read(buf)
+		if n > 0 {
+			if _, writeErr := w.Write(buf[:n]); writeErr != nil {
+				return writeErr
+			}
+			flusher.Flush()
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+type StreamTaskEvents400JSONResponse struct{ ErrorJSONResponse }
+
+func (response StreamTaskEvents400JSONResponse) VisitStreamTaskEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StreamTaskEvents401JSONResponse Error
+
+func (response StreamTaskEvents401JSONResponse) VisitStreamTaskEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTaskExecutionsRequestObject struct {
+	Params ListTaskExecutionsParams
+}
+
+type ListTaskExecutionsResponseObject interface {
+	VisitListTaskExecutionsResponse(w http.ResponseWriter) error
+}
+
+type ListTaskExecutions200JSONResponse TaskExecutionList
+
+func (response ListTaskExecutions200JSONResponse) VisitListTaskExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTaskExecutions400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ListTaskExecutions400JSONResponse) VisitListTaskExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTaskExecutions401JSONResponse Error
+
+func (response ListTaskExecutions401JSONResponse) VisitListTaskExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTaskExecutions404JSONResponse Error
+
+func (response ListTaskExecutions404JSONResponse) VisitListTaskExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTaskExecutions409JSONResponse Error
+
+func (response ListTaskExecutions409JSONResponse) VisitListTaskExecutionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeTaskExecutionRequestObject struct {
+	ExecutionId string `json:"executionId"`
+	Body        *ResumeTaskExecutionJSONRequestBody
+}
+
+type ResumeTaskExecutionResponseObject interface {
+	VisitResumeTaskExecutionResponse(w http.ResponseWriter) error
+}
+
+type ResumeTaskExecution200JSONResponse TaskTokenIssue
+
+func (response ResumeTaskExecution200JSONResponse) VisitResumeTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeTaskExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ResumeTaskExecution400JSONResponse) VisitResumeTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeTaskExecution401JSONResponse Error
+
+func (response ResumeTaskExecution401JSONResponse) VisitResumeTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeTaskExecution404JSONResponse Error
+
+func (response ResumeTaskExecution404JSONResponse) VisitResumeTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResumeTaskExecution409JSONResponse Error
+
+func (response ResumeTaskExecution409JSONResponse) VisitResumeTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTaskExternalEntryRequestObject struct {
+	Body *PostTaskExternalEntryJSONRequestBody
+}
+
+type PostTaskExternalEntryResponseObject interface {
+	VisitPostTaskExternalEntryResponse(w http.ResponseWriter) error
+}
+
+type PostTaskExternalEntry201JSONResponse TaskEntry
+
+func (response PostTaskExternalEntry201JSONResponse) VisitPostTaskExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTaskExternalEntry400JSONResponse struct{ ErrorJSONResponse }
+
+func (response PostTaskExternalEntry400JSONResponse) VisitPostTaskExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTaskExternalEntry401JSONResponse Error
+
+func (response PostTaskExternalEntry401JSONResponse) VisitPostTaskExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PostTaskExternalEntry409JSONResponse Error
+
+func (response PostTaskExternalEntry409JSONResponse) VisitPostTaskExternalEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishTaskExecutionRequestObject struct {
+	Body *FinishTaskExecutionJSONRequestBody
+}
+
+type FinishTaskExecutionResponseObject interface {
+	VisitFinishTaskExecutionResponse(w http.ResponseWriter) error
+}
+
+type FinishTaskExecution200JSONResponse TaskExecution
+
+func (response FinishTaskExecution200JSONResponse) VisitFinishTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishTaskExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response FinishTaskExecution400JSONResponse) VisitFinishTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishTaskExecution401JSONResponse Error
+
+func (response FinishTaskExecution401JSONResponse) VisitFinishTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type FinishTaskExecution409JSONResponse Error
+
+func (response FinishTaskExecution409JSONResponse) VisitFinishTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatTaskExecutionRequestObject struct {
+	Body *HeartbeatTaskExecutionJSONRequestBody
+}
+
+type HeartbeatTaskExecutionResponseObject interface {
+	VisitHeartbeatTaskExecutionResponse(w http.ResponseWriter) error
+}
+
+type HeartbeatTaskExecution200JSONResponse TaskExecution
+
+func (response HeartbeatTaskExecution200JSONResponse) VisitHeartbeatTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatTaskExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response HeartbeatTaskExecution400JSONResponse) VisitHeartbeatTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatTaskExecution401JSONResponse Error
+
+func (response HeartbeatTaskExecution401JSONResponse) VisitHeartbeatTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type HeartbeatTaskExecution409JSONResponse Error
+
+func (response HeartbeatTaskExecution409JSONResponse) VisitHeartbeatTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadTaskExternalTaskRequestObject struct {
+	Params ReadTaskExternalTaskParams
+}
+
+type ReadTaskExternalTaskResponseObject interface {
+	VisitReadTaskExternalTaskResponse(w http.ResponseWriter) error
+}
+
+type ReadTaskExternalTask200JSONResponse TaskExternalTask
+
+func (response ReadTaskExternalTask200JSONResponse) VisitReadTaskExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadTaskExternalTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReadTaskExternalTask400JSONResponse) VisitReadTaskExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadTaskExternalTask401JSONResponse Error
+
+func (response ReadTaskExternalTask401JSONResponse) VisitReadTaskExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReadTaskExternalTask409JSONResponse Error
+
+func (response ReadTaskExternalTask409JSONResponse) VisitReadTaskExternalTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTaskRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+}
+
+type GetTaskResponseObject interface {
+	VisitGetTaskResponse(w http.ResponseWriter) error
+}
+
+type GetTask200JSONResponse TaskDetail
+
+func (response GetTask200JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTask404JSONResponse struct{ ErrorJSONResponse }
+
+func (response GetTask404JSONResponse) VisitGetTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTaskRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+	Params  UpdateTaskParams
+	Body    *UpdateTaskJSONRequestBody
+}
+
+type UpdateTaskResponseObject interface {
+	VisitUpdateTaskResponse(w http.ResponseWriter) error
+}
+
+type UpdateTask200JSONResponse TaskSummary
+
+func (response UpdateTask200JSONResponse) VisitUpdateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response UpdateTask400JSONResponse) VisitUpdateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTask404JSONResponse Error
+
+func (response UpdateTask404JSONResponse) VisitUpdateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateTask412JSONResponse Error
+
+func (response UpdateTask412JSONResponse) VisitUpdateTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddTaskDependencyRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+	Params  AddTaskDependencyParams
+	Body    *AddTaskDependencyJSONRequestBody
+}
+
+type AddTaskDependencyResponseObject interface {
+	VisitAddTaskDependencyResponse(w http.ResponseWriter) error
+}
+
+type AddTaskDependency204Response struct {
+}
+
+func (response AddTaskDependency204Response) VisitAddTaskDependencyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AddTaskDependency400JSONResponse struct{ ErrorJSONResponse }
+
+func (response AddTaskDependency400JSONResponse) VisitAddTaskDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddTaskDependency404JSONResponse Error
+
+func (response AddTaskDependency404JSONResponse) VisitAddTaskDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AddTaskDependency412JSONResponse Error
+
+func (response AddTaskDependency412JSONResponse) VisitAddTaskDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveTaskDependencyRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+	DepKey  string  `json:"depKey"`
+	Params  RemoveTaskDependencyParams
+}
+
+type RemoveTaskDependencyResponseObject interface {
+	VisitRemoveTaskDependencyResponse(w http.ResponseWriter) error
+}
+
+type RemoveTaskDependency204Response struct {
+}
+
+func (response RemoveTaskDependency204Response) VisitRemoveTaskDependencyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveTaskDependency400JSONResponse struct{ ErrorJSONResponse }
+
+func (response RemoveTaskDependency400JSONResponse) VisitRemoveTaskDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveTaskDependency404JSONResponse Error
+
+func (response RemoveTaskDependency404JSONResponse) VisitRemoveTaskDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveTaskDependency412JSONResponse Error
+
+func (response RemoveTaskDependency412JSONResponse) VisitRemoveTaskDependencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTaskEntryRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+	Params  CreateTaskEntryParams
+	Body    *CreateTaskEntryJSONRequestBody
+}
+
+type CreateTaskEntryResponseObject interface {
+	VisitCreateTaskEntryResponse(w http.ResponseWriter) error
+}
+
+type CreateTaskEntry201JSONResponse TaskEntry
+
+func (response CreateTaskEntry201JSONResponse) VisitCreateTaskEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTaskEntry400JSONResponse struct{ ErrorJSONResponse }
+
+func (response CreateTaskEntry400JSONResponse) VisitCreateTaskEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTaskEntry404JSONResponse Error
+
+func (response CreateTaskEntry404JSONResponse) VisitCreateTaskEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTaskEntry412JSONResponse Error
+
+func (response CreateTaskEntry412JSONResponse) VisitCreateTaskEntryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTaskExecutionRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+	Body    *AttachTaskExecutionJSONRequestBody
+}
+
+type AttachTaskExecutionResponseObject interface {
+	VisitAttachTaskExecutionResponse(w http.ResponseWriter) error
+}
+
+type AttachTaskExecution201JSONResponse TaskTokenIssue
+
+func (response AttachTaskExecution201JSONResponse) VisitAttachTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTaskExecution400JSONResponse struct{ ErrorJSONResponse }
+
+func (response AttachTaskExecution400JSONResponse) VisitAttachTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTaskExecution401JSONResponse Error
+
+func (response AttachTaskExecution401JSONResponse) VisitAttachTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTaskExecution404JSONResponse Error
+
+func (response AttachTaskExecution404JSONResponse) VisitAttachTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AttachTaskExecution409JSONResponse Error
+
+func (response AttachTaskExecution409JSONResponse) VisitAttachTaskExecutionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewTaskRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+	Body    *ReviewTaskJSONRequestBody
+}
+
+type ReviewTaskResponseObject interface {
+	VisitReviewTaskResponse(w http.ResponseWriter) error
+}
+
+type ReviewTask200JSONResponse TaskSummary
+
+func (response ReviewTask200JSONResponse) VisitReviewTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response ReviewTask400JSONResponse) VisitReviewTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewTask404JSONResponse Error
+
+func (response ReviewTask404JSONResponse) VisitReviewTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReviewTask409JSONResponse Error
+
+func (response ReviewTask409JSONResponse) VisitReviewTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitTaskRequestObject struct {
+	TaskKey TaskKey `json:"taskKey"`
+	Params  SplitTaskParams
+	Body    *SplitTaskJSONRequestBody
+}
+
+type SplitTaskResponseObject interface {
+	VisitSplitTaskResponse(w http.ResponseWriter) error
+}
+
+type SplitTask201JSONResponse TaskSummary
+
+func (response SplitTask201JSONResponse) VisitSplitTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitTask400JSONResponse struct{ ErrorJSONResponse }
+
+func (response SplitTask400JSONResponse) VisitSplitTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitTask403JSONResponse Error
+
+func (response SplitTask403JSONResponse) VisitSplitTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitTask404JSONResponse Error
+
+func (response SplitTask404JSONResponse) VisitSplitTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SplitTask412JSONResponse Error
+
+func (response SplitTask412JSONResponse) VisitSplitTaskResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetTelegramManagerRequestObject struct {
 	Body *SetTelegramManagerJSONRequestBody
 }
@@ -15567,44 +14988,6 @@ type SetTelegramManagerdefaultJSONResponse struct {
 }
 
 func (response SetTelegramManagerdefaultJSONResponse) VisitSetTelegramManagerResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetWorkRequestObject struct {
-}
-
-type GetWorkResponseObject interface {
-	VisitGetWorkResponse(w http.ResponseWriter) error
-}
-
-type GetWork200JSONResponse Work
-
-func (response GetWork200JSONResponse) VisitGetWorkResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetWorkdefaultJSONResponse struct {
-	Body       Error
-	StatusCode int
-}
-
-func (response GetWorkdefaultJSONResponse) VisitGetWorkResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -15796,18 +15179,6 @@ type StrictServerInterface interface {
 	// (POST /api/agents/{agentId}/extensions/reload)
 	ReloadExtensions(ctx context.Context, request ReloadExtensionsRequestObject) (ReloadExtensionsResponseObject, error)
 
-	// (POST /api/agents/{agentId}/inbox/tasks)
-	CreateWorkTask(ctx context.Context, request CreateWorkTaskRequestObject) (CreateWorkTaskResponseObject, error)
-
-	// (GET /api/agents/{agentId}/inbox/tasks/{taskId})
-	GetWorkTask(ctx context.Context, request GetWorkTaskRequestObject) (GetWorkTaskResponseObject, error)
-
-	// (PATCH /api/agents/{agentId}/inbox/tasks/{taskId})
-	SetWorkTaskLifecycle(ctx context.Context, request SetWorkTaskLifecycleRequestObject) (SetWorkTaskLifecycleResponseObject, error)
-
-	// (POST /api/agents/{agentId}/inbox/tasks/{taskId})
-	AppendWorkTaskNote(ctx context.Context, request AppendWorkTaskNoteRequestObject) (AppendWorkTaskNoteResponseObject, error)
-
 	// (GET /api/agents/{agentId}/notification-targets)
 	GetNotificationTargets(ctx context.Context, request GetNotificationTargetsRequestObject) (GetNotificationTargetsResponseObject, error)
 
@@ -15816,9 +15187,6 @@ type StrictServerInterface interface {
 
 	// (GET /api/agents/{agentId}/projects)
 	ListRecentProjects(ctx context.Context, request ListRecentProjectsRequestObject) (ListRecentProjectsResponseObject, error)
-
-	// (GET /api/agents/{agentId}/turns/{turnId})
-	GetTurnChat(ctx context.Context, request GetTurnChatRequestObject) (GetTurnChatResponseObject, error)
 
 	// (POST /api/agents/{agentId}/uploads)
 	CreateUpload(ctx context.Context, request CreateUploadRequestObject) (CreateUploadResponseObject, error)
@@ -15841,57 +15209,6 @@ type StrictServerInterface interface {
 	// (POST /api/automations/preview)
 	PreviewSchedule(ctx context.Context, request PreviewScheduleRequestObject) (PreviewScheduleResponseObject, error)
 
-	// (GET /api/board/events)
-	WatchBoard(ctx context.Context, request WatchBoardRequestObject) (WatchBoardResponseObject, error)
-
-	// (GET /api/board/executions)
-	ListBoardExecutions(ctx context.Context, request ListBoardExecutionsRequestObject) (ListBoardExecutionsResponseObject, error)
-
-	// (POST /api/board/executions/{executionId}/resume)
-	ResumeBoardExecution(ctx context.Context, request ResumeBoardExecutionRequestObject) (ResumeBoardExecutionResponseObject, error)
-
-	// (POST /api/board/external/entries)
-	PostBoardExternalEntry(ctx context.Context, request PostBoardExternalEntryRequestObject) (PostBoardExternalEntryResponseObject, error)
-
-	// (POST /api/board/external/finish)
-	FinishBoardExecution(ctx context.Context, request FinishBoardExecutionRequestObject) (FinishBoardExecutionResponseObject, error)
-
-	// (POST /api/board/external/heartbeat)
-	HeartbeatBoardExecution(ctx context.Context, request HeartbeatBoardExecutionRequestObject) (HeartbeatBoardExecutionResponseObject, error)
-
-	// (GET /api/board/external/task)
-	ReadBoardExternalTask(ctx context.Context, request ReadBoardExternalTaskRequestObject) (ReadBoardExternalTaskResponseObject, error)
-
-	// (GET /api/board/tasks)
-	ListBoardTasks(ctx context.Context, request ListBoardTasksRequestObject) (ListBoardTasksResponseObject, error)
-
-	// (POST /api/board/tasks)
-	CreateBoardTask(ctx context.Context, request CreateBoardTaskRequestObject) (CreateBoardTaskResponseObject, error)
-
-	// (GET /api/board/tasks/{taskKey})
-	GetBoardTask(ctx context.Context, request GetBoardTaskRequestObject) (GetBoardTaskResponseObject, error)
-
-	// (PATCH /api/board/tasks/{taskKey})
-	UpdateBoardTask(ctx context.Context, request UpdateBoardTaskRequestObject) (UpdateBoardTaskResponseObject, error)
-
-	// (POST /api/board/tasks/{taskKey}/dependencies)
-	AddBoardDependency(ctx context.Context, request AddBoardDependencyRequestObject) (AddBoardDependencyResponseObject, error)
-
-	// (DELETE /api/board/tasks/{taskKey}/dependencies/{depKey})
-	RemoveBoardDependency(ctx context.Context, request RemoveBoardDependencyRequestObject) (RemoveBoardDependencyResponseObject, error)
-
-	// (POST /api/board/tasks/{taskKey}/entries)
-	CreateBoardEntry(ctx context.Context, request CreateBoardEntryRequestObject) (CreateBoardEntryResponseObject, error)
-
-	// (POST /api/board/tasks/{taskKey}/executions/attach)
-	AttachBoardExecution(ctx context.Context, request AttachBoardExecutionRequestObject) (AttachBoardExecutionResponseObject, error)
-
-	// (POST /api/board/tasks/{taskKey}/review)
-	ReviewBoardTask(ctx context.Context, request ReviewBoardTaskRequestObject) (ReviewBoardTaskResponseObject, error)
-
-	// (POST /api/board/tasks/{taskKey}/split)
-	SplitBoardTask(ctx context.Context, request SplitBoardTaskRequestObject) (SplitBoardTaskResponseObject, error)
-
 	// (GET /api/directories)
 	ListDirectories(ctx context.Context, request ListDirectoriesRequestObject) (ListDirectoriesResponseObject, error)
 
@@ -15910,8 +15227,8 @@ type StrictServerInterface interface {
 	// (POST /api/inbox/held-events/{eventId}/dismiss)
 	DismissHeldEvent(ctx context.Context, request DismissHeldEventRequestObject) (DismissHeldEventResponseObject, error)
 
-	// (GET /api/inbox/tasks)
-	ListWorkTasks(ctx context.Context, request ListWorkTasksRequestObject) (ListWorkTasksResponseObject, error)
+	// (GET /api/inbox/summary)
+	GetInboxSummary(ctx context.Context, request GetInboxSummaryRequestObject) (GetInboxSummaryResponseObject, error)
 
 	// (POST /api/inbox/{runId}/dismiss)
 	DismissInboxItem(ctx context.Context, request DismissInboxItemRequestObject) (DismissInboxItemResponseObject, error)
@@ -16009,11 +15326,59 @@ type StrictServerInterface interface {
 	// (POST /api/system/upgrade)
 	UpgradeSystem(ctx context.Context, request UpgradeSystemRequestObject) (UpgradeSystemResponseObject, error)
 
+	// (GET /api/tasks)
+	ListTasks(ctx context.Context, request ListTasksRequestObject) (ListTasksResponseObject, error)
+
+	// (POST /api/tasks)
+	CreateTask(ctx context.Context, request CreateTaskRequestObject) (CreateTaskResponseObject, error)
+
+	// (GET /api/tasks/events)
+	StreamTaskEvents(ctx context.Context, request StreamTaskEventsRequestObject) (StreamTaskEventsResponseObject, error)
+
+	// (GET /api/tasks/executions)
+	ListTaskExecutions(ctx context.Context, request ListTaskExecutionsRequestObject) (ListTaskExecutionsResponseObject, error)
+
+	// (POST /api/tasks/executions/{executionId}/resume)
+	ResumeTaskExecution(ctx context.Context, request ResumeTaskExecutionRequestObject) (ResumeTaskExecutionResponseObject, error)
+
+	// (POST /api/tasks/external/entries)
+	PostTaskExternalEntry(ctx context.Context, request PostTaskExternalEntryRequestObject) (PostTaskExternalEntryResponseObject, error)
+
+	// (POST /api/tasks/external/finish)
+	FinishTaskExecution(ctx context.Context, request FinishTaskExecutionRequestObject) (FinishTaskExecutionResponseObject, error)
+
+	// (POST /api/tasks/external/heartbeat)
+	HeartbeatTaskExecution(ctx context.Context, request HeartbeatTaskExecutionRequestObject) (HeartbeatTaskExecutionResponseObject, error)
+
+	// (GET /api/tasks/external/task)
+	ReadTaskExternalTask(ctx context.Context, request ReadTaskExternalTaskRequestObject) (ReadTaskExternalTaskResponseObject, error)
+
+	// (GET /api/tasks/{taskKey})
+	GetTask(ctx context.Context, request GetTaskRequestObject) (GetTaskResponseObject, error)
+
+	// (PATCH /api/tasks/{taskKey})
+	UpdateTask(ctx context.Context, request UpdateTaskRequestObject) (UpdateTaskResponseObject, error)
+
+	// (POST /api/tasks/{taskKey}/dependencies)
+	AddTaskDependency(ctx context.Context, request AddTaskDependencyRequestObject) (AddTaskDependencyResponseObject, error)
+
+	// (DELETE /api/tasks/{taskKey}/dependencies/{depKey})
+	RemoveTaskDependency(ctx context.Context, request RemoveTaskDependencyRequestObject) (RemoveTaskDependencyResponseObject, error)
+
+	// (POST /api/tasks/{taskKey}/entries)
+	CreateTaskEntry(ctx context.Context, request CreateTaskEntryRequestObject) (CreateTaskEntryResponseObject, error)
+
+	// (POST /api/tasks/{taskKey}/executions/attach)
+	AttachTaskExecution(ctx context.Context, request AttachTaskExecutionRequestObject) (AttachTaskExecutionResponseObject, error)
+
+	// (POST /api/tasks/{taskKey}/review)
+	ReviewTask(ctx context.Context, request ReviewTaskRequestObject) (ReviewTaskResponseObject, error)
+
+	// (POST /api/tasks/{taskKey}/split)
+	SplitTask(ctx context.Context, request SplitTaskRequestObject) (SplitTaskResponseObject, error)
+
 	// (PUT /api/telegram/manager)
 	SetTelegramManager(ctx context.Context, request SetTelegramManagerRequestObject) (SetTelegramManagerResponseObject, error)
-
-	// (GET /api/work)
-	GetWork(ctx context.Context, request GetWorkRequestObject) (GetWorkResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -17761,134 +17126,6 @@ func (sh *strictHandler) ReloadExtensions(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// CreateWorkTask operation middleware
-func (sh *strictHandler) CreateWorkTask(w http.ResponseWriter, r *http.Request, agentId string) {
-	var request CreateWorkTaskRequestObject
-
-	request.AgentId = agentId
-
-	var body CreateWorkTaskJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateWorkTask(ctx, request.(CreateWorkTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateWorkTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateWorkTaskResponseObject); ok {
-		if err := validResponse.VisitCreateWorkTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetWorkTask operation middleware
-func (sh *strictHandler) GetWorkTask(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
-	var request GetWorkTaskRequestObject
-
-	request.AgentId = agentId
-	request.TaskId = taskId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetWorkTask(ctx, request.(GetWorkTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetWorkTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetWorkTaskResponseObject); ok {
-		if err := validResponse.VisitGetWorkTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SetWorkTaskLifecycle operation middleware
-func (sh *strictHandler) SetWorkTaskLifecycle(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
-	var request SetWorkTaskLifecycleRequestObject
-
-	request.AgentId = agentId
-	request.TaskId = taskId
-
-	var body SetWorkTaskLifecycleJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SetWorkTaskLifecycle(ctx, request.(SetWorkTaskLifecycleRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SetWorkTaskLifecycle")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SetWorkTaskLifecycleResponseObject); ok {
-		if err := validResponse.VisitSetWorkTaskLifecycleResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AppendWorkTaskNote operation middleware
-func (sh *strictHandler) AppendWorkTaskNote(w http.ResponseWriter, r *http.Request, agentId string, taskId string) {
-	var request AppendWorkTaskNoteRequestObject
-
-	request.AgentId = agentId
-	request.TaskId = taskId
-
-	var body AppendWorkTaskNoteJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AppendWorkTaskNote(ctx, request.(AppendWorkTaskNoteRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AppendWorkTaskNote")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AppendWorkTaskNoteResponseObject); ok {
-		if err := validResponse.VisitAppendWorkTaskNoteResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // GetNotificationTargets operation middleware
 func (sh *strictHandler) GetNotificationTargets(w http.ResponseWriter, r *http.Request, agentId AgentId) {
 	var request GetNotificationTargetsRequestObject
@@ -17968,33 +17205,6 @@ func (sh *strictHandler) ListRecentProjects(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListRecentProjectsResponseObject); ok {
 		if err := validResponse.VisitListRecentProjectsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetTurnChat operation middleware
-func (sh *strictHandler) GetTurnChat(w http.ResponseWriter, r *http.Request, agentId string, turnId string) {
-	var request GetTurnChatRequestObject
-
-	request.AgentId = agentId
-	request.TurnId = turnId
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetTurnChat(ctx, request.(GetTurnChatRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetTurnChat")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetTurnChatResponseObject); ok {
-		if err := validResponse.VisitGetTurnChatResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -18203,523 +17413,6 @@ func (sh *strictHandler) PreviewSchedule(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// WatchBoard operation middleware
-func (sh *strictHandler) WatchBoard(w http.ResponseWriter, r *http.Request, params WatchBoardParams) {
-	var request WatchBoardRequestObject
-
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.WatchBoard(ctx, request.(WatchBoardRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "WatchBoard")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(WatchBoardResponseObject); ok {
-		if err := validResponse.VisitWatchBoardResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListBoardExecutions operation middleware
-func (sh *strictHandler) ListBoardExecutions(w http.ResponseWriter, r *http.Request, params ListBoardExecutionsParams) {
-	var request ListBoardExecutionsRequestObject
-
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListBoardExecutions(ctx, request.(ListBoardExecutionsRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListBoardExecutions")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListBoardExecutionsResponseObject); ok {
-		if err := validResponse.VisitListBoardExecutionsResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ResumeBoardExecution operation middleware
-func (sh *strictHandler) ResumeBoardExecution(w http.ResponseWriter, r *http.Request, executionId string) {
-	var request ResumeBoardExecutionRequestObject
-
-	request.ExecutionId = executionId
-
-	var body ResumeBoardExecutionJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ResumeBoardExecution(ctx, request.(ResumeBoardExecutionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ResumeBoardExecution")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ResumeBoardExecutionResponseObject); ok {
-		if err := validResponse.VisitResumeBoardExecutionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// PostBoardExternalEntry operation middleware
-func (sh *strictHandler) PostBoardExternalEntry(w http.ResponseWriter, r *http.Request) {
-	var request PostBoardExternalEntryRequestObject
-
-	var body PostBoardExternalEntryJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.PostBoardExternalEntry(ctx, request.(PostBoardExternalEntryRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PostBoardExternalEntry")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(PostBoardExternalEntryResponseObject); ok {
-		if err := validResponse.VisitPostBoardExternalEntryResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// FinishBoardExecution operation middleware
-func (sh *strictHandler) FinishBoardExecution(w http.ResponseWriter, r *http.Request) {
-	var request FinishBoardExecutionRequestObject
-
-	var body FinishBoardExecutionJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.FinishBoardExecution(ctx, request.(FinishBoardExecutionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "FinishBoardExecution")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(FinishBoardExecutionResponseObject); ok {
-		if err := validResponse.VisitFinishBoardExecutionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// HeartbeatBoardExecution operation middleware
-func (sh *strictHandler) HeartbeatBoardExecution(w http.ResponseWriter, r *http.Request) {
-	var request HeartbeatBoardExecutionRequestObject
-
-	var body HeartbeatBoardExecutionJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.HeartbeatBoardExecution(ctx, request.(HeartbeatBoardExecutionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "HeartbeatBoardExecution")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(HeartbeatBoardExecutionResponseObject); ok {
-		if err := validResponse.VisitHeartbeatBoardExecutionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ReadBoardExternalTask operation middleware
-func (sh *strictHandler) ReadBoardExternalTask(w http.ResponseWriter, r *http.Request, params ReadBoardExternalTaskParams) {
-	var request ReadBoardExternalTaskRequestObject
-
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ReadBoardExternalTask(ctx, request.(ReadBoardExternalTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ReadBoardExternalTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ReadBoardExternalTaskResponseObject); ok {
-		if err := validResponse.VisitReadBoardExternalTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ListBoardTasks operation middleware
-func (sh *strictHandler) ListBoardTasks(w http.ResponseWriter, r *http.Request, params ListBoardTasksParams) {
-	var request ListBoardTasksRequestObject
-
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListBoardTasks(ctx, request.(ListBoardTasksRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListBoardTasks")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListBoardTasksResponseObject); ok {
-		if err := validResponse.VisitListBoardTasksResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateBoardTask operation middleware
-func (sh *strictHandler) CreateBoardTask(w http.ResponseWriter, r *http.Request) {
-	var request CreateBoardTaskRequestObject
-
-	var body CreateBoardTaskJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateBoardTask(ctx, request.(CreateBoardTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateBoardTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateBoardTaskResponseObject); ok {
-		if err := validResponse.VisitCreateBoardTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetBoardTask operation middleware
-func (sh *strictHandler) GetBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey) {
-	var request GetBoardTaskRequestObject
-
-	request.TaskKey = taskKey
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetBoardTask(ctx, request.(GetBoardTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetBoardTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetBoardTaskResponseObject); ok {
-		if err := validResponse.VisitGetBoardTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// UpdateBoardTask operation middleware
-func (sh *strictHandler) UpdateBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params UpdateBoardTaskParams) {
-	var request UpdateBoardTaskRequestObject
-
-	request.TaskKey = taskKey
-	request.Params = params
-
-	var body UpdateBoardTaskJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.UpdateBoardTask(ctx, request.(UpdateBoardTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "UpdateBoardTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(UpdateBoardTaskResponseObject); ok {
-		if err := validResponse.VisitUpdateBoardTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AddBoardDependency operation middleware
-func (sh *strictHandler) AddBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params AddBoardDependencyParams) {
-	var request AddBoardDependencyRequestObject
-
-	request.TaskKey = taskKey
-	request.Params = params
-
-	var body AddBoardDependencyJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AddBoardDependency(ctx, request.(AddBoardDependencyRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AddBoardDependency")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AddBoardDependencyResponseObject); ok {
-		if err := validResponse.VisitAddBoardDependencyResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// RemoveBoardDependency operation middleware
-func (sh *strictHandler) RemoveBoardDependency(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, depKey string, params RemoveBoardDependencyParams) {
-	var request RemoveBoardDependencyRequestObject
-
-	request.TaskKey = taskKey
-	request.DepKey = depKey
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.RemoveBoardDependency(ctx, request.(RemoveBoardDependencyRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "RemoveBoardDependency")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(RemoveBoardDependencyResponseObject); ok {
-		if err := validResponse.VisitRemoveBoardDependencyResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// CreateBoardEntry operation middleware
-func (sh *strictHandler) CreateBoardEntry(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params CreateBoardEntryParams) {
-	var request CreateBoardEntryRequestObject
-
-	request.TaskKey = taskKey
-	request.Params = params
-
-	var body CreateBoardEntryJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateBoardEntry(ctx, request.(CreateBoardEntryRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateBoardEntry")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(CreateBoardEntryResponseObject); ok {
-		if err := validResponse.VisitCreateBoardEntryResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// AttachBoardExecution operation middleware
-func (sh *strictHandler) AttachBoardExecution(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey) {
-	var request AttachBoardExecutionRequestObject
-
-	request.TaskKey = taskKey
-
-	var body AttachBoardExecutionJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.AttachBoardExecution(ctx, request.(AttachBoardExecutionRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "AttachBoardExecution")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(AttachBoardExecutionResponseObject); ok {
-		if err := validResponse.VisitAttachBoardExecutionResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// ReviewBoardTask operation middleware
-func (sh *strictHandler) ReviewBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey) {
-	var request ReviewBoardTaskRequestObject
-
-	request.TaskKey = taskKey
-
-	var body ReviewBoardTaskJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ReviewBoardTask(ctx, request.(ReviewBoardTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ReviewBoardTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ReviewBoardTaskResponseObject); ok {
-		if err := validResponse.VisitReviewBoardTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// SplitBoardTask operation middleware
-func (sh *strictHandler) SplitBoardTask(w http.ResponseWriter, r *http.Request, taskKey BoardTaskKey, params SplitBoardTaskParams) {
-	var request SplitBoardTaskRequestObject
-
-	request.TaskKey = taskKey
-	request.Params = params
-
-	var body SplitBoardTaskJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.SplitBoardTask(ctx, request.(SplitBoardTaskRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "SplitBoardTask")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(SplitBoardTaskResponseObject); ok {
-		if err := validResponse.VisitSplitBoardTaskResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
 // ListDirectories operation middleware
 func (sh *strictHandler) ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams) {
 	var request ListDirectoriesRequestObject
@@ -18879,25 +17572,23 @@ func (sh *strictHandler) DismissHeldEvent(w http.ResponseWriter, r *http.Request
 	}
 }
 
-// ListWorkTasks operation middleware
-func (sh *strictHandler) ListWorkTasks(w http.ResponseWriter, r *http.Request, params ListWorkTasksParams) {
-	var request ListWorkTasksRequestObject
-
-	request.Params = params
+// GetInboxSummary operation middleware
+func (sh *strictHandler) GetInboxSummary(w http.ResponseWriter, r *http.Request) {
+	var request GetInboxSummaryRequestObject
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ListWorkTasks(ctx, request.(ListWorkTasksRequestObject))
+		return sh.ssi.GetInboxSummary(ctx, request.(GetInboxSummaryRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListWorkTasks")
+		handler = middleware(handler, "GetInboxSummary")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ListWorkTasksResponseObject); ok {
-		if err := validResponse.VisitListWorkTasksResponse(w); err != nil {
+	} else if validResponse, ok := response.(GetInboxSummaryResponseObject); ok {
+		if err := validResponse.VisitGetInboxSummaryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -19780,6 +18471,523 @@ func (sh *strictHandler) UpgradeSystem(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListTasks operation middleware
+func (sh *strictHandler) ListTasks(w http.ResponseWriter, r *http.Request, params ListTasksParams) {
+	var request ListTasksRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTasks(ctx, request.(ListTasksRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTasks")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTasksResponseObject); ok {
+		if err := validResponse.VisitListTasksResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTask operation middleware
+func (sh *strictHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
+	var request CreateTaskRequestObject
+
+	var body CreateTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTask(ctx, request.(CreateTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTaskResponseObject); ok {
+		if err := validResponse.VisitCreateTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StreamTaskEvents operation middleware
+func (sh *strictHandler) StreamTaskEvents(w http.ResponseWriter, r *http.Request, params StreamTaskEventsParams) {
+	var request StreamTaskEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StreamTaskEvents(ctx, request.(StreamTaskEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StreamTaskEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StreamTaskEventsResponseObject); ok {
+		if err := validResponse.VisitStreamTaskEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTaskExecutions operation middleware
+func (sh *strictHandler) ListTaskExecutions(w http.ResponseWriter, r *http.Request, params ListTaskExecutionsParams) {
+	var request ListTaskExecutionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTaskExecutions(ctx, request.(ListTaskExecutionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTaskExecutions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTaskExecutionsResponseObject); ok {
+		if err := validResponse.VisitListTaskExecutionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ResumeTaskExecution operation middleware
+func (sh *strictHandler) ResumeTaskExecution(w http.ResponseWriter, r *http.Request, executionId string) {
+	var request ResumeTaskExecutionRequestObject
+
+	request.ExecutionId = executionId
+
+	var body ResumeTaskExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResumeTaskExecution(ctx, request.(ResumeTaskExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResumeTaskExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResumeTaskExecutionResponseObject); ok {
+		if err := validResponse.VisitResumeTaskExecutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PostTaskExternalEntry operation middleware
+func (sh *strictHandler) PostTaskExternalEntry(w http.ResponseWriter, r *http.Request) {
+	var request PostTaskExternalEntryRequestObject
+
+	var body PostTaskExternalEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PostTaskExternalEntry(ctx, request.(PostTaskExternalEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PostTaskExternalEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PostTaskExternalEntryResponseObject); ok {
+		if err := validResponse.VisitPostTaskExternalEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// FinishTaskExecution operation middleware
+func (sh *strictHandler) FinishTaskExecution(w http.ResponseWriter, r *http.Request) {
+	var request FinishTaskExecutionRequestObject
+
+	var body FinishTaskExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.FinishTaskExecution(ctx, request.(FinishTaskExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "FinishTaskExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(FinishTaskExecutionResponseObject); ok {
+		if err := validResponse.VisitFinishTaskExecutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// HeartbeatTaskExecution operation middleware
+func (sh *strictHandler) HeartbeatTaskExecution(w http.ResponseWriter, r *http.Request) {
+	var request HeartbeatTaskExecutionRequestObject
+
+	var body HeartbeatTaskExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.HeartbeatTaskExecution(ctx, request.(HeartbeatTaskExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "HeartbeatTaskExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(HeartbeatTaskExecutionResponseObject); ok {
+		if err := validResponse.VisitHeartbeatTaskExecutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReadTaskExternalTask operation middleware
+func (sh *strictHandler) ReadTaskExternalTask(w http.ResponseWriter, r *http.Request, params ReadTaskExternalTaskParams) {
+	var request ReadTaskExternalTaskRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReadTaskExternalTask(ctx, request.(ReadTaskExternalTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReadTaskExternalTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReadTaskExternalTaskResponseObject); ok {
+		if err := validResponse.VisitReadTaskExternalTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTask operation middleware
+func (sh *strictHandler) GetTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey) {
+	var request GetTaskRequestObject
+
+	request.TaskKey = taskKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTask(ctx, request.(GetTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTaskResponseObject); ok {
+		if err := validResponse.VisitGetTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateTask operation middleware
+func (sh *strictHandler) UpdateTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params UpdateTaskParams) {
+	var request UpdateTaskRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body UpdateTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateTask(ctx, request.(UpdateTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateTaskResponseObject); ok {
+		if err := validResponse.VisitUpdateTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddTaskDependency operation middleware
+func (sh *strictHandler) AddTaskDependency(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params AddTaskDependencyParams) {
+	var request AddTaskDependencyRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body AddTaskDependencyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddTaskDependency(ctx, request.(AddTaskDependencyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddTaskDependency")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddTaskDependencyResponseObject); ok {
+		if err := validResponse.VisitAddTaskDependencyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveTaskDependency operation middleware
+func (sh *strictHandler) RemoveTaskDependency(w http.ResponseWriter, r *http.Request, taskKey TaskKey, depKey string, params RemoveTaskDependencyParams) {
+	var request RemoveTaskDependencyRequestObject
+
+	request.TaskKey = taskKey
+	request.DepKey = depKey
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveTaskDependency(ctx, request.(RemoveTaskDependencyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveTaskDependency")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveTaskDependencyResponseObject); ok {
+		if err := validResponse.VisitRemoveTaskDependencyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTaskEntry operation middleware
+func (sh *strictHandler) CreateTaskEntry(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params CreateTaskEntryParams) {
+	var request CreateTaskEntryRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body CreateTaskEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTaskEntry(ctx, request.(CreateTaskEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTaskEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTaskEntryResponseObject); ok {
+		if err := validResponse.VisitCreateTaskEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AttachTaskExecution operation middleware
+func (sh *strictHandler) AttachTaskExecution(w http.ResponseWriter, r *http.Request, taskKey TaskKey) {
+	var request AttachTaskExecutionRequestObject
+
+	request.TaskKey = taskKey
+
+	var body AttachTaskExecutionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AttachTaskExecution(ctx, request.(AttachTaskExecutionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AttachTaskExecution")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AttachTaskExecutionResponseObject); ok {
+		if err := validResponse.VisitAttachTaskExecutionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReviewTask operation middleware
+func (sh *strictHandler) ReviewTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey) {
+	var request ReviewTaskRequestObject
+
+	request.TaskKey = taskKey
+
+	var body ReviewTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReviewTask(ctx, request.(ReviewTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReviewTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReviewTaskResponseObject); ok {
+		if err := validResponse.VisitReviewTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SplitTask operation middleware
+func (sh *strictHandler) SplitTask(w http.ResponseWriter, r *http.Request, taskKey TaskKey, params SplitTaskParams) {
+	var request SplitTaskRequestObject
+
+	request.TaskKey = taskKey
+	request.Params = params
+
+	var body SplitTaskJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SplitTask(ctx, request.(SplitTaskRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SplitTask")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SplitTaskResponseObject); ok {
+		if err := validResponse.VisitSplitTaskResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SetTelegramManager operation middleware
 func (sh *strictHandler) SetTelegramManager(w http.ResponseWriter, r *http.Request) {
 	var request SetTelegramManagerRequestObject
@@ -19804,30 +19012,6 @@ func (sh *strictHandler) SetTelegramManager(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetTelegramManagerResponseObject); ok {
 		if err := validResponse.VisitSetTelegramManagerResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetWork operation middleware
-func (sh *strictHandler) GetWork(w http.ResponseWriter, r *http.Request) {
-	var request GetWorkRequestObject
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.GetWork(ctx, request.(GetWorkRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetWork")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(GetWorkResponseObject); ok {
-		if err := validResponse.VisitGetWorkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddBoardDependencyData, AddBoardDependencyErrors, AddBoardDependencyResponses, AppendWorkTaskNoteData, AppendWorkTaskNoteErrors, AppendWorkTaskNoteResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, AttachBoardExecutionData, AttachBoardExecutionErrors, AttachBoardExecutionResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelChatMonitorData, CancelChatMonitorErrors, CancelChatMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateBoardEntryData, CreateBoardEntryErrors, CreateBoardEntryResponses, CreateBoardTaskData, CreateBoardTaskErrors, CreateBoardTaskResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateEnvironmentData, CreateEnvironmentErrors, CreateEnvironmentResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, CreateWorkTaskData, CreateWorkTaskErrors, CreateWorkTaskResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteEnvironmentData, DeleteEnvironmentErrors, DeleteEnvironmentResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, FinishBoardExecutionData, FinishBoardExecutionErrors, FinishBoardExecutionResponses, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyErrors, ForgetEnvironmentHostKeyResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetBoardTaskData, GetBoardTaskErrors, GetBoardTaskResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetTurnChatData, GetTurnChatErrors, GetTurnChatResponses, GetUploadData, GetUploadErrors, GetUploadResponses, GetWorkData, GetWorkErrors, GetWorkResponses, GetWorkTaskData, GetWorkTaskErrors, GetWorkTaskResponses, HeartbeatBoardExecutionData, HeartbeatBoardExecutionErrors, HeartbeatBoardExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentEnvironmentsData, ListAgentEnvironmentsErrors, ListAgentEnvironmentsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListBoardExecutionsData, ListBoardExecutionsErrors, ListBoardExecutionsResponses, ListBoardTasksData, ListBoardTasksErrors, ListBoardTasksResponses, ListChatMonitorsData, ListChatMonitorsErrors, ListChatMonitorsResponses, ListChatOutboxData, ListChatOutboxErrors, ListChatOutboxResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListEnvironmentsData, ListEnvironmentsErrors, ListEnvironmentsResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListPluginsData, ListPluginsErrors, ListPluginsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListVaultData, ListVaultErrors, ListVaultResponses, ListWorkTasksData, ListWorkTasksErrors, ListWorkTasksResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostBoardExternalEntryData, PostBoardExternalEntryErrors, PostBoardExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeEnvironmentData, ProbeEnvironmentErrors, ProbeEnvironmentResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadBoardExternalTaskData, ReadBoardExternalTaskErrors, ReadBoardExternalTaskResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RemoveBoardDependencyData, RemoveBoardDependencyErrors, RemoveBoardDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentEnvironmentData, ResetAgentEnvironmentErrors, ResetAgentEnvironmentResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, ResumeBoardExecutionData, ResumeBoardExecutionErrors, ResumeBoardExecutionResponses, ReviewBoardTaskData, ReviewBoardTaskErrors, ReviewBoardTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatEnvironmentData, SetChatEnvironmentErrors, SetChatEnvironmentResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPluginData, SetPluginErrors, SetPluginResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SetWorkTaskLifecycleData, SetWorkTaskLifecycleErrors, SetWorkTaskLifecycleResponses, SplitBoardTaskData, SplitBoardTaskErrors, SplitBoardTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, TestEnvironmentData, TestEnvironmentErrors, TestEnvironmentResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateBoardTaskData, UpdateBoardTaskErrors, UpdateBoardTaskResponses, UpdateEnvironmentData, UpdateEnvironmentErrors, UpdateEnvironmentResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchBoardData, WatchBoardErrors, WatchBoardResponse, WatchBoardResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
+import type { AbortChatData, AbortChatErrors, AbortChatResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddTaskDependencyData, AddTaskDependencyErrors, AddTaskDependencyResponses, ArchiveChatData, ArchiveChatErrors, ArchiveChatResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, AttachTaskExecutionData, AttachTaskExecutionErrors, AttachTaskExecutionResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelChatMonitorData, CancelChatMonitorErrors, CancelChatMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactChatData, CompactChatErrors, CompactChatResponses, ContinueChatData, ContinueChatErrors, ContinueChatResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateChatData, CreateChatErrors, CreateChatResponses, CreateEnvironmentData, CreateEnvironmentErrors, CreateEnvironmentResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTaskData, CreateTaskEntryData, CreateTaskEntryErrors, CreateTaskEntryResponses, CreateTaskErrors, CreateTaskResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteEnvironmentData, DeleteEnvironmentErrors, DeleteEnvironmentResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, DismissInboxItemData, DismissInboxItemErrors, DismissInboxItemResponses, FinishTaskExecutionData, FinishTaskExecutionErrors, FinishTaskExecutionResponses, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyErrors, ForgetEnvironmentHostKeyResponses, ForkChatData, ForkChatErrors, ForkChatResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetChatData, GetChatErrors, GetChatHistoryData, GetChatHistoryErrors, GetChatHistoryResponses, GetChatItemData, GetChatItemErrors, GetChatItemResponses, GetChatResponses, GetExtensionsData, GetExtensionsErrors, GetExtensionsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetInboxSummaryData, GetInboxSummaryErrors, GetInboxSummaryResponses, GetMainChatData, GetMainChatErrors, GetMainChatResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetUploadData, GetUploadErrors, GetUploadResponses, HeartbeatTaskExecutionData, HeartbeatTaskExecutionErrors, HeartbeatTaskExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentEnvironmentsData, ListAgentEnvironmentsErrors, ListAgentEnvironmentsResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListChatMonitorsData, ListChatMonitorsErrors, ListChatMonitorsResponses, ListChatOutboxData, ListChatOutboxErrors, ListChatOutboxResponses, ListChatsData, ListChatsErrors, ListChatsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListEnvironmentsData, ListEnvironmentsErrors, ListEnvironmentsResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListInboxData, ListInboxErrors, ListInboxResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListPluginsData, ListPluginsErrors, ListPluginsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListTaskExecutionsData, ListTaskExecutionsErrors, ListTaskExecutionsResponses, ListTasksData, ListTasksErrors, ListTasksResponses, ListVaultData, ListVaultErrors, ListVaultResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostTaskExternalEntryData, PostTaskExternalEntryErrors, PostTaskExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeEnvironmentData, ProbeEnvironmentErrors, ProbeEnvironmentResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadInboxItemData, ReadInboxItemErrors, ReadInboxItemResponses, ReadTaskExternalTaskData, ReadTaskExternalTaskErrors, ReadTaskExternalTaskResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadExtensionsData, ReloadExtensionsErrors, ReloadExtensionsResponses, RemoveTaskDependencyData, RemoveTaskDependencyErrors, RemoveTaskDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentEnvironmentData, ResetAgentEnvironmentErrors, ResetAgentEnvironmentResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, ResumeTaskExecutionData, ResumeTaskExecutionErrors, ResumeTaskExecutionResponses, ReviewTaskData, ReviewTaskErrors, ReviewTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetChatEnvironmentData, SetChatEnvironmentErrors, SetChatEnvironmentResponses, SetChatProjectData, SetChatProjectErrors, SetChatProjectResponses, SetChatSettingsData, SetChatSettingsErrors, SetChatSettingsResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPluginData, SetPluginErrors, SetPluginResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SplitTaskData, SplitTaskErrors, SplitTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, StreamTaskEventsData, StreamTaskEventsErrors, StreamTaskEventsResponse, StreamTaskEventsResponses, TestEnvironmentData, TestEnvironmentErrors, TestEnvironmentResponses, UnarchiveChatData, UnarchiveChatErrors, UnarchiveChatResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateEnvironmentData, UpdateEnvironmentErrors, UpdateEnvironmentResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpdateTaskData, UpdateTaskErrors, UpdateTaskResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchChatData, WatchChatErrors, WatchChatResponse, WatchChatResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -229,7 +229,7 @@ export const saveGitHubWebhook = <ThrowOnError extends boolean = false>(options:
     }
 });
 
-export const listBoardTasks = <ThrowOnError extends boolean = false>(options?: Options<ListBoardTasksData, ThrowOnError>): RequestResult<ListBoardTasksResponses, ListBoardTasksErrors, ThrowOnError> => (options?.client ?? client).get<ListBoardTasksResponses, ListBoardTasksErrors, ThrowOnError>({
+export const listTasks = <ThrowOnError extends boolean = false>(options?: Options<ListTasksData, ThrowOnError>): RequestResult<ListTasksResponses, ListTasksErrors, ThrowOnError> => (options?.client ?? client).get<ListTasksResponses, ListTasksErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -239,11 +239,11 @@ export const listBoardTasks = <ThrowOnError extends boolean = false>(options?: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks',
+    url: '/api/tasks',
     ...options
 });
 
-export const createBoardTask = <ThrowOnError extends boolean = false>(options: Options<CreateBoardTaskData, ThrowOnError>): RequestResult<CreateBoardTaskResponses, CreateBoardTaskErrors, ThrowOnError> => (options.client ?? client).post<CreateBoardTaskResponses, CreateBoardTaskErrors, ThrowOnError>({
+export const createTask = <ThrowOnError extends boolean = false>(options: Options<CreateTaskData, ThrowOnError>): RequestResult<CreateTaskResponses, CreateTaskErrors, ThrowOnError> => (options.client ?? client).post<CreateTaskResponses, CreateTaskErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -253,7 +253,7 @@ export const createBoardTask = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks',
+    url: '/api/tasks',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -261,7 +261,7 @@ export const createBoardTask = <ThrowOnError extends boolean = false>(options: O
     }
 });
 
-export const getBoardTask = <ThrowOnError extends boolean = false>(options: Options<GetBoardTaskData, ThrowOnError>): RequestResult<GetBoardTaskResponses, GetBoardTaskErrors, ThrowOnError> => (options.client ?? client).get<GetBoardTaskResponses, GetBoardTaskErrors, ThrowOnError>({
+export const getTask = <ThrowOnError extends boolean = false>(options: Options<GetTaskData, ThrowOnError>): RequestResult<GetTaskResponses, GetTaskErrors, ThrowOnError> => (options.client ?? client).get<GetTaskResponses, GetTaskErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -271,11 +271,11 @@ export const getBoardTask = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}',
+    url: '/api/tasks/{taskKey}',
     ...options
 });
 
-export const updateBoardTask = <ThrowOnError extends boolean = false>(options: Options<UpdateBoardTaskData, ThrowOnError>): RequestResult<UpdateBoardTaskResponses, UpdateBoardTaskErrors, ThrowOnError> => (options.client ?? client).patch<UpdateBoardTaskResponses, UpdateBoardTaskErrors, ThrowOnError>({
+export const updateTask = <ThrowOnError extends boolean = false>(options: Options<UpdateTaskData, ThrowOnError>): RequestResult<UpdateTaskResponses, UpdateTaskErrors, ThrowOnError> => (options.client ?? client).patch<UpdateTaskResponses, UpdateTaskErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -285,7 +285,7 @@ export const updateBoardTask = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}',
+    url: '/api/tasks/{taskKey}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -293,7 +293,7 @@ export const updateBoardTask = <ThrowOnError extends boolean = false>(options: O
     }
 });
 
-export const splitBoardTask = <ThrowOnError extends boolean = false>(options: Options<SplitBoardTaskData, ThrowOnError>): RequestResult<SplitBoardTaskResponses, SplitBoardTaskErrors, ThrowOnError> => (options.client ?? client).post<SplitBoardTaskResponses, SplitBoardTaskErrors, ThrowOnError>({
+export const splitTask = <ThrowOnError extends boolean = false>(options: Options<SplitTaskData, ThrowOnError>): RequestResult<SplitTaskResponses, SplitTaskErrors, ThrowOnError> => (options.client ?? client).post<SplitTaskResponses, SplitTaskErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -303,7 +303,7 @@ export const splitBoardTask = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}/split',
+    url: '/api/tasks/{taskKey}/split',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -311,7 +311,7 @@ export const splitBoardTask = <ThrowOnError extends boolean = false>(options: Op
     }
 });
 
-export const addBoardDependency = <ThrowOnError extends boolean = false>(options: Options<AddBoardDependencyData, ThrowOnError>): RequestResult<AddBoardDependencyResponses, AddBoardDependencyErrors, ThrowOnError> => (options.client ?? client).post<AddBoardDependencyResponses, AddBoardDependencyErrors, ThrowOnError>({
+export const addTaskDependency = <ThrowOnError extends boolean = false>(options: Options<AddTaskDependencyData, ThrowOnError>): RequestResult<AddTaskDependencyResponses, AddTaskDependencyErrors, ThrowOnError> => (options.client ?? client).post<AddTaskDependencyResponses, AddTaskDependencyErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -321,7 +321,7 @@ export const addBoardDependency = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}/dependencies',
+    url: '/api/tasks/{taskKey}/dependencies',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -329,7 +329,7 @@ export const addBoardDependency = <ThrowOnError extends boolean = false>(options
     }
 });
 
-export const removeBoardDependency = <ThrowOnError extends boolean = false>(options: Options<RemoveBoardDependencyData, ThrowOnError>): RequestResult<RemoveBoardDependencyResponses, RemoveBoardDependencyErrors, ThrowOnError> => (options.client ?? client).delete<RemoveBoardDependencyResponses, RemoveBoardDependencyErrors, ThrowOnError>({
+export const removeTaskDependency = <ThrowOnError extends boolean = false>(options: Options<RemoveTaskDependencyData, ThrowOnError>): RequestResult<RemoveTaskDependencyResponses, RemoveTaskDependencyErrors, ThrowOnError> => (options.client ?? client).delete<RemoveTaskDependencyResponses, RemoveTaskDependencyErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -339,11 +339,11 @@ export const removeBoardDependency = <ThrowOnError extends boolean = false>(opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}/dependencies/{depKey}',
+    url: '/api/tasks/{taskKey}/dependencies/{depKey}',
     ...options
 });
 
-export const createBoardEntry = <ThrowOnError extends boolean = false>(options: Options<CreateBoardEntryData, ThrowOnError>): RequestResult<CreateBoardEntryResponses, CreateBoardEntryErrors, ThrowOnError> => (options.client ?? client).post<CreateBoardEntryResponses, CreateBoardEntryErrors, ThrowOnError>({
+export const createTaskEntry = <ThrowOnError extends boolean = false>(options: Options<CreateTaskEntryData, ThrowOnError>): RequestResult<CreateTaskEntryResponses, CreateTaskEntryErrors, ThrowOnError> => (options.client ?? client).post<CreateTaskEntryResponses, CreateTaskEntryErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -353,7 +353,7 @@ export const createBoardEntry = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}/entries',
+    url: '/api/tasks/{taskKey}/entries',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -361,7 +361,7 @@ export const createBoardEntry = <ThrowOnError extends boolean = false>(options: 
     }
 });
 
-export const reviewBoardTask = <ThrowOnError extends boolean = false>(options: Options<ReviewBoardTaskData, ThrowOnError>): RequestResult<ReviewBoardTaskResponses, ReviewBoardTaskErrors, ThrowOnError> => (options.client ?? client).post<ReviewBoardTaskResponses, ReviewBoardTaskErrors, ThrowOnError>({
+export const reviewTask = <ThrowOnError extends boolean = false>(options: Options<ReviewTaskData, ThrowOnError>): RequestResult<ReviewTaskResponses, ReviewTaskErrors, ThrowOnError> => (options.client ?? client).post<ReviewTaskResponses, ReviewTaskErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -371,7 +371,7 @@ export const reviewBoardTask = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}/review',
+    url: '/api/tasks/{taskKey}/review',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -382,7 +382,7 @@ export const reviewBoardTask = <ThrowOnError extends boolean = false>(options: O
 /**
  * Attach an external agent. The harness field is required.
  */
-export const attachBoardExecution = <ThrowOnError extends boolean = false>(options: Options<AttachBoardExecutionData, ThrowOnError>): RequestResult<AttachBoardExecutionResponses, AttachBoardExecutionErrors, ThrowOnError> => (options.client ?? client).post<AttachBoardExecutionResponses, AttachBoardExecutionErrors, ThrowOnError>({
+export const attachTaskExecution = <ThrowOnError extends boolean = false>(options: Options<AttachTaskExecutionData, ThrowOnError>): RequestResult<AttachTaskExecutionResponses, AttachTaskExecutionErrors, ThrowOnError> => (options.client ?? client).post<AttachTaskExecutionResponses, AttachTaskExecutionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -392,7 +392,7 @@ export const attachBoardExecution = <ThrowOnError extends boolean = false>(optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/tasks/{taskKey}/executions/attach',
+    url: '/api/tasks/{taskKey}/executions/attach',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -403,7 +403,7 @@ export const attachBoardExecution = <ThrowOnError extends boolean = false>(optio
 /**
  * Replace the claim. Supplied binding fields must match the current execution.
  */
-export const resumeBoardExecution = <ThrowOnError extends boolean = false>(options: Options<ResumeBoardExecutionData, ThrowOnError>): RequestResult<ResumeBoardExecutionResponses, ResumeBoardExecutionErrors, ThrowOnError> => (options.client ?? client).post<ResumeBoardExecutionResponses, ResumeBoardExecutionErrors, ThrowOnError>({
+export const resumeTaskExecution = <ThrowOnError extends boolean = false>(options: Options<ResumeTaskExecutionData, ThrowOnError>): RequestResult<ResumeTaskExecutionResponses, ResumeTaskExecutionErrors, ThrowOnError> => (options.client ?? client).post<ResumeTaskExecutionResponses, ResumeTaskExecutionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -413,7 +413,7 @@ export const resumeBoardExecution = <ThrowOnError extends boolean = false>(optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/executions/{executionId}/resume',
+    url: '/api/tasks/executions/{executionId}/resume',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -421,7 +421,7 @@ export const resumeBoardExecution = <ThrowOnError extends boolean = false>(optio
     }
 });
 
-export const listBoardExecutions = <ThrowOnError extends boolean = false>(options?: Options<ListBoardExecutionsData, ThrowOnError>): RequestResult<ListBoardExecutionsResponses, ListBoardExecutionsErrors, ThrowOnError> => (options?.client ?? client).get<ListBoardExecutionsResponses, ListBoardExecutionsErrors, ThrowOnError>({
+export const listTaskExecutions = <ThrowOnError extends boolean = false>(options?: Options<ListTaskExecutionsData, ThrowOnError>): RequestResult<ListTaskExecutionsResponses, ListTaskExecutionsErrors, ThrowOnError> => (options?.client ?? client).get<ListTaskExecutionsResponses, ListTaskExecutionsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -431,27 +431,27 @@ export const listBoardExecutions = <ThrowOnError extends boolean = false>(option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/executions',
+    url: '/api/tasks/executions',
     ...options
 });
 
-export const readBoardExternalTask = <ThrowOnError extends boolean = false>(options?: Options<ReadBoardExternalTaskData, ThrowOnError>): RequestResult<ReadBoardExternalTaskResponses, ReadBoardExternalTaskErrors, ThrowOnError> => (options?.client ?? client).get<ReadBoardExternalTaskResponses, ReadBoardExternalTaskErrors, ThrowOnError>({
+export const readTaskExternalTask = <ThrowOnError extends boolean = false>(options?: Options<ReadTaskExternalTaskData, ThrowOnError>): RequestResult<ReadTaskExternalTaskResponses, ReadTaskExternalTaskErrors, ThrowOnError> => (options?.client ?? client).get<ReadTaskExternalTaskResponses, ReadTaskExternalTaskErrors, ThrowOnError>({
     security: [{
-            key: 'BoardToken',
+            key: 'TaskToken',
             scheme: 'bearer',
             type: 'http'
         }],
-    url: '/api/board/external/task',
+    url: '/api/tasks/external/task',
     ...options
 });
 
-export const postBoardExternalEntry = <ThrowOnError extends boolean = false>(options: Options<PostBoardExternalEntryData, ThrowOnError>): RequestResult<PostBoardExternalEntryResponses, PostBoardExternalEntryErrors, ThrowOnError> => (options.client ?? client).post<PostBoardExternalEntryResponses, PostBoardExternalEntryErrors, ThrowOnError>({
+export const postTaskExternalEntry = <ThrowOnError extends boolean = false>(options: Options<PostTaskExternalEntryData, ThrowOnError>): RequestResult<PostTaskExternalEntryResponses, PostTaskExternalEntryErrors, ThrowOnError> => (options.client ?? client).post<PostTaskExternalEntryResponses, PostTaskExternalEntryErrors, ThrowOnError>({
     security: [{
-            key: 'BoardToken',
+            key: 'TaskToken',
             scheme: 'bearer',
             type: 'http'
         }],
-    url: '/api/board/external/entries',
+    url: '/api/tasks/external/entries',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -459,13 +459,13 @@ export const postBoardExternalEntry = <ThrowOnError extends boolean = false>(opt
     }
 });
 
-export const heartbeatBoardExecution = <ThrowOnError extends boolean = false>(options: Options<HeartbeatBoardExecutionData, ThrowOnError>): RequestResult<HeartbeatBoardExecutionResponses, HeartbeatBoardExecutionErrors, ThrowOnError> => (options.client ?? client).post<HeartbeatBoardExecutionResponses, HeartbeatBoardExecutionErrors, ThrowOnError>({
+export const heartbeatTaskExecution = <ThrowOnError extends boolean = false>(options: Options<HeartbeatTaskExecutionData, ThrowOnError>): RequestResult<HeartbeatTaskExecutionResponses, HeartbeatTaskExecutionErrors, ThrowOnError> => (options.client ?? client).post<HeartbeatTaskExecutionResponses, HeartbeatTaskExecutionErrors, ThrowOnError>({
     security: [{
-            key: 'BoardToken',
+            key: 'TaskToken',
             scheme: 'bearer',
             type: 'http'
         }],
-    url: '/api/board/external/heartbeat',
+    url: '/api/tasks/external/heartbeat',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -473,13 +473,13 @@ export const heartbeatBoardExecution = <ThrowOnError extends boolean = false>(op
     }
 });
 
-export const finishBoardExecution = <ThrowOnError extends boolean = false>(options: Options<FinishBoardExecutionData, ThrowOnError>): RequestResult<FinishBoardExecutionResponses, FinishBoardExecutionErrors, ThrowOnError> => (options.client ?? client).post<FinishBoardExecutionResponses, FinishBoardExecutionErrors, ThrowOnError>({
+export const finishTaskExecution = <ThrowOnError extends boolean = false>(options: Options<FinishTaskExecutionData, ThrowOnError>): RequestResult<FinishTaskExecutionResponses, FinishTaskExecutionErrors, ThrowOnError> => (options.client ?? client).post<FinishTaskExecutionResponses, FinishTaskExecutionErrors, ThrowOnError>({
     security: [{
-            key: 'BoardToken',
+            key: 'TaskToken',
             scheme: 'bearer',
             type: 'http'
         }],
-    url: '/api/board/external/finish',
+    url: '/api/tasks/external/finish',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -488,10 +488,10 @@ export const finishBoardExecution = <ThrowOnError extends boolean = false>(optio
 });
 
 /**
- * Server-sent events. Each board_entry event has a global ledger ID and a BoardEvent JSON body. Last-Event-ID takes precedence over after. Without a cursor, the stream starts at the current head. A board_ready event marks the end of catch-up. A board_refresh event signals a change to a related projection without advancing the cursor. A comment comes every 15 s.
+ * Server-sent events. Each task_entry event has a global ledger ID and a TaskEvent JSON body. Last-Event-ID takes precedence over after. Without a cursor, the stream starts at the current head. A task_ready event marks the end of catch-up. A task_refresh event signals a change to a related projection without advancing the cursor. A comment comes every 15 s.
  *
  */
-export const watchBoard = <ThrowOnError extends boolean = false>(options?: Options<WatchBoardData, ThrowOnError, WatchBoardResponse>): Promise<ServerSentEventsResult<WatchBoardResponses>> => (options?.client ?? client).sse.get<WatchBoardResponses, WatchBoardErrors, ThrowOnError>({
+export const streamTaskEvents = <ThrowOnError extends boolean = false>(options?: Options<StreamTaskEventsData, ThrowOnError, StreamTaskEventsResponse>): Promise<ServerSentEventsResult<StreamTaskEventsResponses>> => (options?.client ?? client).sse.get<StreamTaskEventsResponses, StreamTaskEventsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -501,96 +501,14 @@ export const watchBoard = <ThrowOnError extends boolean = false>(options?: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/board/events',
+    url: '/api/tasks/events',
     ...options
-});
-
-export const listWorkTasks = <ThrowOnError extends boolean = false>(options?: Options<ListWorkTasksData, ThrowOnError>): RequestResult<ListWorkTasksResponses, ListWorkTasksErrors, ThrowOnError> => (options?.client ?? client).get<ListWorkTasksResponses, ListWorkTasksErrors, ThrowOnError>({
-    security: [{
-            key: 'bearer',
-            scheme: 'bearer',
-            type: 'http'
-        }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/inbox/tasks',
-    ...options
-});
-
-export const createWorkTask = <ThrowOnError extends boolean = false>(options: Options<CreateWorkTaskData, ThrowOnError>): RequestResult<CreateWorkTaskResponses, CreateWorkTaskErrors, ThrowOnError> => (options.client ?? client).post<CreateWorkTaskResponses, CreateWorkTaskErrors, ThrowOnError>({
-    security: [{
-            key: 'bearer',
-            scheme: 'bearer',
-            type: 'http'
-        }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/agents/{agentId}/inbox/tasks',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const getWorkTask = <ThrowOnError extends boolean = false>(options: Options<GetWorkTaskData, ThrowOnError>): RequestResult<GetWorkTaskResponses, GetWorkTaskErrors, ThrowOnError> => (options.client ?? client).get<GetWorkTaskResponses, GetWorkTaskErrors, ThrowOnError>({
-    security: [{
-            key: 'bearer',
-            scheme: 'bearer',
-            type: 'http'
-        }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}',
-    ...options
-});
-
-export const setWorkTaskLifecycle = <ThrowOnError extends boolean = false>(options: Options<SetWorkTaskLifecycleData, ThrowOnError>): RequestResult<SetWorkTaskLifecycleResponses, SetWorkTaskLifecycleErrors, ThrowOnError> => (options.client ?? client).patch<SetWorkTaskLifecycleResponses, SetWorkTaskLifecycleErrors, ThrowOnError>({
-    security: [{
-            key: 'bearer',
-            scheme: 'bearer',
-            type: 'http'
-        }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
-});
-
-export const appendWorkTaskNote = <ThrowOnError extends boolean = false>(options: Options<AppendWorkTaskNoteData, ThrowOnError>): RequestResult<AppendWorkTaskNoteResponses, AppendWorkTaskNoteErrors, ThrowOnError> => (options.client ?? client).post<AppendWorkTaskNoteResponses, AppendWorkTaskNoteErrors, ThrowOnError>({
-    security: [{
-            key: 'bearer',
-            scheme: 'bearer',
-            type: 'http'
-        }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}',
-    ...options,
-    headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-    }
 });
 
 /**
  * Sessions and automation activity across bots.
  */
-export const getWork = <ThrowOnError extends boolean = false>(options?: Options<GetWorkData, ThrowOnError>): RequestResult<GetWorkResponses, GetWorkErrors, ThrowOnError> => (options?.client ?? client).get<GetWorkResponses, GetWorkErrors, ThrowOnError>({
+export const getInboxSummary = <ThrowOnError extends boolean = false>(options?: Options<GetInboxSummaryData, ThrowOnError>): RequestResult<GetInboxSummaryResponses, GetInboxSummaryErrors, ThrowOnError> => (options?.client ?? client).get<GetInboxSummaryResponses, GetInboxSummaryErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -600,7 +518,7 @@ export const getWork = <ThrowOnError extends boolean = false>(options?: Options<
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/work',
+    url: '/api/inbox/summary',
     ...options
 });
 
@@ -1730,24 +1648,6 @@ export const resetAgentEnvironment = <ThrowOnError extends boolean = false>(opti
             type: 'apiKey'
         }],
     url: '/api/agents/{agentId}/environment/reset',
-    ...options
-});
-
-/**
- * Find the session that holds one input. A result in a parent session and an old `/tasks/<id>` link name a turn of a child session by its input ID. A task from before child sessions uses its task ID, which is the ID of its first input. Reads inputs of any session of this agent, and of a child session of this agent's sessions in another bot. That child names its bot in `agentId`. It returns 404 for any other input of another agent.
- *
- */
-export const getTurnChat = <ThrowOnError extends boolean = false>(options: Options<GetTurnChatData, ThrowOnError>): RequestResult<GetTurnChatResponses, GetTurnChatErrors, ThrowOnError> => (options.client ?? client).get<GetTurnChatResponses, GetTurnChatErrors, ThrowOnError>({
-    security: [{
-            key: 'bearer',
-            scheme: 'bearer',
-            type: 'http'
-        }, {
-            in: 'cookie',
-            name: 'dex_session',
-            type: 'apiKey'
-        }],
-    url: '/api/agents/{agentId}/turns/{turnId}',
     ...options
 });
 

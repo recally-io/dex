@@ -10,19 +10,19 @@ Source: [plugins.puml](../assets/src/plugins.puml).
 
 ## Boundary
 
-| Part                | Owns                                                                      |
-| ------------------- | ------------------------------------------------------------------------- |
-| `internal/plugin`   | The seam: `Plugin`, `Factory`, `Deps`, `Job`, `ValidSignature`, `Migrate` |
-| `internal/app`      | Builds the plugins, reads `enabled_plugins`, and mounts the enabled ones  |
-| `plugins/<name>`    | One source: hooks, API, migrations, queries, jobs, tools, event parsing   |
-| `internal/worktask` | The event store, routing, holds, waits, links, and Task alerts            |
-| `cmd/dex`           | The list of plugins in this build (`app.Config.Plugins`)                  |
+| Part              | Owns                                                                      |
+| ----------------- | ------------------------------------------------------------------------- |
+| `internal/plugin` | The seam: `Plugin`, `Factory`, `Deps`, `Job`, `ValidSignature`, `Migrate` |
+| `internal/app`    | Builds the plugins, reads `enabled_plugins`, and mounts the enabled ones  |
+| `plugins/<name>`  | One source: hooks, API, migrations, queries, jobs, tools, event parsing   |
+| `internal/task`   | The event store, routing, holds, waits, links, and Task alerts            |
+| `cmd/dex`         | The list of plugins in this build (`app.Config.Plugins`)                  |
 
 The core in `internal/` never imports a package in `plugins/`. A plugin can
 import the core, but not another plugin. Shared code that two plugins need goes
 into `internal/plugin`. A plugin gets only `plugin.Deps`: the control database
 and the Task event store. It writes Task state only through
-`internal/worktask`, so every source shares one set of routing, hold, and
+`internal/task`, so every source shares one set of routing, hold, and
 replay rules. A plugin sets the namespace of its events on the server, for
 example `github.com/repository/<id>` or `webhook/<sourceId>`. A delivery cannot
 choose the namespace, so one source cannot reach the objects of another.
@@ -40,7 +40,7 @@ nothing.
 - `Jobs`: scheduler jobs, named `<name>/<job>`. A job reads durable state, so
   a missed run is safe.
 - `Tools`: Task link tools. The plugin parses the arguments into a
-  `worktask.Link`. The core adds the Task `id`, checks the caller, and writes
+  `task.Link`. The core adds the Task `id`, checks the caller, and writes
   the link and an optional wait with the tool replay record. Each tool adds one
   paragraph to the Task rules.
 - `Migrations`: the `migrations/*.sql` files of the plugin. A plugin without

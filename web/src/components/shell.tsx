@@ -1,5 +1,5 @@
 import { AgentContext } from "../lib/agent-scope";
-import { attentionItems, botStatus, workOptions } from "../lib/work";
+import { attentionItems, botStatus, inboxSummaryOptions } from "../lib/inbox-summary";
 import { heldEventsOptions } from "../lib/inbox";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, useRouterState } from "@tanstack/react-router";
@@ -45,9 +45,9 @@ function useSidebarOpen() {
 
 export function Shell() {
   const agents = useQuery({ ...listAgentsOptions(), refetchInterval: 3000 });
-  const work = useQuery(workOptions());
+  const summary = useQuery(inboxSummaryOptions());
   const held = useQuery(heldEventsOptions());
-  const { questions, results, setup, taskReviews } = attentionItems(work.data);
+  const { questions, results, setup, taskReviews } = attentionItems(summary.data);
 
   const attentionCount =
     questions.length + results.length + setup.length + taskReviews.length + (held.data?.events.length ?? 0);
@@ -55,7 +55,10 @@ export function Shell() {
   const attention = attentionCount > 0;
 
   const statuses = new Map(
-    (agents.data?.agents ?? []).map((agent) => [agent.id!, botStatus(agent.id!, work.data, agent.activity)]),
+    (agents.data?.agents ?? []).map((agent) => [
+      agent.id!,
+      botStatus(agent.id!, summary.data, agent.activity),
+    ]),
   );
 
   const [menu, setMenu] = useState(false);

@@ -13,7 +13,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/github/store"
 )
 
@@ -28,7 +28,7 @@ func TestUserPullHoldsReviewsOnlyWithTheWebhookRule(t *testing.T) {
 		t.Fatal(err)
 	}
 	gh := store.New(conn)
-	tasks := worktask.New(conn, nil)
+	tasks := tasksvc.New(conn, nil)
 	if err := gh.SaveGitHubReviewPull(ctx, store.SaveGitHubReviewPullParams{RepositoryID: 10, PullNumber: 3, Token: "test-only", ConfigurationID: "config"}); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestUserPullHoldsReviewsOnlyWithTheWebhookRule(t *testing.T) {
 	t.Cleanup(srv.Close)
 	p := NewPuller(gh, tasks)
 	p.origin = srv.URL
-	pull := func() []sqlc.ListHeldWorkSourceEventsRow {
+	pull := func() []sqlc.ListHeldTaskSourceEventsRow {
 		t.Helper()
 		rows, err := gh.ListGitHubReviewPulls(ctx)
 		if err != nil || len(rows) != 1 {

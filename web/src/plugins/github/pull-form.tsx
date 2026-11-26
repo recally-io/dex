@@ -6,7 +6,7 @@ import { Failure } from "../../components/feedback";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { invalidateBoard } from "../../lib/board-stream";
+import { invalidateTasks } from "../../lib/task-stream";
 
 function positiveId(value: string) {
   return /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value));
@@ -26,7 +26,7 @@ export function GitHubPullForm({ path }: { path: BindTaskGitHubPullData["path"] 
       setRepository("");
       setNumber("");
       setCommit("");
-      await invalidateBoard(client);
+      await invalidateTasks(client);
     },
   });
 

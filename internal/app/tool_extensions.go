@@ -26,7 +26,7 @@ func inputExtensions(input engine.Input) engine.ExtensionEdit {
 			Remove: []string{"sessions", "work-loop", "front-desk", "routines", "outbox", "work-tasks"},
 			Add:    []string{"child-rules", "child-outbox"},
 		}
-		if input.ChildHasWorkTask {
+		if input.ChildHasTask {
 			edit.Add = append(edit.Add, "child-work-tasks")
 		} else {
 			edit.Remove = append(edit.Remove, "child-work-tasks")

@@ -45,33 +45,30 @@ See the [API contract](../api/openapi.yaml) for request and response schemas.
 it; a message sends only upload IDs.
 
 Bot links open Main. The bot header offers New session, Sessions, Automations,
-and Settings. Settings has General, Skills, Integrations, and Secrets. Old
-`/instructions`, `/channels`, and `/extensions` bot URLs still open the relevant
-settings page. The right Sessions sidebar starts closed. The global sidebar
+and Settings. Settings has General, Skills, Integrations, and Secrets.
+The right Sessions sidebar starts closed. The global sidebar
 links to Board (`/board`) for Tasks and Inbox (`/inbox`) for owner actions.
 Inbox reads active questions, unhandled failed or changed automation results,
-missing models, and Tasks awaiting Owner review from `/api/work`, and reads held events from the held events
+missing models, and Tasks awaiting Owner review from `/api/inbox/summary`, and reads held events from the held events
 endpoint. The Inbox link counts those items. One-way notifications stay in
-transcripts and channels. `/work` redirects to Board; `/needs-you` redirects to
-Inbox. Queued Task questions remain answerable from Task detail.
+transcripts and channels. Queued Task questions remain answerable from Task detail.
 A held event shows its type, reason, author, source link, and text. The owner
 chooses an open Task before Attach is enabled, because no API removes the object
 links of an attach. The owner can also dismiss the event.
-Board reads `/api/board/*`. It offers Kanban and List views, an inline
+Board reads `/api/tasks/*`. It offers Kanban and List views, an inline
 creation form, and Bot, In Review, Blocked, Source, and closed Task filters.
 The Bot filter uses `/board?bot=<id>`. Task detail opens at
-`/board/$taskKey` with a stable key such as `T-42`. Detail links to the parent, subtasks, and sibling dependencies. The Owner can create a subtask or change its dependencies there. Inbox review items link to the same detail route. The legacy
-`/a/{agentId}/inbox/{taskId}` URL redirects to that key.
+`/board/$taskKey` with a stable key such as `T-42`. Detail links to the parent, subtasks, and sibling dependencies. The Owner can create a subtask or change its dependencies there. Inbox review items link to the same detail route.
 
 Task detail lists external runs next to Sessions. It shows the registered
 Runner separately from the reported host and workspace. It also shows the
 harness, branch, lease state, and heartbeat age. `/settings/runners` lists
 active external Task runs by Runner. Both views read
-`/api/board/executions`. Active runs refresh every five seconds because
+`/api/tasks/executions`. Active runs refresh every five seconds because
 heartbeats do not add Timeline entries.
 
-`src/lib/board-stream.ts` uses EventSource to resume with `Last-Event-ID`.
-It invalidates Task list and detail queries on Board events. Board does not
+`src/lib/task-stream.ts` uses EventSource to resume with `Last-Event-ID`.
+It invalidates Task list and detail queries on Task events. Board does not
 poll. Task edits keep the revision from the start of the edit. A conflict
 prompts the Owner to load the latest values. Approval uses the current review
 sequence. The composer adds a note or sends to the Assignee Bot's Main.
@@ -98,12 +95,13 @@ uses its cwd. A run in a Sandbox, on an unavailable Runner, or with no recorded
 Runner stops before it creates a session.
 Each child session reads like a thread. The transcript shows one card at a
 `session_new` or `session_fork` call, one line at a `session_send` call of a
-parent, and one "replied · View session" line at each result mark.
+parent, and a result line. The result has a "View session" link when the saved
+result names a Session that the parent Bot can read.
 A `session_report` call shows as a "Reported to parent" step. A click opens the
 child as a read-only panel on the right, which covers the transcript on a narrow
 screen. Task conversations are read-only while queued or running and writable
 after they end.
-The bot header opens the Sessions page and creates new sessions. Legacy Sessions and transcript URLs remain readable.
+The bot header opens the Sessions page and creates new sessions.
 Main shows Stop only for its own native run target on a connected stream. A
 retry sends the original target. A child can be active while Main sends an
 ordinary input. Non-Main Stop keeps its legacy behavior.
@@ -133,8 +131,7 @@ A bot's Secrets page edits its own Vault entries. The vault API returns metadata
 only. The editor clears the value after submit and does not store it in the browser.
 Skills and Integrations both offer Reload. In Integrations, an OAuth MCP row starts authorization with an
 authenticated POST. The browser follows the returned URL in the same tab. The
-server callback still returns to the old `/extensions` URL, which redirects
-to Integrations. The browser does not receive provider tokens.
+callback returns to `/a/{agentId}/integrations`. The browser does not receive provider tokens.
 
 The Telegram page under Integrations uses the existing token form. It also offers
 managed creation when the API confirms Bot Management Mode for the saved manager.
@@ -142,7 +139,7 @@ The managed dialog polls its setup state. It shows a private owner verification
 link first and the Telegram bot creation link second. Cancel calls the API.
 Neither the managed dialog nor the Channels response receives the created token.
 
-The old `/settings/<section>` addresses redirect to the new pages.
+`/settings` opens `/settings/general`.
 
 ## Components and theme
 

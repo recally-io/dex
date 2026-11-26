@@ -1,24 +1,16 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 
-test("keeps old global settings links and separates Runners, Secrets, and Sources", async ({
+test("opens the Settings index and separates Runners, Secrets, and Sources", async ({
   app,
   browser,
   screen,
 }) => {
-  async function checkRedirect(oldPath: string, path: string, title: string) {
-    await app.open(oldPath);
-    await expect(screen.getByRole("heading", title, { exact: true })).toBeVisible();
-    expect(new URL(await browser.url()).pathname).toBe(path);
-  }
+  await app.open("/settings");
+  await expect(screen.getByRole("heading", "General", { exact: true })).toBeVisible();
+  expect(new URL(await browser.url()).pathname).toBe("/settings/general");
 
-  await checkRedirect("/settings", "/settings/general", "General");
-  await checkRedirect("/providers", "/settings/providers", "Providers");
-  await checkRedirect("/archived", "/settings/archived", "Archived bots");
-  await checkRedirect("/about", "/settings/about", "About");
-  await checkRedirect("/settings/environment", "/settings/runners", "Runners");
-  await checkRedirect("/environment", "/settings/runners", "Runners");
-  await checkRedirect("/secrets", "/settings/secrets", "Secrets");
+  await app.open("/settings/secrets");
 
   await expect(screen.getByRole("heading", "Secret vault", { exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", "1Password", { exact: true })).toBeVisible();
@@ -34,12 +26,8 @@ test("keeps old global settings links and separates Runners, Secrets, and Source
   await expect(screen.getByRole("heading", "Sources", { exact: true })).toHaveCount(0);
 });
 
-test("moves bot instructions, skills, channels, and secrets into four settings pages", async ({
-  app,
-  browser,
-  screen,
-}) => {
-  await app.open("/a/default/instructions");
+test("opens the four Bot settings pages", async ({ app, browser, screen }) => {
+  await app.open("/a/default/agent#instructions");
   await expect(screen.getByRole("textbox", "Bot instructions")).toBeVisible();
   const general = new URL(await browser.url());
 
@@ -49,7 +37,7 @@ test("moves bot instructions, skills, channels, and secrets into four settings p
   await expect(screen.getByRole("heading", "Available skills")).toBeVisible();
   await expect(screen.getByRole("button", "Reload", { exact: true })).toBeVisible();
   await expect(screen.getByRole("heading", "MCP servers")).toHaveCount(0);
-  await app.open("/a/default/channels");
+  await app.open("/a/default/integrations");
   await expect(screen.getByRole("heading", "Integrations")).toBeVisible();
   expect(new URL(await browser.url()).pathname).toBe("/a/default/integrations");
   await expect(screen.getByRole("link", "Telegram", { exact: true })).toBeVisible();

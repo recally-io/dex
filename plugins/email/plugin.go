@@ -15,7 +15,7 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/email/api"
 	"github.com/recally-io/dex/plugins/email/store"
 )
@@ -28,7 +28,7 @@ var (
 
 // New makes the email plugin: signed sources that post raw messages of one address.
 func New(deps plugin.Deps) plugin.Plugin {
-	s := &service{q: store.New(deps.DB), tasks: deps.WorkTasks}
+	s := &service{q: store.New(deps.DB), tasks: deps.Tasks}
 	hooks := http.NewServeMux()
 	hooks.HandleFunc("POST /hooks/email/{sourceId}", s.receive)
 	routes := http.NewServeMux()
@@ -58,7 +58,7 @@ func New(deps plugin.Deps) plugin.Plugin {
 
 type service struct {
 	q     *store.Queries
-	tasks *worktask.Service
+	tasks *tasksvc.Service
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
@@ -100,7 +100,7 @@ func (s *service) receive(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, ErrSignature):
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
-	case errors.Is(err, ErrPayload), errors.Is(err, worktask.ErrInvalid):
+	case errors.Is(err, ErrPayload), errors.Is(err, tasksvc.ErrInvalid):
 		http.Error(w, "invalid delivery", http.StatusBadRequest)
 	default:
 		slog.Error("store email delivery", "source", id, "err", err)

@@ -1696,7 +1696,7 @@ type ListPendingSubmissionsRow struct {
 	ChannelKey     string        `json:"channel_key"`
 }
 
-// SQLite assigns rowids under the writer lock. Keep receipt order, with Board wakes last.
+// SQLite assigns rowids under the writer lock. Keep receipt order, with Task wakes last.
 func (q *Queries) ListPendingSubmissions(ctx context.Context, conversationID int64) ([]ListPendingSubmissionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingSubmissions, conversationID)
 	if err != nil {

@@ -5,17 +5,17 @@ import (
 	"encoding/json/v2"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 func (h *handler) ListHeldEvents(ctx context.Context, _ api.ListHeldEventsRequestObject) (api.ListHeldEventsResponseObject, error) {
-	rows, err := h.WorkTasks.ListHeld(ctx)
+	rows, err := h.Tasks.ListHeld(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]api.HeldEvent, 0, len(rows))
 	for _, row := range rows {
-		var objects []worktask.Object
+		var objects []tasksvc.Object
 		if err := json.Unmarshal([]byte(row.Objects), &objects); err != nil {
 			return nil, err
 		}
@@ -36,14 +36,14 @@ func (h *handler) ListHeldEvents(ctx context.Context, _ api.ListHeldEventsReques
 }
 
 func (h *handler) AttachHeldEvent(ctx context.Context, req api.AttachHeldEventRequestObject) (api.AttachHeldEventResponseObject, error) {
-	if err := h.WorkTasks.AttachHeld(ctx, req.EventId, req.Body.AgentId, req.Body.TaskId); err != nil {
-		return nil, workTaskError(err)
+	if err := h.Tasks.AttachHeld(ctx, req.EventId, req.Body.AgentId, req.Body.TaskId); err != nil {
+		return nil, taskError(err)
 	}
 	return api.AttachHeldEvent204Response{}, nil
 }
 
 func (h *handler) DismissHeldEvent(ctx context.Context, req api.DismissHeldEventRequestObject) (api.DismissHeldEventResponseObject, error) {
-	if err := h.WorkTasks.DismissHeld(ctx, req.EventId); err != nil {
+	if err := h.Tasks.DismissHeld(ctx, req.EventId); err != nil {
 		return nil, err
 	}
 	return api.DismissHeldEvent204Response{}, nil

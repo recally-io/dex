@@ -27,14 +27,14 @@ type AgentId = string
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
-// BoardTaskKey defines model for BoardTaskKey.
-type BoardTaskKey = string
-
 // ChatId defines model for ChatId.
 type ChatId = int64
 
 // EnvironmentId defines model for EnvironmentId.
 type EnvironmentId = string
+
+// TaskKey defines model for TaskKey.
+type TaskKey = string
 
 // SaveEmailSourceJSONBody defines parameters for SaveEmailSource.
 type SaveEmailSourceJSONBody struct {

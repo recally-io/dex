@@ -12,10 +12,10 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
-func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
+func TestUserTaskWakeCoalescesWhileMainIsBusy(t *testing.T) {
 	r := startNative(t, "bash")
 	ctx := t.Context()
 	started, release := filepath.Join(r.dir, "hold.started"), filepath.Join(r.dir, "hold.release")
@@ -28,7 +28,7 @@ func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
 	waitFile(t, started)
 
 	// Five real source mutations share the same pending slot while Main runs.
-	tasks := worktask.New(r.conn, nil)
+	tasks := tasksvc.New(r.conn, nil)
 	var arrivals sync.WaitGroup
 	for i := range 5 {
 		arrivals.Go(func() {
@@ -42,31 +42,31 @@ func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var payload worktask.TaskWakePayload
+	var payload tasksvc.WakePayload
 	if err := json.Unmarshal([]byte(wake.Content), &payload); err != nil || len(payload.Items) != 5 || strings.Contains(wake.Content, "secret body") {
 		t.Fatalf("wake payload = %s, %v; want five pointers and no body text", wake.Content, err)
 	}
 	var cursor int64
-	if err := r.conn.QueryRowContext(ctx, `SELECT max(id) FROM work_task_entries`).Scan(&cursor); err != nil || cursor != payload.HighWaterEntryID {
+	if err := r.conn.QueryRowContext(ctx, `SELECT max(id) FROM task_entries`).Scan(&cursor); err != nil || cursor != payload.HighWaterEntryID {
 		t.Fatalf("ledger cursor = %d, %v; want %d", cursor, err, payload.HighWaterEntryID)
 	}
 	if err := r.service.reconcileSession(ctx, main, ""); err != nil {
 		t.Fatalf("wake attempt during active turn: %v; want nil without backoff", err)
 	}
 	if receipt(t, r, wake.ID).AdmittedAt.Valid {
-		t.Fatal("Board wake was admitted while Main was busy")
+		t.Fatal("Task wake was admitted while Main was busy")
 	}
 	r.service.coordinationMu.Lock()
 	retrying := r.service.delivery[main] != nil && r.service.delivery[main].timer != nil
 	r.service.coordinationMu.Unlock()
 	if retrying {
-		t.Fatal("busy Board wake armed a session retry backoff timer")
+		t.Fatal("busy Task wake armed a session retry backoff timer")
 	}
 	if _, err := r.service.Post(ctx, "bot", MainKey, "", "owner-next", "echo owner-first"); err != nil {
 		t.Fatal(err)
 	}
 	if !receipt(t, r, "owner-next").AdmittedAt.Valid || receipt(t, r, wake.ID).AdmittedAt.Valid {
-		t.Fatal("owner input did not pass the unadmitted Board wake")
+		t.Fatal("owner input did not pass the unadmitted Task wake")
 	}
 	if err := os.WriteFile(release, nil, 0o600); err != nil {
 		t.Fatal(err)
@@ -85,15 +85,15 @@ func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
 		return sub.AdmittedAt.Valid
 	})
 	if saved := awaitReceipt(t, r, wake.ID); !saved.AdmittedAt.Valid || saved.Content != wake.Content {
-		t.Fatalf("Board wake receipt: %+v", saved)
+		t.Fatalf("Task wake receipt: %+v", saved)
 	}
 	assertWakeCounts(t, r, 1)
 }
 
-func TestUserBoardWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
+func TestUserTaskWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()
-	tasks := worktask.New(r.conn, nil)
+	tasks := tasksvc.New(r.conn, nil)
 	create := func(i int) {
 		t.Helper()
 		if _, err := tasks.AcceptCreating(t.Context(), wakeTestEvent(i), "bot", fmt.Sprintf("Task %d", i)); err != nil {
@@ -121,7 +121,7 @@ func TestUserBoardWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
 		t.Fatal(err)
 	}
 	native, err := r.agents.Submit(ctx, ref, engine.Input{
-		RequestID: wake.ID, Content: wake.Content, Kind: "task_wake", Origin: "web", Main: true, TaskTitle: "Board wake", Options: options,
+		RequestID: wake.ID, Content: wake.Content, Kind: "task_wake", Origin: "web", Main: true, TaskTitle: "Task wake", Options: options,
 		RefreshContent: func(ctx context.Context) (string, error) { return r.service.snapshotTaskWake(ctx, wake.ID) },
 	})
 	if err != nil {
@@ -157,10 +157,10 @@ func TestUserBoardWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
 	assertWakeCounts(t, reopened, 2)
 }
 
-func wakeTestEvent(i int) worktask.Event {
+func wakeTestEvent(i int) tasksvc.Event {
 	key := fmt.Sprintf("issue-%d", i)
-	return worktask.Event{Namespace: "test", ReceiptKey: key, Type: "opened", Content: "secret body", OccurredAt: 1,
-		Objects: []worktask.Object{{Type: "issue", Key: key}}}
+	return tasksvc.Event{Namespace: "test", ReceiptKey: key, Type: "opened", Content: "secret body", OccurredAt: 1,
+		Objects: []tasksvc.Object{{Type: "issue", Key: key}}}
 }
 
 func assertWakeCounts(t *testing.T, r *nativeTest, want int) {

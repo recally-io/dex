@@ -19,7 +19,7 @@ import (
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
-func TestUserAuthorizesRemoteMCP(t *testing.T) {
+func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 	t.Parallel()
 	// Given a protected MCP server and an issuer with OIDC discovery and PKCE.
 	var origin string
@@ -171,6 +171,9 @@ func TestUserAuthorizesRemoteMCP(t *testing.T) {
 		defer resp.Body.Close()
 		if resp.StatusCode != want {
 			t.Fatalf("callback: %d, want %d", resp.StatusCode, want)
+		}
+		if want == http.StatusOK && resp.Request.URL.Path != "/a/default/integrations" {
+			t.Fatalf("callback went to %q, want the Bot Integrations page", resp.Request.URL.Path)
 		}
 	}
 	// When state or the browser binding is wrong, the flow cannot be used.

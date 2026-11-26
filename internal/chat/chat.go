@@ -22,7 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 // Chat is one conversation on one channel.
@@ -96,8 +96,8 @@ type Message struct {
 	// AnswersQuestion is the ID of the open question that this message answers. A message with
 	// this ID is an answer to that question; any other message leaves a question open.
 	AnswersQuestion string
-	// WorkTaskID selects the Task context for a Main message.
-	WorkTaskID string
+	// TaskID selects the Task context for a Main message.
+	TaskID string
 	// QuestionOnly prevents a stale button answer from becoming an ordinary message.
 	QuestionOnly bool
 	// ReplyTo is the remote ID of the channel message that this message quotes. A quote of a message
@@ -143,7 +143,7 @@ type Service struct {
 	monitorMu     sync.Mutex // serialize creation to enforce the shared active limit
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
-	workTasks     *worktask.Service
+	tasks         *tasksvc.Service
 
 	admissionMu    sync.RWMutex            // receipt changes, withdrawals and maintenance lease confirmation
 	delivery       map[int64]*deliveryGate // One entry per Session that used a gate since startup.
@@ -354,7 +354,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	}
 	complete, archived := false, ""
 	createdReceipt := false
-	var ledger *worktask.Ledger
+	var ledger *tasksvc.Ledger
 	chatID, err := func() (int64, error) {
 		s.admissionMu.RLock()
 		defer s.admissionMu.RUnlock()
@@ -416,7 +416,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		if err != nil {
 			return 0, err
 		}
-		taskID, err := workTaskForMessage(ctx, q, conv, m)
+		taskID, err := taskForMessage(ctx, q, conv, m)
 		if err != nil {
 			return 0, err
 		}
@@ -469,7 +469,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 				return 0, priorErr
 			}
 			if priorErr == nil {
-				priorTask, err := workTaskForInput(ctx, q, m.ID)
+				priorTask, err := taskForInput(ctx, q, m.ID)
 				if err != nil {
 					return 0, err
 				}
@@ -498,8 +498,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			}
 		}
 		if created > 0 && taskID != "" {
-			ledger = worktask.NewLedger(q)
-			if err := recordWorkTaskMessage(ctx, q, ledger, agentID, taskID, m, submittedAt); err != nil {
+			ledger = tasksvc.NewLedger(q)
+			if err := recordTaskMessage(ctx, q, ledger, agentID, taskID, m, submittedAt); err != nil {
 				return 0, err
 			}
 		}
@@ -543,7 +543,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		return conv.ID, nil
 	}()
 	if createdReceipt && ledger != nil {
-		s.workTasks.Notify(ledger)
+		s.tasks.Notify(ledger)
 	}
 	// Channel runtime changes run outside the receipt gate, so a busy bot cannot block the gate.
 	s.botArchived(archived)
@@ -822,11 +822,11 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
 	input.BeforeAdmission = func(ctx context.Context) error { return s.checkAdmission(ctx, p.ID) }
-	boardWake := p.Kind == "task_wake"
-	if boardWake {
+	taskWake := p.Kind == "task_wake"
+	if taskWake {
 		// Keep the mutable wake in control storage while Main is busy.
 		input.WhenBusy = "reject"
-		input.TaskTitle = "Board wake"
+		input.TaskTitle = "Task wake"
 		input.Content = current.Content
 		input.RefreshContent = func(ctx context.Context) (string, error) { return s.snapshotTaskWake(ctx, p.ID) }
 	}
@@ -843,29 +843,29 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 			return nil
 		}
 	}
-	// A Board wake carries only its own Task pointers, even when it links one Task.
+	// A Task wake carries only its own Task pointers, even when it links one Task.
 	var modelTaskTitle string
-	if input.Main && !boardWake {
-		taskID, err := workTaskForInput(ctx, s.q, p.ID)
+	if input.Main && !taskWake {
+		taskID, err := taskForInput(ctx, s.q, p.ID)
 		if err != nil {
 			return err
 		}
 		if taskID != "" {
-			task, err := s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID})
+			task, err := s.q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{AgentID: p.AgentID, ID: taskID})
 			if err != nil {
 				return err
 			}
-			modelTaskTitle, err = worktask.ModelTitle(ctx, s.q, task)
+			modelTaskTitle, err = tasksvc.ModelTitle(ctx, s.q, task)
 			if err != nil {
 				return err
 			}
-			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", modelTaskTitle, task.ID)
+			input.TaskContext = fmt.Sprintf("%q (ID %s)", modelTaskTitle, task.ID)
 		}
 	}
 	if input.Child {
 		input.Changed = func() { s.signal(conv.ID) }
 		if Writable(conv.ChannelKey) {
-			input.ChildHasWorkTask, err = s.q.HasBoundWorkTaskSession(ctx, sqlc.HasBoundWorkTaskSessionParams{
+			input.ChildHasTask, err = s.q.HasBoundTaskSession(ctx, sqlc.HasBoundTaskSessionParams{
 				ConversationID: sql.NullInt64{Int64: conv.ID, Valid: true}, BotID: p.AgentID,
 			})
 			if err != nil {
@@ -885,22 +885,22 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		if errors.Is(err, errInputSettled) {
 			return nil
 		}
-		if boardWake && errors.Is(err, ErrNoModel) {
+		if taskWake && errors.Is(err, ErrNoModel) {
 			// Keep the pending wake slot so pointers survive until a model is configured.
 			return err
 		}
-		if boardWake && errors.Is(err, engine.ErrBusy) {
+		if taskWake && errors.Is(err, engine.ErrBusy) {
 			// Main is busy; leave the wake pending until settlement signals Main,
 			// without putting the session into retry backoff.
 			return nil
 		}
-		if !boardWake && p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
+		if !taskWake && p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.
 			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
 		}
 		return s.admissionError(ctx, p.ID, err)
 	}
-	if boardWake {
+	if taskWake {
 		err = s.markTaskWakeAdmitted(ctx, p.ID)
 	} else {
 		if s.channelAdmission != nil {

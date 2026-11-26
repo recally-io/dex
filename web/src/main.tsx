@@ -13,13 +13,12 @@ import {
 import { errorText, queryClient } from "./lib/queries";
 import { InboxPage, InboxResultPage } from "./routes/inbox";
 import { BoardPage } from "./routes/board";
-import { WorkTaskPage } from "./routes/work-tasks";
-import { getBoardTaskOptions } from "./api/generated/@tanstack/react-query.gen";
+import { TaskDetailPage } from "./routes/task-detail";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
 import { AutomationPage, AutomationsPage } from "./routes/automations";
-import { SessionsPage, TurnPage } from "./routes/sessions";
+import { SessionsPage } from "./routes/sessions";
 import { AgentPage } from "./routes/agent";
 import { GeneralSettingsPage } from "./routes/general-settings";
 import { ProvidersPage } from "./routes/providers";
@@ -81,54 +80,7 @@ const skills = agentPage("/skills", SkillsPage);
 const botIntegrations = agentPage("/integrations", BotIntegrationsPage);
 const botSecrets = agentPage("/secrets", BotSecretsPage);
 
-const retiredBotSettings = (
-  path: "/instructions" | "/channels" | "/extensions",
-  to: "/a/$agentId/agent" | "/a/$agentId/integrations",
-  hash?: string,
-) =>
-  createRoute({
-    getParentRoute: () => agentPages,
-    path,
-    beforeLoad: ({ params, location }) => {
-      throw redirect({
-        to,
-        params: { agentId: params.agentId },
-        search: true,
-        hash: hash ?? location.hash,
-        replace: true,
-      });
-    },
-  });
-
-const instructions = retiredBotSettings("/instructions", "/a/$agentId/agent", "instructions");
-const channels = retiredBotSettings("/channels", "/a/$agentId/integrations");
-
-// The MCP OAuth callback still returns to this URL.
-const extensions = retiredBotSettings("/extensions", "/a/$agentId/integrations");
-
 const automations = agentPage("/automations", AutomationsPage);
-
-// Keep links to retired global pages usable.
-const retired = <P extends string>(path: P, href: string) =>
-  createRoute({
-    getParentRoute: () => root,
-    path,
-    beforeLoad: () => {
-      throw redirect({ href, replace: true });
-    },
-  });
-
-const retiredRoutes = [
-  retired("/needs-you", "/inbox"),
-  retired("/work", "/board"),
-  retired("/automations", "/a/default/automations"),
-  retired("/secrets", "/settings/secrets"),
-  retired("/providers", "/settings/providers"),
-  retired("/environment", "/settings/runners"),
-  retired("/settings/environment", "/settings/runners"),
-  retired("/archived", "/settings/archived"),
-  retired("/about", "/settings/about"),
-] as const;
 
 const board = createRoute({
   getParentRoute: () => root,
@@ -153,19 +105,7 @@ const inbox = page("/inbox", InboxPage);
 const taskDetail = page("/board/$taskKey", () => {
   const { taskKey } = taskDetail.useParams();
 
-  return <WorkTaskPage key={taskKey} taskKey={taskKey} />;
-});
-
-const legacyTask = createRoute({
-  getParentRoute: () => root,
-  path: "/a/$agentId/inbox/$taskId",
-  beforeLoad: async ({ params }) => {
-    const { task } = await queryClient.ensureQueryData(
-      getBoardTaskOptions({ path: { taskKey: params.taskId } }),
-    );
-
-    throw redirect({ to: "/board/$taskKey", params: { taskKey: task.key }, replace: true });
-  },
+  return <TaskDetailPage key={taskKey} taskKey={taskKey} />;
 });
 
 const inboxDetail = page("/inbox/$runId", () => {
@@ -204,26 +144,6 @@ function ChannelRoute() {
   );
 }
 
-// Old addresses from the single settings page.
-const legacy = new Map<string, string>([
-  ["model", "/agent"],
-  ["telegram", "/channels/telegram"],
-]);
-
-const settings = createRoute({
-  getParentRoute: () => root,
-  path: "/settings/$section",
-  beforeLoad: ({ params }) => {
-    const to = legacy.get(params.section);
-
-    if (!to) throw notFound();
-    throw redirect({
-      href: `/a/default${to}`,
-      replace: true,
-    });
-  },
-});
-
 const defaultSettings = createRoute({
   getParentRoute: () => root,
   path: "/settings",
@@ -246,47 +166,13 @@ function AutomationRoute() {
 
 const sessions = agentPage("/sessions", SessionsPage);
 
-const tasks = createRoute({
+const index = createRoute({
   getParentRoute: () => root,
-  path: "/tasks",
+  path: "/",
   beforeLoad: () => {
-    throw redirect({ href: "/a/default/sessions", replace: true });
+    throw redirect({ to: "/a/$agentId", params: { agentId: "default" }, replace: true });
   },
 });
-
-// A result link and an old task link name a turn. The page opens the session that holds it.
-const turn = createRoute({ getParentRoute: () => agentPages, path: "/tasks/$turnId", component: TurnRoute });
-
-function TurnRoute() {
-  const { turnId } = turn.useParams();
-
-  return <TurnPage key={turnId} turnId={turnId} />;
-}
-
-const oldAgentPage = <P extends string>(path: P) =>
-  createRoute({
-    getParentRoute: () => root,
-    path,
-    beforeLoad: ({ location }) => {
-      throw redirect({
-        href: `/a/default${location.pathname === "/" ? "" : location.pathname}`,
-        replace: true,
-      });
-    },
-  });
-
-const oldAgentRoutes = [
-  oldAgentPage("/"),
-  oldAgentPage("/instructions"),
-  oldAgentPage("/channels"),
-  oldAgentPage("/channels/$channelId"),
-  oldAgentPage("/automations/$automationId"),
-  oldAgentPage("/sessions"),
-  oldAgentPage("/c/$chatId"),
-  oldAgentPage("/tasks/$turnId"),
-  oldAgentPage("/agent"),
-  oldAgentPage("/extensions"),
-] as const;
 
 const router = createRouter({
   defaultPreload: "intent",
@@ -295,9 +181,6 @@ const router = createRouter({
       home,
       chat,
       sessions,
-      turn,
-      instructions,
-      channels,
       channel,
       automations,
       automation,
@@ -305,14 +188,10 @@ const router = createRouter({
       skills,
       botIntegrations,
       botSecrets,
-      extensions,
     ]),
-    ...oldAgentRoutes,
-    tasks,
-    ...retiredRoutes,
+    index,
     board,
     taskDetail,
-    legacyTask,
     inbox,
     inboxDetail,
     generalSettings,
@@ -322,7 +201,6 @@ const router = createRouter({
     globalIntegrations,
     archived,
     about,
-    settings,
     defaultSettings,
   ]),
   defaultErrorComponent: ({ error, reset }) => (

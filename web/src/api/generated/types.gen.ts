@@ -4,29 +4,18 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
-export type WorkTaskLifecycle = 'open' | 'completed' | 'cancelled';
-
-export type WorkTask = {
-    id: string;
-    agentId: string;
-    title: string;
-    lifecycle: WorkTaskLifecycle;
-    createdAt: number;
-    updatedAt: number;
-};
-
 /**
  * An external object linked to the Task, such as a GitHub PR. The source that owns the namespace gives the meaning of type and key.
  *
  */
-export type WorkTaskLink = {
+export type TaskLink = {
     namespace: string;
     type: string;
     key: string;
-    waits: Array<WorkTaskWait>;
+    waits: Array<TaskWait>;
 };
 
-export type WorkTaskWait = {
+export type TaskWait = {
     id: number;
     /**
      * The event type that resolves the wait.
@@ -41,38 +30,22 @@ export type WorkTaskWait = {
     alert: boolean;
 };
 
-export type WorkTaskQuestion = {
-    id: string;
-    text: string;
-    options: Array<string>;
-    queued: boolean;
+export type TaskStatus = 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
+
+export type TaskReviewerKind = '' | 'owner' | 'bot';
+
+export type TaskList = {
+    tasks: Array<TaskSummary>;
 };
 
-/**
- * The primary work Session of the Task.
- */
-export type WorkTaskSession = {
-    id: number;
-    agentId: string;
-    title: string;
-};
-
-export type BoardStatus = 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
-
-export type BoardReviewerKind = '' | 'owner' | 'bot';
-
-export type BoardTaskList = {
-    tasks: Array<BoardTaskSummary>;
-};
-
-export type BoardTaskSummary = {
+export type TaskSummary = {
     id: string;
     key: string;
     number: number;
     title: string;
-    status: BoardStatus;
+    status: TaskStatus;
     assigneeBotId: string;
-    reviewerKind: BoardReviewerKind;
+    reviewerKind: TaskReviewerKind;
     reviewerId: string;
     reviewSeq: number;
     revision: number;
@@ -80,10 +53,10 @@ export type BoardTaskSummary = {
     blockerCount: number;
     createdAt: number;
     updatedAt: number;
-    primarySession?: BoardTaskSession;
+    primarySession?: TaskSession;
 };
 
-export type BoardTaskSession = {
+export type TaskSession = {
     conversationId: number;
     agentId: string;
     agentName: string;
@@ -94,36 +67,36 @@ export type BoardTaskSession = {
     endedAt?: number;
 };
 
-export type BoardTaskCreate = {
+export type TaskCreate = {
     title: string;
     status?: 'backlog' | 'ready' | 'in_progress';
     assigneeBotId: string;
-    reviewerKind?: BoardReviewerKind;
+    reviewerKind?: TaskReviewerKind;
     reviewerId?: string;
     note?: string;
 };
 
-export type BoardTaskUpdate = {
+export type TaskUpdate = {
     title?: string;
-    status?: BoardStatus;
+    status?: TaskStatus;
     assigneeBotId?: string;
-    reviewerKind?: BoardReviewerKind;
+    reviewerKind?: TaskReviewerKind;
     reviewerId?: string;
 };
 
-export type BoardEntryCreate = {
+export type TaskEntryCreate = {
     kind?: 'note' | 'artifact';
     tag?: 'brief' | 'decision' | 'handoff' | 'update';
     content: string;
 };
 
-export type BoardReview = {
+export type TaskReview = {
     decision: 'approve' | 'request_changes';
     reviewSeq?: number;
     note?: string;
 };
 
-export type BoardTaskSplit = {
+export type TaskSplit = {
     title: string;
     assigneeBotId?: string;
     note?: string;
@@ -132,43 +105,43 @@ export type BoardTaskSplit = {
     dependsOn?: Array<string>;
 };
 
-export type BoardDependencyCreate = {
+export type TaskDependencyCreate = {
     dependsOn: string;
 };
 
-export type BoardTaskRef = {
+export type TaskRef = {
     key: string;
     title: string;
-    status: BoardStatus;
+    status: TaskStatus;
     assigneeBotId: string;
 };
 
-export type BoardExecutionAttach = {
+export type TaskExecutionAttach = {
     harness?: 'claude-code' | 'codex' | 'opencode' | 'custom';
     machineId?: string;
-    hostMeta?: BoardExecutionHost;
+    hostMeta?: TaskExecutionHost;
     workspacePath?: string;
     gitBranch?: string;
     externalSessionId?: string;
     leaseSeconds?: number;
 };
 
-export type BoardExecutionHost = {
+export type TaskExecutionHost = {
     hostname?: string;
 };
 
-export type BoardExecutionHeartbeat = {
+export type TaskExecutionHeartbeat = {
     gitBranch?: string;
     externalSessionId?: string;
     leaseSeconds?: number;
 };
 
-export type BoardExecutionFinish = {
+export type TaskExecutionFinish = {
     outcome: 'completed' | 'failed';
     summary?: string;
 };
 
-export type BoardExecution = {
+export type TaskExecution = {
     id: string;
     taskKey?: string;
     botId: string;
@@ -189,35 +162,35 @@ export type BoardExecution = {
     endedAt?: number;
 };
 
-export type BoardTokenIssue = {
-    execution: BoardExecution;
-    boardToken: string;
+export type TaskTokenIssue = {
+    execution: TaskExecution;
+    taskToken: string;
 };
 
-export type BoardExecutionList = {
-    executions: Array<BoardExecution>;
+export type TaskExecutionList = {
+    executions: Array<TaskExecution>;
 };
 
-export type BoardExternalTask = {
-    task: BoardTaskRef;
-    entries: Array<BoardTaskEntry>;
+export type TaskExternalTask = {
+    task: TaskRef;
+    entries: Array<TaskEntry>;
     nextAfterSeq: number;
 };
 
-export type BoardTaskDetail = {
-    task: BoardTaskSummary;
+export type TaskDetail = {
+    task: TaskSummary;
     canSplit: boolean;
-    parentTask?: BoardTaskRef;
-    subtasks: Array<BoardTaskRef>;
-    dependencies: Array<BoardTaskRef>;
-    entries: Array<BoardTaskEntry>;
-    sessions: Array<BoardTaskSession>;
-    blockers: Array<BoardTaskBlocker>;
-    questions: Array<BoardTaskQuestion>;
-    links: Array<WorkTaskLink>;
+    parentTask?: TaskRef;
+    subtasks: Array<TaskRef>;
+    dependencies: Array<TaskRef>;
+    entries: Array<TaskEntry>;
+    sessions: Array<TaskSession>;
+    blockers: Array<TaskBlocker>;
+    questions: Array<TaskQuestion>;
+    links: Array<TaskLink>;
 };
 
-export type BoardTaskEntry = {
+export type TaskEntry = {
     id: number;
     seq: number;
     kind: 'note' | 'artifact' | 'status' | 'assign' | 'review' | 'execution' | 'external';
@@ -228,11 +201,11 @@ export type BoardTaskEntry = {
     content: string;
     createdAt: number;
     eventId?: string;
-    status?: BoardStatus;
+    status?: TaskStatus;
     decision?: 'approve' | 'request_changes';
 };
 
-export type BoardTaskBlocker = {
+export type TaskBlocker = {
     kind: 'wait' | 'question' | 'dependency';
     taskKey?: string;
     waitId?: number;
@@ -245,7 +218,7 @@ export type BoardTaskBlocker = {
     queuePosition?: number;
 };
 
-export type BoardTaskQuestion = {
+export type TaskQuestion = {
     id: string;
     text: string;
     options: Array<string>;
@@ -254,20 +227,8 @@ export type BoardTaskQuestion = {
     conversationId: number;
 };
 
-export type BoardEvent = {
+export type TaskEvent = {
     taskId: string;
-};
-
-export type WorkTaskSessionLink = {
-    conversationId: number;
-    agentId: string;
-    agentName: string;
-    title: string;
-    isPrimary: boolean;
-    /**
-     * Unix time in milliseconds.
-     */
-    linkedAt: number;
 };
 
 export type HeldEvent = {
@@ -291,20 +252,6 @@ export type HeldEvent = {
     authorAssociation: string;
     occurredAt: number;
     heldAt: number;
-};
-
-export type WorkTaskEntry = {
-    id: number;
-    /**
-     * Who wrote the entry. Unknown marks an entry from before authors were recorded.
-     */
-    author: 'owner' | 'agent' | 'external' | 'unknown';
-    /**
-     * Present for an external timeline entry.
-     */
-    eventId?: string;
-    content: string;
-    createdAt: number;
 };
 
 export type Error = {
@@ -539,9 +486,9 @@ export type MessageInput = {
      */
     attachments?: Array<string>;
     /**
-     * Selects a Task of this agent for a Main message.
+     * Selects a Task for a Main message by key (for example, T-42) or UUID.
      */
-    workTaskId?: string;
+    taskId?: string;
     /**
      * The ID of the open question that this message answers. dex answers 409 when the question is closed. A message without this field never closes a question.
      *
@@ -706,19 +653,19 @@ export type Automation = AutomationInput & {
     updatedAt: number;
 };
 
-export type Work = {
-    taskReviews: Array<BoardTaskRef>;
-    sessions: Array<WorkSession>;
-    automations: Array<WorkAutomation>;
+export type InboxSummary = {
+    taskReviews: Array<TaskRef>;
+    sessions: Array<InboxSummarySession>;
+    automations: Array<InboxSummaryAutomation>;
     inbox: Array<InboxItem>;
 };
 
-export type WorkSession = {
+export type InboxSummarySession = {
     agentId: string;
     chat: Chat;
 };
 
-export type WorkAutomation = {
+export type InboxSummaryAutomation = {
     agentId: string;
     automation: Automation;
     setup: boolean;
@@ -896,9 +843,13 @@ export type TaskItem = {
      */
     reason?: string;
     /**
-     * The input ID of the child session turn, or the ID of an old task. getTurnChat finds its session.
+     * The input ID of the child session turn, or the ID of an old task.
      */
     taskId: string;
+    /**
+     * The child Session ID, when the saved result includes it.
+     */
+    childSessionId?: number;
     /**
      * True for a Task alert on Main. The title is the Task title, and taskId is empty. The alert has only event metadata.
      */
@@ -1762,14 +1713,14 @@ export type FeishuInputWritable = {
 };
 
 /**
- * A Board key such as T-42, or the Task UUID.
+ * A Task key such as T-42, or the Task UUID.
  */
-export type BoardTaskKey = string;
+export type TaskKey = string;
 
 /**
  * The expected Task revision as a decimal integer.
  */
-export type BoardRevision = number;
+export type TaskRevision = number;
 
 export type AgentId = string;
 
@@ -2136,12 +2087,12 @@ export type SaveGitHubWebhookResponses = {
 
 export type SaveGitHubWebhookResponse = SaveGitHubWebhookResponses[keyof SaveGitHubWebhookResponses];
 
-export type ListBoardTasksData = {
+export type ListTasksData = {
     body?: never;
     path?: never;
     query?: {
         botId?: string;
-        status?: BoardStatus;
+        status?: TaskStatus;
         blocked?: boolean;
         inReview?: boolean;
         /**
@@ -2150,35 +2101,35 @@ export type ListBoardTasksData = {
         source?: string;
         includeClosed?: boolean;
     };
-    url: '/api/board/tasks';
+    url: '/api/tasks';
 };
 
-export type ListBoardTasksErrors = {
+export type ListTasksErrors = {
     /**
      * The request failed.
      */
     400: Error;
 };
 
-export type ListBoardTasksError = ListBoardTasksErrors[keyof ListBoardTasksErrors];
+export type ListTasksError = ListTasksErrors[keyof ListTasksErrors];
 
-export type ListBoardTasksResponses = {
+export type ListTasksResponses = {
     /**
      * Tasks for the Owner.
      */
-    200: BoardTaskList;
+    200: TaskList;
 };
 
-export type ListBoardTasksResponse = ListBoardTasksResponses[keyof ListBoardTasksResponses];
+export type ListTasksResponse = ListTasksResponses[keyof ListTasksResponses];
 
-export type CreateBoardTaskData = {
-    body: BoardTaskCreate;
+export type CreateTaskData = {
+    body: TaskCreate;
     path?: never;
     query?: never;
-    url: '/api/board/tasks';
+    url: '/api/tasks';
 };
 
-export type CreateBoardTaskErrors = {
+export type CreateTaskErrors = {
     /**
      * The request failed.
      */
@@ -2189,49 +2140,49 @@ export type CreateBoardTaskErrors = {
     404: Error;
 };
 
-export type CreateBoardTaskError = CreateBoardTaskErrors[keyof CreateBoardTaskErrors];
+export type CreateTaskError = CreateTaskErrors[keyof CreateTaskErrors];
 
-export type CreateBoardTaskResponses = {
+export type CreateTaskResponses = {
     /**
      * Created Task.
      */
-    201: BoardTaskSummary;
+    201: TaskSummary;
 };
 
-export type CreateBoardTaskResponse = CreateBoardTaskResponses[keyof CreateBoardTaskResponses];
+export type CreateTaskResponse = CreateTaskResponses[keyof CreateTaskResponses];
 
-export type GetBoardTaskData = {
+export type GetTaskData = {
     body?: never;
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}';
+    url: '/api/tasks/{taskKey}';
 };
 
-export type GetBoardTaskErrors = {
+export type GetTaskErrors = {
     /**
      * The request failed.
      */
     404: Error;
 };
 
-export type GetBoardTaskError = GetBoardTaskErrors[keyof GetBoardTaskErrors];
+export type GetTaskError = GetTaskErrors[keyof GetTaskErrors];
 
-export type GetBoardTaskResponses = {
+export type GetTaskResponses = {
     /**
      * Task, related Tasks, and timeline.
      */
-    200: BoardTaskDetail;
+    200: TaskDetail;
 };
 
-export type GetBoardTaskResponse = GetBoardTaskResponses[keyof GetBoardTaskResponses];
+export type GetTaskResponse = GetTaskResponses[keyof GetTaskResponses];
 
-export type UpdateBoardTaskData = {
-    body: BoardTaskUpdate;
+export type UpdateTaskData = {
+    body: TaskUpdate;
     headers?: {
         /**
          * The expected Task revision as a decimal integer.
@@ -2240,15 +2191,15 @@ export type UpdateBoardTaskData = {
     };
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}';
+    url: '/api/tasks/{taskKey}';
 };
 
-export type UpdateBoardTaskErrors = {
+export type UpdateTaskErrors = {
     /**
      * The request failed.
      */
@@ -2263,19 +2214,19 @@ export type UpdateBoardTaskErrors = {
     412: Error;
 };
 
-export type UpdateBoardTaskError = UpdateBoardTaskErrors[keyof UpdateBoardTaskErrors];
+export type UpdateTaskError = UpdateTaskErrors[keyof UpdateTaskErrors];
 
-export type UpdateBoardTaskResponses = {
+export type UpdateTaskResponses = {
     /**
      * Updated Task.
      */
-    200: BoardTaskSummary;
+    200: TaskSummary;
 };
 
-export type UpdateBoardTaskResponse = UpdateBoardTaskResponses[keyof UpdateBoardTaskResponses];
+export type UpdateTaskResponse = UpdateTaskResponses[keyof UpdateTaskResponses];
 
-export type SplitBoardTaskData = {
-    body: BoardTaskSplit;
+export type SplitTaskData = {
+    body: TaskSplit;
     headers?: {
         /**
          * The expected Task revision as a decimal integer.
@@ -2284,15 +2235,15 @@ export type SplitBoardTaskData = {
     };
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}/split';
+    url: '/api/tasks/{taskKey}/split';
 };
 
-export type SplitBoardTaskErrors = {
+export type SplitTaskErrors = {
     /**
      * The request failed.
      */
@@ -2311,19 +2262,19 @@ export type SplitBoardTaskErrors = {
     412: Error;
 };
 
-export type SplitBoardTaskError = SplitBoardTaskErrors[keyof SplitBoardTaskErrors];
+export type SplitTaskError = SplitTaskErrors[keyof SplitTaskErrors];
 
-export type SplitBoardTaskResponses = {
+export type SplitTaskResponses = {
     /**
      * Created subtask.
      */
-    201: BoardTaskSummary;
+    201: TaskSummary;
 };
 
-export type SplitBoardTaskResponse = SplitBoardTaskResponses[keyof SplitBoardTaskResponses];
+export type SplitTaskResponse = SplitTaskResponses[keyof SplitTaskResponses];
 
-export type AddBoardDependencyData = {
-    body: BoardDependencyCreate;
+export type AddTaskDependencyData = {
+    body: TaskDependencyCreate;
     headers?: {
         /**
          * The expected Task revision as a decimal integer.
@@ -2332,15 +2283,15 @@ export type AddBoardDependencyData = {
     };
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}/dependencies';
+    url: '/api/tasks/{taskKey}/dependencies';
 };
 
-export type AddBoardDependencyErrors = {
+export type AddTaskDependencyErrors = {
     /**
      * The request failed.
      */
@@ -2355,18 +2306,18 @@ export type AddBoardDependencyErrors = {
     412: Error;
 };
 
-export type AddBoardDependencyError = AddBoardDependencyErrors[keyof AddBoardDependencyErrors];
+export type AddTaskDependencyError = AddTaskDependencyErrors[keyof AddTaskDependencyErrors];
 
-export type AddBoardDependencyResponses = {
+export type AddTaskDependencyResponses = {
     /**
      * The sibling dependency exists.
      */
     204: void;
 };
 
-export type AddBoardDependencyResponse = AddBoardDependencyResponses[keyof AddBoardDependencyResponses];
+export type AddTaskDependencyResponse = AddTaskDependencyResponses[keyof AddTaskDependencyResponses];
 
-export type RemoveBoardDependencyData = {
+export type RemoveTaskDependencyData = {
     body?: never;
     headers?: {
         /**
@@ -2376,16 +2327,16 @@ export type RemoveBoardDependencyData = {
     };
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
         depKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}/dependencies/{depKey}';
+    url: '/api/tasks/{taskKey}/dependencies/{depKey}';
 };
 
-export type RemoveBoardDependencyErrors = {
+export type RemoveTaskDependencyErrors = {
     /**
      * The request failed.
      */
@@ -2400,19 +2351,19 @@ export type RemoveBoardDependencyErrors = {
     412: Error;
 };
 
-export type RemoveBoardDependencyError = RemoveBoardDependencyErrors[keyof RemoveBoardDependencyErrors];
+export type RemoveTaskDependencyError = RemoveTaskDependencyErrors[keyof RemoveTaskDependencyErrors];
 
-export type RemoveBoardDependencyResponses = {
+export type RemoveTaskDependencyResponses = {
     /**
      * The sibling dependency does not exist.
      */
     204: void;
 };
 
-export type RemoveBoardDependencyResponse = RemoveBoardDependencyResponses[keyof RemoveBoardDependencyResponses];
+export type RemoveTaskDependencyResponse = RemoveTaskDependencyResponses[keyof RemoveTaskDependencyResponses];
 
-export type CreateBoardEntryData = {
-    body: BoardEntryCreate;
+export type CreateTaskEntryData = {
+    body: TaskEntryCreate;
     headers?: {
         /**
          * The expected Task revision as a decimal integer.
@@ -2421,15 +2372,15 @@ export type CreateBoardEntryData = {
     };
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}/entries';
+    url: '/api/tasks/{taskKey}/entries';
 };
 
-export type CreateBoardEntryErrors = {
+export type CreateTaskEntryErrors = {
     /**
      * The request failed.
      */
@@ -2444,30 +2395,30 @@ export type CreateBoardEntryErrors = {
     412: Error;
 };
 
-export type CreateBoardEntryError = CreateBoardEntryErrors[keyof CreateBoardEntryErrors];
+export type CreateTaskEntryError = CreateTaskEntryErrors[keyof CreateTaskEntryErrors];
 
-export type CreateBoardEntryResponses = {
+export type CreateTaskEntryResponses = {
     /**
      * Appended entry.
      */
-    201: BoardTaskEntry;
+    201: TaskEntry;
 };
 
-export type CreateBoardEntryResponse = CreateBoardEntryResponses[keyof CreateBoardEntryResponses];
+export type CreateTaskEntryResponse = CreateTaskEntryResponses[keyof CreateTaskEntryResponses];
 
-export type ReviewBoardTaskData = {
-    body: BoardReview;
+export type ReviewTaskData = {
+    body: TaskReview;
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}/review';
+    url: '/api/tasks/{taskKey}/review';
 };
 
-export type ReviewBoardTaskErrors = {
+export type ReviewTaskErrors = {
     /**
      * The request failed.
      */
@@ -2482,30 +2433,30 @@ export type ReviewBoardTaskErrors = {
     409: Error;
 };
 
-export type ReviewBoardTaskError = ReviewBoardTaskErrors[keyof ReviewBoardTaskErrors];
+export type ReviewTaskError = ReviewTaskErrors[keyof ReviewTaskErrors];
 
-export type ReviewBoardTaskResponses = {
+export type ReviewTaskResponses = {
     /**
      * Reviewed Task.
      */
-    200: BoardTaskSummary;
+    200: TaskSummary;
 };
 
-export type ReviewBoardTaskResponse = ReviewBoardTaskResponses[keyof ReviewBoardTaskResponses];
+export type ReviewTaskResponse = ReviewTaskResponses[keyof ReviewTaskResponses];
 
-export type AttachBoardExecutionData = {
-    body: BoardExecutionAttach;
+export type AttachTaskExecutionData = {
+    body: TaskExecutionAttach;
     path: {
         /**
-         * A Board key such as T-42, or the Task UUID.
+         * A Task key such as T-42, or the Task UUID.
          */
         taskKey: string;
     };
     query?: never;
-    url: '/api/board/tasks/{taskKey}/executions/attach';
+    url: '/api/tasks/{taskKey}/executions/attach';
 };
 
-export type AttachBoardExecutionErrors = {
+export type AttachTaskExecutionErrors = {
     /**
      * The request failed.
      */
@@ -2524,27 +2475,27 @@ export type AttachBoardExecutionErrors = {
     409: Error;
 };
 
-export type AttachBoardExecutionError = AttachBoardExecutionErrors[keyof AttachBoardExecutionErrors];
+export type AttachTaskExecutionError = AttachTaskExecutionErrors[keyof AttachTaskExecutionErrors];
 
-export type AttachBoardExecutionResponses = {
+export type AttachTaskExecutionResponses = {
     /**
-     * Execution and one-time Board Token.
+     * Execution and one-time Task token.
      */
-    201: BoardTokenIssue;
+    201: TaskTokenIssue;
 };
 
-export type AttachBoardExecutionResponse = AttachBoardExecutionResponses[keyof AttachBoardExecutionResponses];
+export type AttachTaskExecutionResponse = AttachTaskExecutionResponses[keyof AttachTaskExecutionResponses];
 
-export type ResumeBoardExecutionData = {
-    body: BoardExecutionAttach;
+export type ResumeTaskExecutionData = {
+    body: TaskExecutionAttach;
     path: {
         executionId: string;
     };
     query?: never;
-    url: '/api/board/executions/{executionId}/resume';
+    url: '/api/tasks/executions/{executionId}/resume';
 };
 
-export type ResumeBoardExecutionErrors = {
+export type ResumeTaskExecutionErrors = {
     /**
      * The request failed.
      */
@@ -2563,18 +2514,18 @@ export type ResumeBoardExecutionErrors = {
     409: Error;
 };
 
-export type ResumeBoardExecutionError = ResumeBoardExecutionErrors[keyof ResumeBoardExecutionErrors];
+export type ResumeTaskExecutionError = ResumeTaskExecutionErrors[keyof ResumeTaskExecutionErrors];
 
-export type ResumeBoardExecutionResponses = {
+export type ResumeTaskExecutionResponses = {
     /**
-     * Execution and one-time Board Token.
+     * Execution and one-time Task token.
      */
-    200: BoardTokenIssue;
+    200: TaskTokenIssue;
 };
 
-export type ResumeBoardExecutionResponse = ResumeBoardExecutionResponses[keyof ResumeBoardExecutionResponses];
+export type ResumeTaskExecutionResponse = ResumeTaskExecutionResponses[keyof ResumeTaskExecutionResponses];
 
-export type ListBoardExecutionsData = {
+export type ListTaskExecutionsData = {
     body?: never;
     path?: never;
     query?: {
@@ -2583,10 +2534,10 @@ export type ListBoardExecutionsData = {
         kind?: string;
         state?: string;
     };
-    url: '/api/board/executions';
+    url: '/api/tasks/executions';
 };
 
-export type ListBoardExecutionsErrors = {
+export type ListTaskExecutionsErrors = {
     /**
      * The request failed.
      */
@@ -2605,28 +2556,28 @@ export type ListBoardExecutionsErrors = {
     409: Error;
 };
 
-export type ListBoardExecutionsError = ListBoardExecutionsErrors[keyof ListBoardExecutionsErrors];
+export type ListTaskExecutionsError = ListTaskExecutionsErrors[keyof ListTaskExecutionsErrors];
 
-export type ListBoardExecutionsResponses = {
+export type ListTaskExecutionsResponses = {
     /**
      * Request succeeded.
      */
-    200: BoardExecutionList;
+    200: TaskExecutionList;
 };
 
-export type ListBoardExecutionsResponse = ListBoardExecutionsResponses[keyof ListBoardExecutionsResponses];
+export type ListTaskExecutionsResponse = ListTaskExecutionsResponses[keyof ListTaskExecutionsResponses];
 
-export type ReadBoardExternalTaskData = {
+export type ReadTaskExternalTaskData = {
     body?: never;
     path?: never;
     query?: {
         afterSeq?: number;
         limit?: number;
     };
-    url: '/api/board/external/task';
+    url: '/api/tasks/external/task';
 };
 
-export type ReadBoardExternalTaskErrors = {
+export type ReadTaskExternalTaskErrors = {
     /**
      * The request failed.
      */
@@ -2641,25 +2592,25 @@ export type ReadBoardExternalTaskErrors = {
     409: Error;
 };
 
-export type ReadBoardExternalTaskError = ReadBoardExternalTaskErrors[keyof ReadBoardExternalTaskErrors];
+export type ReadTaskExternalTaskError = ReadTaskExternalTaskErrors[keyof ReadTaskExternalTaskErrors];
 
-export type ReadBoardExternalTaskResponses = {
+export type ReadTaskExternalTaskResponses = {
     /**
      * Request succeeded.
      */
-    200: BoardExternalTask;
+    200: TaskExternalTask;
 };
 
-export type ReadBoardExternalTaskResponse = ReadBoardExternalTaskResponses[keyof ReadBoardExternalTaskResponses];
+export type ReadTaskExternalTaskResponse = ReadTaskExternalTaskResponses[keyof ReadTaskExternalTaskResponses];
 
-export type PostBoardExternalEntryData = {
-    body: BoardEntryCreate;
+export type PostTaskExternalEntryData = {
+    body: TaskEntryCreate;
     path?: never;
     query?: never;
-    url: '/api/board/external/entries';
+    url: '/api/tasks/external/entries';
 };
 
-export type PostBoardExternalEntryErrors = {
+export type PostTaskExternalEntryErrors = {
     /**
      * The request failed.
      */
@@ -2674,25 +2625,25 @@ export type PostBoardExternalEntryErrors = {
     409: Error;
 };
 
-export type PostBoardExternalEntryError = PostBoardExternalEntryErrors[keyof PostBoardExternalEntryErrors];
+export type PostTaskExternalEntryError = PostTaskExternalEntryErrors[keyof PostTaskExternalEntryErrors];
 
-export type PostBoardExternalEntryResponses = {
+export type PostTaskExternalEntryResponses = {
     /**
      * Request succeeded.
      */
-    201: BoardTaskEntry;
+    201: TaskEntry;
 };
 
-export type PostBoardExternalEntryResponse = PostBoardExternalEntryResponses[keyof PostBoardExternalEntryResponses];
+export type PostTaskExternalEntryResponse = PostTaskExternalEntryResponses[keyof PostTaskExternalEntryResponses];
 
-export type HeartbeatBoardExecutionData = {
-    body: BoardExecutionHeartbeat;
+export type HeartbeatTaskExecutionData = {
+    body: TaskExecutionHeartbeat;
     path?: never;
     query?: never;
-    url: '/api/board/external/heartbeat';
+    url: '/api/tasks/external/heartbeat';
 };
 
-export type HeartbeatBoardExecutionErrors = {
+export type HeartbeatTaskExecutionErrors = {
     /**
      * The request failed.
      */
@@ -2707,25 +2658,25 @@ export type HeartbeatBoardExecutionErrors = {
     409: Error;
 };
 
-export type HeartbeatBoardExecutionError = HeartbeatBoardExecutionErrors[keyof HeartbeatBoardExecutionErrors];
+export type HeartbeatTaskExecutionError = HeartbeatTaskExecutionErrors[keyof HeartbeatTaskExecutionErrors];
 
-export type HeartbeatBoardExecutionResponses = {
+export type HeartbeatTaskExecutionResponses = {
     /**
      * Request succeeded.
      */
-    200: BoardExecution;
+    200: TaskExecution;
 };
 
-export type HeartbeatBoardExecutionResponse = HeartbeatBoardExecutionResponses[keyof HeartbeatBoardExecutionResponses];
+export type HeartbeatTaskExecutionResponse = HeartbeatTaskExecutionResponses[keyof HeartbeatTaskExecutionResponses];
 
-export type FinishBoardExecutionData = {
-    body: BoardExecutionFinish;
+export type FinishTaskExecutionData = {
+    body: TaskExecutionFinish;
     path?: never;
     query?: never;
-    url: '/api/board/external/finish';
+    url: '/api/tasks/external/finish';
 };
 
-export type FinishBoardExecutionErrors = {
+export type FinishTaskExecutionErrors = {
     /**
      * The request failed.
      */
@@ -2740,18 +2691,18 @@ export type FinishBoardExecutionErrors = {
     409: Error;
 };
 
-export type FinishBoardExecutionError = FinishBoardExecutionErrors[keyof FinishBoardExecutionErrors];
+export type FinishTaskExecutionError = FinishTaskExecutionErrors[keyof FinishTaskExecutionErrors];
 
-export type FinishBoardExecutionResponses = {
+export type FinishTaskExecutionResponses = {
     /**
      * Request succeeded.
      */
-    200: BoardExecution;
+    200: TaskExecution;
 };
 
-export type FinishBoardExecutionResponse = FinishBoardExecutionResponses[keyof FinishBoardExecutionResponses];
+export type FinishTaskExecutionResponse = FinishTaskExecutionResponses[keyof FinishTaskExecutionResponses];
 
-export type WatchBoardData = {
+export type StreamTaskEventsData = {
     body?: never;
     headers?: {
         'Last-Event-ID'?: string;
@@ -2760,10 +2711,10 @@ export type WatchBoardData = {
     query?: {
         after?: number;
     };
-    url: '/api/board/events';
+    url: '/api/tasks/events';
 };
 
-export type WatchBoardErrors = {
+export type StreamTaskEventsErrors = {
     /**
      * The request failed.
      */
@@ -2774,197 +2725,41 @@ export type WatchBoardErrors = {
     401: Error;
 };
 
-export type WatchBoardError = WatchBoardErrors[keyof WatchBoardErrors];
+export type StreamTaskEventsError = StreamTaskEventsErrors[keyof StreamTaskEventsErrors];
 
-export type WatchBoardResponses = {
+export type StreamTaskEventsResponses = {
     /**
-     * The Board event stream.
+     * The Task event stream.
      */
-    200: BoardEvent;
+    200: TaskEvent;
 };
 
-export type WatchBoardResponse = WatchBoardResponses[keyof WatchBoardResponses];
+export type StreamTaskEventsResponse = StreamTaskEventsResponses[keyof StreamTaskEventsResponses];
 
-export type ListWorkTasksData = {
-    body?: never;
-    path?: never;
-    query?: {
-        includeClosed?: boolean;
-    };
-    url: '/api/inbox/tasks';
-};
-
-export type ListWorkTasksErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type ListWorkTasksError = ListWorkTasksErrors[keyof ListWorkTasksErrors];
-
-export type ListWorkTasksResponses = {
-    /**
-     * Tasks across agents.
-     */
-    200: {
-        tasks: Array<WorkTask>;
-    };
-};
-
-export type ListWorkTasksResponse = ListWorkTasksResponses[keyof ListWorkTasksResponses];
-
-export type CreateWorkTaskData = {
-    body: {
-        title: string;
-    };
-    path: {
-        agentId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/inbox/tasks';
-};
-
-export type CreateWorkTaskErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type CreateWorkTaskError = CreateWorkTaskErrors[keyof CreateWorkTaskErrors];
-
-export type CreateWorkTaskResponses = {
-    /**
-     * Created Task.
-     */
-    201: WorkTask;
-};
-
-export type CreateWorkTaskResponse = CreateWorkTaskResponses[keyof CreateWorkTaskResponses];
-
-export type GetWorkTaskData = {
-    body?: never;
-    path: {
-        agentId: string;
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}';
-};
-
-export type GetWorkTaskErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetWorkTaskError = GetWorkTaskErrors[keyof GetWorkTaskErrors];
-
-export type GetWorkTaskResponses = {
-    /**
-     * Task and recent timeline.
-     */
-    200: {
-        task: WorkTask;
-        session?: WorkTaskSession;
-        /**
-         * Linked Sessions across Bots. The primary Session comes first when present.
-         */
-        sessions: Array<WorkTaskSessionLink>;
-        entries: Array<WorkTaskEntry>;
-        questions: Array<WorkTaskQuestion>;
-        links: Array<WorkTaskLink>;
-    };
-};
-
-export type GetWorkTaskResponse = GetWorkTaskResponses[keyof GetWorkTaskResponses];
-
-export type SetWorkTaskLifecycleData = {
-    body: {
-        lifecycle: WorkTaskLifecycle;
-    };
-    path: {
-        agentId: string;
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}';
-};
-
-export type SetWorkTaskLifecycleErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type SetWorkTaskLifecycleError = SetWorkTaskLifecycleErrors[keyof SetWorkTaskLifecycleErrors];
-
-export type SetWorkTaskLifecycleResponses = {
-    /**
-     * Updated Task.
-     */
-    200: WorkTask;
-};
-
-export type SetWorkTaskLifecycleResponse = SetWorkTaskLifecycleResponses[keyof SetWorkTaskLifecycleResponses];
-
-export type AppendWorkTaskNoteData = {
-    body: {
-        content: string;
-    };
-    path: {
-        agentId: string;
-        taskId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/inbox/tasks/{taskId}';
-};
-
-export type AppendWorkTaskNoteErrors = {
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type AppendWorkTaskNoteError = AppendWorkTaskNoteErrors[keyof AppendWorkTaskNoteErrors];
-
-export type AppendWorkTaskNoteResponses = {
-    /**
-     * Added note. Does not start a run.
-     */
-    201: WorkTaskEntry;
-};
-
-export type AppendWorkTaskNoteResponse = AppendWorkTaskNoteResponses[keyof AppendWorkTaskNoteResponses];
-
-export type GetWorkData = {
+export type GetInboxSummaryData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/api/work';
+    url: '/api/inbox/summary';
 };
 
-export type GetWorkErrors = {
+export type GetInboxSummaryErrors = {
     /**
      * The request failed.
      */
     default: Error;
 };
 
-export type GetWorkError = GetWorkErrors[keyof GetWorkErrors];
+export type GetInboxSummaryError = GetInboxSummaryErrors[keyof GetInboxSummaryErrors];
 
-export type GetWorkResponses = {
+export type GetInboxSummaryResponses = {
     /**
-     * Work across bots.
+     * Inbox summary across Bots.
      */
-    200: Work;
+    200: InboxSummary;
 };
 
-export type GetWorkResponse = GetWorkResponses[keyof GetWorkResponses];
+export type GetInboxSummaryResponse = GetInboxSummaryResponses[keyof GetInboxSummaryResponses];
 
 export type ListInboxData = {
     body?: never;
@@ -4809,38 +4604,6 @@ export type ResetAgentEnvironmentResponses = {
 };
 
 export type ResetAgentEnvironmentResponse = ResetAgentEnvironmentResponses[keyof ResetAgentEnvironmentResponses];
-
-export type GetTurnChatData = {
-    body?: never;
-    path: {
-        agentId: string;
-        turnId: string;
-    };
-    query?: never;
-    url: '/api/agents/{agentId}/turns/{turnId}';
-};
-
-export type GetTurnChatErrors = {
-    /**
-     * The request failed.
-     */
-    404: Error;
-    /**
-     * The request failed.
-     */
-    default: Error;
-};
-
-export type GetTurnChatError = GetTurnChatErrors[keyof GetTurnChatErrors];
-
-export type GetTurnChatResponses = {
-    /**
-     * The session of the turn.
-     */
-    200: Chat;
-};
-
-export type GetTurnChatResponse = GetTurnChatResponses[keyof GetTurnChatResponses];
 
 export type GetMainChatData = {
     body?: never;

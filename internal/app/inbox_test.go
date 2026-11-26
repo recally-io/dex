@@ -49,7 +49,7 @@ func TestUserCanHandleFailedRunWithoutTranscript(t *testing.T) {
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO automation_runs(id,automation_id,status,reason,created_at) VALUES ('failed-before-input',?,'failed','dex stopped',1)`, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	// When the owner opens Needs you, a failed run without a transcript is visible.
+	// When the Owner opens Inbox, a failed run without a transcript is visible.
 	items := inbox(t, d, "/api/inbox")
 	if len(items) != 1 || items[0].RunID != "failed-before-input" || items[0].Outcome != "failed" {
 		t.Fatalf("failed run missing: %+v", items)

@@ -13,7 +13,7 @@ import {
 } from "../api/generated/@tanstack/react-query.gen";
 import { type Continuation, continueResult, inboxOptions, resultQuote } from "../lib/inbox";
 import { dismissInboxItem, readInboxItem } from "../api/generated/sdk.gen";
-import { refreshAutomations, refreshWork } from "../lib/queries";
+import { refreshAutomations, refreshInbox } from "../lib/queries";
 import { useAgentModel } from "../lib/agent";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { formatDuration } from "../lib/sessions";
@@ -304,7 +304,7 @@ function RunBlock({
   const handle = useMutation({
     mutationFn: async (runId: string) => {
       await dismissInboxItem({ path: { runId }, throwOnError: true });
-      await refreshWork();
+      await refreshInbox();
     },
   });
 
@@ -512,7 +512,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     if (!unread.length) return;
 
     for (const item of unread) asked.current.add(item.runId);
-    void Promise.all(unread.map((item) => readInboxItem({ path: { runId: item.runId } }))).then(refreshWork);
+    void Promise.all(unread.map((item) => readInboxItem({ path: { runId: item.runId } }))).then(refreshInbox);
   }, [items, automationId]);
 
   const history = runs.data?.runs ?? [];

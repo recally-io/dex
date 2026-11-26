@@ -1,19 +1,19 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listAgentsOptions, listBoardTasksOptions } from "../api/generated/@tanstack/react-query.gen";
-import { createBoardTask } from "../api/generated/sdk.gen";
-import type { BoardStatus, BoardTaskSummary } from "../api/generated/types.gen";
+import { listAgentsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
+import { createTask } from "../api/generated/sdk.gen";
+import type { TaskStatus, TaskSummary } from "../api/generated/types.gen";
 import { Failure, Loading } from "../components/feedback";
 import { RadioSegments, Select } from "../components/form";
 import { Empty, FramedPage, Section } from "../components/page";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { invalidateBoard, useBoardStream } from "../lib/board-stream";
-import { initialStatuses, statusLabel } from "../lib/board";
+import { invalidateTasks, useTaskStream } from "../lib/task-stream";
+import { initialStatuses, statusLabel } from "../lib/tasks";
 
-const lanes: readonly BoardStatus[] = ["backlog", "ready", "in_progress", "in_review", "done"];
+const lanes: readonly TaskStatus[] = ["backlog", "ready", "in_progress", "in_review", "done"];
 
 const views = [
   { label: "Kanban", value: "kanban" },
@@ -21,7 +21,7 @@ const views = [
 ] as const;
 
 export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bot?: string) => void }) {
-  useBoardStream();
+  useTaskStream();
   const [closed, setClosed] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [inReview, setInReview] = useState(false);
@@ -32,7 +32,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
   const botNames = new Map(bots.map((agent) => [agent.id, agent.name]));
 
   const tasks = useQuery(
-    listBoardTasksOptions({
+    listTasksOptions({
       query: {
         botId: bot,
         blocked: blocked || undefined,
@@ -163,10 +163,10 @@ function NewTask({ bot, bots }: { bot?: string; bots: BotOption[] }) {
   const assigneeBotId = selected || bots.find((agent) => agent.id === bot)?.id || bots[0]?.id || "";
 
   const create = useMutation({
-    mutationFn: () => createBoardTask({ body: { title, assigneeBotId, status }, throwOnError: true }),
+    mutationFn: () => createTask({ body: { title, assigneeBotId, status }, throwOnError: true }),
     onSuccess: async ({ data }) => {
       setTitle("");
-      await invalidateBoard(client);
+      await invalidateTasks(client);
       await navigate({ to: "/board/$taskKey", params: { taskKey: data.key } });
     },
   });
@@ -224,7 +224,7 @@ function NewTask({ bot, bots }: { bot?: string; bots: BotOption[] }) {
   );
 }
 
-function TaskCard({ task, botName }: { task: BoardTaskSummary; botName?: string }) {
+function TaskCard({ task, botName }: { task: TaskSummary; botName?: string }) {
   const session = task.primarySession;
 
   return (

@@ -100,7 +100,7 @@ See [service commands and recovery](../../README.md#run-and-manage-dex).
 ## Data ownership
 
 `control.sqlite` holds business facts: settings, agents, conversations, input
-receipts, channel pairings, the channel webhook inbox and Outbox, Tasks,
+receipts, channel pairings, the channel webhook inbox and Outbox, Tasks and their ledger (`tasks` and `task_entries`),
 and plugin tables. Core migrations own
 the core tables. Each enabled plugin applies its own `plugin_<name>_` tables at
 start ([plugins](plugins.md#plugin-migrations)). Each agent has

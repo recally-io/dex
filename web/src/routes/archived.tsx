@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { listArchivedAgentsOptions, restoreAgentMutation } from "../api/generated/@tanstack/react-query.gen";
-import { queryClient, refreshWork } from "../lib/queries";
+import { queryClient, refreshInbox } from "../lib/queries";
 import { useApp } from "../lib/app-state";
 import { Failure, Loading } from "../components/feedback";
 import { Empty, FramedPage, Panel, Section } from "../components/page";
@@ -55,7 +55,7 @@ function ArchivedRow({ id, name, at }: { id: string; name: string; at?: number }
     ...restoreAgentMutation(),
     onSuccess: async () => {
       await Promise.all([
-        refreshWork(),
+        refreshInbox(),
         queryClient.invalidateQueries({ queryKey: [{ _id: "listArchivedAgents" }] }),
       ]);
 

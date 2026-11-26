@@ -32,7 +32,7 @@ Read this before you change code, dependencies, native execution, or stored data
 | `internal/mcptest`          | Local MCP test servers; no production execution                                     |
 | `internal/settings`         | Global providers, model checks, 1Password credentials, access token                 |
 | `internal/agent`            | Agent settings, activity, paths, channel configuration                              |
-| `internal/worktask`         | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
+| `internal/task`             | Tasks, the source event store, holds, waits, and the `task_*` tools                 |
 | `internal/plugin`           | The seam that optional sources use: hooks, plugin API, jobs, and Task link tools    |
 | `plugins/<name>`            | One optional source, such as `plugins/github`. The core does not import it          |
 | `web`                       | React UI, built into `web/dist` and embedded                                        |

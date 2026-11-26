@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
   Agent,
-  BoardExecution,
+  TaskExecution,
   Environment,
   EnvironmentTestResult,
   SshHostEntry,
@@ -15,7 +15,7 @@ import {
   getHealthOptions,
   revokeRunnerMutation,
   listAgentsOptions,
-  listBoardExecutionsOptions,
+  listTaskExecutionsOptions,
   listEnvironmentsOptions,
   testEnvironmentMutation,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -55,7 +55,7 @@ export function ExecutionEnvironments() {
   const sshConfigQuery = useQuery(discoverSshConfigOptions());
 
   const externalRuns = useQuery({
-    ...listBoardExecutionsOptions({ query: { kind: "external_agent", state: "running" } }),
+    ...listTaskExecutionsOptions({ query: { kind: "external_agent", state: "running" } }),
     enabled: query.data?.environments.some((env) => env.kind === "runner") ?? false,
     refetchInterval: 5000,
   });
@@ -212,7 +212,7 @@ function EnvironmentCard({
   env: Environment;
   serverVersion?: string;
   users: Agent[];
-  externalRuns: BoardExecution[];
+  externalRuns: TaskExecution[];
   externalRunsUnavailable: boolean;
   sshHosts: SshHostEntry[];
   onEdit: () => void;

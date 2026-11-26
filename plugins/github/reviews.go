@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 // MaxPayload is the maximum size of a webhook delivery or review page.
@@ -63,7 +63,7 @@ func Namespace(repositoryID int64) string {
 const ReviewSubmitted = "review.submitted"
 
 // PullCoordinates decodes a linked GitHub PR's stable identifiers.
-func PullCoordinates(namespace string, object worktask.Object) (repositoryID, pullNumber int64, ok bool) {
+func PullCoordinates(namespace string, object tasksvc.Object) (repositoryID, pullNumber int64, ok bool) {
 	if object.Type != "pull_request" {
 		return 0, 0, false
 	}
@@ -77,8 +77,8 @@ func PullCoordinates(namespace string, object worktask.Object) (repositoryID, pu
 }
 
 // PullRequest returns the object to link when a Task starts tracking a PR.
-func PullRequest(number int64) worktask.Object {
-	return worktask.Object{Type: "pull_request", Key: strconv.FormatInt(number, 10)}
+func PullRequest(number int64) tasksvc.Object {
+	return tasksvc.Object{Type: "pull_request", Key: strconv.FormatInt(number, 10)}
 }
 
 // Rule is the source rule of one repository. The Webhook and Pull use the same rule.
@@ -91,7 +91,7 @@ type Rule struct {
 
 // AcceptWebhook verifies a delivery and commits supported events before returning its receipt.
 // A valid but unsupported delivery returns no receipt.
-func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID int64, secret []byte, delivery, kind, signature string, body []byte, rule Rule) (*worktask.Receipt, error) {
+func AcceptWebhook(ctx context.Context, store *tasksvc.Service, repositoryID int64, secret []byte, delivery, kind, signature string, body []byte, rule Rule) (*tasksvc.Receipt, error) {
 	if len(body) > MaxPayload || repositoryID <= 0 || delivery == "" {
 		return nil, ErrPayload
 	}
@@ -122,12 +122,12 @@ func AcceptWebhook(ctx context.Context, store *worktask.Service, repositoryID in
 
 // AcceptReviewPage stores a page from the authenticated List Reviews API for the given PR.
 // A caller can advance its cursor only after this returns successfully. A retry is safe after a partial write.
-func AcceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID, pullNumber int64, body []byte, rule Rule) ([]worktask.Receipt, error) {
+func AcceptReviewPage(ctx context.Context, store *tasksvc.Service, repositoryID, pullNumber int64, body []byte, rule Rule) ([]tasksvc.Receipt, error) {
 	receipts, _, err := acceptReviewPage(ctx, store, repositoryID, pullNumber, body, rule)
 	return receipts, err
 }
 
-func acceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID, pullNumber int64, body []byte, rule Rule) ([]worktask.Receipt, int, error) {
+func acceptReviewPage(ctx context.Context, store *tasksvc.Service, repositoryID, pullNumber int64, body []byte, rule Rule) ([]tasksvc.Receipt, int, error) {
 	if len(body) > MaxPayload || repositoryID <= 0 || pullNumber <= 0 {
 		return nil, 0, ErrPayload
 	}
@@ -138,7 +138,7 @@ func acceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID
 	if reviews == nil {
 		return nil, 0, ErrPayload
 	}
-	var receipts []worktask.Receipt
+	var receipts []tasksvc.Receipt
 	for _, item := range reviews {
 		receipt, err := acceptReview(ctx, store, repositoryID, pullNumber, "pull:"+reviewKey(item.ID), item, rule.HoldUnmatched)
 		if err != nil {
@@ -153,7 +153,7 @@ func acceptReviewPage(ctx context.Context, store *worktask.Service, repositoryID
 
 func reviewKey(id int64) string { return "review:" + strconv.FormatInt(id, 10) }
 
-func acceptReview(ctx context.Context, store *worktask.Service, repositoryID, pullNumber int64, receiptKey string, item review, hold bool) (*worktask.Receipt, error) {
+func acceptReview(ctx context.Context, store *tasksvc.Service, repositoryID, pullNumber int64, receiptKey string, item review, hold bool) (*tasksvc.Receipt, error) {
 	state := strings.ToLower(item.State)
 	switch state {
 	case "approved", "changes_requested", "commented":
@@ -169,9 +169,9 @@ func acceptReview(ctx context.Context, store *worktask.Service, repositoryID, pu
 		content += "\n\n" + item.Body
 	}
 	chars := []rune(content)
-	result, err := store.Accept(ctx, worktask.Event{
+	result, err := store.Accept(ctx, tasksvc.Event{
 		Namespace: Namespace(repositoryID), ReceiptKey: receiptKey, ChangeKey: reviewKey(item.ID), Type: ReviewSubmitted,
-		Objects: []worktask.Object{PullRequest(pullNumber)}, Revision: item.Commit,
+		Objects: []tasksvc.Object{PullRequest(pullNumber)}, Revision: item.Commit,
 		Content: string(chars[:min(len(chars), 32000)]), SourceURL: item.URL, OccurredAt: item.SubmittedAt.UnixMilli(),
 		AuthorLogin: item.User.Login, AuthorAssociation: item.Association, RecordOnly: !item.trusted(), HoldUnmatched: hold,
 	})

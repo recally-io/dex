@@ -125,5 +125,5 @@ func (h *handler) finishMcpOAuth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "MCP authorization failed; return to Tools and try again")
 		return
 	}
-	http.Redirect(w, r, "/a/"+url.PathEscape(p.agentID)+"/extensions", http.StatusSeeOther)
+	http.Redirect(w, r, "/a/"+url.PathEscape(p.agentID)+"/integrations", http.StatusSeeOther)
 }

@@ -81,9 +81,8 @@ to read in an afternoon.
   avatar. On a phone, the menu button opens the sidebar as a drawer. It shows
   the same orange dot.
   The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
-  attachments, and instructions draft when the user switches agents. Old page
-  URLs still work. `/needs-you` opens Inbox and `/work` opens Board.
-  `/automations` opens the default bot's Automations page.
+  attachments, and instructions draft when the user switches agents. The sidebar
+  links to `/inbox` and `/board`.
   An unknown agent shows a not-found page.
   Every agent has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
@@ -232,11 +231,8 @@ A child session that runs in another bot appears in the parent bot’s Sessions 
 All sessions list. The row names its bot and opens in that bot. The child bot
 names the parent bot.
 Automation run history links to read-only automation transcripts.
-Old channel transcript URLs remain readable. The legacy Sessions URL remains
-available for saved links.
-Named dispatch and result labels open the child session that holds the turn. An
-old `/tasks/<id>` link, with or without the bot prefix, opens the session of that
-old task in the same way. The Sessions filter has no separate Task kind.
+Named dispatch and results with a saved child Session ID open the child Session.
+The Sessions filter has no separate Task kind.
 A result shows that the child returned a report. It does not prove goal
 completion. The UI does not show progress percentages.
 

@@ -1,9 +1,9 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { createContext, useContext, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, MessagesSquare } from "lucide-react";
 import type { TaskItem, ToolItem } from "../../api/generated/types.gen";
-import { getTurnChatOptions } from "../../api/generated/@tanstack/react-query.gen";
+import { listChatsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../../lib/agent-scope";
 import { sessionAgentId } from "../../lib/sessions";
 import {
@@ -167,13 +167,17 @@ export function ThreadEntry({ tool }: { tool: ToolItem }) {
 
 /**
  * The result of a child turn, as one line. The answer is in the thread. A turn that did not finish
- * says why on the line. A click finds the session of the turn.
+ * says why on the line. The session list gives the child its owning Bot.
  */
 export function ResultLine({ item }: { item: TaskItem }) {
   const agentId = useAgentId();
-  const context = useContext(ThreadContext);
-  const client = useQueryClient();
-  const [failed, setFailed] = useState(false);
+
+  const { data } = useQuery({
+    ...listChatsOptions({ path: { agentId } }),
+    enabled: !!item.childSessionId,
+  });
+
+  const child = data?.chats.find((chat) => chat.id === item.childSessionId);
   const done = !item.status || item.status === "done";
 
   const label = (
@@ -189,27 +193,18 @@ export function ResultLine({ item }: { item: TaskItem }) {
     <header className="flex min-w-0 items-start gap-2 text-[13px] leading-5 text-muted-foreground">
       <CornerDownRight size={16} aria-hidden className="mt-0.5 shrink-0" />
       <h3 className="min-w-0 font-normal [overflow-wrap:anywhere]">
-        {label} ·{" "}
-        {context?.open ? (
-          <button
-            type="button"
-            className={link}
-            onClick={() => {
-              setFailed(false);
-              client
-                .fetchQuery(getTurnChatOptions({ path: { agentId, turnId: item.taskId } }))
-                .then((chat) => context.open?.({ chatId: chat.id, agentId: sessionAgentId(chat, agentId) }))
-                .catch(() => setFailed(true));
-            }}
-          >
-            View session
-          </button>
-        ) : (
-          <Link to="/a/$agentId/tasks/$turnId" params={{ agentId, turnId: item.taskId }} className={link}>
-            View session
-          </Link>
-        )}
-        {failed ? <span role="alert"> · Could not open the child session.</span> : null}
+        {label}
+        {child ? (
+          <>
+            {" · "}
+            <ThreadOpen
+              thread={{ chatId: child.id, agentId: sessionAgentId(child, agentId) }}
+              className={link}
+            >
+              View session
+            </ThreadOpen>
+          </>
+        ) : null}
       </h3>
     </header>
   );

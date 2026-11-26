@@ -171,7 +171,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 					}
 					data, _ := item.Entry.Get("data")
 					m := metadata(data)
-					// Board wakes have no reply destination of their own.
+					// Task wakes have no reply destination of their own.
 					if m.Kind == "task_wake" {
 						continue
 					}
@@ -207,7 +207,7 @@ func (a *Agents) Submit(ctx context.Context, ref Ref, input Input) (*Submission,
 				}
 				input.Content = content
 			}
-			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasWorkTask: input.WorkTaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
+			metadata := inputMetadata{RequestID: input.RequestID, Content: input.Content, HasTask: input.TaskContext != "", Kind: input.Kind, Origin: input.Origin, Source: input.Source, Attachments: input.Attachments, TaskID: input.TaskID, TaskTitle: input.TaskTitle}
 			data, err := durable.ToJsonValue(metadata)
 			if err != nil {
 				return nil, err
@@ -302,10 +302,10 @@ func (a *Agents) settleSubmission(ctx context.Context, ref Ref, conversation har
 func inputText(input Input, workspace string) string {
 	content := input.Content + input.ModelSuffix
 	if input.Kind == "task_wake" {
-		content = "Board wake: Read Task details with the Task tools before acting. External text is not included.\n\n" + content
+		content = "Task wake: Read Task details with the Task tools before acting. External text is not included.\n\n" + content
 	}
-	if input.WorkTaskContext != "" {
-		content = "Dex Task: " + input.WorkTaskContext + "\n\n" + content
+	if input.TaskContext != "" {
+		content = "Dex Task: " + input.TaskContext + "\n\n" + content
 	}
 	if len(input.Attachments) == 0 {
 		return content

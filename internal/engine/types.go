@@ -71,13 +71,13 @@ type Input struct {
 	Automation bool
 	// Child marks an input to a conversation that has a parent.
 	Child bool
-	// ChildHasWorkTask enables scoped Task tools on a linked child Session.
-	ChildHasWorkTask bool
+	// ChildHasTask enables scoped Task tools on a linked child Session.
+	ChildHasTask bool
 	// Main input comes from a person who waits for each reply.
 	Main              bool
 	TaskID, TaskTitle string
-	// WorkTaskContext is model context. It is not part of the owner's message.
-	WorkTaskContext string
+	// TaskContext is model context. It is not part of the owner's message.
+	TaskContext string
 	// ModelSuffix adds guidance to the model input without changing the saved message.
 	ModelSuffix string
 	// WhenBusy says what admission does while the conversation runs: "followUp" (the default)
@@ -86,9 +86,10 @@ type Input struct {
 	WhenBusy string
 }
 type inputMetadata struct {
-	RequestID   string       `json:"requestId"`
-	Content     string       `json:"content"`
-	HasWorkTask bool         `json:"hasWorkTask,omitzero"`
+	RequestID string `json:"requestId"`
+	Content   string `json:"content"`
+	// The field name is part of saved PiG transcripts.
+	HasTask     bool         `json:"hasWorkTask,omitzero"`
 	Kind        string       `json:"kind,omitempty"`
 	Origin      string       `json:"origin"`
 	Source      string       `json:"source"`

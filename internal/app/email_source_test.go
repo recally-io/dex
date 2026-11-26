@@ -17,7 +17,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
@@ -69,8 +69,8 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	deliver("5", email("e2@x", "<e1@x>", "Dan <dan@example.com>", "Re: Old thread", "Late reply."))
 
 	// Then each new thread opens one Task, and the reply updates the first Task once.
-	var list api.ListWorkTasks200JSONResponse
-	d.must(t, http.MethodGet, "/api/inbox/tasks", nil, &list)
+	var list api.TaskList
+	d.must(t, http.MethodGet, "/api/tasks", nil, &list)
 	titles := []string{}
 	for _, task := range list.Tasks {
 		titles = append(titles, task.Title)
@@ -79,11 +79,11 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	if !slices.Equal(titles, []string{"Contract review", "Invoice"}) {
 		t.Fatalf("each new thread must open one Task: %q", titles)
 	}
-	contract := list.Tasks[slices.IndexFunc(list.Tasks, func(task api.WorkTask) bool { return task.Title == "Contract review" })]
-	var detail api.GetWorkTask200JSONResponse
-	d.must(t, http.MethodGet, "/api/agents/default/inbox/tasks/"+contract.Id, nil, &detail)
+	contract := list.Tasks[slices.IndexFunc(list.Tasks, func(task api.TaskSummary) bool { return task.Title == "Contract review" })]
+	var detail api.TaskDetail
+	d.must(t, http.MethodGet, "/api/tasks/"+contract.Id, nil, &detail)
 	t.Logf("artifact: entries=%+v", detail.Entries)
-	if len(detail.Entries) != 2 || !strings.Contains(detail.Entries[0].Content, "I approve") || detail.Task.Lifecycle != api.WorkTaskLifecycleOpen {
+	if len(detail.Entries) != 2 || !strings.Contains(detail.Entries[1].Content, "I approve") || detail.Task.Status != api.TaskStatusReady {
 		t.Fatalf("the reply must update the open Task once: %+v %+v", detail.Task, detail.Entries)
 	}
 
@@ -100,9 +100,9 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	// A forged From header does not make the owner an author.
 	alerts := pendingTaskAlerts(t, d.dataDir(t))
 	if len(alerts) != 1 {
-		t.Fatalf("Main must get one Board wake for both Tasks: %q", alerts)
+		t.Fatalf("Main must get one Task wake for both Tasks: %q", alerts)
 	}
-	want := []worktask.TaskWakeItem{{TaskKey: "T-1", Reason: worktask.WakeAssigned}, {TaskKey: "T-2", Reason: worktask.WakeAssigned}}
+	want := []tasksvc.WakeItem{{TaskKey: "T-1", Reason: tasksvc.WakeAssigned}, {TaskKey: "T-2", Reason: tasksvc.WakeAssigned}}
 	if items := decodeTaskWake(t, alerts[0]).Items; !slices.Equal(items, want) {
 		t.Fatalf("only the new Tasks must wake Main: %+v", items)
 	}

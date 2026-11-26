@@ -42,12 +42,10 @@ A child row names the bot of its parent in `parentAgentId` and `parentAgentName`
 when the parent belongs to another bot than the one in the path. Detail has the
 parent fields.
 
-`GET /api/agents/{agentId}/turns/{turnId}` returns the session that holds a
-turn. Result links and old `/tasks/<id>` links name a turn, because the ID of an
-old task is the ID of its first input. The route returns `404` for an unknown
-turn and for the turn of another agent, except a turn of a child of a session of
-this agent in another bot. That child names its bot in `agentId`, and the web
-opens it under that bot.
+A result mark includes `childSessionId` when the saved result names its child.
+The Sessions list supplies the owning Bot, so the web opens the canonical
+Session URL under that Bot. A result without a saved Session ID remains readable
+in the transcript. Open its child from Sessions.
 
 Channel input enters the agent's main conversation. Chat and automation
 contexts stay separate. See [Product](../product.md#scope) for session behavior,
@@ -81,7 +79,7 @@ input: if that input came from a channel (`reply_channel`/`reply_peer`), that
 input writes the single final Outbox reply; if it came from Web, the answer
 stays in Web with no channel Outbox row. Pure background runs (no `user` input)
 never auto-send to channels—Main must explicitly call `notify_user` to emit a
-channel notification. A [Board wake](task-board.md#coalesced-main-wakeups) is
+channel notification. A [Task wake](task-board.md#coalesced-main-wakeups) is
 a background input. It stays in control storage while Main is busy and gives
 other pending inputs priority. If run membership or order cannot be verified, no
 automatic channel Outbox row is written. Web input and a parent's
@@ -267,7 +265,7 @@ send none. A stopped, aborted or withdrawn input sends none. Result insertion
 and receipt settlement share a control transaction. For a child linked to a
 Task, that transaction also records the outcome of the first parent turn on
 its execution. Stop and withdrawal record cancellation in their own receipt
-transaction. Settlement does not write a Board wake. Only an Answer key
+transaction. Settlement does not write a Task wake. Only an Answer key
 conflict is treated as already delivered.
 
 The result names the child, its title, the turn and the outcome. It has the
@@ -290,11 +288,11 @@ The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
 line at each `session_send` call. A `session_report` call shows as a
 "Reported to parent" step. That step keeps a
-System Turn trace unfolded. A result mark is one line with a "View session"
-action. The card, the line and the action open a read-only side panel that
+System Turn trace unfolded. A result mark with a child Session ID has a
+"View session" action. The card, the line and the action open a read-only side panel that
 shows the child's own transcript with the usual chat reads and stream. The web
-reads the child ID from the session tool result and finds the child of a result
-mark with `getTurnChat`. Channels have no thread, so a channel user sees only
+reads the child ID from the Session tool result or the `childSessionId` of a
+result mark. Channels have no thread, so a channel user sees only
 the reply of Main. Child
 conversations stay absent from dream inputs, and dream input selects only
 ordinary messages.

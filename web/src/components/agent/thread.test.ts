@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
 import type { Chat, Item, ToolItem } from "../../api/generated/types.gen";
+import { listChatsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { threadCall, threadState } from "../../lib/threads";
 import { describeTool, stepTitle } from "../../lib/tools";
 import { ResultLine, ThreadContext } from "./thread";
@@ -167,20 +168,36 @@ test("user sees a failed dispatch with its reason and no thread", async () => {
 });
 
 test("user sees a result as one line without the answer", async () => {
+  const client = seeded();
+
+  client.setQueryData(listChatsOptions({ path: { agentId: "default" } }).queryKey, {
+    chats: [{ ...chat(7, "Check logs", false), agentId: "coder" }, chat(8, "Build", false)],
+  });
+
   const items: Item[] = [
-    { kind: "task", id: "r1", taskId: "t1", title: "Check logs" },
+    { kind: "task", id: "r1", taskId: "t1", title: "Check logs", childSessionId: 7 },
     { kind: "assistant", id: "a1", text: "Main reply" },
-    { kind: "task", id: "r2", taskId: "t2", title: "Build", status: "failed", reason: "model down" },
+    {
+      kind: "task",
+      id: "r2",
+      taskId: "t2",
+      title: "Build",
+      status: "failed",
+      reason: "model down",
+      childSessionId: 8,
+    },
   ];
 
   const html = await render(
     createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+    client,
   );
 
   expect(html).toContain("Check logs</span> replied");
   expect(html).toContain("Build</span> failed: model down");
   expect(html.match(/View session/g)).toHaveLength(2);
-  expect(html).toContain('href="/a/default/tasks/t1"');
+  expect(html).toContain('href="/a/coder/c/7"');
+  expect(html).toContain('href="/a/default/c/8"');
   expect(html).not.toContain("<details");
   expect(html).toContain("Main reply");
 
@@ -188,8 +205,11 @@ test("user sees a result as one line without the answer", async () => {
     createElement(
       ThreadContext.Provider,
       { value: { open: () => {} } },
-      createElement(ResultLine, { item: { kind: "task", id: "r", taskId: "t", title: "Check logs" } }),
+      createElement(ResultLine, {
+        item: { kind: "task", id: "r", taskId: "t", title: "Check logs", childSessionId: 7 },
+      }),
     ),
+    client,
   );
 
   expect(line).toMatch(/<button type="button"[^>]*>View session<\/button>/);

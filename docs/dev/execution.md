@@ -154,7 +154,8 @@ Stop, restart and limits:
 
 `task_dispatch_external` uses the Session Process path on the Assignee's
 Outbound Runner. It ties the launch to a Runner enrollment and an external
-Task lease. The Process receives a scoped Board Token through its environment.
+Task lease. The Process receives a scoped Task token in `DEX_TASK_TOKEN`.
+Use `dex task` to read the Task or update the run.
 The tool arguments, Process record, and result contain no token. The Process
 discards harness output. Use the Board Timeline for progress and the Process
 exit status for launch diagnostics. The Process sends no wake on exit. The

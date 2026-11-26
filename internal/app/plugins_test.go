@@ -21,8 +21,8 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	}
 	secret := strings.Repeat("s", 40)
 	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret}, nil, http.StatusNoContent)
-	var task api.WorkTask
-	d.must(t, http.MethodPost, "/api/agents/default/inbox/tasks", map[string]string{"title": "Ship PR 2"}, &task, http.StatusCreated)
+	var task api.TaskSummary
+	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Ship PR 2"}, &task, http.StatusCreated)
 	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+task.Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{"revision": "abc", "afterAt": 1}}, nil, http.StatusNoContent)
 
 	// When the owner turns GitHub off, it keeps running until dex starts again.
@@ -52,8 +52,8 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	}
 
 	// And the Task still shows the PR link and its wait as stored.
-	var detail api.GetWorkTask200JSONResponse
-	d.must(t, http.MethodGet, "/api/agents/default/inbox/tasks/"+task.Id, nil, &detail)
+	var detail api.TaskDetail
+	d.must(t, http.MethodGet, "/api/tasks/"+task.Id, nil, &detail)
 	t.Logf("artifact: links=%+v", detail.Links)
 	if len(detail.Links) != 1 || detail.Links[0].Namespace != "github.com/repository/10" || detail.Links[0].Type != "pull_request" || detail.Links[0].Key != "2" || len(detail.Links[0].Waits) != 1 || detail.Links[0].Waits[0].Revision != "abc" {
 		t.Fatalf("the Task must keep its GitHub link: %+v", detail.Links)

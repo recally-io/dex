@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getBoardTaskOptions } from "../api/generated/@tanstack/react-query.gen";
-import { addBoardDependency, removeBoardDependency, splitBoardTask } from "../api/generated/sdk.gen";
-import type { BoardTaskDetail, BoardTaskRef, BoardTaskSummary } from "../api/generated/types.gen";
-import { invalidateBoard } from "../lib/board-stream";
-import { statusLabel } from "../lib/board";
+import { getTaskOptions } from "../api/generated/@tanstack/react-query.gen";
+import { addTaskDependency, removeTaskDependency, splitTask } from "../api/generated/sdk.gen";
+import type { TaskDetail, TaskRef, TaskSummary } from "../api/generated/types.gen";
+import { invalidateTasks } from "../lib/task-stream";
+import { statusLabel } from "../lib/tasks";
 import { Failure } from "./feedback";
 import { Select } from "./form";
 import { Section } from "./page";
@@ -13,7 +13,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 
-function TaskLink({ task }: { task: BoardTaskRef }) {
+function TaskLink({ task }: { task: TaskRef }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
       <Link className="break-words font-medium underline" to="/board/$taskKey" params={{ taskKey: task.key }}>
@@ -24,18 +24,18 @@ function TaskLink({ task }: { task: BoardTaskRef }) {
   );
 }
 
-export function TaskRelationships({ detail }: { detail: BoardTaskDetail }) {
+export function TaskRelationships({ detail }: { detail: TaskDetail }) {
   const { task, parentTask, subtasks, canSplit } = detail;
   const client = useQueryClient();
   const [title, setTitle] = useState("");
 
   const split = useMutation({
     mutationFn: (childTitle: string) =>
-      splitBoardTask({ path: { taskKey: task.key }, body: { title: childTitle }, throwOnError: true }),
+      splitTask({ path: { taskKey: task.key }, body: { title: childTitle }, throwOnError: true }),
     onSuccess: () => {
       setTitle("");
 
-      return invalidateBoard(client);
+      return invalidateTasks(client);
     },
   });
 
@@ -94,12 +94,12 @@ function Dependencies({
   parentKey,
   dependencies,
 }: {
-  task: BoardTaskSummary;
+  task: TaskSummary;
   parentKey: string;
-  dependencies: BoardTaskRef[];
+  dependencies: TaskRef[];
 }) {
   const client = useQueryClient();
-  const parent = useQuery(getBoardTaskOptions({ path: { taskKey: parentKey } }));
+  const parent = useQuery(getTaskOptions({ path: { taskKey: parentKey } }));
   const [selected, setSelected] = useState("");
 
   const siblings = (parent.data?.subtasks ?? []).filter(
@@ -110,19 +110,19 @@ function Dependencies({
   const change = useMutation({
     mutationFn: async ({ depKey, add }: { depKey: string; add: boolean }) => {
       if (add) {
-        await addBoardDependency({
+        await addTaskDependency({
           path: { taskKey: task.key },
           body: { dependsOn: depKey },
           throwOnError: true,
         });
       } else {
-        await removeBoardDependency({ path: { taskKey: task.key, depKey }, throwOnError: true });
+        await removeTaskDependency({ path: { taskKey: task.key, depKey }, throwOnError: true });
       }
     },
     onSuccess: (_, { add }) => {
       if (add) setSelected("");
 
-      return invalidateBoard(client);
+      return invalidateTasks(client);
     },
   });
 

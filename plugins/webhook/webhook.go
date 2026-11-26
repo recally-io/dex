@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 // MaxPayload is the maximum size of one delivery.
@@ -41,34 +41,34 @@ type Rule struct {
 func Namespace(sourceID string) string { return "webhook/" + sourceID }
 
 type payload struct {
-	Type       string            `json:"type"`
-	ChangeKey  string            `json:"changeKey"`
-	Objects    []worktask.Object `json:"objects"`
-	Revision   string            `json:"revision"`
-	Title      string            `json:"title"`
-	Content    string            `json:"content"`
-	SourceURL  string            `json:"sourceUrl"`
-	OccurredAt time.Time         `json:"occurredAt"`
+	Type       string           `json:"type"`
+	ChangeKey  string           `json:"changeKey"`
+	Objects    []tasksvc.Object `json:"objects"`
+	Revision   string           `json:"revision"`
+	Title      string           `json:"title"`
+	Content    string           `json:"content"`
+	SourceURL  string           `json:"sourceUrl"`
+	OccurredAt time.Time        `json:"occurredAt"`
 }
 
 // Accept verifies a delivery and commits its event before it returns the receipt.
 // The delivery ID is the receipt key, so a retry of the same delivery is a duplicate.
-func Accept(ctx context.Context, store *worktask.Service, sourceID string, secret []byte, delivery, signature string, body []byte, rule Rule) (worktask.Receipt, error) {
+func Accept(ctx context.Context, store *tasksvc.Service, sourceID string, secret []byte, delivery, signature string, body []byte, rule Rule) (tasksvc.Receipt, error) {
 	if len(body) > MaxPayload || delivery == "" {
-		return worktask.Receipt{}, ErrPayload
+		return tasksvc.Receipt{}, ErrPayload
 	}
 	if !plugin.ValidSignature(secret, signature, body) {
-		return worktask.Receipt{}, ErrSignature
+		return tasksvc.Receipt{}, ErrSignature
 	}
 	var p payload
 	if err := json.Unmarshal(body, &p); err != nil {
-		return worktask.Receipt{}, errors.Join(ErrPayload, err)
+		return tasksvc.Receipt{}, errors.Join(ErrPayload, err)
 	}
 	title := strings.TrimSpace(p.Title)
 	if len(p.Objects) == 0 || utf8.RuneCountInString(title) > 160 || p.SourceURL != "" && !strings.HasPrefix(p.SourceURL, "https://") {
-		return worktask.Receipt{}, ErrPayload
+		return tasksvc.Receipt{}, ErrPayload
 	}
-	event := worktask.Event{
+	event := tasksvc.Event{
 		Namespace: Namespace(sourceID), ReceiptKey: "delivery:" + delivery, ChangeKey: p.ChangeKey, Type: p.Type,
 		Objects: p.Objects, Revision: p.Revision, Content: p.Content, SourceURL: p.SourceURL, OccurredAt: p.OccurredAt.UnixMilli(),
 		AuthorAssociation: AuthorClass, HoldUnmatched: rule.HoldUnmatched,

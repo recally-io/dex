@@ -18,7 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 const (
@@ -219,10 +219,10 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 			return SessionRef{}, err
 		}
 	}
-	var committed *worktask.Ledger
+	var committed *tasksvc.Ledger
 	defer func() {
 		if committed != nil {
-			s.workTasks.Notify(committed)
+			s.tasks.Notify(committed)
 		}
 	}()
 	s.writeMu.Lock()
@@ -254,7 +254,7 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now}); err != nil {
 		return SessionRef{}, err
 	}
-	ledger := worktask.NewLedger(q)
+	ledger := tasksvc.NewLedger(q)
 	if err := linkTaskChild(ctx, q, ledger, source.ID, child.ID, now); err != nil {
 		return SessionRef{}, err
 	}
@@ -365,7 +365,7 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 			return SessionRef{}, err
 		}
 	}
-	var ledger *worktask.Ledger
+	var ledger *tasksvc.Ledger
 	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.EnvironmentID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
 		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
@@ -379,7 +379,7 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 			// A concurrent call with the same key stored its fork first. Roll this fork back.
 			return errRepeatedTurn
 		}
-		ledger = worktask.NewLedger(q)
+		ledger = tasksvc.NewLedger(q)
 		return linkTaskChild(ctx, q, ledger, r.SourceRequestID, fork.ID, now)
 	})
 	if errors.Is(err, errRepeatedTurn) {
@@ -392,7 +392,7 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 	if err != nil {
 		return SessionRef{}, err
 	}
-	s.workTasks.Notify(ledger)
+	s.tasks.Notify(ledger)
 	s.signal(parent.ID)
 	s.Wake()
 	return s.ref(ctx, s.q, fork)
@@ -672,39 +672,4 @@ func boolInt(b bool) int64 {
 		return 1
 	}
 	return 0
-}
-
-// ChatOfTurn returns the session that holds input id, or ErrNotFound. The ID is the input ID of a
-// turn: a result names its child session turn, and a task from before child sessions used the ID
-// of its first input as its own ID. The session belongs to agentID, or is a child of a session of
-// agentID in another bot. The child names its bot in AgentID.
-func (s *Service) ChatOfTurn(ctx context.Context, agentID, id string) (Chat, error) {
-	turn, err := s.q.GetSubmission(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Chat{}, ErrNotFound
-	}
-	if err != nil {
-		return Chat{}, err
-	}
-	conv, err := s.q.GetConversation(ctx, turn.ConversationID)
-	if err != nil {
-		return Chat{}, err
-	}
-	if conv.AgentID == agentID || !conv.ParentID.Valid {
-		return s.Get(ctx, agentID, turn.ConversationID)
-	}
-	parent, err := s.q.GetConversation(ctx, conv.ParentID.Int64)
-	if err != nil || parent.AgentID != agentID {
-		return Chat{}, ErrNotFound
-	}
-	c, err := s.Get(ctx, conv.AgentID, conv.ID)
-	if err != nil {
-		return Chat{}, err
-	}
-	agent, err := s.q.GetAgent(ctx, conv.AgentID)
-	if err != nil {
-		return Chat{}, err
-	}
-	c.AgentID, c.AgentName = agent.ID, agent.Name
-	return c, nil
 }

@@ -10,7 +10,7 @@ export default defineConfig({
       $hooks: {
         operations: {
           // The Board cursor belongs to EventSource, not to an infinite query.
-          isQuery: (operation) => (operation.path === "/api/board/events" ? false : undefined),
+          isQuery: (operation) => (operation.path === "/api/tasks/events" ? false : undefined),
         },
       },
     },

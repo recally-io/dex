@@ -229,8 +229,7 @@ or URL cannot use the old grant. The server reads the current pre-registered
 secret from its vault entry at exchange and refresh. To preserve grants,
 back up the private vault files with the other vault files.
 
-A successful callback returns to the bot's Integrations page through the old `/extensions` URL. It marks the affected connections for
-idle reload. Dex refreshes an expired token when a refresh token is available.
+A successful callback opens `/a/{agentId}/integrations` and marks the affected connections for idle reload. Dex refreshes an expired token when a refresh token is available.
 On HTTP 401, dex attempts at most one refresh and retry. If the grant no longer
 works, Integrations shows **Reauthorize**. Dex does not fall back to static headers.
 

@@ -14,7 +14,7 @@ import (
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/app"
 	"github.com/recally-io/dex/internal/db"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/github"
 )
 
@@ -26,7 +26,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: dir, Token: adminToken})
 	const settings = "/api/plugins/github/webhooks/10"
 	const hook = "/hooks/github/10"
-	const taskPath = "/api/agents/default/inbox/tasks/"
+	const taskPath = "/api/tasks/"
 	const payload = `{"action":"submitted","repository":{"id":10},"pull_request":{"number":2},"review":{"id":71,"state":"approved","body":"Looks good.","commit_id":"abc","submitted_at":"2026-11-21T03:00:00Z"}}`
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(payload))
@@ -74,8 +74,8 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	request(http.MethodPost, hook, payload, "", signature, http.StatusNotFound)
 	request(http.MethodPut, settings, settingsBody, "", "", http.StatusUnauthorized)
 	request(http.MethodPut, settings, settingsBody, adminToken, "", http.StatusNoContent)
-	var task api.WorkTask
-	if err := json.Unmarshal(request(http.MethodPost, strings.TrimSuffix(taskPath, "/"), `{"title":"Review the change"}`, adminToken, "", http.StatusCreated), &task); err != nil {
+	var task api.TaskSummary
+	if err := json.Unmarshal(request(http.MethodPost, strings.TrimSuffix(taskPath, "/"), `{"assigneeBotId":"default","title":"Review the change"}`, adminToken, "", http.StatusCreated), &task); err != nil {
 		t.Fatal(err)
 	}
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
@@ -83,7 +83,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = conn.Close() })
-	store := worktask.New(conn, nil)
+	store := tasksvc.New(conn, nil)
 	if err := store.LinkObject(t.Context(), "default", task.Id, github.Namespace(10), github.PullRequest(2)); err != nil {
 		t.Fatal(err)
 	}
@@ -95,11 +95,11 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	request(http.MethodPost, hook, payload, "", signature, http.StatusNoContent)
 
 	// Then one timeline entry is visible, and disabling the Webhook blocks new deliveries.
-	var detail api.GetWorkTask200JSONResponse
+	var detail api.TaskDetail
 	if err := json.Unmarshal(request(http.MethodGet, taskPath+task.Id, "", adminToken, "", http.StatusOK), &detail); err != nil {
 		t.Fatal(err)
 	}
-	if len(detail.Entries) != 1 || detail.Entries[0].Content != "GitHub review: approved\n\nLooks good." || detail.Entries[0].EventId == nil {
+	if len(detail.Entries) != 3 || detail.Entries[2].Content != "GitHub review: approved\n\nLooks good." || detail.Entries[2].EventId == nil {
 		t.Fatalf("unexpected timeline: %+v", detail.Entries)
 	}
 	request(http.MethodDelete, settings, "", adminToken, "", http.StatusNoContent)
@@ -111,14 +111,14 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	mac.Reset()
 	_, _ = mac.Write([]byte(issue))
 	issueSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-	listTasks := func(want int) []api.WorkTask {
+	listTasks := func(want int) []api.TaskSummary {
 		t.Helper()
-		var list api.ListWorkTasks200JSONResponse
-		if err := json.Unmarshal(request(http.MethodGet, "/api/inbox/tasks", "", adminToken, "", http.StatusOK), &list); err != nil {
+		var list api.TaskList
+		if err := json.Unmarshal(request(http.MethodGet, "/api/tasks", "", adminToken, "", http.StatusOK), &list); err != nil {
 			t.Fatal(err)
 		}
 		if len(list.Tasks) != want {
-			t.Fatalf("Inbox has %d tasks, want %d", len(list.Tasks), want)
+			t.Fatalf("Task list has %d tasks, want %d", len(list.Tasks), want)
 		}
 		return list.Tasks
 	}
@@ -142,7 +142,7 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	trustedSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 	request(http.MethodPost, issueHook, trusted, "", trustedSignature, http.StatusNoContent)
 	request(http.MethodPost, issueHook, trusted, "", trustedSignature, http.StatusNoContent)
-	var created api.WorkTask
+	var created api.TaskSummary
 	for _, row := range listTasks(2) {
 		if row.Title == "GitHub issue #3" {
 			created = row
@@ -151,9 +151,9 @@ func TestUserReceivesOnlySignedGitHubWebhookDeliveries(t *testing.T) {
 	if created.Id == "" {
 		t.Fatal("Issue did not create a Task")
 	}
-	result, err := store.Accept(t.Context(), worktask.Event{
+	result, err := store.Accept(t.Context(), tasksvc.Event{
 		Namespace: github.Namespace(11), ReceiptKey: "follow-up", Type: "issue.follow_up",
-		Objects: []worktask.Object{{Type: "issue", Key: "3"}}, Content: "Follow-up", OccurredAt: 1,
+		Objects: []tasksvc.Object{{Type: "issue", Key: "3"}}, Content: "Follow-up", OccurredAt: 1,
 	})
 	if err != nil || result.TaskID != created.Id {
 		t.Fatalf("Issue link did not route the follow-up: %+v, %v", result, err)

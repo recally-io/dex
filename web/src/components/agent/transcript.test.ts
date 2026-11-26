@@ -136,7 +136,7 @@ test("user sees two returned results as separate groups", async () => {
   // Each result is one line. A turn that did not finish says why on its line.
   expect(html).toContain("Access logs</span> replied");
   expect(html).toContain("Error logs</span> interrupted: Restarted");
-  expect(html.match(/View session/g)).toHaveLength(2);
+  expect(html).not.toContain("View session");
 });
 
 test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", async (text) => {
