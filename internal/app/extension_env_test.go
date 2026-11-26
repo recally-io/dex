@@ -57,7 +57,7 @@ func TestUserManagesWriteOnlyVaultAtBothLevels(t *testing.T) {
 	if got := call(other.ID); got != "tool: shared" {
 		t.Fatalf("other bot: %q", got)
 	}
-	d.must(t, http.MethodDelete, endpoint+"?scope=bot&name=TOKEN", nil, nil)
+	d.must(t, http.MethodDelete, endpoint+"?scope=agent&name=TOKEN", nil, nil)
 	d.applied(t)
 	// The next call uses the shared value again.
 	w := d.watch(t, d.newSessionWithMessage(t, `bash {"command":"case $TOKEN in shared-*) printf shared;; esac","env":{"TOKEN":"vault:TOKEN"}}`))

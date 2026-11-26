@@ -92,7 +92,7 @@ func (s *Service) notificationTargets(ctx context.Context, botID string) (Notifi
 	}
 	wx, err := s.q.GetWechatSettings(ctx, botID)
 	if err == nil {
-		if err = add("wechat", wx.BotID, "wechat:"+wx.Owner); err != nil {
+		if err = add("wechat", wx.WechatBotID, "wechat:"+wx.Owner); err != nil {
 			return NotificationTargets{}, err
 		}
 	} else if !errors.Is(err, sql.ErrNoRows) {
