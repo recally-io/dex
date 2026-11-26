@@ -54,7 +54,7 @@ func Connect(ctx context.Context, socket *websocket.Conn, environment string) (*
 	c.conn = jsonrpc2.NewConn(lifetime, NewStream(lifetime, socket), &clientHandler{client: c, ready: ready})
 	select {
 	case c.info = <-ready:
-		c.gate = make(chan struct{}, min(max(c.info.MaxInFlight, 1), maxInFlight))
+		c.gate = make(chan struct{}, maxInFlight)
 	case <-ctx.Done():
 		c.Close()
 		return nil, ctx.Err()
@@ -161,12 +161,7 @@ func (c *Client) run(ctx context.Context, method string, params Tagger, result a
 	}
 	defer c.trackCall(tag, call, onOutput)()
 
-	var opts []jsonrpc2.CallOption
-	if c.info.StartEvents {
-		// Opt in per request so an older control gets the original message sequence.
-		opts = append(opts, jsonrpc2.Meta(true))
-	}
-	waiter, err := c.conn.DispatchCall(callCtx, method, params, opts...)
+	waiter, err := c.conn.DispatchCall(callCtx, method, params)
 	if err == nil {
 		sent, sentAfter = true, time.Since(call.since)
 		trace.log(ctx, slog.LevelDebug, "sent", "tag", tag, "elapsed", sentAfter)

@@ -1,4 +1,8 @@
 -- +goose Up
+DROP INDEX artifacts_by_conversation;
+DROP TABLE artifacts;
+DROP TABLE channel_peers;
+
 DROP INDEX submissions_channel_replies;
 ALTER TABLE submissions DROP COLUMN delivered_parts;
 ALTER TABLE submissions DROP COLUMN rendered_reply;
@@ -55,7 +59,24 @@ BEGIN SELECT RAISE(ABORT, 'Task entries cannot be changed'); END;
 -- +goose StatementEnd
 
 -- +goose Down
--- Restore the column definitions. Discarded delivery progress cannot be restored.
+-- Restore schema definitions only. Discarded data cannot be restored.
+CREATE TABLE artifacts (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agents(id),
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    display_conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    operation_key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+) STRICT;
+CREATE INDEX artifacts_by_conversation ON artifacts(agent_id, display_conversation_id, created_at);
+
+CREATE TABLE channel_peers (
+    peer TEXT PRIMARY KEY,
+    channel_key TEXT NOT NULL
+) STRICT;
+
 ALTER TABLE submissions ADD COLUMN delivered_parts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE submissions ADD COLUMN rendered_reply TEXT NOT NULL DEFAULT '';
 ALTER TABLE submissions ADD COLUMN channel_retry_at INTEGER NOT NULL DEFAULT 0;

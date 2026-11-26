@@ -8,8 +8,7 @@ file delivery, and attachments.
 Each bot has one artifacts directory at
 `<data dir>/agents/<bot ID>/artifacts/`. Its immediate regular files are the
 complete artifact list for every conversation in that bot. Names, sizes, and
-modification times come from directory entries and stat. Artifact reads and
-operations do not read or write the legacy artifacts table. No manifest,
+modification times come from directory entries and stat. No manifest,
 conversation route, stable ID, operation receipt, deduplication, migration, or
 deleted marker is used. Existing disk files stay untouched and use their current
 physical names. Links and subdirectories are not files in this view.

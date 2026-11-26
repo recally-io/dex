@@ -186,8 +186,7 @@ func userItem(m inputMetadata, id string, at int64, text string) Item {
 	} else if len(m.Attachments) > 0 {
 		text = stripAttachedFiles(text, m.Attachments)
 	}
-	// Old entries can have only the native kind. A background result has no TaskID.
-	if m.TaskID != "" || m.Kind == "dex.task_result" || m.Kind == "task_result" {
+	if m.TaskID != "" || m.Kind == "task_result" {
 		// Only a Task alert is a task_result linked to a Task. Chat links only owner messages.
 		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle, Alert: m.HasTask}
 		// The answer stays out of the projection. The user reads it in the child session.
@@ -195,12 +194,11 @@ func userItem(m inputMetadata, id string, at int64, text string) Item {
 			Result struct {
 				Outcome string `json:"outcome"`
 				Reason  string `json:"reason"`
-				Status  string `json:"status"`
 				Session string `json:"session"`
 			} `json:"task-result"`
 		}
 		if json.Unmarshal([]byte(text), &body) == nil {
-			item.Status, item.Reason = cmp.Or(body.Result.Outcome, body.Result.Status), body.Result.Reason
+			item.Status, item.Reason = body.Result.Outcome, body.Result.Reason
 			if child, err := strconv.ParseInt(body.Result.Session, 10, 64); err == nil && child > 0 {
 				item.ChildSessionID = child
 			}
@@ -316,7 +314,10 @@ func (p projection) render() []Item {
 			switch msg := e.Model[0].(type) {
 			case ai.UserMessage:
 				if e.Kind == "dex.user" || e.Kind == "pi.user" || e.Kind == "dex.task_result" {
-					m.Kind = cmp.Or(m.Kind, e.Kind)
+					// The native entry kind marks results. Metadata distinguishes a Task wake.
+					if e.Kind == "dex.task_result" && m.Kind != "task_wake" {
+						m.Kind = "task_result"
+					}
 					rendered = []Item{userItem(m, key, msg.Timestamp, userText(msg.Content))}
 				}
 			case ai.AssistantMessage:

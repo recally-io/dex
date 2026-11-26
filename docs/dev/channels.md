@@ -304,10 +304,9 @@ without setting `admitted_at`.
 A peer names a remote destination, such as `telegram:7`. Owner input from all
 channels enters the bot's agent `main` conversation with that peer as origin.
 Dex checks pairing at intake. The source receipt saves the account and peer for replies and labels the transcript.
-Channel input cannot select a Chat session. Old `channel_peers` records and
-per-peer conversations remain stored but receive no new channel input. The
-Sessions list excludes those conversations. Main and Chat are writable on
-the web. Automation transcripts have no web composer.
+Channel input cannot select a Chat session. The Sessions list excludes
+per-peer conversations. Main and Chat are writable on the web. Automation
+transcripts have no web composer.
 
 `/clear`, `/new`, `/stop`, and `/help` use durable command
 receipts. `/clear` and its alias `/new` use `channel:<source key>` as the stable

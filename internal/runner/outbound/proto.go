@@ -10,7 +10,7 @@ import (
 
 const (
 	// Version is the WebSocket subprotocol that both sides negotiate before the stream.
-	Version = "dex-agent.v1"
+	Version = "dex-agent.v2"
 	// MaxMessageBytes bounds one JSON-RPC message. A 16 MiB file grows about a third in base64.
 	MaxMessageBytes = 24 << 20
 	// Limit both the number of active calls and their aggregate memory and I/O.
@@ -51,11 +51,6 @@ type Ready struct {
 	Version          string `json:"version,omitempty"`
 	CanSelfUpdate    bool   `json:"canSelfUpdate,omitzero"`
 	SelfUpdateReason string `json:"selfUpdateReason,omitempty"`
-	// MaxInFlight is the number of calls the runner accepts per connection.
-	// Older peers omit or ignore this field and continue to use one slot.
-	MaxInFlight int `json:"maxInFlight,omitzero"`
-	// StartEvents permits a request with meta:true to receive a started notification.
-	StartEvents bool `json:"startEvents,omitzero"`
 }
 
 // Identity names one call, so a cancel notification can stop it and so output can follow

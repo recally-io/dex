@@ -84,16 +84,16 @@ func TestUserTranscriptToolEndBeforeResult(t *testing.T) {
 	}
 }
 
-func TestUserSeesStatusOfLegacyAndFailedTaskResults(t *testing.T) {
+func TestUserSeesOutcomesOfTaskResults(t *testing.T) {
 	// The projection keeps the answer out. The child session holds it.
 	for _, tc := range []struct {
 		name, content, wantStatus, wantReason string
 	}{
-		{"legacy", `{"task-result":{"status":"done","report":"old report"}}`, "done", ""},
+		{"done", `{"task-result":{"outcome":"done","answer":"private report"}}`, "done", ""},
 		{"failed", `{"task-result":{"outcome":"failed","reason":"model down"}}`, "failed", "model down"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			entry := transcriptEntry(1, "dex.task_result", ai.UserMessage{Content: ai.UserText(tc.content)}, delta.JsonObjectOf("requestId", "result-1", "taskId", "task-1", "taskTitle", "Inspect"))
+			entry := transcriptEntry(1, "dex.task_result", ai.UserMessage{Content: ai.UserText(tc.content)}, delta.JsonObjectOf("requestId", "result-1", "kind", "task_result"))
 			item := (projection{entries: []durable.EntryRecord{entry}}).event().Items[0]
 			if item.Text != "" || item.Status != tc.wantStatus || item.Reason != tc.wantReason {
 				t.Fatalf("result = %#v", item)

@@ -35,17 +35,6 @@ type AppliedPluginMigration struct {
 	AppliedAt int64  `json:"applied_at"`
 }
 
-type Artifact struct {
-	ID                    string `json:"id"`
-	AgentID               string `json:"agent_id"`
-	ConversationID        int64  `json:"conversation_id"`
-	DisplayConversationID int64  `json:"display_conversation_id"`
-	OperationKey          string `json:"operation_key"`
-	Name                  string `json:"name"`
-	Size                  int64  `json:"size"`
-	CreatedAt             int64  `json:"created_at"`
-}
-
 type Automation struct {
 	ID                   string         `json:"id"`
 	AgentID              string         `json:"agent_id"`
@@ -136,11 +125,6 @@ type ChannelCommand struct {
 	DeliveredAt    sql.NullInt64 `json:"delivered_at"`
 	ChannelContext string        `json:"channel_context"`
 	RenderedReply  string        `json:"rendered_reply"`
-}
-
-type ChannelPeer struct {
-	Peer       string `json:"peer"`
-	ChannelKey string `json:"channel_key"`
 }
 
 type ChannelWebhookInbox struct {
