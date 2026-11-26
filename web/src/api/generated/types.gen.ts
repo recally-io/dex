@@ -57,6 +57,121 @@ export type WorkTaskSession = {
     title: string;
 };
 
+export type BoardStatus = 'backlog' | 'ready' | 'in_progress' | 'in_review' | 'done' | 'cancelled';
+
+export type BoardReviewerKind = '' | 'owner' | 'bot';
+
+export type BoardTaskList = {
+    tasks: Array<BoardTaskSummary>;
+};
+
+export type BoardTaskSummary = {
+    id: string;
+    key: string;
+    number: number;
+    title: string;
+    status: BoardStatus;
+    assigneeBotId: string;
+    reviewerKind: BoardReviewerKind;
+    reviewerId: string;
+    reviewSeq: number;
+    revision: number;
+    blocked: boolean;
+    blockerCount: number;
+    createdAt: number;
+    updatedAt: number;
+    primarySession?: BoardTaskSession;
+};
+
+export type BoardTaskSession = {
+    conversationId: number;
+    agentId: string;
+    agentName: string;
+    title: string;
+    isPrimary: boolean;
+    linkedAt: number;
+    state: 'dispatched' | 'running' | 'idle' | 'completed' | 'failed' | 'stale' | 'cancelled';
+    endedAt?: number;
+};
+
+export type BoardTaskCreate = {
+    title: string;
+    status?: 'backlog' | 'ready' | 'in_progress';
+    assigneeBotId: string;
+    reviewerKind?: BoardReviewerKind;
+    reviewerId?: string;
+    note?: string;
+};
+
+export type BoardTaskUpdate = {
+    title?: string;
+    status?: BoardStatus;
+    assigneeBotId?: string;
+    reviewerKind?: BoardReviewerKind;
+    reviewerId?: string;
+};
+
+export type BoardEntryCreate = {
+    kind?: 'note' | 'artifact';
+    tag?: 'brief' | 'decision' | 'handoff' | 'update';
+    content: string;
+};
+
+export type BoardReview = {
+    decision: 'approve' | 'request_changes';
+    reviewSeq?: number;
+    note?: string;
+};
+
+export type BoardTaskDetail = {
+    task: BoardTaskSummary;
+    entries: Array<BoardTaskEntry>;
+    sessions: Array<BoardTaskSession>;
+    blockers: Array<BoardTaskBlocker>;
+    questions: Array<BoardTaskQuestion>;
+    links: Array<WorkTaskLink>;
+};
+
+export type BoardTaskEntry = {
+    id: number;
+    seq: number;
+    kind: 'note' | 'artifact' | 'status' | 'assign' | 'review' | 'execution' | 'external';
+    tag: string;
+    actorKind: string;
+    actorBotId: string;
+    trust: 'owner' | 'agent' | 'external';
+    content: string;
+    createdAt: number;
+    eventId?: string;
+    status?: BoardStatus;
+    decision?: 'approve' | 'request_changes';
+};
+
+export type BoardTaskBlocker = {
+    kind: 'wait' | 'question';
+    waitId?: number;
+    namespace?: string;
+    objectType?: string;
+    objectKey?: string;
+    eventType?: string;
+    questionId?: string;
+    question?: string;
+    queuePosition?: number;
+};
+
+export type BoardTaskQuestion = {
+    id: string;
+    text: string;
+    options: Array<string>;
+    queued: boolean;
+    agentId: string;
+    conversationId: number;
+};
+
+export type BoardEvent = {
+    taskId: string;
+};
+
 export type WorkTaskSessionLink = {
     conversationId: number;
     agentId: string;
@@ -1559,6 +1674,16 @@ export type FeishuInputWritable = {
     webhook?: FeishuWebhookInput;
 };
 
+/**
+ * A Board key such as T-42, or the Task UUID.
+ */
+export type BoardTaskKey = string;
+
+/**
+ * The expected Task revision as a decimal integer.
+ */
+export type BoardRevision = number;
+
 export type AgentId = string;
 
 export type AutomationId = string;
@@ -1923,6 +2048,260 @@ export type SaveGitHubWebhookResponses = {
 };
 
 export type SaveGitHubWebhookResponse = SaveGitHubWebhookResponses[keyof SaveGitHubWebhookResponses];
+
+export type ListBoardTasksData = {
+    body?: never;
+    path?: never;
+    query?: {
+        botId?: string;
+        status?: BoardStatus;
+        blocked?: boolean;
+        inReview?: boolean;
+        /**
+         * A linked Source namespace or its prefix before a slash.
+         */
+        source?: string;
+        includeClosed?: boolean;
+    };
+    url: '/api/board/tasks';
+};
+
+export type ListBoardTasksErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+};
+
+export type ListBoardTasksError = ListBoardTasksErrors[keyof ListBoardTasksErrors];
+
+export type ListBoardTasksResponses = {
+    /**
+     * Tasks for the Owner.
+     */
+    200: BoardTaskList;
+};
+
+export type ListBoardTasksResponse = ListBoardTasksResponses[keyof ListBoardTasksResponses];
+
+export type CreateBoardTaskData = {
+    body: BoardTaskCreate;
+    path?: never;
+    query?: never;
+    url: '/api/board/tasks';
+};
+
+export type CreateBoardTaskErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+};
+
+export type CreateBoardTaskError = CreateBoardTaskErrors[keyof CreateBoardTaskErrors];
+
+export type CreateBoardTaskResponses = {
+    /**
+     * Created Task.
+     */
+    201: BoardTaskSummary;
+};
+
+export type CreateBoardTaskResponse = CreateBoardTaskResponses[keyof CreateBoardTaskResponses];
+
+export type GetBoardTaskData = {
+    body?: never;
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}';
+};
+
+export type GetBoardTaskErrors = {
+    /**
+     * The request failed.
+     */
+    404: Error;
+};
+
+export type GetBoardTaskError = GetBoardTaskErrors[keyof GetBoardTaskErrors];
+
+export type GetBoardTaskResponses = {
+    /**
+     * Task and its timeline.
+     */
+    200: BoardTaskDetail;
+};
+
+export type GetBoardTaskResponse = GetBoardTaskResponses[keyof GetBoardTaskResponses];
+
+export type UpdateBoardTaskData = {
+    body: BoardTaskUpdate;
+    headers?: {
+        /**
+         * The expected Task revision as a decimal integer.
+         */
+        'If-Match'?: number;
+    };
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}';
+};
+
+export type UpdateBoardTaskErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    412: Error;
+};
+
+export type UpdateBoardTaskError = UpdateBoardTaskErrors[keyof UpdateBoardTaskErrors];
+
+export type UpdateBoardTaskResponses = {
+    /**
+     * Updated Task.
+     */
+    200: BoardTaskSummary;
+};
+
+export type UpdateBoardTaskResponse = UpdateBoardTaskResponses[keyof UpdateBoardTaskResponses];
+
+export type CreateBoardEntryData = {
+    body: BoardEntryCreate;
+    headers?: {
+        /**
+         * The expected Task revision as a decimal integer.
+         */
+        'If-Match'?: number;
+    };
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}/entries';
+};
+
+export type CreateBoardEntryErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    412: Error;
+};
+
+export type CreateBoardEntryError = CreateBoardEntryErrors[keyof CreateBoardEntryErrors];
+
+export type CreateBoardEntryResponses = {
+    /**
+     * Appended entry.
+     */
+    201: BoardTaskEntry;
+};
+
+export type CreateBoardEntryResponse = CreateBoardEntryResponses[keyof CreateBoardEntryResponses];
+
+export type ReviewBoardTaskData = {
+    body: BoardReview;
+    path: {
+        /**
+         * A Board key such as T-42, or the Task UUID.
+         */
+        taskKey: string;
+    };
+    query?: never;
+    url: '/api/board/tasks/{taskKey}/review';
+};
+
+export type ReviewBoardTaskErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    404: Error;
+    /**
+     * The request failed.
+     */
+    409: Error;
+};
+
+export type ReviewBoardTaskError = ReviewBoardTaskErrors[keyof ReviewBoardTaskErrors];
+
+export type ReviewBoardTaskResponses = {
+    /**
+     * Reviewed Task.
+     */
+    200: BoardTaskSummary;
+};
+
+export type ReviewBoardTaskResponse = ReviewBoardTaskResponses[keyof ReviewBoardTaskResponses];
+
+export type WatchBoardData = {
+    body?: never;
+    headers?: {
+        'Last-Event-ID'?: string;
+    };
+    path?: never;
+    query?: {
+        after?: number;
+    };
+    url: '/api/board/events';
+};
+
+export type WatchBoardErrors = {
+    /**
+     * The request failed.
+     */
+    400: Error;
+    /**
+     * The request failed.
+     */
+    401: Error;
+};
+
+export type WatchBoardError = WatchBoardErrors[keyof WatchBoardErrors];
+
+export type WatchBoardResponses = {
+    /**
+     * The Board event stream.
+     */
+    200: BoardEvent;
+};
+
+export type WatchBoardResponse = WatchBoardResponses[keyof WatchBoardResponses];
 
 export type ListWorkTasksData = {
     body?: never;

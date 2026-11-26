@@ -6,6 +6,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T) {
@@ -26,7 +27,7 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, err := r.q.CreateWorkTask(ctx, sqlc.CreateWorkTaskParams{ID: "task", AgentID: conv.AgentID, Title: "Sign-in", At: 1})
+	task, err := worktask.New(r.conn, nil).Create(ctx, conv.AgentID, "Sign-in")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,12 +39,13 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 		{"task-channel", "message", "telegram:17", "ask_user", "telegram:17", true},
 		{"ordinary-question", "message", "web", "ask_user", "", false},
 		{"ordinary-reply", "message", "web", "", "", true},
-		// A Task alert is a Main system input with the web origin. Its question stays in Web.
+		// Both legacy alerts and Board wakes are system inputs. Their questions stay in Web.
 		{"task-alert", "task_result", "web", "ask_user", "", true},
+		{"board-wake", "task_wake", "web", "ask_user", "", true},
 	}
 	for _, tc := range cases {
 		producer, replyChannel, replyPeer := inboxIdentity(tc.origin)
-		if tc.kind == "task_result" {
+		if tc.kind == "task_result" || tc.kind == "task_wake" {
 			producer, replyChannel, replyPeer = ProducerPlugin, "", ""
 		}
 		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{

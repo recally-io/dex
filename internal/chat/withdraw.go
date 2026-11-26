@@ -93,6 +93,11 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 		// A settlement that raced with the withdrawal ran the input.
 		return WithdrawnMessage{}, ErrAlreadyStarted
 	}
+	if conv.ParentID.Valid {
+		if err := q.ProjectTaskChildExecution(ctx, conv.ID); err != nil {
+			return WithdrawnMessage{}, err
+		}
+	}
 	if err := reopenQuestion(ctx, q, id); err != nil {
 		return WithdrawnMessage{}, err
 	}

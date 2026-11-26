@@ -43,6 +43,7 @@ type Config struct {
 	Chats       *chat.Service
 	Automations *automation.Service
 	WorkTasks   *worktask.Service
+	BoardEvents *worktask.Broker
 	Settings    *settings.Service
 	Agents      *agent.Service
 	Artifacts   *artifact.Service
@@ -116,13 +117,15 @@ func New(cfg Config) http.Handler {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
 				status = http.StatusBadRequest
-			case errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported):
+			case errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported), errors.Is(err, worktask.ErrConflict):
 				status = http.StatusConflict
+			case errors.Is(err, worktask.ErrRevision):
+				status = http.StatusPreconditionFailed
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, engine.ErrModelsPending):
 				status = http.StatusServiceUnavailable
-			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden):
+			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden), errors.Is(err, worktask.ErrForbidden):
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound

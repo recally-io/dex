@@ -2,16 +2,47 @@
 
 This document describes Board, the Task event store, holds, Task
 alerts, and the Task tools. Optional sources that send Task events are in
-[Plugins](plugins.md). For the planned Bot-centric, append-only Task Board
-redesign, see [Task Board Architecture](task-board.md).
+[Plugins](plugins.md). For the full Task Board design and rollout, see
+[Task Board Architecture](task-board.md).
 
 ## Board and event store
 
 Board reads `work_tasks` and `work_task_entries` from `control.sqlite`. Each
-Task belongs to one Owner Bot. Its lifecycle and notes do not change the state of a
-Session. Board hides closed Tasks by default. Inbox shows items that need owner
+Task has one Assignee Bot and a stable key such as `T-42`. Its status and
+notes do not change the state of a Session. Board shows Tasks in Kanban or
+List view. It hides closed Tasks by default. The legacy Inbox Task API maps
+`done` to `completed`, `cancelled` to `cancelled`, and all other statuses to
+`open`.
+
+The Owner uses `/api/board/tasks` to list and create Tasks. Detail and write
+paths accept a Task key or UUID. A PATCH or note POST can include an
+`If-Match` revision. A stale revision returns 412 and leaves the Task
+unchanged. Approval requires the current `reviewSeq`. A stale approval
+returns 409. Reassignment of an open Task wakes the new Assignee. It does
+not transfer Sessions or open questions from the old Assignee.
+
+Task mutations update the Task projection and append a ledger entry in the
+same write transaction. Each Task has a stable number, a revision, and entry
+sequences. A tombstone retracts an entry without deleting it. The legacy
+Timeline shows notes, artifacts, and external events that are not retracted.
+The service derives blockers from unresolved waits and open Task questions.
+A closed Task has no blockers. The Main queue position includes open
+questions that do not belong to a Task. The service does not store `Blocked`
+as a status. The optional entry hook runs only after commit. Consumers must
+use the durable entry ID to catch up. `GET /api/board/events` starts at the
+ledger head unless the client supplies `Last-Event-ID` or `after`. The
+stream sends `board_entry` events in ID order with Task IDs and no entry text.
+It then sends `board_ready` with the current cursor. Questions and execution
+state can change without a ledger write. Such changes can send
+`board_refresh` without advancing the cursor. Board refreshes its reads on
+these events. The legacy held-events API is unchanged.
+
+Phase 1 returns all matching Tasks and the full Owner timeline for each Task.
+Add cursor pages when large Boards or timelines make these reads too slow.
+
+Inbox shows items that need owner
 action, including held events and Automation results. The owner can send a
-message from a Task to its Owner Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
+message from a Task to its Assignee Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
 message from Main uses the original channel peer. If the input has no channel
@@ -45,37 +76,52 @@ wait or sends a Task alert.
 
 ## Task alerts and tools
 
-A Task alert is a `task_result` submission on the Owner Bot's Main. It is linked to
-the Task, so Main shows it with the Task title. Dex creates an alert when a
-source rule creates a Task, or when an event resolves a wait that has `alert`
-set. Dex writes the alert in the same transaction as the event, with the event
-ID as its source key, so each event sends at most one alert. A replayed
-delivery or a restart does not send a second alert. If the runner is offline,
-the alert stays pending until the runner returns. The alert contains only the
-event type, author class, source link, and the reason. It does not contain the
-event text. An alert is a system input, so it cannot create, complete, cancel,
-or reopen a Task. A quiet wait, a record-only event, a closed Task, an
-unmatched event, and a link conflict do not send an alert.
+A source rule that creates a Task adds `assigned` to the Assignee Bot's
+[Board wake](task-board.md#coalesced-main-wakeups). An event that resolves a
+wait with `alert` set adds `gate_unblocked`. The event and the wake commit in
+the same transaction. A replay does not add a second wake. If the runner is
+offline, the wake stays pending until the runner returns. Main shows a
+`Board wake` mark. The submission contains only Task keys, reasons, and an
+entry cursor. Dex links the submission to a Task only if all items refer to
+that Task and Main belongs to the Assignee Bot.
+A quiet wait, a record-only event, an unmatched event, and a link conflict do
+not wake Main. Events on closed Tasks do not wake Main.
 
-Main and writable Chats have the `task_list`, `task_get`, `task_new`,
-`task_update`, and `task_append` tools (`internal/worktask/tools`). They record
-work and never start, steer, or stop a Session. The tools see only the Tasks of
-the caller's bot. `task_new` and a lifecycle change need a run that a person
-started on the web or a channel. A session result, a monitor, or an external
-event cannot create, complete, cancel, or reopen a Task. Each change commits
-with a replay record under the tool key, so a replayed call does not add a
-second Task or entry. `task_get` returns the latest 20 entries, cuts each
-entry to 2000 characters, and omits the text of external entries. It gives
-only their event type, author class, and source link, so text from people
-outside the bot does not reach the model. Each entry has an author: `owner`
-(a note or a message from Task detail), `agent` (a tool call), or external (a
-source event). Entries from before the author column show as unknown.
-`task_get` and `GET /api/agents/{agentId}/inbox/tasks/{taskId}` list every
+Main and writable Chats have `task_list`, `task_read`, `task_new`,
+`task_update`, `task_post`, and `task_review`. Tools accept a UUID or a key
+such as `T-42`. `task_list` defaults to open Tasks and returns up to 50 Tasks
+for the Assignee or Reviewer. A child Session can only see its linked Tasks.
+It cannot create, update, or review a Task. The link does not give the child's
+Main access to the Task.
+
+`task_new` needs a user turn on Main or in a top-level Chat. On a user turn or
+Task wake, the Assignee's Main can change status or submit work for review.
+To cancel or reopen a Task, use the Owner controls. A top-level Chat can
+rename a Task or link its child on a user turn. `task_post` writes notes or
+artifacts only. The Bot Reviewer uses `task_review` on Main: approval must
+match the current `reviewSeq`; a request for changes needs a note and wakes
+the Assignee's Main after commit. Each write stores a replay record with the
+change. A replay does not repeat the change or wake.
+
+`task_read` gives Task details and returns entries by sequence. Use explicit
+`afterSeq: 0` to start a full scan, then use `nextCursor` for the next page.
+The default limit is 20 and the maximum is 100. Without `afterSeq` or tags,
+`task_read` selects up to 16 KiB of entries, with `brief` and `decision`
+notes first, then recent entries. This selection can omit entries below
+`nextCursor`. If `hasMore` is true, start at `afterSeq: 0` for a full scan.
+Reads do not change shared state. Owner entry bodies are plain text. Bot and
+external agent bodies are enclosed in `<task-entry>` with escaped text.
+External entries have metadata only. The model sees a key-based title for a
+Task created by a Source until an authorized rename. The Owner can still see
+the source title. Retracted entries are omitted.
+
+`task_read` and `GET /api/board/tasks/{taskKey}` list every
 linked object as `links`: its namespace, type, and key, with the waits on that
 object. The core does not decode these values, so links stay readable when no
 source can read them.
 
-`work_task_sessions` links a Task to Sessions across Bots. When a Task input
+`task_executions` links a Task to Sessions across Bots with the `dex_session`
+kind. When a Task input
 starts a child through `session_new` or `session_fork`, Dex saves the link in
 the same transaction as the child. The first link is primary. A later link
 does not replace it. `task_update` with `session` can add a direct child of
@@ -83,11 +129,12 @@ the caller, even if that child belongs to another Bot. Set `primary` to `true`
 to promote the child without removing other links. This does not grant tools
 access to Tasks of the child's Bot or change alert routing.
 
-`task_get` and Task detail return linked `sessions` in primary-first order.
-The legacy `session` field still returns the primary Session when present.
-The upgrade keeps old links as primary and uses the Session creation time as
-their link time because the old schema did not store a link time. Downgrading
-this migration keeps only the primary link for each Task.
+`task_read` and Task detail return linked `sessions` in primary-first order.
+The Board summary returns `primarySession` when present. The legacy
+`session` field stays available on the legacy Task API.
+The Phase 1 upgrade copies each link with its original Bot, primary flag,
+and timestamp. Downgrading restores these Session links. The old schema
+cannot store Board status detail, review versions, or non-Session executions.
 
 `task_link_github_pull` from the GitHub plugin links a PR and can add a review
 wait that starts at the call time. Set `alertMain` to `true` to send a Task

@@ -56,8 +56,11 @@ type Attachment struct {
 type Input struct {
 	// BeforeAdmission checks receipt state after environment preparation, before a new native commit.
 	BeforeAdmission func(context.Context) error
-	// ValidateAdmission runs just before a new native commit.
+	// ValidateAdmission checks the input before a new native commit.
 	ValidateAdmission func(context.Context, Ref) error
+	// RefreshContent replaces Content after the admission checks, inside the native transaction.
+	// The native write can still fail. Replay of an admitted request does not call it.
+	RefreshContent func(context.Context) (string, error)
 	// RequireEnvironment delays admission until the selected environment is online.
 	RequireEnvironment bool
 	// Changed wakes content-free execution subscribers. It must not block.

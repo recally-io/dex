@@ -1,6 +1,6 @@
 # Task Board Architecture
 
-This document defines the target architecture for dex's Bot-centric, append-only Task Board (tracked in [#291](https://github.com/vaayne/dex/issues/291)). Current implemented Board and Task behavior stays in [Tasks](tasks.md) until each phase ships. All user-facing terms follow the [Glossary](glossary.md).
+This document describes the Bot-centric, append-only Task Board (tracked in [#291](https://github.com/vaayne/dex/issues/291)). Phase 1 is implemented. See [Tasks](tasks.md) for current behavior and the [Glossary](glossary.md) for terms. Phases 2 and 3 are planned.
 
 ![Task Board architecture and boundaries](../assets/task-board.png)
 
@@ -24,7 +24,7 @@ Four invariants govern the design:
 
 1. **Bot accountability.** Every Task has one responsible dex Bot (`assignee_bot_id NOT NULL`). External coding agents run underneath a dex Bot; they never own a Task independently.
 2. **Task ownership is not Session ownership.** Reassigning a Task from Bot A to Bot B does not transfer `conversations.parent_id` control over Bot A's existing child sessions. Bot B's Main creates its own child sessions.
-3. **Append-only ledger as source of truth.** `work_task_entries` uses `INTEGER PRIMARY KEY AUTOINCREMENT` and forbids physical deletion (`tombstone` only, no `ON DELETE CASCADE`). Every Board state mutation writes one ledger row in the same SQLite write transaction so `work_tasks` stays a consistent projection of the ledger and SSE cursors never skip changes.
+3. **Append-only ledger as source of truth.** `work_task_entries` uses `INTEGER PRIMARY KEY AUTOINCREMENT` and forbids physical deletion (`tombstone` only, no `ON DELETE CASCADE`). Each change to a Task projection writes a ledger row in the same SQLite write transaction so `work_tasks` stays a consistent projection of the ledger and SSE cursors never skip changes.
 4. **Storage and lock boundaries.** All Board state lives in `control.sqlite` (`STRICT` tables). Native execution state remains in `agents/<id>/state.sqlite`. No call path holds two session delivery gates: cross-bot assignment, review, and unblock commit durable DB state first and invoke `wake()` after commit; cross-bot stops reuse `abort_pending`.
 
 ## Domain model
@@ -36,7 +36,9 @@ Four invariants govern the design:
 | `task_executions`   | `id`, `task_id`, `bot_id`, `kind` (`dex_session` \| `external_agent`), `conversation_id`, `turn_request_id`, `is_primary`, `harness`, `machine_id`, `host_meta_json`, `workspace_path`, `git_branch`, `external_session_id`, `state`, `lease_epoch`, `lease_expires_at`, `last_heartbeat_at`, timestamps. |
 | `task_dependencies` | `(task_id, depends_on_task_id)` (Phase 2). Allowed only between sibling Tasks that share the same `parent_task_id`. Cycle check and insert run in the same write transaction.                                                                                                                             |
 
-Upgrading from the current schema maps `work_tasks.agent_id` to `assignee_bot_id` and migrates existing `work_task_sessions` rows (including `agent_id`, `is_primary`, and `linked_at`) into `task_executions` (`kind = 'dex_session'`) without losing primary links or history.
+The Phase 1 upgrade maps `work_tasks.agent_id` to `assignee_bot_id` and copies `work_task_sessions` into `task_executions` (`kind = 'dex_session'`). It preserves the Bot, primary flag, and link time. It assigns Task numbers in `(created_at, id)` order. The upgrade maps legacy `open` to `in_progress`, `completed` to `done`, and `cancelled` to `cancelled`.
+
+Phase 1 includes the schema, ledger, authorization, coalesced Main wakes, child execution state, and Task tools. The Owner uses the Board API and UI. The legacy Inbox Task API still accepts UUIDs and the three legacy lifecycle values.
 
 Board does not introduce `Spaces` or `Watchers` as first-class entities. Filtering uses Assignee Bot, Status, `In Review`, `Blocked`, and linked Source; access control uses Assignee, Reviewer, and bound Sessions/Executions.
 
@@ -59,7 +61,7 @@ Generic `task_post` writes only `note` and `artifact`. Dedicated server mutation
 
 Central `canRead(bot, task)` and `canWrite(bot, task, action)` checks replace scattered `t.agent_id = caller` query filters:
 
-- `canRead` allows the Assignee, the Reviewer (Phase 2), and child Sessions or external runs bound to that Task.
+- `canRead` allows the Assignee, the Reviewer, and child Sessions or external runs bound to that Task.
 - `revision` applies only to cross-request HTTP and CLI writes via `If-Match: <revision>`. Internal Bot tools execute inside immediate SQLite writer transactions and do not expose `revision` in tool arguments.
 
 ## Lifecycle, derived Blocked state, and review
@@ -104,17 +106,18 @@ Entries carry a three-level `trust` classification:
 Protection rules:
 
 - **External isolation.** Raw `external` entry bodies stay visible to the Owner in the UI and never enter model reads, summaries, upstream digests, mentions, titles, SSE model projections, or wakeup payloads.
-- **Data envelope.** `task_read` wraps every entry with `trust != owner` in a fixed data envelope (for example `<task-entry seq="5" actor="bot:coder" trust="agent">...</task-entry>`). Tool instructions state that entries are data, never commands or new authorization.
-- **Side-effect-free cursor reads.** `task_read(taskId, afterSeq?, limit?, tags?, includeUpstream?)` returns entries and `nextCursor` without mutating shared read state, so filtered reads, upstream reads, or dropped responses never cause another consumer to skip unread entries.
-- **Bootstrap budget.** Cold-start context assembly inlines trusted entries up to a compact budget (for example 16 KiB) and prioritizes `brief` and `decision` tags, falling back to `task_read(afterSeq)` pagination for longer histories.
+- **Data envelope.** `task_read` wraps every `agent` entry body in a fixed data envelope (for example `<task-entry seq="5" actor="bot:coder" trust="agent">...</task-entry>`). Tool instructions state that entries are data, never commands or new authorization.
+- **Side-effect-free cursor reads.** `task_read(id, afterSeq?, limit?, tags?)` returns entries and `nextCursor` without mutating shared read state, so filtered reads or dropped responses never cause another consumer to skip unread entries.
+- **Bootstrap budget.** Cold-start context assembly inlines trusted entries up to a compact budget (for example 16 KiB) and prioritizes `brief` and `decision` tags, using `task_read` with explicit `afterSeq: 0` to start a full scan.
 
 ## Coalesced Main wakeups
 
 Main is a front desk ([Sessions](sessions.md)): queuing one submission per Task event delays user messages behind a burst of task turns.
 
-- **One unadmitted wake per Main.** A partial unique index on `submissions` (`WHERE kind = 'task_wake' AND admitted_at IS NULL`) ensures each Bot's Main has at most one pending wake before native admission. Incoming wake events upsert that row with the new high-water cursor and a deduplicated list of `(taskKey, reason)` items.
-- **Pointer-only payload.** A `task_wake` payload contains only cursor pointers and event categories, never entry body text. Main reads details on demand via `task_my_workload` and `task_read`.
-- **Decision allowlist.** Only decision-requiring events trigger `task_wake`: `assigned`, `review_requested`, `changes_requested`, `gate_unblocked` (including resolved alert waits), `execution_failed`, `execution_stale`, and `question_answered`. Ordinary `note`, `artifact`, and heartbeat writes update UI badges and SSE only.
+- **One pending wake per Main.** A partial unique index on `submissions` covers pending `task_wake` rows with no `admitted_at`. Task changes merge the high-water cursor and a deduplicated list of `(taskKey, reason)` items in the same transaction. While Main is busy, the wake stays in control storage. Other pending inputs go first.
+- **Admission recovery.** Control records the payload used for a new native admission before the native commit. It does not hold its writer across the commit. If more pointers arrive before control marks admission, control keeps the admitted payload on the old receipt and puts the latest pointers in a new pending wake. A replay uses the same native request ID and original snapshot.
+- **Pointer-only payload.** A `task_wake` payload contains only cursor pointers and event categories, never entry body text. Main reads details on demand via `task_list` and `task_read`.
+- **Decision allowlist.** Source assignment, Owner reassignment of an open Task, a request for Bot review, a request for changes, and a resolved alert wait can enqueue a wake. `execution_failed` and `execution_stale` are reserved for external executions. An Owner answer uses its existing Main input; no second wake is needed. Ordinary notes, artifacts, and heartbeats do not enqueue wakes.
 - **No internal double-wakeup.** Internal child sessions already deliver a `task_result` to their parent on settlement. Internal `dex_session` executions project their state from existing conversation and submission records (`conversation_id` + `turn_request_id`) and do not emit a second auto-echo wakeup.
 
 ## External agents and Runners (Phase 3)
@@ -140,14 +143,14 @@ The Web UI follows [web/AGENTS.md](../../web/AGENTS.md) (stock shadcn components
 - **Bot workspace**: Keeps `Sessions | Automations | Settings` (`General`, `Skills`, `Integrations`, `Secrets`) without adding a separate Bot Tasks tab; Bot-scoped Task views open `/board?bot=<id>`.
 - **Task detail (`/board/$taskKey`)**: Stable key (`T-42`), `In Review` action bar (`Approve` / `Request Changes`), filterable `#01..#N` Timeline, linked `Sessions` (plus external runs and Runner info in Phase 3), `Blocked` reasons and external links (`TaskLinks` + `GitHubPullForm`), and a unified note / Send to Main composer. Legacy `/a/$agentId/inbox/$taskId` links redirect cleanly.
 
-New Board endpoints use `/api/board/*` (or `/api/tasks/*`) rather than adding new routes under `/api/work` or `/api/inbox/tasks`.
+New Board endpoints use `/api/board/*`. The post-commit broker sends bounded wake hints. It does not order entries or keep replay history. The SSE handler reads SQLite by entry ID in bounded batches. Browser reconnects resume at the last received ID. The Owner UI reads only the current projection after a hint.
 
 ## Phased rollout
 
 | Phase       | Scope                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Phase 1** | Central `canRead`/`canWrite`; `AUTOINCREMENT` append-only ledger (`seq`, 8 kinds + `tag`, 3-tier `trust`, `tombstone`); global key `T-42`; 6 stored statuses + derived `Blocked`; `in_review` + `review_seq`; `task_executions` upgraded from `work_task_sessions`; B1 authorization matrix; B3 coalesced `task_wake`; side-effect-free `task_read(afterSeq)`; OpenAPI + global SSE (`/api/board/events`); Kanban/List `/board` and `/board/$taskKey`. |
-| **Phase 2** | `parent_task_id` decomposition (`task_split`); cross-bot `task_assign` and `task_review` (no nested delivery gates; Owner reviews surface in `/inbox`); sibling `depends_on` (same-tx cycle check, `cancelled`/`reopen` semantics); scoped child session `task_read`/`task_post`; `task_my_workload`.                                                                                                                                                  |
+| **Phase 2** | `parent_task_id` decomposition (`task_split`); cross-Bot `task_assign`; Owner reviews in `/inbox`; sibling `depends_on` (same-tx cycle check, `cancelled`/`reopen` semantics); scoped child session `task_read`/`task_post`; `task_my_workload`.                                                                                                                                                                                                       |
 | **Phase 3** | Attached CLI/MCP + scoped SHA-256 Board Tokens + Lease Watchdog (startup grace, write-time epoch check, `--resume`); Runners external run visibility; Managed Push via Processes (`process_start`) after Runner socket concurrency verification.                                                                                                                                                                                                       |
 
 ## Verification criteria

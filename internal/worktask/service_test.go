@@ -21,7 +21,7 @@ func TestUserTracksWorkAcrossTaskLifecycle(t *testing.T) {
 	}
 	s := New(conn, nil)
 	task, err := s.Create(ctx, "default", "Fix login")
-	if err != nil || task.Lifecycle != "open" {
+	if err != nil || task.Status != StatusReady {
 		t.Fatalf("create: %+v, %v", task, err)
 	}
 	if _, err := s.Append(ctx, "default", task.ID, "PR is ready for review"); err != nil {
@@ -43,7 +43,7 @@ func TestUserTracksWorkAcrossTaskLifecycle(t *testing.T) {
 	}
 	defer func() { _ = other.Close() }()
 	detail, err := New(other, nil).Detail(ctx, "default", task.ID)
-	if err != nil || detail.Task.Lifecycle != "completed" || len(detail.Entries) != 1 || detail.Entries[0].Content != "PR is ready for review" {
+	if err != nil || detail.Task.Status != StatusDone || len(detail.Entries) != 1 || detail.Entries[0].Content != "PR is ready for review" {
 		t.Fatalf("reopened database: %+v, %v", detail, err)
 	}
 }

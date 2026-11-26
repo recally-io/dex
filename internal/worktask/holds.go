@@ -25,6 +25,7 @@ func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID strin
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+	ledger := NewLedger(q)
 	now := time.Now().UnixMilli()
 	// The decision is the first write, so the transaction takes the SQLite writer before it reads.
 	if err := decideHold(ctx, q, eventID, "attached", now); err != nil {
@@ -38,7 +39,7 @@ func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID strin
 	if err != nil {
 		return err
 	}
-	if task.Lifecycle != "open" {
+	if !IsOpenStatus(task.Status) {
 		return ErrInvalid
 	}
 	var objects []Object
@@ -53,13 +54,14 @@ func (s *Service) AttachHeld(ctx context.Context, eventID, agentID, taskID strin
 	if err := q.SetWorkSourceEventTask(ctx, sqlc.SetWorkSourceEventTaskParams{TaskID: sql.NullString{String: taskID, Valid: true}, ID: eventID}); err != nil {
 		return err
 	}
-	if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: taskID, AgentID: agentID, Content: event.Content, CreatedAt: now, EventID: sql.NullString{String: eventID, Valid: true}}); err != nil {
+	if err := ledger.recordExternal(ctx, task, event.Content, eventID, now); err != nil {
 		return err
 	}
-	if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: taskID, At: now}); err != nil {
+	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return tx.Commit()
+	s.Notify(ledger)
+	return nil
 }
 
 // DismissHeld removes a held event from the Inbox. The event stays recorded.

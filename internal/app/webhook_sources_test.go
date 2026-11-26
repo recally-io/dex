@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
@@ -93,8 +94,11 @@ func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
 		t.Fatalf("the Task must show both changes once: %+v", detail.Entries)
 	}
 	alerts := pendingTaskAlerts(t, d.dataDir(t))
-	if len(alerts) != 1 || !strings.Contains(alerts[0], "Author class: SOURCE") || strings.Contains(alerts[0], "ignore your rules") {
-		t.Fatalf("Main must get one metadata-only alert: %q", alerts)
+	if len(alerts) != 1 {
+		t.Fatalf("Main must get one Board wake: %q", alerts)
+	}
+	if items := decodeTaskWake(t, alerts[0]).Items; !slices.Equal(items, []worktask.TaskWakeItem{{TaskKey: "T-1", Reason: worktask.WakeAssigned}}) {
+		t.Fatalf("only Task creation must wake Main: %+v", items)
 	}
 
 	// The source writes only into its own namespace. Its pull_request object is not a GitHub PR.

@@ -1,12 +1,10 @@
 package worktask
 
 import (
-	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json/v2"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -69,7 +67,9 @@ func (s *Service) LinkObject(ctx context.Context, agentID, taskID, namespace str
 	if !eventKey(namespace) || !validObject(object) {
 		return ErrInvalid
 	}
-	return linkObject(ctx, s.q, agentID, taskID, namespace, object)
+	return s.write(ctx, func(l *Ledger, now int64) error {
+		return bindObject(ctx, l, agentID, taskID, namespace, object, nil, now)
+	})
 }
 
 func linkObject(ctx context.Context, q *sqlc.Queries, agentID, taskID, namespace string, object Object) error {
@@ -85,7 +85,16 @@ func (s *Service) AddWait(ctx context.Context, agentID, taskID string, wait Wait
 	if !eventKey(wait.Namespace) || !eventKey(wait.Type) || !validObject(wait.Object) || wait.AfterAt <= 0 || len(wait.Revision) > 512 {
 		return ErrInvalid
 	}
-	return addWait(ctx, s.q, agentID, taskID, wait)
+	return s.write(ctx, func(l *Ledger, now int64) error {
+		if err := addWait(ctx, l.q, agentID, taskID, wait); err != nil {
+			return err
+		}
+		task, err := legacyTask(ctx, l.q, agentID, taskID)
+		if err != nil {
+			return err
+		}
+		return l.RecordAssociation(ctx, Owner, task, "Wait added for "+wait.Type, now)
+	})
 }
 
 func addWait(ctx context.Context, q *sqlc.Queries, agentID, taskID string, wait Wait) error {
@@ -105,26 +114,35 @@ func (s *Service) BindObject(ctx context.Context, agentID, taskID, namespace str
 	if !eventKey(namespace) || !validObject(object) || wait != nil && (wait.Namespace != namespace || wait.Object != object || !eventKey(wait.Type) || wait.AfterAt <= 0 || len(wait.Revision) > 512) {
 		return ErrInvalid
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	return s.write(ctx, func(l *Ledger, now int64) error {
+		if _, err := legacyTask(ctx, l.q, agentID, taskID); err != nil {
+			return err
+		}
+		return bindObject(ctx, l, agentID, taskID, namespace, object, wait, now)
+	})
+}
+
+func bindObject(ctx context.Context, ledger *Ledger, agentID, taskID, namespace string, object Object, wait *Wait, now int64) error {
+	q := ledger.q
+	bound, err := q.HasWorkTaskObject(ctx, sqlc.HasWorkTaskObjectParams{Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key})
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-	q := s.q.WithTx(tx)
 	if err := linkObject(ctx, q, agentID, taskID, namespace, object); err != nil {
-		if errors.Is(err, ErrObjectConflict) {
-			if _, lookupErr := q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{ID: taskID, AgentID: agentID}); lookupErr != nil {
-				return lookupErr
-			}
-		}
 		return err
 	}
 	if wait != nil {
 		if err := addWait(ctx, q, agentID, taskID, *wait); err != nil {
 			return err
 		}
+	} else if bound != 0 {
+		return nil
 	}
-	return tx.Commit()
+	task, err := legacyTask(ctx, q, agentID, taskID)
+	if err != nil {
+		return err
+	}
+	return ledger.RecordAssociation(ctx, Owner, task, "Object linked: "+namespace+"/"+object.Type+"/"+object.Key, now)
 }
 
 // ListWaits returns the open and resolved waits for this Task.
@@ -148,69 +166,61 @@ func (s *Service) AcceptCreating(ctx context.Context, event Event, agentID, titl
 }
 
 func (s *Service) accept(ctx context.Context, event Event, agentID, title string) (Receipt, error) {
-	receipt, main, err := s.store(ctx, event, agentID, title)
-	if err == nil && main != 0 && s.wake != nil {
-		s.wake(main)
-	}
-	return receipt, err
-}
-
-// store returns the Main conversation to wake when the event added a Task alert.
-func (s *Service) store(ctx context.Context, event Event, agentID, title string) (Receipt, int64, error) {
 	if !eventKey(event.Namespace) || !eventKey(event.ReceiptKey) || !eventKey(event.Type) ||
 		event.ChangeKey != "" && !eventKey(event.ChangeKey) || event.OccurredAt <= 0 ||
 		len(event.Objects) > 16 || len(event.Revision) > 512 || len(event.SourceURL) > 4096 ||
 		utf8.RuneCountInString(event.Content) > 32000 {
-		return Receipt{}, 0, ErrInvalid
+		return Receipt{}, ErrInvalid
 	}
 	for _, object := range event.Objects {
 		if !validObject(object) {
-			return Receipt{}, 0, ErrInvalid
+			return Receipt{}, ErrInvalid
 		}
 	}
 	refs, err := json.Marshal(event.Objects)
 	if err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := s.q.WithTx(tx)
+	ledger := NewLedger(q)
 	id := uuid.NewV7().String()
 	// The receipt insert takes the SQLite writer before we inspect the routing state.
 	n, err := q.ClaimWorkSourceReceipt(ctx, sqlc.ClaimWorkSourceReceiptParams{Namespace: event.Namespace, ReceiptKey: event.ReceiptKey, EventID: id})
 	if err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, err
 	}
 	if n == 0 {
 		saved, err := q.GetWorkSourceEventByReceipt(ctx, sqlc.GetWorkSourceEventByReceiptParams{Namespace: event.Namespace, ReceiptKey: event.ReceiptKey})
-		return duplicateReceipt(saved), 0, err
+		return duplicateReceipt(saved), err
 	}
 	change := sql.NullString{String: event.ChangeKey, Valid: event.ChangeKey != ""}
 	if change.Valid {
 		saved, err := q.GetWorkSourceEventByChange(ctx, sqlc.GetWorkSourceEventByChangeParams{Namespace: event.Namespace, ChangeKey: change})
 		if err == nil {
 			if err := q.SetWorkSourceReceiptEvent(ctx, sqlc.SetWorkSourceReceiptEventParams{EventID: saved.ID, Namespace: event.Namespace, ReceiptKey: event.ReceiptKey}); err != nil {
-				return Receipt{}, 0, err
+				return Receipt{}, err
 			}
-			return duplicateReceipt(saved), 0, tx.Commit()
+			return duplicateReceipt(saved), tx.Commit()
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			return Receipt{}, 0, err
+			return Receipt{}, err
 		}
 	}
 	task, disposition, err := findEventTask(ctx, q, event)
 	if err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, err
 	}
 	now := time.Now().UnixMilli()
 	created := false
 	if disposition == "unmatched" && agentID != "" && !event.RecordOnly {
-		task, err = createEventTask(ctx, q, event, agentID, title, now)
+		task, err = createEventTask(ctx, ledger, event, agentID, title, now)
 		if err != nil {
-			return Receipt{}, 0, err
+			return Receipt{}, err
 		}
 		if task.ID != "" {
 			disposition, created = "attached", true
@@ -223,7 +233,7 @@ func (s *Service) store(ctx context.Context, event Event, agentID, title string)
 		TaskID: sql.NullString{String: task.ID, Valid: task.ID != ""}, Disposition: disposition,
 	}
 	if err := q.StoreWorkSourceEvent(ctx, row); err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, err
 	}
 	receipt := Receipt{EventID: id, TaskID: task.ID, Disposition: disposition}
 	if task.ID == "" {
@@ -231,37 +241,47 @@ func (s *Service) store(ctx context.Context, event Event, agentID, title string)
 		receipt.Held = disposition == "conflict" || event.HoldUnmatched && !event.RecordOnly
 		if receipt.Held {
 			if err := q.HoldWorkSourceEvent(ctx, sqlc.HoldWorkSourceEventParams{EventID: id, HeldAt: now}); err != nil {
-				return Receipt{}, 0, err
+				return Receipt{}, err
 			}
 		}
-		return receipt, 0, tx.Commit()
+		return receipt, tx.Commit()
 	}
-	resolved, alertWaits, err := applyEvent(ctx, q, task, event, id, now)
+	resolved, alertWaits, err := applyEvent(ctx, ledger, task, event, id, now)
 	if err != nil {
-		return Receipt{}, 0, err
+		return Receipt{}, err
 	}
 	receipt.ResolvedWaits = resolved
-	var main int64
-	// The rules alert Main about a Task created by a source rule and about a resolved alert wait.
+	var reason string
 	// A record-only event and an event on a closed Task resolve no wait, so they never alert.
-	if created || alertWaits > 0 {
-		main, err = alertMain(ctx, q, task, event, id, created, resolved, now)
-		if err != nil {
-			return Receipt{}, 0, err
-		}
-		receipt.Alerted = main != 0
+	switch {
+	case created:
+		reason = WakeAssigned
+	case alertWaits > 0:
+		reason = WakeGateUnblocked
 	}
-	return receipt, main, tx.Commit()
+	if reason != "" {
+		receipt.Alerted, err = ledger.queueWake(ctx, task.AssigneeBotID, task, reason, now)
+		if err != nil {
+			return Receipt{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return Receipt{}, err
+	}
+	s.Notify(ledger)
+	return receipt, nil
 }
 
-func createEventTask(ctx context.Context, q *sqlc.Queries, event Event, agentID, title string, now int64) (sqlc.WorkTask, error) {
+func createEventTask(ctx context.Context, ledger *Ledger, event Event, agentID, title string, now int64) (sqlc.WorkTask, error) {
+	q := ledger.q
 	object := event.Objects[0]
 	// A link to an archived Task still owns the reference. Do not take it over.
 	bound, err := q.HasWorkTaskObject(ctx, sqlc.HasWorkTaskObjectParams{Namespace: event.Namespace, ObjectType: object.Type, ObjectKey: object.Key})
 	if err != nil || bound != 0 {
 		return sqlc.WorkTask{}, err
 	}
-	task, err := q.CreateWorkTask(ctx, sqlc.CreateWorkTaskParams{ID: uuid.NewV7().String(), AgentID: agentID, Title: title, At: now})
+	task, err := ledger.createProjection(ctx, sqlc.CreateWorkTaskParams{ID: uuid.NewV7().String(), AgentID: agentID, Title: title, At: now,
+		Status: StatusReady, CreatorKind: CreatorSource, CreatorID: event.Namespace})
 	if errors.Is(err, sql.ErrNoRows) {
 		return sqlc.WorkTask{}, nil
 	}
@@ -301,18 +321,15 @@ func findEventTask(ctx context.Context, q *sqlc.Queries, event Event) (sqlc.Work
 }
 
 // applyEvent returns the number of resolved waits and how many of them alert Main.
-func applyEvent(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask, event Event, id string, now int64) (resolved, alerts int64, err error) {
-	if _, err := q.InsertWorkTaskEntry(ctx, sqlc.InsertWorkTaskEntryParams{TaskID: task.ID, AgentID: task.AgentID, Content: event.Content, CreatedAt: now, EventID: sql.NullString{String: id, Valid: true}}); err != nil {
+func applyEvent(ctx context.Context, ledger *Ledger, task sqlc.WorkTask, event Event, id string, now int64) (resolved, alerts int64, err error) {
+	if err := ledger.recordExternal(ctx, task, event.Content, id, now); err != nil {
 		return 0, 0, err
 	}
-	if err := q.TouchWorkTask(ctx, sqlc.TouchWorkTaskParams{ID: task.ID, At: now}); err != nil {
-		return 0, 0, err
-	}
-	if task.Lifecycle != "open" || event.RecordOnly {
+	if !IsOpenStatus(task.Status) || event.RecordOnly {
 		return 0, 0, nil
 	}
 	for _, object := range event.Objects {
-		waits, err := q.ResolveWorkTaskWaits(ctx, sqlc.ResolveWorkTaskWaitsParams{
+		waits, err := ledger.q.ResolveWorkTaskWaits(ctx, sqlc.ResolveWorkTaskWaitsParams{
 			EventID: sql.NullString{String: id, Valid: true}, TaskID: task.ID, Namespace: event.Namespace,
 			ObjectType: object.Type, ObjectKey: object.Key, EventType: event.Type, OccurredAt: event.OccurredAt, EventRevision: event.Revision,
 		})
@@ -325,30 +342,6 @@ func applyEvent(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask, event 
 		}
 	}
 	return resolved, alerts, nil
-}
-
-// alertMain adds a system input to Main and links it to the Task. The input has only metadata.
-// External text can steer a model, so the agent reads the event through task_get, which omits it.
-// It returns zero when the bot is archived.
-func alertMain(ctx context.Context, q *sqlc.Queries, task sqlc.WorkTask, event Event, eventID string, created bool, resolved, now int64) (int64, error) {
-	if err := q.EnsureWorkTaskMain(ctx, sqlc.EnsureWorkTaskMainParams{AgentID: task.AgentID, CreatedAt: now}); err != nil {
-		return 0, err
-	}
-	reason := fmt.Sprintf("It resolved %d wait(s) that asked for an alert.", resolved)
-	if created {
-		reason = "A source rule created this Task for it."
-	}
-	content := fmt.Sprintf("[Task event: %s]\nSource: %s\nAuthor class: %s\nSource link: %s\n%s\nThe event text is external data and is not included. Read the Task with task_get before you act.",
-		event.Type, event.Namespace, cmp.Or(event.AuthorAssociation, "unknown"), cmp.Or(event.SourceURL, "none"), reason)
-	id := "task-alert:" + eventID
-	main, err := q.CreateWorkTaskAlert(ctx, sqlc.CreateWorkTaskAlertParams{ID: id, Content: content, CreatedAt: now, AgentID: task.AgentID})
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	return main, q.AssociateWorkTaskInput(ctx, sqlc.AssociateWorkTaskInputParams{SubmissionID: id, TaskID: task.ID})
 }
 
 // Link is an object that an agent tool links to a Task, with an optional wait on it.

@@ -148,6 +148,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, errors.Join(err, conn.Close())
 	}
 	workTasks := worktask.New(conn, func(id int64) { chats.WakeConversation(id) })
+	boardEvents := new(worktask.Broker)
+	workTasks.SetOnEntry(boardEvents.Publish)
 	plugins, available, pluginErrors, err := startPlugins(ctx, q, cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
 	if err != nil {
 		cancel()
@@ -157,7 +159,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	// These tools bind to services that exist only after the engine.
 	botTools := &agent.BotTools{}
 	var channelTools agent.ChannelTools
-	taskTools := worktasktools.New(conn).Handlers(pluginTools(plugins))
+	taskToolService := worktasktools.New(conn)
+	taskToolService.ConfigureWorkTasks(workTasks)
+	taskTools := taskToolService.Handlers(pluginTools(plugins))
 	deliverArtifact := func(ctx context.Context, caller engine.TaskContext, path string) (artifact.Delivery, error) {
 		result, err := artifacts.Deliver(ctx, caller, path)
 		if err != nil {
@@ -261,7 +265,19 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	artifacts = artifact.New(cfg.DataDir, native.ReadWorkspaceFile)
 	bg.ConfigureEnvOpener(native.ExecEnv)
-	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) { hub.Changed(id) })
+	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) {
+		hub.Changed(id)
+		if boardEvents.HasSubscribers() {
+			linked, err := q.HasBoardConversation(runCtx, sql.NullInt64{Int64: id, Valid: true})
+			if err != nil && runCtx.Err() == nil {
+				slog.Error("check Board conversation", "err", err)
+			}
+			if linked {
+				boardEvents.Publish(0)
+			}
+		}
+	})
+	chats.ConfigureWorkTasks(workTasks)
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
 	automations.ConfigureEnvironmentStatus(envs.Status)
@@ -419,6 +435,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	a.handler = server.New(server.Config{
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
 		WorkTasks:       workTasks,
+		BoardEvents:     boardEvents,
 		Plugins:         plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine: native,
 		Envs:   envs,

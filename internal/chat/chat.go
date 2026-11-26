@@ -22,6 +22,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 // Chat is one conversation on one channel.
@@ -142,6 +143,7 @@ type Service struct {
 	monitorMu     sync.Mutex // serialize creation to enforce the shared active limit
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
+	workTasks     *worktask.Service
 
 	admissionMu    sync.RWMutex            // receipt changes, withdrawals and maintenance lease confirmation
 	delivery       map[int64]*deliveryGate // One entry per Session that used a gate since startup.
@@ -352,6 +354,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	}
 	complete, archived := false, ""
 	createdReceipt := false
+	var ledger *worktask.Ledger
 	chatID, err := func() (int64, error) {
 		s.admissionMu.RLock()
 		defer s.admissionMu.RUnlock()
@@ -495,7 +498,8 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			}
 		}
 		if created > 0 && taskID != "" {
-			if err := recordWorkTaskMessage(ctx, q, agentID, taskID, m, submittedAt); err != nil {
+			ledger = worktask.NewLedger(q)
+			if err := recordWorkTaskMessage(ctx, q, ledger, agentID, taskID, m, submittedAt); err != nil {
 				return 0, err
 			}
 		}
@@ -538,6 +542,9 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		}
 		return conv.ID, nil
 	}()
+	if createdReceipt && ledger != nil {
+		s.workTasks.Notify(ledger)
+	}
 	// Channel runtime changes run outside the receipt gate, so a busy bot cannot block the gate.
 	s.botArchived(archived)
 	if createdReceipt {
@@ -815,6 +822,14 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	}
 	input := engine.Input{RequestID: p.ID, Content: p.Content, Kind: p.Kind, Origin: p.Origin, Source: source(p), Attachments: attachments, Options: options, Child: conv.ParentID.Valid, Automation: strings.HasPrefix(p.ChannelKey, "automation:"), Main: p.ChannelKey == MainKey, WhenBusy: p.WhenBusy}
 	input.BeforeAdmission = func(ctx context.Context) error { return s.checkAdmission(ctx, p.ID) }
+	boardWake := p.Kind == "task_wake"
+	if boardWake {
+		// Keep the mutable wake in control storage while Main is busy.
+		input.WhenBusy = "reject"
+		input.TaskTitle = "Board wake"
+		input.Content = current.Content
+		input.RefreshContent = func(ctx context.Context) (string, error) { return s.snapshotTaskWake(ctx, p.ID) }
+	}
 	if input.Origin == "automation" && input.Kind == "message" && !input.Automation {
 		input.ModelSuffix = BoundRoutineCheckSuffix
 	}
@@ -828,18 +843,23 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 			return nil
 		}
 	}
-	// An owner message or a Task alert of a Task carries the Task context.
-	var workTask sqlc.WorkTask
-	if input.Main {
+	// A Board wake carries only its own Task pointers, even when it links one Task.
+	var modelTaskTitle string
+	if input.Main && !boardWake {
 		taskID, err := workTaskForInput(ctx, s.q, p.ID)
 		if err != nil {
 			return err
 		}
 		if taskID != "" {
-			if workTask, err = s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID}); err != nil {
+			task, err := s.q.GetWorkTask(ctx, sqlc.GetWorkTaskParams{AgentID: p.AgentID, ID: taskID})
+			if err != nil {
 				return err
 			}
-			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", workTask.Title, workTask.ID)
+			modelTaskTitle, err = worktask.ModelTitle(ctx, s.q, task)
+			if err != nil {
+				return err
+			}
+			input.WorkTaskContext = fmt.Sprintf("%q (ID %s)", modelTaskTitle, task.ID)
 		}
 	}
 	if input.Child {
@@ -847,8 +867,8 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	}
 	if p.Kind == "task_result" {
 		input.TaskID, input.TaskTitle = resultLabel(p.Content)
-		if workTask.ID != "" {
-			input.TaskTitle = workTask.Title
+		if modelTaskTitle != "" {
+			input.TaskTitle = modelTaskTitle
 		}
 	}
 	sub, err := s.engine.Submit(ctx, ref, input)
@@ -857,16 +877,30 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		if errors.Is(err, errInputSettled) {
 			return nil
 		}
-		if p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
+		if boardWake && errors.Is(err, ErrNoModel) {
+			// Keep the pending wake slot so pointers survive until a model is configured.
+			return err
+		}
+		if boardWake && errors.Is(err, engine.ErrBusy) {
+			// Main is busy; leave the wake pending until settlement signals Main,
+			// without putting the session into retry backoff.
+			return nil
+		}
+		if !boardWake && p.WhenBusy == "reject" && errors.Is(err, engine.ErrBusy) {
 			// A rejected input is final. Retrying it would run it after the current run.
 			return s.settle(ctx, p.ID, engine.Outcome{Status: "unanswered", Reason: rejectedBusy})
 		}
 		return s.admissionError(ctx, p.ID, err)
 	}
-	if s.channelAdmission != nil {
-		s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
+	if boardWake {
+		err = s.markTaskWakeAdmitted(ctx, p.ID)
+	} else {
+		if s.channelAdmission != nil {
+			s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
+		}
+		err = s.markAdmitted(ctx, p.ID)
 	}
-	if err := s.markAdmitted(ctx, p.ID); err != nil {
+	if err != nil {
 		return err
 	}
 	if trace != nil {

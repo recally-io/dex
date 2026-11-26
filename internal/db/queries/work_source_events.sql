@@ -19,8 +19,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: LinkWorkTaskObject :execrows
 INSERT INTO work_task_objects (namespace, object_type, object_key, task_id)
-SELECT @namespace, @object_type, @object_key, t.id FROM work_tasks t JOIN agents a ON a.id = t.agent_id
-WHERE t.id = @task_id AND t.agent_id = @agent_id AND a.archived_at IS NULL
+SELECT @namespace, @object_type, @object_key, t.id FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = @task_id AND t.assignee_bot_id = @agent_id AND a.archived_at IS NULL
 ON CONFLICT (namespace, object_type, object_key) DO UPDATE SET task_id = excluded.task_id
 WHERE work_task_objects.task_id = excluded.task_id;
 
@@ -31,14 +31,14 @@ SELECT * FROM work_task_objects WHERE task_id = ? ORDER BY namespace, object_typ
 SELECT count(*) FROM work_task_objects WHERE namespace = ? AND object_type = ? AND object_key = ?;
 
 -- name: FindWorkTaskByObject :one
-SELECT t.* FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.agent_id
+SELECT t.* FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
 WHERE o.namespace = ? AND o.object_type = ? AND o.object_key = ? AND a.archived_at IS NULL;
 
 -- name: AddWorkTaskWait :execrows
 INSERT INTO work_task_waits (task_id, namespace, object_type, object_key, event_type, revision, after_at, alert)
 SELECT t.id, o.namespace, o.object_type, o.object_key, @event_type, @revision, @after_at, @alert
-FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.agent_id
-WHERE t.id = @task_id AND t.agent_id = @agent_id AND t.lifecycle = 'open' AND a.archived_at IS NULL
+FROM work_task_objects o JOIN work_tasks t ON t.id = o.task_id JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = @task_id AND t.assignee_bot_id = @agent_id AND t.status NOT IN ('done', 'cancelled') AND a.archived_at IS NULL
 AND o.namespace = @namespace AND o.object_type = @object_type AND o.object_key = @object_key
 ON CONFLICT (task_id, namespace, object_type, object_key, event_type, revision, after_at) DO UPDATE SET after_at = excluded.after_at, alert = excluded.alert;
 
@@ -50,22 +50,14 @@ AND after_at < @occurred_at AND (revision = '' OR revision = sqlc.arg(event_revi
 RETURNING alert;
 
 -- name: ListWorkTaskWaits :many
-SELECT w.* FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.agent_id
-WHERE w.task_id = @task_id AND t.agent_id = @agent_id AND a.archived_at IS NULL ORDER BY w.id;
+SELECT w.* FROM work_task_waits w JOIN work_tasks t ON t.id = w.task_id JOIN agents a ON a.id = t.assignee_bot_id
+WHERE w.task_id = @task_id AND t.assignee_bot_id = @agent_id AND a.archived_at IS NULL ORDER BY w.id;
 
--- name: EnsureWorkTaskMain :exec
--- Main is created on first use. An alert can be the first input of a new bot.
-INSERT INTO conversations (agent_id, channel_key, title, created_at)
-SELECT a.id, 'main', a.name, @created_at FROM agents a WHERE a.id = @agent_id AND a.archived_at IS NULL
-ON CONFLICT (agent_id, channel_key) DO NOTHING;
+-- name: ListBoardTaskWaits :many
+SELECT * FROM work_task_waits WHERE task_id = ? ORDER BY id;
 
--- name: CreateWorkTaskAlert :one
--- A Task alert is a system input of Main. Its ID comes from the event, so one event alerts once.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
-SELECT @id, c.id, @content, 'null', @id, 'web', 'plugin', '', '', 'task_result', 'pending', @created_at, '{}'
-FROM conversations c WHERE c.agent_id = @agent_id AND c.channel_key = 'main' AND c.archived_at IS NULL
-ON CONFLICT DO NOTHING
-RETURNING conversation_id;
+-- name: ListUnresolvedWorkTaskWaits :many
+SELECT * FROM work_task_waits WHERE task_id = ? AND resolved_by IS NULL ORDER BY id;
 
 -- name: HoldWorkSourceEvent :exec
 INSERT INTO work_source_holds (event_id, held_at) VALUES (?, ?);

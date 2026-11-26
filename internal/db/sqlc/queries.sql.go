@@ -1039,7 +1039,7 @@ func (q *Queries) GetProvider(ctx context.Context, id string) (Provider, error) 
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, kind, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested, producer, reply_channel, reply_peer FROM submissions WHERE id = ?
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, delivered_parts, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, rendered_reply, channel_retry_at, channel_delivery_error, channel_remote_ids, channel_revoked, channel_group_fallback, channel_group_cursor, exit_action, required_reply_id, stop_requested, producer, reply_channel, reply_peer, kind FROM submissions WHERE id = ?
 `
 
 func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, error) {
@@ -1059,7 +1059,6 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.DeliveredAt,
 		&i.DeliveredParts,
 		&i.Origin,
-		&i.Kind,
 		&i.AdmittedAt,
 		&i.WhenBusy,
 		&i.ParentRequestID,
@@ -1079,6 +1078,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id string) (Submission, err
 		&i.Producer,
 		&i.ReplyChannel,
 		&i.ReplyPeer,
+		&i.Kind,
 	)
 	return i, err
 }
@@ -1676,7 +1676,7 @@ SELECT
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND c.execution_scope = '' AND (CAST(?1 AS INTEGER) = 0 OR s.conversation_id = ?1)
-ORDER BY s.rowid
+ORDER BY (s.kind = 'task_wake'), s.rowid
 `
 
 type ListPendingSubmissionsRow struct {
@@ -1696,7 +1696,7 @@ type ListPendingSubmissionsRow struct {
 	ChannelKey     string        `json:"channel_key"`
 }
 
-// SQLite assigns rowids under the writer lock. Delivery follows admission, not wall time.
+// SQLite assigns rowids under the writer lock. Keep receipt order, with Board wakes last.
 func (q *Queries) ListPendingSubmissions(ctx context.Context, conversationID int64) ([]ListPendingSubmissionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listPendingSubmissions, conversationID)
 	if err != nil {

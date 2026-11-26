@@ -17,6 +17,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 
 	"github.com/recally-io/dex/internal/api"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
@@ -98,13 +99,12 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	}
 	// A forged From header does not make the owner an author.
 	alerts := pendingTaskAlerts(t, d.dataDir(t))
-	if len(alerts) != 2 || strings.Contains(strings.Join(alerts, "\n"), "owner@example.com") {
-		t.Fatalf("Main must get one metadata-only alert per new Task: %q", alerts)
+	if len(alerts) != 1 {
+		t.Fatalf("Main must get one Board wake for both Tasks: %q", alerts)
 	}
-	for _, alert := range alerts {
-		if !strings.Contains(alert, "Author class: SOURCE") {
-			t.Fatalf("an email alert must carry the source class: %q", alert)
-		}
+	want := []worktask.TaskWakeItem{{TaskKey: "T-1", Reason: worktask.WakeAssigned}, {TaskKey: "T-2", Reason: worktask.WakeAssigned}}
+	if items := decodeTaskWake(t, alerts[0]).Items; !slices.Equal(items, want) {
+		t.Fatalf("only the new Tasks must wake Main: %+v", items)
 	}
 
 	// The owner can also let Dex read a mailbox folder. The API accepts only a TLS

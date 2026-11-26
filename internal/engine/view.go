@@ -26,7 +26,7 @@ type Item struct {
 	Steer       bool         `json:"steer,omitzero"`
 	TaskID      string       `json:"taskId,omitempty"`
 	Title       string       `json:"title,omitempty"`
-	// Alert marks a Task alert on Main. Its title is the Task title.
+	// Alert marks a Task alert or a Board wake on Main.
 	Alert      bool           `json:"alert,omitzero"`
 	Name       string         `json:"name,omitempty"`
 	Args       map[string]any `json:"args,omitempty"`
@@ -175,13 +175,16 @@ func metadata(value any) inputMetadata {
 }
 
 func userItem(m inputMetadata, id string, at int64, text string) Item {
+	if m.Kind == "task_wake" {
+		// Use the unlinked system marker. A Board wake does not name a child session.
+		return Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, Title: "Board wake", Alert: true}
+	}
 	if m.HasWorkTask {
 		text = m.Content
 	} else if len(m.Attachments) > 0 {
 		text = stripAttachedFiles(text, m.Attachments)
 	}
-	// A withdrawn input keeps the kind of the input: task_result. An input in the log has dex.task_result.
-	// A background wake-up has no TaskID, so the kind decides.
+	// Old entries can have only the native kind. A background result has no TaskID.
 	if m.TaskID != "" || m.Kind == "dex.task_result" || m.Kind == "task_result" {
 		// Only a Task alert is a task_result linked to a Task. Chat links only owner messages.
 		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle, Alert: m.HasWorkTask}
@@ -307,7 +310,7 @@ func (p projection) render() []Item {
 			switch msg := e.Model[0].(type) {
 			case ai.UserMessage:
 				if e.Kind == "dex.user" || e.Kind == "pi.user" || e.Kind == "dex.task_result" {
-					m.Kind = e.Kind
+					m.Kind = cmp.Or(m.Kind, e.Kind)
 					rendered = []Item{userItem(m, key, msg.Timestamp, userText(msg.Content))}
 				}
 			case ai.AssistantMessage:
@@ -352,8 +355,10 @@ func (p projection) render() []Item {
 		if m.RequestID == "" || seen[m.RequestID] {
 			continue
 		}
-		kind, _ := q.Entry.Get("kind")
-		m.Kind, _ = kind.(string)
+		if m.Kind == "" {
+			kind, _ := q.Entry.Get("kind")
+			m.Kind, _ = kind.(string)
+		}
 		item := userItem(m, fmt.Sprint(q.Id), 0, m.Content)
 		item.Queued = true
 		item.Steer = q.Mode == harness.InboxSteer

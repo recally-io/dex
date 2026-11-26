@@ -63,6 +63,12 @@ function touchesMemory(tool: ToolItem, memory?: string) {
   return inMemory(arg(tool, "path"), memory) || (!!memory && arg(tool, "command").includes(memory));
 }
 
+const taskSteps = new Map([
+  ["task_read", { verb: "Read Task", done: "Read Task" }],
+  ["task_post", { verb: "Post to Task", done: "Posted to Task" }],
+  ["task_review", { verb: "Review Task", done: "Reviewed Task" }],
+]);
+
 // The verb and the main argument of a step row. dex sends only the tool name and its arguments.
 export function describeTool(tool: ToolItem, memory?: string) {
   const path = arg(tool, "path");
@@ -111,6 +117,10 @@ export function describeTool(tool: ToolItem, memory?: string) {
     return { verb: "Cancel monitor", target: arg(tool, "id") };
   }
 
+  const taskStep = taskSteps.get(tool.name);
+
+  if (taskStep) return { verb: taskStep.verb, target: arg(tool, "id") };
+
   if (path) {
     const verb = tool.name.charAt(0).toUpperCase() + tool.name.slice(1);
 
@@ -150,14 +160,21 @@ export function stepTitle(steps: Step[], memory?: string, thinking = false) {
       n === 1
         ? describeTool(tools[0], memory).verb.replace(/^\w+/, (verb) => pastTense.get(verb) ?? verb)
         : `Used memory ${n} times`;
-  else if (n === 1) done = tools[0].name === "bash" ? "Ran a command" : `Used ${tools[0].name}`;
+  else if (n === 1)
+    done =
+      taskSteps.get(tools[0].name)?.done ??
+      (tools[0].name === "bash" ? "Ran a command" : `Used ${tools[0].name}`);
   else if (n) done = `Ran ${n} tools`;
 
   if (steps.some((step) => step.kind === "thinking"))
     done = done ? `Thought process · ${done}` : "Thought process";
 
   return {
-    active: running ? `Running ${running.name}` : thinking ? "Thinking" : undefined,
+    active: running
+      ? (taskSteps.get(running.name)?.verb ?? `Running ${running.name}`)
+      : thinking
+        ? "Thinking"
+        : undefined,
     done: failed ? `${done} · ${failed} failed` : done,
   };
 }

@@ -10,6 +10,64 @@ import (
 	"database/sql"
 )
 
+const advanceWorkTask = `-- name: AdvanceWorkTask :one
+UPDATE work_tasks SET next_entry_seq = next_entry_seq + 1, revision = revision + 1,
+  updated_at = max(updated_at, CAST(?1 AS INTEGER)), status = ?2, review_seq = ?3, title = ?4
+WHERE id = ?5 AND revision = ?6
+RETURNING id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision
+`
+
+type AdvanceWorkTaskParams struct {
+	At        int64  `json:"at"`
+	Status    string `json:"status"`
+	ReviewSeq int64  `json:"review_seq"`
+	Title     string `json:"title"`
+	ID        string `json:"id"`
+	Revision  int64  `json:"revision"`
+}
+
+func (q *Queries) AdvanceWorkTask(ctx context.Context, arg AdvanceWorkTaskParams) (WorkTask, error) {
+	row := q.db.QueryRowContext(ctx, advanceWorkTask,
+		arg.At,
+		arg.Status,
+		arg.ReviewSeq,
+		arg.Title,
+		arg.ID,
+		arg.Revision,
+	)
+	var i WorkTask
+	err := row.Scan(
+		&i.ID,
+		&i.AssigneeBotID,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const allocateWorkTaskNumber = `-- name: AllocateWorkTaskNumber :one
+INSERT INTO work_task_numbers DEFAULT VALUES RETURNING number
+`
+
+func (q *Queries) AllocateWorkTaskNumber(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, allocateWorkTaskNumber)
+	var number int64
+	err := row.Scan(&number)
+	return number, err
+}
+
 const associateWorkTaskInput = `-- name: AssociateWorkTaskInput :exec
 INSERT INTO work_task_inputs (submission_id, task_id) VALUES (?, ?)
 `
@@ -25,40 +83,108 @@ func (q *Queries) AssociateWorkTaskInput(ctx context.Context, arg AssociateWorkT
 }
 
 const createWorkTask = `-- name: CreateWorkTask :one
-INSERT INTO work_tasks (id, agent_id, title, created_at, updated_at)
-SELECT ?1, a.id, ?2, ?3, ?3 FROM agents a WHERE a.id = ?4 AND a.archived_at IS NULL
-RETURNING id, agent_id, title, lifecycle, created_at, updated_at
+INSERT INTO work_tasks (id, assignee_bot_id, title, created_at, updated_at, number, status,
+  creator_kind, creator_id, authorized_by_root_id, reviewer_kind, reviewer_id, parent_task_id)
+VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6,
+  ?7, ?8, ?9, ?10, ?11, ?12)
+RETURNING id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision
 `
 
 type CreateWorkTaskParams struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	At      int64  `json:"at"`
-	AgentID string `json:"agent_id"`
+	ID                 string         `json:"id"`
+	AgentID            string         `json:"agent_id"`
+	Title              string         `json:"title"`
+	At                 int64          `json:"at"`
+	Number             int64          `json:"number"`
+	Status             string         `json:"status"`
+	CreatorKind        string         `json:"creator_kind"`
+	CreatorID          string         `json:"creator_id"`
+	AuthorizedByRootID sql.NullString `json:"authorized_by_root_id"`
+	ReviewerKind       string         `json:"reviewer_kind"`
+	ReviewerID         string         `json:"reviewer_id"`
+	ParentTaskID       sql.NullString `json:"parent_task_id"`
 }
 
 func (q *Queries) CreateWorkTask(ctx context.Context, arg CreateWorkTaskParams) (WorkTask, error) {
 	row := q.db.QueryRowContext(ctx, createWorkTask,
 		arg.ID,
+		arg.AgentID,
 		arg.Title,
 		arg.At,
-		arg.AgentID,
+		arg.Number,
+		arg.Status,
+		arg.CreatorKind,
+		arg.CreatorID,
+		arg.AuthorizedByRootID,
+		arg.ReviewerKind,
+		arg.ReviewerID,
+		arg.ParentTaskID,
 	)
 	var i WorkTask
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.AssigneeBotID,
 		&i.Title,
-		&i.Lifecycle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const getActiveWorkTaskAssignee = `-- name: GetActiveWorkTaskAssignee :one
+SELECT id FROM agents WHERE id = ? AND archived_at IS NULL
+`
+
+func (q *Queries) GetActiveWorkTaskAssignee(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getActiveWorkTaskAssignee, id)
+	var id_2 string
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const getBoardTask = `-- name: GetBoardTask :one
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = ? AND a.archived_at IS NULL
+`
+
+func (q *Queries) GetBoardTask(ctx context.Context, id string) (WorkTask, error) {
+	row := q.db.QueryRowContext(ctx, getBoardTask, id)
+	var i WorkTask
+	err := row.Scan(
+		&i.ID,
+		&i.AssigneeBotID,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
 	)
 	return i, err
 }
 
 const getWorkTask = `-- name: GetWorkTask :one
-SELECT t.id, t.agent_id, t.title, t.lifecycle, t.created_at, t.updated_at FROM work_tasks t JOIN agents a ON a.id = t.agent_id
-WHERE t.id = ?1 AND t.agent_id = ?2 AND a.archived_at IS NULL
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = ?1 AND t.assignee_bot_id = ?2 AND a.archived_at IS NULL
 `
 
 type GetWorkTaskParams struct {
@@ -71,54 +197,134 @@ func (q *Queries) GetWorkTask(ctx context.Context, arg GetWorkTaskParams) (WorkT
 	var i WorkTask
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.AssigneeBotID,
 		&i.Title,
-		&i.Lifecycle,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const getWorkTaskEntry = `-- name: GetWorkTaskEntry :one
+SELECT id, task_id, seq, kind, tag, actor_kind, actor_bot_id, actor_execution_id, trust, event_id, meta_json, content, created_at FROM work_task_entries WHERE task_id = ? AND seq = ?
+`
+
+type GetWorkTaskEntryParams struct {
+	TaskID string `json:"task_id"`
+	Seq    int64  `json:"seq"`
+}
+
+func (q *Queries) GetWorkTaskEntry(ctx context.Context, arg GetWorkTaskEntryParams) (WorkTaskEntry, error) {
+	row := q.db.QueryRowContext(ctx, getWorkTaskEntry, arg.TaskID, arg.Seq)
+	var i WorkTaskEntry
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.Seq,
+		&i.Kind,
+		&i.Tag,
+		&i.ActorKind,
+		&i.ActorBotID,
+		&i.ActorExecutionID,
+		&i.Trust,
+		&i.EventID,
+		&i.MetaJson,
+		&i.Content,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const insertWorkTaskEntry = `-- name: InsertWorkTaskEntry :one
-INSERT INTO work_task_entries (task_id, content, created_at, event_id, author)
-SELECT t.id, ?1, ?2, ?3, ?4 FROM work_tasks t JOIN agents a ON a.id = t.agent_id
-WHERE t.id = ?5 AND t.agent_id = ?6 AND a.archived_at IS NULL
-RETURNING id, task_id, content, created_at, event_id, author
+INSERT INTO work_task_entries (task_id, seq, kind, tag, actor_kind, actor_bot_id, actor_execution_id,
+  trust, event_id, meta_json, content, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, task_id, seq, kind, tag, actor_kind, actor_bot_id, actor_execution_id, trust, event_id, meta_json, content, created_at
 `
 
 type InsertWorkTaskEntryParams struct {
-	Content   string         `json:"content"`
-	CreatedAt int64          `json:"created_at"`
-	EventID   sql.NullString `json:"event_id"`
-	Author    string         `json:"author"`
-	TaskID    string         `json:"task_id"`
-	AgentID   string         `json:"agent_id"`
+	TaskID           string         `json:"task_id"`
+	Seq              int64          `json:"seq"`
+	Kind             string         `json:"kind"`
+	Tag              string         `json:"tag"`
+	ActorKind        string         `json:"actor_kind"`
+	ActorBotID       string         `json:"actor_bot_id"`
+	ActorExecutionID string         `json:"actor_execution_id"`
+	Trust            string         `json:"trust"`
+	EventID          sql.NullString `json:"event_id"`
+	MetaJson         string         `json:"meta_json"`
+	Content          string         `json:"content"`
+	CreatedAt        int64          `json:"created_at"`
 }
 
 func (q *Queries) InsertWorkTaskEntry(ctx context.Context, arg InsertWorkTaskEntryParams) (WorkTaskEntry, error) {
 	row := q.db.QueryRowContext(ctx, insertWorkTaskEntry,
+		arg.TaskID,
+		arg.Seq,
+		arg.Kind,
+		arg.Tag,
+		arg.ActorKind,
+		arg.ActorBotID,
+		arg.ActorExecutionID,
+		arg.Trust,
+		arg.EventID,
+		arg.MetaJson,
 		arg.Content,
 		arg.CreatedAt,
-		arg.EventID,
-		arg.Author,
-		arg.TaskID,
-		arg.AgentID,
 	)
 	var i WorkTaskEntry
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
+		&i.Seq,
+		&i.Kind,
+		&i.Tag,
+		&i.ActorKind,
+		&i.ActorBotID,
+		&i.ActorExecutionID,
+		&i.Trust,
+		&i.EventID,
+		&i.MetaJson,
 		&i.Content,
 		&i.CreatedAt,
-		&i.EventID,
-		&i.Author,
 	)
 	return i, err
 }
 
+const isWorkTaskEntryRetracted = `-- name: IsWorkTaskEntryRetracted :one
+SELECT EXISTS (SELECT 1 FROM work_task_entries WHERE task_id = ?1 AND kind = 'tombstone'
+  AND CAST(json_extract(meta_json, '$.targetSeq') AS INTEGER) = CAST(?2 AS INTEGER))
+`
+
+type IsWorkTaskEntryRetractedParams struct {
+	TaskID    string `json:"task_id"`
+	TargetSeq int64  `json:"target_seq"`
+}
+
+func (q *Queries) IsWorkTaskEntryRetracted(ctx context.Context, arg IsWorkTaskEntryRetractedParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, isWorkTaskEntryRetracted, arg.TaskID, arg.TargetSeq)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listWorkTaskEntries = `-- name: ListWorkTaskEntries :many
-SELECT id, task_id, content, created_at, event_id, author FROM work_task_entries WHERE task_id = ? ORDER BY id DESC LIMIT 100
+SELECT e.id, e.task_id, e.seq, e.kind, e.tag, e.actor_kind, e.actor_bot_id, e.actor_execution_id, e.trust, e.event_id, e.meta_json, e.content, e.created_at FROM work_task_entries e WHERE e.task_id = ?1 AND e.kind IN ('note', 'artifact', 'external')
+AND json_extract(e.meta_json, '$.legacyHidden') IS NOT 1
+AND NOT EXISTS (SELECT 1 FROM work_task_entries r WHERE r.task_id = e.task_id AND r.kind = 'tombstone'
+  AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = e.seq)
+ORDER BY e.id DESC LIMIT 100
 `
 
 func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]WorkTaskEntry, error) {
@@ -133,11 +339,59 @@ func (q *Queries) ListWorkTaskEntries(ctx context.Context, taskID string) ([]Wor
 		if err := rows.Scan(
 			&i.ID,
 			&i.TaskID,
+			&i.Seq,
+			&i.Kind,
+			&i.Tag,
+			&i.ActorKind,
+			&i.ActorBotID,
+			&i.ActorExecutionID,
+			&i.Trust,
+			&i.EventID,
+			&i.MetaJson,
 			&i.Content,
 			&i.CreatedAt,
-			&i.EventID,
-			&i.Author,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkTaskQuestionBlockers = `-- name: ListWorkTaskQuestionBlockers :many
+SELECT q.id, q.text, CAST(CASE WHEN c.channel_key = 'main' THEN 1 + (
+  SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id
+  WHERE prior.status = 'open' AND ps.status = 'done' AND prior.conversation_id = q.conversation_id
+    AND (prior.queued, prior.rowid) < (q.queued, q.rowid)
+) ELSE 0 END AS INTEGER) AS queue_position
+FROM questions q JOIN work_task_inputs i ON i.submission_id = q.source_submission_id
+JOIN submissions s ON s.id = q.source_submission_id JOIN conversations c ON c.id = q.conversation_id
+WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
+ORDER BY q.queued, q.rowid
+`
+
+type ListWorkTaskQuestionBlockersRow struct {
+	ID            string `json:"id"`
+	Text          string `json:"text"`
+	QueuePosition int64  `json:"queue_position"`
+}
+
+func (q *Queries) ListWorkTaskQuestionBlockers(ctx context.Context, taskID string) ([]ListWorkTaskQuestionBlockersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listWorkTaskQuestionBlockers, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListWorkTaskQuestionBlockersRow{}
+	for rows.Next() {
+		var i ListWorkTaskQuestionBlockersRow
+		if err := rows.Scan(&i.ID, &i.Text, &i.QueuePosition); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -200,8 +454,8 @@ func (q *Queries) ListWorkTaskQuestions(ctx context.Context, taskID string) ([]Q
 }
 
 const listWorkTasks = `-- name: ListWorkTasks :many
-SELECT t.id, t.agent_id, t.title, t.lifecycle, t.created_at, t.updated_at FROM work_tasks t JOIN agents a ON a.id = t.agent_id
-WHERE a.archived_at IS NULL AND (t.lifecycle = 'open' OR ?1)
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE a.archived_at IS NULL AND (t.status NOT IN ('done', 'cancelled') OR ?1)
 ORDER BY t.updated_at DESC, t.id DESC
 `
 
@@ -216,11 +470,21 @@ func (q *Queries) ListWorkTasks(ctx context.Context, includeClosed interface{}) 
 		var i WorkTask
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.AssigneeBotID,
 			&i.Title,
-			&i.Lifecycle,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Number,
+			&i.Status,
+			&i.ParentTaskID,
+			&i.AuthorizedByRootID,
+			&i.CreatorKind,
+			&i.CreatorID,
+			&i.ReviewerKind,
+			&i.ReviewerID,
+			&i.ReviewSeq,
+			&i.NextEntrySeq,
+			&i.Revision,
 		); err != nil {
 			return nil, err
 		}
@@ -235,49 +499,13 @@ func (q *Queries) ListWorkTasks(ctx context.Context, includeClosed interface{}) 
 	return items, nil
 }
 
-const setWorkTaskLifecycle = `-- name: SetWorkTaskLifecycle :one
-UPDATE work_tasks SET lifecycle = ?1, updated_at = ?2
-WHERE work_tasks.id = ?3 AND work_tasks.agent_id = ?4 AND EXISTS (SELECT 1 FROM agents a WHERE a.id = ?4 AND a.archived_at IS NULL)
-RETURNING id, agent_id, title, lifecycle, created_at, updated_at
+const lockWorkTaskWriter = `-- name: LockWorkTaskWriter :exec
+UPDATE work_tasks SET revision = revision WHERE 0
 `
 
-type SetWorkTaskLifecycleParams struct {
-	Lifecycle string `json:"lifecycle"`
-	UpdatedAt int64  `json:"updated_at"`
-	ID        string `json:"id"`
-	AgentID   string `json:"agent_id"`
-}
-
-func (q *Queries) SetWorkTaskLifecycle(ctx context.Context, arg SetWorkTaskLifecycleParams) (WorkTask, error) {
-	row := q.db.QueryRowContext(ctx, setWorkTaskLifecycle,
-		arg.Lifecycle,
-		arg.UpdatedAt,
-		arg.ID,
-		arg.AgentID,
-	)
-	var i WorkTask
-	err := row.Scan(
-		&i.ID,
-		&i.AgentID,
-		&i.Title,
-		&i.Lifecycle,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const touchWorkTask = `-- name: TouchWorkTask :exec
-UPDATE work_tasks SET updated_at = max(updated_at, CAST(?1 AS INTEGER)) WHERE id = ?2
-`
-
-type TouchWorkTaskParams struct {
-	At int64  `json:"at"`
-	ID string `json:"id"`
-}
-
-func (q *Queries) TouchWorkTask(ctx context.Context, arg TouchWorkTaskParams) error {
-	_, err := q.db.ExecContext(ctx, touchWorkTask, arg.At, arg.ID)
+// Take the SQLite writer before reading state to avoid promoting a stale read snapshot.
+func (q *Queries) LockWorkTaskWriter(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, lockWorkTaskWriter)
 	return err
 }
 

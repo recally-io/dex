@@ -12,7 +12,9 @@ import {
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
 import { InboxPage, InboxResultPage } from "./routes/inbox";
-import { BoardPage, WorkTaskPage } from "./routes/work-tasks";
+import { BoardPage } from "./routes/board";
+import { WorkTaskPage } from "./routes/work-tasks";
+import { getBoardTaskOptions } from "./api/generated/@tanstack/react-query.gen";
 import { Shell } from "./components/shell";
 import { AgentLayout } from "./components/agent-layout";
 import { ChatPage } from "./routes/chat";
@@ -128,13 +130,42 @@ const retiredRoutes = [
   retired("/about", "/settings/about"),
 ] as const;
 
-const board = page("/board", BoardPage);
+const board = createRoute({
+  getParentRoute: () => root,
+  path: "/board",
+  // The router parses the query string before it checks the Board search fields.
+  validateSearch: (search: { bot?: unknown }) => {
+    // eslint-disable-next-line anti-slop/no-runtime-typeof
+    if (typeof search.bot === "string" && search.bot) return { bot: search.bot };
+
+    return {};
+  },
+  component: () => {
+    const { bot } = board.useSearch();
+    const navigate = board.useNavigate();
+
+    return <BoardPage bot={bot} onBotChange={(id) => void navigate({ search: { bot: id } })} />;
+  },
+});
+
 const inbox = page("/inbox", InboxPage);
 
-const taskDetail = agentPage("/inbox/$taskId", () => {
-  const { agentId, taskId } = taskDetail.useParams();
+const taskDetail = page("/board/$taskKey", () => {
+  const { taskKey } = taskDetail.useParams();
 
-  return <WorkTaskPage key={taskId} agentId={agentId} taskId={taskId} />;
+  return <WorkTaskPage key={taskKey} taskKey={taskKey} />;
+});
+
+const legacyTask = createRoute({
+  getParentRoute: () => root,
+  path: "/a/$agentId/inbox/$taskId",
+  beforeLoad: async ({ params }) => {
+    const { task } = await queryClient.ensureQueryData(
+      getBoardTaskOptions({ path: { taskKey: params.taskId } }),
+    );
+
+    throw redirect({ to: "/board/$taskKey", params: { taskKey: task.key }, replace: true });
+  },
 });
 
 const inboxDetail = page("/inbox/$runId", () => {
@@ -264,7 +295,6 @@ const router = createRouter({
       home,
       chat,
       sessions,
-      taskDetail,
       turn,
       instructions,
       channels,
@@ -281,6 +311,8 @@ const router = createRouter({
     tasks,
     ...retiredRoutes,
     board,
+    taskDetail,
+    legacyTask,
     inbox,
     inboxDetail,
     generalSettings,

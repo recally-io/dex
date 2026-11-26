@@ -403,7 +403,6 @@ type Submission struct {
 	DeliveredAt          sql.NullInt64  `json:"delivered_at"`
 	DeliveredParts       int64          `json:"delivered_parts"`
 	Origin               string         `json:"origin"`
-	Kind                 string         `json:"kind"`
 	AdmittedAt           sql.NullInt64  `json:"admitted_at"`
 	WhenBusy             string         `json:"when_busy"`
 	ParentRequestID      sql.NullString `json:"parent_request_id"`
@@ -423,11 +422,40 @@ type Submission struct {
 	Producer             string         `json:"producer"`
 	ReplyChannel         string         `json:"reply_channel"`
 	ReplyPeer            string         `json:"reply_peer"`
+	Kind                 string         `json:"kind"`
 }
 
 type SystemSetting struct {
 	ID            int64  `json:"id"`
 	UpdateChannel string `json:"update_channel"`
+}
+
+type TaskExecution struct {
+	ID                string        `json:"id"`
+	TaskID            string        `json:"task_id"`
+	BotID             string        `json:"bot_id"`
+	Kind              string        `json:"kind"`
+	ConversationID    sql.NullInt64 `json:"conversation_id"`
+	TurnRequestID     string        `json:"turn_request_id"`
+	IsPrimary         int64         `json:"is_primary"`
+	Harness           string        `json:"harness"`
+	MachineID         string        `json:"machine_id"`
+	HostMetaJson      string        `json:"host_meta_json"`
+	WorkspacePath     string        `json:"workspace_path"`
+	GitBranch         string        `json:"git_branch"`
+	ExternalSessionID string        `json:"external_session_id"`
+	State             string        `json:"state"`
+	LeaseEpoch        int64         `json:"lease_epoch"`
+	LeaseExpiresAt    sql.NullInt64 `json:"lease_expires_at"`
+	LastHeartbeatAt   sql.NullInt64 `json:"last_heartbeat_at"`
+	StartedAt         int64         `json:"started_at"`
+	EndedAt           sql.NullInt64 `json:"ended_at"`
+}
+
+type TaskWakeAdmissionSnapshot struct {
+	SubmissionID string         `json:"submission_id"`
+	Content      string         `json:"content"`
+	TaskID       sql.NullString `json:"task_id"`
 }
 
 type TelegramAlbumMember struct {
@@ -573,21 +601,38 @@ type WorkSourceReceipt struct {
 }
 
 type WorkTask struct {
-	ID        string `json:"id"`
-	AgentID   string `json:"agent_id"`
-	Title     string `json:"title"`
-	Lifecycle string `json:"lifecycle"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID                 string         `json:"id"`
+	AssigneeBotID      string         `json:"assignee_bot_id"`
+	Title              string         `json:"title"`
+	CreatedAt          int64          `json:"created_at"`
+	UpdatedAt          int64          `json:"updated_at"`
+	Number             int64          `json:"number"`
+	Status             string         `json:"status"`
+	ParentTaskID       sql.NullString `json:"parent_task_id"`
+	AuthorizedByRootID sql.NullString `json:"authorized_by_root_id"`
+	CreatorKind        string         `json:"creator_kind"`
+	CreatorID          string         `json:"creator_id"`
+	ReviewerKind       string         `json:"reviewer_kind"`
+	ReviewerID         string         `json:"reviewer_id"`
+	ReviewSeq          int64          `json:"review_seq"`
+	NextEntrySeq       int64          `json:"next_entry_seq"`
+	Revision           int64          `json:"revision"`
 }
 
 type WorkTaskEntry struct {
-	ID        int64          `json:"id"`
-	TaskID    string         `json:"task_id"`
-	Content   string         `json:"content"`
-	CreatedAt int64          `json:"created_at"`
-	EventID   sql.NullString `json:"event_id"`
-	Author    string         `json:"author"`
+	ID               int64          `json:"id"`
+	TaskID           string         `json:"task_id"`
+	Seq              int64          `json:"seq"`
+	Kind             string         `json:"kind"`
+	Tag              string         `json:"tag"`
+	ActorKind        string         `json:"actor_kind"`
+	ActorBotID       string         `json:"actor_bot_id"`
+	ActorExecutionID string         `json:"actor_execution_id"`
+	Trust            string         `json:"trust"`
+	EventID          sql.NullString `json:"event_id"`
+	MetaJson         string         `json:"meta_json"`
+	Content          string         `json:"content"`
+	CreatedAt        int64          `json:"created_at"`
 }
 
 type WorkTaskInput struct {
@@ -595,19 +640,15 @@ type WorkTaskInput struct {
 	TaskID       string `json:"task_id"`
 }
 
+type WorkTaskNumber struct {
+	Number int64 `json:"number"`
+}
+
 type WorkTaskObject struct {
 	Namespace  string `json:"namespace"`
 	ObjectType string `json:"object_type"`
 	ObjectKey  string `json:"object_key"`
 	TaskID     string `json:"task_id"`
-}
-
-type WorkTaskSession struct {
-	TaskID         string `json:"task_id"`
-	ConversationID int64  `json:"conversation_id"`
-	AgentID        string `json:"agent_id"`
-	IsPrimary      int64  `json:"is_primary"`
-	LinkedAt       int64  `json:"linked_at"`
 }
 
 type WorkTaskToolOperation struct {

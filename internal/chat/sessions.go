@@ -18,6 +18,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/worktask"
 )
 
 const (
@@ -218,6 +219,12 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 			return SessionRef{}, err
 		}
 	}
+	var committed *worktask.Ledger
+	defer func() {
+		if committed != nil {
+			s.workTasks.Notify(committed)
+		}
+	}()
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	tx, q, err := s.writeTransaction(ctx)
@@ -247,12 +254,14 @@ func (s *Service) ToolSessionNew(ctx context.Context, r engine.TaskContext, a Se
 	if _, err := q.CreateParentTurn(ctx, sqlc.CreateParentTurnParams{ID: turn, ConversationID: child.ID, Content: a.Message, WhenBusy: "followUp", ParentRequestID: sql.NullString{String: r.SourceRequestID, Valid: true}, CreatedAt: now}); err != nil {
 		return SessionRef{}, err
 	}
-	if err := linkTaskChild(ctx, q, source.ID, child.ID, now); err != nil {
+	ledger := worktask.NewLedger(q)
+	if err := linkTaskChild(ctx, q, ledger, source.ID, child.ID, now); err != nil {
 		return SessionRef{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return SessionRef{}, err
 	}
+	committed = ledger
 	s.signal(child.ID)
 	s.signal(parent.ID)
 	s.Wake()
@@ -356,6 +365,7 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 			return SessionRef{}, err
 		}
 	}
+	var ledger *worktask.Ledger
 	fork, err := s.fork(ctx, child, a.Entry, false, cmp.Or(a.Environment, child.EnvironmentID), func(ctx context.Context, q *sqlc.Queries, fork sqlc.Conversation) error {
 		if _, err := liveSource(ctx, q, r); err != nil {
 			return err
@@ -369,7 +379,8 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 			// A concurrent call with the same key stored its fork first. Roll this fork back.
 			return errRepeatedTurn
 		}
-		return linkTaskChild(ctx, q, r.SourceRequestID, fork.ID, now)
+		ledger = worktask.NewLedger(q)
+		return linkTaskChild(ctx, q, ledger, r.SourceRequestID, fork.ID, now)
 	})
 	if errors.Is(err, errRepeatedTurn) {
 		c, ok, err := repeatedTurn(ctx, s.q, turn, parent)
@@ -381,6 +392,7 @@ func (s *Service) ToolSessionFork(ctx context.Context, r engine.TaskContext, a S
 	if err != nil {
 		return SessionRef{}, err
 	}
+	s.workTasks.Notify(ledger)
 	s.signal(parent.ID)
 	s.Wake()
 	return s.ref(ctx, s.q, fork)
