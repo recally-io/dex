@@ -63,7 +63,7 @@ func TestUserUpgradeDoesNotResumeRetiredTelegramGroup(t *testing.T) {
 	execSQL(t, old, `INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES ('default', 'Dex', 'faux', 'bash', 1)`)
 	// A separate scoped group store can have the same native ID as the private chat.
 	scoped := max(group, private) + 1
-	if _, err := old.ExecContext(t.Context(), `INSERT INTO sessions (id, agent_id, channel_key, execution_id, execution_scope, created_at) VALUES
+	if _, err := old.ExecContext(t.Context(), `INSERT INTO conversations (id, agent_id, channel_key, execution_id, execution_scope, created_at) VALUES
 		(?, 'default', 'telegram:-100', ?, '', 1),
 		(?, 'default', 'chat:private', ?, '', 1),
 		(?, 'default', 'chat:scoped-group', ?, 'tg_123_-100_7', 1)`, group, groupExec, private, privateExec, scoped, privateExec); err != nil {
