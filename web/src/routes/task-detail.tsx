@@ -2,7 +2,20 @@ import { useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, ChevronRight, ExternalLink, MoreHorizontal } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ExternalLink,
+  GitBranch,
+  GitPullRequest,
+  Link2,
+  ListTree,
+  MessageSquare,
+  MoreHorizontal,
+  Plus,
+  Terminal,
+  UserCheck,
+} from "lucide-react";
 import {
   getHealthOptions,
   getTaskOptions,
@@ -38,6 +51,7 @@ import { AgentAvatar } from "../components/agent-avatar";
 import { Modal } from "../components/dialog";
 import { Failure, Loading } from "../components/feedback";
 import { Field, Select } from "../components/form";
+import { MarkdownBody } from "../components/markdown-body";
 import { FramedPage } from "../components/page";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -98,16 +112,15 @@ export function TaskDetailPage({ taskKey }: { taskKey: string }) {
     );
   }
 
-  return <TaskThread detail={detail.data} bots={bots} />;
+  return <TaskWorkspace detail={detail.data} bots={bots} />;
 }
 
-function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
+function TaskWorkspace({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
   const { task } = detail;
   const open = !isClosed(task.status);
   const client = useQueryClient();
   const health = useQuery(getHealthOptions());
   const [dialog, setDialog] = useState<ActiveDialog>(null);
-  const [relatedOpen, setRelatedOpen] = useState<boolean | null>(null);
 
   const botById = new Map<string | undefined, Agent>(bots.map((bot) => [bot.id, bot]));
 
@@ -156,17 +169,10 @@ function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
           ← Board
         </Link>
       }
-      badge={<span className="font-mono text-[13px] font-normal text-muted-foreground">{task.key}</span>}
-      description={
-        <TaskMetaLine
-          task={task}
-          assignee={assignee}
-          bots={bots}
-          botOf={botOf}
-          pending={patchTask.isPending}
-          onPatch={(changes) => patchTask.mutate(changes)}
-          onOpenReviewer={() => setDialog("reviewer")}
-        />
+      badge={
+        <Badge variant="outline" className="font-mono text-[12px] font-normal">
+          {task.key}
+        </Badge>
       }
       actions={
         <DropdownMenu>
@@ -211,6 +217,19 @@ function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
       }
     >
       <div className="space-y-6">
+        <TaskPropertyStrip
+          task={task}
+          assignee={assignee}
+          bots={bots}
+          botOf={botOf}
+          pending={patchTask.isPending}
+          canSplit={detail.canSplit}
+          hasParent={Boolean(detail.parentTask)}
+          canLinkGitHub={canLinkGitHub}
+          onPatch={(changes) => patchTask.mutate(changes)}
+          onOpenDialog={setDialog}
+        />
+
         {patchTask.error ? <Failure title="Could not update task" error={patchTask.error} /> : null}
 
         {task.status === "in_review" ? (
@@ -227,12 +246,13 @@ function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
           />
         ) : null}
 
-        <RelatedStrip
+        <TaskContextCards
           detail={detail}
           externalRuns={externalRuns}
           open={open}
-          expanded={relatedOpen ?? externalRuns.length > 0}
-          onToggle={() => setRelatedOpen(!(relatedOpen ?? externalRuns.length > 0))}
+          canSplit={detail.canSplit}
+          canLinkGitHub={canLinkGitHub}
+          onOpenDialog={setDialog}
         />
 
         <TaskTimeline entries={detail.entries} botOf={botOf} />
@@ -266,14 +286,7 @@ function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
       ) : null}
 
       {dialog === "subtask" ? (
-        <SubtaskDialog
-          taskKey={task.key}
-          onClose={() => setDialog(null)}
-          onCreated={() => {
-            setRelatedOpen(true);
-            setDialog(null);
-          }}
-        />
+        <SubtaskDialog taskKey={task.key} onClose={() => setDialog(null)} onCreated={() => setDialog(null)} />
       ) : null}
 
       {dialog === "dependency" && detail.parentTask ? (
@@ -282,10 +295,7 @@ function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
           parentKey={detail.parentTask.key}
           dependencies={detail.dependencies}
           onClose={() => setDialog(null)}
-          onAdded={() => {
-            setRelatedOpen(true);
-            setDialog(null);
-          }}
+          onAdded={() => setDialog(null)}
         />
       ) : null}
 
@@ -301,10 +311,7 @@ function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
         >
           <GitHubPullForm
             path={{ agentId: task.assigneeBotId, taskId: task.id }}
-            onLinked={() => {
-              setRelatedOpen(true);
-              setDialog(null);
-            }}
+            onLinked={() => setDialog(null)}
           />
         </Modal>
       ) : null}
@@ -312,120 +319,159 @@ function TaskThread({ detail, bots }: { detail: TaskDetail; bots: Agent[] }) {
   );
 }
 
-function TaskMetaLine({
+function statusDotClass(status: TaskStatus) {
+  if (status === "in_review") return "size-2 shrink-0 rounded-full bg-orange";
+
+  if (status === "in_progress" || status === "done") return "size-2 shrink-0 rounded-full bg-green";
+
+  if (status === "ready") return "size-2 shrink-0 rounded-full border-[1.5px] border-foreground/65";
+
+  return "size-2 shrink-0 rounded-full bg-muted-foreground/40";
+}
+
+function TaskPropertyStrip({
   task,
   assignee,
   bots,
   botOf,
   pending,
+  canSplit,
+  hasParent,
+  canLinkGitHub,
   onPatch,
-  onOpenReviewer,
+  onOpenDialog,
 }: {
   task: TaskSummary;
   assignee: Pick<Agent, "id" | "name">;
   bots: Agent[];
   botOf: (id: string) => Pick<Agent, "id" | "name">;
   pending: boolean;
+  canSplit: boolean;
+  hasParent: boolean;
+  canLinkGitHub: boolean;
   onPatch: (changes: TaskUpdate) => void;
-  onOpenReviewer: () => void;
+  onOpenDialog: (dialog: ActiveDialog) => void;
 }) {
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
   const validNext = nextStatuses(task.status, task.reviewerKind !== "");
   const statusOptions: TaskStatus[] = [task.status, ...validNext];
 
-  const reviewerText =
+  const reviewerLabel =
     task.reviewerKind === "owner"
-      ? "Review by Owner"
+      ? "Owner"
       : task.reviewerKind === "bot" && task.reviewerId
-        ? `Review by ${botOf(task.reviewerId).name}`
-        : null;
+        ? botOf(task.reviewerId).name
+        : "None";
+
+  const pillClass =
+    "inline-flex h-8 items-center gap-1.5 rounded-control border border-border bg-card px-2.5 text-[13px] text-foreground transition-colors hover:bg-accent disabled:opacity-50";
 
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
-      <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
-        <PopoverTrigger
+    <div className="space-y-2.5 rounded-card border border-border bg-muted/25 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Popover open={statusOpen} onOpenChange={setStatusOpen}>
+          <PopoverTrigger disabled={pending} className={pillClass} aria-label="Status">
+            <span aria-hidden className={statusDotClass(task.status)} />
+            <span className="font-medium">{statusLabel[task.status]}</span>
+            <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-44 p-1">
+            {statusOptions.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => {
+                  setStatusOpen(false);
+
+                  if (option !== task.status) onPatch({ status: option });
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-control px-2 py-1.5 text-left text-[13px] hover:bg-accent"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <span aria-hidden className={statusDotClass(option)} />
+                  <span>{statusLabel[option]}</span>
+                </span>
+                {option === task.status ? <Check className="size-3.5 text-foreground" /> : null}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+
+        <Popover open={assigneeOpen} onOpenChange={setAssigneeOpen}>
+          <PopoverTrigger disabled={pending} className={pillClass} aria-label="Assignee Bot">
+            <AgentAvatar agent={assignee} className="size-4 text-[9px]" />
+            <span className="font-medium">{assignee.name}</span>
+            <ChevronDown className="size-3.5 text-muted-foreground" aria-hidden />
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-48 p-1">
+            {bots.map((bot) => (
+              <button
+                key={bot.id}
+                type="button"
+                onClick={() => {
+                  setAssigneeOpen(false);
+
+                  if (bot.id !== task.assigneeBotId) onPatch({ assigneeBotId: bot.id });
+                }}
+                className="flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-[13px] hover:bg-accent"
+              >
+                <AgentAvatar agent={bot} className="size-4 text-[9px]" />
+                <span className="min-w-0 flex-1 truncate">{bot.name}</span>
+                {bot.id === task.assigneeBotId ? <Check className="size-3.5 text-foreground" /> : null}
+              </button>
+            ))}
+          </PopoverContent>
+        </Popover>
+
+        <button
+          type="button"
           disabled={pending}
-          className="inline-flex items-center gap-1.5 rounded-chip px-1 py-0.5 text-foreground transition-colors hover:bg-accent"
+          onClick={() => onOpenDialog("reviewer")}
+          className={pillClass}
         >
-          <AgentAvatar agent={assignee} className="size-4 text-[9px]" />
-          <span className="font-medium">{assignee.name}</span>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-48 p-1">
-          {bots.map((bot) => (
-            <button
-              key={bot.id}
-              type="button"
-              onClick={() => {
-                setAssigneeOpen(false);
+          <UserCheck className="size-3.5 text-muted-foreground" aria-hidden />
+          <span className="text-muted-foreground">Reviewer:</span>
+          <span className="font-medium">{reviewerLabel}</span>
+        </button>
 
-                if (bot.id !== task.assigneeBotId) onPatch({ assigneeBotId: bot.id });
-              }}
-              className="flex w-full items-center gap-2 rounded-control px-2 py-1.5 text-left text-[13px] hover:bg-accent"
-            >
-              <AgentAvatar agent={bot} className="size-4 text-[9px]" />
-              <span className="min-w-0 flex-1 truncate">{bot.name}</span>
-              {bot.id === task.assigneeBotId ? <Check className="size-3.5 text-foreground" /> : null}
-            </button>
-          ))}
-        </PopoverContent>
-      </Popover>
+        {task.blocked ? (
+          <span className="inline-flex h-8 items-center rounded-control bg-orange-tint px-2.5 text-[12.5px] font-medium text-orange">
+            Blocked
+          </span>
+        ) : null}
 
-      <span aria-hidden>·</span>
-
-      <Popover open={statusOpen} onOpenChange={setStatusOpen}>
-        <PopoverTrigger
-          disabled={pending}
-          className={
-            task.status === "in_review"
-              ? "rounded-chip px-1.5 py-0.5 font-medium text-orange transition-colors hover:bg-orange-tint"
-              : "rounded-chip px-1.5 py-0.5 font-medium text-foreground transition-colors hover:bg-accent"
-          }
+        <span
+          className="ml-auto text-[12px] text-muted-foreground"
+          title={`Created ${new Date(task.createdAt).toLocaleString()} · Updated ${new Date(task.updatedAt).toLocaleString()}`}
         >
-          {statusLabel[task.status]}
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-44 p-1">
-          {statusOptions.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => {
-                setStatusOpen(false);
+          Updated {formatDistanceToNow(task.updatedAt, { addSuffix: true })}
+        </span>
+      </div>
 
-                if (option !== task.status) onPatch({ status: option });
-              }}
-              className="flex w-full items-center justify-between gap-2 rounded-control px-2 py-1.5 text-left text-[13px] hover:bg-accent"
-            >
-              <span>{statusLabel[option]}</span>
-              {option === task.status ? <Check className="size-3.5 text-foreground" /> : null}
-            </button>
-          ))}
-        </PopoverContent>
-      </Popover>
-
-      {task.blocked ? (
-        <>
-          <span aria-hidden>·</span>
-          <span className="font-medium text-orange">Blocked</span>
-        </>
+      {canSplit || hasParent || canLinkGitHub ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/70 pt-2">
+          {canSplit ? (
+            <Button type="button" variant="ghost" size="xs" onClick={() => onOpenDialog("subtask")}>
+              <Plus className="size-3.5" />
+              Subtask
+            </Button>
+          ) : null}
+          {hasParent ? (
+            <Button type="button" variant="ghost" size="xs" onClick={() => onOpenDialog("dependency")}>
+              <Plus className="size-3.5" />
+              Dependency
+            </Button>
+          ) : null}
+          {canLinkGitHub ? (
+            <Button type="button" variant="ghost" size="xs" onClick={() => onOpenDialog("github")}>
+              <GitPullRequest className="size-3.5" />
+              Link PR
+            </Button>
+          ) : null}
+        </div>
       ) : null}
-
-      {reviewerText ? (
-        <>
-          <span aria-hidden>·</span>
-          <button
-            type="button"
-            onClick={onOpenReviewer}
-            className="rounded-chip px-1 py-0.5 transition-colors hover:bg-accent hover:text-foreground"
-          >
-            {reviewerText}
-          </button>
-        </>
-      ) : null}
-
-      <span aria-hidden>·</span>
-      <span>updated {formatDistanceToNow(task.updatedAt, { addSuffix: true })}</span>
-    </span>
+    </div>
   );
 }
 
@@ -470,7 +516,10 @@ function ReviewActionCard({
   });
 
   return (
-    <section aria-label="In Review" className="space-y-3 rounded-card border border-border bg-muted/35 p-4">
+    <section
+      aria-label="In Review"
+      className="space-y-3 rounded-card border border-orange/30 bg-orange-tint/40 p-4"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13.5px] font-medium text-foreground">
           {assigneeName} requested review
@@ -552,12 +601,12 @@ function BlockerActionCard({ detail }: { detail: TaskDetail }) {
   return (
     <section
       aria-label={detail.task.blocked ? "Blocked" : "Questions"}
-      className="space-y-3 rounded-card border border-border bg-muted/35 p-4"
+      className="space-y-3 rounded-card border border-orange/30 bg-orange-tint/40 p-4"
     >
       {waits.map((wait) => (
-        <p key={wait.waitId} className="text-[13px] text-muted-foreground">
-          Waiting for <span className="font-medium text-foreground">{wait.eventType}</span> on{" "}
-          {wait.objectType} {wait.objectKey} · {wait.namespace}
+        <p key={wait.waitId} className="text-[13px] text-foreground">
+          Waiting for <span className="font-medium">{wait.eventType}</span> on {wait.objectType}{" "}
+          {wait.objectKey} · <span className="text-muted-foreground">{wait.namespace}</span>
         </p>
       ))}
       {detail.questions.map((question) => (
@@ -589,18 +638,20 @@ function waitState(wait: TaskWait, open: boolean) {
   return open ? "Waiting" : "Paused";
 }
 
-function RelatedStrip({
+function TaskContextCards({
   detail,
   externalRuns,
   open,
-  expanded,
-  onToggle,
+  canSplit,
+  canLinkGitHub,
+  onOpenDialog,
 }: {
   detail: TaskDetail;
   externalRuns: TaskExecution[];
   open: boolean;
-  expanded: boolean;
-  onToggle: () => void;
+  canSplit: boolean;
+  canLinkGitHub: boolean;
+  onOpenDialog: (dialog: ActiveDialog) => void;
 }) {
   const client = useQueryClient();
 
@@ -610,131 +661,98 @@ function RelatedStrip({
     onSuccess: () => invalidateTasks(client),
   });
 
-  const parts: string[] = [];
+  const hasHierarchy =
+    Boolean(detail.parentTask) || detail.subtasks.length > 0 || detail.dependencies.length > 0;
 
-  if (detail.parentTask) parts.push(`Parent ${detail.parentTask.key}`);
+  const hasRuns = detail.sessions.length > 0 || externalRuns.length > 0;
+  const hasLinks = detail.links.length > 0;
 
-  if (detail.subtasks.length) {
-    parts.push(`${detail.subtasks.length} ${detail.subtasks.length === 1 ? "subtask" : "subtasks"}`);
-  }
+  if (!hasHierarchy && !hasRuns && !hasLinks) return null;
 
-  if (detail.dependencies.length) {
-    parts.push(
-      `${detail.dependencies.length} ${detail.dependencies.length === 1 ? "dependency" : "dependencies"}`,
-    );
-  }
-
-  if (detail.sessions.length) {
-    parts.push(`${detail.sessions.length} ${detail.sessions.length === 1 ? "session" : "sessions"}`);
-  }
-
-  if (externalRuns.length) {
-    parts.push(`${externalRuns.length} external ${externalRuns.length === 1 ? "run" : "runs"}`);
-  }
-
-  if (detail.links.length) {
-    parts.push(`${detail.links.length} ${detail.links.length === 1 ? "link" : "links"}`);
-  }
-
-  if (!parts.length) return null;
-
-  const isOpen = expanded;
+  const doneSubtasks = detail.subtasks.filter((subtask) => subtask.status === "done").length;
 
   return (
-    <section aria-label="Related" className="rounded-card border border-border bg-card">
-      <button
-        type="button"
-        aria-expanded={isOpen}
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-      >
-        {isOpen ? (
-          <ChevronDown className="size-3.5 shrink-0" aria-hidden />
-        ) : (
-          <ChevronRight className="size-3.5 shrink-0" aria-hidden />
-        )}
-        <span className="truncate">
-          <span className="font-medium text-foreground">Related:</span> {parts.join(" · ")}
-        </span>
-      </button>
-
-      {isOpen ? (
-        <div className="space-y-4 border-t border-border px-3.5 py-3 text-[13px]">
-          {detail.parentTask ? (
-            <RelatedSection label="Parent">
-              <TaskInlineLink task={detail.parentTask} />
-            </RelatedSection>
-          ) : null}
-
-          {detail.subtasks.length ? (
-            <RelatedSection label="Subtasks">
-              <ul className="space-y-1.5">
-                {detail.subtasks.map((subtask) => (
-                  <li key={subtask.key}>
-                    <TaskInlineLink task={subtask} />
-                  </li>
-                ))}
-              </ul>
-            </RelatedSection>
-          ) : null}
-
-          {detail.dependencies.length ? (
-            <RelatedSection label="Dependencies">
-              <ul className="space-y-1.5">
-                {detail.dependencies.map((dep) => (
-                  <li key={dep.key} className="flex items-center justify-between gap-2">
-                    <TaskInlineLink task={dep} />
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      disabled={removeDep.isPending}
-                      onClick={() => removeDep.mutate(dep.key)}
-                    >
-                      Remove
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              {removeDep.error ? (
-                <Failure title="Could not remove dependency" error={removeDep.error} />
-              ) : null}
-            </RelatedSection>
-          ) : null}
-
-          {detail.sessions.length ? (
-            <RelatedSection label="Sessions">
-              <ul className="space-y-1.5">
+    <div className="space-y-3">
+      {hasRuns ? (
+        <div className="rounded-card border border-border bg-card">
+          {detail.sessions.length > 0 ? (
+            <section aria-label="Sessions" className="p-3.5">
+              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
+                <MessageSquare className="size-3.5" aria-hidden />
+                <span>Sessions</span>
+                <span className="font-mono">{detail.sessions.length}</span>
+              </div>
+              <ul className="divide-y divide-border/70">
                 {detail.sessions.map((session) => (
-                  <li key={session.conversationId} className="flex flex-wrap items-center gap-2">
-                    <Link
-                      to="/a/$agentId/c/$chatId"
-                      params={{ agentId: session.agentId, chatId: String(session.conversationId) }}
-                      className="font-medium text-foreground hover:underline"
-                    >
-                      {session.title || "Untitled session"}
-                    </Link>
-                    <span className="text-muted-foreground">{session.agentName}</span>
-                    {session.isPrimary ? <Badge variant="secondary">Primary</Badge> : null}
-                    <span className="capitalize text-muted-foreground">{session.state}</span>
+                  <li
+                    key={session.conversationId}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2 text-[13px] first:pt-0 last:pb-0"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span
+                        aria-hidden
+                        className={
+                          session.state === "running"
+                            ? "size-2 shrink-0 rounded-full bg-green"
+                            : "size-2 shrink-0 rounded-full bg-muted-foreground/35"
+                        }
+                      />
+                      <Link
+                        to="/a/$agentId/c/$chatId"
+                        params={{ agentId: session.agentId, chatId: String(session.conversationId) }}
+                        className="truncate font-medium text-foreground hover:underline"
+                      >
+                        {session.title || "Untitled session"}
+                      </Link>
+                      {session.isPrimary ? <Badge variant="secondary">Primary</Badge> : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2 text-[12px] text-muted-foreground">
+                      <span>{session.agentName}</span>
+                      <span aria-hidden>·</span>
+                      <span className="capitalize">{session.state}</span>
+                    </div>
                   </li>
                 ))}
               </ul>
-            </RelatedSection>
+            </section>
           ) : null}
 
-          {externalRuns.length ? (
-            <RelatedSection label="External runs">
-              <ul className="space-y-2">
+          {externalRuns.length > 0 ? (
+            <section
+              aria-label="External runs"
+              className={detail.sessions.length > 0 ? "border-t border-border p-3.5" : "p-3.5"}
+            >
+              <div className="mb-2 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
+                <Terminal className="size-3.5" aria-hidden />
+                <span>External runs</span>
+                <span className="font-mono">{externalRuns.length}</span>
+              </div>
+              <ul className="divide-y divide-border/70">
                 {externalRuns.map((run) => (
-                  <li key={run.id} className="space-y-0.5">
+                  <li key={run.id} className="space-y-1 py-2 text-[13px] first:pt-0 last:pb-0">
                     <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        aria-hidden
+                        className={
+                          run.state === "running"
+                            ? "size-2 shrink-0 rounded-full bg-green"
+                            : run.state === "failed" || run.state === "stale"
+                              ? "size-2 shrink-0 rounded-full bg-red"
+                              : "size-2 shrink-0 rounded-full bg-muted-foreground/35"
+                        }
+                      />
                       <span className="font-medium text-foreground">{run.harness ?? "External agent"}</span>
                       <Badge variant="outline" className="capitalize">
                         {run.state}
                       </Badge>
-                      {run.gitBranch ? <span className="font-mono text-[12px]">{run.gitBranch}</span> : null}
+                      {run.gitBranch ? (
+                        <span className="inline-flex items-center gap-1 font-mono text-[12px] text-muted-foreground">
+                          <GitBranch className="size-3" aria-hidden />
+                          {run.gitBranch}
+                        </span>
+                      ) : null}
                       {run.lastHeartbeatAt ? (
-                        <span className="text-muted-foreground">
+                        <span className="ml-auto text-[12px] text-muted-foreground">
                           Heartbeat {formatDistanceToNow(run.lastHeartbeatAt, { addSuffix: true })}
                         </span>
                       ) : null}
@@ -751,72 +769,180 @@ function RelatedStrip({
                   </li>
                 ))}
               </ul>
-            </RelatedSection>
-          ) : null}
-
-          {detail.links.length ? (
-            <RelatedSection label="Links">
-              <ul className="space-y-2">
-                {detail.links.map((link) => (
-                  <RelatedLinkItem
-                    key={`${link.namespace}:${link.type}:${link.key}`}
-                    link={link}
-                    open={open}
-                  />
-                ))}
-              </ul>
-            </RelatedSection>
+            </section>
           ) : null}
         </div>
       ) : null}
-    </section>
-  );
-}
 
-function RelatedSection({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <section aria-label={label} className="space-y-1">
-      <h3 className="text-[11.5px] font-medium text-muted-foreground">{label}</h3>
-      {children}
-    </section>
+      {hasHierarchy ? (
+        <div className="space-y-3 rounded-card border border-border bg-card p-3.5 text-[13px]">
+          {detail.parentTask ? (
+            <section aria-label="Parent Task" className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[12px] font-medium text-muted-foreground">Parent</span>
+              <TaskInlineLink task={detail.parentTask} />
+            </section>
+          ) : null}
+
+          {detail.subtasks.length > 0 ? (
+            <section
+              aria-label="Subtasks"
+              className={detail.parentTask ? "border-t border-border/70 pt-3" : undefined}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
+                  <ListTree className="size-3.5" aria-hidden />
+                  <span>Subtasks</span>
+                  <span className="font-mono">
+                    {doneSubtasks}/{detail.subtasks.length}
+                  </span>
+                </div>
+                {canSplit ? (
+                  <Button type="button" variant="ghost" size="xs" onClick={() => onOpenDialog("subtask")}>
+                    <Plus className="size-3" />
+                    Add
+                  </Button>
+                ) : null}
+              </div>
+              <ul className="divide-y divide-border/70">
+                {detail.subtasks.map((subtask) => (
+                  <li key={subtask.key} className="py-1.5 first:pt-0 last:pb-0">
+                    <TaskInlineLink task={subtask} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {detail.dependencies.length > 0 ? (
+            <section
+              aria-label="Dependencies"
+              className={
+                detail.parentTask || detail.subtasks.length > 0 ? "border-t border-border/70 pt-3" : undefined
+              }
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[12px] font-medium text-muted-foreground">
+                  Depends on ({detail.dependencies.length})
+                </span>
+                {detail.parentTask ? (
+                  <Button type="button" variant="ghost" size="xs" onClick={() => onOpenDialog("dependency")}>
+                    <Plus className="size-3" />
+                    Add
+                  </Button>
+                ) : null}
+              </div>
+              <ul className="divide-y divide-border/70">
+                {detail.dependencies.map((dep) => (
+                  <li
+                    key={dep.key}
+                    className="flex items-center justify-between gap-2 py-1.5 first:pt-0 last:pb-0"
+                  >
+                    <TaskInlineLink task={dep} />
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={removeDep.isPending}
+                      onClick={() => removeDep.mutate(dep.key)}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              {removeDep.error ? (
+                <Failure title="Could not remove dependency" error={removeDep.error} />
+              ) : null}
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hasLinks ? (
+        <section aria-label="Links" className="rounded-card border border-border bg-card p-3.5 text-[13px]">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
+              <Link2 className="size-3.5" aria-hidden />
+              <span>Links</span>
+              <span className="font-mono">{detail.links.length}</span>
+            </div>
+            {canLinkGitHub ? (
+              <Button type="button" variant="ghost" size="xs" onClick={() => onOpenDialog("github")}>
+                <Plus className="size-3" />
+                Link PR
+              </Button>
+            ) : null}
+          </div>
+          <ul className="divide-y divide-border/70">
+            {detail.links.map((link) => (
+              <RelatedLinkItem key={`${link.namespace}:${link.type}:${link.key}`} link={link} open={open} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
   );
 }
 
 function TaskInlineLink({ task }: { task: TaskRef }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
       <Link
-        className="font-medium text-foreground hover:underline [overflow-wrap:anywhere]"
+        className="inline-flex min-w-0 items-center gap-2 font-medium text-foreground hover:underline [overflow-wrap:anywhere]"
         to="/board/$taskKey"
         params={{ taskKey: task.key }}
       >
-        <span className="mr-1.5 font-mono text-[12px] font-normal text-muted-foreground">{task.key}</span>
-        {task.title}
+        <span aria-hidden className={statusDotClass(task.status)} />
+        <span className="font-mono text-[12px] font-normal text-muted-foreground">{task.key}</span>
+        <span className="truncate">{task.title}</span>
       </Link>
-      <span className="text-[12px] text-muted-foreground">{statusLabel[task.status]}</span>
+      <span className="rounded-chip bg-muted px-1.5 py-0.5 text-[11.5px] text-muted-foreground">
+        {statusLabel[task.status]}
+      </span>
     </div>
   );
 }
 
 function RelatedLinkItem({ link, open }: { link: TaskLink; open: boolean }) {
   return (
-    <li className="space-y-0.5">
-      <p className="break-words text-foreground">
-        {link.type} {link.key} · <span className="text-muted-foreground">{link.namespace}</span>
+    <li className="space-y-1 py-2 first:pt-0 last:pb-0">
+      <p className="break-words font-medium text-foreground">
+        {link.type} {link.key} · <span className="font-normal text-muted-foreground">{link.namespace}</span>
       </p>
       {link.waits.length ? (
-        <ul className="space-y-0.5 text-[12px] text-muted-foreground">
-          {link.waits.map((wait) => (
-            <li key={wait.id} className="break-words">
-              {waitState(wait, open)} {wait.event} ·{" "}
-              {wait.revision ? <code>{wait.revision}</code> : "Any revision"}
-            </li>
-          ))}
+        <ul className="space-y-1 text-[12px] text-muted-foreground">
+          {link.waits.map((wait) => {
+            const label = waitState(wait, open);
+
+            return (
+              <li key={wait.id} className="flex flex-wrap items-center gap-1.5 break-words">
+                <span
+                  className={
+                    wait.resolved
+                      ? "rounded-chip bg-green-tint px-1.5 py-0.5 text-[11px] font-medium text-green"
+                      : "rounded-chip bg-orange-tint px-1.5 py-0.5 text-[11px] font-medium text-orange"
+                  }
+                >
+                  {label} {wait.event}
+                </span>
+                <span>{wait.revision ? <code>{wait.revision}</code> : "Any revision"}</span>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
     </li>
   );
 }
+
+const entryKindLabel: Record<TaskEntry["kind"], string> = {
+  note: "Note",
+  artifact: "Artifact",
+  status: "Status",
+  assign: "Assignment",
+  review: "Review",
+  execution: "Session",
+  external: "External",
+};
 
 function TaskTimeline({
   entries,
@@ -825,80 +951,122 @@ function TaskTimeline({
   entries: TaskEntry[];
   botOf: (id: string) => Pick<Agent, "id" | "name">;
 }) {
-  if (!entries.length) return null;
-
   return (
-    <ol aria-label="Timeline" className="space-y-3">
-      {entries.map((entry) => {
-        const at = formatDistanceToNow(entry.createdAt, { addSuffix: true });
-        const compact = isCompactSystemEntry(entry);
+    <section aria-label="Timeline" className="space-y-3">
+      <div className="flex items-center gap-2 border-b border-border pb-2">
+        <h2 className="text-[12.5px] font-medium text-muted-foreground">Timeline</h2>
+        <span className="font-mono text-[12px] text-muted-foreground">{entries.length}</span>
+      </div>
 
-        if (compact) {
-          return (
-            <li
-              key={entry.id}
-              className="flex items-baseline justify-between gap-3 py-0.5 text-[12.5px] text-muted-foreground"
-            >
-              <span className="min-w-0 [overflow-wrap:anywhere]">· {compactEntrySummary(entry, botOf)}</span>
-              <time dateTime={new Date(entry.createdAt).toISOString()} className="shrink-0 text-[11.5px]">
-                {at}
-              </time>
-            </li>
-          );
-        }
+      {entries.length === 0 ? (
+        <p className="py-2 text-[13.5px] text-muted-foreground">No activity yet.</p>
+      ) : (
+        <ol className="relative space-y-3 pl-6 before:absolute before:top-2 before:bottom-2 before:left-[7px] before:w-px before:bg-border">
+          {entries.map((entry) => {
+            const at = formatDistanceToNow(entry.createdAt, { addSuffix: true });
+            const exactTime = new Date(entry.createdAt).toLocaleString();
+            const compact = isCompactSystemEntry(entry);
 
-        const isExternal = entry.trust === "external" || entry.actorKind === "external_agent";
-        const bot = entry.trust === "agent" && entry.actorBotId ? botOf(entry.actorBotId) : null;
-
-        const authorLabel = isExternal
-          ? "External"
-          : bot
-            ? bot.name
-            : entry.actorKind === "system"
-              ? "System"
-              : entry.actorKind === "unknown"
-                ? "Unknown"
-                : "You";
-
-        return (
-          <li key={entry.id} className="space-y-1.5 py-2">
-            <div className="flex items-center justify-between gap-2 text-[12.5px]">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {bot ? <AgentAvatar agent={bot} className="size-4 text-[9px]" /> : null}
-                {isExternal ? (
-                  <Badge variant="outline" className="text-[11px]">
-                    External
-                  </Badge>
-                ) : (
-                  <span className="font-medium text-foreground">{authorLabel}</span>
-                )}
-                {entry.decision ? (
-                  <span className="text-muted-foreground">
-                    · {entry.decision === "approve" ? "Approved" : "Requested changes"}
+            if (compact) {
+              return (
+                <li
+                  key={entry.id}
+                  className="relative flex items-baseline justify-between gap-3 py-1 text-[12.5px] text-muted-foreground"
+                >
+                  <span
+                    aria-hidden
+                    className="absolute top-2.5 -left-[21px] size-2 rounded-full border border-muted-foreground/50 bg-background"
+                  />
+                  <span className="min-w-0 [overflow-wrap:anywhere]">
+                    {compactEntrySummary(entry, botOf)}
                   </span>
-                ) : null}
-                {entry.tag ? (
-                  <Badge variant="secondary" className="text-[11px]">
-                    {entry.tag}
-                  </Badge>
-                ) : null}
-              </div>
-              <time
-                dateTime={new Date(entry.createdAt).toISOString()}
-                className="shrink-0 text-[11.5px] text-muted-foreground"
-              >
-                {at}
-              </time>
-            </div>
-            {entry.content ? (
-              <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground [overflow-wrap:anywhere]">
-                {entry.content}
-              </p>
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
+                  <time
+                    dateTime={new Date(entry.createdAt).toISOString()}
+                    title={exactTime}
+                    className="shrink-0 text-[11.5px]"
+                  >
+                    {at}
+                  </time>
+                </li>
+              );
+            }
+
+            const isExternal = entry.trust === "external" || entry.actorKind === "external_agent";
+            const bot = entry.trust === "agent" && entry.actorBotId ? botOf(entry.actorBotId) : null;
+
+            const authorLabel = isExternal
+              ? "External"
+              : bot
+                ? bot.name
+                : entry.actorKind === "system"
+                  ? "System"
+                  : entry.actorKind === "unknown"
+                    ? "Unknown"
+                    : "You";
+
+            return (
+              <li key={entry.id} className="relative">
+                <span
+                  aria-hidden
+                  className={
+                    isExternal
+                      ? "absolute top-3.5 -left-[21px] size-2 rounded-full bg-muted-foreground/70"
+                      : "absolute top-3.5 -left-[21px] size-2 rounded-full bg-foreground/75"
+                  }
+                />
+                <div className="overflow-hidden rounded-card border border-border bg-card">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 bg-muted/25 px-3.5 py-2 text-[12.5px]">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {bot ? <AgentAvatar agent={bot} className="size-4 text-[9px]" /> : null}
+                      {isExternal ? (
+                        <Badge variant="outline" className="text-[11px]">
+                          External
+                        </Badge>
+                      ) : (
+                        <span className="font-medium text-foreground">{authorLabel}</span>
+                      )}
+                      {entry.kind !== "external" ? (
+                        <span className="rounded-chip bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                          {entryKindLabel[entry.kind]}
+                        </span>
+                      ) : null}
+                      {entry.decision ? (
+                        <span
+                          className={
+                            entry.decision === "approve"
+                              ? "rounded-chip bg-green-tint px-1.5 py-0.5 text-[11px] font-medium text-green"
+                              : "rounded-chip bg-orange-tint px-1.5 py-0.5 text-[11px] font-medium text-orange"
+                          }
+                        >
+                          {entry.decision === "approve" ? "Approved" : "Requested changes"}
+                        </span>
+                      ) : null}
+                      {entry.tag ? (
+                        <Badge variant="secondary" className="text-[11px]">
+                          {entry.tag}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <time
+                      dateTime={new Date(entry.createdAt).toISOString()}
+                      title={exactTime}
+                      className="shrink-0 text-[11.5px] text-muted-foreground"
+                    >
+                      {at}
+                    </time>
+                  </div>
+                  {entry.content ? (
+                    <div className="px-3.5 py-3">
+                      <MarkdownBody content={entry.content} />
+                    </div>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </section>
   );
 }
 
@@ -984,49 +1152,61 @@ function ThreadComposer({ task, assigneeName }: { task: TaskSummary; assigneeNam
 
   const busy = appendNote.isPending || sendToBot.isPending;
 
+  const submitDefault = () => {
+    if (busy || !text.trim()) return;
+
+    if (open) sendToBot.mutate();
+    else appendNote.mutate();
+  };
+
   return (
     <div className="space-y-2 border-t border-border pt-4">
       <form
-        className="space-y-2.5 rounded-card border border-border bg-card p-3 transition-shadow focus-within:ring-1 focus-within:ring-ring"
+        className="space-y-2.5 rounded-card border border-border bg-card p-3.5 transition-shadow focus-within:ring-1 focus-within:ring-ring"
         onSubmit={(event) => {
           event.preventDefault();
-
-          if (busy || !text.trim()) return;
-
-          if (open) sendToBot.mutate();
-          else appendNote.mutate();
+          submitDefault();
         }}
       >
         <Textarea
           aria-label="Task note"
-          placeholder={open ? `Message ${assigneeName}…` : "Add a note…"}
+          placeholder={open ? `Message ${assigneeName} or add a note…` : "Add a note…"}
           value={text}
           maxLength={32000}
           disabled={busy}
           onChange={(event) => setText(event.target.value)}
-          className="min-h-16 border-0 bg-transparent p-0 shadow-none focus-visible:ring-0"
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              submitDefault();
+            }
+          }}
+          className="min-h-20 border-0 bg-transparent p-0 text-[14px] shadow-none focus-visible:ring-0"
         />
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {open ? (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={!text.trim() || busy}
-                onClick={() => appendNote.mutate()}
-              >
-                Note only
-              </Button>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+          <span className="text-[11.5px] text-muted-foreground">⌘↵ to send</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {open ? (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!text.trim() || busy}
+                  onClick={() => appendNote.mutate()}
+                >
+                  Note only
+                </Button>
+                <Button type="submit" size="sm" disabled={!text.trim() || busy}>
+                  Send to {assigneeName}
+                </Button>
+              </>
+            ) : (
               <Button type="submit" size="sm" disabled={!text.trim() || busy}>
-                Send to {assigneeName}
+                Add note
               </Button>
-            </>
-          ) : (
-            <Button type="submit" size="sm" disabled={!text.trim() || busy}>
-              Add note
-            </Button>
-          )}
+            )}
+          </div>
         </div>
       </form>
       {sentNotice ? (

@@ -141,11 +141,8 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
 
   await startChild("Implement the change");
   await startChild("Review the change", collaborator.id);
-  const related = screen.getByRole("button", /Related:/);
-  await expect(related).toBeVisible({ timeout: 15_000 });
-  await related.tap();
   const sessions = screen.getByRole("region", "Sessions", { exact: true });
-  await expect(sessions.getByText(collaborator.name, { exact: true })).toBeVisible();
+  await expect(sessions.getByText(collaborator.name, { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(sessions.getByText("Primary", { exact: true })).toHaveCount(1);
   const { data: detail } = await getTask({ client, path, throwOnError: true });
   const review = detail.sessions.find((session) => session.agentId === collaborator.id);
@@ -352,7 +349,6 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
 
   await app.open(new URL(await browser.url()).pathname);
   await expect(screen.getByRole("heading", title)).toBeVisible();
-  await screen.getByRole("button", /Related:/).tap();
   await expect(link).toBeVisible();
   await expect(received).toBeVisible();
   await expect(screen.getByText(/Review of the selected commit/)).toBeVisible();

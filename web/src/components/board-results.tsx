@@ -10,6 +10,7 @@ import { type Continuation, continueResult, inboxOptions, resultQuote } from "..
 import { invalidateTasks } from "../lib/task-stream";
 import { newId } from "../lib/utils";
 import { AgentAvatar } from "./agent-avatar";
+import { MarkdownBody } from "./markdown-body";
 import { Empty, FramedPage } from "./page";
 import { Failure, Loading } from "./feedback";
 import { Badge } from "./ui/badge";
@@ -342,9 +343,11 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
 
       {expanded ? (
         <div className="space-y-3 pb-3 pl-10 pr-2">
-          <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-foreground [overflow-wrap:anywhere]">
-            {latest.summary || "No summary."}
-          </p>
+          {latest.summary ? (
+            <MarkdownBody content={latest.summary} />
+          ) : (
+            <p className="text-[13.5px] text-muted-foreground">No summary.</p>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" disabled={busy} onClick={() => dismissGroup.mutate(group.runs)}>
               {group.runs.length > 1 ? `Done (${group.runs.length})` : "Done"}
@@ -500,9 +503,7 @@ function BoardResultDetail({ item, pending, error }: { item?: InboxItem; pending
               {item.dismissed ? <Badge variant="outline">Done</Badge> : null}
             </div>
           ) : null}
-          <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-foreground [overflow-wrap:anywhere]">
-            {item.summary}
-          </p>
+          <MarkdownBody content={item.summary} />
           <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
             <Button
               onClick={() => done.mutate(item)}

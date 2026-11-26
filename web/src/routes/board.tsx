@@ -16,7 +16,7 @@ import { heldEventsOptions } from "../lib/inbox";
 import { attentionItems, inboxSummaryOptions } from "../lib/inbox-summary";
 import { refreshInbox } from "../lib/queries";
 import { invalidateTasks, useTaskStream } from "../lib/task-stream";
-import { isClosed } from "../lib/tasks";
+import { isClosed, statusLabel } from "../lib/tasks";
 
 // Add a Bot filter control here when active tasks routinely exceed 30.
 export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bot?: string) => void }) {
@@ -362,6 +362,7 @@ function TaskRow({
         params={{ taskKey: task.key }}
         className="flex items-center gap-3 rounded-control px-2 py-2.5 transition-colors hover:bg-accent/50"
       >
+        <span aria-hidden className={taskStatusDotClass(task)} />
         <span className="w-10 shrink-0 font-mono text-[12px] text-muted-foreground">{task.key}</span>
         <span
           className={
@@ -373,40 +374,59 @@ function TaskRow({
           {task.title}
         </span>
         <div className="flex shrink-0 items-center gap-2 text-[12.5px] text-muted-foreground">
+          <span
+            className={
+              hint.urgent
+                ? "rounded-chip bg-orange-tint px-1.5 py-0.5 text-[11.5px] font-medium text-orange"
+                : "rounded-chip bg-muted px-1.5 py-0.5 text-[11.5px] text-muted-foreground"
+            }
+          >
+            {hint.label}
+          </span>
           <AgentAvatar agent={agent} className="size-5 text-[10px]" />
-          <span className="hidden max-w-28 truncate sm:inline">{agent.name}</span>
-          <span aria-hidden className="hidden sm:inline">
+          <span className="hidden max-w-24 truncate sm:inline">{agent.name}</span>
+          <span aria-hidden className="hidden md:inline">
             ·
           </span>
-          <span className={hint.urgent ? "font-medium text-orange" : undefined}>{hint.text}</span>
+          <span className="hidden text-[12px] md:inline">
+            {formatDistanceToNow(task.updatedAt, { addSuffix: true })}
+          </span>
         </div>
       </Link>
     </li>
   );
 }
 
-type TaskHint = { text: string; urgent?: boolean };
+type TaskHint = { label: string; urgent?: boolean };
 
 function taskStatusHint(task: TaskSummary): TaskHint {
   if (task.status === "in_review" && task.reviewerKind === "owner") {
-    return { text: "Waiting for review", urgent: true };
+    return { label: "Review", urgent: true };
   }
 
   if (task.blocked) {
-    return { text: "Blocked", urgent: true };
+    return { label: "Blocked", urgent: true };
   }
 
   if (task.status === "in_review") {
-    return { text: "Bot review" };
+    return { label: "Bot review" };
   }
 
-  if (task.status === "done") {
-    return { text: "Done" };
+  return { label: statusLabel[task.status] };
+}
+
+function taskStatusDotClass(task: TaskSummary) {
+  if (task.blocked || (task.status === "in_review" && task.reviewerKind === "owner")) {
+    return "size-2 shrink-0 rounded-full bg-orange";
   }
 
-  if (task.status === "cancelled") {
-    return { text: "Cancelled" };
+  if (task.status === "in_progress" || task.status === "done") {
+    return "size-2 shrink-0 rounded-full bg-green";
   }
 
-  return { text: formatDistanceToNow(task.updatedAt, { addSuffix: true }) };
+  if (task.status === "ready") {
+    return "size-2 shrink-0 rounded-full border-[1.5px] border-foreground/60";
+  }
+
+  return "size-2 shrink-0 rounded-full bg-muted-foreground/35";
 }

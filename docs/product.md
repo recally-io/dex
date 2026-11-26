@@ -278,11 +278,12 @@ items by what needs action now:
 
 Creating a Task or adding a note does not start a Session. Sending from the
 Task composer messages the Assignee Bot's Main, links the turn to the Task, and
-keeps the Owner on the Task page. Task detail shows the chronological timeline,
-clickable Assignee and Status controls, a contextual review or blocker card,
-and a collapsible `Related` strip for linked Sessions, external runs, subtasks,
-dependencies, and external links. The Owner can answer queued questions from
-Task detail. Channels show one active Main question at a time.
+keeps the Owner on the Task page. Task detail shows a clear property strip
+(Status, Assignee Bot, Reviewer), a contextual review or blocker card,
+conditional cards for linked Sessions, external runs, subtasks, dependencies,
+and external links, and a Markdown-rendered chronological timeline. The Owner
+can answer queued questions from Task detail. Channels show one active Main
+question at a time.
 
 Bots can read or update Tasks when their role and Session permit it. The
 Owner controls cancellation and reopening. Timeline entries identify the
