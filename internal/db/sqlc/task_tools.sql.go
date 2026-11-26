@@ -11,7 +11,7 @@ import (
 )
 
 const clearTaskPrimarySession = `-- name: ClearTaskPrimarySession :exec
-UPDATE task_executions SET is_primary = 0 WHERE task_id = ? AND is_primary = 1
+UPDATE task_sessions SET is_primary = 0 WHERE task_id = ? AND is_primary = 1
 `
 
 func (q *Queries) ClearTaskPrimarySession(ctx context.Context, taskID string) error {
@@ -75,40 +75,27 @@ func (q *Queries) GetTaskByNumber(ctx context.Context, number int64) (Task, erro
 }
 
 const getTaskSession = `-- name: GetTaskSession :one
-SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state FROM task_executions WHERE task_id = ? AND conversation_id = ? AND kind = 'dex_session'
+SELECT id, task_id, bot_id, conversation_id, turn_request_id, is_primary, state, started_at, ended_at FROM task_sessions WHERE task_id = ? AND conversation_id = ?
 `
 
 type GetTaskSessionParams struct {
-	TaskID         string        `json:"task_id"`
-	ConversationID sql.NullInt64 `json:"conversation_id"`
+	TaskID         string `json:"task_id"`
+	ConversationID int64  `json:"conversation_id"`
 }
 
-func (q *Queries) GetTaskSession(ctx context.Context, arg GetTaskSessionParams) (TaskExecution, error) {
+func (q *Queries) GetTaskSession(ctx context.Context, arg GetTaskSessionParams) (TaskSession, error) {
 	row := q.db.QueryRowContext(ctx, getTaskSession, arg.TaskID, arg.ConversationID)
-	var i TaskExecution
+	var i TaskSession
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.Kind,
 		&i.ConversationID,
 		&i.TurnRequestID,
 		&i.IsPrimary,
-		&i.Harness,
-		&i.RunnerID,
-		&i.HostMetaJson,
-		&i.WorkspacePath,
-		&i.GitBranch,
-		&i.ExternalSessionID,
-		&i.LeaseEpoch,
-		&i.LeaseExpiresAt,
-		&i.LastHeartbeatAt,
+		&i.State,
 		&i.StartedAt,
 		&i.EndedAt,
-		&i.DispatchID,
-		&i.LeaseTtlMs,
-		&i.RunnerEnrollment,
-		&i.State,
 	)
 	return i, err
 }
@@ -132,8 +119,8 @@ func (q *Queries) GetTaskToolOperation(ctx context.Context, key string) (TaskToo
 }
 
 const hasTaskBotExecution = `-- name: HasTaskBotExecution :one
-SELECT EXISTS (SELECT 1 FROM task_executions WHERE task_id = ?1 AND bot_id = ?2
-  AND kind = 'dex_session' AND conversation_id = CAST(?3 AS INTEGER))
+SELECT EXISTS (SELECT 1 FROM task_sessions WHERE task_id = ?1 AND bot_id = ?2
+  AND conversation_id = CAST(?3 AS INTEGER))
 `
 
 type HasTaskBotExecutionParams struct {
@@ -150,7 +137,7 @@ func (q *Queries) HasTaskBotExecution(ctx context.Context, arg HasTaskBotExecuti
 }
 
 const hasTaskExternalExecution = `-- name: HasTaskExternalExecution :one
-SELECT EXISTS (SELECT 1 FROM task_executions WHERE task_id = ?1 AND id = ?2 AND kind = 'external_agent')
+SELECT EXISTS (SELECT 1 FROM task_external_runs WHERE task_id = ?1 AND id = ?2)
 `
 
 type HasTaskExternalExecutionParams struct {
@@ -183,13 +170,13 @@ func (q *Queries) HasTaskTitleEntry(ctx context.Context, arg HasTaskTitleEntryPa
 }
 
 const linkTaskSession = `-- name: LinkTaskSession :one
-INSERT INTO task_executions (id, task_id, conversation_id, bot_id, kind, is_primary, started_at, turn_request_id)
-SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.agent_id, 'dex_session',
-  NOT EXISTS (SELECT 1 FROM task_executions s WHERE s.task_id = ?1 AND s.is_primary = 1), ?2,
+INSERT INTO task_sessions (id, task_id, conversation_id, bot_id, is_primary, started_at, turn_request_id)
+SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.agent_id,
+  NOT EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = ?1 AND s.is_primary = 1), ?2,
   COALESCE((SELECT s.id FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message'
     AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
 FROM conversations c WHERE c.id = ?3
-ON CONFLICT DO NOTHING RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+ON CONFLICT DO NOTHING RETURNING id, task_id, bot_id, conversation_id, turn_request_id, is_primary, state, started_at, ended_at
 `
 
 type LinkTaskSessionParams struct {
@@ -198,33 +185,20 @@ type LinkTaskSessionParams struct {
 	ConversationID int64  `json:"conversation_id"`
 }
 
-// Keep the original timestamp and child turn on replay. The first execution becomes primary.
-func (q *Queries) LinkTaskSession(ctx context.Context, arg LinkTaskSessionParams) (TaskExecution, error) {
+// Keep the original timestamp and child turn on replay. The first link becomes primary.
+func (q *Queries) LinkTaskSession(ctx context.Context, arg LinkTaskSessionParams) (TaskSession, error) {
 	row := q.db.QueryRowContext(ctx, linkTaskSession, arg.TaskID, arg.LinkedAt, arg.ConversationID)
-	var i TaskExecution
+	var i TaskSession
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.Kind,
 		&i.ConversationID,
 		&i.TurnRequestID,
 		&i.IsPrimary,
-		&i.Harness,
-		&i.RunnerID,
-		&i.HostMetaJson,
-		&i.WorkspacePath,
-		&i.GitBranch,
-		&i.ExternalSessionID,
-		&i.LeaseEpoch,
-		&i.LeaseExpiresAt,
-		&i.LastHeartbeatAt,
+		&i.State,
 		&i.StartedAt,
 		&i.EndedAt,
-		&i.DispatchID,
-		&i.LeaseTtlMs,
-		&i.RunnerEnrollment,
-		&i.State,
 	)
 	return i, err
 }
@@ -234,8 +208,8 @@ SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t
 WHERE a.archived_at IS NULL AND (
   (CAST(?1 AS INTEGER) = 0 AND
     (t.assignee_bot_id = ?2 OR (t.reviewer_kind = 'bot' AND t.reviewer_id = ?2)))
-  OR EXISTS (SELECT 1 FROM task_executions e WHERE e.task_id = t.id AND e.bot_id = ?2
-    AND e.kind = 'dex_session' AND e.conversation_id = ?1)
+  OR EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = t.id AND s.bot_id = ?2
+    AND s.conversation_id = ?1)
 )
 AND (CAST(?3 AS TEXT) = 'all' OR t.status = ?3
   OR (?3 = 'open' AND t.status NOT IN ('done', 'cancelled')))
@@ -338,10 +312,61 @@ func (q *Queries) ListBotWorkload(ctx context.Context, botID string) ([]Task, er
 	return items, nil
 }
 
+const listTaskSessionExecutions = `-- name: ListTaskSessionExecutions :many
+SELECT s.id, s.task_id, s.bot_id, s.conversation_id, s.turn_request_id, s.is_primary, s.state, s.started_at, s.ended_at, t.number AS task_number
+FROM task_sessions s JOIN tasks t ON t.id = s.task_id
+WHERE (CAST(?1 AS TEXT) = '' OR s.task_id = ?1)
+  AND (CAST(?2 AS TEXT) = '' OR s.state = ?2)
+`
+
+type ListTaskSessionExecutionsParams struct {
+	TaskID      string `json:"task_id"`
+	StateFilter string `json:"state_filter"`
+}
+
+type ListTaskSessionExecutionsRow struct {
+	TaskSession TaskSession `json:"task_session"`
+	TaskNumber  int64       `json:"task_number"`
+}
+
+func (q *Queries) ListTaskSessionExecutions(ctx context.Context, arg ListTaskSessionExecutionsParams) ([]ListTaskSessionExecutionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskSessionExecutions, arg.TaskID, arg.StateFilter)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTaskSessionExecutionsRow{}
+	for rows.Next() {
+		var i ListTaskSessionExecutionsRow
+		if err := rows.Scan(
+			&i.TaskSession.ID,
+			&i.TaskSession.TaskID,
+			&i.TaskSession.BotID,
+			&i.TaskSession.ConversationID,
+			&i.TaskSession.TurnRequestID,
+			&i.TaskSession.IsPrimary,
+			&i.TaskSession.State,
+			&i.TaskSession.StartedAt,
+			&i.TaskSession.EndedAt,
+			&i.TaskNumber,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTaskSessions = `-- name: ListTaskSessions :many
 SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
-FROM task_executions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.bot_id
-WHERE s.task_id = ? AND s.kind = 'dex_session' ORDER BY s.is_primary DESC, s.started_at, c.id
+FROM task_sessions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.bot_id
+WHERE s.task_id = ? ORDER BY s.is_primary DESC, s.started_at, c.id
 `
 
 type ListTaskSessionsRow struct {
@@ -479,7 +504,7 @@ func (q *Queries) ListTaskTimeline(ctx context.Context, arg ListTaskTimelinePara
 }
 
 const promoteTaskSession = `-- name: PromoteTaskSession :exec
-UPDATE task_executions SET is_primary = 1 WHERE id = ?
+UPDATE task_sessions SET is_primary = 1 WHERE id = ?
 `
 
 func (q *Queries) PromoteTaskSession(ctx context.Context, id string) error {

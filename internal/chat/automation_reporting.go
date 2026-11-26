@@ -101,7 +101,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 	}
 	// The existing child result informs the parent. The projection does not send a wake.
 	if conv.ParentID.Valid {
-		if err := q.ProjectTaskChildExecution(ctx, conv.ID); err != nil {
+		if err := q.ProjectTaskChildSession(ctx, conv.ID); err != nil {
 			return 0, 0, "", err
 		}
 	}

@@ -423,31 +423,6 @@ type TaskEntry struct {
 	CreatedAt        int64          `json:"created_at"`
 }
 
-type TaskExecution struct {
-	ID                string        `json:"id"`
-	TaskID            string        `json:"task_id"`
-	BotID             string        `json:"bot_id"`
-	Kind              string        `json:"kind"`
-	ConversationID    sql.NullInt64 `json:"conversation_id"`
-	TurnRequestID     string        `json:"turn_request_id"`
-	IsPrimary         int64         `json:"is_primary"`
-	Harness           string        `json:"harness"`
-	RunnerID          string        `json:"runner_id"`
-	HostMetaJson      string        `json:"host_meta_json"`
-	WorkspacePath     string        `json:"workspace_path"`
-	GitBranch         string        `json:"git_branch"`
-	ExternalSessionID string        `json:"external_session_id"`
-	LeaseEpoch        int64         `json:"lease_epoch"`
-	LeaseExpiresAt    sql.NullInt64 `json:"lease_expires_at"`
-	LastHeartbeatAt   sql.NullInt64 `json:"last_heartbeat_at"`
-	StartedAt         int64         `json:"started_at"`
-	EndedAt           sql.NullInt64 `json:"ended_at"`
-	DispatchID        string        `json:"dispatch_id"`
-	LeaseTtlMs        int64         `json:"lease_ttl_ms"`
-	RunnerEnrollment  string        `json:"runner_enrollment"`
-	State             string        `json:"state"`
-}
-
 type TaskExecutionToken struct {
 	TokenHash   string        `json:"token_hash"`
 	TaskID      string        `json:"task_id"`
@@ -456,6 +431,27 @@ type TaskExecutionToken struct {
 	RevokedAt   sql.NullInt64 `json:"revoked_at"`
 	CreatedAt   int64         `json:"created_at"`
 	DispatchID  string        `json:"dispatch_id"`
+}
+
+type TaskExternalRun struct {
+	ID                string        `json:"id"`
+	TaskID            string        `json:"task_id"`
+	BotID             string        `json:"bot_id"`
+	Harness           string        `json:"harness"`
+	RunnerID          string        `json:"runner_id"`
+	HostMetaJson      string        `json:"host_meta_json"`
+	WorkspacePath     string        `json:"workspace_path"`
+	GitBranch         string        `json:"git_branch"`
+	ExternalSessionID string        `json:"external_session_id"`
+	State             string        `json:"state"`
+	LeaseEpoch        int64         `json:"lease_epoch"`
+	LeaseExpiresAt    sql.NullInt64 `json:"lease_expires_at"`
+	LeaseTtlMs        int64         `json:"lease_ttl_ms"`
+	LastHeartbeatAt   sql.NullInt64 `json:"last_heartbeat_at"`
+	DispatchID        string        `json:"dispatch_id"`
+	RunnerEnrollment  string        `json:"runner_enrollment"`
+	StartedAt         int64         `json:"started_at"`
+	EndedAt           sql.NullInt64 `json:"ended_at"`
 }
 
 type TaskInput struct {
@@ -472,6 +468,18 @@ type TaskObject struct {
 	ObjectType string `json:"object_type"`
 	ObjectKey  string `json:"object_key"`
 	TaskID     string `json:"task_id"`
+}
+
+type TaskSession struct {
+	ID             string        `json:"id"`
+	TaskID         string        `json:"task_id"`
+	BotID          string        `json:"bot_id"`
+	ConversationID int64         `json:"conversation_id"`
+	TurnRequestID  string        `json:"turn_request_id"`
+	IsPrimary      int64         `json:"is_primary"`
+	State          string        `json:"state"`
+	StartedAt      int64         `json:"started_at"`
+	EndedAt        sql.NullInt64 `json:"ended_at"`
 }
 
 type TaskSourceEvent struct {

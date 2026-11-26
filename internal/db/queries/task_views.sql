@@ -30,7 +30,7 @@ SELECT id, task_id FROM task_entries WHERE id > @after_id ORDER BY id LIMIT 128;
 
 -- name: HasTaskConversation :one
 SELECT EXISTS (
-  SELECT 1 FROM task_executions e WHERE e.conversation_id = sqlc.arg(chat_id)
+  SELECT 1 FROM task_sessions s WHERE s.conversation_id = sqlc.arg(chat_id)
   UNION ALL
   SELECT 1 FROM submissions s JOIN task_inputs i ON i.submission_id = s.id
   WHERE s.conversation_id = sqlc.arg(chat_id)

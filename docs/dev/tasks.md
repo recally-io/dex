@@ -39,13 +39,15 @@ Timeline. The composer sends to the Assignee's Main by default. Select
 Task state lives in `control.sqlite`. Native execution state stays in
 `agents/<id>/state.sqlite`.
 
-| Table               | Purpose                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `task_numbers`      | Allocates a global number with an `AUTOINCREMENT` insert. `tasks.number` stores the result.                                                |
-| `tasks`             | Stores the current projection, including Assignee, Reviewer, status, parent, root authorization, revision, and entry and review sequences. |
-| `task_entries`      | Stores the append-only Timeline. `seq` is unique within a Task. The `AUTOINCREMENT` entry ID is the global event cursor.                   |
-| `task_dependencies` | Stores edges between subtasks of the same parent.                                                                                          |
-| `task_executions`   | Links `dex_session` and `external_agent` executions. `runner_id` records the Runner for an external run.                                   |
+| Table                   | Purpose                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task_numbers`          | Allocates a global number with an `AUTOINCREMENT` insert. `tasks.number` stores the result.                                                |
+| `tasks`                 | Stores the current projection, including Assignee, Reviewer, status, parent, root authorization, revision, and entry and review sequences. |
+| `task_entries`          | Stores the append-only Timeline. `seq` is unique within a Task. The `AUTOINCREMENT` entry ID is the global event cursor.                   |
+| `task_dependencies`     | Stores edges between subtasks of the same parent.                                                                                          |
+| `task_sessions`         | Links Sessions to Tasks and stores the primary link and first parent turn outcome.                                                         |
+| `task_external_runs`    | Stores external runs, including their leases and Runner bindings.                                                                          |
+| `task_execution_tokens` | Stores scoped tokens for external runs.                                                                                                    |
 
 Projection changes and their ledger entries commit in the same transaction.
 Entries store actor and trust data. The entry kinds are `note`, `artifact`,
@@ -159,7 +161,7 @@ reads omit Source entries entirely.
 ## Sessions and questions
 
 When a Task input starts a child with `session_new` or `session_fork`, Dex
-records the `dex_session` link in the same transaction as the child. The
+records the Session link in the same transaction as the child. The
 first link is primary. Set `primary: true` with `task_update` and a child
 `session` to promote that link without removing the others. Task detail and
 `task_read` return linked `sessions` in primary-first order. The summary
@@ -224,12 +226,12 @@ the original native request ID and snapshot. Cross-Bot changes commit before
 delivery and do not hold two Session delivery gates.
 
 A linked child delivers a `session_result` to its parent under the Session
-settlement rules. Its `dex_session` execution state comes from the Session
-and submission records. It does not send a second Task wake for settlement.
+settlement rules. Dex uses the first parent message receipt to set the linked
+Session state. Settlement does not send a second Task wake.
 
 ## External agents and Runners
 
-An external agent works under the Assignee Bot. `task_executions.state`
+An external agent works under the Assignee Bot. `task_external_runs.state`
 accepts `running`, `completed`, `failed`, `stale`, and `cancelled`. Finishing
 an external run does not complete the Task or request review.
 

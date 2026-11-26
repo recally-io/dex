@@ -11,12 +11,12 @@ import (
 )
 
 const createExternalExecution = `-- name: CreateExternalExecution :one
-INSERT INTO task_executions (id, task_id, bot_id, kind, harness, runner_id, host_meta_json,
+INSERT INTO task_external_runs (id, task_id, bot_id, harness, runner_id, host_meta_json,
   workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at,
   started_at, dispatch_id, runner_enrollment, lease_ttl_ms)
-VALUES (?1, ?2, ?3, 'external_agent', ?4, ?5, ?6,
+VALUES (?1, ?2, ?3, ?4, ?5, ?6,
   ?7, ?8, ?9, 1, ?10, ?11, ?11, ?12, ?13, ?14)
-RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+RETURNING id, task_id, bot_id, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, lease_ttl_ms, last_heartbeat_at, dispatch_id, runner_enrollment, started_at, ended_at
 `
 
 type CreateExternalExecutionParams struct {
@@ -36,7 +36,7 @@ type CreateExternalExecutionParams struct {
 	LeaseTtlMs        int64         `json:"lease_ttl_ms"`
 }
 
-func (q *Queries) CreateExternalExecution(ctx context.Context, arg CreateExternalExecutionParams) (TaskExecution, error) {
+func (q *Queries) CreateExternalExecution(ctx context.Context, arg CreateExternalExecutionParams) (TaskExternalRun, error) {
 	row := q.db.QueryRowContext(ctx, createExternalExecution,
 		arg.ID,
 		arg.TaskID,
@@ -53,73 +53,65 @@ func (q *Queries) CreateExternalExecution(ctx context.Context, arg CreateExterna
 		arg.RunnerEnrollment,
 		arg.LeaseTtlMs,
 	)
-	var i TaskExecution
+	var i TaskExternalRun
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.Kind,
-		&i.ConversationID,
-		&i.TurnRequestID,
-		&i.IsPrimary,
 		&i.Harness,
 		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,
 		&i.ExternalSessionID,
+		&i.State,
 		&i.LeaseEpoch,
 		&i.LeaseExpiresAt,
+		&i.LeaseTtlMs,
 		&i.LastHeartbeatAt,
+		&i.DispatchID,
+		&i.RunnerEnrollment,
 		&i.StartedAt,
 		&i.EndedAt,
-		&i.DispatchID,
-		&i.LeaseTtlMs,
-		&i.RunnerEnrollment,
-		&i.State,
 	)
 	return i, err
 }
 
 const expireExternalExecutions = `-- name: ExpireExternalExecutions :many
-UPDATE task_executions SET state = 'stale', ended_at = ?1
-WHERE id IN (SELECT id FROM task_executions WHERE kind = 'external_agent' AND state = 'running'
+UPDATE task_external_runs SET state = 'stale', ended_at = ?1
+WHERE id IN (SELECT id FROM task_external_runs WHERE state = 'running'
   AND lease_expires_at <= ?1 ORDER BY lease_expires_at, id LIMIT 100)
-RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+RETURNING id, task_id, bot_id, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, lease_ttl_ms, last_heartbeat_at, dispatch_id, runner_enrollment, started_at, ended_at
 `
 
-func (q *Queries) ExpireExternalExecutions(ctx context.Context, at sql.NullInt64) ([]TaskExecution, error) {
+func (q *Queries) ExpireExternalExecutions(ctx context.Context, at sql.NullInt64) ([]TaskExternalRun, error) {
 	rows, err := q.db.QueryContext(ctx, expireExternalExecutions, at)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []TaskExecution{}
+	items := []TaskExternalRun{}
 	for rows.Next() {
-		var i TaskExecution
+		var i TaskExternalRun
 		if err := rows.Scan(
 			&i.ID,
 			&i.TaskID,
 			&i.BotID,
-			&i.Kind,
-			&i.ConversationID,
-			&i.TurnRequestID,
-			&i.IsPrimary,
 			&i.Harness,
 			&i.RunnerID,
 			&i.HostMetaJson,
 			&i.WorkspacePath,
 			&i.GitBranch,
 			&i.ExternalSessionID,
+			&i.State,
 			&i.LeaseEpoch,
 			&i.LeaseExpiresAt,
+			&i.LeaseTtlMs,
 			&i.LastHeartbeatAt,
+			&i.DispatchID,
+			&i.RunnerEnrollment,
 			&i.StartedAt,
 			&i.EndedAt,
-			&i.DispatchID,
-			&i.LeaseTtlMs,
-			&i.RunnerEnrollment,
-			&i.State,
 		); err != nil {
 			return nil, err
 		}
@@ -135,8 +127,8 @@ func (q *Queries) ExpireExternalExecutions(ctx context.Context, at sql.NullInt64
 }
 
 const extendActiveExternalLeases = `-- name: ExtendActiveExternalLeases :exec
-UPDATE task_executions SET lease_expires_at = max(lease_expires_at, ?1)
-WHERE kind = 'external_agent' AND state = 'running' AND lease_expires_at IS NOT NULL
+UPDATE task_external_runs SET lease_expires_at = max(lease_expires_at, ?1)
+WHERE state = 'running' AND lease_expires_at IS NOT NULL
 `
 
 func (q *Queries) ExtendActiveExternalLeases(ctx context.Context, expiresAt interface{}) error {
@@ -145,35 +137,31 @@ func (q *Queries) ExtendActiveExternalLeases(ctx context.Context, expiresAt inte
 }
 
 const getExternalExecution = `-- name: GetExternalExecution :one
-SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state FROM task_executions WHERE id = ? AND kind = 'external_agent'
+SELECT id, task_id, bot_id, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, lease_ttl_ms, last_heartbeat_at, dispatch_id, runner_enrollment, started_at, ended_at FROM task_external_runs WHERE id = ?
 `
 
-func (q *Queries) GetExternalExecution(ctx context.Context, id string) (TaskExecution, error) {
+func (q *Queries) GetExternalExecution(ctx context.Context, id string) (TaskExternalRun, error) {
 	row := q.db.QueryRowContext(ctx, getExternalExecution, id)
-	var i TaskExecution
+	var i TaskExternalRun
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.Kind,
-		&i.ConversationID,
-		&i.TurnRequestID,
-		&i.IsPrimary,
 		&i.Harness,
 		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,
 		&i.ExternalSessionID,
+		&i.State,
 		&i.LeaseEpoch,
 		&i.LeaseExpiresAt,
+		&i.LeaseTtlMs,
 		&i.LastHeartbeatAt,
+		&i.DispatchID,
+		&i.RunnerEnrollment,
 		&i.StartedAt,
 		&i.EndedAt,
-		&i.DispatchID,
-		&i.LeaseTtlMs,
-		&i.RunnerEnrollment,
-		&i.State,
 	)
 	return i, err
 }
@@ -286,69 +274,57 @@ func (q *Queries) ListExternalTaskEntries(ctx context.Context, arg ListExternalT
 	return items, nil
 }
 
-const listTaskExecutions = `-- name: ListTaskExecutions :many
-SELECT e.id, e.task_id, e.bot_id, e.kind, e.conversation_id, e.turn_request_id, e.is_primary, e.harness, e.runner_id, e.host_meta_json, e.workspace_path, e.git_branch, e.external_session_id, e.lease_epoch, e.lease_expires_at, e.last_heartbeat_at, e.started_at, e.ended_at, e.dispatch_id, e.lease_ttl_ms, e.runner_enrollment, e.state, t.number AS task_number, coalesce(r.name, '') AS runner_name
-FROM task_executions e JOIN tasks t ON t.id = e.task_id
+const listTaskExternalRuns = `-- name: ListTaskExternalRuns :many
+SELECT e.id, e.task_id, e.bot_id, e.harness, e.runner_id, e.host_meta_json, e.workspace_path, e.git_branch, e.external_session_id, e.state, e.lease_epoch, e.lease_expires_at, e.lease_ttl_ms, e.last_heartbeat_at, e.dispatch_id, e.runner_enrollment, e.started_at, e.ended_at, t.number AS task_number, coalesce(r.name, '') AS runner_name
+FROM task_external_runs e JOIN tasks t ON t.id = e.task_id
 LEFT JOIN runners r ON r.id = e.runner_id AND r.kind = 'runner'
   AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.runner_id = r.id
     AND p.credential_digest <> '' AND p.credential_digest = e.runner_enrollment)
 WHERE (CAST(?1 AS TEXT) = '' OR e.task_id = ?1)
   AND (CAST(?2 AS TEXT) = '' OR r.id = ?2)
-  AND (CAST(?3 AS TEXT) = '' OR e.kind = ?3)
-  AND (CAST(?4 AS TEXT) = '' OR e.state = ?4)
-ORDER BY e.started_at DESC, e.id DESC
+  AND (CAST(?3 AS TEXT) = '' OR e.state = ?3)
 `
 
-type ListTaskExecutionsParams struct {
+type ListTaskExternalRunsParams struct {
 	TaskID         string `json:"task_id"`
 	RunnerIDFilter string `json:"runner_id_filter"`
-	KindFilter     string `json:"kind_filter"`
 	StateFilter    string `json:"state_filter"`
 }
 
-type ListTaskExecutionsRow struct {
-	TaskExecution TaskExecution `json:"task_execution"`
-	TaskNumber    int64         `json:"task_number"`
-	RunnerName    string        `json:"runner_name"`
+type ListTaskExternalRunsRow struct {
+	TaskExternalRun TaskExternalRun `json:"task_external_run"`
+	TaskNumber      int64           `json:"task_number"`
+	RunnerName      string          `json:"runner_name"`
 }
 
-func (q *Queries) ListTaskExecutions(ctx context.Context, arg ListTaskExecutionsParams) ([]ListTaskExecutionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listTaskExecutions,
-		arg.TaskID,
-		arg.RunnerIDFilter,
-		arg.KindFilter,
-		arg.StateFilter,
-	)
+func (q *Queries) ListTaskExternalRuns(ctx context.Context, arg ListTaskExternalRunsParams) ([]ListTaskExternalRunsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskExternalRuns, arg.TaskID, arg.RunnerIDFilter, arg.StateFilter)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListTaskExecutionsRow{}
+	items := []ListTaskExternalRunsRow{}
 	for rows.Next() {
-		var i ListTaskExecutionsRow
+		var i ListTaskExternalRunsRow
 		if err := rows.Scan(
-			&i.TaskExecution.ID,
-			&i.TaskExecution.TaskID,
-			&i.TaskExecution.BotID,
-			&i.TaskExecution.Kind,
-			&i.TaskExecution.ConversationID,
-			&i.TaskExecution.TurnRequestID,
-			&i.TaskExecution.IsPrimary,
-			&i.TaskExecution.Harness,
-			&i.TaskExecution.RunnerID,
-			&i.TaskExecution.HostMetaJson,
-			&i.TaskExecution.WorkspacePath,
-			&i.TaskExecution.GitBranch,
-			&i.TaskExecution.ExternalSessionID,
-			&i.TaskExecution.LeaseEpoch,
-			&i.TaskExecution.LeaseExpiresAt,
-			&i.TaskExecution.LastHeartbeatAt,
-			&i.TaskExecution.StartedAt,
-			&i.TaskExecution.EndedAt,
-			&i.TaskExecution.DispatchID,
-			&i.TaskExecution.LeaseTtlMs,
-			&i.TaskExecution.RunnerEnrollment,
-			&i.TaskExecution.State,
+			&i.TaskExternalRun.ID,
+			&i.TaskExternalRun.TaskID,
+			&i.TaskExternalRun.BotID,
+			&i.TaskExternalRun.Harness,
+			&i.TaskExternalRun.RunnerID,
+			&i.TaskExternalRun.HostMetaJson,
+			&i.TaskExternalRun.WorkspacePath,
+			&i.TaskExternalRun.GitBranch,
+			&i.TaskExternalRun.ExternalSessionID,
+			&i.TaskExternalRun.State,
+			&i.TaskExternalRun.LeaseEpoch,
+			&i.TaskExternalRun.LeaseExpiresAt,
+			&i.TaskExternalRun.LeaseTtlMs,
+			&i.TaskExternalRun.LastHeartbeatAt,
+			&i.TaskExternalRun.DispatchID,
+			&i.TaskExternalRun.RunnerEnrollment,
+			&i.TaskExternalRun.StartedAt,
+			&i.TaskExternalRun.EndedAt,
 			&i.TaskNumber,
 			&i.RunnerName,
 		); err != nil {
@@ -366,10 +342,10 @@ func (q *Queries) ListTaskExecutions(ctx context.Context, arg ListTaskExecutions
 }
 
 const resumeExternalExecution = `-- name: ResumeExternalExecution :one
-UPDATE task_executions SET state = 'running', bot_id = ?1, lease_epoch = lease_epoch + 1,
+UPDATE task_external_runs SET state = 'running', bot_id = ?1, lease_epoch = lease_epoch + 1,
   lease_expires_at = ?2, last_heartbeat_at = ?3, ended_at = NULL,
   dispatch_id = ?4, lease_ttl_ms = ?5
-WHERE id = ?6 AND kind = 'external_agent' AND state IN ('running', 'stale') RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+WHERE id = ?6 AND state IN ('running', 'stale') RETURNING id, task_id, bot_id, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, lease_ttl_ms, last_heartbeat_at, dispatch_id, runner_enrollment, started_at, ended_at
 `
 
 type ResumeExternalExecutionParams struct {
@@ -381,7 +357,7 @@ type ResumeExternalExecutionParams struct {
 	ID             string        `json:"id"`
 }
 
-func (q *Queries) ResumeExternalExecution(ctx context.Context, arg ResumeExternalExecutionParams) (TaskExecution, error) {
+func (q *Queries) ResumeExternalExecution(ctx context.Context, arg ResumeExternalExecutionParams) (TaskExternalRun, error) {
 	row := q.db.QueryRowContext(ctx, resumeExternalExecution,
 		arg.BotID,
 		arg.LeaseExpiresAt,
@@ -390,30 +366,26 @@ func (q *Queries) ResumeExternalExecution(ctx context.Context, arg ResumeExterna
 		arg.LeaseTtlMs,
 		arg.ID,
 	)
-	var i TaskExecution
+	var i TaskExternalRun
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.Kind,
-		&i.ConversationID,
-		&i.TurnRequestID,
-		&i.IsPrimary,
 		&i.Harness,
 		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,
 		&i.ExternalSessionID,
+		&i.State,
 		&i.LeaseEpoch,
 		&i.LeaseExpiresAt,
+		&i.LeaseTtlMs,
 		&i.LastHeartbeatAt,
+		&i.DispatchID,
+		&i.RunnerEnrollment,
 		&i.StartedAt,
 		&i.EndedAt,
-		&i.DispatchID,
-		&i.LeaseTtlMs,
-		&i.RunnerEnrollment,
-		&i.State,
 	)
 	return i, err
 }
@@ -433,7 +405,7 @@ func (q *Queries) RevokeTaskTokens(ctx context.Context, arg RevokeTaskTokensPara
 }
 
 const writeExternalExecution = `-- name: WriteExternalExecution :one
-UPDATE task_executions SET
+UPDATE task_external_runs SET
   state = coalesce(?1, state),
   ended_at = CASE WHEN ?1 IS NOT NULL THEN ?2 ELSE ended_at END,
   last_heartbeat_at = CASE WHEN ?3 THEN ?2 ELSE last_heartbeat_at END,
@@ -441,9 +413,9 @@ UPDATE task_executions SET
   lease_ttl_ms = coalesce(CAST(?4 AS INTEGER), lease_ttl_ms),
   git_branch = coalesce(?5, git_branch),
   external_session_id = coalesce(?6, external_session_id)
-WHERE id = ?7 AND task_id = ?8 AND state = 'running' AND kind = 'external_agent'
+WHERE id = ?7 AND task_id = ?8 AND state = 'running'
   AND lease_epoch = ?9 AND lease_expires_at > ?2
-RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
+RETURNING id, task_id, bot_id, harness, runner_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, lease_ttl_ms, last_heartbeat_at, dispatch_id, runner_enrollment, started_at, ended_at
 `
 
 type WriteExternalExecutionParams struct {
@@ -458,7 +430,7 @@ type WriteExternalExecutionParams struct {
 	Epoch     int64          `json:"epoch"`
 }
 
-func (q *Queries) WriteExternalExecution(ctx context.Context, arg WriteExternalExecutionParams) (TaskExecution, error) {
+func (q *Queries) WriteExternalExecution(ctx context.Context, arg WriteExternalExecutionParams) (TaskExternalRun, error) {
 	row := q.db.QueryRowContext(ctx, writeExternalExecution,
 		arg.NewState,
 		arg.At,
@@ -470,30 +442,26 @@ func (q *Queries) WriteExternalExecution(ctx context.Context, arg WriteExternalE
 		arg.TaskID,
 		arg.Epoch,
 	)
-	var i TaskExecution
+	var i TaskExternalRun
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.Kind,
-		&i.ConversationID,
-		&i.TurnRequestID,
-		&i.IsPrimary,
 		&i.Harness,
 		&i.RunnerID,
 		&i.HostMetaJson,
 		&i.WorkspacePath,
 		&i.GitBranch,
 		&i.ExternalSessionID,
+		&i.State,
 		&i.LeaseEpoch,
 		&i.LeaseExpiresAt,
+		&i.LeaseTtlMs,
 		&i.LastHeartbeatAt,
+		&i.DispatchID,
+		&i.RunnerEnrollment,
 		&i.StartedAt,
 		&i.EndedAt,
-		&i.DispatchID,
-		&i.LeaseTtlMs,
-		&i.RunnerEnrollment,
-		&i.State,
 	)
 	return i, err
 }

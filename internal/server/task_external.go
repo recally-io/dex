@@ -1,9 +1,11 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/v2"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/recally-io/dex/internal/api"
@@ -71,17 +73,28 @@ func (h *handler) ListTaskExecutions(ctx context.Context, req api.ListTaskExecut
 	if err != nil {
 		return nil, taskError(err)
 	}
-	out := api.ListTaskExecutions200JSONResponse{Executions: make([]api.TaskExecution, 0, len(rows))}
-	for _, row := range rows {
-		e := taskExecution(row.TaskExecution)
+	executions := make([]api.TaskExecution, 0, len(rows.Sessions)+len(rows.ExternalRuns))
+	for _, row := range rows.Sessions {
+		s := row.TaskSession
+		executions = append(executions, api.TaskExecution{
+			Id: s.ID, BotId: s.BotID, TaskKey: new(tasksvc.FormatKey(row.TaskNumber)),
+			Kind: api.DexSession, State: api.TaskExecutionState(s.State),
+			StartedAt: s.StartedAt, EndedAt: nullExecutionTime(s.EndedAt.Int64, s.EndedAt.Valid),
+		})
+	}
+	for _, row := range rows.ExternalRuns {
+		e := taskExecution(row.TaskExternalRun)
 		e.TaskKey = new(tasksvc.FormatKey(row.TaskNumber))
 		e.RunnerName = optional(row.RunnerName)
 		if e.RunnerName != nil {
-			e.RunnerId = optional(row.TaskExecution.RunnerID)
+			e.RunnerId = optional(row.TaskExternalRun.RunnerID)
 		}
-		out.Executions = append(out.Executions, e)
+		executions = append(executions, e)
 	}
-	return out, nil
+	slices.SortFunc(executions, func(a, b api.TaskExecution) int {
+		return cmp.Or(cmp.Compare(b.StartedAt, a.StartedAt), cmp.Compare(b.Id, a.Id))
+	})
+	return api.ListTaskExecutions200JSONResponse{Executions: executions}, nil
 }
 
 func (h *handler) ReadTaskExternalTask(ctx context.Context, req api.ReadTaskExternalTaskRequestObject) (api.ReadTaskExternalTaskResponseObject, error) {
@@ -136,12 +149,11 @@ func (h *handler) FinishTaskExecution(ctx context.Context, req api.FinishTaskExe
 	return api.FinishTaskExecution200JSONResponse(taskExecution(e)), nil
 }
 
-func taskExecution(e sqlc.TaskExecution) api.TaskExecution {
+func taskExecution(e sqlc.TaskExternalRun) api.TaskExecution {
 	var host api.TaskExecutionHost
-	// The attach transaction writes the host object. Older Session rows have an empty object.
 	_ = json.Unmarshal([]byte(e.HostMetaJson), &host)
 	return api.TaskExecution{
-		Id: e.ID, BotId: e.BotID, Kind: api.TaskExecutionKind(e.Kind), State: api.TaskExecutionState(e.State),
+		Id: e.ID, BotId: e.BotID, Kind: api.ExternalAgent, State: api.TaskExecutionState(e.State),
 		Harness: optional(e.Harness), Hostname: host.Hostname, WorkspacePath: optional(e.WorkspacePath), GitBranch: optional(e.GitBranch),
 		ExternalSessionId: optional(e.ExternalSessionID), DispatchId: optional(e.DispatchID), LeaseEpoch: e.LeaseEpoch,
 		LeaseExpiresAt: nullExecutionTime(e.LeaseExpiresAt.Int64, e.LeaseExpiresAt.Valid), LastHeartbeatAt: nullExecutionTime(e.LastHeartbeatAt.Int64, e.LastHeartbeatAt.Valid),

@@ -31,7 +31,7 @@ type ExternalParams struct {
 }
 
 type ExternalIssue struct {
-	Execution sqlc.TaskExecution
+	Execution sqlc.TaskExternalRun
 	TaskToken string
 }
 
@@ -76,7 +76,7 @@ func (s *Service) issueExternal(ctx context.Context, actor Actor, origin Origin,
 	}
 	var out ExternalIssue
 	err = s.write(ctx, func(l *Ledger, now int64) error {
-		var e sqlc.TaskExecution
+		var e sqlc.TaskExternalRun
 		var task sqlc.Task
 		var err error
 		if id != "" {
@@ -263,13 +263,13 @@ func externalString(value *string) sql.NullString {
 	return sql.NullString{String: *value, Valid: true}
 }
 
-func (s *Service) ExternalHeartbeat(ctx context.Context, bearer string, p ExternalHeartbeat) (sqlc.TaskExecution, error) {
+func (s *Service) ExternalHeartbeat(ctx context.Context, bearer string, p ExternalHeartbeat) (sqlc.TaskExternalRun, error) {
 	ttl, err := leaseMillis(p.LeaseSeconds)
 	if err != nil {
-		return sqlc.TaskExecution{}, err
+		return sqlc.TaskExternalRun{}, err
 	}
 	if p.GitBranch != nil && strings.Contains(*p.GitBranch, bearer) || p.ExternalSessionID != nil && strings.Contains(*p.ExternalSessionID, bearer) {
-		return sqlc.TaskExecution{}, ErrInvalid
+		return sqlc.TaskExternalRun{}, ErrInvalid
 	}
 	change := sqlc.WriteExternalExecutionParams{Heartbeat: externalTime(1), Branch: externalString(p.GitBranch), SessionID: externalString(p.ExternalSessionID)}
 	if p.LeaseSeconds != 0 {
@@ -282,16 +282,16 @@ func (s *Service) ExternalPostEntry(ctx context.Context, bearer string, p PostEn
 	if bearer != "" {
 		p.Content = strings.ReplaceAll(p.Content, bearer, "[redacted]")
 	}
-	_, err = s.writeExternal(ctx, bearer, sqlc.WriteExternalExecutionParams{}, func(l *Ledger, task sqlc.Task, e sqlc.TaskExecution, now int64) error {
+	_, err = s.writeExternal(ctx, bearer, sqlc.WriteExternalExecutionParams{}, func(l *Ledger, task sqlc.Task, e sqlc.TaskExternalRun, now int64) error {
 		entry, err = l.PostEntry(ctx, ExternalAgent(e.ID), OriginUser, task, p, now)
 		return err
 	})
 	return entry, err
 }
 
-func (s *Service) ExternalFinish(ctx context.Context, bearer, outcome, summary string) (sqlc.TaskExecution, error) {
+func (s *Service) ExternalFinish(ctx context.Context, bearer, outcome, summary string) (sqlc.TaskExternalRun, error) {
 	if outcome != "completed" && outcome != "failed" {
-		return sqlc.TaskExecution{}, ErrInvalid
+		return sqlc.TaskExternalRun{}, ErrInvalid
 	}
 	if summary != "" {
 		var err error
@@ -299,16 +299,16 @@ func (s *Service) ExternalFinish(ctx context.Context, bearer, outcome, summary s
 			summary = strings.ReplaceAll(summary, bearer, "[redacted]")
 		}
 		if summary, err = Content(summary); err != nil {
-			return sqlc.TaskExecution{}, err
+			return sqlc.TaskExternalRun{}, err
 		}
 	}
-	return s.writeExternal(ctx, bearer, sqlc.WriteExternalExecutionParams{NewState: externalString(&outcome)}, func(l *Ledger, t sqlc.Task, e sqlc.TaskExecution, now int64) error {
+	return s.writeExternal(ctx, bearer, sqlc.WriteExternalExecutionParams{NewState: externalString(&outcome)}, func(l *Ledger, t sqlc.Task, e sqlc.TaskExternalRun, now int64) error {
 		return l.recordExternalExecution(ctx, ExternalAgent(e.ID), t, e, summary, now)
 	})
 }
 
-func (s *Service) writeExternal(ctx context.Context, bearer string, p sqlc.WriteExternalExecutionParams, record func(*Ledger, sqlc.Task, sqlc.TaskExecution, int64) error) (sqlc.TaskExecution, error) {
-	var e sqlc.TaskExecution
+func (s *Service) writeExternal(ctx context.Context, bearer string, p sqlc.WriteExternalExecutionParams, record func(*Ledger, sqlc.Task, sqlc.TaskExternalRun, int64) error) (sqlc.TaskExternalRun, error) {
+	var e sqlc.TaskExternalRun
 	err := s.write(ctx, func(l *Ledger, now int64) error {
 		token, err := taskToken(ctx, l.q, bearer)
 		if err != nil {
@@ -329,12 +329,12 @@ func (s *Service) writeExternal(ctx context.Context, bearer string, p sqlc.Write
 		return record(l, task, e, now)
 	})
 	if err != nil {
-		return sqlc.TaskExecution{}, err
+		return sqlc.TaskExternalRun{}, err
 	}
 	return e, nil
 }
 
-func (l *Ledger) recordExternalExecution(ctx context.Context, actor Actor, t sqlc.Task, e sqlc.TaskExecution, summary string, now int64) error {
+func (l *Ledger) recordExternalExecution(ctx context.Context, actor Actor, t sqlc.Task, e sqlc.TaskExternalRun, summary string, now int64) error {
 	meta, err := json.Marshal(struct {
 		ExecutionID string `json:"executionId"`
 		State       string `json:"state"`
@@ -363,14 +363,40 @@ func (l *Ledger) recordExternalExecution(ctx context.Context, actor Actor, t sql
 	return err
 }
 
-func (s *Service) ListTaskExecutions(ctx context.Context, key, runnerID, kind, state string) ([]sqlc.ListTaskExecutionsRow, error) {
+// ExecutionList holds the two types of rows in an execution list.
+type ExecutionList struct {
+	Sessions     []sqlc.ListTaskSessionExecutionsRow
+	ExternalRuns []sqlc.ListTaskExternalRunsRow
+}
+
+func (s *Service) ListTaskExecutions(ctx context.Context, key, runnerID, kind, state string) (ExecutionList, error) {
+	// Both types of rows must come from the same snapshot.
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return ExecutionList{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := s.q.WithTx(tx)
 	var taskID string
 	if key != "" {
-		task, err := Lookup(ctx, s.q, key)
+		task, err := Lookup(ctx, q, key)
 		if err != nil {
-			return nil, err
+			return ExecutionList{}, err
 		}
 		taskID = task.ID
 	}
-	return s.q.ListTaskExecutions(ctx, sqlc.ListTaskExecutionsParams{TaskID: taskID, RunnerIDFilter: runnerID, KindFilter: kind, StateFilter: state})
+	var out ExecutionList
+	if runnerID == "" && (kind == "" || kind == "dex_session") {
+		out.Sessions, err = q.ListTaskSessionExecutions(ctx, sqlc.ListTaskSessionExecutionsParams{TaskID: taskID, StateFilter: state})
+		if err != nil {
+			return ExecutionList{}, err
+		}
+	}
+	if kind == "" || kind == "external_agent" {
+		out.ExternalRuns, err = q.ListTaskExternalRuns(ctx, sqlc.ListTaskExternalRunsParams{TaskID: taskID, RunnerIDFilter: runnerID, StateFilter: state})
+		if err != nil {
+			return ExecutionList{}, err
+		}
+	}
+	return out, nil
 }

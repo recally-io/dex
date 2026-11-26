@@ -7,19 +7,18 @@ package sqlc
 
 import (
 	"context"
-	"database/sql"
 )
 
 const hasTaskConversation = `-- name: HasTaskConversation :one
 SELECT EXISTS (
-  SELECT 1 FROM task_executions e WHERE e.conversation_id = ?1
+  SELECT 1 FROM task_sessions s WHERE s.conversation_id = ?1
   UNION ALL
   SELECT 1 FROM submissions s JOIN task_inputs i ON i.submission_id = s.id
   WHERE s.conversation_id = ?1
 )
 `
 
-func (q *Queries) HasTaskConversation(ctx context.Context, chatID sql.NullInt64) (bool, error) {
+func (q *Queries) HasTaskConversation(ctx context.Context, chatID int64) (bool, error) {
 	row := q.db.QueryRowContext(ctx, hasTaskConversation, chatID)
 	var exists bool
 	err := row.Scan(&exists)

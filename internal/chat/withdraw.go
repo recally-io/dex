@@ -94,7 +94,7 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, chatID int64, id
 		return WithdrawnMessage{}, ErrAlreadyStarted
 	}
 	if conv.ParentID.Valid {
-		if err := q.ProjectTaskChildExecution(ctx, conv.ID); err != nil {
+		if err := q.ProjectTaskChildSession(ctx, conv.ID); err != nil {
 			return WithdrawnMessage{}, err
 		}
 	}

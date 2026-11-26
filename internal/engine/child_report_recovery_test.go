@@ -24,15 +24,15 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 	for _, cut := range []string{"before intent", "before report commit", "after report commit"} {
 		t.Run(cut, func(t *testing.T) {
 			// Given an admitted child report before restart.
-			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
-			defer cancel()
 			const agentID, request, content = "bot", "child-input", "Verified before upgrade."
 			dir := t.TempDir()
-			conn, err := db.Open(ctx, filepath.Join(dir, "control.sqlite"))
+			conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer conn.Close()
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
 			q := sqlc.New(conn)
 			if err := q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{ID: agentID, Name: "Bot"}); err != nil {
 				t.Fatal(err)
