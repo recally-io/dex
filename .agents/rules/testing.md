@@ -39,6 +39,22 @@ Read this before you write or change a test.
   directory when a test reads extension files. Never open production bot data.
 - **Clean ends.** Close every `app.App`, `engine.Bots`, and native watch that a test
   starts. Cancellation of one subscription must not stop another subscription.
+- **Keep tests fast.**
+  - Call `t.Parallel()` in every new Go test with isolated `t.TempDir()` state.
+    Skip `t.Parallel()` only when the test mutates process-wide state
+    (`t.Setenv`, `os.Chdir`, `http.DefaultClient`, or `slog.SetDefault`).
+  - Open fresh control databases through `db.Open` on a new path in
+    `t.TempDir()` so test binaries reuse the shared migrated SQLite template.
+    Create a pre-existing database with `sql.Open` and `goose` only in
+    migration upgrade tests (keep those in `internal/db`, which runs without
+    `-race`).
+  - Use generous positive wait deadlines (at least 10 s for real engine or MCP
+    turns) so parallel `-race` tests stay deterministic under CI load.
+  - Do not import `web` or `internal/server` from engine or session packages;
+    their CI race shards skip the frontend install and build.
+  - When a CI job approaches 4–5 minutes, inspect the `.local/ci/*.jsonl`
+    timing artifacts and remove the bottleneck before adding shards or raising
+    timeouts.
 
 ## Tiers
 
