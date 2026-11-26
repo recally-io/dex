@@ -75,7 +75,7 @@ func (q *Queries) GetTaskByNumber(ctx context.Context, number int64) (Task, erro
 }
 
 const getTaskSession = `-- name: GetTaskSession :one
-SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment FROM task_executions WHERE task_id = ? AND conversation_id = ? AND kind = 'dex_session'
+SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state FROM task_executions WHERE task_id = ? AND conversation_id = ? AND kind = 'dex_session'
 `
 
 type GetTaskSessionParams struct {
@@ -100,7 +100,6 @@ func (q *Queries) GetTaskSession(ctx context.Context, arg GetTaskSessionParams) 
 		&i.WorkspacePath,
 		&i.GitBranch,
 		&i.ExternalSessionID,
-		&i.State,
 		&i.LeaseEpoch,
 		&i.LeaseExpiresAt,
 		&i.LastHeartbeatAt,
@@ -109,6 +108,7 @@ func (q *Queries) GetTaskSession(ctx context.Context, arg GetTaskSessionParams) 
 		&i.DispatchID,
 		&i.LeaseTtlMs,
 		&i.RunnerEnrollment,
+		&i.State,
 	)
 	return i, err
 }
@@ -189,7 +189,7 @@ SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.agent_id, 'dex_session',
   COALESCE((SELECT s.id FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message'
     AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
 FROM conversations c WHERE c.id = ?3
-ON CONFLICT DO NOTHING RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment
+ON CONFLICT DO NOTHING RETURNING id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment, state
 `
 
 type LinkTaskSessionParams struct {
@@ -216,7 +216,6 @@ func (q *Queries) LinkTaskSession(ctx context.Context, arg LinkTaskSessionParams
 		&i.WorkspacePath,
 		&i.GitBranch,
 		&i.ExternalSessionID,
-		&i.State,
 		&i.LeaseEpoch,
 		&i.LeaseExpiresAt,
 		&i.LastHeartbeatAt,
@@ -225,6 +224,7 @@ func (q *Queries) LinkTaskSession(ctx context.Context, arg LinkTaskSessionParams
 		&i.DispatchID,
 		&i.LeaseTtlMs,
 		&i.RunnerEnrollment,
+		&i.State,
 	)
 	return i, err
 }

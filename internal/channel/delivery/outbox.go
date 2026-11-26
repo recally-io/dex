@@ -135,9 +135,9 @@ func (m *Manager) renderMessage(ctx context.Context, bot channel.Bot, r sqlc.Out
 		err := json.Unmarshal([]byte(r.RenderedMessage), &part)
 		return part, err
 	}
-	parts := finalMessage(bot, r.Body, r.Reason)
-	if len(parts) != 1 {
-		return channel.Part{}, fmt.Errorf("%w: cannot render one platform message", channel.ErrPermanent)
+	part, err := finalMessage(bot, r.Body, r.Reason)
+	if err != nil {
+		return channel.Part{}, err
 	}
 	if r.Kind == "question" && strings.HasPrefix(r.Peer, "telegram:") && r.SourceSubmissionID.Valid {
 		question, err := m.q.GetQuestionBySource(ctx, r.SourceSubmissionID.String)
@@ -158,37 +158,41 @@ func (m *Manager) renderMessage(ctx context.Context, bot channel.Bot, r sqlc.Out
 			if err != nil {
 				return channel.Part{}, err
 			}
-			parts, err = m.addButtons(ctx, parts, r.SourceSubmissionID.String, r.Peer, identity, target, actions)
-			if err != nil {
+			if err := m.addButtons(ctx, &part, r.SourceSubmissionID.String, r.Peer, identity, target, actions); err != nil {
 				return channel.Part{}, err
 			}
 		}
 	}
-	encoded, err := json.Marshal(parts[0])
+	encoded, err := json.Marshal(part)
 	if err != nil {
 		return channel.Part{}, err
 	}
 	err = m.q.FreezeOutboxMessage(ctx, sqlc.FreezeOutboxMessageParams{ID: r.ID, RenderedMessage: string(encoded)})
-	return parts[0], err
+	return part, err
 }
 
-func finalMessage(bot channel.Bot, body, reason string) []channel.Part {
+func finalMessage(bot channel.Bot, body, reason string) (channel.Part, error) {
+	fallback := channel.Reply{Status: "done", Answer: "Full answer in Web."}
 	if reason != "" && body == "" {
-		return bot.Parts(channel.Reply{Status: "unanswered", Reason: "The request did not complete. See Web for details."})
-	}
-	if len(body) <= 4000 {
-		if parts := bot.Parts(channel.Reply{Status: "done", Answer: body}); len(parts) == 1 {
-			return parts
+		fallback = channel.Reply{Status: "unanswered", Reason: "The request did not complete. See Web for details."}
+	} else {
+		if len(body) <= 4000 {
+			if parts := bot.Parts(channel.Reply{Status: "done", Answer: body}); len(parts) == 1 {
+				return parts[0], nil
+			}
+		}
+		runes := []rune(body)
+		for size := min(len(runes), 900); size > 0; size /= 2 {
+			text := closeUnclosedCodeFence(strings.TrimSpace(string(runes[:size]))) + "\n\nFull answer in Web."
+			if parts := bot.Parts(channel.Reply{Status: "done", Answer: text}); len(parts) == 1 {
+				return parts[0], nil
+			}
 		}
 	}
-	runes := []rune(body)
-	for size := min(len(runes), 900); size > 0; size /= 2 {
-		text := closeUnclosedCodeFence(strings.TrimSpace(string(runes[:size]))) + "\n\nFull answer in Web."
-		if parts := bot.Parts(channel.Reply{Status: "done", Answer: text}); len(parts) == 1 {
-			return parts
-		}
+	if parts := bot.Parts(fallback); len(parts) == 1 {
+		return parts[0], nil
 	}
-	return bot.Parts(channel.Reply{Status: "done", Answer: "Full answer in Web."})
+	return channel.Part{}, fmt.Errorf("%w: cannot render one platform message", channel.ErrPermanent)
 }
 
 func closeUnclosedCodeFence(s string) string {
@@ -242,7 +246,7 @@ func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.OutboxMessage, par
 		}
 	}
 	if len(part.Buttons) != 0 {
-		if err := q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: cmp.Or(r.SourceSubmissionID.String, r.ID), Part: 0, MessageID: remoteID}); err != nil {
+		if err := q.BindTelegramCallbackMessage(ctx, sqlc.BindTelegramCallbackMessageParams{SourceID: cmp.Or(r.SourceSubmissionID.String, r.ID), MessageID: remoteID}); err != nil {
 			return err
 		}
 	}

@@ -217,7 +217,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	fw := d.watch(t, fork.ID)
 	fw.until(t, "fork notice", func(tr *transcript) bool {
 		last := lastItem(tr)
-		return countKind(tr, "boundary") == 1 && last.Kind == "boundary" && last.Boundary == "environment" && last.Text == notice
+		return countKind(tr, "boundary") == 1 && last.Kind == "boundary" && last.Boundary == "runner" && last.Text == notice
 	})
 
 	// When the user sends in the fork, then the bot gets the notice before the new message.
@@ -267,7 +267,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	rescued := d.watch(t, created.ChatID)
 	rescued.until(t, "rescued notice", func(tr *transcript) bool {
 		last := lastItem(tr)
-		return last.Kind == "boundary" && last.Boundary == "environment" && strings.HasPrefix(last.Text, "This chat moved from `"+remoteEnv.ID+"` to `local`.")
+		return last.Kind == "boundary" && last.Boundary == "runner" && strings.HasPrefix(last.Text, "This chat moved from `"+remoteEnv.ID+"` to `local`.")
 	})
 	rescuedID := created.ChatID
 	if out := taskTurn(t, d, rescuedID, marker); out != "bash: local" {
@@ -293,7 +293,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	second := d.watch(t, created.ChatID)
 	second.until(t, "second fork notice", func(tr *transcript) bool {
 		last := lastItem(tr)
-		return countKind(tr, "boundary") == 2 && last.Kind == "boundary" && last.Boundary == "environment" && last.Text == back
+		return countKind(tr, "boundary") == 2 && last.Kind == "boundary" && last.Boundary == "runner" && last.Text == back
 	})
 	d.must(t, http.MethodPut, chatPath(created.ChatID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
 	d.send(t, created.ChatID, "check")

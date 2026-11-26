@@ -259,34 +259,3 @@ func (l *Ledger) Review(ctx context.Context, actor Actor, origin Origin, task sq
 	}
 	return result, err
 }
-
-func (s *Service) TombstoneEntry(ctx context.Context, actor Actor, origin Origin, taskID string, seq int64) (entry sqlc.TaskEntry, err error) {
-	err = s.write(ctx, func(l *Ledger, now int64) error {
-		task, err := l.q.GetTask(ctx, taskID)
-		if err != nil {
-			return err
-		}
-		if err := authorize(ctx, l.q, actor, origin, task, ActionTombstone); err != nil {
-			return err
-		}
-		target, err := l.q.GetTaskEntry(ctx, sqlc.GetTaskEntryParams{TaskID: taskID, Seq: seq})
-		if err != nil {
-			return err
-		}
-		switch target.Kind {
-		case KindNote, KindArtifact, KindExternal:
-		default:
-			return ErrInvalid
-		}
-		retracted, err := l.q.IsTaskEntryRetracted(ctx, sqlc.IsTaskEntryRetractedParams{TaskID: taskID, TargetSeq: seq})
-		if err != nil {
-			return err
-		}
-		if retracted {
-			return ErrConflict
-		}
-		entry, err = l.record(ctx, actor, task, sqlc.InsertTaskEntryParams{Kind: KindTombstone, MetaJson: tombstoneMeta(seq), CreatedAt: now})
-		return err
-	})
-	return entry, err
-}

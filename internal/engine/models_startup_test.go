@@ -38,7 +38,7 @@ func TestUserProviderEditRejectsOldCatalogAndLateDiscovery(t *testing.T) {
 	defer server.Close()
 	defer releaseStale()
 	defer releaseNew()
-	catalog := NewCatalog(false)
+	catalog := newCatalog(false, "")
 	defer catalog.Close()
 	p := ProviderSettings{ID: "local", API: "openai-completions", BaseURL: server.URL + "/old"}
 	d, err := catalog.ConfigureAsync(t.Context(), []ProviderSettings{p})

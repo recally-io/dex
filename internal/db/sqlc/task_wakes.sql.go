@@ -84,7 +84,7 @@ func (q *Queries) GetTaskMain(ctx context.Context, agentID string) (int64, error
 }
 
 const getUnadmittedTaskWake = `-- name: GetUnadmittedTaskWake :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_delivery_error, channel_revoked, exit_action, required_reply_id, stop_requested, producer, reply_channel, reply_peer, kind FROM submissions WHERE conversation_id = ? AND kind = 'task_wake' AND status = 'pending' AND admitted_at IS NULL
+SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, delivered_at, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_revoked, required_reply_id, stop_requested, producer, reply_channel, reply_peer, kind, exit_action FROM submissions WHERE conversation_id = ? AND kind = 'task_wake' AND status = 'pending' AND admitted_at IS NULL
 `
 
 func (q *Queries) GetUnadmittedTaskWake(ctx context.Context, conversationID int64) (Submission, error) {
@@ -109,15 +109,14 @@ func (q *Queries) GetUnadmittedTaskWake(ctx context.Context, conversationID int6
 		&i.ResultChildID,
 		&i.NativeAnswerID,
 		&i.ChannelContext,
-		&i.ChannelDeliveryError,
 		&i.ChannelRevoked,
-		&i.ExitAction,
 		&i.RequiredReplyID,
 		&i.StopRequested,
 		&i.Producer,
 		&i.ReplyChannel,
 		&i.ReplyPeer,
 		&i.Kind,
+		&i.ExitAction,
 	)
 	return i, err
 }

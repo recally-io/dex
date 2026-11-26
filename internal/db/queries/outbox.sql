@@ -56,7 +56,7 @@ JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.id = @submission_id AND s.status = 'pending' AND s.channel_revoked = 0
   AND s.origin LIKE 'telegram:%'
-  AND c.agent_id = @agent_id AND c.execution_scope = '' AND c.execution_id = @execution_id
+  AND c.agent_id = @agent_id AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.execution_id = @execution_id
   AND c.parent_id IS NULL AND a.archived_at IS NULL
   AND (SELECT count(*) FROM outbox_files f WHERE f.submission_id = s.id AND f.outbox_id IS NULL) < 10
 ON CONFLICT DO NOTHING;
@@ -72,7 +72,7 @@ SELECT o.*
 FROM outbox_messages o
 JOIN conversations c ON c.id = o.conversation_id
 LEFT JOIN submissions src ON src.id = o.source_submission_id
-WHERE o.status = 'pending' AND c.execution_scope = ''
+WHERE o.status = 'pending' AND c.channel_key NOT LIKE 'retired-telegram:%'
   AND o.agent_id = @agent_id AND o.channel = @channel
   AND (
       o.kind != 'reply'
@@ -101,10 +101,6 @@ WHERE id = @id AND status = 'pending';
 -- name: MarkOutboxSent :exec
 UPDATE outbox_messages SET status = 'sent', delivered_at = @delivered_at, remote_ids = @remote_ids, retry_at = 0, error = ''
 WHERE id = @id AND status IN ('pending', 'failed');
-
--- name: RevokeOutboxBySubmission :exec
-UPDATE outbox_messages SET status = 'failed', error = 'source delivery cancelled', retry_at = 0
-WHERE source_submission_id = ? AND status = 'pending';
 
 -- name: ListRecentDeliveredOutbox :many
 SELECT id, kind, peer, topic_key, body, reason, delivered_at, created_at
@@ -150,7 +146,7 @@ JOIN submissions s ON s.id = o.source_submission_id AND s.conversation_id = o.co
 JOIN conversations c ON c.id = o.conversation_id AND c.agent_id = o.agent_id
 JOIN agents a ON a.id = c.agent_id
 WHERE o.conversation_id = @conversation_id AND o.agent_id = @agent_id
-  AND a.archived_at IS NULL AND c.execution_scope = '' AND c.parent_id IS NULL
+  AND a.archived_at IS NULL AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.parent_id IS NULL
   AND (c.channel_key = 'main' OR c.channel_key LIKE 'chat:%')
   AND (s.origin = 'web' OR s.producer <> 'user')
   AND o.rowid > CAST(@after_position AS INTEGER)

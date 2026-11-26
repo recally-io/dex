@@ -53,7 +53,6 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 		{"split", 'd', tasksvc.ActionSplit},
 		{"create-top-level", 'c', tasksvc.ActionCreateTopLevel},
 		{"owner-lifecycle", 'l', tasksvc.ActionOwnerLifecycle},
-		{"tombstone", 'x', tasksvc.ActionTombstone},
 	}
 	origins := []struct {
 		name string
@@ -70,7 +69,7 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 		read                      bool
 		user, wake, result, other string
 	}{
-		{"owner", tasksvc.Owner, true, "ptknsrdclx", "tknsd", "", ""},
+		{"owner", tasksvc.Owner, true, "ptknsrdcl", "tknsd", "", ""},
 		{"assignee-main", actorAt(1), true, "ptknsdc", "ptknsd", "p", ""},
 		{"reviewer-main", tasksvc.Bot("reviewer"), true, "prc", "pr", "p", ""},
 		{"unrelated-main", actorAt(2), false, "c", "", "", ""},
@@ -257,30 +256,14 @@ func TestUserTaskBoardLedgerCommitsBeforeNotification(t *testing.T) {
 	if err != nil || !slices.Contains(visible, note) {
 		t.Fatalf("visible ledger before retraction: %+v, %v", visible, err)
 	}
-	if _, err := svc.TombstoneEntry(ctx, tasksvc.Bot("assignee"), tasksvc.OriginUser, first.ID, note.Seq); err == nil {
-		t.Fatal("a Bot retracted an entry")
-	}
-	tombstone, err := svc.TombstoneEntry(ctx, tasksvc.Owner, tasksvc.OriginUser, first.ID, note.Seq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var target int64
-	if err := conn.QueryRowContext(ctx, `SELECT json_extract(meta_json, '$.targetSeq') FROM task_entries WHERE id = ?`, tombstone.ID).Scan(&target); err != nil {
-		t.Fatal(err)
-	}
-	afterTombstone := storedTask(t, q, first.ID)
-	if tombstone.Seq != 4 || tombstone.Kind != "tombstone" || target != note.Seq ||
-		afterTombstone.Status != progress.Status || afterTombstone.Revision != progress.Revision+1 || afterTombstone.NextEntrySeq != 5 {
-		t.Fatalf("tombstone %+v, target %d; projection %+v", tombstone, target, afterTombstone)
-	}
-	if original := taskEntry(t, q, first.ID, note.Seq); original != note {
-		t.Fatalf("retraction modified original entry: got %+v; want %+v", original, note)
-	}
+	// A database from an older release already contains this retraction.
+	boardExec(t, conn, `INSERT INTO task_entries (task_id, seq, kind, meta_json, content, created_at)
+		VALUES (?, ?, 'tombstone', json_object('targetSeq', ?), '', 1)`, first.ID, progress.NextEntrySeq, note.Seq)
 	visible, err = q.ListTaskEntries(ctx, first.ID)
 	if err != nil || !slices.Equal(visible, []sqlc.TaskEntry{firstEntry, status}) {
 		t.Fatalf("visible ledger after retraction: %+v, %v", visible, err)
 	}
-	if want := []int64{firstEntry.ID, secondEntry.ID, note.ID, status.ID, tombstone.ID}; !slices.Equal(published, want) {
+	if want := []int64{firstEntry.ID, secondEntry.ID, note.ID, status.ID}; !slices.Equal(published, want) {
 		t.Errorf("notifications = %v; want %v", published, want)
 	}
 }

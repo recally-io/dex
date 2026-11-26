@@ -46,7 +46,7 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 	for _, tc := range cases {
 		producer, replyChannel, replyPeer := inboxIdentity(tc.origin)
 		if tc.kind == "task_result" || tc.kind == "task_wake" {
-			producer, replyChannel, replyPeer = ProducerPlugin, "", ""
+			producer, replyChannel, replyPeer = "plugin", "", ""
 		}
 		_, err := r.q.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
 			ID: tc.id, ConversationID: conv.ID, Kind: tc.kind, Origin: tc.origin,

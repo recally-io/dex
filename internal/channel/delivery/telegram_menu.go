@@ -73,7 +73,7 @@ func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, ta
 			return "", true, err
 		}
 		var text strings.Builder
-		text.WriteString("Saved child workflows in the current conversation. These reuse existing child sessions, not private Routines. Only the initiating Telegram sender can resume a child. Ask the agent to start a child with the workflow instructions.\n")
+		text.WriteString("Saved child workflows in the current conversation. These reuse existing child sessions, not private Automations. Only the initiating Telegram sender can resume a child. Ask the agent to start a child with the workflow instructions.\n")
 		if len(children) == 0 {
 			text.WriteString("\nNo saved children.")
 		}
@@ -181,39 +181,30 @@ func questionActions(question sqlc.Question) ([]menuAction, error) {
 	return out, nil
 }
 
-func (m *Manager) addButtons(ctx context.Context, parts []channel.Part, source, peer string, identity chat.ChannelContext, target chat.Chat, actions []menuAction) ([]channel.Part, error) {
-	if len(actions) == 0 {
-		return parts, nil
-	}
-	index := -1
-	for i := range parts {
-		if parts[i].Rich != nil {
-			index = i
-		}
-	}
-	if index < 0 {
-		return parts, nil
+func (m *Manager) addButtons(ctx context.Context, part *channel.Part, source, peer string, identity chat.ChannelContext, target chat.Chat, actions []menuAction) error {
+	if len(actions) == 0 || part.Rich == nil {
+		return nil
 	}
 	encoded, err := json.Marshal(identity)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	revision, err := m.q.TelegramContextRevision(ctx, target.ID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for ordinal, action := range actions {
 		id := uuid.NewV7().String()
-		if err := m.q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, AgentID: m.agentID, SourceID: source, Part: int64(index), Ordinal: int64(ordinal), Peer: peer, ChannelContext: string(encoded), ConversationID: target.ID, ExecutionID: target.ExecutionID, ContextRevision: revision, Label: action.text, ObjectID: action.object, Action: action.action, ExpiresAt: time.Now().Add(15 * time.Minute).UnixMilli()}); err != nil {
-			return nil, err
+		if err := m.q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, AgentID: m.agentID, SourceID: source, Ordinal: int64(ordinal), Peer: peer, ChannelContext: string(encoded), ConversationID: target.ID, ExecutionID: target.ExecutionID, ContextRevision: revision, Label: action.text, ObjectID: action.object, Action: action.action, ExpiresAt: time.Now().Add(15 * time.Minute).UnixMilli()}); err != nil {
+			return err
 		}
-		stored, err := m.q.GetTelegramCallbackSlot(ctx, sqlc.GetTelegramCallbackSlotParams{SourceID: source, Part: int64(index), Ordinal: int64(ordinal)})
+		stored, err := m.q.GetTelegramCallbackSlot(ctx, sqlc.GetTelegramCallbackSlotParams{SourceID: source, Ordinal: int64(ordinal)})
 		if err != nil {
-			return nil, err
+			return err
 		}
-		parts[index].Buttons = append(parts[index].Buttons, channel.Button{Text: stored.Label, Data: stored.ID})
+		part.Buttons = append(part.Buttons, channel.Button{Text: stored.Label, Data: stored.ID})
 	}
-	return parts, nil
+	return nil
 }
 
 // ClaimTelegramCallback consumes a button and queues its durable command in the same transaction.
@@ -239,7 +230,7 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 	if err := json.Unmarshal([]byte(row.ChannelContext), &original); err != nil {
 		return false, err
 	}
-	if !chat.TelegramCallbackObject(row) || row.AgentID != m.agentID || row.Peer != peer || row.MessageID != remote || remote == "" || row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || original.AccountID != identity.AccountID || original.SenderID != identity.SenderID || original.ChatID != identity.ChatID || original.TopicID != identity.TopicID || original.TopicShared != identity.TopicShared {
+	if !chat.TelegramCallbackObject(row) || row.AgentID != m.agentID || row.Peer != peer || row.MessageID != remote || remote == "" || row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || original.AccountID != identity.AccountID || original.SenderID != identity.SenderID {
 		return false, nil
 	}
 	allowed, err := chat.TelegramInputAllowed(ctx, q, m.agentID, peer, identity)

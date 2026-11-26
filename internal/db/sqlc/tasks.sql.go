@@ -302,23 +302,6 @@ func (q *Queries) InsertTaskEntry(ctx context.Context, arg InsertTaskEntryParams
 	return i, err
 }
 
-const isTaskEntryRetracted = `-- name: IsTaskEntryRetracted :one
-SELECT EXISTS (SELECT 1 FROM task_entries WHERE task_id = ?1 AND kind = 'tombstone'
-  AND CAST(json_extract(meta_json, '$.targetSeq') AS INTEGER) = CAST(?2 AS INTEGER))
-`
-
-type IsTaskEntryRetractedParams struct {
-	TaskID    string `json:"task_id"`
-	TargetSeq int64  `json:"target_seq"`
-}
-
-func (q *Queries) IsTaskEntryRetracted(ctx context.Context, arg IsTaskEntryRetractedParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, isTaskEntryRetracted, arg.TaskID, arg.TargetSeq)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
-}
-
 const listTaskQuestionBlockers = `-- name: ListTaskQuestionBlockers :many
 SELECT q.id, q.text, CAST(CASE WHEN c.channel_key = 'main' THEN 1 + (
   SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id

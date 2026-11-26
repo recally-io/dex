@@ -1,12 +1,12 @@
 -- name: GetConversationByExecution :one
-SELECT * FROM conversations WHERE agent_id = ? AND execution_scope = '' AND execution_id = ?;
+SELECT * FROM conversations WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' AND execution_id = ?;
 
 -- name: ListStopConversations :many
 -- Stop reaches the conversation and the children of it that have pending input that the parent
 -- started. The children can belong to different bots.
 -- A child with only user input is not reached.
 SELECT * FROM conversations
-WHERE execution_scope = '' AND (
+WHERE channel_key NOT LIKE 'retired-telegram:%' AND (
     (conversations.id = @chat_id AND conversations.agent_id = @agent_id)
     OR (conversations.parent_id = @chat_id AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
@@ -20,7 +20,7 @@ ORDER BY conversations.id;
 SELECT conversations.id FROM conversations
 JOIN conversations parent ON parent.id = conversations.parent_id
 WHERE (conversations.agent_id = @agent_id OR parent.agent_id = @agent_id)
-AND conversations.execution_scope = '' AND parent.execution_scope = '' AND EXISTS (
+AND conversations.channel_key NOT LIKE 'retired-telegram:%' AND parent.channel_key NOT LIKE 'retired-telegram:%' AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
 );

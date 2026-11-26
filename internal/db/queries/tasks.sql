@@ -38,10 +38,6 @@ RETURNING *;
 -- name: GetTaskEntry :one
 SELECT * FROM task_entries WHERE task_id = ? AND seq = ?;
 
--- name: IsTaskEntryRetracted :one
-SELECT EXISTS (SELECT 1 FROM task_entries WHERE task_id = @task_id AND kind = 'tombstone'
-  AND CAST(json_extract(meta_json, '$.targetSeq') AS INTEGER) = CAST(@target_seq AS INTEGER));
-
 -- name: AssociateTaskInput :exec
 INSERT INTO task_inputs (submission_id, task_id) VALUES (?, ?);
 

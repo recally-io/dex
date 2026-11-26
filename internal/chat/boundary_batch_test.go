@@ -244,7 +244,7 @@ func TestUserFollowUpQueueAllBatchesSameOriginWakes(t *testing.T) {
 		wakeIDs = append(wakeIDs, id)
 		if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 			ID: id, ConversationID: parent, Content: fmt.Sprintf("wake %d", i),
-			Attachments: "null", Origin: "web", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: int64(i + 1),
+			Attachments: "null", Origin: "web", Producer: "plugin", Kind: "task_result", CreatedAt: int64(i + 1),
 		}); err != nil {
 			t.Fatal(err)
 		}

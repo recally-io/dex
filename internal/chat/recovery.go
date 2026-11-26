@@ -7,9 +7,9 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-// RecoverSessions decides, before any Harness can resume, what became of each parent turn that a
-// child session had admitted. A run that the restart cut off is not run again: its side effects
-// are not known. The parent gets one result per turn, and the child stays open for session_send.
+// RecoverSessions registers pending stops before any Harness can resume. This includes retired
+// group sessions from the agent store. It also settles interrupted parent turns without replay,
+// since their side effects are not known. The child stays open for session_send.
 func (s *Service) RecoverSessions(ctx context.Context) error {
 	children, err := s.q.ListRecoveryChildren(ctx)
 	if err != nil {

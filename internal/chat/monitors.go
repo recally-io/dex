@@ -426,19 +426,19 @@ func monitorChain(ctx context.Context, q *sqlc.Queries, source sqlc.Submission) 
 }
 
 func monitorForEvent(ctx context.Context, q *sqlc.Queries, eventID string) (sqlc.Monitor, error) {
-	if key, ok := strings.CutPrefix(eventID, "monitor:"); ok {
-		id, _, ok := strings.Cut(key, ":")
-		if ok {
-			return q.GetMonitor(ctx, id)
-		}
+	key, ok := strings.CutPrefix(eventID, "monitor:")
+	if !ok {
+		return sqlc.Monitor{}, sql.ErrNoRows
 	}
-	// Event receipts made before the upgrade retain their original request IDs.
-	return q.GetMonitorByFireSubmission(ctx, sql.NullString{String: eventID, Valid: true})
+	id, _, ok := strings.Cut(key, ":")
+	if !ok {
+		return sqlc.Monitor{}, sql.ErrNoRows
+	}
+	return q.GetMonitor(ctx, id)
 }
 
-// isMonitorEvent recognizes current request IDs and frozen pre-upgrade receipts.
 func isMonitorEvent(request string) bool {
-	return strings.HasPrefix(request, "monitor:") || strings.HasPrefix(request, "timer:")
+	return strings.HasPrefix(request, "monitor:")
 }
 
 // authorizeMonitor rechecks a follow-up immediately before native admission.

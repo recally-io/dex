@@ -1,11 +1,9 @@
 name: Release
 
-# Update VERSION on main (or push a v* tag) to release.
+# Push a v* tag or run this workflow to release.
 # A version with a hyphen, such as 0.17.0-rc.1, makes a prerelease.
 on:
   push:
-    branches: [main]
-    paths: ["VERSION"]
     tags: ["v*"]
   workflow_dispatch:
     inputs:

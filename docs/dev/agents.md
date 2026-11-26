@@ -149,7 +149,6 @@ share it.
   without approval. It does not run git. When a submission settles, the
   engine commits all changes as `Update memory from <source>`. The source is
   `dex:<agentId>/chat/<chatId>`, or `dex:<agentId>/dream/<dreamId>`.
-  Old `dex:chat/<id>` sources remain valid and mean the default agent.
   Owner facts go in shared `MEMORY.md` and its topic files. Role experience
   and ways of working go in `agents/<agentId>/`, with its own `MEMORY.md`
   entry point. This keeps one bot's habits out of the owner's preferences.

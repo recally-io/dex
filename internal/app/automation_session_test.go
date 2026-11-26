@@ -171,17 +171,13 @@ func TestUserBoundAutomationWaitsBehindAnOrdinaryTurn(t *testing.T) {
 
 func TestUserCannotBindAAutomationToAnotherBotOrRestrictedSession(t *testing.T) {
 	t.Parallel()
-	// Given same-bot Main, an empty Chat, and cross-bot, read-only, archived and scoped sessions.
+	// Given same-bot Main, an empty Chat, and cross-bot, read-only, and archived sessions.
 	d := startDex(t, t.TempDir(), "")
 	main := d.mainChat(t)
 	archived := d.newSession(t).ID
 	d.archive(t, http.MethodPut, archived, http.StatusOK)
 	eligible := d.newSession(t).ID
 	readOnly := sessionFixture(t, d, "automation:readonly", 1)
-	scoped := sessionFixture(t, d, "chat:restricted-fixture", 2)
-	if _, err := sessionDB(t, d).ExecContext(t.Context(), "UPDATE conversations SET execution_scope = 'restricted-fixture' WHERE id = ?", scoped); err != nil {
-		t.Fatal(err)
-	}
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other fixture bot"}, &other, http.StatusCreated)
 	var foreign sessionInfo
@@ -204,7 +200,7 @@ func TestUserCannotBindAAutomationToAnotherBotOrRestrictedSession(t *testing.T) 
 	if !slices.Equal(ids, []int64{main, eligible}) {
 		t.Fatalf("eligible sessions = %v, want Main %d and Chat %d", ids, main, eligible)
 	}
-	for _, id := range []int64{foreign.ID, scoped, archived, readOnly} {
+	for _, id := range []int64{foreign.ID, archived, readOnly} {
 		d.must(t, http.MethodPost, routinesPath, boundRoutine(id, "check"), nil, http.StatusBadRequest)
 		d.must(t, http.MethodPut, routinesPath+"/"+routine.ID, boundRoutine(id, "check"), nil, http.StatusBadRequest)
 	}
@@ -364,7 +360,7 @@ func TestUserCanStopAndClearABoundAutomationSession(t *testing.T) {
 	if _, err := sessionDB(t, d).ExecContext(t.Context(), "UPDATE automations SET next_due_at = ? WHERE id = ?", dueAt, routine.ID); err != nil {
 		t.Fatal(err)
 	}
-	w.until(t, "scheduled check after clear", answeredWith(`context: ["next scheduled check\n\nRoutine reporting instructions`))
+	w.until(t, "scheduled check after clear", answeredWith(`context: ["next scheduled check\n\nAutomation reporting instructions`))
 	runs := d.runs(t, routine.ID)
 	if len(runs) != 2 || runs[0].ChatID != id || runs[0].DueAt != dueAt {
 		t.Fatalf("runs after Stop and Clear = %+v", runs)

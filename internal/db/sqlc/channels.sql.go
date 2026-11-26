@@ -111,7 +111,7 @@ func (q *Queries) FeishuCredentialOwner(ctx context.Context, appID string) (Feis
 }
 
 const getChannelCommand = `-- name: GetChannelCommand :one
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE source_key = ?
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE source_key = ?
 `
 
 func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (ChannelCommand, error) {
@@ -127,7 +127,6 @@ func (q *Queries) GetChannelCommand(ctx context.Context, sourceKey string) (Chan
 		&i.Completed,
 		&i.DeliveredAt,
 		&i.ChannelContext,
-		&i.RenderedReply,
 	)
 	return i, err
 }
@@ -151,8 +150,9 @@ const listAgentActivity = `-- name: ListAgentActivity :many
 WITH active AS (
     SELECT c.agent_id, count(*) AS sessions
     FROM conversations c
-    WHERE (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
-      AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+    WHERE (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
+      AND c.channel_key NOT LIKE 'retired-telegram:%'
+      AND (c.channel_key NOT LIKE 'chat:%' OR c.parent_id IS NOT NULL OR EXISTS (
           SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
       ))
       AND EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending')
@@ -219,7 +219,7 @@ func (q *Queries) ListAgentActivity(ctx context.Context) ([]ListAgentActivityRow
 }
 
 const listChannelCommandReplies = `-- name: ListChannelCommandReplies :many
-SELECT c.agent_id, c.source_key, c.peer, c.channel_key, c.command, c.answer, c.completed, c.delivered_at, c.channel_context, c.rendered_reply FROM channel_commands c
+SELECT c.agent_id, c.source_key, c.peer, c.channel_key, c.command, c.answer, c.completed, c.delivered_at, c.channel_context FROM channel_commands c
 WHERE c.completed = 1 AND c.delivered_at IS NULL
 AND c.agent_id = ?1 AND c.peer LIKE ?2 || '%'
 AND NOT EXISTS (SELECT 1 FROM outbox_messages o WHERE o.id = c.source_key)
@@ -250,7 +250,6 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 			&i.Completed,
 			&i.DeliveredAt,
 			&i.ChannelContext,
-			&i.RenderedReply,
 		); err != nil {
 			return nil, err
 		}
@@ -266,7 +265,7 @@ func (q *Queries) ListChannelCommandReplies(ctx context.Context, arg ListChannel
 }
 
 const listChannelCommands = `-- name: ListChannelCommands :many
-SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context, rendered_reply FROM channel_commands WHERE agent_id = ? AND completed = 0 AND delivered_at IS NULL
+SELECT agent_id, source_key, peer, channel_key, command, answer, completed, delivered_at, channel_context FROM channel_commands WHERE agent_id = ? AND completed = 0 AND delivered_at IS NULL
 `
 
 func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]ChannelCommand, error) {
@@ -288,7 +287,6 @@ func (q *Queries) ListChannelCommands(ctx context.Context, agentID string) ([]Ch
 			&i.Completed,
 			&i.DeliveredAt,
 			&i.ChannelContext,
-			&i.RenderedReply,
 		); err != nil {
 			return nil, err
 		}

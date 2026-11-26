@@ -10,7 +10,7 @@ import (
 	"github.com/recally-io/dex/internal/settings"
 )
 
-// GetWork returns sessions, Automation activity, and Tasks awaiting Owner review.
+// GetInboxSummary returns sessions, Automation activity, and Tasks awaiting Owner review.
 func (h *handler) GetInboxSummary(ctx context.Context, _ api.GetInboxSummaryRequestObject) (api.GetInboxSummaryResponseObject, error) {
 	agents, err := h.Agents.ListAgents(ctx)
 	if err != nil {

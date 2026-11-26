@@ -2,7 +2,6 @@ package chat
 
 import (
 	"database/sql"
-	"errors"
 	"strings"
 	"testing"
 
@@ -17,7 +16,7 @@ func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 	// Given a done System Turn (task_result) without notify_user or ask_user.
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "sys-quiet-1", ConversationID: conv, Content: "task result payload",
-		Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +38,7 @@ func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 	// When a System Turn settles with an unhandled failure (e.g. model_error).
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "sys-fail-1", ConversationID: conv, Content: "task result payload",
-		Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 2,
+		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 2,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +58,7 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "sys-notify-src", ConversationID: conv, Content: "wake",
-		Attachments: "null", Origin: "telegram:42", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "telegram:42", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -120,31 +119,6 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}
 }
 
-func TestUserChildTurnKeepsSavedSilentExit(t *testing.T) {
-	r := startNative(t, "echo")
-	ctx := t.Context()
-	_, source := taskParent(t, r)
-	if _, err := r.service.ToolSessionNew(ctx, source, SessionNewArgs{Title: "Worker", Message: "Finish this turn"}); err != nil {
-		t.Fatal(err)
-	}
-	// Given a child turn with a silent exit saved by an older release.
-	turn := turnID(source.Key)
-	if err := r.q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: turn, ExitAction: "stay_silent"}); err != nil {
-		t.Fatal(err)
-	}
-
-	// When the current release settles the turn, the parent gets no result.
-	if err := r.service.admit(ctx, taskInput(t, r, turn)); err != nil {
-		t.Fatal(err)
-	}
-	if got := awaitReceipt(t, r, turn); got.Status != "done" {
-		t.Fatalf("child did not complete: %s", got.Status)
-	}
-	if _, err := r.q.GetSubmission(ctx, "result:"+turn); !errors.Is(err, sql.ErrNoRows) {
-		t.Fatalf("saved silent exit must not send a child result: %v", err)
-	}
-}
-
 func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	r := startNative(t, "echo")
 	parent, source := taskParent(t, r)
@@ -168,7 +142,7 @@ func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
 		ID: "child-bg-wake", ConversationID: childID, Content: "bg done",
-		Attachments: "null", Origin: "web", Producer: ProducerPlugin, Kind: "task_result", CreatedAt: 1,
+		Attachments: "null", Origin: "web", Producer: "plugin", Kind: "task_result", CreatedAt: 1,
 	}); err != nil {
 		t.Fatal(err)
 	}

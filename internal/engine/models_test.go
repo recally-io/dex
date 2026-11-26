@@ -15,7 +15,7 @@ import (
 func TestUserCatalogDiscoversModelsAndReplacesCredentials(t *testing.T) {
 	// Given an ambient key that must not authorize models.
 	t.Setenv("OPENAI_API_KEY", "parent-secret")
-	catalog := NewCatalog(false)
+	catalog := newCatalog(false, "")
 	defer catalog.Models.Close()
 	available, err := catalog.Available(t.Context())
 	if err != nil || len(available) != 0 {
@@ -53,7 +53,7 @@ func TestUserCatalogDiscoversModelsAndReplacesCredentials(t *testing.T) {
 	}
 }
 func TestUserBedrockModelsHaveARegisteredProvider(t *testing.T) {
-	catalog := NewCatalog(false)
+	catalog := newCatalog(false, "")
 	defer catalog.Models.Close()
 	models := ai.GetBuiltinModels("amazon-bedrock")
 	if len(models) == 0 {
@@ -69,7 +69,7 @@ func TestUserBedrockModelsHaveARegisteredProvider(t *testing.T) {
 }
 
 func TestUserFakeProviderStreamsWithoutCredentials(t *testing.T) {
-	catalog := NewCatalog(true)
+	catalog := newCatalog(true, "")
 	defer catalog.Models.Close()
 	for _, id := range []string{"echo", "shout", "think", "context"} {
 		model := catalog.Models.GetModel("faux", id)
@@ -82,7 +82,7 @@ func TestUserFakeProviderStreamsWithoutCredentials(t *testing.T) {
 func TestUserDiscoveryFailureDoesNotExposeSecrets(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "SECRET", http.StatusServiceUnavailable) }))
 	defer server.Close()
-	catalog := NewCatalog(false)
+	catalog := newCatalog(false, "")
 	defer catalog.Models.Close()
 	d, err := catalog.ConfigureAsync(t.Context(), []ProviderSettings{{ID: "local", API: "openai-responses", BaseURL: server.URL + "/SECRET", APIKey: "SECRET"}})
 	if err != nil {
@@ -116,7 +116,7 @@ func TestUserCustomAPIsUseTheirDiscoveryContracts(t *testing.T) {
 			if api != "anthropic-messages" {
 				base += "/v1"
 			}
-			catalog := NewCatalog(false)
+			catalog := newCatalog(false, "")
 			defer catalog.Models.Close()
 			d, err := catalog.ConfigureAsync(t.Context(), []ProviderSettings{{ID: "custom", API: api, BaseURL: base, APIKey: "test"}})
 			if err != nil {
@@ -155,7 +155,7 @@ func TestUserModelDiscoveryHasABoundedRequestAndCanBeCanceled(t *testing.T) {
 	requests := make(chan *http.Request, 1)
 	previousClient := http.DefaultClient
 	http.DefaultClient = &http.Client{Transport: discoveryDeadlineTransport{RoundTripper: server.Client().Transport, requests: requests}}
-	catalog := NewCatalog(false)
+	catalog := newCatalog(false, "")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer func() { cancel(); catalog.Models.Close(); server.Close(); http.DefaultClient = previousClient }()
 	finished := make(chan error, 1)

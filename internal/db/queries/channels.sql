@@ -62,8 +62,9 @@ SELECT a.id, a.name FROM agents a JOIN feishu_settings s ON s.agent_id = a.id WH
 WITH active AS (
     SELECT c.agent_id, count(*) AS sessions
     FROM conversations c
-    WHERE (c.channel_key LIKE 'chat:%' OR c.channel_key LIKE 'task:%' OR c.channel_key LIKE 'automation:%')
-      AND (c.channel_key NOT LIKE 'chat:%' OR EXISTS (
+    WHERE (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
+      AND c.channel_key NOT LIKE 'retired-telegram:%'
+      AND (c.channel_key NOT LIKE 'chat:%' OR c.parent_id IS NOT NULL OR EXISTS (
           SELECT 1 FROM submissions m WHERE m.conversation_id = c.id AND m.kind = 'message'
       ))
       AND EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending')

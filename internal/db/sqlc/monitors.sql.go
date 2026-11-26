@@ -251,45 +251,6 @@ func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
 	return i, err
 }
 
-const getMonitorByFireSubmission = `-- name: GetMonitorByFireSubmission :one
-SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE fire_submission_id = ?
-`
-
-func (q *Queries) GetMonitorByFireSubmission(ctx context.Context, fireSubmissionID sql.NullString) (Monitor, error) {
-	row := q.db.QueryRowContext(ctx, getMonitorByFireSubmission, fireSubmissionID)
-	var i Monitor
-	err := row.Scan(
-		&i.ID,
-		&i.OperationKey,
-		&i.AgentID,
-		&i.ConversationID,
-		&i.RootRequestID,
-		&i.SourceSubmissionID,
-		&i.ChainDepth,
-		&i.DueAt,
-		&i.TimeZone,
-		&i.Prompt,
-		&i.State,
-		&i.FireSubmissionID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.CheckCommand,
-		&i.IntervalSeconds,
-		&i.MaxRuns,
-		&i.Runs,
-		&i.ExpiresAt,
-		&i.TargetExecutionID,
-		&i.TargetRunnerID,
-		&i.TargetRunnerRevision,
-		&i.TargetCwd,
-		&i.OutputHash,
-		&i.Outcome,
-		&i.Running,
-		&i.CheckEnv,
-	)
-	return i, err
-}
-
 const getMonitorByOperationKey = `-- name: GetMonitorByOperationKey :one
 SELECT id, operation_key, agent_id, conversation_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE operation_key = ?
 `

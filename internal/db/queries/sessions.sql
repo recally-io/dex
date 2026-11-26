@@ -30,7 +30,7 @@ SELECT
     CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM conversations c
 JOIN agents a ON a.id = c.agent_id
-WHERE c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
+WHERE c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.parent_id = @parent_id OR (
         CAST(@all_sessions AS INTEGER) = 1
         AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
@@ -71,7 +71,7 @@ SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.con
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 JOIN agents a ON a.id = c.agent_id
-WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.execution_scope = ''
+WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.id <> @excluded_turn_id
     AND (CAST(@all_bots AS INTEGER) = 1 OR c.agent_id = @agent_id)
     AND (CAST(@session_id AS INTEGER) = 0 OR c.id = @session_id)
@@ -110,13 +110,13 @@ SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
 JOIN conversations c ON c.id = s.conversation_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
-    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.execution_scope = ''
+    AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY c.id;
 
 -- name: ListChannelChildren :many
 SELECT * FROM conversations
 WHERE parent_id = @parent_id AND agent_id = @agent_id
-    AND execution_scope = ''
+    AND channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY id DESC
 LIMIT 50;
 
@@ -137,7 +137,7 @@ UNION SELECT conversation_id FROM main_turn_stops;
 -- name: ListRecoveryParentInputStops :many
 SELECT s.id, c.agent_id, c.execution_id
 FROM submissions s JOIN conversations c ON c.id = s.conversation_id
-WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.execution_scope = '';
+WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%';
 
 -- name: ListParentInputStops :many
 SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid;

@@ -76,7 +76,6 @@ const (
 	ActionAssign           Action = "assign"
 	ActionCreateTopLevel   Action = "create_top_level"
 	ActionOwnerLifecycle   Action = "owner_lifecycle"
-	ActionTombstone        Action = "tombstone"
 	ActionLinkSession      Action = "link_session"
 	ActionRename           Action = "rename"
 )
@@ -156,7 +155,7 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		return actor.isAssignee(parent), err
 	case ActionCreateTopLevel:
 		return user && (owner || main || chat), nil
-	case ActionOwnerLifecycle, ActionTombstone:
+	case ActionOwnerLifecycle:
 		return owner && user, nil
 	default:
 		return false, nil
