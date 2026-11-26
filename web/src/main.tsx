@@ -11,7 +11,7 @@ import {
   Link,
 } from "@tanstack/react-router";
 import { errorText, queryClient } from "./lib/queries";
-import { InboxPage, InboxResultPage } from "./routes/inbox";
+import { BoardResultPage } from "./components/board-results";
 import { BoardPage } from "./routes/board";
 import { TaskDetailPage } from "./routes/task-detail";
 import { Shell } from "./components/shell";
@@ -100,18 +100,16 @@ const board = createRoute({
   },
 });
 
-const inbox = page("/inbox", InboxPage);
-
 const taskDetail = page("/board/$taskKey", () => {
   const { taskKey } = taskDetail.useParams();
 
   return <TaskDetailPage key={taskKey} taskKey={taskKey} />;
 });
 
-const inboxDetail = page("/inbox/$runId", () => {
-  const { runId } = inboxDetail.useParams();
+const boardResult = page("/board/results/$runId", () => {
+  const { runId } = boardResult.useParams();
 
-  return <InboxResultPage runId={runId} />;
+  return <BoardResultPage runId={runId} />;
 });
 
 const generalSettings = page("/settings/general", GeneralSettingsPage);
@@ -192,8 +190,7 @@ const router = createRouter({
     index,
     board,
     taskDetail,
-    inbox,
-    inboxDetail,
+    boardResult,
     generalSettings,
     providers,
     runners,

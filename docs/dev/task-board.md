@@ -137,16 +137,15 @@ External coding agents (Claude Code, Codex, OpenCode, or custom scripts) run und
 
 ## Web UI information architecture
 
-The Web UI follows [web/AGENTS.md](../../web/AGENTS.md) (stock shadcn components and `web/src/styles.css` tokens), keeps the existing navigation (`Bots`, `Board`, `Inbox`, and `Settings`), and replaces polling with global-cursor SSE (`GET /api/tasks/events`, `Last-Event-ID`):
+The Web UI follows [web/AGENTS.md](../../web/AGENTS.md) (stock shadcn components and `web/src/styles.css` tokens), keeps a single global workspace entry (`Board`) alongside `Bots` and `Settings`, and replaces polling with global-cursor SSE (`GET /api/tasks/events`, `Last-Event-ID`):
 
-- **Board (`/board`)**: Bot filter (`/board?bot=<id>`), `In Review` and `Blocked` filters, Source filter, and a **Kanban (`Backlog | Ready | In Progress | In Review | Done`) / List** view toggle.
-- **Inbox (`/inbox`)**: Continues to house all Owner attention items—active `ask_user` questions, unhandled failed or changed Automation results, Automations missing a model, held external events, and Tasks awaiting Owner review.
-- **Bot workspace**: Keeps `Sessions | Automations | Settings` (`General`, `Skills`, `Integrations`, `Secrets`) without adding a separate Bot Tasks tab; Bot-scoped Task views open `/board?bot=<id>`.
-- **Task detail (`/board/$taskKey`)**: Stable key (`T-42`), `In Review` action bar (`Approve` / `Request Changes`), filterable `#01..#N` Timeline, linked `Sessions`, external runs with lease state and heartbeat age, parent and subtasks, sibling dependencies, `Blocked` reasons and external links (`TaskLinks` + `GitHubPullForm`), and a unified note / Send to Main composer.
+- **Board (`/board`)**: Single unified command center with the Owner attention badge on the sidebar link, a single-line quick-add bar, optional `?bot=<id>` chip, and grouped sections (`Needs you` → `Active` → `Updates` → `Later` → collapsible `Completed`). Empty sections stay hidden. `Needs you` houses active `ask_user` questions, Tasks awaiting Owner review, blocked Tasks, Automations missing a model, and held external events. `Updates` groups unhandled Automation results by Automation (`×N`) with inline expand, dismiss, and continue-in-session actions (deep links at `/board/results/$runId`).
+- **Bot workspace**: Keeps `Sessions | Automations | Settings` (`General`, `Skills`, `Integrations`, `Secrets`) without adding a separate Bot Tasks tab; Bot-scoped views open `/board?bot=<id>`.
+- **Task detail (`/board/$taskKey`)**: Thread-first single-column layout with stable key (`T-42`), clickable Assignee/Status popovers (auto-saved with `If-Match`), overflow `⋯` menu (rename, reviewer, subtasks, dependencies, GitHub PR link, cancel/reopen), contextual `In Review` / `Blocked` action card, single-line collapsible `Related` strip (parent, subtasks, dependencies, linked `Sessions`, external runs with lease state and heartbeat age, and external links/waits), chronological Timeline, and a bottom composer defaulting to messaging the Assignee Bot's Main (staying on the Task page) with a secondary `Note only` option.
 
 Runner settings list active external Task runs by current enrollment. The Task detail shows the registered Runner separately from the reported host and workspace. Runner registration does not verify attached agent reports.
 
-The Task API serves `/api/tasks/*`. Inbox reads `/api/inbox/summary` and the held-events endpoints. The post-commit broker sends bounded wake hints. It does not order entries or keep replay history. The SSE handler reads SQLite by entry ID in bounded batches. Browser reconnects resume at the last received ID. The Owner UI reads only the current projection after a hint.
+The Task API serves `/api/tasks/*`, while attention items and Automation updates read `/api/inbox/summary`, `/api/inbox/*`, and the held-events endpoints. The post-commit broker sends bounded wake hints. It does not order entries or keep replay history. The SSE handler reads SQLite by entry ID in bounded batches. Browser reconnects resume at the last received ID. The Owner UI reads only the current projection after a hint.
 
 ## Phased rollout
 
