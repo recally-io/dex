@@ -152,7 +152,7 @@ func (l *Ledger) updateTask(ctx context.Context, task sqlc.Task, p UpdateParams,
 		}
 	}
 	if p.Status != nil && *p.Status != task.Status {
-		task, err = l.TransitionStatus(ctx, Owner, OriginUser, task, *p.Status, nil, now)
+		task, err = l.TransitionStatus(ctx, Owner, OriginUser, task, *p.Status, now)
 		if err != nil {
 			return sqlc.Task{}, err
 		}

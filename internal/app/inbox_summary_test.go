@@ -88,7 +88,7 @@ func TestUserInboxCollectsAutomationsAcrossBots(t *testing.T) {
 	}
 }
 
-type workQuestions struct {
+type inboxQuestions struct {
 	Sessions []struct {
 		AgentID string `json:"agentId"`
 		Chat    struct {
@@ -101,10 +101,10 @@ type workQuestions struct {
 
 func (d *dex) openQuestions(t *testing.T) map[int64]string {
 	t.Helper()
-	var work workQuestions
-	d.must(t, http.MethodGet, "/api/inbox/summary", nil, &work)
+	var summary inboxQuestions
+	d.must(t, http.MethodGet, "/api/inbox/summary", nil, &summary)
 	open := map[int64]string{}
-	for _, s := range work.Sessions {
+	for _, s := range summary.Sessions {
 		if q := s.Chat.Question; q != nil && q.Status == "open" {
 			open[s.Chat.ID] = s.AgentID + ":" + q.ID
 		}

@@ -182,26 +182,11 @@ func (s *Service) PostEntry(ctx context.Context, actor Actor, origin Origin, key
 	return entry, err
 }
 
-func (s *Service) TransitionStatus(ctx context.Context, actor Actor, origin Origin, taskID, status string, expectedRevision *int64) (result sqlc.Task, err error) {
-	err = s.write(ctx, func(l *Ledger, now int64) error {
-		task, err := l.q.GetTask(ctx, taskID)
-		if err != nil {
-			return err
-		}
-		result, err = l.TransitionStatus(ctx, actor, origin, task, status, expectedRevision, now)
-		return err
-	})
-	return result, err
-}
-
 // TransitionStatus applies a Task transition and records any review wake in the same transaction.
-func (l *Ledger) TransitionStatus(ctx context.Context, actor Actor, origin Origin, task sqlc.Task, status string, expectedRevision *int64, now int64) (sqlc.Task, error) {
+func (l *Ledger) TransitionStatus(ctx context.Context, actor Actor, origin Origin, task sqlc.Task, status string, now int64) (sqlc.Task, error) {
 	action, valid := transition(task, status)
 	if err := authorize(ctx, l.q, actor, origin, task, action); err != nil {
 		return sqlc.Task{}, err
-	}
-	if expectedRevision != nil && *expectedRevision != task.Revision {
-		return sqlc.Task{}, ErrConflict
 	}
 	if !valid {
 		return sqlc.Task{}, ErrInvalid
@@ -304,30 +289,4 @@ func (s *Service) TombstoneEntry(ctx context.Context, actor Actor, origin Origin
 		return err
 	})
 	return entry, err
-}
-
-func (s *Service) LinkSession(ctx context.Context, actor Actor, origin Origin, taskID string, conversationID int64) error {
-	return s.changeSessionLink(ctx, actor, origin, taskID, conversationID, false)
-}
-
-func (s *Service) PromotePrimarySession(ctx context.Context, actor Actor, origin Origin, taskID string, conversationID int64) error {
-	return s.changeSessionLink(ctx, actor, origin, taskID, conversationID, true)
-}
-
-func (s *Service) changeSessionLink(ctx context.Context, actor Actor, origin Origin, taskID string, conversationID int64, promote bool) error {
-	return s.write(ctx, func(l *Ledger, now int64) error {
-		task, err := l.q.GetTask(ctx, taskID)
-		if err != nil {
-			return err
-		}
-		if err := AuthorizeSessionLink(ctx, l.q, actor, origin, task, conversationID); err != nil {
-			return err
-		}
-		if promote {
-			if _, err := l.q.GetTaskSession(ctx, sqlc.GetTaskSessionParams{TaskID: task.ID, ConversationID: sql.NullInt64{Int64: conversationID, Valid: true}}); err != nil {
-				return err
-			}
-		}
-		return l.LinkSession(ctx, actor, task, conversationID, promote, now)
-	})
 }

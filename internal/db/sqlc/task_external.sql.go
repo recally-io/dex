@@ -238,7 +238,6 @@ const listExternalTaskEntries = `-- name: ListExternalTaskEntries :many
 SELECT e.id, e.task_id, e.seq, e.kind, e.tag, e.actor_kind, e.actor_bot_id, e.actor_execution_id, e.trust, e.event_id, e.meta_json, e.content, e.created_at FROM task_entries e
 WHERE e.task_id = ?1 AND e.seq > ?2
   AND e.kind NOT IN ('external', 'tombstone') AND e.trust <> 'external'
-  AND json_extract(e.meta_json, '$.legacyHidden') IS NOT 1
   AND NOT EXISTS (SELECT 1 FROM task_entries r WHERE r.task_id = e.task_id AND r.kind = 'tombstone'
     AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = e.seq)
 ORDER BY e.seq LIMIT ?3

@@ -15,7 +15,7 @@ import (
 	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
-func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
+func TestUserTaskWakeCoalescesWhileMainIsBusy(t *testing.T) {
 	r := startNative(t, "bash")
 	ctx := t.Context()
 	started, release := filepath.Join(r.dir, "hold.started"), filepath.Join(r.dir, "hold.release")
@@ -90,7 +90,7 @@ func TestUserBoardWakeCoalescesWhileMainIsBusy(t *testing.T) {
 	assertWakeCounts(t, r, 1)
 }
 
-func TestUserBoardWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
+func TestUserTaskWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	tasks := tasksvc.New(r.conn, nil)

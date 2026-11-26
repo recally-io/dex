@@ -85,6 +85,18 @@ func TestUserKeepsTaskDataAcrossTableRenameAndRollback(t *testing.T) {
 				assertTaskBoardRows(t, conn, "SELECT name FROM sqlite_schema WHERE type = 'table' AND name = '"+absent+"'")
 			}
 
+			if step.down {
+				assertTaskBoardRows(t, conn, `SELECT name FROM sqlite_master WHERE type = 'index' AND name GLOB 'work_*' ORDER BY name`,
+					"work_source_holds_open", "work_task_entries_task_seq", "work_task_waits_open",
+					"work_tasks_activity", "work_tasks_assignee_status", "work_tasks_number", "work_tasks_parent")
+			} else {
+				assertTaskBoardRows(t, conn, `SELECT name FROM sqlite_master WHERE type IN ('table', 'index', 'trigger') AND name GLOB 'work_*' ORDER BY name`)
+				assertTaskBoardRows(t, conn, `SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL
+					AND tbl_name IN ('tasks', 'task_entries', 'task_waits', 'task_source_holds') ORDER BY name`,
+					"task_entries_task_seq", "task_source_holds_open", "task_waits_open",
+					"tasks_activity", "tasks_assignee_status", "tasks_number", "tasks_parent")
+			}
+
 			// Then foreign keys and the append-only ledger still protect the data.
 			assertTaskBoardRows(t, conn, `SELECT CAST(foreign_keys AS TEXT) FROM pragma_foreign_keys`, "1")
 			assertTaskBoardRows(t, conn, `SELECT json_array("table", rowid, parent, fkid) FROM pragma_foreign_key_check`)

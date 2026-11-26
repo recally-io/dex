@@ -155,7 +155,7 @@ func TestUserGetsCrossBotReviewWakesOnlyAfterCommit(t *testing.T) {
 	assertWakeCount(t, conn, 0)
 
 	// When the Assignee asks for a review and the Reviewer asks for changes.
-	submitted, err := svc.TransitionStatus(ctx, tasksvc.Bot("assignee"), tasksvc.OriginUser, task.ID, tasksvc.StatusInReview, nil)
+	submitted, err := transitionTaskWithLedger(t, conn, svc, task.ID, tasksvc.Bot("assignee"), tasksvc.OriginUser, tasksvc.StatusInReview)
 	if err != nil {
 		t.Fatal(err)
 	}

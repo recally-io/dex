@@ -288,11 +288,11 @@ The web shows a child as a thread. The main
 transcript keeps one card at each `session_new` or `session_fork` call and one
 line at each `session_send` call. A `session_report` call shows as a
 "Reported to parent" step. That step keeps a
-System Turn trace unfolded. A result mark is one line with a "View session"
-action. The card, the line and the action open a read-only side panel that
+System Turn trace unfolded. A result mark with a child Session ID has a
+"View session" action. The card, the line and the action open a read-only side panel that
 shows the child's own transcript with the usual chat reads and stream. The web
-reads the child ID from the session tool result and finds the child of a result
-mark with `getTurnChat`. Channels have no thread, so a channel user sees only
+reads the child ID from the Session tool result or the `childSessionId` of a
+result mark. Channels have no thread, so a channel user sees only
 the reply of Main. Child
 conversations stay absent from dream inputs, and dream input selects only
 ordinary messages.

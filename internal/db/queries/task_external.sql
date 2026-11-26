@@ -45,7 +45,6 @@ RETURNING *;
 SELECT e.* FROM task_entries e
 WHERE e.task_id = @task_id AND e.seq > @after_seq
   AND e.kind NOT IN ('external', 'tombstone') AND e.trust <> 'external'
-  AND json_extract(e.meta_json, '$.legacyHidden') IS NOT 1
   AND NOT EXISTS (SELECT 1 FROM task_entries r WHERE r.task_id = e.task_id AND r.kind = 'tombstone'
     AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = e.seq)
 ORDER BY e.seq LIMIT @page_size;

@@ -1,6 +1,3 @@
--- Stop of a conversation and of its child sessions. The file keeps its name from the
--- task layer that child sessions replaced.
-
 -- name: GetConversationByExecution :one
 SELECT * FROM conversations WHERE agent_id = ? AND execution_scope = '' AND execution_id = ?;
 

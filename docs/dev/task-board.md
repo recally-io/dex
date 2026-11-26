@@ -160,7 +160,7 @@ The Task API serves `/api/tasks/*`. Inbox reads `/api/inbox/summary` and the hel
 
 Before closing each rollout phase, verify with real SQLite and integration tests (no mocks):
 
-- Upgrading an existing `control.sqlite` preserves historical tasks, entries, `task_sessions` links and primary flags, external links, waits, and open questions.
+- Upgrading `control.sqlite` preserves Tasks, entries, external links, waits, and open questions. Session links and primary flags stay in `task_executions`.
 - Replaying webhook deliveries, native receipts, and tool keys produces no duplicate entries or wakeups.
 - Crash/restart recovery across `commit -> wake` and child settlement delivers at most one pending review wake; stale `review_seq` approvals and expired/superseded tokens fail with conflict errors.
 - Concurrent cross-bot delegations (`A -> B` and `B -> A`) plus `Stop` never deadlock or hold two delivery gates.

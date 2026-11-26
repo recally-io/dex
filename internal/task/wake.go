@@ -59,7 +59,7 @@ func (l *Ledger) queueWake(ctx context.Context, botID string, task sqlc.Task, re
 		if err != nil {
 			return false, err
 		}
-		// The legacy association lets Main attach answers and children. Only the Assignee can use it.
+		// The input link lets the Assignee's Main attach answers and children to the Task.
 		if botID == task.AssigneeBotID {
 			if err := q.AssociateTaskInput(ctx, sqlc.AssociateTaskInputParams{SubmissionID: id, TaskID: task.ID}); err != nil {
 				return false, err

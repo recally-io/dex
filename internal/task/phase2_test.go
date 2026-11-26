@@ -42,7 +42,7 @@ func TestUserTaskDependenciesWakeWhenUpstreamChanges(t *testing.T) {
 	}
 	change := func(task sqlc.Task, status string) {
 		t.Helper()
-		if _, err := svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, task.ID, status, nil); err != nil {
+		if _, err := svc.UpdateTask(ctx, task.ID, tasksvc.UpdateParams{Status: new(status)}); err != nil {
 			t.Fatal(err)
 		}
 	}

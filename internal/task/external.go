@@ -15,7 +15,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-const TaskTokenPrefix = "dex_bt_"
+const TaskTokenPrefix = "dex_tt_"
 const ExternalLeaseTTL = 2 * time.Minute
 
 var (

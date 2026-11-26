@@ -126,34 +126,40 @@ func TestUserTaskBoardAccessMatrix(t *testing.T) {
 }
 
 func TestUserTaskBoardLinksOnlyDirectChildrenAcrossBots(t *testing.T) {
-	_, q, svc := openBoardTest(t)
+	conn, q, svc := openBoardTest(t)
 	ctx := t.Context()
 	task := createBoardTestTask(t, svc, "Session links", "ready", "")
 	assignee := tasksvc.Bot("assignee")
 
-	if err := svc.LinkSession(ctx, assignee, tasksvc.OriginUser, task.ID, 4); err != nil {
-		t.Fatalf("link direct child from another Bot: %v", err)
-	}
-	if err := svc.LinkSession(ctx, assignee, tasksvc.OriginUser, task.ID, 6); !errors.Is(err, tasksvc.ErrForbidden) {
-		t.Fatalf("link standalone Chat of the assignee: %v; want ErrForbidden", err)
-	}
-	if err := svc.LinkSession(ctx, assignee, tasksvc.OriginUser, task.ID, 5); !errors.Is(err, tasksvc.ErrForbidden) {
-		t.Fatalf("link child of another parent: %v; want ErrForbidden", err)
-	}
-	if err := svc.LinkSession(ctx, tasksvc.Owner, tasksvc.OriginUser, task.ID, 5); err != nil {
-		t.Fatalf("Owner link: %v", err)
-	}
-	if err := svc.PromotePrimarySession(ctx, assignee, tasksvc.OriginUser, task.ID, 5); !errors.Is(err, tasksvc.ErrForbidden) {
-		t.Fatalf("promote child of another parent: %v; want ErrForbidden", err)
-	}
-	if err := svc.LinkSession(ctx, assignee, tasksvc.OriginUser, task.ID, 3); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.PromotePrimarySession(ctx, tasksvc.Owner, tasksvc.OriginUser, task.ID, 3); err != nil {
-		t.Fatal(err)
-	}
-	if err := svc.PromotePrimarySession(ctx, assignee, tasksvc.OriginUser, task.ID, 4); err != nil {
-		t.Fatalf("promote direct child from another Bot: %v", err)
+	for _, step := range []struct {
+		name    string
+		actor   tasksvc.Actor
+		child   int64
+		promote bool
+		want    error
+	}{
+		{"link direct child from another Bot", assignee, 4, false, nil},
+		{"link standalone Chat", assignee, 6, false, tasksvc.ErrForbidden},
+		{"link child of another parent", assignee, 5, false, tasksvc.ErrForbidden},
+		{"Owner links child of another parent", tasksvc.Owner, 5, false, nil},
+		{"promote child of another parent", assignee, 5, true, tasksvc.ErrForbidden},
+		{"link direct child of the same Bot", assignee, 3, false, nil},
+		{"Owner promotes direct child", tasksvc.Owner, 3, true, nil},
+		{"promote direct child from another Bot", assignee, 4, true, nil},
+	} {
+		err := commitLedger(t, conn, svc, func(q *sqlc.Queries, ledger *tasksvc.Ledger) error {
+			current, err := q.GetTask(ctx, task.ID)
+			if err != nil {
+				return err
+			}
+			if err := tasksvc.AuthorizeSessionLink(ctx, q, step.actor, tasksvc.OriginUser, current, step.child); err != nil {
+				return err
+			}
+			return ledger.LinkSession(ctx, step.actor, current, step.child, step.promote, time.Now().UnixMilli())
+		})
+		if !errors.Is(err, step.want) {
+			t.Fatalf("%s: got %v, want %v", step.name, err, step.want)
+		}
 	}
 	links, err := q.ListTaskSessions(ctx, task.ID)
 	if err != nil || len(links) != 3 || links[0].ConversationID != 4 || links[0].IsPrimary != 1 {
@@ -210,8 +216,8 @@ func TestUserTaskBoardLedgerCommitsBeforeNotification(t *testing.T) {
 		t.Fatalf("note projection: before %+v; after %+v", first, afterNote)
 	}
 
-	if _, err := svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, first.ID, "in_progress", &first.Revision); !errors.Is(err, tasksvc.ErrConflict) {
-		t.Fatalf("stale If-Match: got %v; want ErrConflict", err)
+	if _, err := svc.UpdateTask(ctx, first.ID, tasksvc.UpdateParams{Status: new(tasksvc.StatusInProgress), Revision: &first.Revision}); !errors.Is(err, tasksvc.ErrRevision) {
+		t.Fatalf("stale If-Match: got %v; want ErrRevision", err)
 	}
 	for _, kind := range []string{"status", "assign", "review", "execution", "external", "tombstone"} {
 		if _, err := svc.PostEntry(ctx, tasksvc.Owner, tasksvc.OriginUser, first.ID, tasksvc.PostEntryParams{Kind: kind, Content: "Forged event"}, nil); err == nil {
@@ -226,7 +232,8 @@ func TestUserTaskBoardLedgerCommitsBeforeNotification(t *testing.T) {
 	) STRICT`)
 	boardExec(t, conn, `CREATE TRIGGER board_test_fail_commit AFTER INSERT ON task_entries
 		WHEN NEW.kind = 'status' BEGIN INSERT INTO board_test_commit_failure VALUES ('missing-task'); END`)
-	_, err = svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, first.ID, "in_progress", &afterNote.Revision)
+	update := tasksvc.UpdateParams{Status: new(tasksvc.StatusInProgress), Revision: &afterNote.Revision}
+	_, err = svc.UpdateTask(ctx, first.ID, update)
 	if sqliteErr, ok := errors.AsType[*sqlite.Error](err); !ok || sqliteErr.Code() != sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY {
 		t.Fatalf("status change error = %v; want deferred foreign key violation", err)
 	}
@@ -236,10 +243,11 @@ func TestUserTaskBoardLedgerCommitsBeforeNotification(t *testing.T) {
 	assertBoardUnchanged(t, q, afterNote)
 	boardExec(t, conn, `DROP TRIGGER board_test_fail_commit`)
 
-	progress, err := svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, first.ID, "in_progress", &afterNote.Revision)
+	updated, err := svc.UpdateTask(ctx, first.ID, update)
 	if err != nil {
 		t.Fatal(err)
 	}
+	progress := updated.Task
 	status := taskEntry(t, q, first.ID, 3)
 	if status.Kind != "status" || progress.Status != "in_progress" || progress.Revision != afterNote.Revision+1 || progress.NextEntrySeq != 4 {
 		t.Fatalf("status entry %+v; projection %+v", status, progress)
@@ -278,45 +286,45 @@ func TestUserTaskBoardLedgerCommitsBeforeNotification(t *testing.T) {
 }
 
 func TestUserTaskBoardReservesCancelAndReopenForOwner(t *testing.T) {
-	_, q, svc := openBoardTest(t)
+	conn, q, svc := openBoardTest(t)
 	ctx := t.Context()
 	assignee := tasksvc.Bot("assignee")
 	task := createBoardTestTask(t, svc, "Lifecycle control", "backlog", "")
-	ready, err := svc.TransitionStatus(ctx, assignee, tasksvc.OriginTaskWake, task.ID, "ready", nil)
+	ready, err := transitionTaskWithLedger(t, conn, svc, task.ID, assignee, tasksvc.OriginTaskWake, "ready")
 	if err != nil || ready.Status != "ready" {
 		t.Fatalf("move backlog Task to ready: %+v, %v", ready, err)
 	}
 
 	for _, status := range []string{"cancelled", "blocked"} {
-		if _, err := svc.TransitionStatus(ctx, assignee, tasksvc.OriginUser, task.ID, status, nil); err == nil {
+		if _, err := transitionTaskWithLedger(t, conn, svc, task.ID, assignee, tasksvc.OriginUser, status); err == nil {
 			t.Errorf("assignee set status to %q", status)
 		}
 	}
 	assertBoardUnchanged(t, q, ready)
-	cancelled, err := svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, task.ID, "cancelled", nil)
-	if err != nil || cancelled.Status != "cancelled" || storedTask(t, q, task.ID) != cancelled {
+	cancelled, err := svc.UpdateTask(ctx, task.ID, tasksvc.UpdateParams{Status: new(tasksvc.StatusCancelled)})
+	if err != nil || cancelled.Task.Status != "cancelled" || storedTask(t, q, task.ID) != cancelled.Task {
 		t.Fatalf("Owner cancelled Task: %+v, %v", cancelled, err)
 	}
 
-	if _, err := svc.TransitionStatus(ctx, assignee, tasksvc.OriginUser, task.ID, "in_progress", nil); err == nil {
+	if _, err := transitionTaskWithLedger(t, conn, svc, task.ID, assignee, tasksvc.OriginUser, "in_progress"); err == nil {
 		t.Fatal("assignee reopened a cancelled Task")
 	}
-	assertBoardUnchanged(t, q, cancelled)
-	reopened, err := svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, task.ID, "in_progress", nil)
-	if err != nil || reopened.Status != "in_progress" || storedTask(t, q, task.ID) != reopened {
+	assertBoardUnchanged(t, q, cancelled.Task)
+	reopened, err := svc.UpdateTask(ctx, task.ID, tasksvc.UpdateParams{Status: new(tasksvc.StatusInProgress)})
+	if err != nil || reopened.Task.Status != "in_progress" || storedTask(t, q, task.ID) != reopened.Task {
 		t.Fatalf("Owner reopened Task: %+v, %v", reopened, err)
 	}
 }
 
-func TestUserTaskTaskReviewBindsApprovalToLatestSubmission(t *testing.T) {
-	_, q, svc := openBoardTest(t)
+func TestUserTaskReviewBindsApprovalToLatestSubmission(t *testing.T) {
+	conn, q, svc := openBoardTest(t)
 	ctx := t.Context()
 	assignee, reviewer := tasksvc.Bot("assignee"), tasksvc.Bot("reviewer")
 	task := createBoardTestTask(t, svc, "Review work", "in_progress", "reviewer")
 
 	submit := func(before sqlc.Task) sqlc.Task {
 		t.Helper()
-		after, err := svc.TransitionStatus(t.Context(), assignee, tasksvc.OriginTaskWake, before.ID, "in_review", nil)
+		after, err := transitionTaskWithLedger(t, conn, svc, before.ID, assignee, tasksvc.OriginTaskWake, "in_review")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -436,17 +444,15 @@ func TestUserTaskBoardDerivesBlockersAndMainQueuePosition(t *testing.T) {
 	}
 	assertBlockers(10, map[string]int64{"second-in-queue": 3, "child-question": 0})
 
-	closed, err := svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, task.ID, tasksvc.StatusDone, nil)
+	closed, err := svc.UpdateTask(ctx, task.ID, tasksvc.UpdateParams{Status: new(tasksvc.StatusDone)})
+	if err != nil || closed.BlockerCount != 0 {
+		t.Fatalf("closed Task blockers = %d, err = %v; want 0, nil", closed.BlockerCount, err)
+	}
+	reopened, err := svc.UpdateTask(ctx, task.ID, tasksvc.UpdateParams{Status: new(tasksvc.StatusInProgress)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if blockers, err := tasksvc.ComputeBlockers(ctx, q, closed); err != nil || blockers != nil {
-		t.Fatalf("closed Task blockers = %+v, %v; want nil, nil", blockers, err)
-	}
-	task, err = svc.TransitionStatus(ctx, tasksvc.Owner, tasksvc.OriginUser, task.ID, tasksvc.StatusInProgress, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	task = reopened.Task
 	boardExec(t, conn, `UPDATE task_waits SET resolved_by = 'merged' WHERE id = 10`)
 	boardExec(t, conn, `UPDATE questions SET status = 'answered' WHERE id = 'first-in-queue'`)
 	assertBlockers(0, map[string]int64{"second-in-queue": 2, "child-question": 0})
@@ -471,6 +477,36 @@ func openBoardTest(t *testing.T) (*sql.DB, *sqlc.Queries, *tasksvc.Service) {
 		(6, 'assignee', 'chat:standalone', 1, NULL), (7, 'linked', 'main', 1, NULL),
 		(8, 'linked', 'chat:standalone', 1, NULL)`)
 	return conn, sqlc.New(conn), tasksvc.New(conn, nil)
+}
+
+func transitionTaskWithLedger(t *testing.T, conn *sql.DB, svc *tasksvc.Service, id string, actor tasksvc.Actor, origin tasksvc.Origin, status string) (sqlc.Task, error) {
+	t.Helper()
+	var updated sqlc.Task
+	err := commitLedger(t, conn, svc, func(q *sqlc.Queries, ledger *tasksvc.Ledger) error {
+		var err error
+		updated, err = ledger.TransitionStatus(t.Context(), actor, origin, storedTask(t, q, id), status, time.Now().UnixMilli())
+		return err
+	})
+	return updated, err
+}
+
+func commitLedger(t *testing.T, conn *sql.DB, svc *tasksvc.Service, change func(*sqlc.Queries, *tasksvc.Ledger) error) error {
+	t.Helper()
+	tx, err := conn.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	q := sqlc.New(tx)
+	ledger := tasksvc.NewLedger(q)
+	if err := change(q, ledger); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	svc.Notify(ledger)
+	return nil
 }
 
 func boardExec(t *testing.T, conn *sql.DB, stmt string, args ...any) {

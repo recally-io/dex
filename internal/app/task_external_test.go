@@ -56,18 +56,20 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if _, err := conn.ExecContext(t.Context(), `INSERT INTO task_entries (task_id,seq,kind,trust,actor_kind,content,created_at) VALUES (?,1000,'external','external','external','Hidden source body',1)`, first.Id); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO task_entries (task_id,seq,kind,trust,actor_kind,content,meta_json,created_at) VALUES
+		(?1,1000,'external','external','external','Hidden source body','{}',1),
+		(?1,1001,'artifact','owner','owner','Saved association','{"legacyHidden":true}',1)`, first.Id); err != nil {
 		t.Fatal(err)
 	}
 	firstPath, secondPath := "/api/tasks/"+first.Key, "/api/tasks/"+second.Key
 	var initial, resumed api.TaskTokenIssue
 	request("POST", firstPath+"/executions/attach", owner, `{"harness":"codex","hostMeta":{"hostname":"reported-host"},"workspacePath":"/workspace"}`, 201, &initial)
-	if !strings.HasPrefix(initial.TaskToken, "dex_bt_") {
+	if !strings.HasPrefix(initial.TaskToken, "dex_tt_") {
 		t.Fatal("attach did not issue a Task token")
 	}
 	const external = "/api/tasks/external/"
 	request("GET", external+"task", owner, "", 401, nil)
-	request("GET", external+"task", "dex_bt_invalid", "", 401, nil)
+	request("GET", external+"task", "dex_tt_invalid", "", 401, nil)
 	request("PATCH", firstPath, initial.TaskToken, `{"status":"done"}`, 401, nil)
 	request("GET", secondPath, initial.TaskToken, "", 401, nil)
 	request("POST", secondPath+"/executions/attach", initial.TaskToken, `{"harness":"custom"}`, 401, nil)
@@ -77,8 +79,8 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 		t.Fatalf("first page: %+v", view)
 	}
 	request("GET", external+"task?afterSeq=1", initial.TaskToken, "", 200, &view)
-	if len(view.Entries) != 1 || view.Entries[0].Kind != "execution" {
-		t.Fatalf("external read did not filter the source entry: %+v", view.Entries)
+	if len(view.Entries) != 2 || view.Entries[0].Kind != "execution" || view.Entries[1].Content != "Saved association" {
+		t.Fatalf("external read must include the saved association but not the source entry: %+v", view.Entries)
 	}
 	request("POST", external+"entries", initial.TaskToken, `{"kind":"status","content":"done"}`, 400, nil)
 	request("POST", external+"entries", initial.TaskToken, `{"kind":"artifact","content":"Build output"}`, 201, nil)
@@ -131,7 +133,7 @@ func TestUserDispatchesExternalBoardRunThroughARunnerProcess(t *testing.T) {
 		"id": task.Key, "harness": "custom", "workspace": workspace, "server": d.srv.URL,
 		"command": `test -n "$DEX_TASK_TOKEN" && printf '%s' "$DEX_TASK_TOKEN" && : > ran`,
 	}))
-	if !strings.Contains(answer, "command-") || strings.Contains(answer, "dex_bt_") {
+	if !strings.Contains(answer, "command-") || strings.Contains(answer, "dex_tt_") {
 		t.Fatal("the tool did not return a Process ID without the Task token")
 	}
 	var runs api.TaskExecutionList
@@ -154,7 +156,7 @@ func TestUserDispatchesExternalBoardRunThroughARunnerProcess(t *testing.T) {
 			t.Fatalf("Process exited with %d", p.ExitStatus.Int64)
 		}
 		output, err := os.ReadFile(p.OutputPath)
-		if err != nil || len(output) != 0 || strings.Contains(p.Command, "dex_bt_") {
+		if err != nil || len(output) != 0 || strings.Contains(p.Command, "dex_tt_") {
 			t.Fatal("the managed Process persisted command output or token data")
 		}
 		_, err = os.Stat(filepath.Join(workspace, "ran"))

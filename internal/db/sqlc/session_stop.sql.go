@@ -11,7 +11,6 @@ import (
 )
 
 const getConversationByExecution = `-- name: GetConversationByExecution :one
-
 SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND execution_scope = '' AND execution_id = ?
 `
 
@@ -20,8 +19,6 @@ type GetConversationByExecutionParams struct {
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
-// Stop of a conversation and of its child sessions. The file keeps its name from the
-// task layer that child sessions replaced.
 func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
 	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
 	var i Conversation

@@ -201,7 +201,7 @@ func (s *Service) Update(ctx context.Context, c engine.TaskContext, a TaskUpdate
 			if a.Status == tasksvc.StatusCancelled || !tasksvc.IsOpenStatus(task.Status) {
 				return TaskInfo{}, fmt.Errorf("%w: only the Owner can cancel or reopen a Task", tasksvc.ErrForbidden)
 			}
-			if task, err = l.TransitionStatus(ctx, actor, origin, task, a.Status, nil, now); err != nil {
+			if task, err = l.TransitionStatus(ctx, actor, origin, task, a.Status, now); err != nil {
 				return TaskInfo{}, err
 			}
 		}

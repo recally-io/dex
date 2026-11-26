@@ -9,7 +9,7 @@ import (
 	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
-func TestUserTaskChildExecutionSettlesWithoutBoardWake(t *testing.T) {
+func TestUserTaskChildExecutionSettlesWithoutTaskWake(t *testing.T) {
 	for _, tc := range []struct {
 		name, state, receiptStatus, reason string
 		results                            int
