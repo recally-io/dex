@@ -38,15 +38,15 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 		len(pr.Objects) != 1 || pr.Objects[0].Key != "7" || issue.Id == "" {
 		t.Fatalf("the Inbox must hold the member review and Issue: %+v", held.Events)
 	}
-	var tasks api.ListWorkTasks200JSONResponse
-	d.must(t, http.MethodGet, "/api/inbox/tasks", nil, &tasks)
+	var tasks api.TaskList
+	d.must(t, http.MethodGet, "/api/tasks", nil, &tasks)
 	if len(tasks.Tasks) != 0 {
 		t.Fatalf("a held event must not create a Task: %+v", tasks.Tasks)
 	}
 
 	// When the owner attaches the review to a new Task and dismisses the Issue.
-	var task api.WorkTask
-	d.must(t, http.MethodPost, "/api/agents/default/inbox/tasks", map[string]string{"title": "Ship PR 7"}, &task, http.StatusCreated)
+	var task api.TaskSummary
+	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Ship PR 7"}, &task, http.StatusCreated)
 	attach := map[string]string{"agentId": "default", "taskId": task.Id}
 	d.must(t, http.MethodPost, "/api/inbox/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNoContent)
 	d.must(t, http.MethodPost, "/api/inbox/held-events/"+pr.Id+"/attach", attach, nil, http.StatusNotFound)
@@ -59,10 +59,10 @@ func TestUserAttachesAndDismissesHeldGitHubEvents(t *testing.T) {
 		t.Fatalf("decided events stay in the Inbox: %+v", held.Events)
 	}
 	deliverGitHub(t, d, secret, "review-3", "pull_request_review", review(3, 7, "MEMBER"))
-	var detail api.GetWorkTask200JSONResponse
-	d.must(t, http.MethodGet, "/api/agents/default/inbox/tasks/"+task.Id, nil, &detail)
+	var detail api.TaskDetail
+	d.must(t, http.MethodGet, "/api/tasks/"+task.Id, nil, &detail)
 	t.Logf("artifact: task entries=%+v links=%+v", detail.Entries, detail.Links)
-	if len(detail.Entries) != 2 || !strings.Contains(detail.Entries[0].Content, "Review 3") || !strings.Contains(detail.Entries[1].Content, "Review 1") {
+	if len(detail.Entries) != 3 || !strings.Contains(detail.Entries[2].Content, "Review 3") || !strings.Contains(detail.Entries[1].Content, "Review 1") {
 		t.Fatalf("the Task must show the attached review and the next one: %+v", detail.Entries)
 	}
 	if len(detail.Links) != 1 || detail.Links[0].Type != "pull_request" || detail.Links[0].Key != "7" {

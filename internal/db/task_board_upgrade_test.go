@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/pressly/goose/v3"
-	"github.com/recally-io/dex/internal/db"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -16,6 +15,7 @@ import (
 func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 	const legacyMigration = "20261125125254_work_task_multi_sessions.sql"
 	const legacyVersion = 20261125125254
+	schema := migrationFS(t, func(name string) bool { return name <= "20261125171516_task_board_phase3.sql" })
 	path := filepath.Join(t.TempDir(), "control.sqlite")
 	ctx := t.Context()
 
@@ -71,14 +71,21 @@ func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// When dex opens the database, the Board keeps the Task history and links.
+	// When Goose applies the original Task Board migrations, it keeps the Task history and links.
 	open := func() *sql.DB {
 		t.Helper()
-		conn, err := db.Open(ctx, path)
+		conn, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
 		if err != nil {
 			t.Fatalf("upgrade Task Board: %v", err)
 		}
 		t.Cleanup(func() { _ = conn.Close() })
+		provider, err := goose.NewProvider(goose.DialectSQLite3, conn, schema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := provider.Up(ctx); err != nil {
+			t.Fatal(err)
+		}
 		return conn
 	}
 	conn := open()
@@ -126,7 +133,7 @@ func TestUserKeepsTaskHistoryWhenUpgradingToTaskBoard(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When Goose rolls back Phase 2, it removes the dependency schema and keeps existing Tasks.
-	provider, err := goose.NewProvider(goose.DialectSQLite3, conn, migrationFS(t, func(string) bool { return true }))
+	provider, err := goose.NewProvider(goose.DialectSQLite3, conn, schema)
 	if err != nil {
 		t.Fatal(err)
 	}

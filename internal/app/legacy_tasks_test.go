@@ -3,6 +3,7 @@ package app_test
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -102,10 +103,10 @@ func TestUserOpensLegacyTaskData(t *testing.T) {
 			t.Fatalf("%s: parent=%d parent_request_id=%s source=%s", k.title, parent, request, k.source)
 		}
 	}
-	// And the task tables are gone.
+	// And the current Task table contains none of the retired background tasks.
 	var tables int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_master WHERE name IN ('tasks', 'task_steer_receipts')`).Scan(&tables); err != nil || tables != 0 {
-		t.Fatalf("task tables left: %d, %v", tables, err)
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM tasks`).Scan(&tables); err != nil || tables != 0 {
+		t.Fatalf("unexpected Task rows: %d, %v", tables, err)
 	}
 	// And the old results keep their content in the parent.
 	contents := map[string]string{}
@@ -146,7 +147,7 @@ func TestUserOpensLegacyTaskData(t *testing.T) {
 	d.chats(t)
 	for _, k := range tasks {
 		var opened webChat
-		d.must(t, http.MethodGet, "/api/agents/default/turns/"+k.id, nil, &opened)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", k.conversation), nil, &opened)
 		if opened.ID != k.conversation || opened.ParentID == nil || *opened.ParentID != 1 || opened.ReadOnly || opened.Channel != "web" {
 			t.Fatalf("%s: %+v", k.title, opened)
 		}

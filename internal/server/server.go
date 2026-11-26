@@ -33,8 +33,8 @@ import (
 	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/internal/upload"
-	"github.com/recally-io/dex/internal/worktask"
 	"github.com/recally-io/dex/web"
 )
 
@@ -42,8 +42,8 @@ import (
 type Config struct {
 	Chats       *chat.Service
 	Automations *automation.Service
-	WorkTasks   *worktask.Service
-	BoardEvents *worktask.Broker
+	Tasks       *tasksvc.Service
+	TaskEvents  *tasksvc.Broker
 	Settings    *settings.Service
 	Agents      *agent.Service
 	Artifacts   *artifact.Service
@@ -102,7 +102,7 @@ func New(cfg Config) http.Handler {
 				return
 			}
 			// Decoder errors can quote a value with the wrong JSON type.
-			if boardExternalPath(r) || boardTokenResponse(r) || strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
+			if taskExternalPath(r) || taskTokenResponse(r) || strings.HasSuffix(r.URL.Path, "/vault") || strings.HasSuffix(r.URL.Path, "/oauth") {
 				writeError(w, http.StatusBadRequest, "the request is not valid")
 				return
 			}
@@ -117,21 +117,21 @@ func New(cfg Config) http.Handler {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrEnvironmentInvalid):
 				status = http.StatusBadRequest
-			case errors.Is(err, worktask.ErrBoardToken):
+			case errors.Is(err, tasksvc.ErrTaskToken):
 				status = http.StatusUnauthorized
-			case errors.Is(err, worktask.ErrClaimLost), errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported), errors.Is(err, worktask.ErrConflict):
+			case errors.Is(err, tasksvc.ErrClaimLost), errors.Is(err, artifact.ErrConflict), errors.Is(err, sysops.ErrBusy), errors.Is(err, sysops.ErrUnsupported), errors.Is(err, tasksvc.ErrConflict):
 				status = http.StatusConflict
-			case errors.Is(err, worktask.ErrRevision):
+			case errors.Is(err, tasksvc.ErrRevision):
 				status = http.StatusPreconditionFailed
 			case errors.Is(err, upload.ErrTooLarge):
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, engine.ErrModelsPending):
 				status = http.StatusServiceUnavailable
-			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden), errors.Is(err, worktask.ErrForbidden):
+			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden), errors.Is(err, tasksvc.ErrForbidden):
 				status = http.StatusForbidden
 			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrWorkTaskConflict), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrEnvironmentResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrTaskConflict), errors.Is(err, chat.ErrEnvironmentLocked), errors.Is(err, agent.ErrEnvironmentBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrEnvironmentResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -474,14 +474,6 @@ func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (ap
 	return api.GetChat200JSONResponse(chatView(c)), nil
 }
 
-func (h *handler) GetTurnChat(ctx context.Context, req api.GetTurnChatRequestObject) (api.GetTurnChatResponseObject, error) {
-	c, err := h.Chats.ChatOfTurn(ctx, agentID(ctx), req.TurnId)
-	if err != nil {
-		return nil, err
-	}
-	return api.GetTurnChat200JSONResponse(chatView(c)), nil
-}
-
 // message validates a message from the client. The text can be empty when the message has an
 // attachment.
 func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Message, error) {
@@ -497,8 +489,8 @@ func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Messag
 		return chat.Message{}, errors.Join(errInvalid, errors.New("a message can have at most 10 attachments"))
 	}
 	m := chat.Message{ID: id.String(), Content: chat.NormalizeText(in.Text)}
-	if in.WorkTaskId != nil {
-		m.WorkTaskID = *in.WorkTaskId
+	if in.TaskId != nil {
+		m.TaskID = *in.TaskId
 	}
 	if in.AnswersQuestionId != nil {
 		m.AnswersQuestion = *in.AnswersQuestionId

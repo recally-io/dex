@@ -121,9 +121,9 @@ func TestUserUpgradesTaskConversationsToChildSessions(t *testing.T) {
 	if requests["t1"] != (sql.NullString{String: "source", Valid: true}) || requests["user"].Valid || requests["source"].Valid || requests["task:t1:result"].Valid {
 		t.Fatalf("parent_request_id: %+v", requests)
 	}
-	// And the task tables are gone, with the rows and the steer receipt that they held.
+	// And the retired task rows and steer receipts are gone.
 	var tables int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM sqlite_master WHERE name IN ('tasks', 'task_steer_receipts')`).Scan(&tables); err != nil || tables != 0 {
-		t.Fatalf("task tables left: %d, %v", tables, err)
+	if err := conn.QueryRowContext(t.Context(), `SELECT (SELECT count(*) FROM tasks) + (SELECT count(*) FROM sqlite_schema WHERE name = 'task_steer_receipts')`).Scan(&tables); err != nil || tables != 0 {
+		t.Fatalf("retired rows or tables left: %d, %v", tables, err)
 	}
 }

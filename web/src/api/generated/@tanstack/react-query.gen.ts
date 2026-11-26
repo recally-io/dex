@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortChat, acquireMaintenance, addBoardDependency, appendWorkTaskNote, archiveChat, attachBoardExecution, attachHeldEvent, backupSystemDatabase, beginFeishu, beginTelegramManagedSetup, beginWechatLogin, bindTaskGitHubPull, cancelChatMonitor, cancelSystemOperation, cancelTelegramManagedSetup, checkSystemUpdate, clearContext, compactChat, continueChat, createAgent, createAutomation, createBoardEntry, createBoardTask, createChat, createEnvironment, createSession, createTelegramPairing, createUpload, createWorkTask, deleteArtifact, deleteAutomation, deleteEmailImapPull, deleteEmailSource, deleteEnvironment, deleteFeishu, deleteGitHubReviewPull, deleteGitHubWebhook, deleteProvider, deleteTelegram, deleteVault, deleteWebhookSource, deleteWechat, discoverSshConfig, dismissHeldEvent, dismissInboxItem, finishBoardExecution, forgetEnvironmentHostKey, forkChat, getAgent, getArtifact, getAutomation, getBoardTask, getChannels, getChat, getChatHistory, getChatItem, getExtensions, getFeishu, getHealth, getMainChat, getNotificationTargets, getOnePassword, getSettings, getSystemLogs, getSystemStatus, getTelegramManagedSetup, getTurnChat, getUpload, getWork, getWorkTask, heartbeatBoardExecution, issueRunnerCode, listAgentEnvironments, listAgents, listArchivedAgents, listArtifacts, listAutomationRuns, listAutomations, listAutomationTargets, listBoardExecutions, listBoardTasks, listChatMonitors, listChatOutbox, listChats, listDirectories, listEnvironments, listHeldEvents, listInbox, listModels, listPlugins, listProviderModels, listRecentProjects, listVault, listWorkTasks, type Options, pollFeishu, pollWechatLogin, postBoardExternalEntry, previewSchedule, probeEnvironment, putVault, readBoardExternalTask, readInboxItem, releaseMaintenance, reloadExtensions, removeBoardDependency, renameArtifact, resetAgentEnvironment, restartSystem, restoreAgent, resumeBoardExecution, reviewBoardTask, revokeRunner, runAutomation, saveEmailImapPull, saveEmailSource, saveGitHubReviewPull, saveGitHubWebhook, saveWebhookSource, sendMessage, setChatEnvironment, setChatProject, setChatSettings, setFeishu, setOnePassword, setPlugin, setPrimaryNotificationTarget, setProvider, setTelegram, setTelegramManager, setWorkTaskLifecycle, splitBoardTask, startMcpOAuth, testEnvironment, unarchiveChat, updateAgent, updateAutomation, updateBoardTask, updateEnvironment, updateSystemSettings, upgradeSystem, withdrawMessage } from '../sdk.gen';
-import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, AddBoardDependencyData, AddBoardDependencyError, AddBoardDependencyResponse, AppendWorkTaskNoteData, AppendWorkTaskNoteError, AppendWorkTaskNoteResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, AttachBoardExecutionData, AttachBoardExecutionError, AttachBoardExecutionResponse, AttachHeldEventData, AttachHeldEventError, AttachHeldEventResponse, BackupSystemDatabaseData, BackupSystemDatabaseError, BackupSystemDatabaseResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginTelegramManagedSetupData, BeginTelegramManagedSetupError, BeginTelegramManagedSetupResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, BindTaskGitHubPullData, BindTaskGitHubPullError, BindTaskGitHubPullResponse, CancelChatMonitorData, CancelChatMonitorError, CancelChatMonitorResponse, CancelSystemOperationData, CancelSystemOperationError, CancelSystemOperationResponse, CancelTelegramManagedSetupData, CancelTelegramManagedSetupError, CancelTelegramManagedSetupResponse, CheckSystemUpdateData, CheckSystemUpdateError, CheckSystemUpdateResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateBoardEntryData, CreateBoardEntryError, CreateBoardEntryResponse, CreateBoardTaskData, CreateBoardTaskError, CreateBoardTaskResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateEnvironmentData, CreateEnvironmentError, CreateEnvironmentResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, CreateWorkTaskData, CreateWorkTaskError, CreateWorkTaskResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteEmailImapPullData, DeleteEmailImapPullError, DeleteEmailImapPullResponse, DeleteEmailSourceData, DeleteEmailSourceError, DeleteEmailSourceResponse, DeleteEnvironmentData, DeleteEnvironmentError, DeleteEnvironmentResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteGitHubReviewPullData, DeleteGitHubReviewPullError, DeleteGitHubReviewPullResponse, DeleteGitHubWebhookData, DeleteGitHubWebhookError, DeleteGitHubWebhookResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteVaultData, DeleteVaultError, DeleteVaultResponse, DeleteWebhookSourceData, DeleteWebhookSourceError, DeleteWebhookSourceResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DiscoverSshConfigData, DiscoverSshConfigError, DiscoverSshConfigResponse, DismissHeldEventData, DismissHeldEventError, DismissHeldEventResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, FinishBoardExecutionData, FinishBoardExecutionError, FinishBoardExecutionResponse, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyError, ForgetEnvironmentHostKeyResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetBoardTaskData, GetBoardTaskError, GetBoardTaskResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatItemData, GetChatItemError, GetChatItemResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetSystemLogsData, GetSystemLogsError, GetSystemLogsResponse, GetSystemStatusData, GetSystemStatusError, GetSystemStatusResponse, GetTelegramManagedSetupData, GetTelegramManagedSetupError, GetTelegramManagedSetupResponse, GetTurnChatData, GetTurnChatError, GetTurnChatResponse, GetUploadData, GetUploadError, GetUploadResponse, GetWorkData, GetWorkError, GetWorkResponse, GetWorkTaskData, GetWorkTaskError, GetWorkTaskResponse, HeartbeatBoardExecutionData, HeartbeatBoardExecutionError, HeartbeatBoardExecutionResponse, IssueRunnerCodeData, IssueRunnerCodeError, IssueRunnerCodeResponse, ListAgentEnvironmentsData, ListAgentEnvironmentsError, ListAgentEnvironmentsResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArchivedAgentsData, ListArchivedAgentsError, ListArchivedAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListAutomationTargetsData, ListAutomationTargetsResponse, ListBoardExecutionsData, ListBoardExecutionsError, ListBoardExecutionsResponse, ListBoardTasksData, ListBoardTasksError, ListBoardTasksResponse, ListChatMonitorsData, ListChatMonitorsError, ListChatMonitorsResponse, ListChatOutboxData, ListChatOutboxError, ListChatOutboxResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListEnvironmentsData, ListEnvironmentsError, ListEnvironmentsResponse, ListHeldEventsData, ListHeldEventsError, ListHeldEventsResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListPluginsData, ListPluginsError, ListPluginsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, ListVaultData, ListVaultError, ListVaultResponse, ListWorkTasksData, ListWorkTasksError, ListWorkTasksResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PostBoardExternalEntryData, PostBoardExternalEntryError, PostBoardExternalEntryResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ProbeEnvironmentData, ProbeEnvironmentError, ProbeEnvironmentResponse, PutVaultData, PutVaultError, PutVaultResponse, ReadBoardExternalTaskData, ReadBoardExternalTaskError, ReadBoardExternalTaskResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RemoveBoardDependencyData, RemoveBoardDependencyError, RemoveBoardDependencyResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, ResetAgentEnvironmentData, ResetAgentEnvironmentError, ResetAgentEnvironmentResponse, RestartSystemData, RestartSystemError, RestartSystemResponse, RestoreAgentData, RestoreAgentError, RestoreAgentResponse, ResumeBoardExecutionData, ResumeBoardExecutionError, ResumeBoardExecutionResponse, ReviewBoardTaskData, ReviewBoardTaskError, ReviewBoardTaskResponse, RevokeRunnerData, RevokeRunnerError, RevokeRunnerResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SaveEmailImapPullData, SaveEmailImapPullError, SaveEmailImapPullResponse, SaveEmailSourceData, SaveEmailSourceError, SaveEmailSourceResponse, SaveGitHubReviewPullData, SaveGitHubReviewPullError, SaveGitHubReviewPullResponse, SaveGitHubWebhookData, SaveGitHubWebhookError, SaveGitHubWebhookResponse, SaveWebhookSourceData, SaveWebhookSourceError, SaveWebhookSourceResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatEnvironmentData, SetChatEnvironmentError, SetChatEnvironmentResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPluginData, SetPluginError, SetPluginResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramManagerData, SetTelegramManagerError, SetTelegramManagerResponse, SetTelegramResponse, SetWorkTaskLifecycleData, SetWorkTaskLifecycleError, SetWorkTaskLifecycleResponse, SplitBoardTaskData, SplitBoardTaskError, SplitBoardTaskResponse, StartMcpOAuthData, StartMcpOAuthError, StartMcpOAuthResponse, TestEnvironmentData, TestEnvironmentError, TestEnvironmentResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, UpdateBoardTaskData, UpdateBoardTaskError, UpdateBoardTaskResponse, UpdateEnvironmentData, UpdateEnvironmentError, UpdateEnvironmentResponse, UpdateSystemSettingsData, UpdateSystemSettingsError, UpdateSystemSettingsResponse, UpgradeSystemData, UpgradeSystemError, UpgradeSystemResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
+import { abortChat, acquireMaintenance, addTaskDependency, archiveChat, attachHeldEvent, attachTaskExecution, backupSystemDatabase, beginFeishu, beginTelegramManagedSetup, beginWechatLogin, bindTaskGitHubPull, cancelChatMonitor, cancelSystemOperation, cancelTelegramManagedSetup, checkSystemUpdate, clearContext, compactChat, continueChat, createAgent, createAutomation, createChat, createEnvironment, createSession, createTask, createTaskEntry, createTelegramPairing, createUpload, deleteArtifact, deleteAutomation, deleteEmailImapPull, deleteEmailSource, deleteEnvironment, deleteFeishu, deleteGitHubReviewPull, deleteGitHubWebhook, deleteProvider, deleteTelegram, deleteVault, deleteWebhookSource, deleteWechat, discoverSshConfig, dismissHeldEvent, dismissInboxItem, finishTaskExecution, forgetEnvironmentHostKey, forkChat, getAgent, getArtifact, getAutomation, getChannels, getChat, getChatHistory, getChatItem, getExtensions, getFeishu, getHealth, getInboxSummary, getMainChat, getNotificationTargets, getOnePassword, getSettings, getSystemLogs, getSystemStatus, getTask, getTelegramManagedSetup, getUpload, heartbeatTaskExecution, issueRunnerCode, listAgentEnvironments, listAgents, listArchivedAgents, listArtifacts, listAutomationRuns, listAutomations, listAutomationTargets, listChatMonitors, listChatOutbox, listChats, listDirectories, listEnvironments, listHeldEvents, listInbox, listModels, listPlugins, listProviderModels, listRecentProjects, listTaskExecutions, listTasks, listVault, type Options, pollFeishu, pollWechatLogin, postTaskExternalEntry, previewSchedule, probeEnvironment, putVault, readInboxItem, readTaskExternalTask, releaseMaintenance, reloadExtensions, removeTaskDependency, renameArtifact, resetAgentEnvironment, restartSystem, restoreAgent, resumeTaskExecution, reviewTask, revokeRunner, runAutomation, saveEmailImapPull, saveEmailSource, saveGitHubReviewPull, saveGitHubWebhook, saveWebhookSource, sendMessage, setChatEnvironment, setChatProject, setChatSettings, setFeishu, setOnePassword, setPlugin, setPrimaryNotificationTarget, setProvider, setTelegram, setTelegramManager, splitTask, startMcpOAuth, testEnvironment, unarchiveChat, updateAgent, updateAutomation, updateEnvironment, updateSystemSettings, updateTask, upgradeSystem, withdrawMessage } from '../sdk.gen';
+import type { AbortChatData, AbortChatError, AbortChatResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, AddTaskDependencyData, AddTaskDependencyError, AddTaskDependencyResponse, ArchiveChatData, ArchiveChatError, ArchiveChatResponse, AttachHeldEventData, AttachHeldEventError, AttachHeldEventResponse, AttachTaskExecutionData, AttachTaskExecutionError, AttachTaskExecutionResponse, BackupSystemDatabaseData, BackupSystemDatabaseError, BackupSystemDatabaseResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginTelegramManagedSetupData, BeginTelegramManagedSetupError, BeginTelegramManagedSetupResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, BindTaskGitHubPullData, BindTaskGitHubPullError, BindTaskGitHubPullResponse, CancelChatMonitorData, CancelChatMonitorError, CancelChatMonitorResponse, CancelSystemOperationData, CancelSystemOperationError, CancelSystemOperationResponse, CancelTelegramManagedSetupData, CancelTelegramManagedSetupError, CancelTelegramManagedSetupResponse, CheckSystemUpdateData, CheckSystemUpdateError, CheckSystemUpdateResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactChatData, CompactChatError, ContinueChatData, ContinueChatError, ContinueChatResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateChatData, CreateChatError, CreateChatResponse, CreateEnvironmentData, CreateEnvironmentError, CreateEnvironmentResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTaskData, CreateTaskEntryData, CreateTaskEntryError, CreateTaskEntryResponse, CreateTaskError, CreateTaskResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteEmailImapPullData, DeleteEmailImapPullError, DeleteEmailImapPullResponse, DeleteEmailSourceData, DeleteEmailSourceError, DeleteEmailSourceResponse, DeleteEnvironmentData, DeleteEnvironmentError, DeleteEnvironmentResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteGitHubReviewPullData, DeleteGitHubReviewPullError, DeleteGitHubReviewPullResponse, DeleteGitHubWebhookData, DeleteGitHubWebhookError, DeleteGitHubWebhookResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteVaultData, DeleteVaultError, DeleteVaultResponse, DeleteWebhookSourceData, DeleteWebhookSourceError, DeleteWebhookSourceResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DiscoverSshConfigData, DiscoverSshConfigError, DiscoverSshConfigResponse, DismissHeldEventData, DismissHeldEventError, DismissHeldEventResponse, DismissInboxItemData, DismissInboxItemError, DismissInboxItemResponse, FinishTaskExecutionData, FinishTaskExecutionError, FinishTaskExecutionResponse, ForgetEnvironmentHostKeyData, ForgetEnvironmentHostKeyError, ForgetEnvironmentHostKeyResponse, ForkChatData, ForkChatError, ForkChatResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetChatData, GetChatError, GetChatHistoryData, GetChatHistoryError, GetChatHistoryResponse, GetChatItemData, GetChatItemError, GetChatItemResponse, GetChatResponse, GetExtensionsData, GetExtensionsError, GetExtensionsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetInboxSummaryData, GetInboxSummaryError, GetInboxSummaryResponse, GetMainChatData, GetMainChatError, GetMainChatResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetSystemLogsData, GetSystemLogsError, GetSystemLogsResponse, GetSystemStatusData, GetSystemStatusError, GetSystemStatusResponse, GetTaskData, GetTaskError, GetTaskResponse, GetTelegramManagedSetupData, GetTelegramManagedSetupError, GetTelegramManagedSetupResponse, GetUploadData, GetUploadError, GetUploadResponse, HeartbeatTaskExecutionData, HeartbeatTaskExecutionError, HeartbeatTaskExecutionResponse, IssueRunnerCodeData, IssueRunnerCodeError, IssueRunnerCodeResponse, ListAgentEnvironmentsData, ListAgentEnvironmentsError, ListAgentEnvironmentsResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArchivedAgentsData, ListArchivedAgentsError, ListArchivedAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListAutomationTargetsData, ListAutomationTargetsResponse, ListChatMonitorsData, ListChatMonitorsError, ListChatMonitorsResponse, ListChatOutboxData, ListChatOutboxError, ListChatOutboxResponse, ListChatsData, ListChatsError, ListChatsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListEnvironmentsData, ListEnvironmentsError, ListEnvironmentsResponse, ListHeldEventsData, ListHeldEventsError, ListHeldEventsResponse, ListInboxData, ListInboxError, ListInboxResponse, ListModelsData, ListModelsError, ListModelsResponse, ListPluginsData, ListPluginsError, ListPluginsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, ListTaskExecutionsData, ListTaskExecutionsError, ListTaskExecutionsResponse, ListTasksData, ListTasksError, ListTasksResponse, ListVaultData, ListVaultError, ListVaultResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PostTaskExternalEntryData, PostTaskExternalEntryError, PostTaskExternalEntryResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ProbeEnvironmentData, ProbeEnvironmentError, ProbeEnvironmentResponse, PutVaultData, PutVaultError, PutVaultResponse, ReadInboxItemData, ReadInboxItemError, ReadInboxItemResponse, ReadTaskExternalTaskData, ReadTaskExternalTaskError, ReadTaskExternalTaskResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadExtensionsData, ReloadExtensionsError, ReloadExtensionsResponse, RemoveTaskDependencyData, RemoveTaskDependencyError, RemoveTaskDependencyResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, ResetAgentEnvironmentData, ResetAgentEnvironmentError, ResetAgentEnvironmentResponse, RestartSystemData, RestartSystemError, RestartSystemResponse, RestoreAgentData, RestoreAgentError, RestoreAgentResponse, ResumeTaskExecutionData, ResumeTaskExecutionError, ResumeTaskExecutionResponse, ReviewTaskData, ReviewTaskError, ReviewTaskResponse, RevokeRunnerData, RevokeRunnerError, RevokeRunnerResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SaveEmailImapPullData, SaveEmailImapPullError, SaveEmailImapPullResponse, SaveEmailSourceData, SaveEmailSourceError, SaveEmailSourceResponse, SaveGitHubReviewPullData, SaveGitHubReviewPullError, SaveGitHubReviewPullResponse, SaveGitHubWebhookData, SaveGitHubWebhookError, SaveGitHubWebhookResponse, SaveWebhookSourceData, SaveWebhookSourceError, SaveWebhookSourceResponse, SendMessageData, SendMessageError, SendMessageResponse, SetChatEnvironmentData, SetChatEnvironmentError, SetChatEnvironmentResponse, SetChatProjectData, SetChatProjectError, SetChatProjectResponse, SetChatSettingsData, SetChatSettingsError, SetChatSettingsResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPluginData, SetPluginError, SetPluginResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetTelegramData, SetTelegramError, SetTelegramManagerData, SetTelegramManagerError, SetTelegramManagerResponse, SetTelegramResponse, SplitTaskData, SplitTaskError, SplitTaskResponse, StartMcpOAuthData, StartMcpOAuthError, StartMcpOAuthResponse, TestEnvironmentData, TestEnvironmentError, TestEnvironmentResponse, UnarchiveChatData, UnarchiveChatError, UnarchiveChatResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, UpdateEnvironmentData, UpdateEnvironmentError, UpdateEnvironmentResponse, UpdateSystemSettingsData, UpdateSystemSettingsError, UpdateSystemSettingsResponse, UpdateTaskData, UpdateTaskError, UpdateTaskResponse, UpgradeSystemData, UpgradeSystemError, UpgradeSystemResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
 
 /**
  * Bind a GitHub PR to one Task. Optionally add a wait for a review of a specific commit.
@@ -226,11 +226,11 @@ const createQueryKey = <TOptions extends Options>(id: string, options?: TOptions
     return [params];
 };
 
-export const listBoardTasksQueryKey = (options?: Options<ListBoardTasksData>) => createQueryKey('listBoardTasks', options);
+export const listTasksQueryKey = (options?: Options<ListTasksData>) => createQueryKey('listTasks', options);
 
-export const listBoardTasksOptions = (options?: Options<ListBoardTasksData>) => queryOptions<ListBoardTasksResponse, ListBoardTasksError, ListBoardTasksResponse, ReturnType<typeof listBoardTasksQueryKey>>({
+export const listTasksOptions = (options?: Options<ListTasksData>) => queryOptions<ListTasksResponse, ListTasksError, ListTasksResponse, ReturnType<typeof listTasksQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listBoardTasks({
+        const { data } = await listTasks({
             ...options,
             ...queryKey[0],
             signal,
@@ -238,13 +238,13 @@ export const listBoardTasksOptions = (options?: Options<ListBoardTasksData>) => 
         });
         return data;
     },
-    queryKey: listBoardTasksQueryKey(options)
+    queryKey: listTasksQueryKey(options)
 });
 
-export const createBoardTaskMutation = (options?: Partial<Options<CreateBoardTaskData>>): UseMutationOptions<CreateBoardTaskResponse, CreateBoardTaskError, Options<CreateBoardTaskData>> => {
-    const mutationOptions: UseMutationOptions<CreateBoardTaskResponse, CreateBoardTaskError, Options<CreateBoardTaskData>> = {
+export const createTaskMutation = (options?: Partial<Options<CreateTaskData>>): UseMutationOptions<CreateTaskResponse, CreateTaskError, Options<CreateTaskData>> => {
+    const mutationOptions: UseMutationOptions<CreateTaskResponse, CreateTaskError, Options<CreateTaskData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await createBoardTask({
+            const { data } = await createTask({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -255,11 +255,11 @@ export const createBoardTaskMutation = (options?: Partial<Options<CreateBoardTas
     return mutationOptions;
 };
 
-export const getBoardTaskQueryKey = (options: Options<GetBoardTaskData>) => createQueryKey('getBoardTask', options);
+export const getTaskQueryKey = (options: Options<GetTaskData>) => createQueryKey('getTask', options);
 
-export const getBoardTaskOptions = (options: Options<GetBoardTaskData>) => queryOptions<GetBoardTaskResponse, GetBoardTaskError, GetBoardTaskResponse, ReturnType<typeof getBoardTaskQueryKey>>({
+export const getTaskOptions = (options: Options<GetTaskData>) => queryOptions<GetTaskResponse, GetTaskError, GetTaskResponse, ReturnType<typeof getTaskQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getBoardTask({
+        const { data } = await getTask({
             ...options,
             ...queryKey[0],
             signal,
@@ -267,13 +267,13 @@ export const getBoardTaskOptions = (options: Options<GetBoardTaskData>) => query
         });
         return data;
     },
-    queryKey: getBoardTaskQueryKey(options)
+    queryKey: getTaskQueryKey(options)
 });
 
-export const updateBoardTaskMutation = (options?: Partial<Options<UpdateBoardTaskData>>): UseMutationOptions<UpdateBoardTaskResponse, UpdateBoardTaskError, Options<UpdateBoardTaskData>> => {
-    const mutationOptions: UseMutationOptions<UpdateBoardTaskResponse, UpdateBoardTaskError, Options<UpdateBoardTaskData>> = {
+export const updateTaskMutation = (options?: Partial<Options<UpdateTaskData>>): UseMutationOptions<UpdateTaskResponse, UpdateTaskError, Options<UpdateTaskData>> => {
+    const mutationOptions: UseMutationOptions<UpdateTaskResponse, UpdateTaskError, Options<UpdateTaskData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await updateBoardTask({
+            const { data } = await updateTask({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -284,10 +284,10 @@ export const updateBoardTaskMutation = (options?: Partial<Options<UpdateBoardTas
     return mutationOptions;
 };
 
-export const splitBoardTaskMutation = (options?: Partial<Options<SplitBoardTaskData>>): UseMutationOptions<SplitBoardTaskResponse, SplitBoardTaskError, Options<SplitBoardTaskData>> => {
-    const mutationOptions: UseMutationOptions<SplitBoardTaskResponse, SplitBoardTaskError, Options<SplitBoardTaskData>> = {
+export const splitTaskMutation = (options?: Partial<Options<SplitTaskData>>): UseMutationOptions<SplitTaskResponse, SplitTaskError, Options<SplitTaskData>> => {
+    const mutationOptions: UseMutationOptions<SplitTaskResponse, SplitTaskError, Options<SplitTaskData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await splitBoardTask({
+            const { data } = await splitTask({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -298,10 +298,10 @@ export const splitBoardTaskMutation = (options?: Partial<Options<SplitBoardTaskD
     return mutationOptions;
 };
 
-export const addBoardDependencyMutation = (options?: Partial<Options<AddBoardDependencyData>>): UseMutationOptions<AddBoardDependencyResponse, AddBoardDependencyError, Options<AddBoardDependencyData>> => {
-    const mutationOptions: UseMutationOptions<AddBoardDependencyResponse, AddBoardDependencyError, Options<AddBoardDependencyData>> = {
+export const addTaskDependencyMutation = (options?: Partial<Options<AddTaskDependencyData>>): UseMutationOptions<AddTaskDependencyResponse, AddTaskDependencyError, Options<AddTaskDependencyData>> => {
+    const mutationOptions: UseMutationOptions<AddTaskDependencyResponse, AddTaskDependencyError, Options<AddTaskDependencyData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await addBoardDependency({
+            const { data } = await addTaskDependency({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -312,10 +312,10 @@ export const addBoardDependencyMutation = (options?: Partial<Options<AddBoardDep
     return mutationOptions;
 };
 
-export const removeBoardDependencyMutation = (options?: Partial<Options<RemoveBoardDependencyData>>): UseMutationOptions<RemoveBoardDependencyResponse, RemoveBoardDependencyError, Options<RemoveBoardDependencyData>> => {
-    const mutationOptions: UseMutationOptions<RemoveBoardDependencyResponse, RemoveBoardDependencyError, Options<RemoveBoardDependencyData>> = {
+export const removeTaskDependencyMutation = (options?: Partial<Options<RemoveTaskDependencyData>>): UseMutationOptions<RemoveTaskDependencyResponse, RemoveTaskDependencyError, Options<RemoveTaskDependencyData>> => {
+    const mutationOptions: UseMutationOptions<RemoveTaskDependencyResponse, RemoveTaskDependencyError, Options<RemoveTaskDependencyData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await removeBoardDependency({
+            const { data } = await removeTaskDependency({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -326,10 +326,10 @@ export const removeBoardDependencyMutation = (options?: Partial<Options<RemoveBo
     return mutationOptions;
 };
 
-export const createBoardEntryMutation = (options?: Partial<Options<CreateBoardEntryData>>): UseMutationOptions<CreateBoardEntryResponse, CreateBoardEntryError, Options<CreateBoardEntryData>> => {
-    const mutationOptions: UseMutationOptions<CreateBoardEntryResponse, CreateBoardEntryError, Options<CreateBoardEntryData>> = {
+export const createTaskEntryMutation = (options?: Partial<Options<CreateTaskEntryData>>): UseMutationOptions<CreateTaskEntryResponse, CreateTaskEntryError, Options<CreateTaskEntryData>> => {
+    const mutationOptions: UseMutationOptions<CreateTaskEntryResponse, CreateTaskEntryError, Options<CreateTaskEntryData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await createBoardEntry({
+            const { data } = await createTaskEntry({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -340,10 +340,10 @@ export const createBoardEntryMutation = (options?: Partial<Options<CreateBoardEn
     return mutationOptions;
 };
 
-export const reviewBoardTaskMutation = (options?: Partial<Options<ReviewBoardTaskData>>): UseMutationOptions<ReviewBoardTaskResponse, ReviewBoardTaskError, Options<ReviewBoardTaskData>> => {
-    const mutationOptions: UseMutationOptions<ReviewBoardTaskResponse, ReviewBoardTaskError, Options<ReviewBoardTaskData>> = {
+export const reviewTaskMutation = (options?: Partial<Options<ReviewTaskData>>): UseMutationOptions<ReviewTaskResponse, ReviewTaskError, Options<ReviewTaskData>> => {
+    const mutationOptions: UseMutationOptions<ReviewTaskResponse, ReviewTaskError, Options<ReviewTaskData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await reviewBoardTask({
+            const { data } = await reviewTask({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -357,10 +357,10 @@ export const reviewBoardTaskMutation = (options?: Partial<Options<ReviewBoardTas
 /**
  * Attach an external agent. The harness field is required.
  */
-export const attachBoardExecutionMutation = (options?: Partial<Options<AttachBoardExecutionData>>): UseMutationOptions<AttachBoardExecutionResponse, AttachBoardExecutionError, Options<AttachBoardExecutionData>> => {
-    const mutationOptions: UseMutationOptions<AttachBoardExecutionResponse, AttachBoardExecutionError, Options<AttachBoardExecutionData>> = {
+export const attachTaskExecutionMutation = (options?: Partial<Options<AttachTaskExecutionData>>): UseMutationOptions<AttachTaskExecutionResponse, AttachTaskExecutionError, Options<AttachTaskExecutionData>> => {
+    const mutationOptions: UseMutationOptions<AttachTaskExecutionResponse, AttachTaskExecutionError, Options<AttachTaskExecutionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await attachBoardExecution({
+            const { data } = await attachTaskExecution({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -374,10 +374,10 @@ export const attachBoardExecutionMutation = (options?: Partial<Options<AttachBoa
 /**
  * Replace the claim. Supplied binding fields must match the current execution.
  */
-export const resumeBoardExecutionMutation = (options?: Partial<Options<ResumeBoardExecutionData>>): UseMutationOptions<ResumeBoardExecutionResponse, ResumeBoardExecutionError, Options<ResumeBoardExecutionData>> => {
-    const mutationOptions: UseMutationOptions<ResumeBoardExecutionResponse, ResumeBoardExecutionError, Options<ResumeBoardExecutionData>> = {
+export const resumeTaskExecutionMutation = (options?: Partial<Options<ResumeTaskExecutionData>>): UseMutationOptions<ResumeTaskExecutionResponse, ResumeTaskExecutionError, Options<ResumeTaskExecutionData>> => {
+    const mutationOptions: UseMutationOptions<ResumeTaskExecutionResponse, ResumeTaskExecutionError, Options<ResumeTaskExecutionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await resumeBoardExecution({
+            const { data } = await resumeTaskExecution({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -388,11 +388,11 @@ export const resumeBoardExecutionMutation = (options?: Partial<Options<ResumeBoa
     return mutationOptions;
 };
 
-export const listBoardExecutionsQueryKey = (options?: Options<ListBoardExecutionsData>) => createQueryKey('listBoardExecutions', options);
+export const listTaskExecutionsQueryKey = (options?: Options<ListTaskExecutionsData>) => createQueryKey('listTaskExecutions', options);
 
-export const listBoardExecutionsOptions = (options?: Options<ListBoardExecutionsData>) => queryOptions<ListBoardExecutionsResponse, ListBoardExecutionsError, ListBoardExecutionsResponse, ReturnType<typeof listBoardExecutionsQueryKey>>({
+export const listTaskExecutionsOptions = (options?: Options<ListTaskExecutionsData>) => queryOptions<ListTaskExecutionsResponse, ListTaskExecutionsError, ListTaskExecutionsResponse, ReturnType<typeof listTaskExecutionsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listBoardExecutions({
+        const { data } = await listTaskExecutions({
             ...options,
             ...queryKey[0],
             signal,
@@ -400,14 +400,14 @@ export const listBoardExecutionsOptions = (options?: Options<ListBoardExecutions
         });
         return data;
     },
-    queryKey: listBoardExecutionsQueryKey(options)
+    queryKey: listTaskExecutionsQueryKey(options)
 });
 
-export const readBoardExternalTaskQueryKey = (options?: Options<ReadBoardExternalTaskData>) => createQueryKey('readBoardExternalTask', options);
+export const readTaskExternalTaskQueryKey = (options?: Options<ReadTaskExternalTaskData>) => createQueryKey('readTaskExternalTask', options);
 
-export const readBoardExternalTaskOptions = (options?: Options<ReadBoardExternalTaskData>) => queryOptions<ReadBoardExternalTaskResponse, ReadBoardExternalTaskError, ReadBoardExternalTaskResponse, ReturnType<typeof readBoardExternalTaskQueryKey>>({
+export const readTaskExternalTaskOptions = (options?: Options<ReadTaskExternalTaskData>) => queryOptions<ReadTaskExternalTaskResponse, ReadTaskExternalTaskError, ReadTaskExternalTaskResponse, ReturnType<typeof readTaskExternalTaskQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await readBoardExternalTask({
+        const { data } = await readTaskExternalTask({
             ...options,
             ...queryKey[0],
             signal,
@@ -415,13 +415,13 @@ export const readBoardExternalTaskOptions = (options?: Options<ReadBoardExternal
         });
         return data;
     },
-    queryKey: readBoardExternalTaskQueryKey(options)
+    queryKey: readTaskExternalTaskQueryKey(options)
 });
 
-export const postBoardExternalEntryMutation = (options?: Partial<Options<PostBoardExternalEntryData>>): UseMutationOptions<PostBoardExternalEntryResponse, PostBoardExternalEntryError, Options<PostBoardExternalEntryData>> => {
-    const mutationOptions: UseMutationOptions<PostBoardExternalEntryResponse, PostBoardExternalEntryError, Options<PostBoardExternalEntryData>> = {
+export const postTaskExternalEntryMutation = (options?: Partial<Options<PostTaskExternalEntryData>>): UseMutationOptions<PostTaskExternalEntryResponse, PostTaskExternalEntryError, Options<PostTaskExternalEntryData>> => {
+    const mutationOptions: UseMutationOptions<PostTaskExternalEntryResponse, PostTaskExternalEntryError, Options<PostTaskExternalEntryData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await postBoardExternalEntry({
+            const { data } = await postTaskExternalEntry({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -432,10 +432,10 @@ export const postBoardExternalEntryMutation = (options?: Partial<Options<PostBoa
     return mutationOptions;
 };
 
-export const heartbeatBoardExecutionMutation = (options?: Partial<Options<HeartbeatBoardExecutionData>>): UseMutationOptions<HeartbeatBoardExecutionResponse, HeartbeatBoardExecutionError, Options<HeartbeatBoardExecutionData>> => {
-    const mutationOptions: UseMutationOptions<HeartbeatBoardExecutionResponse, HeartbeatBoardExecutionError, Options<HeartbeatBoardExecutionData>> = {
+export const heartbeatTaskExecutionMutation = (options?: Partial<Options<HeartbeatTaskExecutionData>>): UseMutationOptions<HeartbeatTaskExecutionResponse, HeartbeatTaskExecutionError, Options<HeartbeatTaskExecutionData>> => {
+    const mutationOptions: UseMutationOptions<HeartbeatTaskExecutionResponse, HeartbeatTaskExecutionError, Options<HeartbeatTaskExecutionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await heartbeatBoardExecution({
+            const { data } = await heartbeatTaskExecution({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -446,10 +446,10 @@ export const heartbeatBoardExecutionMutation = (options?: Partial<Options<Heartb
     return mutationOptions;
 };
 
-export const finishBoardExecutionMutation = (options?: Partial<Options<FinishBoardExecutionData>>): UseMutationOptions<FinishBoardExecutionResponse, FinishBoardExecutionError, Options<FinishBoardExecutionData>> => {
-    const mutationOptions: UseMutationOptions<FinishBoardExecutionResponse, FinishBoardExecutionError, Options<FinishBoardExecutionData>> = {
+export const finishTaskExecutionMutation = (options?: Partial<Options<FinishTaskExecutionData>>): UseMutationOptions<FinishTaskExecutionResponse, FinishTaskExecutionError, Options<FinishTaskExecutionData>> => {
+    const mutationOptions: UseMutationOptions<FinishTaskExecutionResponse, FinishTaskExecutionError, Options<FinishTaskExecutionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await finishBoardExecution({
+            const { data } = await finishTaskExecution({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -460,86 +460,14 @@ export const finishBoardExecutionMutation = (options?: Partial<Options<FinishBoa
     return mutationOptions;
 };
 
-export const listWorkTasksQueryKey = (options?: Options<ListWorkTasksData>) => createQueryKey('listWorkTasks', options);
-
-export const listWorkTasksOptions = (options?: Options<ListWorkTasksData>) => queryOptions<ListWorkTasksResponse, ListWorkTasksError, ListWorkTasksResponse, ReturnType<typeof listWorkTasksQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listWorkTasks({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: listWorkTasksQueryKey(options)
-});
-
-export const createWorkTaskMutation = (options?: Partial<Options<CreateWorkTaskData>>): UseMutationOptions<CreateWorkTaskResponse, CreateWorkTaskError, Options<CreateWorkTaskData>> => {
-    const mutationOptions: UseMutationOptions<CreateWorkTaskResponse, CreateWorkTaskError, Options<CreateWorkTaskData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await createWorkTask({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const getWorkTaskQueryKey = (options: Options<GetWorkTaskData>) => createQueryKey('getWorkTask', options);
-
-export const getWorkTaskOptions = (options: Options<GetWorkTaskData>) => queryOptions<GetWorkTaskResponse, GetWorkTaskError, GetWorkTaskResponse, ReturnType<typeof getWorkTaskQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getWorkTask({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: getWorkTaskQueryKey(options)
-});
-
-export const setWorkTaskLifecycleMutation = (options?: Partial<Options<SetWorkTaskLifecycleData>>): UseMutationOptions<SetWorkTaskLifecycleResponse, SetWorkTaskLifecycleError, Options<SetWorkTaskLifecycleData>> => {
-    const mutationOptions: UseMutationOptions<SetWorkTaskLifecycleResponse, SetWorkTaskLifecycleError, Options<SetWorkTaskLifecycleData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await setWorkTaskLifecycle({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const appendWorkTaskNoteMutation = (options?: Partial<Options<AppendWorkTaskNoteData>>): UseMutationOptions<AppendWorkTaskNoteResponse, AppendWorkTaskNoteError, Options<AppendWorkTaskNoteData>> => {
-    const mutationOptions: UseMutationOptions<AppendWorkTaskNoteResponse, AppendWorkTaskNoteError, Options<AppendWorkTaskNoteData>> = {
-        mutationFn: async (fnOptions) => {
-            const { data } = await appendWorkTaskNote({
-                ...options,
-                ...fnOptions,
-                throwOnError: true
-            });
-            return data;
-        }
-    };
-    return mutationOptions;
-};
-
-export const getWorkQueryKey = (options?: Options<GetWorkData>) => createQueryKey('getWork', options);
+export const getInboxSummaryQueryKey = (options?: Options<GetInboxSummaryData>) => createQueryKey('getInboxSummary', options);
 
 /**
  * Sessions and automation activity across bots.
  */
-export const getWorkOptions = (options?: Options<GetWorkData>) => queryOptions<GetWorkResponse, GetWorkError, GetWorkResponse, ReturnType<typeof getWorkQueryKey>>({
+export const getInboxSummaryOptions = (options?: Options<GetInboxSummaryData>) => queryOptions<GetInboxSummaryResponse, GetInboxSummaryError, GetInboxSummaryResponse, ReturnType<typeof getInboxSummaryQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getWork({
+        const { data } = await getInboxSummary({
             ...options,
             ...queryKey[0],
             signal,
@@ -547,7 +475,7 @@ export const getWorkOptions = (options?: Options<GetWorkData>) => queryOptions<G
         });
         return data;
     },
-    queryKey: getWorkQueryKey(options)
+    queryKey: getInboxSummaryQueryKey(options)
 });
 
 export const listInboxQueryKey = (options?: Options<ListInboxData>) => createQueryKey('listInbox', options);
@@ -1618,25 +1546,6 @@ export const resetAgentEnvironmentMutation = (options?: Partial<Options<ResetAge
     };
     return mutationOptions;
 };
-
-export const getTurnChatQueryKey = (options: Options<GetTurnChatData>) => createQueryKey('getTurnChat', options);
-
-/**
- * Find the session that holds one input. A result in a parent session and an old `/tasks/<id>` link name a turn of a child session by its input ID. A task from before child sessions uses its task ID, which is the ID of its first input. Reads inputs of any session of this agent, and of a child session of this agent's sessions in another bot. That child names its bot in `agentId`. It returns 404 for any other input of another agent.
- *
- */
-export const getTurnChatOptions = (options: Options<GetTurnChatData>) => queryOptions<GetTurnChatResponse, GetTurnChatError, GetTurnChatResponse, ReturnType<typeof getTurnChatQueryKey>>({
-    queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getTurnChat({
-            ...options,
-            ...queryKey[0],
-            signal,
-            throwOnError: true
-        });
-        return data;
-    },
-    queryKey: getTurnChatQueryKey(options)
-});
 
 export const getMainChatQueryKey = (options: Options<GetMainChatData>) => createQueryKey('getMainChat', options);
 

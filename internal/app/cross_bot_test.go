@@ -526,21 +526,16 @@ func TestUserWebSeesAChildInAnotherBotWithItsBots(t *testing.T) {
 	if one.ParentAgentID != "default" || one.ParentAgentName != "Dex" {
 		t.Fatalf("child in B, chat of B: %+v", one)
 	}
-	// And the link of a result in A opens the child in B: the turn names it with its bot.
+	// And the result in A names the child Session in B that the session list resolves.
 	turn := waitDoneChildTurns(t, s.conn, childB, 1)[0].id
-	var opened crossBotChat
-	s.d.must(t, http.MethodGet, "/api/agents/default/turns/"+turn, nil, &opened)
-	if opened.ID != childB || opened.AgentID != s.b.ID || opened.AgentName != "Coder" {
-		t.Fatalf("turn of the child in B, opened in A: %+v", opened)
-	}
-	// But a turn of a chat in B that is no child of A is not found in A.
-	var unrelated string
-	if err := s.conn.QueryRowContext(t.Context(), `SELECT id FROM submissions WHERE conversation_id = ? AND kind = 'message'`, other.id).Scan(&unrelated); err != nil {
-		t.Fatal(err)
-	}
-	if status, _ := s.d.call(t, http.MethodGet, "/api/agents/default/turns/"+unrelated, nil); status != http.StatusNotFound {
-		t.Fatalf("turn of an unrelated chat in B, opened in A: status %d", status)
-	}
+	s.d.watch(t, parent.id).until(t, "linked cross-Bot result", func(tr *transcript) bool {
+		for _, it := range tr.items {
+			if it.Kind == "task" && it.TaskID == turn {
+				return it.ChildSessionID == childB
+			}
+		}
+		return false
+	})
 }
 
 type botMatch struct {

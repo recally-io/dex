@@ -430,10 +430,45 @@ type SystemSetting struct {
 	UpdateChannel string `json:"update_channel"`
 }
 
+type Task struct {
+	ID                 string         `json:"id"`
+	AssigneeBotID      string         `json:"assignee_bot_id"`
+	Title              string         `json:"title"`
+	CreatedAt          int64          `json:"created_at"`
+	UpdatedAt          int64          `json:"updated_at"`
+	Number             int64          `json:"number"`
+	Status             string         `json:"status"`
+	ParentTaskID       sql.NullString `json:"parent_task_id"`
+	AuthorizedByRootID sql.NullString `json:"authorized_by_root_id"`
+	CreatorKind        string         `json:"creator_kind"`
+	CreatorID          string         `json:"creator_id"`
+	ReviewerKind       string         `json:"reviewer_kind"`
+	ReviewerID         string         `json:"reviewer_id"`
+	ReviewSeq          int64          `json:"review_seq"`
+	NextEntrySeq       int64          `json:"next_entry_seq"`
+	Revision           int64          `json:"revision"`
+}
+
 type TaskDependency struct {
 	TaskID          string `json:"task_id"`
 	DependsOnTaskID string `json:"depends_on_task_id"`
 	CreatedAt       int64  `json:"created_at"`
+}
+
+type TaskEntry struct {
+	ID               int64          `json:"id"`
+	TaskID           string         `json:"task_id"`
+	Seq              int64          `json:"seq"`
+	Kind             string         `json:"kind"`
+	Tag              string         `json:"tag"`
+	ActorKind        string         `json:"actor_kind"`
+	ActorBotID       string         `json:"actor_bot_id"`
+	ActorExecutionID string         `json:"actor_execution_id"`
+	Trust            string         `json:"trust"`
+	EventID          sql.NullString `json:"event_id"`
+	MetaJson         string         `json:"meta_json"`
+	Content          string         `json:"content"`
+	CreatedAt        int64          `json:"created_at"`
 }
 
 type TaskExecution struct {
@@ -469,6 +504,74 @@ type TaskExecutionToken struct {
 	RevokedAt   sql.NullInt64 `json:"revoked_at"`
 	CreatedAt   int64         `json:"created_at"`
 	DispatchID  string        `json:"dispatch_id"`
+}
+
+type TaskInput struct {
+	SubmissionID string `json:"submission_id"`
+	TaskID       string `json:"task_id"`
+}
+
+type TaskNumber struct {
+	Number int64 `json:"number"`
+}
+
+type TaskObject struct {
+	Namespace  string `json:"namespace"`
+	ObjectType string `json:"object_type"`
+	ObjectKey  string `json:"object_key"`
+	TaskID     string `json:"task_id"`
+}
+
+type TaskSourceEvent struct {
+	ID                string         `json:"id"`
+	Namespace         string         `json:"namespace"`
+	ChangeKey         sql.NullString `json:"change_key"`
+	EventType         string         `json:"event_type"`
+	Objects           string         `json:"objects"`
+	Revision          string         `json:"revision"`
+	Content           string         `json:"content"`
+	SourceUrl         string         `json:"source_url"`
+	OccurredAt        int64          `json:"occurred_at"`
+	ReceivedAt        int64          `json:"received_at"`
+	TaskID            sql.NullString `json:"task_id"`
+	Disposition       string         `json:"disposition"`
+	AuthorLogin       string         `json:"author_login"`
+	AuthorAssociation string         `json:"author_association"`
+}
+
+type TaskSourceHold struct {
+	EventID   string         `json:"event_id"`
+	HeldAt    int64          `json:"held_at"`
+	Decision  sql.NullString `json:"decision"`
+	DecidedAt sql.NullInt64  `json:"decided_at"`
+}
+
+type TaskSourceReceipt struct {
+	Namespace  string `json:"namespace"`
+	ReceiptKey string `json:"receipt_key"`
+	EventID    string `json:"event_id"`
+}
+
+type TaskToolOperation struct {
+	Key             string `json:"key"`
+	AgentID         string `json:"agent_id"`
+	ConversationID  int64  `json:"conversation_id"`
+	SourceRequestID string `json:"source_request_id"`
+	Action          string `json:"action"`
+	Result          string `json:"result"`
+}
+
+type TaskWait struct {
+	ID         int64          `json:"id"`
+	TaskID     string         `json:"task_id"`
+	Namespace  string         `json:"namespace"`
+	ObjectType string         `json:"object_type"`
+	ObjectKey  string         `json:"object_key"`
+	EventType  string         `json:"event_type"`
+	Revision   string         `json:"revision"`
+	AfterAt    int64          `json:"after_at"`
+	ResolvedBy sql.NullString `json:"resolved_by"`
+	Alert      int64          `json:"alert"`
 }
 
 type TaskWakeAdmissionSnapshot struct {
@@ -587,107 +690,4 @@ type WechatSetting struct {
 	BaseUrl string `json:"base_url"`
 	BotID   string `json:"bot_id"`
 	Owner   string `json:"owner"`
-}
-
-type WorkSourceEvent struct {
-	ID                string         `json:"id"`
-	Namespace         string         `json:"namespace"`
-	ChangeKey         sql.NullString `json:"change_key"`
-	EventType         string         `json:"event_type"`
-	Objects           string         `json:"objects"`
-	Revision          string         `json:"revision"`
-	Content           string         `json:"content"`
-	SourceUrl         string         `json:"source_url"`
-	OccurredAt        int64          `json:"occurred_at"`
-	ReceivedAt        int64          `json:"received_at"`
-	TaskID            sql.NullString `json:"task_id"`
-	Disposition       string         `json:"disposition"`
-	AuthorLogin       string         `json:"author_login"`
-	AuthorAssociation string         `json:"author_association"`
-}
-
-type WorkSourceHold struct {
-	EventID   string         `json:"event_id"`
-	HeldAt    int64          `json:"held_at"`
-	Decision  sql.NullString `json:"decision"`
-	DecidedAt sql.NullInt64  `json:"decided_at"`
-}
-
-type WorkSourceReceipt struct {
-	Namespace  string `json:"namespace"`
-	ReceiptKey string `json:"receipt_key"`
-	EventID    string `json:"event_id"`
-}
-
-type WorkTask struct {
-	ID                 string         `json:"id"`
-	AssigneeBotID      string         `json:"assignee_bot_id"`
-	Title              string         `json:"title"`
-	CreatedAt          int64          `json:"created_at"`
-	UpdatedAt          int64          `json:"updated_at"`
-	Number             int64          `json:"number"`
-	Status             string         `json:"status"`
-	ParentTaskID       sql.NullString `json:"parent_task_id"`
-	AuthorizedByRootID sql.NullString `json:"authorized_by_root_id"`
-	CreatorKind        string         `json:"creator_kind"`
-	CreatorID          string         `json:"creator_id"`
-	ReviewerKind       string         `json:"reviewer_kind"`
-	ReviewerID         string         `json:"reviewer_id"`
-	ReviewSeq          int64          `json:"review_seq"`
-	NextEntrySeq       int64          `json:"next_entry_seq"`
-	Revision           int64          `json:"revision"`
-}
-
-type WorkTaskEntry struct {
-	ID               int64          `json:"id"`
-	TaskID           string         `json:"task_id"`
-	Seq              int64          `json:"seq"`
-	Kind             string         `json:"kind"`
-	Tag              string         `json:"tag"`
-	ActorKind        string         `json:"actor_kind"`
-	ActorBotID       string         `json:"actor_bot_id"`
-	ActorExecutionID string         `json:"actor_execution_id"`
-	Trust            string         `json:"trust"`
-	EventID          sql.NullString `json:"event_id"`
-	MetaJson         string         `json:"meta_json"`
-	Content          string         `json:"content"`
-	CreatedAt        int64          `json:"created_at"`
-}
-
-type WorkTaskInput struct {
-	SubmissionID string `json:"submission_id"`
-	TaskID       string `json:"task_id"`
-}
-
-type WorkTaskNumber struct {
-	Number int64 `json:"number"`
-}
-
-type WorkTaskObject struct {
-	Namespace  string `json:"namespace"`
-	ObjectType string `json:"object_type"`
-	ObjectKey  string `json:"object_key"`
-	TaskID     string `json:"task_id"`
-}
-
-type WorkTaskToolOperation struct {
-	Key             string `json:"key"`
-	AgentID         string `json:"agent_id"`
-	ConversationID  int64  `json:"conversation_id"`
-	SourceRequestID string `json:"source_request_id"`
-	Action          string `json:"action"`
-	Result          string `json:"result"`
-}
-
-type WorkTaskWait struct {
-	ID         int64          `json:"id"`
-	TaskID     string         `json:"task_id"`
-	Namespace  string         `json:"namespace"`
-	ObjectType string         `json:"object_type"`
-	ObjectKey  string         `json:"object_key"`
-	EventType  string         `json:"event_type"`
-	Revision   string         `json:"revision"`
-	AfterAt    int64          `json:"after_at"`
-	ResolvedBy sql.NullString `json:"resolved_by"`
-	Alert      int64          `json:"alert"`
 }

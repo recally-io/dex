@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 // MaxPayload is the maximum size of one message. The forwarder removes large files first.
@@ -42,7 +42,7 @@ func Namespace(sourceID string) string { return "email/" + sourceID }
 type payload struct {
 	Type       string
 	ChangeKey  string
-	Objects    []worktask.Object
+	Objects    []tasksvc.Object
 	Title      string
 	Content    string
 	OccurredAt time.Time
@@ -50,24 +50,24 @@ type payload struct {
 
 // Accept verifies a delivery and commits its event before it returns the receipt.
 // The delivery ID is the receipt key, and the Message-ID is the change key, so a retry adds nothing.
-func Accept(ctx context.Context, store *worktask.Service, source Source, delivery, signature string, body []byte) (worktask.Receipt, error) {
+func Accept(ctx context.Context, store *tasksvc.Service, source Source, delivery, signature string, body []byte) (tasksvc.Receipt, error) {
 	if len(body) > MaxPayload || delivery == "" {
-		return worktask.Receipt{}, ErrPayload
+		return tasksvc.Receipt{}, ErrPayload
 	}
 	if !plugin.ValidSignature(source.Secret, signature, body) {
-		return worktask.Receipt{}, ErrSignature
+		return tasksvc.Receipt{}, ErrSignature
 	}
 	return accept(ctx, store, source, "delivery:"+delivery, body)
 }
 
 // accept stores one message from the hook or from IMAP Pull. Both use the namespace of the source,
 // so a forwarded and a pulled copy of one message share the change key and add one entry.
-func accept(ctx context.Context, store *worktask.Service, source Source, receiptKey string, body []byte) (worktask.Receipt, error) {
+func accept(ctx context.Context, store *tasksvc.Service, source Source, receiptKey string, body []byte) (tasksvc.Receipt, error) {
 	p, err := parseEmail(body, time.Now())
 	if err != nil {
-		return worktask.Receipt{}, errors.Join(ErrPayload, err)
+		return tasksvc.Receipt{}, errors.Join(ErrPayload, err)
 	}
-	event := worktask.Event{
+	event := tasksvc.Event{
 		Namespace: Namespace(source.ID), ReceiptKey: receiptKey, ChangeKey: p.ChangeKey, Type: p.Type,
 		Objects: p.Objects, Content: p.Content, OccurredAt: p.OccurredAt.UnixMilli(),
 		AuthorAssociation: AuthorClass, HoldUnmatched: source.HoldUnmatched,

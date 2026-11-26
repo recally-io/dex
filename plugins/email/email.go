@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 // EmailReceived is the event type of a forwarded email.
@@ -36,12 +36,12 @@ func parseEmail(body []byte, now time.Time) (payload, error) {
 	// The thread references come newest first, so the cap of 16 objects keeps the closest messages.
 	refs := append(messageIDs(msg.Header.Get("In-Reply-To")), reverse(messageIDs(msg.Header.Get("References")))...)
 	seen := map[string]bool{}
-	var objects []worktask.Object
+	var objects []tasksvc.Object
 	for _, id := range append(own, refs...) {
 		key := objectKey(id)
 		if !seen[key] && len(objects) < 16 {
 			seen[key] = true
-			objects = append(objects, worktask.Object{Type: "message", Key: key})
+			objects = append(objects, tasksvc.Object{Type: "message", Key: key})
 		}
 	}
 	decoder := new(mime.WordDecoder)

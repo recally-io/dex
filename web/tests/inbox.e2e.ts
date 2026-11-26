@@ -5,18 +5,17 @@ import { createClient } from "../src/api/generated/client";
 import {
   createAgent,
   createAutomation,
-  createBoardTask,
-  createWorkTask,
-  splitBoardTask,
+  createTask,
+  splitTask,
   getMainChat,
-  getWorkTask,
+  getTask,
   runAutomation,
   sendMessage,
   updateAgent,
 } from "../src/api/generated/sdk.gen";
 
-test("keeps Tasks on Board and redirects the old Work and Needs you routes", async ({ app, screen }) => {
-  await app.open("/work");
+test("keeps Tasks on Board and owner actions in Inbox", async ({ app, screen }) => {
+  await app.open("/board");
   await expect(screen.getByRole("heading", "Board", { exact: true })).toBeVisible();
   await screen.getByRole("textbox", "Task title").fill("Fix the sign-in flow");
   await screen.getByLabel("Initial status").selectOption({ value: "in_progress" });
@@ -42,7 +41,7 @@ test("keeps Tasks on Board and redirects the old Work and Needs you routes", asy
   await expect(screen.getByRole("link", /Fix the sign-in flow/)).toBeVisible();
   await expect(screen.getByRole("heading", "Held events", { exact: true })).toHaveCount(0);
 
-  await app.open("/needs-you");
+  await app.open("/inbox");
   await expect(screen.getByRole("heading", "Inbox", { exact: true })).toBeVisible();
   await expect(screen.getByRole("textbox", "Task title")).toHaveCount(0);
   await expect(screen.getByRole("link", /Fix the sign-in flow/)).toHaveCount(0);
@@ -57,13 +56,13 @@ test("unblocks a subtask by approving its dependency from Inbox", async ({ app, 
 
   const client = createClient({ baseUrl: origin.origin });
 
-  const { data: parent } = await createBoardTask({
+  const { data: parent } = await createTask({
     client,
     body: { title: "Release a build", assigneeBotId: "default" },
     throwOnError: true,
   });
 
-  const { data: upstream } = await splitBoardTask({
+  const { data: upstream } = await splitTask({
     client,
     path: { taskKey: parent.key },
     body: { title: "Verify the build", status: "in_progress", reviewer: "owner" },
@@ -116,17 +115,16 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
 
   const { data: main } = await getMainChat({ client, path: { agentId: owner.id }, throwOnError: true });
 
-  const { data: task } = await createWorkTask({
+  const { data: task } = await createTask({
     client,
-    path: { agentId: owner.id },
-    body: { title: "Ship a shared Task" },
+    body: { title: "Ship a shared Task", assigneeBotId: owner.id },
     throwOnError: true,
   });
 
-  const path = { agentId: owner.id, taskId: task.id };
-  await app.open(`/a/${owner.id}/inbox/${task.id}`);
+  const path = { taskKey: task.key };
+
+  await app.open(`/board/${task.key}`);
   await expect(screen.getByRole("heading", task.title)).toBeVisible();
-  expect(new URL(await browser.url()).pathname).toMatch(/^\/board\/T-\d+$/);
 
   async function startChild(title: string, bot?: string) {
     await sendMessage({
@@ -134,7 +132,7 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
       path: { agentId: owner.id, chatId: main.id },
       body: {
         id: randomUUID(),
-        workTaskId: task.id,
+        taskId: task.key,
         text: `session_new ${JSON.stringify({ title, bot, message: "Check the change", provider: "faux", modelId: "echo" })}`,
       },
       throwOnError: true,
@@ -147,7 +145,7 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
   const sessions = screen.getByRole("region", "Sessions", { exact: true });
   await expect(sessions.getByText(collaborator.name, { exact: true })).toBeVisible();
   await expect(sessions.getByText("Primary", { exact: true })).toHaveCount(1);
-  const { data: detail } = await getWorkTask({ client, path, throwOnError: true });
+  const { data: detail } = await getTask({ client, path, throwOnError: true });
   const review = detail.sessions.find((session) => session.agentId === collaborator.id);
 
   if (!review) throw new Error("Missing the collaborator Session");

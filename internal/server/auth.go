@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 const sessionCookie = "dex_session"
@@ -19,20 +19,20 @@ const signIn = "sign in with the access token; run `dex token` on the dex host t
 func requireToken(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		bearer, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if boardExternalPath(r) {
+		if taskExternalPath(r) {
 			w.Header().Set("Cache-Control", "no-store")
-			if !strings.HasPrefix(bearer, worktask.BoardTokenPrefix) {
-				writeError(w, http.StatusUnauthorized, worktask.ErrBoardToken.Error())
+			if !strings.HasPrefix(bearer, tasksvc.TaskTokenPrefix) {
+				writeError(w, http.StatusUnauthorized, tasksvc.ErrTaskToken.Error())
 				return
 			}
-			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), boardBearerKey{}, bearer)))
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), taskBearerKey{}, bearer)))
 			return
 		}
-		if boardTokenResponse(r) {
+		if taskTokenResponse(r) {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		public := !strings.HasPrefix(r.URL.Path, "/api/") || r.Method == http.MethodPost && r.URL.Path == "/api/session"
-		if !public && (strings.HasPrefix(bearer, worktask.BoardTokenPrefix) || token != "" && !authorized(r, token)) {
+		if !public && (strings.HasPrefix(bearer, tasksvc.TaskTokenPrefix) || token != "" && !authorized(r, token)) {
 			writeError(w, http.StatusUnauthorized, signIn)
 			return
 		}

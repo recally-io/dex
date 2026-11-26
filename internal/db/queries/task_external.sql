@@ -18,14 +18,14 @@ UPDATE task_executions SET state = 'running', bot_id = @bot_id, lease_epoch = le
   dispatch_id = @dispatch_id, lease_ttl_ms = @lease_ttl_ms
 WHERE id = @id AND kind = 'external_agent' AND state IN ('running', 'stale') RETURNING *;
 
--- name: InsertBoardToken :exec
+-- name: InsertTaskToken :exec
 INSERT INTO task_execution_tokens (token_hash, task_id, execution_id, lease_epoch, created_at, dispatch_id)
 VALUES (?, ?, ?, ?, ?, ?);
 
--- name: RevokeBoardTokens :exec
+-- name: RevokeTaskTokens :exec
 UPDATE task_execution_tokens SET revoked_at = @at WHERE execution_id = @execution_id AND revoked_at IS NULL;
 
--- name: GetBoardToken :one
+-- name: GetTaskToken :one
 SELECT * FROM task_execution_tokens WHERE token_hash = ?;
 
 -- name: WriteExternalExecution :one
@@ -42,11 +42,11 @@ WHERE id = @id AND task_id = @task_id AND state = 'running' AND kind = 'external
 RETURNING *;
 
 -- name: ListExternalTaskEntries :many
-SELECT e.* FROM work_task_entries e
+SELECT e.* FROM task_entries e
 WHERE e.task_id = @task_id AND e.seq > @after_seq
   AND e.kind NOT IN ('external', 'tombstone') AND e.trust <> 'external'
   AND json_extract(e.meta_json, '$.legacyHidden') IS NOT 1
-  AND NOT EXISTS (SELECT 1 FROM work_task_entries r WHERE r.task_id = e.task_id AND r.kind = 'tombstone'
+  AND NOT EXISTS (SELECT 1 FROM task_entries r WHERE r.task_id = e.task_id AND r.kind = 'tombstone'
     AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = e.seq)
 ORDER BY e.seq LIMIT @page_size;
 
@@ -60,9 +60,9 @@ WHERE id IN (SELECT id FROM task_executions WHERE kind = 'external_agent' AND st
   AND lease_expires_at <= @at ORDER BY lease_expires_at, id LIMIT 100)
 RETURNING *;
 
--- name: ListBoardExecutions :many
+-- name: ListTaskExecutions :many
 SELECT sqlc.embed(e), t.number AS task_number, coalesce(r.name, '') AS runner_name
-FROM task_executions e JOIN work_tasks t ON t.id = e.task_id
+FROM task_executions e JOIN tasks t ON t.id = e.task_id
 LEFT JOIN execution_environments r ON r.id = e.machine_id AND r.kind = 'runner'
   AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.environment_id = r.id
     AND p.credential_digest <> '' AND p.credential_digest = e.runner_enrollment)

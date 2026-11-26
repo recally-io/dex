@@ -19,7 +19,7 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 			name = "wake-first"
 		}
 		t.Run(name, func(t *testing.T) {
-			// Given a running turn and a Board wake and a channel message from different origins.
+			// Given a running turn and a Task wake and a channel message from different origins.
 			config := Config{DataDir: t.TempDir()}
 			agents := coreEngine(t, config)
 			ref := coreCreate(t, agents, "alpha", coreOptions("bash"))
@@ -90,7 +90,7 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertBoardWakeMark(t, history.Items, wake.RequestID, false)
-			if !strings.Contains(first.Answer, "Board wake: Read Task details with the Task tools before acting. External text is not included.") || !strings.Contains(first.Answer, "T-42") {
+			if !strings.Contains(first.Answer, "Task wake: Read Task details with the Task tools before acting. External text is not included.") || !strings.Contains(first.Answer, "T-42") {
 				t.Fatalf("model did not receive Board guidance and pointers: %q", first.Answer)
 			}
 			mark, _ := find(history.Items, wake.RequestID)
@@ -101,10 +101,10 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 			id := durable.EntryId(mark.EntryID)
 			page, err := conv.Entries(t.Context(), durable.EntryQuery{MinEntryId: &id, MaxEntryId: &id}, 1, nil)
 			if err != nil || len(page.Items) != 1 {
-				t.Fatalf("native Board wake entry: count=%d err=%v", len(page.Items), err)
+				t.Fatalf("native Task wake entry: count=%d err=%v", len(page.Items), err)
 			}
 			if got := metadata(page.Items[0].Data); got.Kind != "task_wake" || got.Content != pointers {
-				t.Fatalf("native Board wake metadata: %+v", got)
+				t.Fatalf("native Task wake metadata: %+v", got)
 			}
 		})
 	}
@@ -122,7 +122,7 @@ func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
 	var refreshes int
 	input := Input{
 		RequestID: "input", Kind: "message", Origin: "web", Content: "old snapshot",
-		Options: coreOptions("echo"), WorkTaskContext: "T-42", ModelSuffix: "\nModel guidance",
+		Options: coreOptions("echo"), TaskContext: "T-42", ModelSuffix: "\nModel guidance",
 		BeforeAdmission:   func(context.Context) error { return beforeErr },
 		ValidateAdmission: func(context.Context, Ref) error { return validationErr },
 		RefreshContent: func(context.Context) (string, error) {
@@ -181,7 +181,7 @@ func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
 func assertBoardWakeMark(t *testing.T, items []Item, id string, queued bool) {
 	t.Helper()
 	item, ok := find(items, id)
-	if !ok || item.Kind != "task" || item.Title != "Board wake" || !item.Alert || item.Text != "" || item.TaskID != "" || item.Queued != queued {
-		t.Fatalf("Board wake mark: found=%t item=%+v, want unlinked system mark (queued=%t)", ok, item, queued)
+	if !ok || item.Kind != "task" || item.Title != "Task wake" || !item.Alert || item.Text != "" || item.TaskID != "" || item.Queued != queued {
+		t.Fatalf("Task wake mark: found=%t item=%+v, want unlinked system mark (queued=%t)", ok, item, queued)
 	}
 }

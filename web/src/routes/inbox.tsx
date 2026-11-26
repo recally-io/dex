@@ -4,8 +4,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { InboxItem } from "../api/generated/types.gen";
 import { readInboxItem, dismissInboxItem } from "../api/generated/sdk.gen";
 import { listAgentsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { refreshWork } from "../lib/queries";
-import { attentionItems, workOptions } from "../lib/work";
+import { refreshInbox } from "../lib/queries";
+import { attentionItems, inboxSummaryOptions } from "../lib/inbox-summary";
 import { type Continuation, continueResult, inboxOptions, resultQuote } from "../lib/inbox";
 import { Empty, FramedPage, Section } from "../components/page";
 import { Failure, Loading } from "../components/feedback";
@@ -16,17 +16,17 @@ import { HeldEvents } from "../components/held-events";
 const actionClass = buttonVariants({ variant: "secondary", size: "sm" });
 
 export function InboxPage() {
-  const work = useQuery(workOptions());
+  const summary = useQuery(inboxSummaryOptions());
   const agents = useQuery(listAgentsOptions());
-  const { questions, results, setup, taskReviews } = attentionItems(work.data);
+  const { questions, results, setup, taskReviews } = attentionItems(summary.data);
 
   const botName = (agentId: string) =>
     agents.data?.agents.find((agent) => agent.id === agentId)?.name ?? agentId;
 
   return (
     <FramedPage title="Inbox" description="Review items that need your attention.">
-      {work.isPending ? <Loading /> : null}
-      {work.isError ? <Failure title="Could not load bot attention items" error={work.error} /> : null}
+      {summary.isPending ? <Loading /> : null}
+      {summary.isError ? <Failure title="Could not load bot attention items" error={summary.error} /> : null}
       {questions.length > 0 ? (
         <Section title="Questions">
           <ul className="divide-y divide-border">
@@ -109,7 +109,7 @@ export function InboxPage() {
           </ul>
         </Section>
       ) : null}
-      {work.isSuccess && !questions.length && !results.length && !setup.length && !taskReviews.length ? (
+      {summary.isSuccess && !questions.length && !results.length && !setup.length && !taskReviews.length ? (
         <Empty title="No bot items need attention">
           New questions, Task reviews, and Automation items appear here.
         </Empty>
@@ -140,7 +140,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
   const read = useMutation({
     mutationFn: async (runId: string) => {
       await readInboxItem({ path: { runId }, throwOnError: true });
-      await refreshWork();
+      await refreshInbox();
     },
   });
 
@@ -155,7 +155,7 @@ function InboxDetail({ item, pending, error }: { item?: InboxItem; pending: bool
   const done = useMutation({
     mutationFn: async (result: InboxItem) => {
       await dismissInboxItem({ path: { runId: result.runId }, throwOnError: true });
-      await refreshWork();
+      await refreshInbox();
       await navigate({ to: "/inbox" });
     },
   });

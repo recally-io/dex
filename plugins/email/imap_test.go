@@ -20,7 +20,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/email/store"
 )
 
@@ -118,7 +118,7 @@ func TestUserPullsAnEmailThreadFromAnIMAPFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := store.New(conn)
-	tasks := worktask.New(conn, nil)
+	tasks := tasksvc.New(conn, nil)
 	secret := strings.Repeat("m", 40)
 	if _, err := q.SaveEmailSource(ctx, store.SaveEmailSourceParams{ID: "mail", Secret: secret, TaskAgentID: sqlNull("default"), HoldUnmatched: 1}); err != nil {
 		t.Fatal(err)
@@ -161,19 +161,19 @@ func TestUserPullsAnEmailThreadFromAnIMAPFolder(t *testing.T) {
 	check()
 
 	// Then one Task follows the thread, with one entry per message.
-	list, err := tasks.List(ctx, false)
+	list, err := tasks.ListTasks(ctx, tasksvc.Filter{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 || list[0].Title != "Contract review" {
+	if len(list) != 1 || list[0].Task.Title != "Contract review" {
 		t.Fatalf("only the new thread must open a Task: %+v", list)
 	}
-	detail, err := tasks.Detail(ctx, "default", list[0].ID)
+	detail, err := tasks.Detail(ctx, list[0].Task.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("artifact: entries=%+v", detail.Entries)
-	if len(detail.Entries) != 2 || !strings.Contains(detail.Entries[0].Content, "I approve.") {
+	if len(detail.Entries) != 2 || !strings.Contains(detail.Entries[1].Content, "I approve.") {
 		t.Fatalf("the reply must add one entry, from Pull or the hook: %+v", detail.Entries)
 	}
 	// The bad messages did not stop the folder, and Pull did not mark anything as read.
@@ -197,7 +197,7 @@ func TestUserPullsAnEmailThreadFromAnIMAPFolder(t *testing.T) {
 	if _, last := cursor(); last != 6 {
 		t.Fatalf("the next run must read the message: %d", last)
 	}
-	detail, err = tasks.Detail(ctx, "default", list[0].ID)
+	detail, err = tasks.Detail(ctx, list[0].Task.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

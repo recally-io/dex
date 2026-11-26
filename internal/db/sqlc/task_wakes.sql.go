@@ -10,7 +10,7 @@ import (
 )
 
 const clearTaskWakeAssociation = `-- name: ClearTaskWakeAssociation :exec
-DELETE FROM work_task_inputs WHERE submission_id = ?
+DELETE FROM task_inputs WHERE submission_id = ?
 `
 
 func (q *Queries) ClearTaskWakeAssociation(ctx context.Context, submissionID string) error {
@@ -19,8 +19,8 @@ func (q *Queries) ClearTaskWakeAssociation(ctx context.Context, submissionID str
 }
 
 const copyTaskWakeAssociation = `-- name: CopyTaskWakeAssociation :exec
-INSERT INTO work_task_inputs (submission_id, task_id)
-SELECT ?1, i.task_id FROM work_task_inputs i WHERE i.submission_id = ?2
+INSERT INTO task_inputs (submission_id, task_id)
+SELECT ?1, i.task_id FROM task_inputs i WHERE i.submission_id = ?2
 `
 
 type CopyTaskWakeAssociationParams struct {
@@ -55,20 +55,32 @@ func (q *Queries) CreateTaskWake(ctx context.Context, arg CreateTaskWakeParams) 
 	return err
 }
 
-const ensureWorkTaskMain = `-- name: EnsureWorkTaskMain :exec
+const ensureTaskMain = `-- name: EnsureTaskMain :exec
 INSERT INTO conversations (agent_id, channel_key, title, created_at)
 SELECT a.id, 'main', a.name, ?1 FROM agents a WHERE a.id = ?2 AND a.archived_at IS NULL
 ON CONFLICT (agent_id, channel_key) DO NOTHING
 `
 
-type EnsureWorkTaskMainParams struct {
+type EnsureTaskMainParams struct {
 	CreatedAt int64  `json:"created_at"`
 	AgentID   string `json:"agent_id"`
 }
 
-func (q *Queries) EnsureWorkTaskMain(ctx context.Context, arg EnsureWorkTaskMainParams) error {
-	_, err := q.db.ExecContext(ctx, ensureWorkTaskMain, arg.CreatedAt, arg.AgentID)
+func (q *Queries) EnsureTaskMain(ctx context.Context, arg EnsureTaskMainParams) error {
+	_, err := q.db.ExecContext(ctx, ensureTaskMain, arg.CreatedAt, arg.AgentID)
 	return err
+}
+
+const getTaskMain = `-- name: GetTaskMain :one
+SELECT c.id FROM conversations c JOIN agents a ON a.id = c.agent_id
+WHERE c.agent_id = ? AND c.channel_key = 'main' AND c.archived_at IS NULL AND a.archived_at IS NULL
+`
+
+func (q *Queries) GetTaskMain(ctx context.Context, agentID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getTaskMain, agentID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getUnadmittedTaskWake = `-- name: GetUnadmittedTaskWake :one
@@ -114,18 +126,6 @@ func (q *Queries) GetUnadmittedTaskWake(ctx context.Context, conversationID int6
 		&i.Kind,
 	)
 	return i, err
-}
-
-const getWorkTaskMain = `-- name: GetWorkTaskMain :one
-SELECT c.id FROM conversations c JOIN agents a ON a.id = c.agent_id
-WHERE c.agent_id = ? AND c.channel_key = 'main' AND c.archived_at IS NULL AND a.archived_at IS NULL
-`
-
-func (q *Queries) GetWorkTaskMain(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getWorkTaskMain, agentID)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
 }
 
 const updateUnadmittedTaskWake = `-- name: UpdateUnadmittedTaskWake :exec

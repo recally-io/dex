@@ -1,12 +1,11 @@
 import { useAgentSettings, useAgentId } from "../lib/agent-scope";
 import { useState } from "react";
-import { Link, Navigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ChevronRight, MessageCircle, Clock3 } from "lucide-react";
 import type { Chat } from "../api/generated/types.gen";
 import {
   getMainChatOptions,
-  getTurnChatOptions,
   listChatsOptions,
   archiveChatMutation,
   unarchiveChatMutation,
@@ -183,31 +182,5 @@ function SessionRow({ chat, parent }: { chat: Chat; parent?: string }) {
       ) : null}
       <ChevronRight size={16} className="shrink-0 text-muted-foreground" />
     </li>
-  );
-}
-
-/** An old task link and a result link name a turn. They open the session that holds it. */
-export function TurnPage({ turnId }: { turnId: string }) {
-  const agentId = useAgentId();
-  const turn = useQuery(getTurnChatOptions({ path: { agentId, turnId } }));
-
-  if (turn.data)
-    // A result of a child in another bot opens the session in that bot.
-    return (
-      <Navigate
-        to="/a/$agentId/c/$chatId"
-        params={{ agentId: sessionAgentId(turn.data, agentId), chatId: String(turn.data.id) }}
-        replace
-      />
-    );
-
-  return (
-    <FramedPage title="Session">
-      {turn.isError ? (
-        <Failure title="Could not find the session" error={turn.error} retry={() => void turn.refetch()} />
-      ) : (
-        <Loading />
-      )}
-    </FramedPage>
   );
 }

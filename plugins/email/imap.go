@@ -15,7 +15,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/email/store"
 )
 
@@ -61,7 +61,7 @@ func loopback(host string) bool {
 
 type puller struct {
 	q     *store.Queries
-	tasks *worktask.Service
+	tasks *tasksvc.Service
 }
 
 // Check reads new messages of each configured folder. A failure of one source does not stop the others.
@@ -149,7 +149,7 @@ func (p *puller) accept(ctx context.Context, c *imapclient.Client, source Source
 	}
 	body := msgs[0].FindBodySection(section)
 	_, err = accept(ctx, p.tasks, source, fmt.Sprintf("imap:%d:%d", validity, m.UID), body)
-	if errors.Is(err, ErrPayload) || errors.Is(err, worktask.ErrInvalid) {
+	if errors.Is(err, ErrPayload) || errors.Is(err, tasksvc.ErrInvalid) {
 		slog.Warn("skip an email that is not a valid message", "source", source.ID, "uid", m.UID, "err", err)
 		return nil
 	}

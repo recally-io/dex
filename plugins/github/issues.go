@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
-func acceptIssue(ctx context.Context, store *worktask.Service, repositoryID int64, receiptKey string, body []byte, rule Rule) (*worktask.Receipt, error) {
+func acceptIssue(ctx context.Context, store *tasksvc.Service, repositoryID int64, receiptKey string, body []byte, rule Rule) (*tasksvc.Receipt, error) {
 	var payload struct {
 		Action     string `json:"action"`
 		Repository struct {
@@ -42,13 +42,13 @@ func acceptIssue(ctx context.Context, store *worktask.Service, repositoryID int6
 	}
 	number := strconv.FormatInt(issue.Number, 10)
 	content := []rune(strings.TrimSpace(issue.Title + "\n\n" + issue.Body))
-	event := worktask.Event{
+	event := tasksvc.Event{
 		Namespace: Namespace(repositoryID), ReceiptKey: receiptKey, ChangeKey: "issue.opened:" + strconv.FormatInt(issue.ID, 10), Type: "issue.opened",
-		Objects: []worktask.Object{{Type: "issue", Key: number}}, OccurredAt: issue.CreatedAt.UnixMilli(),
+		Objects: []tasksvc.Object{{Type: "issue", Key: number}}, OccurredAt: issue.CreatedAt.UnixMilli(),
 		Content: string(content[:min(len(content), 32000)]), SourceURL: issue.URL,
 		AuthorLogin: issue.User.Login, AuthorAssociation: issue.Association, RecordOnly: !issue.trusted(), HoldUnmatched: rule.HoldUnmatched,
 	}
-	var receipt worktask.Receipt
+	var receipt tasksvc.Receipt
 	var err error
 	if rule.IssueAgentID == "" {
 		receipt, err = store.Accept(ctx, event)

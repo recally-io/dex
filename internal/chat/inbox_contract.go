@@ -9,7 +9,7 @@ const (
 	ProducerSubSession = "sub_session"
 	// ProducerScheduler identifies routines, dreams, Monitor wake-ups, and Process wake-ups.
 	ProducerScheduler = "scheduler"
-	// ProducerPlugin identifies external trigger inputs such as work-task alerts.
+	// ProducerPlugin identifies external trigger inputs such as Task alerts.
 	ProducerPlugin = "plugin"
 )
 

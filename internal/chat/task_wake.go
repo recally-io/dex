@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/recally-io/dex/internal/db/sqlc"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 // snapshotTaskWake runs only before a new native admission. A replay must keep
@@ -49,14 +49,14 @@ func (s *Service) markTaskWakeAdmitted(ctx context.Context, id string) error {
 	if changed {
 		// The later cursor can include more events for an existing key and reason.
 		// Requeue the full pointer set so no reason is lost at the boundary.
-		if err := worktask.RequeueTaskWake(ctx, q, latest, now); err != nil {
+		if err := tasksvc.RequeueTaskWake(ctx, q, latest, now); err != nil {
 			return err
 		}
 		if err := q.ClearTaskWakeAssociation(ctx, id); err != nil {
 			return err
 		}
 		if snapshot.TaskID.Valid {
-			if err := q.AssociateWorkTaskInput(ctx, sqlc.AssociateWorkTaskInputParams{
+			if err := q.AssociateTaskInput(ctx, sqlc.AssociateTaskInputParams{
 				SubmissionID: id, TaskID: snapshot.TaskID.String,
 			}); err != nil {
 				return err

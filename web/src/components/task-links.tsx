@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import type { WorkTaskLink, WorkTaskWait } from "../api/generated/types.gen";
+import type { TaskLink, TaskWait } from "../api/generated/types.gen";
 import { Section } from "./page";
 
-function waitState(wait: WorkTaskWait, open: boolean) {
+function waitState(wait: TaskWait, open: boolean) {
   if (wait.resolved) return "Received";
 
   return open ? "Waiting" : "Paused";
@@ -15,7 +15,7 @@ export function TaskLinks({
   open,
   children,
 }: {
-  links: WorkTaskLink[];
+  links: TaskLink[];
   open: boolean;
   children?: ReactNode;
 }) {

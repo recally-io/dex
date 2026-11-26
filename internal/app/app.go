@@ -35,10 +35,10 @@ import (
 	"github.com/recally-io/dex/internal/server"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
+	tasksvc "github.com/recally-io/dex/internal/task"
+	tasktools "github.com/recally-io/dex/internal/task/tools"
 	"github.com/recally-io/dex/internal/upload"
 	"github.com/recally-io/dex/internal/vault"
-	"github.com/recally-io/dex/internal/worktask"
-	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
 )
 
 // DefaultAgentID is the agent that the web UI talks to.
@@ -147,15 +147,15 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		jobs.Close()
 		return nil, errors.Join(err, conn.Close())
 	}
-	workTasks := worktask.New(conn, func(id int64) { chats.WakeConversation(id) })
-	if err := workTasks.ExtendActiveLeasesOnStartup(ctx, time.Now(), worktask.ExternalLeaseTTL); err != nil {
+	tasks := tasksvc.New(conn, func(id int64) { chats.WakeConversation(id) })
+	if err := tasks.ExtendActiveLeasesOnStartup(ctx, time.Now(), tasksvc.ExternalLeaseTTL); err != nil {
 		cancel()
 		jobs.Close()
 		return nil, errors.Join(err, conn.Close())
 	}
-	boardEvents := new(worktask.Broker)
-	workTasks.SetOnEntry(boardEvents.Publish)
-	plugins, available, pluginErrors, err := startPlugins(ctx, q, cfg.Plugins, plugin.Deps{DB: conn, WorkTasks: workTasks})
+	taskEvents := new(tasksvc.Broker)
+	tasks.SetOnEntry(taskEvents.Publish)
+	plugins, available, pluginErrors, err := startPlugins(ctx, q, cfg.Plugins, plugin.Deps{DB: conn, Tasks: tasks})
 	if err != nil {
 		cancel()
 		jobs.Close()
@@ -164,8 +164,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	// These tools bind to services that exist only after the engine.
 	botTools := &agent.BotTools{}
 	var channelTools agent.ChannelTools
-	taskToolService := worktasktools.New(conn)
-	taskToolService.ConfigureWorkTasks(workTasks)
+	taskToolService := tasktools.New(conn)
+	taskToolService.ConfigureTasks(tasks)
 	taskTools := taskToolService.Handlers(pluginTools(plugins))
 	deliverArtifact := func(ctx context.Context, caller engine.TaskContext, path string) (artifact.Delivery, error) {
 		result, err := artifacts.Deliver(ctx, caller, path)
@@ -234,11 +234,11 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 				},
 			})...)
 			mainTaskTools := taskTools
-			mainTaskTools.Dispatch = func(ctx context.Context, c engine.TaskContext, args worktasktools.DispatchArgs) (worktasktools.DispatchResult, error) {
+			mainTaskTools.Dispatch = func(ctx context.Context, c engine.TaskContext, args tasktools.DispatchArgs) (tasktools.DispatchResult, error) {
 				return taskToolService.DispatchExternal(ctx, c, args, rt, chats.ToolProcessStart)
 			}
-			optional = append(optional, worktasktools.WorkTaskExtension(id, mainTaskTools), chat.ChildExtension(),
-				worktasktools.ChildWorkTaskExtension(id, taskTools),
+			optional = append(optional, tasktools.TaskExtension(id, mainTaskTools), chat.ChildExtension(),
+				tasktools.ChildTaskExtension(id, taskTools),
 				chat.DreamMessageExtension(id, chats.ToolReadDreamMessage), chat.RoutineCheckInstructions())
 			return engine.ExtensionSet{
 				Before: map[string][]*engine.Extension{
@@ -277,17 +277,17 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	bg.ConfigureEnvOpener(native.ExecEnv)
 	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) {
 		hub.Changed(id)
-		if boardEvents.HasSubscribers() {
-			linked, err := q.HasBoardConversation(runCtx, sql.NullInt64{Int64: id, Valid: true})
+		if taskEvents.HasSubscribers() {
+			linked, err := q.HasTaskConversation(runCtx, sql.NullInt64{Int64: id, Valid: true})
 			if err != nil && runCtx.Err() == nil {
-				slog.Error("check Board conversation", "err", err)
+				slog.Error("check Task conversation", "err", err)
 			}
 			if linked {
-				boardEvents.Publish(0)
+				taskEvents.Publish(0)
 			}
 		}
 	})
-	chats.ConfigureWorkTasks(workTasks)
+	chats.ConfigureTasks(tasks)
 	chats.ConfigureBackground(bg)
 	automations := automation.New(q, chats, time.Now)
 	automations.ConfigureEnvironmentStatus(envs.Status)
@@ -444,8 +444,8 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	})
 	a.handler = server.New(server.Config{
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
-		WorkTasks:       workTasks,
-		BoardEvents:     boardEvents,
+		Tasks:           tasks,
+		TaskEvents:      taskEvents,
 		Plugins:         plugins, AvailablePlugins: available, PluginErrors: pluginErrors,
 		Engine: native,
 		Envs:   envs,
@@ -461,7 +461,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Chats:       chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
 	a.wg.Go(func() { chats.Run(runCtx) })
-	a.wg.Go(func() { workTasks.RunLeaseWatchdog(runCtx) })
+	a.wg.Go(func() { tasks.RunLeaseWatchdog(runCtx) })
 	a.wg.Go(func() { runReloads(runCtx, native, chats) })
 	a.wg.Go(func() {
 		select {

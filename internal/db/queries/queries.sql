@@ -180,7 +180,7 @@ JOIN conversations c ON c.id = s.conversation_id
 WHERE s.id = ?;
 
 -- name: ListPendingSubmissions :many
--- SQLite assigns rowids under the writer lock. Keep receipt order, with Board wakes last.
+-- SQLite assigns rowids under the writer lock. Keep receipt order, with Task wakes last.
 SELECT
     s.id,
     s.content,

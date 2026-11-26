@@ -144,25 +144,6 @@ func (q *Queries) ExtendActiveExternalLeases(ctx context.Context, expiresAt inte
 	return err
 }
 
-const getBoardToken = `-- name: GetBoardToken :one
-SELECT token_hash, task_id, execution_id, lease_epoch, revoked_at, created_at, dispatch_id FROM task_execution_tokens WHERE token_hash = ?
-`
-
-func (q *Queries) GetBoardToken(ctx context.Context, tokenHash string) (TaskExecutionToken, error) {
-	row := q.db.QueryRowContext(ctx, getBoardToken, tokenHash)
-	var i TaskExecutionToken
-	err := row.Scan(
-		&i.TokenHash,
-		&i.TaskID,
-		&i.ExecutionID,
-		&i.LeaseEpoch,
-		&i.RevokedAt,
-		&i.CreatedAt,
-		&i.DispatchID,
-	)
-	return i, err
-}
-
 const getExternalExecution = `-- name: GetExternalExecution :one
 SELECT id, task_id, bot_id, kind, conversation_id, turn_request_id, is_primary, harness, machine_id, host_meta_json, workspace_path, git_branch, external_session_id, state, lease_epoch, lease_expires_at, last_heartbeat_at, started_at, ended_at, dispatch_id, lease_ttl_ms, runner_enrollment FROM task_executions WHERE id = ? AND kind = 'external_agent'
 `
@@ -208,12 +189,31 @@ func (q *Queries) GetTaskDispatch(ctx context.Context, dispatchID string) (bool,
 	return exists, err
 }
 
-const insertBoardToken = `-- name: InsertBoardToken :exec
+const getTaskToken = `-- name: GetTaskToken :one
+SELECT token_hash, task_id, execution_id, lease_epoch, revoked_at, created_at, dispatch_id FROM task_execution_tokens WHERE token_hash = ?
+`
+
+func (q *Queries) GetTaskToken(ctx context.Context, tokenHash string) (TaskExecutionToken, error) {
+	row := q.db.QueryRowContext(ctx, getTaskToken, tokenHash)
+	var i TaskExecutionToken
+	err := row.Scan(
+		&i.TokenHash,
+		&i.TaskID,
+		&i.ExecutionID,
+		&i.LeaseEpoch,
+		&i.RevokedAt,
+		&i.CreatedAt,
+		&i.DispatchID,
+	)
+	return i, err
+}
+
+const insertTaskToken = `-- name: InsertTaskToken :exec
 INSERT INTO task_execution_tokens (token_hash, task_id, execution_id, lease_epoch, created_at, dispatch_id)
 VALUES (?, ?, ?, ?, ?, ?)
 `
 
-type InsertBoardTokenParams struct {
+type InsertTaskTokenParams struct {
 	TokenHash   string `json:"token_hash"`
 	TaskID      string `json:"task_id"`
 	ExecutionID string `json:"execution_id"`
@@ -222,8 +222,8 @@ type InsertBoardTokenParams struct {
 	DispatchID  string `json:"dispatch_id"`
 }
 
-func (q *Queries) InsertBoardToken(ctx context.Context, arg InsertBoardTokenParams) error {
-	_, err := q.db.ExecContext(ctx, insertBoardToken,
+func (q *Queries) InsertTaskToken(ctx context.Context, arg InsertTaskTokenParams) error {
+	_, err := q.db.ExecContext(ctx, insertTaskToken,
 		arg.TokenHash,
 		arg.TaskID,
 		arg.ExecutionID,
@@ -234,9 +234,62 @@ func (q *Queries) InsertBoardToken(ctx context.Context, arg InsertBoardTokenPara
 	return err
 }
 
-const listBoardExecutions = `-- name: ListBoardExecutions :many
+const listExternalTaskEntries = `-- name: ListExternalTaskEntries :many
+SELECT e.id, e.task_id, e.seq, e.kind, e.tag, e.actor_kind, e.actor_bot_id, e.actor_execution_id, e.trust, e.event_id, e.meta_json, e.content, e.created_at FROM task_entries e
+WHERE e.task_id = ?1 AND e.seq > ?2
+  AND e.kind NOT IN ('external', 'tombstone') AND e.trust <> 'external'
+  AND json_extract(e.meta_json, '$.legacyHidden') IS NOT 1
+  AND NOT EXISTS (SELECT 1 FROM task_entries r WHERE r.task_id = e.task_id AND r.kind = 'tombstone'
+    AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = e.seq)
+ORDER BY e.seq LIMIT ?3
+`
+
+type ListExternalTaskEntriesParams struct {
+	TaskID   string `json:"task_id"`
+	AfterSeq int64  `json:"after_seq"`
+	PageSize int64  `json:"page_size"`
+}
+
+func (q *Queries) ListExternalTaskEntries(ctx context.Context, arg ListExternalTaskEntriesParams) ([]TaskEntry, error) {
+	rows, err := q.db.QueryContext(ctx, listExternalTaskEntries, arg.TaskID, arg.AfterSeq, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []TaskEntry{}
+	for rows.Next() {
+		var i TaskEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.TaskID,
+			&i.Seq,
+			&i.Kind,
+			&i.Tag,
+			&i.ActorKind,
+			&i.ActorBotID,
+			&i.ActorExecutionID,
+			&i.Trust,
+			&i.EventID,
+			&i.MetaJson,
+			&i.Content,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTaskExecutions = `-- name: ListTaskExecutions :many
 SELECT e.id, e.task_id, e.bot_id, e.kind, e.conversation_id, e.turn_request_id, e.is_primary, e.harness, e.machine_id, e.host_meta_json, e.workspace_path, e.git_branch, e.external_session_id, e.state, e.lease_epoch, e.lease_expires_at, e.last_heartbeat_at, e.started_at, e.ended_at, e.dispatch_id, e.lease_ttl_ms, e.runner_enrollment, t.number AS task_number, coalesce(r.name, '') AS runner_name
-FROM task_executions e JOIN work_tasks t ON t.id = e.task_id
+FROM task_executions e JOIN tasks t ON t.id = e.task_id
 LEFT JOIN execution_environments r ON r.id = e.machine_id AND r.kind = 'runner'
   AND EXISTS (SELECT 1 FROM runner_pairing p WHERE p.environment_id = r.id
     AND p.credential_digest <> '' AND p.credential_digest = e.runner_enrollment)
@@ -247,21 +300,21 @@ WHERE (CAST(?1 AS TEXT) = '' OR e.task_id = ?1)
 ORDER BY e.started_at DESC, e.id DESC
 `
 
-type ListBoardExecutionsParams struct {
+type ListTaskExecutionsParams struct {
 	TaskID          string `json:"task_id"`
 	MachineIDFilter string `json:"machine_id_filter"`
 	KindFilter      string `json:"kind_filter"`
 	StateFilter     string `json:"state_filter"`
 }
 
-type ListBoardExecutionsRow struct {
+type ListTaskExecutionsRow struct {
 	TaskExecution TaskExecution `json:"task_execution"`
 	TaskNumber    int64         `json:"task_number"`
 	RunnerName    string        `json:"runner_name"`
 }
 
-func (q *Queries) ListBoardExecutions(ctx context.Context, arg ListBoardExecutionsParams) ([]ListBoardExecutionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listBoardExecutions,
+func (q *Queries) ListTaskExecutions(ctx context.Context, arg ListTaskExecutionsParams) ([]ListTaskExecutionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskExecutions,
 		arg.TaskID,
 		arg.MachineIDFilter,
 		arg.KindFilter,
@@ -271,9 +324,9 @@ func (q *Queries) ListBoardExecutions(ctx context.Context, arg ListBoardExecutio
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListBoardExecutionsRow{}
+	items := []ListTaskExecutionsRow{}
 	for rows.Next() {
-		var i ListBoardExecutionsRow
+		var i ListTaskExecutionsRow
 		if err := rows.Scan(
 			&i.TaskExecution.ID,
 			&i.TaskExecution.TaskID,
@@ -299,59 +352,6 @@ func (q *Queries) ListBoardExecutions(ctx context.Context, arg ListBoardExecutio
 			&i.TaskExecution.RunnerEnrollment,
 			&i.TaskNumber,
 			&i.RunnerName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listExternalTaskEntries = `-- name: ListExternalTaskEntries :many
-SELECT e.id, e.task_id, e.seq, e.kind, e.tag, e.actor_kind, e.actor_bot_id, e.actor_execution_id, e.trust, e.event_id, e.meta_json, e.content, e.created_at FROM work_task_entries e
-WHERE e.task_id = ?1 AND e.seq > ?2
-  AND e.kind NOT IN ('external', 'tombstone') AND e.trust <> 'external'
-  AND json_extract(e.meta_json, '$.legacyHidden') IS NOT 1
-  AND NOT EXISTS (SELECT 1 FROM work_task_entries r WHERE r.task_id = e.task_id AND r.kind = 'tombstone'
-    AND CAST(json_extract(r.meta_json, '$.targetSeq') AS INTEGER) = e.seq)
-ORDER BY e.seq LIMIT ?3
-`
-
-type ListExternalTaskEntriesParams struct {
-	TaskID   string `json:"task_id"`
-	AfterSeq int64  `json:"after_seq"`
-	PageSize int64  `json:"page_size"`
-}
-
-func (q *Queries) ListExternalTaskEntries(ctx context.Context, arg ListExternalTaskEntriesParams) ([]WorkTaskEntry, error) {
-	rows, err := q.db.QueryContext(ctx, listExternalTaskEntries, arg.TaskID, arg.AfterSeq, arg.PageSize)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []WorkTaskEntry{}
-	for rows.Next() {
-		var i WorkTaskEntry
-		if err := rows.Scan(
-			&i.ID,
-			&i.TaskID,
-			&i.Seq,
-			&i.Kind,
-			&i.Tag,
-			&i.ActorKind,
-			&i.ActorBotID,
-			&i.ActorExecutionID,
-			&i.Trust,
-			&i.EventID,
-			&i.MetaJson,
-			&i.Content,
-			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -419,17 +419,17 @@ func (q *Queries) ResumeExternalExecution(ctx context.Context, arg ResumeExterna
 	return i, err
 }
 
-const revokeBoardTokens = `-- name: RevokeBoardTokens :exec
+const revokeTaskTokens = `-- name: RevokeTaskTokens :exec
 UPDATE task_execution_tokens SET revoked_at = ?1 WHERE execution_id = ?2 AND revoked_at IS NULL
 `
 
-type RevokeBoardTokensParams struct {
+type RevokeTaskTokensParams struct {
 	At          sql.NullInt64 `json:"at"`
 	ExecutionID string        `json:"execution_id"`
 }
 
-func (q *Queries) RevokeBoardTokens(ctx context.Context, arg RevokeBoardTokensParams) error {
-	_, err := q.db.ExecContext(ctx, revokeBoardTokens, arg.At, arg.ExecutionID)
+func (q *Queries) RevokeTaskTokens(ctx context.Context, arg RevokeTaskTokensParams) error {
+	_, err := q.db.ExecContext(ctx, revokeTaskTokens, arg.At, arg.ExecutionID)
 	return err
 }
 

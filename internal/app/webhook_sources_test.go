@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
@@ -81,23 +81,23 @@ func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
 	}
 
 	// Then one Task tracks the event, with one entry per change and one Task alert.
-	var list api.ListWorkTasks200JSONResponse
-	d.must(t, http.MethodGet, "/api/inbox/tasks", nil, &list)
+	var list api.TaskList
+	d.must(t, http.MethodGet, "/api/tasks", nil, &list)
 	if len(list.Tasks) != 1 || list.Tasks[0].Title != "Team sync" {
 		t.Fatalf("the source must create one Task: %+v", list.Tasks)
 	}
-	path := "/api/agents/default/inbox/tasks/" + list.Tasks[0].Id
-	var detail api.GetWorkTask200JSONResponse
+	path := "/api/tasks/" + list.Tasks[0].Id
+	var detail api.TaskDetail
 	d.must(t, http.MethodGet, path, nil, &detail)
 	t.Logf("artifact: entries=%+v", detail.Entries)
-	if len(detail.Entries) != 2 || detail.Entries[0].Content != "Moved to 4 PM" || detail.Entries[0].Author != api.WorkTaskEntryAuthorExternal {
+	if len(detail.Entries) != 2 || detail.Entries[1].Content != "Moved to 4 PM" || detail.Entries[1].ActorKind != "external" {
 		t.Fatalf("the Task must show both changes once: %+v", detail.Entries)
 	}
 	alerts := pendingTaskAlerts(t, d.dataDir(t))
 	if len(alerts) != 1 {
-		t.Fatalf("Main must get one Board wake: %q", alerts)
+		t.Fatalf("Main must get one Task wake: %q", alerts)
 	}
-	if items := decodeTaskWake(t, alerts[0]).Items; !slices.Equal(items, []worktask.TaskWakeItem{{TaskKey: "T-1", Reason: worktask.WakeAssigned}}) {
+	if items := decodeTaskWake(t, alerts[0]).Items; !slices.Equal(items, []tasksvc.WakeItem{{TaskKey: "T-1", Reason: tasksvc.WakeAssigned}}) {
 		t.Fatalf("only Task creation must wake Main: %+v", items)
 	}
 
@@ -108,7 +108,7 @@ func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
 		t.Fatalf("spoof: %d", got)
 	}
 	d.must(t, http.MethodGet, path, nil, &detail)
-	if len(detail.Entries) != 2 {
+	if len(detail.Entries) != 3 || detail.Entries[2].Kind != api.TaskEntryKindArtifact {
 		t.Fatalf("a generic source reached a GitHub object: %+v", detail.Entries)
 	}
 

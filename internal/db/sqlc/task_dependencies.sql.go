@@ -10,30 +10,30 @@ import (
 	"database/sql"
 )
 
-const deleteWorkTaskDependency = `-- name: DeleteWorkTaskDependency :execrows
+const deleteTaskDependency = `-- name: DeleteTaskDependency :execrows
 DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_task_id = ?
 `
 
-type DeleteWorkTaskDependencyParams struct {
+type DeleteTaskDependencyParams struct {
 	TaskID          string `json:"task_id"`
 	DependsOnTaskID string `json:"depends_on_task_id"`
 }
 
-func (q *Queries) DeleteWorkTaskDependency(ctx context.Context, arg DeleteWorkTaskDependencyParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, deleteWorkTaskDependency, arg.TaskID, arg.DependsOnTaskID)
+func (q *Queries) DeleteTaskDependency(ctx context.Context, arg DeleteTaskDependencyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteTaskDependency, arg.TaskID, arg.DependsOnTaskID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const getRelatedWorkTask = `-- name: GetRelatedWorkTask :one
-SELECT id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision FROM work_tasks WHERE id = ?
+const getRelatedTask = `-- name: GetRelatedTask :one
+SELECT id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision FROM tasks WHERE id = ?
 `
 
-func (q *Queries) GetRelatedWorkTask(ctx context.Context, id string) (WorkTask, error) {
-	row := q.db.QueryRowContext(ctx, getRelatedWorkTask, id)
-	var i WorkTask
+func (q *Queries) GetRelatedTask(ctx context.Context, id string) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getRelatedTask, id)
+	var i Task
 	err := row.Scan(
 		&i.ID,
 		&i.AssigneeBotID,
@@ -55,13 +55,13 @@ func (q *Queries) GetRelatedWorkTask(ctx context.Context, id string) (WorkTask, 
 	return i, err
 }
 
-const getRelatedWorkTaskByNumber = `-- name: GetRelatedWorkTaskByNumber :one
-SELECT id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision FROM work_tasks WHERE number = ?
+const getRelatedTaskByNumber = `-- name: GetRelatedTaskByNumber :one
+SELECT id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision FROM tasks WHERE number = ?
 `
 
-func (q *Queries) GetRelatedWorkTaskByNumber(ctx context.Context, number int64) (WorkTask, error) {
-	row := q.db.QueryRowContext(ctx, getRelatedWorkTaskByNumber, number)
-	var i WorkTask
+func (q *Queries) GetRelatedTaskByNumber(ctx context.Context, number int64) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getRelatedTaskByNumber, number)
+	var i Task
 	err := row.Scan(
 		&i.ID,
 		&i.AssigneeBotID,
@@ -83,56 +83,56 @@ func (q *Queries) GetRelatedWorkTaskByNumber(ctx context.Context, number int64) 
 	return i, err
 }
 
-const hasBoundWorkTaskSession = `-- name: HasBoundWorkTaskSession :one
+const hasBoundTaskSession = `-- name: HasBoundTaskSession :one
 SELECT EXISTS (SELECT 1 FROM task_executions WHERE kind = 'dex_session' AND conversation_id = ? AND bot_id = ?)
 `
 
-type HasBoundWorkTaskSessionParams struct {
+type HasBoundTaskSessionParams struct {
 	ConversationID sql.NullInt64 `json:"conversation_id"`
 	BotID          string        `json:"bot_id"`
 }
 
-func (q *Queries) HasBoundWorkTaskSession(ctx context.Context, arg HasBoundWorkTaskSessionParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasBoundWorkTaskSession, arg.ConversationID, arg.BotID)
+func (q *Queries) HasBoundTaskSession(ctx context.Context, arg HasBoundTaskSessionParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasBoundTaskSession, arg.ConversationID, arg.BotID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
 }
 
-const insertWorkTaskDependency = `-- name: InsertWorkTaskDependency :execrows
+const insertTaskDependency = `-- name: InsertTaskDependency :execrows
 INSERT INTO task_dependencies (task_id, depends_on_task_id, created_at) VALUES (?, ?, ?)
 ON CONFLICT DO NOTHING
 `
 
-type InsertWorkTaskDependencyParams struct {
+type InsertTaskDependencyParams struct {
 	TaskID          string `json:"task_id"`
 	DependsOnTaskID string `json:"depends_on_task_id"`
 	CreatedAt       int64  `json:"created_at"`
 }
 
-func (q *Queries) InsertWorkTaskDependency(ctx context.Context, arg InsertWorkTaskDependencyParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, insertWorkTaskDependency, arg.TaskID, arg.DependsOnTaskID, arg.CreatedAt)
+func (q *Queries) InsertTaskDependency(ctx context.Context, arg InsertTaskDependencyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertTaskDependency, arg.TaskID, arg.DependsOnTaskID, arg.CreatedAt)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
 }
 
-const listOwnerWorkTaskReviews = `-- name: ListOwnerWorkTaskReviews :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM work_tasks t JOIN agents a ON a.id = t.assignee_bot_id
+const listOwnerTaskReviews = `-- name: ListOwnerTaskReviews :many
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL AND t.status = 'in_review' AND t.reviewer_kind = 'owner'
 ORDER BY t.updated_at DESC, t.number DESC
 `
 
-func (q *Queries) ListOwnerWorkTaskReviews(ctx context.Context) ([]WorkTask, error) {
-	rows, err := q.db.QueryContext(ctx, listOwnerWorkTaskReviews)
+func (q *Queries) ListOwnerTaskReviews(ctx context.Context) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listOwnerTaskReviews)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WorkTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i WorkTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.AssigneeBotID,
@@ -164,19 +164,19 @@ func (q *Queries) ListOwnerWorkTaskReviews(ctx context.Context) ([]WorkTask, err
 	return items, nil
 }
 
-const listWorkSubtasks = `-- name: ListWorkSubtasks :many
-SELECT id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision FROM work_tasks WHERE parent_task_id = ?1 ORDER BY number
+const listSubtasks = `-- name: ListSubtasks :many
+SELECT id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision FROM tasks WHERE parent_task_id = ?1 ORDER BY number
 `
 
-func (q *Queries) ListWorkSubtasks(ctx context.Context, parentTaskID sql.NullString) ([]WorkTask, error) {
-	rows, err := q.db.QueryContext(ctx, listWorkSubtasks, parentTaskID)
+func (q *Queries) ListSubtasks(ctx context.Context, parentTaskID sql.NullString) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listSubtasks, parentTaskID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WorkTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i WorkTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.AssigneeBotID,
@@ -208,20 +208,20 @@ func (q *Queries) ListWorkSubtasks(ctx context.Context, parentTaskID sql.NullStr
 	return items, nil
 }
 
-const listWorkTaskDependencies = `-- name: ListWorkTaskDependencies :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM task_dependencies d JOIN work_tasks t ON t.id = d.depends_on_task_id
+const listTaskDependencies = `-- name: ListTaskDependencies :many
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM task_dependencies d JOIN tasks t ON t.id = d.depends_on_task_id
 WHERE d.task_id = ? ORDER BY t.number
 `
 
-func (q *Queries) ListWorkTaskDependencies(ctx context.Context, taskID string) ([]WorkTask, error) {
-	rows, err := q.db.QueryContext(ctx, listWorkTaskDependencies, taskID)
+func (q *Queries) ListTaskDependencies(ctx context.Context, taskID string) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskDependencies, taskID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WorkTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i WorkTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.AssigneeBotID,
@@ -253,20 +253,20 @@ func (q *Queries) ListWorkTaskDependencies(ctx context.Context, taskID string) (
 	return items, nil
 }
 
-const listWorkTaskDependents = `-- name: ListWorkTaskDependents :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM task_dependencies d JOIN work_tasks t ON t.id = d.task_id
+const listTaskDependents = `-- name: ListTaskDependents :many
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM task_dependencies d JOIN tasks t ON t.id = d.task_id
 WHERE d.depends_on_task_id = ? AND t.status NOT IN ('done', 'cancelled') ORDER BY t.number
 `
 
-func (q *Queries) ListWorkTaskDependents(ctx context.Context, dependsOnTaskID string) ([]WorkTask, error) {
-	rows, err := q.db.QueryContext(ctx, listWorkTaskDependents, dependsOnTaskID)
+func (q *Queries) ListTaskDependents(ctx context.Context, dependsOnTaskID string) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskDependents, dependsOnTaskID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []WorkTask{}
+	items := []Task{}
 	for rows.Next() {
-		var i WorkTask
+		var i Task
 		if err := rows.Scan(
 			&i.ID,
 			&i.AssigneeBotID,
@@ -298,7 +298,7 @@ func (q *Queries) ListWorkTaskDependents(ctx context.Context, dependsOnTaskID st
 	return items, nil
 }
 
-const workTaskDependencyWouldCycle = `-- name: WorkTaskDependencyWouldCycle :one
+const taskDependencyWouldCycle = `-- name: TaskDependencyWouldCycle :one
 WITH RECURSIVE upstream(id) AS (
   SELECT CAST(?2 AS TEXT)
   UNION
@@ -307,13 +307,13 @@ WITH RECURSIVE upstream(id) AS (
 SELECT EXISTS (SELECT 1 FROM upstream WHERE id = CAST(?1 AS TEXT))
 `
 
-type WorkTaskDependencyWouldCycleParams struct {
+type TaskDependencyWouldCycleParams struct {
 	TaskID          string `json:"task_id"`
 	DependsOnTaskID string `json:"depends_on_task_id"`
 }
 
-func (q *Queries) WorkTaskDependencyWouldCycle(ctx context.Context, arg WorkTaskDependencyWouldCycleParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, workTaskDependencyWouldCycle, arg.TaskID, arg.DependsOnTaskID)
+func (q *Queries) TaskDependencyWouldCycle(ctx context.Context, arg TaskDependencyWouldCycleParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, taskDependencyWouldCycle, arg.TaskID, arg.DependsOnTaskID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

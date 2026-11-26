@@ -9,7 +9,7 @@ import (
 
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 var pluginName = regexp.MustCompile(`^[a-z]+$`)
@@ -55,8 +55,8 @@ func startPlugins(ctx context.Context, q *sqlc.Queries, factories []plugin.Facto
 	return running, available, failed, nil
 }
 
-func pluginTools(plugins []plugin.Plugin) []worktask.LinkTool {
-	var tools []worktask.LinkTool
+func pluginTools(plugins []plugin.Plugin) []tasksvc.LinkTool {
+	var tools []tasksvc.LinkTool
 	for _, p := range plugins {
 		tools = append(tools, p.Tools...)
 	}

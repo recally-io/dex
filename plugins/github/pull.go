@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 	"github.com/recally-io/dex/plugins/github/store"
 )
 
@@ -24,13 +24,13 @@ var repositoryName = regexp.MustCompile(`^[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$`)
 // Puller polls configured PRs and saves the last accepted single-page ETag.
 type Puller struct {
 	q      *store.Queries
-	tasks  *worktask.Service
+	tasks  *tasksvc.Service
 	client *http.Client
 	origin string
 }
 
 // NewPuller configures a client that sends credentials only to the GitHub API.
-func NewPuller(q *store.Queries, tasks *worktask.Service) *Puller {
+func NewPuller(q *store.Queries, tasks *tasksvc.Service) *Puller {
 	return &Puller{q: q, tasks: tasks, origin: "https://api.github.com", client: &http.Client{
 		Timeout:       15 * time.Second,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },

@@ -62,7 +62,7 @@ package "dex: one Go process" as runtime {
     rectangle "Jobs + link tools" as extras
     rectangle "store + migrations\nplugin_<name>_ tables" as pstore
   }
-  rectangle "internal/worktask\nEvent store, routing,\nholds, waits, links" as worktask
+  rectangle "internal/task\nEvent store, routing,\nholds, waits, links" as taskstore
   rectangle "Engine + scheduler" as core
 }
 database "control.sqlite\nenabled_plugins\napplied_plugin_migrations" as cdb
@@ -73,11 +73,11 @@ app --> core : Jobs + tools
 sources --> server : Signed deliveries
 browser --> server : Settings
 server --> handlers : Route by name
-handlers --> worktask : Normalized events
-extras --> worktask : Links + waits
+handlers --> taskstore : Normalized events
+extras --> taskstore : Links + waits
 pstore --> cdb : Plugin tables
-worktask --> cdb : Task state
-note bottom of worktask
+taskstore --> cdb : Task state
+note bottom of taskstore
   The core never imports plugins/.
   A plugin that is off has no routes,
   jobs, or tools. Its data stays.

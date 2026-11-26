@@ -7,14 +7,12 @@ alerts, and the Task tools. Optional sources that send Task events are in
 
 ## Board and event store
 
-Board reads `work_tasks` and `work_task_entries` from `control.sqlite`. Each
+Board reads `tasks` and `task_entries` from `control.sqlite`. Each
 Task has one Assignee Bot and a stable key such as `T-42`. Its status and
 notes do not change the state of a Session. Board shows Tasks in Kanban or
-List view. It hides closed Tasks by default. The legacy Inbox Task API maps
-`done` to `completed`, `cancelled` to `cancelled`, and all other statuses to
-`open`.
+List view. It hides closed Tasks by default.
 
-The Owner uses `/api/board/tasks` to list and create Tasks. Detail and write
+The Owner uses `/api/tasks` to list and create Tasks. Detail and write
 paths accept a Task key or UUID. A PATCH or note POST can include an
 `If-Match` revision. A stale revision returns 412 and leaves the Task
 unchanged. Approval requires the current `reviewSeq`. A stale approval
@@ -23,21 +21,21 @@ not transfer Sessions or open questions from the old Assignee.
 
 Task mutations update the Task projection and append a ledger entry in the
 same write transaction. Each Task has a stable number, a revision, and entry
-sequences. A tombstone retracts an entry without deleting it. The legacy
-Timeline shows notes, artifacts, and external events that are not retracted.
+sequences. A tombstone retracts an entry without deleting it. The Timeline
+shows entries in sequence order and omits tombstones and retracted entries.
 The service derives blockers from incomplete sibling dependencies, unresolved waits, and open Task questions.
 A closed Task has no blockers. The Main queue position includes open
 questions that do not belong to a Task. The service does not store `Blocked`
 as a status. The optional entry hook runs only after commit. Consumers must
-use the durable entry ID to catch up. `GET /api/board/events` starts at the
+use the durable entry ID to catch up. `GET /api/tasks/events` starts at the
 ledger head unless the client supplies `Last-Event-ID` or `after`. The
-stream sends `board_entry` events in ID order with Task IDs and no entry text.
-It then sends `board_ready` with the current cursor. Questions and execution
+stream sends `task_entry` events in ID order with Task IDs and no entry text.
+It then sends `task_ready` with the current cursor. Questions and execution
 state can change without a ledger write. Such changes can send
-`board_refresh` without advancing the cursor. Board refreshes its reads on
-these events. The legacy held-events API is unchanged.
+`task_refresh` without advancing the cursor. Board refreshes its reads on
+these events.
 
-Board returns all matching Tasks and the full Owner timeline for each Task.
+The API returns all matching Tasks and the full Owner timeline for each Task.
 Add cursor pages when large Boards or timelines make these reads too slow.
 
 The Owner can create a subtask from an open, user-authorized Task.
@@ -49,8 +47,9 @@ have no remaining blockers. Cancellation and reopening wake open downstream
 Tasks with a notice and keep or restore the blocker. Their status is unchanged.
 
 Inbox shows items that need Owner action, including Tasks awaiting Owner
-review, held events, and Automation results. Task reviews link to Board detail. The owner can send a
-message from a Task to its Assignee Bot's Main. The Task link and timeline entry commit with the message receipt. An answer to a
+review, held events, and Automation results. `GET /api/inbox/summary` returns
+the summary. Task reviews link to Task detail. The Owner can send a message
+to the Assignee Bot's Main with `taskId` set to the Task key or UUID. The Task link and timeline entry commit with the message receipt. An answer to a
 question inherits the Task of the question's source message. A conflicting
 Task selection does not consume the question. A Task question or `notify_user`
 message from Main uses the original channel peer. If the input has no channel
@@ -69,7 +68,7 @@ Tasks, Dex records the conflict without changing a Task. An event resolves a
 wait only on an open Task, when the object, event type, time boundary, and any
 specified revision match. This store does not call the model.
 
-Dex holds an event for the owner in `work_source_holds` when its links
+Dex holds an event for the owner in `task_source_holds` when its links
 conflict. It also holds an unmatched event when the source rule sets
 `HoldUnmatched` and the author is not record-only. Otherwise Dex records an
 unmatched event and ignores it. The hold commits in the same transaction as
@@ -85,11 +84,11 @@ wait or sends a Task alert.
 ## Task alerts and tools
 
 A source rule that creates a Task adds `assigned` to the Assignee Bot's
-[Board wake](task-board.md#coalesced-main-wakeups). An event that resolves a
+[Task wake](task-board.md#coalesced-main-wakeups). An event that resolves a
 wait with `alert` set adds `gate_unblocked`. The event and the wake commit in
 the same transaction. A replay does not add a second wake. If the runner is
 offline, the wake stays pending until the runner returns. Main shows a
-`Board wake` mark. The submission contains only Task keys, reasons, and an
+`Task wake` mark. The submission contains only Task keys, reasons, and an
 entry cursor. Dex links the submission to a Task only if all items refer to
 that Task and Main belongs to the Assignee Bot.
 A quiet wait, a record-only event, an unmatched event, and a link conflict do
@@ -132,7 +131,7 @@ External entries have metadata only. The model sees a key-based title for a
 Task created by a Source until an authorized rename. The Owner can still see
 the source title. Retracted entries are omitted. Set `includeUpstream` for a separate 16 KiB selection from the direct parent and direct dependencies. This selection excludes all external entries. It does not grant direct access to those Tasks.
 
-`task_read` and `GET /api/board/tasks/{taskKey}` list every
+`task_read` and `GET /api/tasks/{taskKey}` list every
 linked object as `links`: its namespace, type, and key, with the waits on that
 object. The core does not decode these values, so links stay readable when no
 source can read them.
@@ -147,13 +146,11 @@ to promote the child without removing other links. This does not grant tools
 access to Tasks of the child's Bot or change alert routing.
 
 `task_read` and Task detail return linked `sessions` in primary-first order.
-The Board summary returns `primarySession` when present. The legacy
-`session` field stays available on the legacy Task API.
-The Phase 1 upgrade copies each link with its original Bot, primary flag,
-and timestamp. Downgrading restores these Session links. The old schema
-cannot store Board status detail, review versions, or non-Session executions.
+The Task summary returns `primarySession` when present. The table rename
+preserves Task IDs, numbers, ledger entries, and related records in both
+directions.
 
-An external agent run uses an `external_agent` execution. A scoped Board Token
+An external agent run uses an `external_agent` execution. A scoped Task token
 can read only that Task and its non-external Timeline entries. The token can
 write a note or artifact and update its own run. It cannot change Task status.
 Dex records stale and failed runs in the Timeline and wakes the current

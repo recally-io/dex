@@ -47,9 +47,17 @@ func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 	turn := waitDoneChildTurns(t, conn, child.conversation(t), 1)[0].id
 	waitResults(t, conn, parent, 1)
 
-	// When the web opens the link /tasks/<turn> of the result mark.
+	// When the web reads the result mark, it can open the canonical child Session URL.
+	d.watch(t, parent).until(t, "linked child result", func(tr *transcript) bool {
+		for _, it := range tr.items {
+			if it.Kind == "task" && it.TaskID == turn {
+				return it.ChildSessionID == child.conversation(t)
+			}
+		}
+		return false
+	})
 	var opened webChat
-	d.must(t, http.MethodGet, "/api/agents/default/turns/"+turn, nil, &opened)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", child.conversation(t)), nil, &opened)
 
 	// Then it gets the child session, which is writable and names its parent.
 	if opened.ID != child.conversation(t) || opened.ParentID == nil || *opened.ParentID != parent || opened.ReadOnly || opened.Channel != "web" {
@@ -60,14 +68,10 @@ func TestUserOpensTheChildSessionOfAResultLink(t *testing.T) {
 		t.Fatalf("listed child: %+v", listed)
 	}
 
-	// And an unknown turn and another bot's view of this turn are 404.
+	// And another Bot cannot open the child at its own Session URL.
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
-	for _, path := range []string{"/api/agents/default/turns/missing", "/api/agents/" + other.ID + "/turns/" + turn} {
-		if status, raw := d.call(t, http.MethodGet, path, nil); status != http.StatusNotFound {
-			t.Fatalf("GET %s: %d %s", path, status, raw)
-		}
-	}
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/%s/chats/%d", other.ID, opened.ID), nil, nil, http.StatusNotFound)
 }
 
 func TestUserParentStopWithdrawsParentInputQueuedBehindAUserRun(t *testing.T) {

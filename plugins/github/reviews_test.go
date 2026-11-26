@@ -13,7 +13,7 @@ import (
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/plugin"
-	"github.com/recally-io/dex/internal/worktask"
+	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
 func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
@@ -29,15 +29,15 @@ func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
 	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
-	store := worktask.New(conn, nil)
-	task, err := store.Create(ctx, "default", "Review the change")
+	store := tasksvc.New(conn, nil)
+	task, err := store.CreateTask(ctx, tasksvc.Owner, tasksvc.OriginUser, tasksvc.CreateTaskParams{AssigneeBotID: "default", Title: "Review the change"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.LinkObject(ctx, "default", task.ID, Namespace(10), PullRequest(2)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.AddWait(ctx, "default", task.ID, worktask.Wait{
+	if err := store.AddWait(ctx, "default", task.ID, tasksvc.Wait{
 		Namespace: Namespace(10), Type: "review.submitted", Object: PullRequest(2), Revision: "abc",
 		AfterAt: time.Date(2026, 11, 21, 2, 59, 0, 0, time.UTC).UnixMilli(),
 	}); err != nil {
@@ -64,8 +64,8 @@ func TestUserSeesOneReviewFromWebhookAndPull(t *testing.T) {
 	if err != nil || len(pulled) != 1 || pulled[0].EventID != first.EventID || !pulled[0].Duplicate {
 		t.Fatalf("Pull: %+v, %v", pulled, err)
 	}
-	detail, err := store.Detail(ctx, "default", task.ID)
-	if err != nil || len(detail.Entries) != 1 || detail.Entries[0].Content != "GitHub review: approved\n\nLooks good." {
+	detail, err := store.Detail(ctx, task.ID)
+	if err != nil || len(detail.Entries) != 4 || detail.Entries[3].Content != "GitHub review: approved\n\nLooks good." {
 		t.Fatalf("timeline: %+v, %v", detail.Entries, err)
 	}
 }

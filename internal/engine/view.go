@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/MichaelKinsy/PiG/ai"
@@ -15,18 +16,19 @@ import (
 
 // Item is a frontend transcript item. Execution types stay behind this boundary.
 type Item struct {
-	Kind        string       `json:"kind"`
-	ID          string       `json:"id"`
-	EntryID     int64        `json:"entryId,omitzero"`
-	At          int64        `json:"at,omitzero"`
-	Text        string       `json:"text,omitempty"`
-	Attachments []Attachment `json:"attachments,omitempty"`
-	Origin      string       `json:"origin,omitempty"`
-	Queued      bool         `json:"queued,omitzero"`
-	Steer       bool         `json:"steer,omitzero"`
-	TaskID      string       `json:"taskId,omitempty"`
-	Title       string       `json:"title,omitempty"`
-	// Alert marks a Task alert or a Board wake on Main.
+	Kind           string       `json:"kind"`
+	ID             string       `json:"id"`
+	EntryID        int64        `json:"entryId,omitzero"`
+	At             int64        `json:"at,omitzero"`
+	Text           string       `json:"text,omitempty"`
+	Attachments    []Attachment `json:"attachments,omitempty"`
+	Origin         string       `json:"origin,omitempty"`
+	Queued         bool         `json:"queued,omitzero"`
+	Steer          bool         `json:"steer,omitzero"`
+	TaskID         string       `json:"taskId,omitempty"`
+	ChildSessionID int64        `json:"childSessionId,omitzero"`
+	Title          string       `json:"title,omitempty"`
+	// Alert marks a Task alert or a Task wake on Main.
 	Alert      bool           `json:"alert,omitzero"`
 	Name       string         `json:"name,omitempty"`
 	Args       map[string]any `json:"args,omitempty"`
@@ -157,7 +159,7 @@ func metadata(value any) inputMetadata {
 	text := func(key string) string { v, _ := obj.Get(key); s, _ := v.(string); return s }
 	m := inputMetadata{RequestID: text("requestId"), Content: text("content"), Kind: text("kind"), Origin: text("origin"), Source: text("source"), TaskID: text("taskId"), TaskTitle: text("taskTitle")}
 	flag, _ := obj.Get("hasWorkTask")
-	m.HasWorkTask, _ = flag.(bool)
+	m.HasTask, _ = flag.(bool)
 	raw, _ := obj.Get("attachments")
 	if list, ok := raw.([]any); ok {
 		for _, v := range list {
@@ -176,10 +178,10 @@ func metadata(value any) inputMetadata {
 
 func userItem(m inputMetadata, id string, at int64, text string) Item {
 	if m.Kind == "task_wake" {
-		// Use the unlinked system marker. A Board wake does not name a child session.
-		return Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, Title: "Board wake", Alert: true}
+		// Use the unlinked system marker. A Task wake does not name a child session.
+		return Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, Title: "Task wake", Alert: true}
 	}
-	if m.HasWorkTask {
+	if m.HasTask {
 		text = m.Content
 	} else if len(m.Attachments) > 0 {
 		text = stripAttachedFiles(text, m.Attachments)
@@ -187,17 +189,21 @@ func userItem(m inputMetadata, id string, at int64, text string) Item {
 	// Old entries can have only the native kind. A background result has no TaskID.
 	if m.TaskID != "" || m.Kind == "dex.task_result" || m.Kind == "task_result" {
 		// Only a Task alert is a task_result linked to a Task. Chat links only owner messages.
-		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle, Alert: m.HasWorkTask}
+		item := Item{Kind: "task", ID: cmp.Or(m.RequestID, id), At: at, TaskID: m.TaskID, Title: m.TaskTitle, Alert: m.HasTask}
 		// The answer stays out of the projection. The user reads it in the child session.
 		var body struct {
 			Result struct {
 				Outcome string `json:"outcome"`
 				Reason  string `json:"reason"`
 				Status  string `json:"status"`
+				Session string `json:"session"`
 			} `json:"task-result"`
 		}
 		if json.Unmarshal([]byte(text), &body) == nil {
 			item.Status, item.Reason = cmp.Or(body.Result.Outcome, body.Result.Status), body.Result.Reason
+			if child, err := strconv.ParseInt(body.Result.Session, 10, 64); err == nil && child > 0 {
+				item.ChildSessionID = child
+			}
 		}
 		return item
 	}

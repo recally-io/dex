@@ -137,7 +137,7 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 		"fallbackModelId":  "echo",
 	}, nil)
 
-	// An active automation counts fallback as usable on /api/work.
+	// An active automation counts fallback as usable on /api/inbox/summary.
 	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
 		"name":     "Health check",
 		"prompt":   "Check status",
@@ -166,7 +166,7 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 			Setup   bool   `json:"setup"`
 		} `json:"automations"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/work?from=%d&to=%d", now.UnixMilli(), now.Add(24*time.Hour).UnixMilli()), nil, &work)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/inbox/summary?from=%d&to=%d", now.UnixMilli(), now.Add(24*time.Hour).UnixMilli()), nil, &work)
 	if len(work.Automations) != 1 || work.Automations[0].Setup {
 		t.Fatalf("expected automation setup=false while fallback is available, got %+v", work.Automations)
 	}

@@ -10,68 +10,346 @@ import (
 	"database/sql"
 )
 
-const getConversationByExecution = `-- name: GetConversationByExecution :one
-
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations WHERE agent_id = ? AND execution_scope = '' AND execution_id = ?
+const advanceTask = `-- name: AdvanceTask :one
+UPDATE tasks SET next_entry_seq = next_entry_seq + 1, revision = revision + 1,
+  updated_at = max(updated_at, CAST(?1 AS INTEGER)), status = ?2, review_seq = ?3, title = ?4
+WHERE id = ?5 AND revision = ?6
+RETURNING id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision
 `
 
-type GetConversationByExecutionParams struct {
-	AgentID     string        `json:"agent_id"`
-	ExecutionID sql.NullInt64 `json:"execution_id"`
+type AdvanceTaskParams struct {
+	At        int64  `json:"at"`
+	Status    string `json:"status"`
+	ReviewSeq int64  `json:"review_seq"`
+	Title     string `json:"title"`
+	ID        string `json:"id"`
+	Revision  int64  `json:"revision"`
 }
 
-// Stop of a conversation and of its child sessions. The file keeps its name from the
-// task layer that child sessions replaced.
-func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
-	var i Conversation
+func (q *Queries) AdvanceTask(ctx context.Context, arg AdvanceTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, advanceTask,
+		arg.At,
+		arg.Status,
+		arg.ReviewSeq,
+		arg.Title,
+		arg.ID,
+		arg.Revision,
+	)
+	var i Task
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
-		&i.ChannelKey,
-		&i.ExecutionID,
-		&i.CreatedAt,
+		&i.AssigneeBotID,
 		&i.Title,
-		&i.ModelProvider,
-		&i.ModelID,
-		&i.ThinkingLevel,
-		&i.AbortPending,
-		&i.ArchivedAt,
-		&i.Cwd,
-		&i.ForkedFrom,
-		&i.ParentID,
-		&i.ExecutionScope,
-		&i.ScopeContext,
-		&i.EnvironmentID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
 	)
 	return i, err
 }
 
-const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
-SELECT conversations.id FROM conversations
-JOIN conversations parent ON parent.id = conversations.parent_id
-WHERE (conversations.agent_id = ?1 OR parent.agent_id = ?1)
-AND conversations.execution_scope = '' AND parent.execution_scope = '' AND EXISTS (
-    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
-        AND s.parent_request_id IS NOT NULL
-)
+const allocateTaskNumber = `-- name: AllocateTaskNumber :one
+INSERT INTO task_numbers DEFAULT VALUES RETURNING number
 `
 
-// The children that Stop on their parent reaches. Keep the rule equal to ListStopConversations: the
-// web UI shows Stop on a parent page only for these.
-func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID string) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listChildrenStoppedByParent, agentID)
+func (q *Queries) AllocateTaskNumber(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, allocateTaskNumber)
+	var number int64
+	err := row.Scan(&number)
+	return number, err
+}
+
+const associateTaskInput = `-- name: AssociateTaskInput :exec
+INSERT INTO task_inputs (submission_id, task_id) VALUES (?, ?)
+`
+
+type AssociateTaskInputParams struct {
+	SubmissionID string `json:"submission_id"`
+	TaskID       string `json:"task_id"`
+}
+
+func (q *Queries) AssociateTaskInput(ctx context.Context, arg AssociateTaskInputParams) error {
+	_, err := q.db.ExecContext(ctx, associateTaskInput, arg.SubmissionID, arg.TaskID)
+	return err
+}
+
+const createTask = `-- name: CreateTask :one
+INSERT INTO tasks (id, assignee_bot_id, title, created_at, updated_at, number, status,
+  creator_kind, creator_id, authorized_by_root_id, reviewer_kind, reviewer_id, parent_task_id)
+VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6,
+  ?7, ?8, ?9, ?10, ?11, ?12)
+RETURNING id, assignee_bot_id, title, created_at, updated_at, number, status, parent_task_id, authorized_by_root_id, creator_kind, creator_id, reviewer_kind, reviewer_id, review_seq, next_entry_seq, revision
+`
+
+type CreateTaskParams struct {
+	ID                 string         `json:"id"`
+	AgentID            string         `json:"agent_id"`
+	Title              string         `json:"title"`
+	At                 int64          `json:"at"`
+	Number             int64          `json:"number"`
+	Status             string         `json:"status"`
+	CreatorKind        string         `json:"creator_kind"`
+	CreatorID          string         `json:"creator_id"`
+	AuthorizedByRootID sql.NullString `json:"authorized_by_root_id"`
+	ReviewerKind       string         `json:"reviewer_kind"`
+	ReviewerID         string         `json:"reviewer_id"`
+	ParentTaskID       sql.NullString `json:"parent_task_id"`
+}
+
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, createTask,
+		arg.ID,
+		arg.AgentID,
+		arg.Title,
+		arg.At,
+		arg.Number,
+		arg.Status,
+		arg.CreatorKind,
+		arg.CreatorID,
+		arg.AuthorizedByRootID,
+		arg.ReviewerKind,
+		arg.ReviewerID,
+		arg.ParentTaskID,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.AssigneeBotID,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const getActiveTaskAssignee = `-- name: GetActiveTaskAssignee :one
+SELECT id FROM agents WHERE id = ? AND archived_at IS NULL
+`
+
+func (q *Queries) GetActiveTaskAssignee(ctx context.Context, id string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getActiveTaskAssignee, id)
+	var id_2 string
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
+const getAssignedTask = `-- name: GetAssignedTask :one
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = ?1 AND t.assignee_bot_id = ?2 AND a.archived_at IS NULL
+`
+
+type GetAssignedTaskParams struct {
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id"`
+}
+
+func (q *Queries) GetAssignedTask(ctx context.Context, arg GetAssignedTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getAssignedTask, arg.ID, arg.AgentID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.AssigneeBotID,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const getTask = `-- name: GetTask :one
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+WHERE t.id = ? AND a.archived_at IS NULL
+`
+
+func (q *Queries) GetTask(ctx context.Context, id string) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getTask, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.AssigneeBotID,
+		&i.Title,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Number,
+		&i.Status,
+		&i.ParentTaskID,
+		&i.AuthorizedByRootID,
+		&i.CreatorKind,
+		&i.CreatorID,
+		&i.ReviewerKind,
+		&i.ReviewerID,
+		&i.ReviewSeq,
+		&i.NextEntrySeq,
+		&i.Revision,
+	)
+	return i, err
+}
+
+const getTaskEntry = `-- name: GetTaskEntry :one
+SELECT id, task_id, seq, kind, tag, actor_kind, actor_bot_id, actor_execution_id, trust, event_id, meta_json, content, created_at FROM task_entries WHERE task_id = ? AND seq = ?
+`
+
+type GetTaskEntryParams struct {
+	TaskID string `json:"task_id"`
+	Seq    int64  `json:"seq"`
+}
+
+func (q *Queries) GetTaskEntry(ctx context.Context, arg GetTaskEntryParams) (TaskEntry, error) {
+	row := q.db.QueryRowContext(ctx, getTaskEntry, arg.TaskID, arg.Seq)
+	var i TaskEntry
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.Seq,
+		&i.Kind,
+		&i.Tag,
+		&i.ActorKind,
+		&i.ActorBotID,
+		&i.ActorExecutionID,
+		&i.Trust,
+		&i.EventID,
+		&i.MetaJson,
+		&i.Content,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const insertTaskEntry = `-- name: InsertTaskEntry :one
+INSERT INTO task_entries (task_id, seq, kind, tag, actor_kind, actor_bot_id, actor_execution_id,
+  trust, event_id, meta_json, content, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, task_id, seq, kind, tag, actor_kind, actor_bot_id, actor_execution_id, trust, event_id, meta_json, content, created_at
+`
+
+type InsertTaskEntryParams struct {
+	TaskID           string         `json:"task_id"`
+	Seq              int64          `json:"seq"`
+	Kind             string         `json:"kind"`
+	Tag              string         `json:"tag"`
+	ActorKind        string         `json:"actor_kind"`
+	ActorBotID       string         `json:"actor_bot_id"`
+	ActorExecutionID string         `json:"actor_execution_id"`
+	Trust            string         `json:"trust"`
+	EventID          sql.NullString `json:"event_id"`
+	MetaJson         string         `json:"meta_json"`
+	Content          string         `json:"content"`
+	CreatedAt        int64          `json:"created_at"`
+}
+
+func (q *Queries) InsertTaskEntry(ctx context.Context, arg InsertTaskEntryParams) (TaskEntry, error) {
+	row := q.db.QueryRowContext(ctx, insertTaskEntry,
+		arg.TaskID,
+		arg.Seq,
+		arg.Kind,
+		arg.Tag,
+		arg.ActorKind,
+		arg.ActorBotID,
+		arg.ActorExecutionID,
+		arg.Trust,
+		arg.EventID,
+		arg.MetaJson,
+		arg.Content,
+		arg.CreatedAt,
+	)
+	var i TaskEntry
+	err := row.Scan(
+		&i.ID,
+		&i.TaskID,
+		&i.Seq,
+		&i.Kind,
+		&i.Tag,
+		&i.ActorKind,
+		&i.ActorBotID,
+		&i.ActorExecutionID,
+		&i.Trust,
+		&i.EventID,
+		&i.MetaJson,
+		&i.Content,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const isTaskEntryRetracted = `-- name: IsTaskEntryRetracted :one
+SELECT EXISTS (SELECT 1 FROM task_entries WHERE task_id = ?1 AND kind = 'tombstone'
+  AND CAST(json_extract(meta_json, '$.targetSeq') AS INTEGER) = CAST(?2 AS INTEGER))
+`
+
+type IsTaskEntryRetractedParams struct {
+	TaskID    string `json:"task_id"`
+	TargetSeq int64  `json:"target_seq"`
+}
+
+func (q *Queries) IsTaskEntryRetracted(ctx context.Context, arg IsTaskEntryRetractedParams) (bool, error) {
+	row := q.db.QueryRowContext(ctx, isTaskEntryRetracted, arg.TaskID, arg.TargetSeq)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const listTaskQuestionBlockers = `-- name: ListTaskQuestionBlockers :many
+SELECT q.id, q.text, CAST(CASE WHEN c.channel_key = 'main' THEN 1 + (
+  SELECT count(*) FROM questions prior JOIN submissions ps ON ps.id = prior.source_submission_id
+  WHERE prior.status = 'open' AND ps.status = 'done' AND prior.conversation_id = q.conversation_id
+    AND (prior.queued, prior.rowid) < (q.queued, q.rowid)
+) ELSE 0 END AS INTEGER) AS queue_position
+FROM questions q JOIN task_inputs i ON i.submission_id = q.source_submission_id
+JOIN submissions s ON s.id = q.source_submission_id JOIN conversations c ON c.id = q.conversation_id
+WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
+ORDER BY q.queued, q.rowid
+`
+
+type ListTaskQuestionBlockersRow struct {
+	ID            string `json:"id"`
+	Text          string `json:"text"`
+	QueuePosition int64  `json:"queue_position"`
+}
+
+func (q *Queries) ListTaskQuestionBlockers(ctx context.Context, taskID string) ([]ListTaskQuestionBlockersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskQuestionBlockers, taskID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []int64{}
+	items := []ListTaskQuestionBlockersRow{}
 	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
+		var i ListTaskQuestionBlockersRow
+		if err := rows.Scan(&i.ID, &i.Text, &i.QueuePosition); err != nil {
 			return nil, err
 		}
-		items = append(items, id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -82,52 +360,40 @@ func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID strin
 	return items, nil
 }
 
-const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, execution_scope, scope_context, environment_id FROM conversations
-WHERE execution_scope = '' AND (
-    (conversations.id = ?1 AND conversations.agent_id = ?2)
-    OR (conversations.parent_id = ?1 AND EXISTS (
-    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
-        AND s.parent_request_id IS NOT NULL
-)))
-ORDER BY conversations.id
+const listTaskQuestions = `-- name: ListTaskQuestions :many
+SELECT q.id, q.agent_id, q.conversation_id, q.source_submission_id, q.tool_operation_key, q.text, q.options_json, q.status, q.answer_submission_id, q.created_at, q.settled_at, q."action", q.action_agent_id, q.approve_text, q.outcome, q.queued FROM questions q
+JOIN task_inputs i ON i.submission_id = q.source_submission_id
+JOIN submissions s ON s.id = q.source_submission_id
+WHERE i.task_id = ?1 AND q.status = 'open' AND s.status = 'done'
+ORDER BY q.rowid
 `
 
-type ListStopConversationsParams struct {
-	ChatID  int64  `json:"chat_id"`
-	AgentID string `json:"agent_id"`
-}
-
-// Stop reaches the conversation and the children of it that have pending input that the parent
-// started. The children can belong to different bots.
-// A child with only user input is not reached.
-func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConversationsParams) ([]Conversation, error) {
-	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.ChatID, arg.AgentID)
+func (q *Queries) ListTaskQuestions(ctx context.Context, taskID string) ([]Question, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskQuestions, taskID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Conversation{}
+	items := []Question{}
 	for rows.Next() {
-		var i Conversation
+		var i Question
 		if err := rows.Scan(
 			&i.ID,
 			&i.AgentID,
-			&i.ChannelKey,
-			&i.ExecutionID,
+			&i.ConversationID,
+			&i.SourceSubmissionID,
+			&i.ToolOperationKey,
+			&i.Text,
+			&i.OptionsJson,
+			&i.Status,
+			&i.AnswerSubmissionID,
 			&i.CreatedAt,
-			&i.Title,
-			&i.ModelProvider,
-			&i.ModelID,
-			&i.ThinkingLevel,
-			&i.AbortPending,
-			&i.ArchivedAt,
-			&i.Cwd,
-			&i.ForkedFrom,
-			&i.ParentID,
-			&i.ExecutionScope,
-			&i.ScopeContext,
-			&i.EnvironmentID,
+			&i.SettledAt,
+			&i.Action,
+			&i.ActionAgentID,
+			&i.ApproveText,
+			&i.Outcome,
+			&i.Queued,
 		); err != nil {
 			return nil, err
 		}
@@ -142,39 +408,40 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 	return items, nil
 }
 
-const stopConversationSubmissions = `-- name: StopConversationSubmissions :execrows
-UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
-WHERE conversation_id = ?2 AND status = 'pending'
+const lockTaskWriter = `-- name: LockTaskWriter :exec
+UPDATE tasks SET revision = revision WHERE 0
 `
 
-type StopConversationSubmissionsParams struct {
-	Now    sql.NullInt64 `json:"now"`
-	ChatID int64         `json:"chat_id"`
+// Take the SQLite writer before reading state to avoid promoting a stale read snapshot.
+func (q *Queries) LockTaskWriter(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, lockTaskWriter)
+	return err
 }
 
-func (q *Queries) StopConversationSubmissions(ctx context.Context, arg StopConversationSubmissionsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, stopConversationSubmissions, arg.Now, arg.ChatID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
-const stopSubmission = `-- name: StopSubmission :execrows
-UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
-WHERE id = ?2 AND status = 'pending'
+const taskForInput = `-- name: TaskForInput :one
+SELECT task_id FROM task_inputs WHERE submission_id = ?
 `
 
-type StopSubmissionParams struct {
-	Now sql.NullInt64 `json:"now"`
-	ID  string        `json:"id"`
+func (q *Queries) TaskForInput(ctx context.Context, submissionID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, taskForInput, submissionID)
+	var task_id string
+	err := row.Scan(&task_id)
+	return task_id, err
 }
 
-// Stop ends one pending input that native execution withdrew.
-func (q *Queries) StopSubmission(ctx context.Context, arg StopSubmissionParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, stopSubmission, arg.Now, arg.ID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+const taskForQuestion = `-- name: TaskForQuestion :one
+SELECT i.task_id FROM task_inputs i JOIN questions q ON q.source_submission_id = i.submission_id
+WHERE q.id = ?1 AND q.conversation_id = ?2
+`
+
+type TaskForQuestionParams struct {
+	QuestionID     string `json:"question_id"`
+	ConversationID int64  `json:"conversation_id"`
+}
+
+func (q *Queries) TaskForQuestion(ctx context.Context, arg TaskForQuestionParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, taskForQuestion, arg.QuestionID, arg.ConversationID)
+	var task_id string
+	err := row.Scan(&task_id)
+	return task_id, err
 }

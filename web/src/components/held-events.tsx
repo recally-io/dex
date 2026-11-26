@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listAgentsOptions, listWorkTasksOptions } from "../api/generated/@tanstack/react-query.gen";
+import { listAgentsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
 import { heldEventsOptions } from "../lib/inbox";
 import { attachHeldEvent, dismissHeldEvent } from "../api/generated/sdk.gen";
-import type { Agent, HeldEvent, WorkTask } from "../api/generated/types.gen";
+import type { Agent, HeldEvent, TaskSummary } from "../api/generated/types.gen";
 import { Failure, Loading } from "./feedback";
 import { Select } from "./form";
 import { Section } from "./page";
@@ -25,11 +25,11 @@ export function HeldEvents() {
   const agents = useQuery(listAgentsOptions());
 
   const tasks = useQuery({
-    ...listWorkTasksOptions({ query: { includeClosed: false } }),
+    ...listTasksOptions({ query: { includeClosed: false } }),
     enabled: !!held.data?.events.length,
   });
 
-  const open = tasks.data?.tasks.filter((task) => task.lifecycle === "open") ?? [];
+  const open = tasks.data?.tasks ?? [];
 
   return (
     <Section title="Held events">
@@ -53,7 +53,15 @@ export function HeldEvents() {
   );
 }
 
-function HeldEventItem({ event, tasks, agents }: { event: HeldEvent; tasks: WorkTask[]; agents: Agent[] }) {
+function HeldEventItem({
+  event,
+  tasks,
+  agents,
+}: {
+  event: HeldEvent;
+  tasks: TaskSummary[];
+  agents: Agent[];
+}) {
   const [selected, setSelected] = useState("");
   const client = useQueryClient();
   // An attach also links the event objects, and no API removes a link. The owner must pick the Task.
@@ -62,14 +70,14 @@ function HeldEventItem({ event, tasks, agents }: { event: HeldEvent; tasks: Work
 
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: heldEventsOptions().queryKey });
-    await client.invalidateQueries({ queryKey: listWorkTasksOptions().queryKey.slice(0, 1) });
+    await client.invalidateQueries({ queryKey: listTasksOptions().queryKey.slice(0, 1) });
   };
 
   const attach = useMutation({
-    mutationFn: (target: WorkTask) =>
+    mutationFn: (target: TaskSummary) =>
       attachHeldEvent({
         path: { eventId: event.id },
-        body: { agentId: target.agentId, taskId: target.id },
+        body: { agentId: target.assigneeBotId, taskId: target.id },
         throwOnError: true,
       }),
     onSuccess: refresh,
@@ -105,7 +113,8 @@ function HeldEventItem({ event, tasks, agents }: { event: HeldEvent; tasks: Work
           <option value="">Choose a Task</option>
           {tasks.map((item) => (
             <option key={item.id} value={item.id}>
-              {item.title} · {agents.find((agent) => agent.id === item.agentId)?.name ?? item.agentId}
+              {item.title} ·{" "}
+              {agents.find((agent) => agent.id === item.assigneeBotId)?.name ?? item.assigneeBotId}
             </option>
           ))}
         </Select>

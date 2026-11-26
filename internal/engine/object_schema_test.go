@@ -11,7 +11,7 @@ import (
 	"github.com/recally-io/dex/internal/automation"
 	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
-	worktasktools "github.com/recally-io/dex/internal/worktask/tools"
+	tasktools "github.com/recally-io/dex/internal/task/tools"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
@@ -27,7 +27,7 @@ func TestObjectSchemaWithoutRequiredEncodesEmptyArray(t *testing.T) {
 
 // Providers reject the whole request when one tool schema is invalid, so check every built-in tool.
 func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
-	link := worktasktools.WorkTaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
+	link := tasktools.TaskLinkTool{Name: "task_link_test", Properties: map[string]any{"n": map[string]any{"type": "integer"}}}
 	const id = "bot"
 	runtime := engine.ExtensionRuntime{AgentID: id}
 	extensions := append(engine.BuiltInSchemaExtensions(),
@@ -36,7 +36,7 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 		chat.WorkLoopExtension(), artifact.Extension(runtime, nil), chat.FrontDeskExtension(),
 		chat.OutboxExtension(id, chat.OutboxTools{}), chat.ChildOutboxExtension(id, chat.OutboxTools{}), chat.MonitorExtension(runtime, chat.MonitorTools{}),
 		chat.AskUserExtension(id, nil), agent.BotReadExtension(id, agent.BotHandlers{}), agent.BotManageExtension(id, agent.BotHandlers{}),
-		worktasktools.WorkTaskExtension(id, worktasktools.WorkTaskTools{Links: []worktasktools.WorkTaskLinkTool{link}}),
+		tasktools.TaskExtension(id, tasktools.TaskTools{Links: []tasktools.TaskLinkTool{link}}),
 		chat.ChildExtension(), chat.DreamMessageExtension(id, nil), chat.RoutineCheckInstructions(),
 	)
 	extensions = append(extensions, agent.ChannelExtensions(id, agent.ChannelTools{})...)

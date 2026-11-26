@@ -43,9 +43,9 @@ export async function refreshAutomations(agentId: string) {
 }
 
 // Inbox uses the same handled state as the sidebar and automation pages.
-export async function refreshWork() {
+export async function refreshInbox() {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: [{ _id: "getWork" }] }),
+    queryClient.invalidateQueries({ queryKey: [{ _id: "getInboxSummary" }] }),
     queryClient.invalidateQueries({ queryKey: [{ _id: "listInbox" }] }),
     queryClient.invalidateQueries({ queryKey: [{ _id: "listChats" }] }),
     queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
