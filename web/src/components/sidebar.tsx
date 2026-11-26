@@ -20,6 +20,7 @@ const statusLabel = { needs: "Needs attention", working: "Working" } as const;
 
 export function Sidebar({
   path,
+  openBot,
   statuses,
   attentionCount,
   lead,
@@ -27,6 +28,7 @@ export function Sidebar({
   className,
 }: {
   path: string;
+  openBot?: string;
   statuses: Map<string, BotStatus>;
   attentionCount: number;
   lead: ReactNode;
@@ -35,8 +37,7 @@ export function Sidebar({
 }) {
   const bots = useQuery(listBotsOptions());
   const [creating, setCreating] = useState(false);
-  const [a, selected] = path.split("/").filter(Boolean);
-  const openBot = a === "a" ? selected : undefined;
+  const [area] = path.split("/").filter(Boolean);
 
   return (
     <aside
@@ -62,7 +63,7 @@ export function Sidebar({
       <nav aria-label="Workspace" className="space-y-1 px-2 pb-2">
         <Link
           to="/board"
-          aria-current={a === "board" ? "page" : undefined}
+          aria-current={area === "board" ? "page" : undefined}
           aria-label={
             attentionCount
               ? `Board, ${attentionCount} ${attentionCount === 1 ? "item needs" : "items need"} attention`
@@ -103,7 +104,7 @@ export function Sidebar({
           </p>
         ) : null}
       </nav>
-      <Footer active={a === "settings"} />
+      <Footer active={area === "settings"} />
       {creating ? (
         <BotContext.Provider value={openBot ?? "default"}>
           <BotCreateDialog onClose={() => setCreating(false)} />

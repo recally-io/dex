@@ -84,7 +84,8 @@ function BotPane({ settings }: { settings: Settings }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [, , segment, sessionSegment] = path.split("/").filter(Boolean);
   const onMain = segment === undefined;
-  const openSession = segment === "c" ? Number(sessionSegment) : 0;
+  const sessionId = Number(sessionSegment);
+  const openSession = segment === "s" && Number.isSafeInteger(sessionId) && sessionId > 0 ? sessionId : 0;
 
   // The session page reads the same query, so this adds no request.
   const session = useQuery({
