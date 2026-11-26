@@ -94,7 +94,7 @@ func (s *service) receive(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot read delivery", status)
 		return
 	}
-	_, err = Accept(r.Context(), s.tasks, Source{ID: id, Secret: []byte(source.Secret), TaskAgentID: source.TaskAgentID.String, HoldUnmatched: source.HoldUnmatched == 1}, r.Header.Get("X-Dex-Delivery"), r.Header.Get("X-Dex-Signature"), body)
+	_, err = Accept(r.Context(), s.tasks, Source{ID: id, Secret: []byte(source.Secret), TaskBotID: source.TaskBotID.String, HoldUnmatched: source.HoldUnmatched == 1}, r.Header.Get("X-Dex-Delivery"), r.Header.Get("X-Dex-Signature"), body)
 	switch {
 	case err == nil:
 		w.WriteHeader(http.StatusNoContent)
@@ -113,17 +113,17 @@ func (s *service) SaveEmailSource(ctx context.Context, req api.SaveEmailSourceRe
 	if req.Body == nil || req.Body.Secret == nil || !validID.MatchString(req.SourceId) || len(*req.Body.Secret) < 32 || len(*req.Body.Secret) > 256 {
 		return nil, fmt.Errorf("%w: use a source ID of lowercase letters, digits, and dashes, and a secret of 32 to 256 bytes", errInvalid)
 	}
-	agent := *cmp.Or(req.Body.TaskAgentId, new(""))
+	bot := *cmp.Or(req.Body.TaskBotId, new(""))
 	hold := int64(0)
 	if req.Body.HoldUnmatched != nil && *req.Body.HoldUnmatched {
 		hold = 1
 	}
-	n, err := s.q.SaveEmailSource(ctx, store.SaveEmailSourceParams{ID: req.SourceId, Secret: *req.Body.Secret, TaskAgentID: sql.NullString{String: agent, Valid: agent != ""}, HoldUnmatched: hold})
+	n, err := s.q.SaveEmailSource(ctx, store.SaveEmailSourceParams{ID: req.SourceId, Secret: *req.Body.Secret, TaskBotID: sql.NullString{String: bot, Valid: bot != ""}, HoldUnmatched: hold})
 	if err != nil {
 		return nil, err
 	}
 	if n == 0 {
-		return nil, fmt.Errorf("%w: select an active agent for new threads", errInvalid)
+		return nil, fmt.Errorf("%w: select an active bot for new threads", errInvalid)
 	}
 	return api.SaveEmailSource204Response{}, nil
 }

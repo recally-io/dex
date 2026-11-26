@@ -29,8 +29,8 @@ const AuthorClass = "SOURCE"
 type Source struct {
 	ID     string
 	Secret []byte
-	// TaskAgentID creates a Task under this agent for a new thread.
-	TaskAgentID string
+	// TaskBotID creates a Task under this bot for a new thread.
+	TaskBotID string
 	// HoldUnmatched keeps other unmatched messages for the owner.
 	HoldUnmatched bool
 }
@@ -73,8 +73,8 @@ func accept(ctx context.Context, store *tasksvc.Service, source Source, receiptK
 		AuthorAssociation: AuthorClass, HoldUnmatched: source.HoldUnmatched,
 	}
 	// A new thread has one object. A reply to a thread that Dex never saw has more, so it is held or ignored.
-	if source.TaskAgentID == "" || len(p.Objects) != 1 {
+	if source.TaskBotID == "" || len(p.Objects) != 1 {
 		return store.Accept(ctx, event)
 	}
-	return store.AcceptCreating(ctx, event, source.TaskAgentID, cmp.Or(p.Title, p.Type))
+	return store.AcceptCreating(ctx, event, source.TaskBotID, cmp.Or(p.Title, p.Type))
 }

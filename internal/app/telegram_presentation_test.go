@@ -11,7 +11,7 @@ func TestUserTelegramSilentTypingAndReactionPreferencesAffectDelivery(t *testing
 	// Given explicit silent delivery and no streaming preview.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "typing": false, "reactions": true}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"silent": true, "typing": false, "reactions": true}}, nil)
 	f.message(1, 42, 42, "https://example.invalid/hello")
 	got := f.next(t)
 	if !got.Silent || got.RichHTML == "" {
@@ -69,7 +69,7 @@ func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, data, 42)
 	options := map[string]any{"silent": true, "typing": false, "reactions": true}
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
 	// When the process restarts, presentation preferences remain separate from the token and allowlist.
 	d.stop()
 	d = startDex(t, data, f.srv.URL)
@@ -82,14 +82,14 @@ func TestUserTelegramPresentationPreferencesSurviveRestart(t *testing.T) {
 			} `json:"options"`
 		} `json:"telegram"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &view)
+	d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &view)
 	got := view.Telegram.Options
 	if !got.Silent || got.Typing == nil || *got.Typing || !got.Reactions {
 		t.Fatalf("lost Telegram preferences: %+v", got)
 	}
 	// Existing clients that omit options must not reset the saved preferences.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}}, nil)
-	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &view)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &view)
 	if !view.Telegram.Options.Silent {
 		t.Fatal("omitted options reset presentation")
 	}

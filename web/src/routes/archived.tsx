@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { listArchivedAgentsOptions, restoreAgentMutation } from "../api/generated/@tanstack/react-query.gen";
+import { listArchivedBotsOptions, restoreBotMutation } from "../api/generated/@tanstack/react-query.gen";
 import { queryClient, refreshSessions } from "../lib/queries";
 import { refreshAutomationResults } from "../lib/automation-results";
 import { useApp } from "../lib/app-state";
@@ -9,7 +9,7 @@ import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 import { Button } from "../components/ui/button";
 
 export function ArchivedPage() {
-  const archived = useQuery(listArchivedAgentsOptions());
+  const archived = useQuery(listArchivedBotsOptions());
 
   return (
     <FramedPage
@@ -19,12 +19,12 @@ export function ArchivedPage() {
       description="An archived bot is hidden. Its channels are stopped and its automations are paused. Its sessions, memory and settings stay. Restore a bot to use it again."
     >
       {archived.data ? (
-        <Section title="Bots" caption={`${archived.data.agents.length} archived`}>
-          {archived.data.agents.length ? (
+        <Section title="Bots" caption={`${archived.data.bots.length} archived`}>
+          {archived.data.bots.length ? (
             <Panel>
               <ul className="divide-y divide-border">
-                {archived.data.agents.map((agent) => (
-                  <ArchivedRow key={agent.id} id={agent.id!} name={agent.name} at={agent.archivedAt} />
+                {archived.data.bots.map((bot) => (
+                  <ArchivedRow key={bot.id} id={bot.id!} name={bot.name} at={bot.archivedAt} />
                 ))}
               </ul>
             </Panel>
@@ -53,13 +53,13 @@ function ArchivedRow({ id, name, at }: { id: string; name: string; at?: number }
   const { notify } = useApp();
 
   const restore = useMutation({
-    ...restoreAgentMutation(),
+    ...restoreBotMutation(),
     onSuccess: async () => {
       await Promise.all([
         refreshAutomationResults(),
         refreshSessions(id),
-        queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
-        queryClient.invalidateQueries({ queryKey: [{ _id: "listArchivedAgents" }] }),
+        queryClient.invalidateQueries({ queryKey: [{ _id: "listBots" }] }),
+        queryClient.invalidateQueries({ queryKey: [{ _id: "listArchivedBots" }] }),
       ]);
 
       notify(`${name} is restored.`);
@@ -81,7 +81,7 @@ function ArchivedRow({ id, name, at }: { id: string; name: string; at?: number }
         size="sm"
         variant="secondary"
         disabled={restore.isPending}
-        onClick={() => restore.mutate({ path: { agentId: id } })}
+        onClick={() => restore.mutate({ path: { botId: id } })}
       >
         {restore.isPending ? "Restoring…" : "Restore"}
       </Button>

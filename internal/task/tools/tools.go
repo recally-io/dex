@@ -61,7 +61,7 @@ func invalid(format string, args ...any) error {
 
 // caller returns the writable conversation and its authenticated source input.
 func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Session, sqlc.Submission, error) {
-	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
+	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{BotID: c.BotID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err
 	}
@@ -113,7 +113,7 @@ func readableTask(ctx context.Context, q *sqlc.Queries, actor tasksvc.Actor, id 
 // mutate commits the change, its wake pointers, and its replay result together.
 func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action string, change func(*sqlc.Queries, *tasksvc.Ledger, tasksvc.Actor, tasksvc.Origin, int64) (R, error)) (R, error) {
 	var zero R
-	if c.Key == "" || !strings.HasPrefix(c.Key, c.AgentID+"/") {
+	if c.Key == "" || !strings.HasPrefix(c.Key, c.BotID+"/") {
 		return zero, invalid("a durable tool key is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -131,7 +131,7 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	}
 	prior, err := q.GetTaskToolOperation(ctx, c.Key)
 	if err == nil {
-		if prior.AgentID != c.AgentID || prior.SessionID != conv.ID || prior.SourceRequestID != source.ID || prior.Action != action {
+		if prior.BotID != c.BotID || prior.SessionID != conv.ID || prior.SourceRequestID != source.ID || prior.Action != action {
 			return zero, invalid("the tool key belongs to another operation")
 		}
 		var out R
@@ -150,7 +150,7 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	if err != nil {
 		return zero, err
 	}
-	if err := q.CreateTaskToolOperation(ctx, sqlc.CreateTaskToolOperationParams{Key: c.Key, AgentID: c.AgentID, SessionID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
+	if err := q.CreateTaskToolOperation(ctx, sqlc.CreateTaskToolOperationParams{Key: c.Key, BotID: c.BotID, SessionID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
 		return zero, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -163,7 +163,7 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 func (s *Service) New(ctx context.Context, c engine.TaskContext, a TaskNewArgs) (TaskInfo, error) {
 	return mutate(ctx, s, c, "new", func(_ *sqlc.Queries, l *tasksvc.Ledger, actor tasksvc.Actor, origin tasksvc.Origin, now int64) (TaskInfo, error) {
 		task, err := l.CreateTask(ctx, actor, origin, tasksvc.CreateTaskParams{
-			AssigneeBotID: c.AgentID, Title: a.Title, Note: strings.TrimSpace(a.Note), Status: a.Status,
+			AssigneeBotID: c.BotID, Title: a.Title, Note: strings.TrimSpace(a.Note), Status: a.Status,
 		}, now)
 		return summary(task), err
 	})
@@ -259,7 +259,7 @@ func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID s
 		if !allowed {
 			return TaskInfo{}, tasksvc.ErrForbidden
 		}
-		n, err := q.LinkTaskObject(ctx, sqlc.LinkTaskObjectParams{AgentID: task.AssigneeBotID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key})
+		n, err := q.LinkTaskObject(ctx, sqlc.LinkTaskObjectParams{BotID: task.AssigneeBotID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key})
 		if err != nil {
 			return TaskInfo{}, err
 		}
@@ -274,7 +274,7 @@ func (s *Service) Link(ctx context.Context, c engine.TaskContext, tool, taskID s
 			if l.Alert {
 				alert = 1
 			}
-			if _, err := q.AddTaskWait(ctx, sqlc.AddTaskWaitParams{AgentID: task.AssigneeBotID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key, EventType: l.WaitEvent, Revision: l.WaitRevision, AfterAt: now, Alert: alert}); err != nil {
+			if _, err := q.AddTaskWait(ctx, sqlc.AddTaskWaitParams{BotID: task.AssigneeBotID, TaskID: task.ID, Namespace: l.Namespace, ObjectType: l.Object.Type, ObjectKey: l.Object.Key, EventType: l.WaitEvent, Revision: l.WaitRevision, AfterAt: now, Alert: alert}); err != nil {
 				return TaskInfo{}, err
 			}
 		}

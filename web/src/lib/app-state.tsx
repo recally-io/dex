@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import type { DraftFile, Uploads } from "./attachments";
-import { useAgentId } from "./agent-scope";
+import { useBotId } from "./bot-scope";
 import {
   createContext,
   useEffect,
@@ -22,15 +22,15 @@ const emptyComposer: ComposerDraft = { text: "", files: [] };
 
 type AppState = {
   composers: Record<string, ComposerDraft>;
-  setComposer: (agentId: string, change: (draft: ComposerDraft) => ComposerDraft) => void;
+  setComposer: (botId: string, change: (draft: ComposerDraft) => ComposerDraft) => void;
   composerUploads: { current: Uploads };
 
   // The unsaved instructions. It lives above the routes, so it survives navigation.
   drafts: Record<string, string | null>;
-  setDraft: (agentId: string, draft: string | null) => void;
+  setDraft: (botId: string, draft: string | null) => void;
   // Clears the draft after a save of `saved`, unless the draft changed since. Returns true when
   // the draft is kept. It reads the current draft, so a callback from an old page is safe.
-  settleDraft: (agentId: string, saved: string) => boolean;
+  settleDraft: (botId: string, saved: string) => boolean;
   notify: (text: string) => void;
 };
 
@@ -41,10 +41,10 @@ export function useApp() {
 
   if (!state) throw new Error("useApp needs an AppProvider.");
 
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const setComposerText: Dispatch<SetStateAction<string>> = (value) =>
-    state.setComposer(agentId, (draft) => ({
+    state.setComposer(botId, (draft) => ({
       ...draft,
       // React state setters accept a value or an updater.
       // eslint-disable-next-line anti-slop/no-runtime-typeof
@@ -52,7 +52,7 @@ export function useApp() {
     }));
 
   const setComposerFiles: Dispatch<SetStateAction<DraftFile[]>> = (value) =>
-    state.setComposer(agentId, (draft) => ({
+    state.setComposer(botId, (draft) => ({
       ...draft,
       // React state setters accept a value or an updater.
       // eslint-disable-next-line anti-slop/no-runtime-typeof
@@ -61,12 +61,12 @@ export function useApp() {
 
   return {
     ...state,
-    composer: state.composers[agentId] ?? emptyComposer,
+    composer: state.composers[botId] ?? emptyComposer,
     setComposerText,
     setComposerFiles,
-    draft: state.drafts[agentId] ?? null,
-    setDraft: (value: string | null) => state.setDraft(agentId, value),
-    settleDraft: (saved: string) => state.settleDraft(agentId, saved),
+    draft: state.drafts[botId] ?? null,
+    setDraft: (value: string | null) => state.setDraft(botId, value),
+    settleDraft: (saved: string) => state.settleDraft(botId, saved),
   };
 }
 
@@ -74,8 +74,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [composers, setComposers] = useState<Record<string, ComposerDraft>>({});
   const composerUploads = useRef<Uploads>(new Map());
 
-  const setComposer = useCallback((agentId: string, change: (draft: ComposerDraft) => ComposerDraft) => {
-    setComposers((previous) => ({ ...previous, [agentId]: change(previous[agentId] ?? emptyComposer) }));
+  const setComposer = useCallback((botId: string, change: (draft: ComposerDraft) => ComposerDraft) => {
+    setComposers((previous) => ({ ...previous, [botId]: change(previous[botId] ?? emptyComposer) }));
   }, []);
 
   useEffect(() => {
@@ -95,16 +95,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [notices, setNotices] = useState<Notice[]>([]);
   const next = useRef(0);
 
-  const setDraft = useCallback((agentId: string, value: string | null) => {
-    current.current = { ...current.current, [agentId]: value };
+  const setDraft = useCallback((botId: string, value: string | null) => {
+    current.current = { ...current.current, [botId]: value };
     setDraftState(current.current);
   }, []);
 
   const settleDraft = useCallback(
-    (agentId: string, saved: string) => {
-      const kept = current.current[agentId] != null && current.current[agentId] !== saved;
+    (botId: string, saved: string) => {
+      const kept = current.current[botId] != null && current.current[botId] !== saved;
 
-      if (!kept) setDraft(agentId, null);
+      if (!kept) setDraft(botId, null);
 
       return kept;
     },

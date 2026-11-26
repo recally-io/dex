@@ -21,10 +21,10 @@ import (
 	"unicode/utf8"
 	"uuid"
 
-	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/live"
@@ -45,14 +45,14 @@ type Config struct {
 	Tasks       *tasksvc.Service
 	TaskEvents  *tasksvc.Broker
 	Settings    *settings.Service
-	Agents      *agent.Service
+	Bots        *bot.Service
 	Artifacts   *artifact.Service
 	Live        *live.Hub
 	DataDir     string
 	Version     string
 	ReleaseBase string
 	// Engine owns native execution and extensions.
-	Engine *engine.Agents
+	Engine *engine.Bots
 	Envs   *runner.Manager
 	// RunnerChanged requests a reload after a saved environment change.
 	RunnerChanged func(context.Context, string)
@@ -114,7 +114,7 @@ func New(cfg Config) http.Handler {
 			}
 			status := http.StatusInternalServerError
 			switch {
-			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
+			case errors.Is(err, settings.ErrInvalid), errors.Is(err, bot.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
 				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, session.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, session.ErrRejected), errors.Is(err, session.ErrProjectInvalid), errors.Is(err, session.ErrRunnerInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, tasksvc.ErrTaskToken):
@@ -129,9 +129,9 @@ func New(cfg Config) http.Handler {
 				status = http.StatusServiceUnavailable
 			case errors.Is(err, errReadOnly), errors.Is(err, session.ErrNotArchivable), errors.Is(err, session.ErrProjectForbidden), errors.Is(err, session.ErrSettingsForbidden), errors.Is(err, tasksvc.ErrForbidden):
 				status = http.StatusForbidden
-			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, session.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
+			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, bot.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, session.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrBotArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, agent.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, bot.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, bot.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -142,7 +142,7 @@ func New(cfg Config) http.Handler {
 			}
 		},
 	})
-	api.HandlerWithOptions(strict, api.StdHTTPServerOptions{BaseRouter: mux, Middlewares: []api.MiddlewareFunc{h.withAgent}})
+	api.HandlerWithOptions(strict, api.StdHTTPServerOptions{BaseRouter: mux, Middlewares: []api.MiddlewareFunc{h.withBot}})
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 	})
@@ -151,8 +151,8 @@ func New(cfg Config) http.Handler {
 	mux.HandleFunc("POST /machine/{id}/pair", h.machinePair)
 	mux.HandleFunc("GET /machine/{id}/connect", h.machineConnect)
 	mux.HandleFunc("GET /machine/{id}/release/{file}", h.machineRunnerRelease)
-	mux.HandleFunc("GET "+agent.ChannelApprovalPath+"{id}", h.channelApproval)
-	mux.HandleFunc("POST "+agent.ChannelApprovalPath+"{id}", h.channelApproval)
+	mux.HandleFunc("GET "+bot.ChannelApprovalPath+"{id}", h.channelApproval)
+	mux.HandleFunc("POST "+bot.ChannelApprovalPath+"{id}", h.channelApproval)
 	mux.HandleFunc("GET /install-machine.sh", h.machineFile)
 	mux.HandleFunc("GET "+mcpCallbackPath, h.finishMcpOAuth)
 	mux.HandleFunc("GET /machine-release/{file}", h.machineRelease)
@@ -165,7 +165,7 @@ func New(cfg Config) http.Handler {
 		}
 	}
 	if cfg.ChannelWebhooks != nil {
-		mux.Handle("POST /hooks/channels/{platform}/{agentId}", http.MaxBytesHandler(cfg.ChannelWebhooks, 4<<20))
+		mux.Handle("POST /hooks/channels/{platform}/{botId}", http.MaxBytesHandler(cfg.ChannelWebhooks, 4<<20))
 	}
 	mux.HandleFunc("/hooks/", http.NotFound)
 	mux.Handle("/", web.Handler())
@@ -179,7 +179,7 @@ func New(cfg Config) http.Handler {
 		case strings.HasPrefix(r.URL.Path, "/hooks/"):
 			// Each hook sets its own body limit.
 			mux.ServeHTTP(w, r)
-		case len(parts) == 5 && parts[1] == "api" && parts[2] == "agents" && parts[4] == "uploads":
+		case len(parts) == 5 && parts[1] == "api" && parts[2] == "bots" && parts[4] == "uploads":
 			uploads.ServeHTTP(w, r)
 		default:
 			small.ServeHTTP(w, r)
@@ -187,7 +187,7 @@ func New(cfg Config) http.Handler {
 	})
 	origins := http.NewCrossOriginProtection()
 	origins.SetDenyHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, agent.ChannelApprovalPath) {
+		if r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, bot.ChannelApprovalPath) {
 			auditDeniedChannelApproval()
 		}
 		http.Error(w, origins.Check(r).Error(), http.StatusForbidden)
@@ -237,35 +237,35 @@ type handler struct {
 	mcpOAuth        mcpOAuthRequests
 }
 
-type agentKey struct{}
+type botKey struct{}
 
-func agentID(ctx context.Context) string {
-	return ctx.Value(agentKey{}).(string) //nolint:forcetypeassert // withAgent sets this value on every agent route.
+func botID(ctx context.Context) string {
+	return ctx.Value(botKey{}).(string) //nolint:forcetypeassert // withBot sets this value on every bot route.
 }
 
-// withAgent checks the path before the strict handler decodes the body or opens storage.
-func (h *handler) withAgent(next http.Handler) http.Handler {
+// withBot checks the path before the strict handler decodes the body or opens storage.
+func (h *handler) withBot(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if id := r.PathValue("agentId"); id != "" {
-			archived, err := h.Agents.Agent(r.Context(), id)
-			// An archived agent is hidden: only its restore route answers.
+		if id := r.PathValue("botId"); id != "" {
+			archived, err := h.Bots.Bot(r.Context(), id)
+			// An archived bot is hidden: only its restore route answers.
 			if err == nil && archived.ArchivedAt != 0 && !isRestore(r) {
-				err = agent.ErrNotFound
+				err = bot.ErrNotFound
 			}
 			if err != nil {
 				if r.Context().Err() != nil {
 					return
 				}
 				status := http.StatusInternalServerError
-				if errors.Is(err, agent.ErrNotFound) {
+				if errors.Is(err, bot.ErrNotFound) {
 					status = http.StatusNotFound
 				} else {
-					slog.Error("read request agent", "err", err)
+					slog.Error("read request bot", "err", err)
 				}
 				writeError(w, status, err.Error())
 				return
 			}
-			ctx := context.WithValue(r.Context(), agentKey{}, id)
+			ctx := context.WithValue(r.Context(), botKey{}, id)
 			if strings.HasSuffix(r.URL.Path, "/oauth") {
 				w.Header().Set("Cache-Control", "no-store")
 				ctx = context.WithValue(ctx, mcpOAuthRequestKey{}, mcpOAuthOrigin{origin: r.Header.Get("Origin"), host: r.Host})
@@ -276,13 +276,13 @@ func (h *handler) withAgent(next http.Handler) http.Handler {
 	})
 }
 
-// isRestore matches DELETE /api/agents/{agentId}/archive.
+// isRestore matches DELETE /api/bots/{botId}/archive.
 func isRestore(r *http.Request) bool {
-	return r.Method == http.MethodDelete && r.Pattern == "DELETE /api/agents/{agentId}/archive"
+	return r.Method == http.MethodDelete && r.Pattern == "DELETE /api/bots/{botId}/archive"
 }
 
 func (h *handler) uploads(ctx context.Context) *upload.Store {
-	return upload.New(agent.Home(h.DataDir, agentID(ctx)))
+	return upload.New(bot.Home(h.DataDir, botID(ctx)))
 }
 
 var ok = api.Ok{Status: api.OkStatusOk}
@@ -317,7 +317,7 @@ func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenan
 }
 
 func (h *handler) integrationView(ctx context.Context) (api.BotIntegrations, error) {
-	info, err := h.Engine.Extensions(ctx, agentID(ctx))
+	info, err := h.Engine.Extensions(ctx, botID(ctx))
 	if err != nil {
 		return api.BotIntegrations{}, err
 	}
@@ -333,7 +333,7 @@ func (h *handler) GetBotIntegrations(ctx context.Context, _ api.GetBotIntegratio
 	return api.GetBotIntegrations200JSONResponse(out), err
 }
 func (h *handler) ListVault(ctx context.Context, _ api.ListVaultRequestObject) (api.ListVaultResponseObject, error) {
-	list, err := h.Engine.VaultList(agentID(ctx))
+	list, err := h.Engine.VaultList(botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -347,15 +347,15 @@ func (h *handler) PutVault(ctx context.Context, req api.PutVaultRequestObject) (
 	if req.Body == nil || req.Body.Value == nil {
 		return nil, errInvalid
 	}
-	err := h.Engine.VaultEdit(agentID(ctx), string(req.Body.Scope), req.Body.Name, req.Body.Value)
+	err := h.Engine.VaultEdit(botID(ctx), string(req.Body.Scope), req.Body.Name, req.Body.Value)
 	return api.PutVault200JSONResponse(ok), err
 }
 func (h *handler) DeleteVault(ctx context.Context, req api.DeleteVaultRequestObject) (api.DeleteVaultResponseObject, error) {
-	err := h.Engine.VaultEdit(agentID(ctx), string(req.Params.Scope), req.Params.Name, nil)
+	err := h.Engine.VaultEdit(botID(ctx), string(req.Params.Scope), req.Params.Name, nil)
 	return api.DeleteVault200JSONResponse(ok), err
 }
 func (h *handler) ReloadBotIntegrations(ctx context.Context, _ api.ReloadBotIntegrationsRequestObject) (api.ReloadBotIntegrationsResponseObject, error) {
-	if err := h.Sessions.ReloadExtensions(ctx, agentID(ctx)); err != nil {
+	if err := h.Sessions.ReloadExtensions(ctx, botID(ctx)); err != nil {
 		return nil, err
 	}
 	out, err := h.integrationView(ctx)
@@ -388,11 +388,11 @@ func sessionView(c session.Session) api.Session {
 	if c.StoppedByParent {
 		out.StoppedWithParent = &c.StoppedByParent
 	}
-	if c.AgentID != "" {
-		out.AgentId, out.AgentName = &c.AgentID, &c.AgentName
+	if c.BotID != "" {
+		out.BotId, out.BotName = &c.BotID, &c.BotName
 	}
-	if c.ParentAgentID != "" {
-		out.ParentAgentId, out.ParentAgentName = &c.ParentAgentID, &c.ParentAgentName
+	if c.ParentBotID != "" {
+		out.ParentBotId, out.ParentBotName = &c.ParentBotID, &c.ParentBotName
 	}
 	if o := c.ForkedFrom; o != nil {
 		out.ForkedFrom = &api.SessionOrigin{Id: o.ID, Title: o.Title, Main: o.Main}
@@ -414,7 +414,7 @@ func sessionView(c session.Session) api.Session {
 }
 
 func (h *handler) ArchiveSession(ctx context.Context, req api.ArchiveSessionRequestObject) (api.ArchiveSessionResponseObject, error) {
-	c, err := h.Sessions.SetArchived(ctx, agentID(ctx), req.SessionId, true)
+	c, err := h.Sessions.SetArchived(ctx, botID(ctx), req.SessionId, true)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +422,7 @@ func (h *handler) ArchiveSession(ctx context.Context, req api.ArchiveSessionRequ
 }
 
 func (h *handler) UnarchiveSession(ctx context.Context, req api.UnarchiveSessionRequestObject) (api.UnarchiveSessionResponseObject, error) {
-	c, err := h.Sessions.SetArchived(ctx, agentID(ctx), req.SessionId, false)
+	c, err := h.Sessions.SetArchived(ctx, botID(ctx), req.SessionId, false)
 	if err != nil {
 		return nil, err
 	}
@@ -430,11 +430,11 @@ func (h *handler) UnarchiveSession(ctx context.Context, req api.UnarchiveSession
 }
 
 func (h *handler) ListSessions(ctx context.Context, _ api.ListSessionsRequestObject) (api.ListSessionsResponseObject, error) {
-	return h.listSessions(ctx, agentID(ctx))
+	return h.listSessions(ctx, botID(ctx))
 }
 
-func (h *handler) listSessions(ctx context.Context, agentID string) (api.ListSessions200JSONResponse, error) {
-	sessions, err := h.Sessions.List(ctx, agentID)
+func (h *handler) listSessions(ctx context.Context, botID string) (api.ListSessions200JSONResponse, error) {
+	sessions, err := h.Sessions.List(ctx, botID)
 	if err != nil {
 		return api.ListSessions200JSONResponse{}, err
 	}
@@ -448,13 +448,13 @@ func (h *handler) listSessions(ctx context.Context, agentID string) (api.ListSes
 			continue
 		}
 		// A child in another bot belongs to that bot.
-		owner := cmp.Or(c.AgentID, agentID)
+		owner := cmp.Or(c.BotID, botID)
 		full, err := h.Sessions.Get(ctx, owner, c.ID)
 		if err != nil {
 			return api.ListSessions200JSONResponse{}, err
 		}
 		if full.ExecutionID > 0 {
-			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID}
+			refOf[i] = engine.Ref{BotID: owner, ID: full.ExecutionID}
 			refs = append(refs, refOf[i])
 		}
 	}
@@ -467,7 +467,7 @@ func (h *handler) listSessions(ctx context.Context, agentID string) (api.ListSes
 }
 
 func (h *handler) GetSession(ctx context.Context, req api.GetSessionRequestObject) (api.GetSessionResponseObject, error) {
-	c, err := h.Sessions.Get(ctx, agentID(ctx), req.SessionId)
+	c, err := h.Sessions.Get(ctx, botID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -520,12 +520,12 @@ func (h *handler) message(ctx context.Context, in api.MessageInput) (session.Mes
 	return m, nil
 }
 
-func (h *handler) CreateAgentSession(ctx context.Context, _ api.CreateAgentSessionRequestObject) (api.CreateAgentSessionResponseObject, error) {
-	c, err := h.Sessions.Create(ctx, agentID(ctx))
+func (h *handler) CreateBotSession(ctx context.Context, _ api.CreateBotSessionRequestObject) (api.CreateBotSessionResponseObject, error) {
+	c, err := h.Sessions.Create(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateAgentSession201JSONResponse(sessionView(c)), nil
+	return api.CreateBotSession201JSONResponse(sessionView(c)), nil
 }
 
 func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObject) (api.SendMessageResponseObject, error) {
@@ -540,7 +540,7 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.Sessions.Send(ctx, agentID(ctx), c.ChannelKey, m); err != nil {
+	if _, err := h.Sessions.Send(ctx, botID(ctx), c.ChannelKey, m); err != nil {
 		return nil, err
 	}
 	return api.SendMessage202JSONResponse{SubmissionId: m.ID}, nil
@@ -550,7 +550,7 @@ func (h *handler) WithdrawMessage(ctx context.Context, req api.WithdrawMessageRe
 	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	m, err := h.Sessions.Withdraw(ctx, agentID(ctx), req.SessionId, req.MessageId)
+	m, err := h.Sessions.Withdraw(ctx, botID(ctx), req.SessionId, req.MessageId)
 	if err != nil {
 		return nil, err
 	}
@@ -563,7 +563,7 @@ func (h *handler) WithdrawMessage(ctx context.Context, req api.WithdrawMessageRe
 
 // writableSession returns session id, or errReadOnly for a session that the web UI cannot write to.
 func (h *handler) writableSession(ctx context.Context, id int64) (session.Session, error) {
-	c, err := h.Sessions.Get(ctx, agentID(ctx), id)
+	c, err := h.Sessions.Get(ctx, botID(ctx), id)
 	if err != nil {
 		return session.Session{}, err
 	}
@@ -577,10 +577,10 @@ func (h *handler) SetSessionProject(ctx context.Context, req api.SetSessionProje
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if _, err := h.Sessions.SetProject(ctx, agentID(ctx), req.SessionId, req.Body.Cwd); err != nil {
+	if _, err := h.Sessions.SetProject(ctx, botID(ctx), req.SessionId, req.Body.Cwd); err != nil {
 		return nil, err
 	}
-	c, err := h.Sessions.Get(ctx, agentID(ctx), req.SessionId)
+	c, err := h.Sessions.Get(ctx, botID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -591,29 +591,29 @@ func (h *handler) SetSessionRunner(ctx context.Context, req api.SetSessionRunner
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	c, err := h.Sessions.SetRunner(ctx, agentID(ctx), req.SessionId, strings.TrimSpace(req.Body.RunnerId))
+	c, err := h.Sessions.SetRunner(ctx, botID(ctx), req.SessionId, strings.TrimSpace(req.Body.RunnerId))
 	if err != nil {
 		return nil, err
 	}
 	return api.SetSessionRunner200JSONResponse(sessionView(c)), nil
 }
 
-func (h *handler) ListAgentRunners(ctx context.Context, _ api.ListAgentRunnersRequestObject) (api.ListAgentRunnersResponseObject, error) {
-	list, err := h.Settings.SessionRunners(ctx, agentID(ctx))
+func (h *handler) ListBotRunners(ctx context.Context, _ api.ListBotRunnersRequestObject) (api.ListBotRunnersResponseObject, error) {
+	list, err := h.Settings.SessionRunners(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return api.ListAgentRunners200JSONResponse{Runners: list}, nil
+	return api.ListBotRunners200JSONResponse{Runners: list}, nil
 }
 
 func (h *handler) SetSessionSettings(ctx context.Context, req api.SetSessionSettingsRequestObject) (api.SetSessionSettingsResponseObject, error) {
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Sessions.SetSession(ctx, agentID(ctx), req.SessionId, *req.Body); err != nil {
+	if err := h.Sessions.SetSession(ctx, botID(ctx), req.SessionId, *req.Body); err != nil {
 		return nil, err
 	}
-	c, err := h.Sessions.Get(ctx, agentID(ctx), req.SessionId)
+	c, err := h.Sessions.Get(ctx, botID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +677,7 @@ func (h *handler) GetUpload(ctx context.Context, req api.GetUploadRequestObject)
 }
 
 func (h *handler) ListArtifacts(ctx context.Context, _ api.ListArtifactsRequestObject) (api.ListArtifactsResponseObject, error) {
-	rows, err := h.Artifacts.List(agentID(ctx))
+	rows, err := h.Artifacts.List(botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +689,7 @@ func (h *handler) ListArtifacts(ctx context.Context, _ api.ListArtifactsRequestO
 }
 
 func (h *handler) RenameArtifact(ctx context.Context, req api.RenameArtifactRequestObject) (api.RenameArtifactResponseObject, error) {
-	a, err := h.Artifacts.Rename(agentID(ctx), req.ArtifactName, req.Body.Name)
+	a, err := h.Artifacts.Rename(botID(ctx), req.ArtifactName, req.Body.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -697,14 +697,14 @@ func (h *handler) RenameArtifact(ctx context.Context, req api.RenameArtifactRequ
 }
 
 func (h *handler) DeleteArtifact(ctx context.Context, req api.DeleteArtifactRequestObject) (api.DeleteArtifactResponseObject, error) {
-	if err := h.Artifacts.Delete(agentID(ctx), req.ArtifactName); err != nil {
+	if err := h.Artifacts.Delete(botID(ctx), req.ArtifactName); err != nil {
 		return nil, err
 	}
 	return api.DeleteArtifact200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
 func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObject) (api.GetArtifactResponseObject, error) {
-	a, f, err := h.Artifacts.Open(agentID(ctx), req.ArtifactName)
+	a, f, err := h.Artifacts.Open(botID(ctx), req.ArtifactName)
 	if os.IsNotExist(err) {
 		return nil, sql.ErrNoRows
 	}
@@ -730,14 +730,14 @@ func (h *handler) AbortSession(ctx context.Context, req api.AbortSessionRequestO
 	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	if err := h.Sessions.Stop(ctx, agentID(ctx), req.SessionId, req.Params.RunTarget); err != nil {
+	if err := h.Sessions.Stop(ctx, botID(ctx), req.SessionId, req.Params.RunTarget); err != nil {
 		return nil, err
 	}
 	return api.AbortSession200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
 func (h *handler) ListSessionMonitors(ctx context.Context, req api.ListSessionMonitorsRequestObject) (api.ListSessionMonitorsResponseObject, error) {
-	monitors, err := h.Sessions.ListMonitors(ctx, agentID(ctx), req.SessionId)
+	monitors, err := h.Sessions.ListMonitors(ctx, botID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -752,7 +752,7 @@ func (h *handler) CancelSessionMonitor(ctx context.Context, req api.CancelSessio
 	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	t, err := h.Sessions.CancelMonitor(ctx, agentID(ctx), req.SessionId, req.MonitorId)
+	t, err := h.Sessions.CancelMonitor(ctx, botID(ctx), req.SessionId, req.MonitorId)
 	if err != nil {
 		return nil, err
 	}
@@ -765,7 +765,7 @@ func monitorResponse(t session.MonitorInfo) api.Monitor {
 }
 
 func (h *handler) ListSessionOutbox(ctx context.Context, req api.ListSessionOutboxRequestObject) (api.ListSessionOutboxResponseObject, error) {
-	rows, err := h.Sessions.ListOutbox(ctx, agentID(ctx), req.SessionId)
+	rows, err := h.Sessions.ListOutbox(ctx, botID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -789,7 +789,7 @@ func (h *handler) ListSessionOutbox(ctx context.Context, req api.ListSessionOutb
 }
 
 func (h *handler) WatchSession(ctx context.Context, req api.WatchSessionRequestObject) (api.WatchSessionResponseObject, error) {
-	body, err := h.Live.OpenWeb(ctx, agentID(ctx), req.SessionId)
+	body, err := h.Live.OpenWeb(ctx, botID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -941,21 +941,21 @@ func (h *handler) SetTelegram(ctx context.Context, req api.SetTelegramRequestObj
 	if req.Body.Transport != nil {
 		transport = string(*req.Body.Transport)
 	}
-	if err := h.Agents.SetTelegram(ctx, agentID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options, transport, req.Body.Webhook); err != nil {
+	if err := h.Bots.SetTelegram(ctx, botID(ctx), req.Body.Token, req.Body.AllowedUsers, req.Body.Options, transport, req.Body.Webhook); err != nil {
 		return nil, err
 	}
 	return api.SetTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) DeleteTelegram(ctx context.Context, _ api.DeleteTelegramRequestObject) (api.DeleteTelegramResponseObject, error) {
-	if err := h.Agents.DeleteTelegram(ctx, agentID(ctx)); err != nil {
+	if err := h.Bots.DeleteTelegram(ctx, botID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteTelegram200JSONResponse(ok), nil
 }
 
 func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegramPairingRequestObject) (api.CreateTelegramPairingResponseObject, error) {
-	link, expires, err := h.Agents.CreateTelegramPairing(ctx, agentID(ctx))
+	link, expires, err := h.Bots.CreateTelegramPairing(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -963,7 +963,7 @@ func (h *handler) CreateTelegramPairing(ctx context.Context, _ api.CreateTelegra
 }
 
 func (h *handler) BeginWechatLogin(ctx context.Context, _ api.BeginWechatLoginRequestObject) (api.BeginWechatLoginResponseObject, error) {
-	view, err := h.Agents.BeginWechatLogin(ctx, agentID(ctx))
+	view, err := h.Bots.BeginWechatLogin(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -975,7 +975,7 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 	if req.Body != nil {
 		code = deref(req.Body.VerifyCode)
 	}
-	view, err := h.Agents.PollWechatLogin(ctx, agentID(ctx), req.LoginId, code)
+	view, err := h.Bots.PollWechatLogin(ctx, botID(ctx), req.LoginId, code)
 	if err != nil {
 		return nil, err
 	}
@@ -983,14 +983,14 @@ func (h *handler) PollWechatLogin(ctx context.Context, req api.PollWechatLoginRe
 }
 
 func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObject) (api.DeleteWechatResponseObject, error) {
-	if err := h.Agents.DeleteWechat(ctx, agentID(ctx)); err != nil {
+	if err := h.Bots.DeleteWechat(ctx, botID(ctx)); err != nil {
 		return nil, err
 	}
 	return api.DeleteWechat200JSONResponse(ok), nil
 }
 
 func (h *handler) GetMainSession(ctx context.Context, _ api.GetMainSessionRequestObject) (api.GetMainSessionResponseObject, error) {
-	c, err := h.Sessions.Main(ctx, agentID(ctx))
+	c, err := h.Sessions.Main(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -1012,7 +1012,7 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 	if utf8.RuneCountInString(handoff) > maxMessage {
 		return nil, errors.Join(errInvalid, errors.New("the handoff must have at most 32000 characters"))
 	}
-	if err := h.Sessions.Clear(ctx, agentID(ctx), req.SessionId, id.String(), "web", handoff); err != nil {
+	if err := h.Sessions.Clear(ctx, botID(ctx), req.SessionId, id.String(), "web", handoff); err != nil {
 		return nil, err
 	}
 	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil
@@ -1036,7 +1036,7 @@ func (h *handler) CompactSession(ctx context.Context, req api.CompactSessionRequ
 	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	if err := h.Sessions.Compact(ctx, agentID(ctx), req.SessionId, instructions, requestID); err != nil {
+	if err := h.Sessions.Compact(ctx, botID(ctx), req.SessionId, instructions, requestID); err != nil {
 		return nil, err
 	}
 	return api.CompactSession202Response{}, nil
@@ -1061,7 +1061,7 @@ func (h *handler) ForkSession(ctx context.Context, req api.ForkSessionRequestObj
 	if req.Body.RunnerId != nil {
 		runnerID = *req.Body.RunnerId
 	}
-	fork, err := h.Sessions.Fork(ctx, agentID(ctx), req.SessionId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID, runnerID)
+	fork, err := h.Sessions.Fork(ctx, botID(ctx), req.SessionId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID, runnerID)
 	if err != nil {
 		return nil, err
 	}
@@ -1079,14 +1079,14 @@ func (h *handler) ContinueSession(ctx context.Context, req api.ContinueSessionRe
 	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	if err := h.Sessions.Continue(ctx, agentID(ctx), req.SessionId, id.String()); err != nil {
+	if err := h.Sessions.Continue(ctx, botID(ctx), req.SessionId, id.String()); err != nil {
 		return nil, err
 	}
 	return api.ContinueSession202JSONResponse{SubmissionId: id.String()}, nil
 }
 
 func (h *handler) GetSessionItem(ctx context.Context, req api.GetSessionItemRequestObject) (api.GetSessionItemResponseObject, error) {
-	item, err := h.Live.Detail(ctx, agentID(ctx), req.SessionId, req.Params.Entry, req.ItemId)
+	item, err := h.Live.Detail(ctx, botID(ctx), req.SessionId, req.Params.Entry, req.ItemId)
 	if err != nil {
 		return nil, err
 	}
@@ -1108,10 +1108,10 @@ func (h *handler) GetSessionHistory(ctx context.Context, req api.GetSessionHisto
 		(beforeNotice != nil && *beforeNotice == "") || limit < 1 || limit > 200 {
 		return nil, errInvalid
 	}
-	agent := agentID(ctx)
+	bot := botID(ctx)
 	out := api.GetSessionHistory200JSONResponse{Items: []api.Item{}}
 	if before != nil {
-		page, err := h.Live.History(ctx, agent, req.SessionId, *before, limit)
+		page, err := h.Live.History(ctx, bot, req.SessionId, *before, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -1122,11 +1122,11 @@ func (h *handler) GetSessionHistory(ctx context.Context, req api.GetSessionHisto
 		if err := json.Unmarshal(raw, &out); err != nil {
 			return nil, err
 		}
-	} else if _, err := h.Sessions.Get(ctx, agent, req.SessionId); err != nil {
+	} else if _, err := h.Sessions.Get(ctx, bot, req.SessionId); err != nil {
 		return nil, err
 	}
 	if beforeNotice != nil {
-		page, err := h.Sessions.TimelineNotifications(ctx, agent, req.SessionId, *beforeNotice, 0, limit)
+		page, err := h.Sessions.TimelineNotifications(ctx, bot, req.SessionId, *beforeNotice, 0, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -1144,11 +1144,11 @@ func (h *handler) GetSessionHistory(ctx context.Context, req api.GetSessionHisto
 
 func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRequestObject) (api.ListDirectoriesResponseObject, error) {
 	id := "default"
-	if req.Params.AgentId != nil && strings.TrimSpace(*req.Params.AgentId) != "" {
-		id = strings.TrimSpace(*req.Params.AgentId)
-		row, err := h.Agents.Agent(ctx, id)
+	if req.Params.BotId != nil && strings.TrimSpace(*req.Params.BotId) != "" {
+		id = strings.TrimSpace(*req.Params.BotId)
+		row, err := h.Bots.Bot(ctx, id)
 		if err == nil && row.ArchivedAt != 0 {
-			return nil, agent.ErrNotFound
+			return nil, bot.ErrNotFound
 		}
 		if err != nil {
 			return nil, err
@@ -1162,7 +1162,7 @@ func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRe
 }
 
 func (h *handler) ListRecentProjects(ctx context.Context, req api.ListRecentProjectsRequestObject) (api.ListRecentProjectsResponseObject, error) {
-	projects, err := h.Sessions.RecentProjects(ctx, agentID(ctx), deref(req.Params.RunnerId))
+	projects, err := h.Sessions.RecentProjects(ctx, botID(ctx), deref(req.Params.RunnerId))
 	if err != nil {
 		return nil, err
 	}

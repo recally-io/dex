@@ -29,7 +29,7 @@ const askUserRules = `Use ask_user when you need the user to decide between 2 to
 
 // AskUserExtension adds the question tool. Only Main and top-level Web sessions have it. The question is
 // saved in control; the engine only ends the turn.
-func AskUserExtension(agentID string, ask func(context.Context, engine.TaskContext, AskUserArgs) (QuestionInfo, error)) *engine.Extension {
+func AskUserExtension(botID string, ask func(context.Context, engine.TaskContext, AskUserArgs) (QuestionInfo, error)) *engine.Extension {
 	return &engine.Extension{Name: "ask-user", Sections: []*durable.PromptSection{
 		harness.Section("ask-user", func(context.Context, durable.PromptInput) (*string, error) { return new(askUserRules), nil }, harness.SectionOptions{Tag: new(false)}),
 	}, Tools: []*durable.ToolRegistration{{
@@ -43,7 +43,7 @@ func AskUserExtension(agentID string, ask func(context.Context, engine.TaskConte
 			},
 		},
 		Replay: durable.ReplaySafe,
-		Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
+		Execute: engine.BindTool(botID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 			if ask == nil {
 				return durable.ToolExecutionResult{}, errors.New("question service is unavailable")
 			}

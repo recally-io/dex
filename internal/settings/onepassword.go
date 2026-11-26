@@ -47,10 +47,10 @@ func (s *Service) OnePassword(ctx context.Context) (OnePassword, error) {
 	if mode == "" {
 		mode = "off"
 	}
-	return OnePassword{Mode: mode, ConnectHost: row.ConnectHost, ConnectTokenSet: row.ConnectToken != "", ServiceAccountTokenSet: row.ServiceAccountToken != "", CLI: s.agents.OnePasswordCLI(ctx)}, nil
+	return OnePassword{Mode: mode, ConnectHost: row.ConnectHost, ConnectTokenSet: row.ConnectToken != "", ServiceAccountTokenSet: row.ServiceAccountToken != "", CLI: s.bots.OnePasswordCLI(ctx)}, nil
 }
 
-// SetOnePassword saves the settings and gives them to tools. Open agents apply them at their
+// SetOnePassword saves the settings and gives them to tools. Open bots apply them at their
 // next automatic reload.
 func (s *Service) SetOnePassword(ctx context.Context, in OnePasswordInput) (OnePassword, error) {
 	s.mu.Lock()
@@ -90,17 +90,17 @@ func (s *Service) SetOnePassword(ctx context.Context, in OnePasswordInput) (OneP
 	if err := s.q.SetOnePassword(ctx, next); err != nil {
 		return OnePassword{}, err
 	}
-	s.agents.SetOnePassword(onePasswordConfig(next.Mode, next.ConnectHost, next.ConnectToken, next.ServiceAccountToken))
+	s.bots.SetOnePassword(onePasswordConfig(next.Mode, next.ConnectHost, next.ConnectToken, next.ServiceAccountToken))
 	return s.OnePassword(ctx)
 }
 
-// ApplyOnePassword gives the saved settings to tools. Call it before agents open.
+// ApplyOnePassword gives the saved settings to tools. Call it before bots open.
 func (s *Service) ApplyOnePassword(ctx context.Context) error {
 	row, err := s.storedOnePassword(ctx)
 	if err != nil {
 		return err
 	}
-	s.agents.SetOnePassword(onePasswordConfig(row.Mode, row.ConnectHost, row.ConnectToken, row.ServiceAccountToken))
+	s.bots.SetOnePassword(onePasswordConfig(row.Mode, row.ConnectHost, row.ConnectToken, row.ServiceAccountToken))
 	return nil
 }
 

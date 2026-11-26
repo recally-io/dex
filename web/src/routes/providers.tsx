@@ -1,15 +1,15 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Agent, Provider, Settings } from "../api/generated/types.gen";
+import type { Bot, Provider, Settings } from "../api/generated/types.gen";
 import {
   deleteProviderMutation,
   getSettingsOptions,
-  listAgentsOptions,
+  listBotsOptions,
   listModelsOptions,
   setProviderMutation,
 } from "../api/generated/@tanstack/react-query.gen";
 import { refreshSettings } from "../lib/queries";
-import { saveAgent } from "../lib/agent";
+import { saveBot } from "../lib/bot";
 import { useApp } from "../lib/app-state";
 import { ProviderDialog } from "../components/provider-dialog";
 import { Confirm } from "../components/confirm";
@@ -21,20 +21,20 @@ import { Badge } from "../components/ui/badge";
 import { GlobalSettingsSwitcher } from "../components/settings-switcher";
 
 // The bots that have a model from each provider. A bot without a model ID uses none.
-type Users = Map<string, Agent[]>;
+type Users = Map<string, Bot[]>;
 
-function usersOf(agents: Agent[]): Users {
+function usersOf(bots: Bot[]): Users {
   const users: Users = new Map();
 
-  for (const agent of agents) {
+  for (const bot of bots) {
     const providers = new Set<string>();
 
-    if (agent.modelId) providers.add(agent.provider);
+    if (bot.modelId) providers.add(bot.provider);
 
-    if (agent.fallbackModelId) providers.add(agent.fallbackProvider);
+    if (bot.fallbackModelId) providers.add(bot.fallbackProvider);
 
     for (const provider of providers) {
-      users.set(provider, [...(users.get(provider) ?? []), agent]);
+      users.set(provider, [...(users.get(provider) ?? []), bot]);
     }
   }
 
@@ -45,13 +45,11 @@ export function ProvidersPage() {
   const [dialog, setDialog] = useState<Provider | "new" | null>(null);
   const [remove, setRemove] = useState<Provider | null>(null);
   const settings = useQuery(getSettingsOptions());
-  const agents = useQuery(listAgentsOptions());
-  const failed = settings.error ?? agents.error;
+  const bots = useQuery(listBotsOptions());
+  const failed = settings.error ?? bots.error;
 
   const data: Data | undefined =
-    settings.data && agents.data
-      ? { settings: settings.data, users: usersOf(agents.data.agents) }
-      : undefined;
+    settings.data && bots.data ? { settings: settings.data, users: usersOf(bots.data.bots) } : undefined;
 
   return (
     <FramedPage
@@ -95,7 +93,7 @@ export function ProvidersPage() {
           <Failure
             title="Could not load settings"
             error={failed}
-            retry={() => void Promise.all([settings.refetch(), agents.refetch()])}
+            retry={() => void Promise.all([settings.refetch(), bots.refetch()])}
           />
         </div>
       ) : (
@@ -172,7 +170,7 @@ function ProviderCard({
 }: {
   provider: Provider;
   settings: Settings;
-  users: Agent[];
+  users: Bot[];
   onEdit: () => void;
   onRemove: () => void;
 }) {
@@ -181,10 +179,10 @@ function ProviderCard({
   const own = models.data?.models.filter((m) => m.provider === p.id);
 
   const used = new Set(
-    users.flatMap((agent) =>
+    users.flatMap((bot) =>
       [
-        agent.provider === p.id ? agent.modelId : "",
-        agent.fallbackProvider === p.id ? agent.fallbackModelId : "",
+        bot.provider === p.id ? bot.modelId : "",
+        bot.fallbackProvider === p.id ? bot.fallbackModelId : "",
       ].filter(Boolean),
     ),
   );
@@ -242,7 +240,7 @@ function ProviderCard({
           <Mono className="text-[11.5px] text-muted-foreground">{p.id}</Mono>
           {users.length ? (
             <Badge variant="secondary" className="h-5 max-w-full bg-primary/10 px-2 text-[11px] text-primary">
-              <span className="truncate">Used by {users.map((agent) => agent.name).join(", ")}</span>
+              <span className="truncate">Used by {users.map((bot) => bot.name).join(", ")}</span>
             </Badge>
           ) : null}
         </div>
@@ -323,13 +321,13 @@ function RemoveProvider({
   onClose,
 }: {
   provider: Provider;
-  users: Agent[];
+  users: Bot[];
   onClose: () => void;
 }) {
   const { notify } = useApp();
   const models = useQuery(listModelsOptions());
   const current = users.length > 0;
-  const names = users.map((agent) => agent.name).join(", ");
+  const names = users.map((bot) => bot.name).join(", ");
   const others = models.data?.models.filter((m) => m.provider !== provider.id) ?? [];
   const [next, setNext] = useState("");
 
@@ -346,16 +344,16 @@ function RemoveProvider({
 
       await Promise.all(
         users.map((user) =>
-          saveAgent(user.id!, (agent) => {
+          saveBot(user.id!, (bot) => {
             const none = { provider: "", modelId: "" };
 
             const fallback =
-              agent.fallbackProvider === provider.id
+              bot.fallbackProvider === provider.id
                 ? none
-                : { provider: agent.fallbackProvider, modelId: agent.fallbackModelId };
+                : { provider: bot.fallbackProvider, modelId: bot.fallbackModelId };
 
-            if (agent.provider !== provider.id) {
-              return { ...agent, fallbackProvider: fallback.provider, fallbackModelId: fallback.modelId };
+            if (bot.provider !== provider.id) {
+              return { ...bot, fallbackProvider: fallback.provider, fallbackModelId: fallback.modelId };
             }
 
             // Without a replacement, the fallback model becomes the model.
@@ -363,7 +361,7 @@ function RemoveProvider({
             const rest = model ? fallback : none;
 
             return {
-              ...agent,
+              ...bot,
               provider: primary.provider,
               modelId: primary.modelId,
               fallbackProvider: rest.provider,

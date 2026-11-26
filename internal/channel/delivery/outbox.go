@@ -26,7 +26,7 @@ const (
 )
 
 func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error {
-	commands, err := m.q.ListChannelCommands(ctx, m.agentID)
+	commands, err := m.q.ListChannelCommands(ctx, m.botID)
 	if err != nil {
 		return err
 	}
@@ -37,7 +37,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 			}
 		}
 	}
-	acks, err := m.q.ListChannelCommandReplies(ctx, sqlc.ListChannelCommandRepliesParams{AgentID: m.agentID, Prefix: sql.NullString{String: name + ":", Valid: true}})
+	acks, err := m.q.ListChannelCommandReplies(ctx, sqlc.ListChannelCommandRepliesParams{BotID: m.botID, Prefix: sql.NullString{String: name + ":", Valid: true}})
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (m *Manager) flush(ctx context.Context, name string, bot channel.Bot) error
 			return err
 		}
 	}
-	replies, err := m.q.ListPendingOutboxMessages(ctx, sqlc.ListPendingOutboxMessagesParams{AgentID: m.agentID, Channel: sql.NullString{String: name, Valid: true}})
+	replies, err := m.q.ListPendingOutboxMessages(ctx, sqlc.ListPendingOutboxMessagesParams{BotID: m.botID, Channel: sql.NullString{String: name, Valid: true}})
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func (m *Manager) rememberQuestionMessage(ctx context.Context, q *sqlc.Queries, 
 	if err != nil {
 		return err
 	}
-	return q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{AgentID: m.agentID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
+	return q.AddQuestionMessage(ctx, sqlc.AddQuestionMessageParams{BotID: m.botID, Peer: peer, RemoteID: remoteID, QuestionID: question.ID})
 }
 
 func (m *Manager) renderMessage(ctx context.Context, bot channel.Bot, r sqlc.OutboxMessage) (channel.Part, error) {
@@ -252,10 +252,10 @@ func (m *Manager) confirmDelivery(ctx context.Context, r sqlc.OutboxMessage, par
 
 // QueueFile binds bytes to the initiating Telegram input. Web and child calls keep URL-only delivery.
 func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name string, reader io.Reader) (bool, error) {
-	if caller.AgentID != m.agentID || caller.Key == "" {
+	if caller.BotID != m.botID || caller.Key == "" {
 		return false, errors.New("invalid file delivery caller")
 	}
-	conv, err := m.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
+	conv, err := m.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{BotID: m.botID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true}})
 	if err != nil {
 		return false, err
 	}
@@ -284,7 +284,7 @@ func (m *Manager) QueueFile(ctx context.Context, caller engine.TaskContext, name
 	}
 	n, err := m.q.QueueOutboxFile(ctx, sqlc.QueueOutboxFileParams{
 		ID: uuid.NewV7().String(), OperationKey: caller.Key, SubmissionID: source.ID,
-		AgentID: m.agentID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
+		BotID: m.botID, ExecutionID: sql.NullInt64{Int64: caller.ConversationID, Valid: true},
 		Name: name, MimeType: http.DetectContentType(body), Body: body,
 	})
 	if err != nil {

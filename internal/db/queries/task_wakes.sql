@@ -1,11 +1,11 @@
 -- name: EnsureTaskMain :exec
-INSERT INTO sessions (agent_id, channel_key, title, created_at)
-SELECT a.id, 'main', a.name, @created_at FROM agents a WHERE a.id = @agent_id AND a.archived_at IS NULL
-ON CONFLICT (agent_id, channel_key) DO NOTHING;
+INSERT INTO sessions (bot_id, channel_key, title, created_at)
+SELECT a.id, 'main', a.name, @created_at FROM bots a WHERE a.id = @bot_id AND a.archived_at IS NULL
+ON CONFLICT (bot_id, channel_key) DO NOTHING;
 
 -- name: GetTaskMain :one
-SELECT c.id FROM sessions c JOIN agents a ON a.id = c.agent_id
-WHERE c.agent_id = ? AND c.channel_key = 'main' AND c.archived_at IS NULL AND a.archived_at IS NULL;
+SELECT c.id FROM sessions c JOIN bots a ON a.id = c.bot_id
+WHERE c.bot_id = ? AND c.channel_key = 'main' AND c.archived_at IS NULL AND a.archived_at IS NULL;
 
 -- name: GetUnadmittedTaskWake :one
 SELECT * FROM submissions WHERE session_id = ? AND kind = 'task_wake' AND status = 'pending' AND admitted_at IS NULL;

@@ -21,7 +21,7 @@ func TestUserRunsTaskCLIWithScopedToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	if _, err := conn.ExecContext(t.Context(), `INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('test','Test','faux','echo',1)`); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO bots (id,name,model_provider,model_id,created_at) VALUES ('test','Test','faux','echo',1)`); err != nil {
 		t.Fatal(err)
 	}
 	svc := tasksvc.New(conn, nil)

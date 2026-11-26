@@ -174,29 +174,29 @@ type TaskDetail struct {
 	HasMore         bool               `json:"hasMore"`
 }
 
-func TaskExtension(agentID string, handlers TaskTools) *durable.Extension {
-	return taskExtension(agentID, handlers, false)
+func TaskExtension(botID string, handlers TaskTools) *durable.Extension {
+	return taskExtension(botID, handlers, false)
 }
 
-func ChildTaskExtension(agentID string, handlers TaskTools) *durable.Extension {
-	return taskExtension(agentID, handlers, true)
+func ChildTaskExtension(botID string, handlers TaskTools) *durable.Extension {
+	return taskExtension(botID, handlers, true)
 }
 
-func taskExtension(agentID string, handlers TaskTools, child bool) *durable.Extension {
+func taskExtension(botID string, handlers TaskTools, child bool) *durable.Extension {
 	str := map[string]any{"type": "string", "minLength": 1}
 	id := map[string]any{"type": "string", "minLength": 1, "description": "A Task UUID or key such as T-42."}
 	enum := func(values ...string) map[string]any { return map[string]any{"type": "string", "enum": values} }
 	statuses := []string{"backlog", "ready", "in_progress", "in_review", "done", "cancelled"}
 	tags := enum("brief", "decision", "handoff", "update")
 	tools := []*durable.ToolRegistration{
-		engine.JSONTool(agentID, "task_read", "Read Task details and Timeline entries. Omit afterSeq for a compact selection. Set afterSeq to 0 to start a full Timeline scan, then use nextCursor for each next page. Use includeUpstream for a compact read of the direct parent and dependencies. External entries have no text.",
+		engine.JSONTool(botID, "task_read", "Read Task details and Timeline entries. Omit afterSeq for a compact selection. Set afterSeq to 0 to start a full Timeline scan, then use nextCursor for each next page. Use includeUpstream for a compact read of the direct parent and dependencies. External entries have no text.",
 			engine.ObjectSchema([]string{"id"}, map[string]any{
 				"includeUpstream": map[string]any{"type": "boolean"},
 				"id":              id, "afterSeq": map[string]any{"type": "integer", "minimum": 0},
 				"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
 				"tags":  map[string]any{"type": "array", "items": tags},
 			}), handlers.Read != nil, handlers.Read),
-		engine.JSONTool(agentID, "task_post", "Add a Timeline entry to a Task on a user turn, Task wake, or child Session result. The default kind is note. Use kind artifact for a Task deliverable note or reference. To make a file snapshot, use deliver_file.",
+		engine.JSONTool(botID, "task_post", "Add a Timeline entry to a Task on a user turn, Task wake, or child Session result. The default kind is note. Use kind artifact for a Task deliverable note or reference. To make a file snapshot, use deliver_file.",
 			engine.ObjectSchema([]string{"id", "content"}, map[string]any{"id": id, "content": str, "kind": enum("note", "artifact"), "tag": tags}), handlers.Post != nil, handlers.Post),
 	}
 	if child {
@@ -208,34 +208,34 @@ func taskExtension(agentID string, handlers TaskTools, child bool) *durable.Exte
 	}
 	reviewer := enum("none", "owner", "creator")
 	tools = append(tools,
-		engine.JSONTool(agentID, "task_dispatch_external", "Start an external agent as a Process on this Session's Outbound Runner. The command receives DEX_TASK_TOKEN and DEX_TASK_SERVER in its environment. Use dex task heartbeat, post, and finish. On resume, pass the existing execution ID and exact external session ID; the command must resume DEX_TASK_EXTERNAL_SESSION_ID. Process output is discarded.",
+		engine.JSONTool(botID, "task_dispatch_external", "Start an external agent as a Process on this Session's Outbound Runner. The command receives DEX_TASK_TOKEN and DEX_TASK_SERVER in its environment. Use dex task heartbeat, post, and finish. On resume, pass the existing execution ID and exact external session ID; the command must resume DEX_TASK_EXTERNAL_SESSION_ID. Process output is discarded.",
 			engine.ObjectSchema([]string{"id", "harness", "workspace", "command", "server"}, map[string]any{
 				"id": id, "harness": enum("claude-code", "codex", "opencode", "custom"), "workspace": str,
 				"command": str, "server": str, "resume": str, "externalSessionId": str,
 			}), handlers.Dispatch != nil, handlers.Dispatch),
-		engine.JSONTool(agentID, "task_split", "Create a subtask of a user-authorized Task from its Assignee's Main. Dependencies must be siblings. Delegation to another Bot defaults to review by this Bot.",
+		engine.JSONTool(botID, "task_split", "Create a subtask of a user-authorized Task from its Assignee's Main. Dependencies must be siblings. Delegation to another Bot defaults to review by this Bot.",
 			engine.ObjectSchema([]string{"parentId", "title"}, map[string]any{
 				"parentId": id, "title": str, "assigneeBotId": str, "note": str, "status": enum(statuses[:3]...),
 				"dependsOn": map[string]any{"type": "array", "items": id}, "reviewer": reviewer,
 			}), handlers.Split != nil, handlers.Split),
-		engine.JSONTool(agentID, "task_assign", "Hand off an open Task from Main. The Task changes Assignee, but its existing Sessions keep their parents.",
+		engine.JSONTool(botID, "task_assign", "Hand off an open Task from Main. The Task changes Assignee, but its existing Sessions keep their parents.",
 			engine.ObjectSchema([]string{"id", "assigneeBotId"}, map[string]any{
 				"id": id, "assigneeBotId": str, "note": str, "reviewer": reviewer,
 			}), handlers.Assign != nil, handlers.Assign),
-		engine.JSONTool(agentID, "task_my_workload", "List open Tasks where this Bot is the Assignee or Reviewer. Tasks awaiting your review come first.",
+		engine.JSONTool(botID, "task_my_workload", "List open Tasks where this Bot is the Assignee or Reviewer. Tasks awaiting your review come first.",
 			engine.ObjectSchema(nil, map[string]any{}), handlers.Workload != nil, handlers.Workload),
-		engine.JSONTool(agentID, "task_list", "List up to 50 Tasks visible to this Bot, newest update first. The default status filter is open.",
+		engine.JSONTool(botID, "task_list", "List up to 50 Tasks visible to this Bot, newest update first. The default status filter is open.",
 			engine.ObjectSchema(nil, map[string]any{"status": enum(append([]string{"open", "all"}, statuses...)...)}), handlers.List != nil, handlers.List),
-		engine.JSONTool(agentID, "task_new", "Create a Task on the Owner's Board. It does not start a Session. Use it only when the user asks to track the work or agrees to it. The default status is ready.",
+		engine.JSONTool(botID, "task_new", "Create a Task on the Owner's Board. It does not start a Session. Use it only when the user asks to track the work or agrees to it. The default status is ready.",
 			engine.ObjectSchema([]string{"title"}, map[string]any{"title": map[string]any{"type": "string", "minLength": 1, "maxLength": 160}, "note": str, "status": enum(statuses[:3]...)}), handlers.New != nil, handlers.New),
-		engine.JSONTool(agentID, "task_update", "Change a Task. Omitted fields stay the same. The Assignee's Main can change status on user turns or Task wakes. Only the Owner can cancel or reopen. Link a direct child with session and set primary to true to promote it.",
+		engine.JSONTool(botID, "task_update", "Change a Task. Omitted fields stay the same. The Assignee's Main can change status on user turns or Task wakes. Only the Owner can cancel or reopen. Link a direct child with session and set primary to true to promote it.",
 			engine.ObjectSchema([]string{"id"}, map[string]any{
 				"id": id, "title": map[string]any{"type": "string", "minLength": 1, "maxLength": 160},
 				"status":  enum(statuses...),
 				"session": map[string]any{"type": "string", "minLength": 1, "description": "The ID of a direct child Session. It can belong to another Bot."},
 				"primary": map[string]any{"type": "boolean", "description": "Make the linked Session primary. Requires session."},
 			}), handlers.Update != nil, handlers.Update),
-		engine.JSONTool(agentID, "task_review", "Review a Task as its Bot Reviewer. For approve, give the current reviewSeq from task_read. For request_changes, give a note.",
+		engine.JSONTool(botID, "task_review", "Review a Task as its Bot Reviewer. For approve, give the current reviewSeq from task_read. For request_changes, give a note.",
 			engine.ObjectSchema([]string{"id", "decision"}, map[string]any{
 				"id": id, "decision": enum("approve", "request_changes"),
 				"reviewSeq": map[string]any{"type": "integer", "minimum": 1}, "note": str,
@@ -245,7 +245,7 @@ func taskExtension(agentID string, handlers TaskTools, child bool) *durable.Exte
 	for _, link := range handlers.Links {
 		properties := map[string]any{"id": id}
 		maps.Copy(properties, link.Properties)
-		tools = append(tools, engine.JSONTool(agentID, link.Name, link.Description, engine.ObjectSchema(append([]string{"id"}, link.Required...), properties), true,
+		tools = append(tools, engine.JSONTool(botID, link.Name, link.Description, engine.ObjectSchema(append([]string{"id"}, link.Required...), properties), true,
 			func(ctx context.Context, c engine.TaskContext, a map[string]any) (TaskInfo, error) {
 				taskID, _ := a["id"].(string)
 				delete(a, "id")

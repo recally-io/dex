@@ -4,8 +4,8 @@ import { continuationRunner, resultQuote } from "./automation-results";
 
 const result: AutomationResult = {
   runId: "run",
-  agentId: "first",
-  agentName: "First",
+  botId: "first",
+  botName: "First",
   automationId: "routine",
   automationName: "Release check",
   sessionId: 4,
@@ -24,7 +24,7 @@ test("Continue can quote an unchanged run", () => {
 
 test("Continue quotes the stored result and identifies the exact run transcript", () => {
   expect(resultQuote(result)).toBe(
-    "Follow up on the Release check result (changed).\n\n> Release check\n> \n> Outcome: changed\n> \n> Release available\n> Version 2\n> \n> Run transcript: /a/first/s/4 (run run)",
+    "Follow up on the Release check result (changed).\n\n> Release check\n> \n> Outcome: changed\n> \n> Release available\n> Version 2\n> \n> Run transcript: /b/first/s/4 (run run)",
   );
 });
 

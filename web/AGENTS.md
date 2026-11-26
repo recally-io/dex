@@ -27,17 +27,18 @@ Each page in `src/routes/` reads the API only. The app keeps no settings in
 `localStorage`. It stores only browser choices there: the theme (`dex-theme`),
 the open or closed Context panel of a session (`dex-context`), the bot rail
 (`dex-sidebar`), and the Sessions sidebar (`dex-chats`). Automation result read
-and dismissed state live in `control.sqlite`, not browser storage. The unsaved agent instructions are in
+and dismissed state live in `control.sqlite`, not browser storage. The unsaved bot instructions are in
 memory (`src/lib/app-state.tsx`), so a draft stays when the user opens another page, and a reload discards it.
-`src/lib/agent.ts` runs agent saves one at a time. Each save reads the saved
-agent first, so a model change does not overwrite the instructions.
+`src/lib/bot.ts` runs bot saves one at a time. Each save reads the saved
+bot first, so a model change does not overwrite the instructions.
 Main defaults to the Bot's model and thinking level. The composer offers model
 overrides in writable sessions, including child sessions. These sessions and
 Main can select a project directory.
-New session sends `POST /api/agents/{agentId}/sessions` with no request body.
-A session detail page uses `/a/$agentId/s/$sessionId`. The former `/c/` route has no redirect.
+New session sends `POST /api/bots/{botId}/sessions` with no request body.
+A session detail page uses `/b/$botId/s/$sessionId`. The former `/a/` and
+`/c/` routes have no redirect.
 When a registered Runner exists, a session with no messages shows Local and
-the registered Runners (`GET /api/agents/{agentId}/runners`). Offline Runners are visible
+the registered Runners (`GET /api/bots/{botId}/runners`). Offline Runners are visible
 but disabled. The project picker lists folders on the chosen Runner. After
 the first message, the header shows its name. With other available Runners,
 Fork from here offers a fork on the current Runner or another one.
@@ -45,8 +46,9 @@ See the [API contract](../api/openapi.yaml) for request and response schemas.
 `src/lib/attachments.ts` uploads each file of the composer when the user adds
 it; a message sends only upload IDs.
 
-Bot links open Main. The bot header offers New session, Sessions, Automations,
-and Settings. Settings has General, Skills, Integrations, and Secrets.
+Bot links open Main at `/b/$botId`. The bot header offers New session,
+Sessions, Automations, and Settings. General settings open at `/b/$botId/bot`.
+Settings also includes Skills, Integrations, and Secrets.
 The right Sessions sidebar starts closed. The global sidebar
 opens Bots, [Board](../docs/dev/tasks.md#board), and Settings. Board (`/board`)
 shows the Owner attention count and groups Tasks with other work:
@@ -129,10 +131,10 @@ Global Secrets (`/settings/secrets`) edits shared Vault entries and 1Password.
 A bot's Secrets page edits its own Vault entries. The vault API returns metadata
 only. The editor clears the value after submit and does not store it in the browser.
 [Skills and Integrations](../docs/dev/skills-and-integrations.md) read
-`/api/agents/{agentId}/integrations` and both offer
+`/api/bots/{botId}/integrations` and both offer
 Reload. In Integrations, an OAuth MCP row starts authorization with an
 authenticated POST. The browser follows the returned URL in the same tab. The
-callback returns to `/a/{agentId}/integrations`. The browser does not receive provider tokens.
+callback returns to `/b/{botId}/integrations`. The browser does not receive provider tokens.
 
 The Telegram page under Integrations uses the existing token form. It also offers
 managed creation when the API confirms Bot Management Mode for the saved manager.

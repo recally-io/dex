@@ -37,7 +37,7 @@ func Extension(runtime engine.ExtensionRuntime, deliver func(context.Context, en
 		Name: "deliver_file", Description: "Copy a workspace file into this bot's artifacts directory and return its URL. For a Telegram Main input, also queue the file for the original recipient. Existing names are conflicts.",
 		Parameters: map[string]any{"type": "object", "properties": map[string]any{"path": map[string]any{"type": "string", "minLength": 1}}, "required": []string{"path"}, "additionalProperties": false},
 		Replay:     durable.ReplaySafe,
-		Execute: engine.BindTool(runtime.AgentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
+		Execute: engine.BindTool(runtime.BotID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 			if deliver == nil {
 				return durable.ToolExecutionResult{}, errors.New("artifact service is unavailable")
 			}

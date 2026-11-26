@@ -10,8 +10,8 @@ import (
 // Result is a settled result that needs the owner's attention.
 type Result struct {
 	RunID          string `json:"runId"`
-	AgentID        string `json:"agentId"`
-	AgentName      string `json:"agentName"`
+	BotID          string `json:"botId"`
+	BotName        string `json:"botName"`
 	AutomationID   string `json:"automationId"`
 	AutomationName string `json:"automationName"`
 	SessionID      int64  `json:"sessionId"`
@@ -33,7 +33,7 @@ func (s *Service) Results(ctx context.Context, includeDismissed bool) ([]Result,
 	}
 	items := make([]Result, len(rows))
 	for i, r := range rows {
-		items[i] = Result{RunID: r.RunID, AgentID: r.AgentID, AgentName: r.AgentName, AutomationID: r.AutomationID, AutomationName: r.AutomationName, SessionID: r.SessionID, Outcome: r.Outcome, Summary: r.Summary, CreatedAt: r.CreatedAt, Read: r.ReadAt.Valid, Dismissed: r.DismissedAt.Valid, RunnerID: r.RunnerID, Cwd: r.Cwd}
+		items[i] = Result{RunID: r.RunID, BotID: r.BotID, BotName: r.BotName, AutomationID: r.AutomationID, AutomationName: r.AutomationName, SessionID: r.SessionID, Outcome: r.Outcome, Summary: r.Summary, CreatedAt: r.CreatedAt, Read: r.ReadAt.Valid, Dismissed: r.DismissedAt.Valid, RunnerID: r.RunnerID, Cwd: r.Cwd}
 	}
 	return items, nil
 }

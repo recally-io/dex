@@ -10,15 +10,6 @@ import (
 	"database/sql"
 )
 
-const cancelAgentTelegramManagedSetups = `-- name: CancelAgentTelegramManagedSetups :exec
-UPDATE telegram_managed_setups SET state = 'canceled' WHERE agent_id = ? AND state = 'pending'
-`
-
-func (q *Queries) CancelAgentTelegramManagedSetups(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, cancelAgentTelegramManagedSetups, agentID)
-	return err
-}
-
 const cancelAllTelegramManagedSetups = `-- name: CancelAllTelegramManagedSetups :exec
 UPDATE telegram_managed_setups SET state = 'canceled' WHERE state = 'pending'
 `
@@ -28,42 +19,51 @@ func (q *Queries) CancelAllTelegramManagedSetups(ctx context.Context) error {
 	return err
 }
 
+const cancelBotTelegramManagedSetups = `-- name: CancelBotTelegramManagedSetups :exec
+UPDATE telegram_managed_setups SET state = 'canceled' WHERE bot_id = ? AND state = 'pending'
+`
+
+func (q *Queries) CancelBotTelegramManagedSetups(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, cancelBotTelegramManagedSetups, botID)
+	return err
+}
+
 const cancelTelegramManagedSetup = `-- name: CancelTelegramManagedSetup :exec
 UPDATE telegram_managed_setups SET state = 'canceled'
-WHERE id = ? AND agent_id = ? AND state = 'pending'
+WHERE id = ? AND bot_id = ? AND state = 'pending'
 `
 
 type CancelTelegramManagedSetupParams struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    string `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) CancelTelegramManagedSetup(ctx context.Context, arg CancelTelegramManagedSetupParams) error {
-	_, err := q.db.ExecContext(ctx, cancelTelegramManagedSetup, arg.ID, arg.AgentID)
+	_, err := q.db.ExecContext(ctx, cancelTelegramManagedSetup, arg.ID, arg.BotID)
 	return err
 }
 
 const claimTelegramManagedBot = `-- name: ClaimTelegramManagedBot :one
-UPDATE telegram_managed_setups SET bot_id = ?1
+UPDATE telegram_managed_setups SET telegram_bot_id = ?1
 WHERE telegram_managed_setups.username = ?2 AND telegram_managed_setups.manager_id = ?3
   AND telegram_managed_setups.owner_id = ?4 AND telegram_managed_setups.state = 'pending'
-  AND telegram_managed_setups.expires_at > ?5 AND (telegram_managed_setups.bot_id IS NULL OR telegram_managed_setups.bot_id = ?1)
+  AND telegram_managed_setups.expires_at > ?5 AND (telegram_managed_setups.telegram_bot_id IS NULL OR telegram_managed_setups.telegram_bot_id = ?1)
   AND NOT EXISTS (SELECT 1 FROM telegram_managed_setups AS other
-                  WHERE other.bot_id = ?1 AND other.username <> ?2)
-RETURNING id, agent_id, manager_id, username, expires_at, owner_id, bot_id, state
+                  WHERE other.telegram_bot_id = ?1 AND other.username <> ?2)
+RETURNING id, bot_id, manager_id, username, expires_at, owner_id, telegram_bot_id, state
 `
 
 type ClaimTelegramManagedBotParams struct {
-	BotID     sql.NullInt64 `json:"bot_id"`
-	Username  string        `json:"username"`
-	ManagerID int64         `json:"manager_id"`
-	OwnerID   int64         `json:"owner_id"`
-	Now       int64         `json:"now"`
+	TelegramBotID sql.NullInt64 `json:"telegram_bot_id"`
+	Username      string        `json:"username"`
+	ManagerID     int64         `json:"manager_id"`
+	OwnerID       int64         `json:"owner_id"`
+	Now           int64         `json:"now"`
 }
 
 func (q *Queries) ClaimTelegramManagedBot(ctx context.Context, arg ClaimTelegramManagedBotParams) (TelegramManagedSetup, error) {
 	row := q.db.QueryRowContext(ctx, claimTelegramManagedBot,
-		arg.BotID,
+		arg.TelegramBotID,
 		arg.Username,
 		arg.ManagerID,
 		arg.OwnerID,
@@ -72,25 +72,25 @@ func (q *Queries) ClaimTelegramManagedBot(ctx context.Context, arg ClaimTelegram
 	var i TelegramManagedSetup
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ManagerID,
 		&i.Username,
 		&i.ExpiresAt,
 		&i.OwnerID,
-		&i.BotID,
+		&i.TelegramBotID,
 		&i.State,
 	)
 	return i, err
 }
 
 const createTelegramManagedSetup = `-- name: CreateTelegramManagedSetup :one
-INSERT INTO telegram_managed_setups (id, agent_id, manager_id, username, expires_at)
-VALUES (?, ?, ?, ?, ?) RETURNING id, agent_id, manager_id, username, expires_at, owner_id, bot_id, state
+INSERT INTO telegram_managed_setups (id, bot_id, manager_id, username, expires_at)
+VALUES (?, ?, ?, ?, ?) RETURNING id, bot_id, manager_id, username, expires_at, owner_id, telegram_bot_id, state
 `
 
 type CreateTelegramManagedSetupParams struct {
 	ID        string `json:"id"`
-	AgentID   string `json:"agent_id"`
+	BotID     string `json:"bot_id"`
 	ManagerID int64  `json:"manager_id"`
 	Username  string `json:"username"`
 	ExpiresAt int64  `json:"expires_at"`
@@ -99,7 +99,7 @@ type CreateTelegramManagedSetupParams struct {
 func (q *Queries) CreateTelegramManagedSetup(ctx context.Context, arg CreateTelegramManagedSetupParams) (TelegramManagedSetup, error) {
 	row := q.db.QueryRowContext(ctx, createTelegramManagedSetup,
 		arg.ID,
-		arg.AgentID,
+		arg.BotID,
 		arg.ManagerID,
 		arg.Username,
 		arg.ExpiresAt,
@@ -107,12 +107,12 @@ func (q *Queries) CreateTelegramManagedSetup(ctx context.Context, arg CreateTele
 	var i TelegramManagedSetup
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ManagerID,
 		&i.Username,
 		&i.ExpiresAt,
 		&i.OwnerID,
-		&i.BotID,
+		&i.TelegramBotID,
 		&i.State,
 	)
 	return i, err
@@ -147,25 +147,25 @@ func (q *Queries) FinishTelegramManagedSetup(ctx context.Context, arg FinishTele
 }
 
 const getTelegramManagedSetup = `-- name: GetTelegramManagedSetup :one
-SELECT id, agent_id, manager_id, username, expires_at, owner_id, bot_id, state FROM telegram_managed_setups WHERE id = ? AND agent_id = ?
+SELECT id, bot_id, manager_id, username, expires_at, owner_id, telegram_bot_id, state FROM telegram_managed_setups WHERE id = ? AND bot_id = ?
 `
 
 type GetTelegramManagedSetupParams struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    string `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) GetTelegramManagedSetup(ctx context.Context, arg GetTelegramManagedSetupParams) (TelegramManagedSetup, error) {
-	row := q.db.QueryRowContext(ctx, getTelegramManagedSetup, arg.ID, arg.AgentID)
+	row := q.db.QueryRowContext(ctx, getTelegramManagedSetup, arg.ID, arg.BotID)
 	var i TelegramManagedSetup
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ManagerID,
 		&i.Username,
 		&i.ExpiresAt,
 		&i.OwnerID,
-		&i.BotID,
+		&i.TelegramBotID,
 		&i.State,
 	)
 	return i, err
@@ -195,7 +195,7 @@ func (q *Queries) PairTelegramManagedOwner(ctx context.Context, arg PairTelegram
 }
 
 const pruneTelegramManagedSetups = `-- name: PruneTelegramManagedSetups :exec
-DELETE FROM telegram_managed_setups WHERE bot_id IS NULL AND expires_at <= ?
+DELETE FROM telegram_managed_setups WHERE telegram_bot_id IS NULL AND expires_at <= ?
 `
 
 func (q *Queries) PruneTelegramManagedSetups(ctx context.Context, expiresAt int64) error {

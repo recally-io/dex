@@ -52,11 +52,11 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 	var listed struct {
 		Runners []apiSessionRunner `json:"runners"`
 	}
-	status, raw := d.call(t, http.MethodGet, "/api/agents/default/runners", nil)
+	status, raw := d.call(t, http.MethodGet, "/api/bots/default/runners", nil)
 	if status != http.StatusOK || strings.Contains(raw, apiKey) {
 		t.Fatalf("list environments: %d %s", status, raw)
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/runners", nil, &listed)
+	d.must(t, http.MethodGet, "/api/bots/default/runners", nil, &listed)
 	if len(listed.Runners) != 3 || listed.Runners[0].ID != "local" || !listed.Runners[0].Default ||
 		listed.Runners[1] != (apiSessionRunner{ID: remoteEnv.ID, Name: "remote-box", Kind: "ssh", Status: "available"}) ||
 		listed.Runners[2] != (apiSessionRunner{ID: sandbox.ID, Name: "sandbox-a", Kind: "e2b", Status: "available"}) {
@@ -67,7 +67,7 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 	d.setModel(t, "bash")
 	remote := d.newSession(t).ID
 	var selected sessionRunnerSelection
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", remote), map[string]any{"runnerId": remoteEnv.ID}, &selected)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", remote), map[string]any{"runnerId": remoteEnv.ID}, &selected)
 	if selected.RunnerID != remoteEnv.ID {
 		t.Fatalf("selected=%+v", selected)
 	}
@@ -93,10 +93,10 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 	}
 
 	// A started session keeps its environment. A missing environment is refused.
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", remote), map[string]any{"runnerId": ""}, nil, http.StatusConflict)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", remote), map[string]any{"runnerId": ""}, nil, http.StatusConflict)
 	fresh := d.newSession(t).ID
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", fresh), map[string]any{"runnerId": "missing"}, nil, http.StatusBadRequest)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", fresh), map[string]any{"runnerId": sandbox.ID}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", fresh), map[string]any{"runnerId": "missing"}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", fresh), map[string]any{"runnerId": sandbox.ID}, nil)
 	if out := taskTurn(t, d, fresh, `printf '%s:%s:%s' "${REMOTE_E2B_MARKER:-local}" "${DEX_DATA_DIR:-unset}" "$PWD"`); !strings.Contains(out, "e2b-fake-ok:unset:") || !strings.HasSuffix(out, "/home/user/workspace") {
 		t.Fatalf("sandbox bash=%q", out)
 	}
@@ -209,7 +209,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 		forkInfo
 		RunnerID string `json:"runnerId"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", created.SessionID), nil, &fork)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", created.SessionID), nil, &fork)
 	if fork.RunnerID != remoteEnv.ID || fork.Cwd != "" || fork.ForkedFrom == nil || fork.ForkedFrom.ID != src {
 		t.Fatalf("fork=%+v", fork)
 	}
@@ -341,7 +341,7 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 	bg := bgStart(t, d, sessionID, map[string]any{"command": "sleep 30", "wake": "none"})
 	routine := func(name, runnerID string) routineRunner {
 		var r routineRunner
-		d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
+		d.must(t, http.MethodPost, "/api/bots/default/automations", map[string]any{
 			"name": name, "prompt": "pwd", "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "UTC",
 			"session": "reuse", "enabled": true, "cwd": project, "runnerId": runnerID,
 		}, &r, http.StatusCreated)
@@ -350,13 +350,13 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 	following, pinnedRoutine := routine("Following", ""), routine("Pinned", "local")
 
 	// When a background command runs in a following session, then the change fails.
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	var bot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 	bot.RunnerID = created.ID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, nil, http.StatusConflict)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, nil, http.StatusConflict)
 
 	pinned := d.newSession(t).ID
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", pinned), map[string]any{"runnerId": "local"}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", pinned), map[string]any{"runnerId": "local"}, nil)
 
 	var stopped bgInfo
 	toolJSON(t, callSessionTool(t, d, sessionID, "process_stop", map[string]any{"id": bg.ID}), &stopped)
@@ -374,7 +374,7 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 		err := db.QueryRowContext(t.Context(), "SELECT admitted_at FROM submissions WHERE id = ?", queued).Scan(&admitted)
 		return err == nil && admitted.Valid, err
 	})
-	d.must(t, http.MethodPut, "/api/agents/default", bot, nil, http.StatusConflict)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, nil, http.StatusConflict)
 
 	// When the input settles, then the change succeeds and the session starts in the new workspace.
 	eventually(t, "settled input", func() (bool, any) {
@@ -382,12 +382,12 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 		err := db.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE status = 'pending'").Scan(&n)
 		return err == nil && n == 0, n
 	})
-	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, nil)
 	assertProject(t, d, sessionID, "")
 	// Then a routine that follows the bot drops its project, and a routine on local keeps it.
 	for _, want := range []routineRunner{{ID: following.ID}, {ID: pinnedRoutine.ID, RunnerID: "local", Cwd: project}} {
 		var got routineRunner
-		d.must(t, http.MethodGet, "/api/agents/default/automations/"+want.ID, nil, &got)
+		d.must(t, http.MethodGet, "/api/bots/default/automations/"+want.ID, nil, &got)
 		if got != want {
 			t.Fatalf("routine after change=%+v, want %+v", got, want)
 		}
@@ -414,10 +414,10 @@ func TestUserRecoversBotDefaultRunnerAfterDialFailure(t *testing.T) {
 		"name": "Recovery SSH", "kind": "ssh", "config": map[string]any{"host": host, "user": "dev"},
 	}, &saved, http.StatusCreated)
 	ssh.Refuse(t, host)
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	var bot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 	bot.Provider, bot.ModelID, bot.RunnerID = "faux", "bash", saved.ID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, nil)
 	local := d.newSession(t).ID
 	d.must(t, http.MethodPut, sessionPath(local, "runner"), map[string]string{"runnerId": "local"}, nil)
 	const marker = `printf '%s' "${REMOTE_SSH_MARKER:-local}"`

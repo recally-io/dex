@@ -10,11 +10,11 @@ import (
 )
 
 const deleteWechatSettings = `-- name: DeleteWechatSettings :exec
-DELETE FROM wechat_settings WHERE agent_id = ?
+DELETE FROM wechat_settings WHERE bot_id = ?
 `
 
-func (q *Queries) DeleteWechatSettings(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, deleteWechatSettings, agentID)
+func (q *Queries) DeleteWechatSettings(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, deleteWechatSettings, botID)
 	return err
 }
 
@@ -66,17 +66,17 @@ func (q *Queries) GetWechatRuntime(ctx context.Context, arg GetWechatRuntimePara
 }
 
 const getWechatSettings = `-- name: GetWechatSettings :one
-SELECT agent_id, token, base_url, bot_id, owner FROM wechat_settings WHERE agent_id = ?
+SELECT bot_id, token, base_url, wechat_bot_id, owner FROM wechat_settings WHERE bot_id = ?
 `
 
-func (q *Queries) GetWechatSettings(ctx context.Context, agentID string) (WechatSetting, error) {
-	row := q.db.QueryRowContext(ctx, getWechatSettings, agentID)
+func (q *Queries) GetWechatSettings(ctx context.Context, botID string) (WechatSetting, error) {
+	row := q.db.QueryRowContext(ctx, getWechatSettings, botID)
 	var i WechatSetting
 	err := row.Scan(
-		&i.AgentID,
+		&i.BotID,
 		&i.Token,
 		&i.BaseUrl,
-		&i.BotID,
+		&i.WechatBotID,
 		&i.Owner,
 	)
 	return i, err
@@ -135,25 +135,25 @@ func (q *Queries) SetWechatPause(ctx context.Context, arg SetWechatPauseParams) 
 }
 
 const setWechatSettings = `-- name: SetWechatSettings :exec
-INSERT INTO wechat_settings (agent_id, token, base_url, bot_id, owner) VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, base_url = excluded.base_url,
-bot_id = excluded.bot_id, owner = excluded.owner
+INSERT INTO wechat_settings (bot_id, token, base_url, wechat_bot_id, owner) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (bot_id) DO UPDATE SET token = excluded.token, base_url = excluded.base_url,
+wechat_bot_id = excluded.wechat_bot_id, owner = excluded.owner
 `
 
 type SetWechatSettingsParams struct {
-	AgentID string `json:"agent_id"`
-	Token   string `json:"token"`
-	BaseUrl string `json:"base_url"`
-	BotID   string `json:"bot_id"`
-	Owner   string `json:"owner"`
+	BotID       string `json:"bot_id"`
+	Token       string `json:"token"`
+	BaseUrl     string `json:"base_url"`
+	WechatBotID string `json:"wechat_bot_id"`
+	Owner       string `json:"owner"`
 }
 
 func (q *Queries) SetWechatSettings(ctx context.Context, arg SetWechatSettingsParams) error {
 	_, err := q.db.ExecContext(ctx, setWechatSettings,
-		arg.AgentID,
+		arg.BotID,
 		arg.Token,
 		arg.BaseUrl,
-		arg.BotID,
+		arg.WechatBotID,
 		arg.Owner,
 	)
 	return err

@@ -19,8 +19,8 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	for _, stmt := range []string{
-		`INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('default','Dex','faux','echo',1),('other','Other','faux','echo',1)`,
-		`INSERT INTO sessions (id,agent_id,channel_key,created_at) VALUES (1,'default','main',1),(2,'other','main',1)`,
+		`INSERT INTO bots (id,name,model_provider,model_id,created_at) VALUES ('default','Dex','faux','echo',1),('other','Other','faux','echo',1)`,
+		`INSERT INTO sessions (id,bot_id,channel_key,created_at) VALUES (1,'default','main',1),(2,'other','main',1)`,
 		`WITH RECURSIVE history(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM history WHERE n<10000)
 		INSERT INTO submissions (id,session_id,content,status,answer,created_at,origin)
 		SELECT 'history-'||n,1,'old input','done','old answer',1,
@@ -36,12 +36,12 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 	}
 	t.Logf("artifact: modernc.org/sqlite engine=%s; main history=10000", version)
 	q := sqlc.New(conn)
-	if count, err := q.CountChannelPending(t.Context(), sqlc.CountChannelPendingParams{AgentID: "default", Peer: "wechat:owner"}); err != nil || count != 0 {
+	if count, err := q.CountChannelPending(t.Context(), sqlc.CountChannelPendingParams{BotID: "default", Peer: "wechat:owner"}); err != nil || count != 0 {
 		t.Fatalf("empty pending queue: %d, %v", count, err)
 	}
 
 	// When SQLite plans the query, it uses the pending index for the exact origin.
-	rows, err := conn.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+channelQuery(t, "CountChannelPending"), sql.Named("agent_id", "default"), sql.Named("peer", "wechat:owner"))
+	rows, err := conn.QueryContext(t.Context(), "EXPLAIN QUERY PLAN "+channelQuery(t, "CountChannelPending"), sql.Named("bot_id", "default"), sql.Named("peer", "wechat:owner"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 		t.Fatalf("pending query reads history without an origin index: %q", plan)
 	}
 
-	// Then the pending count includes only the exact peer and agent.
+	// Then the pending count includes only the exact peer and bot.
 	if _, err := conn.ExecContext(t.Context(), `INSERT INTO submissions
 		(id,session_id,content,status,created_at,origin,kind) VALUES
 		('pending',1,'wait','pending',1,'telegram:7','message'),
@@ -73,7 +73,7 @@ func TestUserChannelQueuesDoNotReadWebHistory(t *testing.T) {
 		('wechat-pending',1,'wait','pending',1,'wechat:owner','message')`); err != nil {
 		t.Fatal(err)
 	}
-	count, err := q.CountChannelPending(t.Context(), sqlc.CountChannelPendingParams{AgentID: "default", Peer: "telegram:7"})
+	count, err := q.CountChannelPending(t.Context(), sqlc.CountChannelPendingParams{BotID: "default", Peer: "telegram:7"})
 	if err != nil || count != 1 {
 		t.Fatalf("exact peer pending: %d, %v", count, err)
 	}
@@ -88,18 +88,18 @@ func TestUserTelegramPendingResetDoesNotHoldFollowingReply(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	if _, err := conn.ExecContext(ctx, `
-INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES ('bot', 'Bot', '', '', 1);
-INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('bot', '123:fixture', '42');
-INSERT INTO sessions (id, agent_id, channel_key, created_at) VALUES (1, 'bot', 'main', 1);
+INSERT INTO bots (id, name, model_provider, model_id, created_at) VALUES ('bot', 'Bot', '', '', 1);
+INSERT INTO telegram_settings (bot_id, token, allowed_users) VALUES ('bot', '123:fixture', '42');
+INSERT INTO sessions (id, bot_id, channel_key, created_at) VALUES (1, 'bot', 'main', 1);
 INSERT INTO submissions (id, session_id, content, status, origin, created_at) VALUES
   ('earlier', 1, 'input', 'pending', 'telegram:42', 1),
   ('later', 1, 'input', 'done', 'telegram:42', 2);
-INSERT INTO outbox_messages (id, event_id, agent_id, session_id, source_submission_id, kind, peer, channel_context, body, created_at)
+INSERT INTO outbox_messages (id, event_id, bot_id, session_id, source_submission_id, kind, peer, channel_context, body, created_at)
 VALUES ('reply', 'reply:later', 'bot', 1, 'later', 'reply', 'telegram:42', '{"accountId":"123","senderId":"42"}', 'answer', 2);`); err != nil {
 		t.Fatal(err)
 	}
 	q := sqlc.New(conn)
-	params := sqlc.ListPendingOutboxMessagesParams{AgentID: "bot", Channel: sql.NullString{String: "telegram", Valid: true}}
+	params := sqlc.ListPendingOutboxMessagesParams{BotID: "bot", Channel: sql.NullString{String: "telegram", Valid: true}}
 	if replies, err := q.ListPendingOutboxMessages(ctx, params); err != nil || len(replies) != 0 {
 		t.Fatalf("replies = %+v, want the pending input to hold the reply: %v", replies, err)
 	}

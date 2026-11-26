@@ -8,8 +8,8 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-func TestUserSourceReceiptBelongsToItsAgentBeforeAdmission(t *testing.T) {
-	// Given an agent whose native admission is held for maintenance.
+func TestUserSourceReceiptBelongsToItsBotBeforeAdmission(t *testing.T) {
+	// Given a bot whose native admission is held for maintenance.
 	r := startNative(t, "echo")
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
@@ -24,7 +24,7 @@ func TestUserSourceReceiptBelongsToItsAgentBeforeAdmission(t *testing.T) {
 		t.Fatalf("absent source=%+v err=%v", absent, err)
 	}
 	// When a channel stores an input, its business receipt exists before admission.
-	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "7"}); err != nil {
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "7"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.service.SubmitMessage(t.Context(), "bot", "telegram:7", "owned-source", Message{Content: "stored input", ChannelContext: ChannelContext{AccountID: "123", SenderID: "7"}}); err != nil {
@@ -34,11 +34,11 @@ func TestUserSourceReceiptBelongsToItsAgentBeforeAdmission(t *testing.T) {
 	if err != nil || stored.ID == "" || stored.SessionID == 0 || !stored.Pending {
 		t.Fatalf("stored source=%+v err=%v", stored, err)
 	}
-	// Then another agent cannot use that receipt or its preview reference.
+	// Then another bot cannot use that receipt or its preview reference.
 	if foreign, err := r.service.LookupSource(t.Context(), "other", "owned-source"); !errors.Is(err, ErrNotFound) || foreign.ID != "" {
 		t.Fatalf("foreign source=%+v err=%v", foreign, err)
 	}
-	// Receipt existence is global, but it returns no agent or preview reference.
+	// Receipt existence is global, but it returns no bot or preview reference.
 	if received, err := r.service.ReceivedSource(t.Context(), "owned-source"); err != nil || !received {
 		t.Fatalf("global source received=%v err=%v", received, err)
 	}

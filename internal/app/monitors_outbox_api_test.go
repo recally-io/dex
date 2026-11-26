@@ -16,7 +16,7 @@ import (
 
 func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 	t.Parallel()
-	// Given a session where the agent schedules a follow-up monitor via tool call.
+	// Given a session where the bot schedules a follow-up monitor via tool call.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
 	sessionID := d.newSession(t).ID
@@ -32,7 +32,7 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 			ChainDepth int    `json:"chainDepth"`
 		} `json:"monitors"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/monitors", sessionID), nil, &monitorsResp)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/monitors", sessionID), nil, &monitorsResp)
 	if len(monitorsResp.Monitors) != 1 || monitorsResp.Monitors[0].State != "scheduled" || monitorsResp.Monitors[0].Prompt != "check build status" {
 		t.Fatalf("unexpected monitors: %+v", monitorsResp.Monitors)
 	}
@@ -44,7 +44,7 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 			Status string `json:"status"`
 		} `json:"messages"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/outbox", sessionID), nil, &outboxResp)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/outbox", sessionID), nil, &outboxResp)
 	if len(outboxResp.Messages) != 0 {
 		t.Fatalf("unexpected outbox: %+v", outboxResp.Messages)
 	}
@@ -54,12 +54,12 @@ func TestUserInspectsMonitorsAndOutboxViaAPI(t *testing.T) {
 		ID    string `json:"id"`
 		State string `json:"state"`
 	}
-	d.must(t, http.MethodDelete, fmt.Sprintf("/api/agents/default/sessions/%d/monitors/%s", sessionID, monitorsResp.Monitors[0].ID), nil, &cancelled)
+	d.must(t, http.MethodDelete, fmt.Sprintf("/api/bots/default/sessions/%d/monitors/%s", sessionID, monitorsResp.Monitors[0].ID), nil, &cancelled)
 	if cancelled.State != "cancelled" {
 		t.Fatalf("expected cancelled monitor, got %+v", cancelled)
 	}
 
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/monitors", sessionID), nil, &monitorsResp)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/monitors", sessionID), nil, &monitorsResp)
 	if len(monitorsResp.Monitors) != 1 || monitorsResp.Monitors[0].State != "cancelled" {
 		t.Fatalf("expected cancelled state in list, got %+v", monitorsResp.Monitors)
 	}
@@ -98,9 +98,9 @@ func TestUserKeepsLegacyTimerHistoryAndFiresDueWorkOnceAfterUpgrade(t *testing.T
 	}
 	if _, err := conn.ExecContext(t.Context(), `
 INSERT INTO agents (id, name, model_provider, model_id, created_at)
-SELECT id, name, model_provider, model_id, created_at FROM fixture.agents;
+SELECT id, name, model_provider, model_id, created_at FROM fixture.bots;
 INSERT INTO conversations (id, agent_id, channel_key, execution_id, created_at, title)
-SELECT id, agent_id, channel_key, execution_id, created_at, title FROM fixture.sessions;
+SELECT id, bot_id, channel_key, execution_id, created_at, title FROM fixture.sessions;
 INSERT INTO submissions (id, conversation_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer)
 SELECT id, session_id, content, origin, kind, status, created_at, admitted_at, settled_at, answer FROM fixture.submissions;
 DETACH DATABASE fixture;`); err != nil {

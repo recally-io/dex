@@ -21,26 +21,26 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	dir := t.TempDir()
-	agents, err := New(Config{DataDir: filepath.Join(dir, "data"), Home: filepath.Join(dir, "home"), FakeModel: true})
+	bots, err := New(Config{DataDir: filepath.Join(dir, "data"), Home: filepath.Join(dir, "home"), FakeModel: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if err := agents.Close(context.Background()); err != nil {
+		if err := bots.Close(context.Background()); err != nil {
 			t.Error(err)
 		}
 	})
 	options := Options{Model: ModelRef{Provider: "faux", ModelID: "echo"}, ThinkingLevel: "off"}
-	ref, err := agents.Create(ctx, "test", options)
+	ref, err := bots.Create(ctx, "test", options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := agents.Watch(ctx, ref)
+	first, err := bots.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.Close()
-	second, err := agents.Watch(ctx, ref)
+	second, err := bots.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 	}
 	second.Close()
 	// When one subscriber closes, the other still receives the durable user input and answer.
-	sub, err := agents.Submit(ctx, ref, Input{RequestID: "r1", Content: "hello", Origin: "web", Source: "test", Options: options})
+	sub, err := bots.Submit(ctx, ref, Input{RequestID: "r1", Content: "hello", Origin: "web", Source: "test", Options: options})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,12 +79,12 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 		}
 	}
 	// A reconnect and history use the same durable item projection.
-	fresh, err := agents.Watch(ctx, ref)
+	fresh, err := bots.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer fresh.Close()
-	history, err := agents.History(ctx, ref, math.MaxInt64, 100)
+	history, err := bots.History(ctx, ref, math.MaxInt64, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 	}
 	// Cancellation closes the native subscription without requiring another commit.
 	canceledCtx, cancelWatch := context.WithCancel(ctx)
-	canceled, err := agents.Watch(canceledCtx, ref)
+	canceled, err := bots.Watch(canceledCtx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 	for range 16 {
 		raceCtx, cancelRace := context.WithCancel(ctx)
 		go cancelRace()
-		watch, err := agents.Watch(raceCtx, ref)
+		watch, err := bots.Watch(raceCtx, ref)
 		if err != nil {
 			if !errors.Is(err, context.Canceled) {
 				t.Fatal(err)
@@ -123,25 +123,25 @@ func TestUserNativeTranscriptSubscriptionsAndHistory(t *testing.T) {
 	t.Logf("received %d native transcript events", len(observed))
 }
 
-// transcriptAgents starts an engine on a temporary data directory and returns the conversation of
-// a new agent, to commit entries directly.
-func transcriptAgents(t *testing.T) (*Agents, Ref, harness.Conversation) {
+// transcriptBots starts an engine on a temporary data directory and returns the conversation of
+// a new bot, to commit entries directly.
+func transcriptBots(t *testing.T) (*Bots, Ref, harness.Conversation) {
 	t.Helper()
 	dir := t.TempDir()
-	agents, err := New(Config{DataDir: filepath.Join(dir, "data"), Home: filepath.Join(dir, "home"), FakeModel: true})
+	bots, err := New(Config{DataDir: filepath.Join(dir, "data"), Home: filepath.Join(dir, "home"), FakeModel: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = agents.Close(context.Background()) })
-	ref, err := agents.Create(t.Context(), "test", Options{Model: ModelRef{Provider: "faux", ModelID: "echo"}})
+	t.Cleanup(func() { _ = bots.Close(context.Background()) })
+	ref, err := bots.Create(t.Context(), "test", Options{Model: ModelRef{Provider: "faux", ModelID: "echo"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation, err := agents.conversation(t.Context(), ref)
+	conversation, err := bots.conversation(t.Context(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return agents, ref, conversation
+	return bots, ref, conversation
 }
 
 func appendEntry(tx durable.Tx, conversation harness.Conversation, kind string, msg ai.Message) (durable.EntryId, error) {
@@ -152,7 +152,7 @@ func appendEntry(tx durable.Tx, conversation harness.Conversation, kind string, 
 func TestUserWatchShowsRecentTurnsAndPagesTheRest(t *testing.T) {
 	// Given 25 turns, and a last turn with 60 tool calls that fold into one row.
 	ctx := t.Context()
-	agents, ref, conversation := transcriptAgents(t)
+	bots, ref, conversation := transcriptBots(t)
 	user := ai.UserMessage{Content: ai.UserText("hello")}
 	starts := []durable.EntryId{}
 	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
@@ -184,7 +184,7 @@ func TestUserWatchShowsRecentTurnsAndPagesTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the user opens the chat.
-	watch, err := agents.Watch(ctx, ref)
+	watch, err := bots.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestUserWatchShowsRecentTurnsAndPagesTheRest(t *testing.T) {
 		t.Fatalf("historyBefore = %d, want %d", watch.Snapshot.HistoryBefore, starts[5])
 	}
 	// And the first 5 turns stay available as history.
-	history, err := agents.History(ctx, ref, watch.Snapshot.HistoryBefore, 100)
+	history, err := bots.History(ctx, ref, watch.Snapshot.HistoryBefore, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestUserWatchShowsRecentTurnsAndPagesTheRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fresh, err := agents.Watch(ctx, ref)
+	fresh, err := bots.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func TestUserWatchShowsRecentTurnsAndPagesTheRest(t *testing.T) {
 func TestUserWatchCapsALongTurn(t *testing.T) {
 	// Given one input that ran 200 tool calls, as a child session can.
 	ctx := t.Context()
-	agents, ref, conversation := transcriptAgents(t)
+	bots, ref, conversation := transcriptBots(t)
 	_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 		if _, err := appendEntry(tx, conversation, "pi.user", ai.UserMessage{Content: ai.UserText("work")}); err != nil {
 			return nil, err
@@ -250,7 +250,7 @@ func TestUserWatchCapsALongTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the user opens the chat.
-	watch, err := agents.Watch(ctx, ref)
+	watch, err := bots.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestUserWatchCapsALongTurn(t *testing.T) {
 		t.Fatalf("historyBefore = %d, want %d", watch.Snapshot.HistoryBefore, items[0].EntryID)
 	}
 	// And the start of the turn loads as history.
-	history, err := agents.History(ctx, ref, watch.Snapshot.HistoryBefore, 200)
+	history, err := bots.History(ctx, ref, watch.Snapshot.HistoryBefore, 200)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestUserWatchCapsALongTurn(t *testing.T) {
 func TestUserOpensLongToolOutputAndThought(t *testing.T) {
 	// Given a turn with a long thought and long outputs of a done call, a failed call and a session call.
 	ctx := t.Context()
-	agents, ref, conversation := transcriptAgents(t)
+	bots, ref, conversation := transcriptBots(t)
 	long := strings.Repeat("x", detailLimit+1)
 	thought := "Plan the check\n" + long
 	var callEntry durable.EntryId
@@ -318,12 +318,12 @@ func TestUserOpensLongToolOutputAndThought(t *testing.T) {
 		t.Fatal(err)
 	}
 	// When the user opens the chat and loads its history.
-	watch, err := agents.Watch(ctx, ref)
+	watch, err := bots.Watch(ctx, ref)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer watch.Close()
-	history, err := agents.History(ctx, ref, math.MaxInt64, 100)
+	history, err := bots.History(ctx, ref, math.MaxInt64, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,21 +348,21 @@ func TestUserOpensLongToolOutputAndThought(t *testing.T) {
 		}
 	}
 	// When the user opens the done call and the thought, they get the full text.
-	done, err := agents.Detail(ctx, ref, int64(callEntry), "done")
+	done, err := bots.Detail(ctx, ref, int64(callEntry), "done")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if done.Output != "done"+long || done.Truncated || done.Status != "done" {
 		t.Fatalf("done detail = %d bytes, %#v", len(done.Output), done.Status)
 	}
-	full, err := agents.Detail(ctx, ref, int64(callEntry), fmt.Sprintf("e%d:0", callEntry))
+	full, err := bots.Detail(ctx, ref, int64(callEntry), fmt.Sprintf("e%d:0", callEntry))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if full.Text != thought || full.Truncated {
 		t.Fatalf("thought detail = %d bytes", len(full.Text))
 	}
-	last, err := agents.Detail(ctx, ref, int64(callEntry), "p19")
+	last, err := bots.Detail(ctx, ref, int64(callEntry), "p19")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,14 +370,14 @@ func TestUserOpensLongToolOutputAndThought(t *testing.T) {
 		t.Fatalf("last parallel detail = %d bytes, %q", len(last.Output), last.Status)
 	}
 	// A call without a result stops the scan at the next answer.
-	orphan, err := agents.Detail(ctx, ref, int64(callEntry), "orphan")
+	orphan, err := bots.Detail(ctx, ref, int64(callEntry), "orphan")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if orphan.Output != "" || orphan.Status != "error" {
 		t.Fatalf("orphan detail = %#v", orphan)
 	}
-	if _, err := agents.Detail(ctx, ref, int64(callEntry), "missing"); !errors.Is(err, ErrItemNotFound) {
+	if _, err := bots.Detail(ctx, ref, int64(callEntry), "missing"); !errors.Is(err, ErrItemNotFound) {
 		t.Fatalf("missing item: %v", err)
 	}
 }
@@ -387,7 +387,7 @@ func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
 		t.Run(fmt.Sprintf("withdrawn-%d", withdrawn), func(t *testing.T) {
 			// Given finished turns and a tool result after withdrawn queued inputs.
 			ctx := t.Context()
-			agents, ref, conversation := transcriptAgents(t)
+			bots, ref, conversation := transcriptBots(t)
 			var resultID durable.EntryId
 			_, err := conversation.Commit(ctx, func(tx durable.Tx) (any, error) {
 				for range 25 {
@@ -425,7 +425,7 @@ func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
 			}
 
 			// When the user reconnects and loads every older page.
-			watch, err := agents.Watch(ctx, ref)
+			watch, err := bots.Watch(ctx, ref)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -435,7 +435,7 @@ func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
 				t.Fatal("snapshot has no history to paginate")
 			}
 			for before := watch.Snapshot.HistoryBefore; before != 0; {
-				page, err := agents.History(ctx, ref, before, 7)
+				page, err := bots.History(ctx, ref, before, 7)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -445,7 +445,7 @@ func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
 				}
 				before = page.NextBefore
 			}
-			complete, err := agents.History(ctx, ref, math.MaxInt64, 1000)
+			complete, err := bots.History(ctx, ref, math.MaxInt64, 1000)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -471,12 +471,12 @@ func TestUserStopKeepsToolOutputAcrossHistory(t *testing.T) {
 				t.Error("snapshot and history pages differ from complete history")
 			}
 			// A page that starts at the result must also include its call.
-			page, err := agents.History(ctx, ref, int64(resultID)+1, 1)
+			page, err := bots.History(ctx, ref, int64(resultID)+1, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
 			check("one-entry history page", page.Items)
-			older, err := agents.History(ctx, ref, int64(resultID), 100)
+			older, err := bots.History(ctx, ref, int64(resultID), 100)
 			if err != nil {
 				t.Fatal(err)
 			}

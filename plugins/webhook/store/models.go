@@ -11,6 +11,6 @@ import (
 type PluginWebhookSource struct {
 	ID            string         `json:"id"`
 	Secret        string         `json:"secret"`
-	TaskAgentID   sql.NullString `json:"task_agent_id"`
+	TaskBotID     sql.NullString `json:"task_bot_id"`
 	HoldUnmatched int64          `json:"hold_unmatched"`
 }

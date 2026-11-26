@@ -4,7 +4,7 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import type {
-  Agent,
+  Bot,
   AutomationResult,
   AutomationResultSummary,
   BoardAttentionSession,
@@ -21,7 +21,7 @@ import {
 } from "../lib/automation-results";
 import { invalidateTasks } from "../lib/task-stream";
 import { newId } from "../lib/utils";
-import { AgentAvatar } from "./agent-avatar";
+import { BotAvatar } from "./bot-avatar";
 import { MarkdownBody } from "./markdown-body";
 import { Empty, FramedPage } from "./page";
 import { Failure, Loading } from "./feedback";
@@ -31,7 +31,7 @@ import { Button, buttonVariants } from "./ui/button";
 export type ResultGroup = {
   automationId: string;
   automationName: string;
-  agentId: string;
+  botId: string;
   runs: AutomationResultSummary[];
   hasFailure: boolean;
   hasUnread: boolean;
@@ -53,7 +53,7 @@ export function groupResults(items: AutomationResultSummary[]): ResultGroup[] {
       byAutomation.set(item.automationId, {
         automationId: item.automationId,
         automationName: item.automationName,
-        agentId: item.agentId,
+        botId: item.botId,
         runs: [item],
         hasFailure: item.outcome === "failed",
         hasUnread: !item.read,
@@ -84,13 +84,13 @@ function shortTime(timestamp: number) {
 }
 
 export function QuestionRow({
-  agent,
+  bot,
   session,
   questionId,
   text,
   options,
 }: {
-  agent: { id: string; name: string };
+  bot: { id: string; name: string };
   session: BoardAttentionSession;
   questionId: string;
   text: string;
@@ -99,11 +99,11 @@ export function QuestionRow({
   const answer = useMutation({
     mutationFn: (choice: string) =>
       sendMessage({
-        path: { agentId: agent.id, sessionId: session.id },
+        path: { botId: bot.id, sessionId: session.id },
         body: { id: newId(), text: choice, answersQuestionId: questionId },
         throwOnError: true,
       }),
-    onSuccess: () => Promise.all([refreshBoardAttention(), refreshSessions(agent.id)]),
+    onSuccess: () => Promise.all([refreshBoardAttention(), refreshSessions(bot.id)]),
   });
 
   const uniqueOptions = Array.from(new Set(options));
@@ -112,11 +112,11 @@ export function QuestionRow({
     <li className="space-y-2.5 py-3.5">
       <div className="flex items-start gap-2.5">
         <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-orange" />
-        <AgentAvatar agent={agent} className="mt-0.5 size-5 text-[10px]" />
+        <BotAvatar bot={bot} className="mt-0.5 size-5 text-[10px]" />
         <div className="min-w-0 flex-1">
           <p className="whitespace-pre-wrap break-words text-[14px] font-medium text-foreground">{text}</p>
           <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-            {agent.name} · {session.main ? "Main" : session.title || "Session"}
+            {bot.name} · {session.main ? "Main" : session.title || "Session"}
           </p>
         </div>
       </div>
@@ -135,16 +135,16 @@ export function QuestionRow({
         {session.main ? (
           <Link
             className={buttonVariants({ variant: "ghost", size: "sm" })}
-            to="/a/$agentId"
-            params={{ agentId: agent.id }}
+            to="/b/$botId"
+            params={{ botId: bot.id }}
           >
             Open session
           </Link>
         ) : (
           <Link
             className={buttonVariants({ variant: "ghost", size: "sm" })}
-            to="/a/$agentId/s/$sessionId"
-            params={{ agentId: agent.id, sessionId: String(session.id) }}
+            to="/b/$botId/s/$sessionId"
+            params={{ botId: bot.id, sessionId: String(session.id) }}
           >
             Open session
           </Link>
@@ -161,10 +161,10 @@ export function QuestionRow({
 
 export function TaskReviewRow({
   task,
-  agent,
+  bot,
 }: {
   task: Pick<TaskSummary, "key" | "title">;
-  agent: Pick<Agent, "id" | "name">;
+  bot: Pick<Bot, "id" | "name">;
 }) {
   const client = useQueryClient();
 
@@ -190,7 +190,7 @@ export function TaskReviewRow({
     <li className="space-y-2.5 py-3.5">
       <div className="flex items-start gap-2.5">
         <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-orange" />
-        <AgentAvatar agent={agent} className="mt-0.5 size-5 text-[10px]" />
+        <BotAvatar bot={bot} className="mt-0.5 size-5 text-[10px]" />
         <div className="min-w-0 flex-1">
           <Link
             to="/board/$taskKey"
@@ -202,7 +202,7 @@ export function TaskReviewRow({
             </span>
             {task.title}
           </Link>
-          <p className="mt-0.5 text-[12.5px] text-muted-foreground">{agent.name} · Waiting for your review</p>
+          <p className="mt-0.5 text-[12.5px] text-muted-foreground">{bot.name} · Waiting for your review</p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 pl-9">
@@ -226,7 +226,7 @@ export function TaskReviewRow({
   );
 }
 
-export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pick<Agent, "id" | "name"> }) {
+export function ResultGroupRow({ group, bot }: { group: ResultGroup; bot: Pick<Bot, "id" | "name"> }) {
   const [expanded, setExpanded] = useState(false);
   const latest = group.runs[0];
   const earlier = group.runs.slice(1);
@@ -268,7 +268,7 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
                   : "mt-2 size-1.5 shrink-0 rounded-full border border-muted-foreground/40"
             }
           />
-          <AgentAvatar agent={agent} className="mt-0.5 size-5 text-[10px]" />
+          <BotAvatar bot={bot} className="mt-0.5 size-5 text-[10px]" />
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
@@ -342,8 +342,8 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
             ) : null}
             {latest.sessionId ? (
               <Link
-                to="/a/$agentId/s/$sessionId"
-                params={{ agentId: latest.agentId, sessionId: String(latest.sessionId) }}
+                to="/b/$botId/s/$sessionId"
+                params={{ botId: latest.botId, sessionId: String(latest.sessionId) }}
                 className={buttonVariants({ variant: "ghost", size: "sm" })}
               >
                 Run transcript
@@ -351,8 +351,8 @@ export function ResultGroupRow({ group, agent }: { group: ResultGroup; agent: Pi
               </Link>
             ) : null}
             <Link
-              to="/a/$agentId/automations/$automationId"
-              params={{ agentId: latest.agentId, automationId: latest.automationId }}
+              to="/b/$botId/automations/$automationId"
+              params={{ botId: latest.botId, automationId: latest.automationId }}
               className={buttonVariants({ variant: "ghost", size: "sm" })}
             >
               Automation
@@ -449,7 +449,7 @@ function BoardResultDetail({
         </Link>
       }
       title={item?.automationName ?? "Update"}
-      description={item ? `${item.agentName} · ${new Date(item.createdAt).toLocaleString()}` : undefined}
+      description={item ? `${item.botName} · ${new Date(item.createdAt).toLocaleString()}` : undefined}
     >
       {pending ? (
         <Loading />
@@ -488,16 +488,16 @@ function BoardResultDetail({
             ) : null}
             {item.sessionId ? (
               <Link
-                to="/a/$agentId/s/$sessionId"
-                params={{ agentId: item.agentId, sessionId: String(item.sessionId) }}
+                to="/b/$botId/s/$sessionId"
+                params={{ botId: item.botId, sessionId: String(item.sessionId) }}
                 className={buttonVariants({ variant: "ghost" })}
               >
                 Run transcript
               </Link>
             ) : null}
             <Link
-              to="/a/$agentId/automations/$automationId"
-              params={{ agentId: item.agentId, automationId: item.automationId }}
+              to="/b/$botId/automations/$automationId"
+              params={{ botId: item.botId, automationId: item.automationId }}
               className={buttonVariants({ variant: "ghost" })}
             >
               Open automation

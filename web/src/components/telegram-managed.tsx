@@ -8,7 +8,7 @@ import {
   getTelegramManagedSetupOptions,
   setTelegramManagerMutation,
 } from "../api/generated/@tanstack/react-query.gen";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { refreshSettings } from "../lib/queries";
 import { Modal } from "./dialog";
 import { Failure } from "./feedback";
@@ -114,7 +114,7 @@ export function TelegramManagedCreation({
   available: boolean;
   replacing: boolean;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const [setup, setSetup] = useState<{ initial: TelegramManagedSetup; replacing: boolean }>();
 
   const begin = useMutation({
@@ -130,7 +130,7 @@ export function TelegramManagedCreation({
           size="sm"
           variant="secondary"
           disabled={begin.isPending || !!setup}
-          onClick={() => begin.mutate({ path: { agentId } })}
+          onClick={() => begin.mutate({ path: { botId } })}
         >
           Create a new Bot
         </Button>
@@ -150,8 +150,8 @@ function SetupDialog({
   replacing: boolean;
   onClose: () => void;
 }) {
-  const agentId = useAgentId();
-  const path = { agentId, setupId: initial.id };
+  const botId = useBotId();
+  const path = { botId, setupId: initial.id };
 
   const setup = useQuery({
     ...getTelegramManagedSetupOptions({ path }),

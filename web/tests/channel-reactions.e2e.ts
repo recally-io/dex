@@ -3,7 +3,7 @@ import { expect } from "e2e";
 
 describe("Channel status reactions", () => {
   test("Telegram defaults to private on without group settings", async ({ app, screen }) => {
-    await app.open("/a/default/channels/telegram");
+    await app.open("/b/default/channels/telegram");
     await screen.getByRole("button", { name: "Connect bot" }).click();
     await screen.getByText("Delivery and status", { exact: true }).click();
 
@@ -15,7 +15,7 @@ describe("Channel status reactions", () => {
   });
 
   test("Feishu defaults to private on without a group setting", async ({ app, screen }) => {
-    await app.open("/a/default/channels/feishu");
+    await app.open("/b/default/channels/feishu");
     await screen.getByText("Use an existing app", { exact: true }).click();
 
     await expect(screen.getByRole("combobox", { name: "Private chat status reactions" })).toHaveValue("on");

@@ -67,7 +67,7 @@ func (s *Service) MyWorkload(ctx context.Context, c engine.TaskContext, _ struct
 	if conv.ParentID.Valid {
 		return nil, tasksvc.ErrForbidden
 	}
-	tasks, err := q.ListBotWorkload(ctx, conv.AgentID)
+	tasks, err := q.ListBotWorkload(ctx, conv.BotID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,11 +84,11 @@ func (s *Service) MyWorkload(ctx context.Context, c engine.TaskContext, _ struct
 		}
 		item.Blocked = len(blockers) > 0
 		switch {
-		case item.InReview && task.ReviewerKind == tasksvc.ActorBot && task.ReviewerID == conv.AgentID:
+		case item.InReview && task.ReviewerKind == tasksvc.ActorBot && task.ReviewerID == conv.BotID:
 			item.PendingAction = "review"
 		case item.InReview:
 			item.PendingAction = "wait_for_review"
-		case task.AssigneeBotID != conv.AgentID:
+		case task.AssigneeBotID != conv.BotID:
 			item.PendingAction = "wait_for_submission"
 		case item.Blocked:
 			item.PendingAction = "check_blockers"

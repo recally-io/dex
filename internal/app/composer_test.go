@@ -21,7 +21,7 @@ import (
 	"github.com/recally-io/dex/internal/db/sqlc"
 )
 
-// upload sends one file as POST /api/agents/default/uploads and returns the status and the body. A filename with
+// upload sends one file as POST /api/bots/default/uploads and returns the status and the body. A filename with
 // a path is sent as it is, as a client that is not a browser can do.
 func (d *dex) upload(t *testing.T, field, filename string, content []byte) (int, string) {
 	t.Helper()
@@ -37,7 +37,7 @@ func (d *dex) upload(t *testing.T, field, filename string, content []byte) (int,
 	if err := mw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/uploads", &body)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/bots/default/uploads", &body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,11 +84,11 @@ type sessionSettings struct {
 
 func (d *dex) setThinking(t *testing.T, thinkingLevel string) {
 	t.Helper()
-	d.must(t, http.MethodPut, "/api/agents/default",
+	d.must(t, http.MethodPut, "/api/bots/default",
 		map[string]string{"name": "Dex", "provider": "faux", "modelId": "think", "thinkingLevel": thinkingLevel, "instructions": ""}, nil)
 }
 
-func TestUserSetsAgentThinkingLevel(t *testing.T) {
+func TestUserSetsBotThinkingLevel(t *testing.T) {
 	t.Parallel()
 	// Given dex with the reasoning model faux/think
 	d := startDex(t, t.TempDir(), "")
@@ -116,11 +116,11 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 		t.Fatalf("faux/echo = %+v", echo)
 	}
 
-	// And a new agent's thinking level is off, as pi-durable runs a conversation without one
+	// And a new bot's thinking level is off, as pi-durable runs a conversation without one
 	var s struct {
 		ThinkingLevel string `json:"thinkingLevel"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &s)
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &s)
 	if s.ThinkingLevel != "off" {
 		t.Fatalf("default thinking level = %q", s.ThinkingLevel)
 	}
@@ -129,7 +129,7 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	d.setThinking(t, "high")
 
 	// Then the settings keep it, and pi-ai sends it to the model
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &s)
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &s)
 	if s.ThinkingLevel != "high" {
 		t.Fatalf("saved thinking level = %q", s.ThinkingLevel)
 	}
@@ -143,14 +143,14 @@ func TestUserSetsAgentThinkingLevel(t *testing.T) {
 	w.until(t, "answer at low", answered("think low: again"))
 
 	// And an unknown level is refused
-	status, raw := d.call(t, http.MethodPut, "/api/agents/default",
+	status, raw := d.call(t, http.MethodPut, "/api/bots/default",
 		map[string]string{"name": "Dex", "provider": "faux", "modelId": "think", "thinkingLevel": "huge", "instructions": ""})
 	if status != http.StatusBadRequest {
 		t.Fatalf("unknown level: %d %s", status, raw)
 	}
 }
 
-func TestUserSendsFilesToTheAgent(t *testing.T) {
+func TestUserSendsFilesToTheBot(t *testing.T) {
 	t.Parallel()
 	// Given dex with a model
 	dataDir := t.TempDir()
@@ -162,7 +162,7 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	pic := d.mustUpload(t, "screen shot.png", img)
 	notes := d.mustUpload(t, "笔记.txt", []byte("remember the milk\n"))
 
-	// Then each is in the agent workspace under uploads/<id>/<name>
+	// Then each is in the bot workspace under uploads/<id>/<name>
 	if pic.Name != "screen shot.png" || pic.Size != int64(len(img)) || pic.MimeType != "image/png" ||
 		pic.Path != "uploads/"+pic.ID+"/screen shot.png" {
 		t.Fatalf("image upload = %+v", pic)
@@ -177,7 +177,7 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 
 	// When the user sends a message with both
 	created := d.newSession(t)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", created.ID), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": "look", "attachments": []string{pic.ID, notes.ID},
 	}, nil, http.StatusAccepted)
 	w := d.watch(t, created.ID)
@@ -194,12 +194,12 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	// When the user sends only a file in a new session
 	only := d.mustUpload(t, "report.pdf", []byte("%PDF-1.4\n"))
 	created = d.newSession(t)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", created.ID), map[string]any{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", created.ID), map[string]any{
 		"id": uuid.NewV7().String(), "text": " ", "attachments": []string{only.ID},
 	}, nil, http.StatusAccepted)
 
 	// Then the session is named after the file, and the model gets the path
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", created.ID), nil, &created)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", created.ID), nil, &created)
 	if created.Title != "report.pdf" {
 		t.Fatalf("file-only title: %+v", created)
 	}
@@ -214,10 +214,10 @@ func TestUserSendsFilesToTheAgent(t *testing.T) {
 	}
 }
 
-// getUpload returns the status and the headers of GET /api/agents/default/uploads/<rawID>, and the body.
+// getUpload returns the status and the headers of GET /api/bots/default/uploads/<rawID>, and the body.
 func (d *dex) getUpload(t *testing.T, rawID string) (int, http.Header, []byte) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/agents/default/uploads/"+rawID, nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, d.srv.URL+"/api/bots/default/uploads/"+rawID, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestUploadIsServedSafely(t *testing.T) {
 		}
 	}
 
-	// The agent's tools can put symlinks in the workspace; an upload never leads out of it.
+	// The bot's tools can put symlinks in the workspace; an upload never leads out of it.
 	uploads := filepath.Join(d.dataDir(t), "agents", "default", "workspace", "uploads")
 	dirLink, fileLink := uuid.NewV7().String(), uuid.NewV7().String()
 	outside := t.TempDir()
@@ -335,7 +335,7 @@ func TestInvalidUploadsAndAttachmentsAreRefused(t *testing.T) {
 
 	// Messages: too many, unknown, repeated, or no attachments
 	sessionID := d.newSession(t).ID
-	messagePath := fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID)
+	messagePath := fmt.Sprintf("/api/bots/default/sessions/%d/messages", sessionID)
 	ids := make([]string, 11)
 	for i := range ids {
 		ids[i] = d.mustUpload(t, fmt.Sprintf("f%d.txt", i), []byte("x")).ID

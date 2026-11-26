@@ -188,7 +188,7 @@ func TestUserTelegramStatusRespectsPrivateOff(t *testing.T) {
 	f := newFakeTelegram(t)
 	data := t.TempDir()
 	d := startTelegram(t, f, data, 42)
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": map[string]any{"reactions": false}}, nil)
 	f.message(1, 42, 42, "private off")
 	_ = f.next(t)
 	waitTelegramQueueAck(t, controlWriteDB(t, data), 1, "not_attempted")
@@ -203,7 +203,7 @@ func TestUserFeishuStatusPreservesExplicitOffAcrossSettingsReload(t *testing.T) 
 	f.reactGate = gate
 	d := startFeishu(t, f, data)
 	pairFeishu(t, d, f)
-	path := "/api/agents/default/channels/feishu"
+	path := "/api/bots/default/channels/feishu"
 	d.must(t, http.MethodPut, path, map[string]any{"appId": "app", "appSecret": "", "brand": "feishu", "reactions": false}, nil)
 	// When the same credentials are saved again without the option, then reloaded.
 	d.must(t, http.MethodPut, path, map[string]any{"appId": "app", "appSecret": "", "brand": "feishu"}, nil)

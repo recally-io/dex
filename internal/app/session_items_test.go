@@ -33,7 +33,7 @@ func TestUserOpensLongToolOutputOnRequest(t *testing.T) {
 		}
 	}
 	// When the user opens the step, the item request returns the whole output.
-	path := fmt.Sprintf("/api/agents/default/sessions/%d/items/%s?entry=%d", session, tool.ID, tool.EntryID)
+	path := fmt.Sprintf("/api/bots/default/sessions/%d/items/%s?entry=%d", session, tool.ID, tool.EntryID)
 	status, body := d.call(t, http.MethodGet, path, nil)
 	var full item
 	if status != http.StatusOK || json.Unmarshal([]byte(body), &full) != nil {
@@ -43,7 +43,7 @@ func TestUserOpensLongToolOutputOnRequest(t *testing.T) {
 		t.Fatalf("item has %d bytes, truncated %v", len(full.Output), full.Truncated)
 	}
 	// And an unknown item is not found.
-	status, body = d.call(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/items/missing?entry=%d", session, tool.EntryID), nil)
+	status, body = d.call(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/items/missing?entry=%d", session, tool.EntryID), nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("missing item: %d %s", status, body)
 	}

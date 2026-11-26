@@ -18,16 +18,16 @@ func TestUserDoesNotReceiveWebOrBackgroundQuestionsOnPairedChannels(t *testing.T
 		t.Fatal(err)
 	}
 	if err := r.q.InsertAutomationNotificationTarget(ctx, sqlc.InsertAutomationNotificationTargetParams{
-		ID: "target", AgentID: conv.AgentID, Platform: "telegram", AccountID: "123", Peer: "telegram:42",
+		ID: "target", BotID: conv.BotID, Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.q.SetPrimaryNotificationTarget(ctx, sqlc.SetPrimaryNotificationTargetParams{
-		ID: conv.AgentID, PrimaryNotificationTargetID: sql.NullString{String: "target", Valid: true},
+		ID: conv.BotID, PrimaryNotificationTargetID: sql.NullString{String: "target", Valid: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	task, err := tasksvc.New(r.conn, nil).CreateTask(ctx, tasksvc.Owner, tasksvc.OriginUser, tasksvc.CreateTaskParams{AssigneeBotID: conv.AgentID, Title: "Sign-in"})
+	task, err := tasksvc.New(r.conn, nil).CreateTask(ctx, tasksvc.Owner, tasksvc.OriginUser, tasksvc.CreateTaskParams{AssigneeBotID: conv.BotID, Title: "Sign-in"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -25,15 +25,15 @@ SELECT * FROM background_commands WHERE session_id = ? ORDER BY process_started_
 -- name: ListRunningBackgroundIDs :many
 SELECT id FROM background_commands WHERE session_id = ? AND state IN ('starting', 'running');
 
--- name: ListRunningBackgroundIDsByAgent :many
+-- name: ListRunningBackgroundIDsByBot :many
 SELECT b.id FROM background_commands b
 JOIN sessions c ON c.id = b.session_id
-WHERE c.agent_id = ? AND b.state IN ('starting', 'running');
+WHERE c.bot_id = ? AND b.state IN ('starting', 'running');
 
 -- name: CountRunningBackgroundCommands :one
 SELECT count(*) FROM background_commands b
 JOIN sessions c ON c.id = b.session_id
-WHERE c.agent_id = ? AND b.state IN ('starting', 'running');
+WHERE c.bot_id = ? AND b.state IN ('starting', 'running');
 
 -- name: FinishBackgroundCommand :execrows
 UPDATE background_commands SET state = @state, exit_status = @exit_status, reason = @reason, ended_at = @ended_at
@@ -53,7 +53,7 @@ SELECT @id, b.session_id, @content, 'null', @id, s.origin, 'scheduler', '', '', 
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
 JOIN sessions c ON c.id = b.session_id
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 WHERE b.id = @background_id AND a.archived_at IS NULL
 ON CONFLICT DO NOTHING;
 

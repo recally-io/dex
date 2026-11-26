@@ -8,7 +8,7 @@ import (
 )
 
 func (h *handler) ListAutomations(ctx context.Context, _ api.ListAutomationsRequestObject) (api.ListAutomationsResponseObject, error) {
-	list, err := h.Automations.List(ctx, agentID(ctx))
+	list, err := h.Automations.List(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -16,13 +16,13 @@ func (h *handler) ListAutomations(ctx context.Context, _ api.ListAutomationsRequ
 }
 
 func (h *handler) ListAutomationTargets(ctx context.Context, _ api.ListAutomationTargetsRequestObject) (api.ListAutomationTargetsResponseObject, error) {
-	rows, err := h.Automations.ListTargetCandidates(ctx, agentID(ctx))
+	rows, err := h.Automations.ListTargetCandidates(ctx, botID(ctx))
 	if err != nil {
 		return nil, err
 	}
 	targets := make([]api.AutomationTarget, 0, len(rows))
 	for _, row := range rows {
-		if session.AutomationTargetEligible(row, agentID(ctx)) {
+		if session.AutomationTargetEligible(row, botID(ctx)) {
 			targets = append(targets, api.AutomationTarget{Id: row.ID, Title: row.Title, Main: row.ChannelKey == session.MainKey})
 		}
 	}
@@ -33,7 +33,7 @@ func (h *handler) CreateAutomation(ctx context.Context, req api.CreateAutomation
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	a, err := h.Automations.Create(ctx, agentID(ctx), *req.Body)
+	a, err := h.Automations.Create(ctx, botID(ctx), *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (h *handler) PreviewSchedule(_ context.Context, req api.PreviewScheduleRequ
 }
 
 func (h *handler) GetAutomation(ctx context.Context, req api.GetAutomationRequestObject) (api.GetAutomationResponseObject, error) {
-	a, err := h.Automations.Get(ctx, agentID(ctx), req.AutomationId)
+	a, err := h.Automations.Get(ctx, botID(ctx), req.AutomationId)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (h *handler) UpdateAutomation(ctx context.Context, req api.UpdateAutomation
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	a, err := h.Automations.Update(ctx, agentID(ctx), req.AutomationId, *req.Body)
+	a, err := h.Automations.Update(ctx, botID(ctx), req.AutomationId, *req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -71,14 +71,14 @@ func (h *handler) UpdateAutomation(ctx context.Context, req api.UpdateAutomation
 }
 
 func (h *handler) DeleteAutomation(ctx context.Context, req api.DeleteAutomationRequestObject) (api.DeleteAutomationResponseObject, error) {
-	if err := h.Automations.Delete(ctx, agentID(ctx), req.AutomationId); err != nil {
+	if err := h.Automations.Delete(ctx, botID(ctx), req.AutomationId); err != nil {
 		return nil, err
 	}
 	return api.DeleteAutomation200JSONResponse(ok), nil
 }
 
 func (h *handler) RunAutomation(ctx context.Context, req api.RunAutomationRequestObject) (api.RunAutomationResponseObject, error) {
-	run, err := h.Automations.RunNow(ctx, agentID(ctx), req.AutomationId)
+	run, err := h.Automations.RunNow(ctx, botID(ctx), req.AutomationId)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (h *handler) RunAutomation(ctx context.Context, req api.RunAutomationReques
 }
 
 func (h *handler) ListAutomationRuns(ctx context.Context, req api.ListAutomationRunsRequestObject) (api.ListAutomationRunsResponseObject, error) {
-	runs, err := h.Automations.Runs(ctx, agentID(ctx), req.AutomationId, -1)
+	runs, err := h.Automations.Runs(ctx, botID(ctx), req.AutomationId, -1)
 	if err != nil {
 		return nil, err
 	}

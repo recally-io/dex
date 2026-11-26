@@ -80,7 +80,7 @@ test("a new session can select a sandbox and shows a disconnected runner", async
   browser,
   screen,
 }) => {
-  await app.open("/a/default");
+  await app.open("/b/default");
   const baseUrl = new URL(await browser.url()).origin;
 
   const sandbox = await fetch(`${baseUrl}/api/settings/runners`, {
@@ -99,14 +99,14 @@ test("a new session can select a sandbox and shows a disconnected runner", async
     body: JSON.stringify({ name: "Disconnected runner", kind: "runner" }),
   });
 
-  const session = await fetch(`${baseUrl}/api/agents/default/sessions`, { method: "POST" });
+  const session = await fetch(`${baseUrl}/api/bots/default/sessions`, { method: "POST" });
 
   if (!sandbox.ok || !runner.ok || !session.ok)
     throw new Error("Could not create session environment fixtures");
 
   const { id: sessionId }: { id: number } = await session.json();
   const { id: sandboxId }: { id: string } = await sandbox.json();
-  await app.open(`/a/default/s/${sessionId}`);
+  await app.open(`/b/default/s/${sessionId}`);
   const picker = screen.getByLabel("Runner", { exact: true });
   await picker.selectOption({ value: sandboxId });
 

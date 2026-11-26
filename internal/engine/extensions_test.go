@@ -16,10 +16,10 @@ import (
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
-func extensionFixture(t *testing.T) (*agentExtensions, string, string) {
+func extensionFixture(t *testing.T) (*botExtensions, string, string) {
 	t.Helper()
 	home, data := t.TempDir(), t.TempDir()
-	a := newAgentExtensions(home, data, "a", nil, newToolEnv(home, map[string]string{"BASE": "explicit"}, nil))
+	a := newBotExtensions(home, data, "a", nil, newToolEnv(home, map[string]string{"BASE": "explicit"}, nil))
 	return a, home, data
 }
 func extensionFile(t *testing.T, path, text string) {
@@ -32,10 +32,10 @@ func extensionFile(t *testing.T, path, text string) {
 	}
 }
 func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
-	// Given skills at dex and agent levels.
+	// Given skills at dex and bot levels.
 	a, _, data := extensionFixture(t)
-	agent := filepath.Join(data, "agents", "a")
-	for _, dir := range []string{data, agent} {
+	bot := filepath.Join(data, "agents", "a")
+	for _, dir := range []string{data, bot} {
 		extensionFile(t, filepath.Join(dir, ".agents", "skills", "notes", "SKILL.md"), "---\ndescription: "+filepath.Base(dir)+"\n---\n")
 	}
 	loaded, err := a.Load(t.Context())
@@ -51,12 +51,12 @@ func TestUserExtensionsMergeAndRefreshSkills(t *testing.T) {
 		t.Fatalf("merge: %#v %v", info, err)
 	}
 	// When the skill changes, the next request sees the new description.
-	extensionFile(t, filepath.Join(agent, ".agents", "skills", "notes", "SKILL.md"), "---\ndescription: refreshed\n---\n")
+	extensionFile(t, filepath.Join(bot, ".agents", "skills", "notes", "SKILL.md"), "---\ndescription: refreshed\n---\n")
 	prompt, err := loaded.Extension.Sections[1].Render(t.Context(), durable.PromptInput{})
 	if err != nil || prompt == nil || !strings.Contains(*prompt, "refreshed") {
 		t.Fatalf("skill prompt: %v %v", prompt, err)
 	}
-	extensionFile(t, filepath.Join(agent, ".agents", "skills", "notes", "SKILL.md"), "broken")
+	extensionFile(t, filepath.Join(bot, ".agents", "skills", "notes", "SKILL.md"), "broken")
 	prompt, err = loaded.Extension.Sections[1].Render(t.Context(), durable.PromptInput{})
 	if err != nil || prompt != nil {
 		t.Fatalf("broken skill exposed wider entry: %v %v", prompt, err)
@@ -176,11 +176,11 @@ func TestUserDisabledMCPOverrideSurvivesInvalidWrite(t *testing.T) {
 	if err != nil || len(info.Servers) != 1 || info.Servers[0].State != "disabled" {
 		t.Fatalf("invalid write changed the override: %#v %v", info, err)
 	}
-	other := newAgentExtensions(home, data, "b", nil, a.env)
+	other := newBotExtensions(home, data, "b", nil, a.env)
 	other.mcp = a.mcp
 	info, err = other.Info(t.Context())
 	if err != nil || len(info.Servers) != 1 || info.Servers[0].Scope != "dex" || info.Servers[0].State != "idle" {
-		t.Fatalf("override affected another agent: %#v %v", info, err)
+		t.Fatalf("override affected another bot: %#v %v", info, err)
 	}
 }
 func TestUserSkillMetadataMustBeText(t *testing.T) {

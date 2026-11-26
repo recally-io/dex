@@ -24,8 +24,8 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 			// Given a parent with a delegated child and a scripted local model for both.
 			r := startNative(t, "echo")
 			provider := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "child-report-fixture", Models: []ai.FauxModelDefinition{{ID: "script"}}, TokensPerSecond: 10000})
-			r.agents.Catalog.Models.SetProvider(provider.Provider())
-			if err := r.q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{
+			r.bots.Catalog.Models.SetProvider(provider.Provider())
+			if err := r.q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{
 				ID: "bot", Name: "Bot", ModelProvider: "child-report-fixture", ModelID: "script", ThinkingLevel: "off",
 			}); err != nil {
 				t.Fatal(err)
@@ -151,10 +151,10 @@ func TestUserChildReportIsHandledBeforeSilentExit(t *testing.T) {
 				t.Fatalf("child did not return its setup result to the parent: %+v, %v", setup, err)
 			}
 			if tc.interrupted {
-				if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+				if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
 					t.Fatal(err)
 				}
-				if err := r.q.InsertAutomationNotificationTarget(t.Context(), sqlc.InsertAutomationNotificationTargetParams{ID: "target", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42"}); err != nil {
+				if err := r.q.InsertAutomationNotificationTarget(t.Context(), sqlc.InsertAutomationNotificationTargetParams{ID: "target", BotID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42"}); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := r.q.SetPrimaryNotificationTarget(t.Context(), sqlc.SetPrimaryNotificationTargetParams{ID: "bot", PrimaryNotificationTargetID: sql.NullString{String: "target", Valid: true}}); err != nil {

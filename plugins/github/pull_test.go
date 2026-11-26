@@ -27,7 +27,7 @@ func TestUserPullsReviewsBeforeSavingCheckpoint(t *testing.T) {
 	}
 	q := sqlc.New(conn)
 	gh := store.New(conn)
-	if _, err := q.CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+	if _, err := q.CreateBot(ctx, sqlc.CreateBotParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	tasks := tasksvc.New(conn, nil)

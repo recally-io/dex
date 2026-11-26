@@ -157,7 +157,7 @@ func (s *Service) ToolMonitorSet(ctx context.Context, r engine.TaskContext, a Mo
 	created, err := q.CreateMonitor(ctx, sqlc.CreateMonitorParams{
 		ID:                   id,
 		OperationKey:         r.Key,
-		AgentID:              conv.AgentID,
+		BotID:                conv.BotID,
 		SessionID:            conv.ID,
 		RootRequestID:        rootRequestID,
 		SourceSubmissionID:   source.ID,
@@ -208,12 +208,12 @@ func (s *Service) ToolMonitorCancel(ctx context.Context, r engine.TaskContext, i
 	if err != nil {
 		return MonitorInfo{}, err
 	}
-	return s.cancelMonitor(ctx, conv.AgentID, conv.ID, strings.TrimPrefix(id, "schedule-"))
+	return s.cancelMonitor(ctx, conv.BotID, conv.ID, strings.TrimPrefix(id, "schedule-"))
 }
 
 // ListMonitors returns active and recent follow-up monitors of a session.
-func (s *Service) ListMonitors(ctx context.Context, agentID string, sessionID int64) ([]MonitorInfo, error) {
-	if _, err := s.Get(ctx, agentID, sessionID); err != nil {
+func (s *Service) ListMonitors(ctx context.Context, botID string, sessionID int64) ([]MonitorInfo, error) {
+	if _, err := s.Get(ctx, botID, sessionID); err != nil {
 		return nil, err
 	}
 	return s.listMonitors(ctx, sessionID)
@@ -232,14 +232,14 @@ func (s *Service) listMonitors(ctx context.Context, sessionID int64) ([]MonitorI
 }
 
 // CancelMonitor cancels one scheduled follow-up monitor of a session.
-func (s *Service) CancelMonitor(ctx context.Context, agentID string, sessionID int64, monitorID string) (MonitorInfo, error) {
-	if _, err := s.Get(ctx, agentID, sessionID); err != nil {
+func (s *Service) CancelMonitor(ctx context.Context, botID string, sessionID int64, monitorID string) (MonitorInfo, error) {
+	if _, err := s.Get(ctx, botID, sessionID); err != nil {
 		return MonitorInfo{}, err
 	}
-	return s.cancelMonitor(ctx, agentID, sessionID, monitorID)
+	return s.cancelMonitor(ctx, botID, sessionID, monitorID)
 }
 
-func (s *Service) cancelMonitor(ctx context.Context, agentID string, sessionID int64, monitorID string) (MonitorInfo, error) {
+func (s *Service) cancelMonitor(ctx context.Context, botID string, sessionID int64, monitorID string) (MonitorInfo, error) {
 	unlock, err := s.lockSession(ctx, sessionID)
 	if err != nil {
 		return MonitorInfo{}, err
@@ -251,7 +251,7 @@ func (s *Service) cancelMonitor(ctx context.Context, agentID string, sessionID i
 		return MonitorInfo{}, engine.ErrMaintenance
 	}
 	row, err := s.q.GetMonitor(ctx, monitorID)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.SessionID != sessionID || row.AgentID != agentID)) {
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.SessionID != sessionID || row.BotID != botID)) {
 		return MonitorInfo{}, ErrNotFound
 	}
 	if err != nil {
@@ -265,7 +265,7 @@ func (s *Service) cancelMonitor(ctx context.Context, agentID string, sessionID i
 	if err != nil {
 		return MonitorInfo{}, err
 	}
-	ref := engine.Ref{AgentID: agentID, ID: cmp.Or(row.TargetExecutionID, conv.ExecutionID.Int64)}
+	ref := engine.Ref{BotID: botID, ID: cmp.Or(row.TargetExecutionID, conv.ExecutionID.Int64)}
 	var withdrawn []string
 	for _, id := range events {
 		if ref.ID != 0 {
@@ -326,14 +326,14 @@ func activeMonitorTarget(c sqlc.Session) bool {
 }
 
 func monitorRunner(ctx context.Context, q *sqlc.Queries, c sqlc.Session) (string, int64, error) {
-	agent, err := q.GetAgent(ctx, c.AgentID)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && agent.ArchivedAt.Valid) {
+	bot, err := q.GetBot(ctx, c.BotID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && bot.ArchivedAt.Valid) {
 		return "", 0, errMonitorTarget
 	}
 	if err != nil {
 		return "", 0, err
 	}
-	id := effectiveRunner(agent, c.RunnerID)
+	id := effectiveRunner(bot, c.RunnerID)
 	if id == "local" {
 		return id, 0, nil
 	}
@@ -352,7 +352,7 @@ func monitorTarget(ctx context.Context, q *sqlc.Queries, row sqlc.Monitor) (sqlc
 	if err != nil {
 		return c, err
 	}
-	if c.AgentID != row.AgentID || !activeMonitorTarget(c) {
+	if c.BotID != row.BotID || !activeMonitorTarget(c) {
 		return c, errMonitorTarget
 	}
 	id, rev, err := monitorRunner(ctx, q, c)
@@ -455,7 +455,7 @@ func (s *Service) authorizeMonitor(ctx context.Context, caller engine.TaskContex
 	if err != nil {
 		return err
 	}
-	if row.State == "cancelled" || source.Status != "pending" || source.SessionID != row.SessionID || row.AgentID != caller.AgentID {
+	if row.State == "cancelled" || source.Status != "pending" || source.SessionID != row.SessionID || row.BotID != caller.BotID {
 		return errMonitorTarget
 	}
 	conv, err := monitorTarget(ctx, s.q, row)

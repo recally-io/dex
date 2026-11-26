@@ -1,10 +1,7 @@
 import { useMutation, useMutationState, useQuery } from "@tanstack/react-query";
-import {
-  listAgentRunnersOptions,
-  setSessionRunnerMutation,
-} from "../api/generated/@tanstack/react-query.gen";
+import { listBotRunnersOptions, setSessionRunnerMutation } from "../api/generated/@tanstack/react-query.gen";
 import type { Session } from "../api/generated/types.gen";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { errorText, refreshSessions } from "../lib/queries";
 import { Select } from "./form";
 
@@ -35,8 +32,8 @@ export function useRunnerSendBlock(sessionId: number | undefined): string | unde
 
 // A session picks its environment before the first message. After that the name is read-only.
 export function SessionRunner({ session, started }: { session: Session; started: boolean }) {
-  const agentId = useAgentId();
-  const runners = useQuery(listAgentRunnersOptions({ path: { agentId } }));
+  const botId = useBotId();
+  const runners = useQuery(listBotRunnersOptions({ path: { botId } }));
   const list = runners.data?.runners ?? [];
   const own = list.find((env) => env.default);
   const selected = session.runnerId ?? "";
@@ -44,7 +41,7 @@ export function SessionRunner({ session, started }: { session: Session; started:
   const save = useMutation({
     ...setSessionRunnerMutation(),
     mutationKey: saveKey,
-    onSuccess: () => refreshSessions(agentId),
+    onSuccess: () => refreshSessions(botId),
   });
 
   if (started || session.readOnly) {
@@ -70,7 +67,7 @@ export function SessionRunner({ session, started }: { session: Session; started:
         value={selected}
         disabled={save.isPending}
         onChange={(event) =>
-          save.mutate({ path: { agentId, sessionId: session.id }, body: { runnerId: event.target.value } })
+          save.mutate({ path: { botId, sessionId: session.id }, body: { runnerId: event.target.value } })
         }
       >
         <option value="">Follow bot ({own?.name ?? "default"})</option>

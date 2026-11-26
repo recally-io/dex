@@ -10,24 +10,24 @@ import (
 )
 
 func (m *Manager) KnownTelegramAlbum(ctx context.Context, peer string, identity session.ChannelContext) (bool, error) {
-	return m.sessions.KnownTelegramAlbum(ctx, m.agentID, peer, identity)
+	return m.sessions.KnownTelegramAlbum(ctx, m.botID, peer, identity)
 }
 
 func (m *Manager) StoreTelegramAlbum(ctx context.Context, peer, source string, msg session.Message) error {
-	return m.sessions.StoreTelegramAlbum(ctx, m.agentID, peer, source, msg)
+	return m.sessions.StoreTelegramAlbum(ctx, m.botID, peer, source, msg)
 }
 
 func (m *Manager) ReadyTelegramAlbums(ctx context.Context) ([]session.TelegramAlbum, time.Duration, error) {
-	return m.sessions.ReadyTelegramAlbums(ctx, m.agentID)
+	return m.sessions.ReadyTelegramAlbums(ctx, m.botID)
 }
 
 func (m *Manager) FinishTelegramAlbum(ctx context.Context, source string) error {
-	return m.sessions.FinishTelegramAlbum(ctx, m.agentID, source)
+	return m.sessions.FinishTelegramAlbum(ctx, m.botID, source)
 }
 
 // CleanupTelegramAlbums deletes only uploads that never transferred to a business input.
 func (m *Manager) CleanupTelegramAlbums(ctx context.Context, store *upload.Store) error {
-	pending, err := m.sessions.DiscardedTelegramUploads(ctx, m.agentID)
+	pending, err := m.sessions.DiscardedTelegramUploads(ctx, m.botID)
 	if err != nil {
 		return err
 	}
@@ -37,7 +37,7 @@ func (m *Manager) CleanupTelegramAlbums(ctx context.Context, store *upload.Store
 				return err
 			}
 		}
-		if err := m.sessions.ClearDiscardedTelegramUpload(ctx, m.agentID, item.Source); err != nil {
+		if err := m.sessions.ClearDiscardedTelegramUpload(ctx, m.botID, item.Source); err != nil {
 			return err
 		}
 	}

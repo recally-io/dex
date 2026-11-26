@@ -60,7 +60,7 @@ package "dex: one Go process" as runtime {
 HTTP, Sessions, Tasks, Automations
 Input receipts + channel outbox" as business
   rectangle "Native engine
-One PiG Harness per agent
+One PiG Harness per bot
 Models + tools + MCP + memory" as engine
   rectangle "Live SSE
 Typed watch events + heartbeat" as live
@@ -71,7 +71,7 @@ Tasks and platform delivery receipts" as cdb
 database "agents/<id>/state.sqlite
 Native admission and native Inbox
 Runs, transcripts, tool calls" as adb
-folder "Local agent files
+folder "Local bot files
 agents/<id>/workspace
 memory/ (shared Git repo)" as files
 rectangle "Model providers" as models

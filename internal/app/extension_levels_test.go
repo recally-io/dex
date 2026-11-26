@@ -38,7 +38,7 @@ func TestUserUsesVaultHeaderWithoutLeakingValues(t *testing.T) {
 	if got.server("good").State != "connected" || got.server("missing").State != "failed" || got.server("disabled").State != "disabled" || !strings.Contains(got.server("missing").Error, "ABSENT_HEADER_KEY") {
 		t.Fatalf("servers: %+v", got.Servers)
 	}
-	_, body := d.call(t, http.MethodGet, "/api/agents/default/integrations", nil)
+	_, body := d.call(t, http.MethodGet, "/api/bots/default/integrations", nil)
 	for _, view := range []string{body, taskTool(t, d, session, "mcp_server_list", map[string]any{}), taskTool(t, d, session, "mcp_server_get", map[string]any{"name": "good", "level": "agent"})} {
 		if strings.Contains(view, secret) || !strings.Contains(view, ref) {
 			t.Fatalf("MCP view must show the reference only: %s", view)

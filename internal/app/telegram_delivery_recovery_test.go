@@ -44,7 +44,7 @@ func TestUserTelegramMediaFloodWaitSurvivesRestart(t *testing.T) {
 	conn := controlWriteDB(t, data)
 	var until int64
 	eventually(t, "durable account and reply retry windows", func() (bool, any) {
-		err := conn.QueryRowContext(t.Context(), "SELECT retry_at FROM telegram_settings WHERE agent_id='default'").Scan(&until)
+		err := conn.QueryRowContext(t.Context(), "SELECT retry_at FROM telegram_settings WHERE bot_id='default'").Scan(&until)
 		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE kind='file' AND retry_at>0")
 		return err == nil && until > 0 && n == 1, until
 	})
@@ -77,13 +77,13 @@ func TestUserRevokedTelegramFileDoesNotResumeAfterReauthorization(t *testing.T) 
 	f.message(1, 42, 7, `deliver_file {"path":"private.txt"}`)
 	_ = nextTelegramMedia(t, f.mediaAttempts)
 	// When the owner revokes the sender, its payload is removed in the settings transaction.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"allowedUsers": []int64{99}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"allowedUsers": []int64{99}}, nil)
 	conn := controlWriteDB(t, data)
 	if n := count(t, conn, "SELECT count(*) FROM outbox_files"); n != 0 {
 		t.Fatalf("retained revoked payloads=%d", n)
 	}
 	// Reauthorization permits new work, not the revoked pending delivery.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"allowedUsers": []int64{42}}, nil)
 	f.failMedia.Store(false)
 	telegramSource(t, data, "current.txt", []byte("new work"))
 	f.message(2, 42, 7, `deliver_file {"path":"current.txt"}`)

@@ -45,12 +45,12 @@ type Session struct {
 	ParentID int64
 	// StoppedByParent is set by List: Stop on the parent would act on this child.
 	StoppedByParent bool
-	// AgentID and AgentName name the bot of the session. Only a child session in another bot than
+	// BotID and BotName name the bot of the session. Only a child session in another bot than
 	// the bot that was asked for has them: the list of a parent shows it.
-	AgentID, AgentName string
-	// ParentAgentID and ParentAgentName name the bot of the parent, when it is not the bot that was
+	BotID, BotName string
+	// ParentBotID and ParentBotName name the bot of the parent, when it is not the bot that was
 	// asked for.
-	ParentAgentID, ParentAgentName string
+	ParentBotID, ParentBotName string
 	// ExecutionID is zero until native execution creates the conversation.
 	ExecutionID int64
 	// Question is the question that waits for the user, or whose answer waits in the queue.
@@ -59,7 +59,7 @@ type Session struct {
 	ForkedFrom *Origin
 }
 
-// Settings are the settings that one session overrides. An empty field follows the agent's setting.
+// Settings are the settings that one session overrides. An empty field follows the bot's setting.
 // Provider and ModelID are both empty or both set; internal/settings validates them.
 type Settings struct {
 	Provider      string `json:"provider,omitempty"`
@@ -118,14 +118,14 @@ const titleLength = 60
 // Service stores receipts and projects native execution outcomes.
 type Service struct {
 	q                *sqlc.Queries
-	engine           *engine.Agents
+	engine           *engine.Bots
 	now              func() time.Time
 	notify           func(origin string)
-	channelIntake    func(agent, origin, id string, source ChannelContext)
-	channelAdmission func(agent, origin, id string, sub *engine.Submission)
+	channelIntake    func(bot, origin, id string, source ChannelContext)
+	channelAdmission func(bot, origin, id string, sub *engine.Submission)
 	changed          func(sessionID int64)
 	// OnBotArchived runs after a transaction that archived a bot has committed. Optional.
-	OnBotArchived func(agentID string)
+	OnBotArchived func(botID string)
 
 	// The database holds work. A wake can coalesce without losing a submission.
 	wake          chan struct{}
@@ -135,7 +135,7 @@ type Service struct {
 	wg            sync.WaitGroup
 	db            *sql.DB
 	monitorFireMu sync.Mutex // one active scheduler batch; SQLite claims survive restart
-	writeMu       sync.Mutex // writer-first control transactions; per agent if throughput matters
+	writeMu       sync.Mutex // writer-first control transactions; per bot if throughput matters
 	monitorMu     sync.Mutex // serialize creation to enforce the shared active limit
 	checkSettings func(context.Context, Settings) error
 	background    *background.Manager
@@ -155,9 +155,9 @@ type Service struct {
 }
 
 // New connects durable business receipts to native execution.
-func New(db *sql.DB, agents *engine.Agents, now func() time.Time, notify func(string), changed func(int64)) *Service {
+func New(db *sql.DB, bots *engine.Bots, now func() time.Time, notify func(string), changed func(int64)) *Service {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Service{db: db, q: sqlc.New(db), engine: agents, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, delivery: make(map[int64]*deliveryGate)}
+	return &Service{db: db, q: sqlc.New(db), engine: bots, now: now, notify: notify, changed: changed, wake: make(chan struct{}, 1), ctx: ctx, cancel: cancel, delivery: make(map[int64]*deliveryGate)}
 }
 
 // Run reconciles receipts at startup and after a failed cross-store write.
@@ -264,21 +264,21 @@ var ErrMessageID = errors.New("the message ID belongs to another input")
 
 // Post stores the message id with content on channelKey and returns the session ID. It does not wait
 // for the answer. A new session gets the title title, or the start of content when title is empty.
-// When the agent has no model, it stores nothing and returns ErrNoModel. A message with an ID that
+// When the bot has no model, it stores nothing and returns ErrNoModel. A message with an ID that
 // exists already is not stored again.
-func (s *Service) Post(ctx context.Context, agentID, channelKey, title, id, content string) (int64, error) {
-	return s.Send(ctx, agentID, channelKey, Message{ID: id, Title: title, Content: content})
+func (s *Service) Post(ctx context.Context, botID, channelKey, title, id, content string) (int64, error) {
+	return s.Send(ctx, botID, channelKey, Message{ID: id, Title: title, Content: content})
 }
 
 // Send is Post for a message with attachments, or for a new session with its own settings. When
-// neither the session nor the agent has a model, it stores nothing and returns ErrNoModel.
-func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Message) (int64, error) {
-	agent, err := s.q.GetAgent(ctx, agentID)
+// neither the session nor the bot has a model, it stores nothing and returns ErrNoModel.
+func (s *Service) Send(ctx context.Context, botID, channelKey string, m Message) (int64, error) {
+	bot, err := s.q.GetBot(ctx, botID)
 	if err != nil {
 		return 0, err
 	}
-	model := agent.ModelID
-	switch c, err := s.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{AgentID: agentID, ChannelKey: channelKey}); {
+	model := bot.ModelID
+	switch c, err := s.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{BotID: botID, ChannelKey: channelKey}); {
 	case errors.Is(err, sql.ErrNoRows):
 		model = cmp.Or(m.Settings.ModelID, model)
 	case err != nil:
@@ -289,7 +289,7 @@ func (s *Service) Send(ctx context.Context, agentID, channelKey string, m Messag
 	if model == "" {
 		return 0, ErrNoModel
 	}
-	return s.enqueue(ctx, agentID, channelKey, "", inputOrigin(channelKey), m, false)
+	return s.enqueue(ctx, botID, channelKey, "", inputOrigin(channelKey), m, false)
 }
 
 // ConfigureChannelReceipts connects best-effort observations before the service starts.
@@ -299,26 +299,26 @@ func (s *Service) ConfigureChannelReceipts(intake func(string, string, string, C
 }
 
 // SubmitMessage stores a channel update and attempts native admission before returning.
-func (s *Service) SubmitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
-	return s.submitMessage(ctx, agentID, peer, sourceKey, m, false)
+func (s *Service) SubmitMessage(ctx context.Context, botID, peer, sourceKey string, m Message) error {
+	return s.submitMessage(ctx, botID, peer, sourceKey, m, false)
 }
 
 // AcceptMessage returns when the source receipt commits, without waiting for native admission.
-func (s *Service) AcceptMessage(ctx context.Context, agentID, peer, sourceKey string, m Message) error {
-	return s.submitMessage(ctx, agentID, peer, sourceKey, m, true)
+func (s *Service) AcceptMessage(ctx context.Context, botID, peer, sourceKey string, m Message) error {
+	return s.submitMessage(ctx, botID, peer, sourceKey, m, true)
 }
 
-func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey string, m Message, deferAdmission bool) error {
+func (s *Service) submitMessage(ctx context.Context, botID, peer, sourceKey string, m Message, deferAdmission bool) error {
 	if NonPrivateTelegramPeer(peer) {
 		return ErrTelegramUnauthorized
 	}
-	if _, err := s.Main(ctx, agentID); err != nil {
+	if _, err := s.Main(ctx, botID); err != nil {
 		return err
 	}
 	m.ID = uuid.NewV7().String()
 	m.Settings = Settings{}
 	if m.ReplyTo != "" {
-		switch id, err := s.q.GetQuestionByMessage(ctx, sqlc.GetQuestionByMessageParams{AgentID: agentID, Peer: peer, RemoteID: m.ReplyTo}); {
+		switch id, err := s.q.GetQuestionByMessage(ctx, sqlc.GetQuestionByMessageParams{BotID: botID, Peer: peer, RemoteID: m.ReplyTo}); {
 		case err == nil:
 			m.AnswersQuestion = id
 		case !errors.Is(err, sql.ErrNoRows):
@@ -334,17 +334,17 @@ func (s *Service) submitMessage(ctx context.Context, agentID, peer, sourceKey st
 	if m.AnswersQuestion == "" {
 		addContext()
 	}
-	_, err := s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m, deferAdmission)
+	_, err := s.enqueue(ctx, botID, MainKey, sourceKey, peer, m, deferAdmission)
 	if errors.Is(err, ErrQuestionClosed) && m.AnswersQuestion != "" && !m.QuestionOnly {
-		// The question closed while the user wrote. The words still reach the agent as a plain message.
+		// The question closed while the user wrote. The words still reach the bot as a plain message.
 		m.AnswersQuestion = ""
 		addContext()
-		_, err = s.enqueue(ctx, agentID, MainKey, sourceKey, peer, m, deferAdmission)
+		_, err = s.enqueue(ctx, botID, MainKey, sourceKey, peer, m, deferAdmission)
 	}
 	return err
 }
 
-func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, origin string, m Message, deferAdmission bool) (int64, error) {
+func (s *Service) enqueue(ctx context.Context, botID, channelKey, sourceKey, origin string, m Message, deferAdmission bool) (int64, error) {
 	if NonPrivateTelegramPeer(origin) {
 		return 0, ErrTelegramUnauthorized
 	}
@@ -371,23 +371,23 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			sessionTitle = title(m.Attachments[0].Name)
 		}
 		conv, err := q.EnsureSession(ctx, sqlc.EnsureSessionParams{
-			AgentID: agentID, ChannelKey: channelKey, Title: sessionTitle,
+			BotID: botID, ChannelKey: channelKey, Title: sessionTitle,
 			ModelProvider: m.Settings.Provider, ModelID: m.Settings.ModelID, ThinkingLevel: m.Settings.ThinkingLevel,
 			CreatedAt: createdAt,
 		})
 		if err != nil {
 			return 0, err
 		}
-		if err := checkTelegramControl(ctx, q, sourceKey, agentID, conv.ID); err != nil {
+		if err := checkTelegramControl(ctx, q, sourceKey, botID, conv.ID); err != nil {
 			return 0, err
 		}
 		if privateTelegramSource(origin, m.ChannelContext) {
-			if err := authorizeTelegramActor(ctx, q, agentID, m.ChannelContext.AccountID, m.ChannelContext.SenderID); err != nil {
+			if err := authorizeTelegramActor(ctx, q, botID, m.ChannelContext.AccountID, m.ChannelContext.SenderID); err != nil {
 				return 0, err
 			}
 		}
 		// The writer is held now. Input first makes an archive fail as busy; archive first ends here.
-		if err := db.RequireActive(ctx, q, agentID); err != nil {
+		if err := db.RequireActive(ctx, q, botID); err != nil {
 			return 0, err
 		}
 		if m.SpeechSource != "" {
@@ -395,12 +395,12 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			if err != nil {
 				return 0, err
 			}
-			if effect.AgentID != agentID || effect.State == "discarded" {
+			if effect.BotID != botID || effect.State == "discarded" {
 				return 0, fmt.Errorf("%w: speech input discarded before admission", errSessionInvalid)
 			}
 		}
 		if m.AlbumSource != "" {
-			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{AgentID: agentID, BatchSource: m.AlbumSource, Peer: origin, AccountID: m.ChannelContext.AccountID, SenderID: m.ChannelContext.SenderID})
+			sealed, err := q.IsTelegramAlbumSealed(ctx, sqlc.IsTelegramAlbumSealedParams{BotID: botID, BatchSource: m.AlbumSource, Peer: origin, AccountID: m.ChannelContext.AccountID, SenderID: m.ChannelContext.SenderID})
 			if err != nil {
 				return 0, err
 			}
@@ -422,7 +422,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			// A retry of an answer that is stored already must not bind or wrap it again.
 			switch _, err := q.GetSubmission(ctx, m.ID); {
 			case errors.Is(err, sql.ErrNoRows):
-				if decision, err = answerContent(ctx, q, agentID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
+				if decision, err = answerContent(ctx, q, botID, conv.ID, m.AnswersQuestion, m.Content, origin); err != nil {
 					return 0, err
 				}
 				content = decision.Content
@@ -432,7 +432,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			}
 		}
 		if peerFromOrigin(origin) != "" && m.ChannelContext.AccountID != "" {
-			if err := RequirePairedChannel(ctx, q, agentID, origin, m.ChannelContext); err != nil {
+			if err := RequirePairedChannel(ctx, q, botID, origin, m.ChannelContext); err != nil {
 				return 0, err
 			}
 		}
@@ -482,7 +482,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			}
 		}
 		if answers && created > 0 {
-			bound, err := q.AnswerQuestion(ctx, sqlc.AnswerQuestionParams{ID: m.AnswersQuestion, AgentID: agentID, SessionID: conv.ID, SubmissionID: sql.NullString{String: m.ID, Valid: true}, Outcome: decision.Outcome})
+			bound, err := q.AnswerQuestion(ctx, sqlc.AnswerQuestionParams{ID: m.AnswersQuestion, BotID: botID, SessionID: conv.ID, SubmissionID: sql.NullString{String: m.ID, Valid: true}, Outcome: decision.Outcome})
 			if err != nil {
 				return 0, err
 			}
@@ -495,7 +495,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 		}
 		if created > 0 && taskID != "" {
 			ledger = tasksvc.NewLedger(q)
-			if err := recordTaskMessage(ctx, q, ledger, agentID, taskID, m, submittedAt); err != nil {
+			if err := recordTaskMessage(ctx, q, ledger, botID, taskID, m, submittedAt); err != nil {
 				return 0, err
 			}
 		}
@@ -511,7 +511,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 			createdReceipt = true
 			archived = decision.archive
 			if s.channelIntake != nil && sourceKey != "" && m.ChannelContext.MessageID != "" && !m.QuestionOnly {
-				s.channelIntake(agentID, origin, m.ID, m.ChannelContext)
+				s.channelIntake(botID, origin, m.ID, m.ChannelContext)
 			}
 		}
 		if created == 0 {
@@ -544,7 +544,7 @@ func (s *Service) enqueue(ctx context.Context, agentID, channelKey, sourceKey, o
 	// Channel runtime changes run outside the receipt gate, so a busy bot cannot block the gate.
 	s.botArchived(archived)
 	if createdReceipt {
-		receiptTrace(sessionID, m.ID).InfoContext(ctx, "session input", "phase", "enqueued", "agent", agentID)
+		receiptTrace(sessionID, m.ID).InfoContext(ctx, "session input", "phase", "enqueued", "agent", botID)
 	}
 	if err != nil || complete {
 		return sessionID, err
@@ -628,13 +628,13 @@ func title(content string) string {
 	return string([]rune(t)[:titleLength-1]) + "…"
 }
 
-// List returns the sessions of agentID, newest activity first.
-func (s *Service) List(ctx context.Context, agentID string) ([]Session, error) {
-	rows, err := s.q.ListSessionSummaries(ctx, agentID)
+// List returns the sessions of botID, newest activity first.
+func (s *Service) List(ctx context.Context, botID string) ([]Session, error) {
+	rows, err := s.q.ListSessionSummaries(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
-	questions, err := s.q.ListCurrentQuestions(ctx, agentID)
+	questions, err := s.q.ListCurrentQuestions(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -644,7 +644,7 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Session, error) {
 			return nil, err
 		}
 	}
-	stopped, err := s.q.ListChildrenStoppedByParent(ctx, agentID)
+	stopped, err := s.q.ListChildrenStoppedByParent(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -663,17 +663,17 @@ func (s *Service) List(ctx context.Context, agentID string) ([]Session, error) {
 			Busy: r.Pending > 0, ArchivedAt: r.ArchivedAt.Int64, Settings: Settings{Provider: r.ModelProvider, ModelID: r.ModelID, ThinkingLevel: r.ThinkingLevel},
 			Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, Question: bySession[r.ID], StoppedByParent: stoppedByParent[r.ID],
 		}
-		if r.AgentID != agentID {
-			sessions[i].AgentID, sessions[i].AgentName = r.AgentID, r.AgentName
+		if r.BotID != botID {
+			sessions[i].BotID, sessions[i].BotName = r.BotID, r.BotName
 		}
-		sessions[i].ParentAgentID, sessions[i].ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
+		sessions[i].ParentBotID, sessions[i].ParentBotName = otherBot(botID, r.ParentBotID, r.ParentBotName)
 	}
 	return sessions, nil
 }
 
 // otherBot returns the bot of a parent when it is not the bot that was asked for.
-func otherBot(agentID string, id, name sql.NullString) (string, string) {
-	if !id.Valid || id.String == agentID {
+func otherBot(botID string, id, name sql.NullString) (string, string) {
+	if !id.Valid || id.String == botID {
 		return "", ""
 	}
 	return id.String, name.String
@@ -706,7 +706,7 @@ func (s *Service) childStoppedByParent(ctx context.Context, id int64) (bool, err
 		if !p.FromParent {
 			continue
 		}
-		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}, p.ID)
+		outcome, err := s.engine.PeekWithdrawal(ctx, engine.Ref{BotID: c.BotID, ID: c.ExecutionID.Int64}, p.ID)
 		if errors.Is(err, engine.ErrNotFound) || errors.Is(err, engine.ErrModelsPending) || errors.Is(err, engine.ErrMaintenance) {
 			return true, nil
 		}
@@ -720,9 +720,9 @@ func (s *Service) childStoppedByParent(ctx context.Context, id int64) (bool, err
 	return false, nil
 }
 
-// Get returns session id of agentID, or ErrNotFound.
-func (s *Service) Get(ctx context.Context, agentID string, id int64) (Session, error) {
-	r, err := s.q.GetSessionDetails(ctx, sqlc.GetSessionDetailsParams{ID: id, AgentID: agentID})
+// Get returns session id of botID, or ErrNotFound.
+func (s *Service) Get(ctx context.Context, botID string, id int64) (Session, error) {
+	r, err := s.q.GetSessionDetails(ctx, sqlc.GetSessionDetailsParams{ID: id, BotID: botID})
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, ErrNotFound
 	}
@@ -739,7 +739,7 @@ func (s *Service) Get(ctx context.Context, agentID string, id int64) (Session, e
 		Writable: acceptsInput(r.ChannelKey, r.ParentID), ParentID: r.ParentID.Int64, ExecutionID: r.ExecutionID.Int64, Question: question,
 		ForkedFrom: forkOrigin(r),
 	}
-	c.ParentAgentID, c.ParentAgentName = otherBot(agentID, r.ParentAgentID, r.ParentAgentName)
+	c.ParentBotID, c.ParentBotName = otherBot(botID, r.ParentBotID, r.ParentBotName)
 	return c, nil
 }
 
@@ -755,7 +755,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	if s.leaseUntil.Load() != 0 {
 		return nil
 	}
-	agent, err := s.q.GetAgent(ctx, p.AgentID)
+	bot, err := s.q.GetBot(ctx, p.BotID)
 	if err != nil {
 		return err
 	}
@@ -766,8 +766,8 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	var trace *slog.Logger
 	var admissionErr error
 	if p.Kind == "message" {
-		environment := effectiveRunner(agent, conv.RunnerID)
-		trace = receiptTrace(p.SessionID, p.ID).With("agent", p.AgentID, "native_namespace", "private", "environment", environment)
+		environment := effectiveRunner(bot, conv.RunnerID)
+		trace = receiptTrace(p.SessionID, p.ID).With("agent", p.BotID, "native_namespace", "private", "environment", environment)
 		reason := "unknown"
 		switch {
 		case p.AdmittedAt.Valid:
@@ -785,11 +785,11 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	if conv.AbortPending != 0 {
 		return errStopPending
 	}
-	options := sessionOptions(agent, conv)
+	options := sessionOptions(bot, conv)
 	if strings.HasPrefix(p.ChannelKey, dream.Channel) {
-		options.Instructions = dream.Instructions(p.AgentID, options.Instructions)
+		options.Instructions = dream.Instructions(p.BotID, options.Instructions)
 	}
-	ref, err := s.execution(ctx, conv.ID, p.AgentID, options)
+	ref, err := s.execution(ctx, conv.ID, p.BotID, options)
 	if err != nil {
 		return err
 	}
@@ -831,7 +831,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 	if input.Kind == "wake" && isMonitorEvent(input.RequestID) {
 		input.RequireRunner = true
 		input.ValidateAdmission = func(ctx context.Context, ref engine.Ref) error {
-			caller := engine.TaskContext{AgentID: ref.AgentID, ConversationID: ref.ID, SourceRequestID: p.ID}
+			caller := engine.TaskContext{BotID: ref.BotID, ConversationID: ref.ID, SourceRequestID: p.ID}
 			if err := s.authorizeMonitor(ctx, caller); err != nil {
 				return fmt.Errorf("%w: monitor target is no longer valid", engine.ErrInvalidInput)
 			}
@@ -845,7 +845,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 			return err
 		}
 		if taskID != "" {
-			task, err := s.q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{AgentID: p.AgentID, ID: taskID})
+			task, err := s.q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{BotID: p.BotID, ID: taskID})
 			if err != nil {
 				return err
 			}
@@ -863,7 +863,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		input.Changed = func() { s.signal(conv.ID) }
 		if Writable(conv.ChannelKey) {
 			input.ChildHasTask, err = s.q.HasBoundTaskSession(ctx, sqlc.HasBoundTaskSessionParams{
-				SessionID: conv.ID, BotID: p.AgentID,
+				SessionID: conv.ID, BotID: p.BotID,
 			})
 			if err != nil {
 				return err
@@ -895,7 +895,7 @@ func (s *Service) admit(ctx context.Context, p sqlc.ListPendingSubmissionsRow) (
 		err = s.markTaskWakeAdmitted(ctx, p.ID)
 	} else {
 		if s.channelAdmission != nil {
-			s.channelAdmission(p.AgentID, p.Origin, p.ID, sub)
+			s.channelAdmission(p.BotID, p.Origin, p.ID, sub)
 		}
 		err = s.markAdmitted(ctx, p.ID)
 	}
@@ -948,9 +948,9 @@ func (s *Service) checkAdmission(ctx context.Context, id string) error {
 	return nil
 }
 
-// sessionOptions are the run settings of a session: its own model and thinking level, else the agent's.
-func sessionOptions(agent sqlc.Agent, conv sqlc.Session) engine.Options {
-	options := engine.Options{Cwd: conv.Cwd, Model: engine.ModelRef{Provider: agent.ModelProvider, ModelID: agent.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, agent.ThinkingLevel), Instructions: agent.Instructions}
+// sessionOptions are the run settings of a session: its own model and thinking level, else the bot's.
+func sessionOptions(bot sqlc.Bot, conv sqlc.Session) engine.Options {
+	options := engine.Options{Cwd: conv.Cwd, Model: engine.ModelRef{Provider: bot.ModelProvider, ModelID: bot.ModelID}, ThinkingLevel: cmp.Or(conv.ThinkingLevel, bot.ThinkingLevel), Instructions: bot.Instructions}
 	if conv.ModelID != "" {
 		options.Model = engine.ModelRef{Provider: conv.ModelProvider, ModelID: conv.ModelID}
 	}
@@ -972,14 +972,14 @@ func (s *Service) admissionError(ctx context.Context, id string, err error) erro
 	return err
 }
 
-// source names a submission's session in memory: dex:<agent ID>/chat/<session ID>, or
-// dex:<agent ID>/dream/<dream ID> for a
+// source names a submission's session in memory: dex:<bot ID>/chat/<session ID>, or
+// dex:<bot ID>/dream/<dream ID> for a
 // dream, whose entries cite the sessions that it read.
 func source(p sqlc.ListPendingSubmissionsRow) string {
 	if id, ok := strings.CutPrefix(p.ChannelKey, dream.Channel); ok {
-		return "dex:" + p.AgentID + "/dream/" + id
+		return "dex:" + p.BotID + "/dream/" + id
 	}
-	return fmt.Sprintf("dex:%s/chat/%d", p.AgentID, p.SessionID)
+	return fmt.Sprintf("dex:%s/chat/%d", p.BotID, p.SessionID)
 }
 
 // settleNative records a native outcome. A native abort comes from Withdraw (Stop settles the receipt
@@ -1039,18 +1039,18 @@ func (s *Service) signal(sessionID int64) {
 }
 
 // execution creates the native conversation once for the business record.
-func (s *Service) execution(ctx context.Context, id int64, agentID string, options engine.Options) (engine.Ref, error) {
+func (s *Service) execution(ctx context.Context, id int64, botID string, options engine.Options) (engine.Ref, error) {
 	conv, err := s.q.GetSession(ctx, id)
 	if err != nil {
 		return engine.Ref{}, err
 	}
-	if conv.AgentID != agentID {
+	if conv.BotID != botID {
 		return engine.Ref{}, errSessionInvalid
 	}
 	if conv.ExecutionID.Valid {
-		return engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, nil
+		return engine.Ref{BotID: botID, ID: conv.ExecutionID.Int64}, nil
 	}
-	ref, err := s.engine.Create(ctx, agentID, options)
+	ref, err := s.engine.Create(ctx, botID, options)
 	if err != nil {
 		return engine.Ref{}, err
 	}

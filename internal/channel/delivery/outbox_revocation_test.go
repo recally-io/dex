@@ -44,16 +44,16 @@ func pendingTelegramConclusion(t *testing.T) (*Manager, *sql.DB) {
 	t.Cleanup(manager.Close)
 	// Given a durable final conclusion authorized for the original Telegram receipt.
 	if _, err := conn.ExecContext(ctx, `
-INSERT INTO agents (id,name,model_provider,model_id,created_at) VALUES ('fixture-bot','Fixture','','',1);
-INSERT INTO telegram_settings (agent_id,token,allowed_users) VALUES ('fixture-bot','123:fixture','42');
-INSERT INTO sessions (id,agent_id,channel_key,title,created_at) VALUES (1,'fixture-bot','main','Main',1),(2,'fixture-bot','child','Child',1);
+INSERT INTO bots (id,name,model_provider,model_id,created_at) VALUES ('fixture-bot','Fixture','','',1);
+INSERT INTO telegram_settings (bot_id,token,allowed_users) VALUES ('fixture-bot','123:fixture','42');
+INSERT INTO sessions (id,bot_id,channel_key,title,created_at) VALUES (1,'fixture-bot','main','Main',1),(2,'fixture-bot','child','Child',1);
 UPDATE sessions SET parent_id=1 WHERE id=2;
 INSERT INTO submissions (id,session_id,content,status,source_key,origin,kind,channel_context,created_at) VALUES
     ('original',1,'Delegate','done','original-key','telegram:42','message','{"accountId":"123","senderId":"42"}',1),
     ('child-turn',2,'Do work','done',NULL,'task','message','{}',2),
     ('result:child-turn',1,'Canonical result','done',NULL,'telegram:42','session_result','{"accountId":"123","senderId":"42"}',3);
 UPDATE submissions SET parent_request_id='original' WHERE id='child-turn';
-INSERT INTO outbox_messages (id,event_id,agent_id,session_id,source_submission_id,kind,peer,channel_context,body,created_at)
+INSERT INTO outbox_messages (id,event_id,bot_id,session_id,source_submission_id,kind,peer,channel_context,body,created_at)
 VALUES ('final','notify:child-turn','fixture-bot',1,'result:child-turn','proactive','telegram:42','{"accountId":"123","senderId":"42"}','Reviewed conclusion',4);`); err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestUserRevokedFollowUpSnapshotNeverEntersTelegram(t *testing.T) {
 	// dispatched yet, revoke the saved channel route through the real writer.
 	bot := &revokeBeforeSendBot{beforeSend: func() {
 		loaded = true
-		if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "fixture-bot", Token: "123:fixture", AllowedUsers: "99", Options: "{}"}); err != nil {
+		if _, err := q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: "fixture-bot", Token: "123:fixture", AllowedUsers: "99", Options: "{}"}); err != nil {
 			t.Fatal(err)
 		}
 	}}
@@ -93,7 +93,7 @@ func TestUserFollowUpKeepsReturnedReceiptAfterSenderCancellation(t *testing.T) {
 	// at the same time a request that entered the platform returns its receipt.
 	bot := &revokeBeforeSendBot{beforeReceipt: func() {
 		q := sqlc.New(conn)
-		if _, err := q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "fixture-bot", Token: "123:fixture", AllowedUsers: "99", Options: "{}"}); err != nil {
+		if _, err := q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "fixture-bot", Token: "123:fixture", AllowedUsers: "99", Options: "{}"}); err != nil {
 			t.Fatal(err)
 		}
 		cancel()

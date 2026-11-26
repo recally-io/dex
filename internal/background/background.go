@@ -2,7 +2,7 @@
 // command ends or prints a line.
 //
 // A background command is a child process of dex in its own process group. Output goes to a file
-// under the agent data directory. The state lives in control.sqlite. A wake-up is a durable input
+// under the bot data directory. The state lives in control.sqlite. A wake-up is a durable input
 // of the owning session, like the result of a child session.
 //
 // A command owns its whole process group: when the leader ends, dex ends the rest of the group.
@@ -125,7 +125,7 @@ const (
 type StartParams struct {
 	// CallKey identifies the tool call. A second start with the same key returns the first command.
 	CallKey         string
-	AgentID         string
+	BotID           string
 	SessionID       int64
 	SourceRequestID string
 	Command         string
@@ -136,7 +136,7 @@ type StartParams struct {
 	Cwd        string
 	DefaultCwd string
 	Label      string
-	// RunnerID is the explicit environment of the session, or empty for the environment of the agent.
+	// RunnerID is the explicit environment of the session, or empty for the environment of the bot.
 	RunnerID   string
 	Env        map[string]string
 	MaskOutput func(string) string
@@ -147,8 +147,8 @@ type StartParams struct {
 }
 
 // ExecEnvOpener acquires an execution environment for a non-local background command. An empty
-// runnerID selects the environment of the agent.
-type ExecEnvOpener func(ctx context.Context, agentID, runnerID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error)
+// runnerID selects the environment of the bot.
+type ExecEnvOpener func(ctx context.Context, botID, runnerID, cwd string, extraEnv map[string]string) (durableenv.ExecutionEnv, string, runner.Kind, func(), error)
 
 // outputHooks receive live command output and events from an executor.
 type outputHooks struct {
@@ -199,7 +199,7 @@ func New(db *sql.DB, now func() time.Time, limits Limits, changed func(sessionID
 	return &Manager{db: db, q: sqlc.New(db), now: now, limits: limits.withDefaults(), changed: changed, procs: make(map[string]*proc)}
 }
 
-// ConfigureEnvOpener installs the execution environment opener used for non-local agents.
+// ConfigureEnvOpener installs the execution environment opener used for non-local bots.
 func (m *Manager) ConfigureEnvOpener(opener ExecEnvOpener) {
 	m.mu.Lock()
 	m.envOpener = opener
@@ -313,7 +313,7 @@ func (m *Manager) Start(ctx context.Context, p StartParams) (sqlc.BackgroundComm
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return sqlc.BackgroundCommand{}, err
 	}
-	running, err := m.q.CountRunningBackgroundCommands(ctx, p.AgentID)
+	running, err := m.q.CountRunningBackgroundCommands(ctx, p.BotID)
 	if err != nil {
 		return sqlc.BackgroundCommand{}, err
 	}
@@ -556,9 +556,9 @@ func (m *Manager) StopSession(ctx context.Context, sessionID int64) error {
 	return nil
 }
 
-// StopAgent ends the process group of each running command of a bot.
-func (m *Manager) StopAgent(ctx context.Context, agentID string) error {
-	ids, err := m.q.ListRunningBackgroundIDsByAgent(ctx, agentID)
+// StopBot ends the process group of each running command of a bot.
+func (m *Manager) StopBot(ctx context.Context, botID string) error {
+	ids, err := m.q.ListRunningBackgroundIDsByBot(ctx, botID)
 	if err != nil {
 		return err
 	}
@@ -728,7 +728,7 @@ func (r *localExecutor) PrepareOutput(_ context.Context, p StartParams, id strin
 }
 
 func (r *localExecutor) Start(ctx context.Context, p StartParams, id, cwd, output string, hooks outputHooks) (runningProcess, error) {
-	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
+	file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the bot data directory.
 	if err != nil {
 		return nil, err
 	}
@@ -910,7 +910,7 @@ func (p *localProc) waitGroupGone(limit time.Duration) bool {
 // pump reads the stdout of a lines command. It copies every byte to the output file and turns
 // each line into an event. It keeps reading after an error, so the process never blocks on a full pipe.
 func (p *localProc) pump() {
-	file, err := os.OpenFile(p.outputPath, os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the agent data directory.
+	file, err := os.OpenFile(p.outputPath, os.O_WRONLY|os.O_APPEND, 0o600) //nolint:gosec // The path is under the bot data directory.
 	if err != nil {
 		slog.Error("open background output", "id", p.id, "err", err)
 		file = nil
@@ -942,7 +942,7 @@ func (p *localProc) pump() {
 	}
 }
 
-// envExecutor executes background commands over an agent's durableenv.ExecutionEnv.
+// envExecutor executes background commands over a bot's durableenv.ExecutionEnv.
 type envExecutor struct {
 	openEnv ExecEnvOpener
 	limits  Limits
@@ -954,7 +954,7 @@ func newEnvExecutor(openEnv ExecEnvOpener, limits Limits) *envExecutor {
 }
 
 func (r *envExecutor) ValidateDir(ctx context.Context, p StartParams, cwd string) error {
-	execEnv, _, _, release, err := r.openEnv(ctx, p.AgentID, p.RunnerID, cwd, p.Env)
+	execEnv, _, _, release, err := r.openEnv(ctx, p.BotID, p.RunnerID, cwd, p.Env)
 	if err != nil {
 		return err
 	}
@@ -969,7 +969,7 @@ func (r *envExecutor) ValidateDir(ctx context.Context, p StartParams, cwd string
 }
 
 func (r *envExecutor) PrepareOutput(ctx context.Context, p StartParams, id string) (string, error) {
-	execEnv, workspace, _, release, err := r.openEnv(ctx, p.AgentID, p.RunnerID, p.DefaultCwd, p.Env)
+	execEnv, workspace, _, release, err := r.openEnv(ctx, p.BotID, p.RunnerID, p.DefaultCwd, p.Env)
 	if err != nil {
 		return "", err
 	}
@@ -989,7 +989,7 @@ func (r *envExecutor) PrepareOutput(ctx context.Context, p StartParams, id strin
 
 func (r *envExecutor) Start(ctx context.Context, p StartParams, id, cwd, outputPath string, hooks outputHooks) (runningProcess, error) {
 	baseCtx := context.WithoutCancel(ctx)
-	execEnv, _, _, release, err := r.openEnv(baseCtx, p.AgentID, p.RunnerID, cwd, p.Env)
+	execEnv, _, _, release, err := r.openEnv(baseCtx, p.BotID, p.RunnerID, cwd, p.Env)
 	if err != nil {
 		return nil, err
 	}

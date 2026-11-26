@@ -26,13 +26,13 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 	m.connect(d)
 	d.setModel(t, "tool")
 	var opened sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/default/sessions", nil, &opened, http.StatusCreated)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", opened.ID), map[string]string{"runnerId": m.envID}, nil)
-	session := botSession{bots: &bots{t: t, d: d}, agent: "default", id: opened.ID}
+	d.must(t, http.MethodPost, "/api/bots/default/sessions", nil, &opened, http.StatusCreated)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/runner", opened.ID), map[string]string{"runnerId": m.envID}, nil)
+	session := botSession{bots: &bots{t: t, d: d}, bot: "default", id: opened.ID}
 	server := httpServer(t, t.TempDir())
 	url := server["url"].(string)
 
-	// When the agent adds an HTTP server, wait for the automatic reload without a new turn.
+	// When the bot adds an HTTP server, wait for the automatic reload without a new turn.
 	session.send(`mcp_server_set {"name":"files","level":"dex","config":{"type":"http","url":"` + url + `"}}`)
 	session.watch().until(t, "write result", answeredWith("tool: "))
 	settled := time.Now()
@@ -62,16 +62,16 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 	session.send(`mcp__files__append {"text":"new"}`)
 	w.until(t, "MCP answer", answered("tool: appended 1"))
 
-	// An agent-level override disables the server for this bot only.
+	// A bot-level override disables the server for this bot only.
 	session.send(`mcp_server_set {"name":"files","level":"agent","config":{"disabled":true}}`)
 	eventually(t, "disabled override", func() (bool, any) {
 		got := d.extensions(t).server("files")
 		return got.Scope == "agent" && got.Overrides && got.State == "disabled", got
 	})
-	var second apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other bot", "provider": "faux", "modelId": "tool"}, &second, http.StatusCreated)
+	var second apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Other bot", "provider": "faux", "modelId": "tool"}, &second, http.StatusCreated)
 	var other extensions
-	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/integrations", nil, &other)
+	d.must(t, http.MethodGet, "/api/bots/"+second.ID+"/integrations", nil, &other)
 	if got := other.server("files"); got.Scope != "dex" || got.Overrides || got.State != "idle" {
 		t.Fatalf("override affected the other bot: %+v", got)
 	}
@@ -103,7 +103,7 @@ func TestUserEditsMCPWithoutReadingSecretsAndBacksUpDeclarations(t *testing.T) {
 		return false
 	})
 
-	// When the agent edits the args, tries an invalid replacement, and deletes a different declaration.
+	// When the bot edits the args, tries an invalid replacement, and deletes a different declaration.
 	call := func(input, answer string) {
 		t.Helper()
 		d.watch(t, d.newSessionWithMessage(t, input)).until(t, input, answeredWith(answer))

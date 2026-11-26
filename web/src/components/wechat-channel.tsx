@@ -1,5 +1,5 @@
 import type { Channels as Settings } from "../api/generated/types.gen";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { WechatLogin } from "../api/generated/types.gen";
@@ -28,12 +28,12 @@ const loginText: Record<WechatLogin["status"], string> = {
 };
 
 export function WechatChannel({ settings }: { settings: Settings }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const account = settings.wechat;
   const [login, setLogin] = useState<WechatLogin>();
   const [code, setCode] = useState("");
   const [off, setOff] = useState(false);
-  const start = useMutation({ ...beginWechatLoginMutation({ path: { agentId } }), onSuccess: setLogin });
+  const start = useMutation({ ...beginWechatLoginMutation({ path: { botId } }), onSuccess: setLogin });
 
   const poll = useMutation({
     ...pollWechatLoginMutation(),
@@ -45,7 +45,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
   });
 
   const deletion = useMutation({
-    ...deleteWechatMutation({ path: { agentId } }),
+    ...deleteWechatMutation({ path: { botId } }),
     onSuccess: async () => {
       setOff(false);
       setLogin(undefined);
@@ -60,11 +60,11 @@ export function WechatChannel({ settings }: { settings: Settings }) {
     if (!login?.active || login.status === "need_verifycode" || pending) return;
 
     const timer = window.setTimeout(() => {
-      pollLogin({ path: { agentId, loginId: login.id }, body: {} });
+      pollLogin({ path: { botId, loginId: login.id }, body: {} });
     }, 1000);
 
     return () => window.clearTimeout(timer);
-  }, [agentId, login, pending, pollLogin]);
+  }, [botId, login, pending, pollLogin]);
 
   const scan = (
     <Button
@@ -73,7 +73,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
       disabled={start.isPending || pending}
       onClick={() => {
         poll.reset();
-        start.mutate({ path: { agentId } });
+        start.mutate({ path: { botId } });
       }}
     >
       {start.isPending ? "Getting QR code…" : account.enabled ? "Scan again" : "Connect WeChat"}
@@ -122,7 +122,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
 
                   if (!/^[0-9]{1,16}$/.test(code) || pending) return;
 
-                  pollLogin({ path: { agentId, loginId: login.id }, body: { verifyCode: code } });
+                  pollLogin({ path: { botId, loginId: login.id }, body: { verifyCode: code } });
                   setCode("");
                 }}
               >
@@ -174,7 +174,7 @@ export function WechatChannel({ settings }: { settings: Settings }) {
           description="dex stops the bot and forgets its credentials. Past sessions stay read-only. Scan again to reconnect."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
-          onConfirm={() => deletion.mutate({ path: { agentId } })}
+          onConfirm={() => deletion.mutate({ path: { botId } })}
           pending={deletion.isPending}
           error={deletion.error}
         />

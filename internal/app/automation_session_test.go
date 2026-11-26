@@ -19,7 +19,7 @@ import (
 	"github.com/recally-io/dex/internal/runner/runnertest"
 )
 
-const routinesPath = "/api/agents/default/automations"
+const routinesPath = "/api/bots/default/automations"
 
 func boundRoutine(target int64, prompt string) map[string]any {
 	return map[string]any{
@@ -178,10 +178,10 @@ func TestUserCannotBindAAutomationToAnotherBotOrRestrictedSession(t *testing.T) 
 	d.archive(t, http.MethodPut, archived, http.StatusOK)
 	eligible := d.newSession(t).ID
 	readOnly := sessionFixture(t, d, "automation:readonly", 1)
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other fixture bot"}, &other, http.StatusCreated)
+	var other apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Other fixture bot"}, &other, http.StatusCreated)
 	var foreign sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/sessions", nil, &foreign, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/"+other.ID+"/sessions", nil, &foreign, http.StatusCreated)
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(eligible, "check"), &routine, http.StatusCreated)
 
@@ -249,13 +249,13 @@ func TestUserBoundAutomationUsesTheSessionRunnerAndProject(t *testing.T) {
 	d.must(t, http.MethodPost, "/api/settings/runners", map[string]any{
 		"name": "not-the-target", "kind": "ssh", "config": map[string]string{"host": "fixture.internal", "user": "dev"},
 	}, &remote, http.StatusCreated)
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	var bot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 	bot.RunnerID = remote.ID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, nil)
 	ssh.Refuse(t, "fixture.internal")
 	id := d.newSession(t).ID
-	sessionPath := fmt.Sprintf("/api/agents/default/sessions/%d", id)
+	sessionPath := fmt.Sprintf("/api/bots/default/sessions/%d", id)
 	d.must(t, http.MethodPut, sessionPath+"/runner", map[string]string{"runnerId": "local"}, nil)
 	project, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -306,7 +306,7 @@ func TestUserFailedBoundAutomationDoesNotWakeTheChildsParent(t *testing.T) {
 	}))
 	defer boundary.Close()
 	d.must(t, http.MethodPut, "/api/settings/providers/routine", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "models": []string{"routine"}}, nil)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/settings", child), map[string]string{"provider": "routine", "modelId": "routine", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/settings", child), map[string]string{"provider": "routine", "modelId": "routine", "thinkingLevel": "off"}, nil)
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(child, "check"), &routine, http.StatusCreated)
 
@@ -343,7 +343,7 @@ func TestUserCanStopAndClearABoundAutomationSession(t *testing.T) {
 	})
 
 	// When Stop withdraws the queued run, and the owner later clears the target's context.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", id), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", id), nil, nil)
 	if stopped := settledRoutine(t, d, routine.ID, run.ID); stopped.Status != "failed" || stopped.Reason == "" {
 		t.Fatalf("stopped run = %+v", stopped)
 	}
@@ -424,7 +424,7 @@ func TestUserBoundAutomationKeepsReportingWhenAnOrdinaryTurnQueues(t *testing.T)
 	}()
 	d := startDex(t, t.TempDir(), "")
 	d.must(t, http.MethodPut, "/api/settings/providers/routine", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "models": []string{"routine"}}, nil)
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "routine", "modelId": "routine", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "routine", "modelId": "routine", "thinkingLevel": "off"}, nil)
 	id := d.newSession(t).ID
 	var routine automationInfo
 	d.must(t, http.MethodPost, routinesPath, boundRoutine(id, "routine check"), &routine, http.StatusCreated)

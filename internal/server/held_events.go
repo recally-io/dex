@@ -39,7 +39,7 @@ func (h *handler) ListHeldEvents(ctx context.Context, _ api.ListHeldEventsReques
 }
 
 func (h *handler) AttachHeldEvent(ctx context.Context, req api.AttachHeldEventRequestObject) (api.AttachHeldEventResponseObject, error) {
-	if err := h.Tasks.AttachHeld(ctx, req.EventId, req.Body.AgentId, req.Body.TaskId); err != nil {
+	if err := h.Tasks.AttachHeld(ctx, req.EventId, req.Body.BotId, req.Body.TaskId); err != nil {
 		return nil, taskError(err)
 	}
 	return api.AttachHeldEvent204Response{}, nil

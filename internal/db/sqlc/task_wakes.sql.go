@@ -56,28 +56,28 @@ func (q *Queries) CreateTaskWake(ctx context.Context, arg CreateTaskWakeParams) 
 }
 
 const ensureTaskMain = `-- name: EnsureTaskMain :exec
-INSERT INTO sessions (agent_id, channel_key, title, created_at)
-SELECT a.id, 'main', a.name, ?1 FROM agents a WHERE a.id = ?2 AND a.archived_at IS NULL
-ON CONFLICT (agent_id, channel_key) DO NOTHING
+INSERT INTO sessions (bot_id, channel_key, title, created_at)
+SELECT a.id, 'main', a.name, ?1 FROM bots a WHERE a.id = ?2 AND a.archived_at IS NULL
+ON CONFLICT (bot_id, channel_key) DO NOTHING
 `
 
 type EnsureTaskMainParams struct {
 	CreatedAt int64  `json:"created_at"`
-	AgentID   string `json:"agent_id"`
+	BotID     string `json:"bot_id"`
 }
 
 func (q *Queries) EnsureTaskMain(ctx context.Context, arg EnsureTaskMainParams) error {
-	_, err := q.db.ExecContext(ctx, ensureTaskMain, arg.CreatedAt, arg.AgentID)
+	_, err := q.db.ExecContext(ctx, ensureTaskMain, arg.CreatedAt, arg.BotID)
 	return err
 }
 
 const getTaskMain = `-- name: GetTaskMain :one
-SELECT c.id FROM sessions c JOIN agents a ON a.id = c.agent_id
-WHERE c.agent_id = ? AND c.channel_key = 'main' AND c.archived_at IS NULL AND a.archived_at IS NULL
+SELECT c.id FROM sessions c JOIN bots a ON a.id = c.bot_id
+WHERE c.bot_id = ? AND c.channel_key = 'main' AND c.archived_at IS NULL AND a.archived_at IS NULL
 `
 
-func (q *Queries) GetTaskMain(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getTaskMain, agentID)
+func (q *Queries) GetTaskMain(ctx context.Context, botID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getTaskMain, botID)
 	var id int64
 	err := row.Scan(&id)
 	return id, err

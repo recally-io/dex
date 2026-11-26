@@ -12,14 +12,14 @@ func TestUserReceivesDistinctNotificationsFromTheSameRun(t *testing.T) {
 	ctx := t.Context()
 	_, call := taskParent(t, r)
 	// Given a default Telegram target and a paired WeChat target.
-	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "bot", BotID: "wx", Owner: "owner"}); err != nil {
+	if err := r.q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: "bot", WechatBotID: "wx", Owner: "owner"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.q.InsertAutomationNotificationTarget(ctx, sqlc.InsertAutomationNotificationTargetParams{
-		ID: "tg", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
+		ID: "tg", BotID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {
 		t.Fatal(err)
 	}

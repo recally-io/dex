@@ -24,7 +24,7 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 	for _, cut := range []string{"before intent", "before report commit", "after report commit"} {
 		t.Run(cut, func(t *testing.T) {
 			// Given an admitted child report before restart.
-			const agentID, request, content = "bot", "child-input", "Verified before upgrade."
+			const botID, request, content = "bot", "child-input", "Verified before upgrade."
 			dir := t.TempDir()
 			conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
 			if err != nil {
@@ -34,14 +34,14 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 			defer cancel()
 			q := sqlc.New(conn)
-			if err := q.CreateAgentIfMissing(ctx, sqlc.CreateAgentIfMissingParams{ID: agentID, Name: "Bot"}); err != nil {
+			if err := q.CreateBotIfMissing(ctx, sqlc.CreateBotIfMissingParams{ID: botID, Name: "Bot"}); err != nil {
 				t.Fatal(err)
 			}
-			parent, err := q.EnsureSession(ctx, sqlc.EnsureSessionParams{AgentID: agentID, ChannelKey: "automation:fixture", Title: "Routine"})
+			parent, err := q.EnsureSession(ctx, sqlc.EnsureSessionParams{BotID: botID, ChannelKey: "automation:fixture", Title: "Routine"})
 			if err != nil {
 				t.Fatal(err)
 			}
-			child, err := q.CreateChildSession(ctx, sqlc.CreateChildSessionParams{AgentID: agentID, ChannelKey: "child:fixture", Title: "Child", ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}})
+			child, err := q.CreateChildSession(ctx, sqlc.CreateChildSessionParams{BotID: botID, ChannelKey: "child:fixture", Title: "Child", ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -52,23 +52,23 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 			report := func(ctx context.Context, call engine.TaskContext, args session.ReportParentArgs) (string, error) {
 				return service.ToolReportParent(ctx, call, args)
 			}
-			agents, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
-				return engine.ExtensionSet{Optional: []*engine.Extension{session.ChildOutboxExtension(rt.AgentID, session.OutboxTools{ReportParent: report})}}
+			bots, err := engine.New(engine.Config{DataDir: dir, Home: t.TempDir(), BaseEnv: map[string]string{"PATH": os.Getenv("PATH")}, FakeModel: true, Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
+				return engine.ExtensionSet{Optional: []*engine.Extension{session.ChildOutboxExtension(rt.BotID, session.OutboxTools{ReportParent: report})}}
 			}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer agents.Close(context.WithoutCancel(ctx))
-			service = session.New(conn, agents, time.Now, nil, nil)
+			defer bots.Close(context.WithoutCancel(ctx))
+			service = session.New(conn, bots, time.Now, nil, nil)
 
 			oldModel := ai.NewFauxProvider(ai.FauxConfig{ProviderID: "upgrade", Models: []ai.FauxModelDefinition{{ID: "script"}}, TokensPerSecond: 10000})
 			oldModel.SetResponses([]ai.FauxResponseStep{ai.FauxFactoryStep(func(ai.TranscriptContext, ai.StreamOptions, *ai.FauxProviderState, *ai.Model) (ai.AssistantMessage, error) {
 				return ai.FauxAssistantMessage(ai.FauxContentBlocks{ai.FauxToolCall("session_report", map[string]any{"content": content}, nil)}, ai.FauxAssistantMessageOptions{StopReason: "toolUse"}), nil
 			})})
-			agents.Catalog.Models.SetProvider(oldModel.Provider())
+			bots.Catalog.Models.SetProvider(oldModel.Provider())
 			reached := make(chan string, 1)
 			park := func(ctx context.Context, id durable.TaskId) error {
-				reached <- fmt.Sprintf("report:%s/%d", agentID, id)
+				reached <- fmt.Sprintf("report:%s/%d", botID, id)
 				<-ctx.Done()
 				return ctx.Err()
 			}
@@ -77,7 +77,7 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 				Parameters: map[string]any{"type": "object", "required": []string{"content"}, "properties": map[string]any{"content": map[string]any{"type": "string"}, "final": map[string]any{"type": "boolean"}}},
 				Execute: func(ctx context.Context, _ any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 					if cut == "after report commit" {
-						if _, err := report(ctx, engine.TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: request, RunInputIDs: []string{request}, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, session.ReportParentArgs{Content: content}); err != nil {
+						if _, err := report(ctx, engine.TaskContext{BotID: botID, ConversationID: int64(api.ConversationId()), SourceRequestID: request, RunInputIDs: []string{request}, Key: fmt.Sprintf("%s/%d", botID, api.TaskId())}, session.ReportParentArgs{Content: content}); err != nil {
 							return durable.ToolExecutionResult{}, err
 						}
 					}
@@ -93,7 +93,7 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 			if err := registry.Install(interrupted); err != nil {
 				t.Fatal(err)
 			}
-			path := filepath.Join(dir, "agents", agentID, "state.sqlite")
+			path := filepath.Join(dir, "agents", botID, "state.sqlite")
 			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 				t.Fatal(err)
 			}
@@ -102,7 +102,7 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer store.Close(context.WithoutCancel(ctx))
-			old, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{Registry: registry, Models: agents.Catalog.Models})
+			old, err := harness.OpenHarness(ctx, store, harness.HarnessOptions{Registry: registry, Models: bots.Catalog.Models})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -112,7 +112,7 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			ref := engine.Ref{AgentID: agentID, ID: int64(conv.Id())}
+			ref := engine.Ref{BotID: botID, ID: int64(conv.Id())}
 			if err := q.SetExecution(ctx, sqlc.SetExecutionParams{ID: child.ID, ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true}}); err != nil {
 				t.Fatal(err)
 			}
@@ -141,7 +141,7 @@ func TestUserKeepsChildReportReceiptsAfterRestart(t *testing.T) {
 				t.Error("a replayed final report must end without another model call")
 				return ai.FauxResponse{Content: ai.FauxContentBlocks{ai.FauxText("Child turn completed.")}}.AssistantMessage(), nil
 			})})
-			replay, err := agents.Submit(ctx, ref, engine.Input{RequestID: request})
+			replay, err := bots.Submit(ctx, ref, engine.Input{RequestID: request})
 			if err != nil {
 				t.Fatal(err)
 			}

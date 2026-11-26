@@ -49,7 +49,7 @@ func TestUserSystemTurnToolsRejectBotMutations(t *testing.T) {
 			t.Fatal(err)
 		}
 		call := engine.TaskContext{
-			AgentID:         "bot",
+			BotID:           "bot",
 			ConversationID:  conv.ExecutionID.Int64,
 			SourceRequestID: tc.id,
 			Key:             "bot/mut-" + tc.id,
@@ -78,7 +78,7 @@ func TestUserMonitorFireCommitBeforeWakeRecoversOnce(t *testing.T) {
 	now := time.Now().UTC()
 	r.service.now = func() time.Time { return now }
 	call := engine.TaskContext{
-		AgentID:         "bot",
+		BotID:           "bot",
 		ConversationID:  conv.ExecutionID.Int64,
 		SourceRequestID: "u-monitor-rec",
 		Key:             "bot/t-rec-1",

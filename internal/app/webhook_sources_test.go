@@ -28,7 +28,7 @@ func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
 	if !slices.Equal(health.Plugins, []string{"github", "webhook"}) {
 		t.Fatalf("health must list the Webhook plugin: %+v", health.Plugins)
 	}
-	d.must(t, http.MethodPut, "/api/plugins/webhook/sources/calendar", map[string]any{"secret": secret, "taskAgentId": "default"}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/webhook/sources/calendar", map[string]any{"secret": secret, "taskBotId": "default"}, nil, http.StatusNoContent)
 	d.must(t, http.MethodPut, "/api/plugins/webhook/sources/Bad_ID", map[string]any{"secret": secret}, nil, http.StatusBadRequest)
 	deliver := func(source, delivery, body string, signed bool) int {
 		t.Helper()
@@ -102,7 +102,7 @@ func TestUserTracksACalendarThroughASignedWebhookSource(t *testing.T) {
 	}
 
 	// The source writes only into its own namespace. Its pull_request object is not a GitHub PR.
-	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+list.Tasks[0].Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/bots/default/tasks/"+list.Tasks[0].Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2}, nil, http.StatusNoContent)
 	spoof := `{"type":"review.submitted","objects":[{"type":"pull_request","key":"2"}],"content":"Approved","occurredAt":"2026-11-21T03:10:00Z"}`
 	if got := deliver("calendar", "d3", spoof, true); got != http.StatusNoContent {
 		t.Fatalf("spoof: %d", got)

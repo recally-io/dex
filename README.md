@@ -1,8 +1,8 @@
 # dex
 
-dex is a small, self-hosted agent host. One Go process runs the HTTP API,
-web UI, channels, and agents through [PiG](https://github.com/MichaelKinsy/PiG).
-Agent state stays in local directories. The installed host needs no Node or Bun.
+dex is a small, self-hosted bot host. One Go process runs the HTTP API,
+web UI, channels, and bots through [PiG](https://github.com/MichaelKinsy/PiG).
+Bot state stays in local directories. The installed host needs no Node or Bun.
 
 ## Quick start
 
@@ -18,7 +18,7 @@ The script checks the archive against `checksums.txt` and installs `dex` to
 for a tag such as `v0.1.0`. Use a permanent directory: the service runs dex from it.
 
 The command starts dex now and at login. Open <http://127.0.0.1:8787>.
-On the Providers page, add a provider. On the Agent page, choose a model.
+On the Providers page, add a provider. On the Bot page, choose a model.
 
 To build from source, run `mise install`, `mise run install`, and
 `mise run build`. The binary is `bin/dex`. See [Development](docs/dev/development.md).
@@ -66,7 +66,7 @@ keeps options that you omit and restarts dex. A new data directory selects
 another directory; it does not move data. The service saves these values as
 `serve` arguments. The service PATH contains only system directories and common
 package-manager directories. It does not copy PATH from the install shell.
-Agent tools get their environment from the interactive login shell instead.
+Bot tools get their environment from the interactive login shell instead.
 The definition saves no credentials or other shell variables. Change the service
 with the CLI.
 The configuration record is the source of boot options. Reads accept definitions
@@ -117,15 +117,15 @@ dex reads skills from these directories:
 | Scope   | Skills                                              |
 | ------- | --------------------------------------------------- |
 | Dex     | `~/.dex/.agents/skills/<name>/SKILL.md`             |
-| Agent   | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` |
+| Bot     | `~/.dex/agents/<id>/.agents/skills/<name>/SKILL.md` |
 | Project | `<cwd>/.agents/skills/<name>/SKILL.md`              |
 
 dex does not read `~/.agents`. A narrower entry replaces the wider entry with the same name; Project is the
 narrowest. Main and Sessions, including child Sessions, can select a project
 directory. The picker browses folders on the Session's Runner and lists recent projects for the
-current agent. Use Up or Home to navigate, or enter a path and press Enter.
+current bot. Use Up or Home to navigate, or enter a path and press Enter.
 Select **Use this folder** to save the current folder. The `set_project` tool
-can also set the directory. The project cwd defaults to the agent workspace,
+can also set the directory. The project cwd defaults to the bot workspace,
 `~/.dex/agents/<id>/workspace`. Clear the project to restore that default.
 A child Session can inherit its parent's project when it uses the same Runner.
 See [Sessions](docs/dev/sessions.md#session-runners).
@@ -137,16 +137,16 @@ name is the skill name. A skill can be in a nested directory, such as
 `skills/team/review/SKILL.md`. dex does not look inside a skill, hidden
 directories, or `node_modules`. When two skills in one level have the same
 name, the first in path order wins, and the bot's Skills page shows a warning.
-The prompt lists each skill. The agent reads the file when a task needs it.
+The prompt lists each skill. The bot reads the file when a task needs it.
 An edit to a skill applies to the next message.
 
-Ask the agent in an owner session to manage MCP declarations with the
+Ask the bot in an owner session to manage MCP declarations with the
 `mcp_server_*` tools. Use vault references for secrets. dex stores declarations
 in `control.sqlite` and shows their status in the bot's Integrations page.
-Changes apply after the agent finishes its current work. dex ignores old
+Changes apply after the bot finishes its current work. dex ignores old
 `mcp.json` files. See [MCP declarations](docs/dev/skills-and-integrations.md#mcp-declarations).
 
-For an OAuth-enabled remote MCP server, ask the agent to add an HTTP declaration
+For an OAuth-enabled remote MCP server, ask the bot to add an HTTP declaration
 with `oauth: {}` and no static headers. If the provider requires a registered
 client, use its client ID and a vault reference for its secret. In the bot's
 Integrations page, select **Authorize** and sign in with the provider. See
@@ -212,7 +212,7 @@ recovery. Restore a compatible data backup and copy the previous executable
 back to its original path, then start the service. Keep the backup until you
 have checked the recovered version.
 
-PiG v0.7.0 upgrades the native execution format in each agent's `state.sqlite`.
+PiG v0.7.0 upgrades the native execution format in each bot's `state.sqlite`.
 Before the first start with this version, stop dex and back up the complete
 data directory. A build that uses PiG v0.5.3 cannot read the upgraded format.
 To return to that build, restore the backup as well as the executable.

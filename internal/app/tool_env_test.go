@@ -19,12 +19,12 @@ type apiExtensionsPending struct {
 	ReloadPending bool `json:"reloadPending"`
 }
 
-// applied waits until dex has reloaded the default agent after a change.
+// applied waits until dex has reloaded the default bot after a change.
 func (d *dex) applied(t *testing.T) {
 	t.Helper()
 	eventually(t, "automatic reload", func() (bool, any) {
 		var got apiExtensionsPending
-		d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &got)
+		d.must(t, http.MethodGet, "/api/bots/default/integrations", nil, &got)
 		return !got.ReloadPending, got
 	})
 }
@@ -35,7 +35,7 @@ func TestUserInjectsVaultValueOnlyForOneCall(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	w := d.watch(t, d.newSessionWithMessage(t, "hello"))
-	w.until(t, "agent open", answered("echo: hello"))
+	w.until(t, "bot open", answered("echo: hello"))
 	saveVault(t, d, "default", "agent", "GITHUB_TOKEN", "github-test-vault-value")
 	d.applied(t)
 	// When the model calls bash, then only the call with a reference gets the value.
@@ -108,7 +108,7 @@ func TestUserShellEditWaitsForRestart(t *testing.T) {
 wait:
 	for {
 		var info apiExtensionsPending
-		d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &info)
+		d.must(t, http.MethodGet, "/api/bots/default/integrations", nil, &info)
 		if !info.ReloadPending {
 			t.Fatal("dex reloaded after only a shell rc edit")
 		}
@@ -128,7 +128,7 @@ func TestUserSetsUpOnePasswordForTools(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
 	w := d.watch(t, d.newSessionWithMessage(t, "true"))
-	w.until(t, "agent open", answered("bash: "))
+	w.until(t, "bot open", answered("bash: "))
 	// When the user sends incomplete settings, then dex refuses them.
 	for _, input := range []map[string]string{
 		{"mode": "service-account"},
@@ -148,7 +148,7 @@ func TestUserSetsUpOnePasswordForTools(t *testing.T) {
 	if saved["mode"] != "service-account" || saved["serviceAccountTokenSet"] != true || strings.Contains(body, token) {
 		t.Fatalf("settings: %v %s", saved, body)
 	}
-	// Then the open agent reloads, and tools get the token.
+	// Then the open bot reloads, and tools get the token.
 	d.applied(t)
 	check := fmt.Sprintf(`test "$(printf %%s "$OP_SERVICE_ACCOUNT_TOKEN" | shasum -a 256 | cut -d " " -f 1)" = %x && printf ready`, sha256.Sum256([]byte(token)))
 	w = d.watch(t, d.newSessionWithMessage(t, check))

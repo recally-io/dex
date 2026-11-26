@@ -21,18 +21,18 @@ const (
 
 // MonitorCheck uses the same environment, directory rules, shell, and variables as Bash.
 // It does not admit a model turn and it returns no raw output or diagnostics to control.
-func (a *Agents) MonitorCheck(ctx context.Context, ref Ref, cwd, command string, env map[string]string, verify func(context.Context) error) (digest string, terminal bool, err error) {
+func (a *Bots) MonitorCheck(ctx context.Context, ref Ref, cwd, command string, env map[string]string, verify func(context.Context) error) (digest string, terminal bool, err error) {
 	if ref.ID <= 0 {
 		return "", false, ErrInvalidInput
 	}
-	if err := a.begin(ref.AgentID); err != nil {
+	if err := a.begin(ref.BotID); err != nil {
 		return "", false, err
 	}
-	defer a.end(ref.AgentID)
+	defer a.end(ref.BotID)
 	if _, err := a.conversation(ctx, ref); err != nil {
 		return "", false, err
 	}
-	envs := a.environments(ref.AgentID)
+	envs := a.environments(ref.BotID)
 	if envs == nil {
 		return "", false, ErrClosed
 	}

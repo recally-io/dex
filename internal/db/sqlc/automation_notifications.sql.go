@@ -11,20 +11,20 @@ import (
 )
 
 const getAutomationNotificationTarget = `-- name: GetAutomationNotificationTarget :one
-SELECT id, agent_id, platform, account_id, peer FROM automation_notification_targets WHERE id = ? AND agent_id = ?
+SELECT id, bot_id, platform, account_id, peer FROM automation_notification_targets WHERE id = ? AND bot_id = ?
 `
 
 type GetAutomationNotificationTargetParams struct {
-	ID      string `json:"id"`
-	AgentID string `json:"agent_id"`
+	ID    string `json:"id"`
+	BotID string `json:"bot_id"`
 }
 
 func (q *Queries) GetAutomationNotificationTarget(ctx context.Context, arg GetAutomationNotificationTargetParams) (AutomationNotificationTarget, error) {
-	row := q.db.QueryRowContext(ctx, getAutomationNotificationTarget, arg.ID, arg.AgentID)
+	row := q.db.QueryRowContext(ctx, getAutomationNotificationTarget, arg.ID, arg.BotID)
 	var i AutomationNotificationTarget
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.Platform,
 		&i.AccountID,
 		&i.Peer,
@@ -33,20 +33,20 @@ func (q *Queries) GetAutomationNotificationTarget(ctx context.Context, arg GetAu
 }
 
 const getAutomationOutboxInfo = `-- name: GetAutomationOutboxInfo :one
-SELECT a.name, a.agent_id, t.account_id, t.peer
+SELECT a.name, a.bot_id, t.account_id, t.peer
 FROM automation_runs r
 JOIN automations a ON a.id = r.automation_id
-JOIN agents agent ON agent.id = a.agent_id
-JOIN automation_notification_targets t ON t.agent_id = a.agent_id AND t.id =
-    CASE a.notification_route WHEN 'default' THEN agent.primary_notification_target_id WHEN 'target' THEN a.notification_target_id END
-JOIN configured_channel_addresses b ON b.agent_id = t.agent_id AND b.platform = t.platform
+JOIN bots bot ON bot.id = a.bot_id
+JOIN automation_notification_targets t ON t.bot_id = a.bot_id AND t.id =
+    CASE a.notification_route WHEN 'default' THEN bot.primary_notification_target_id WHEN 'target' THEN a.notification_target_id END
+JOIN configured_channel_addresses b ON b.bot_id = t.bot_id AND b.platform = t.platform
     AND b.account_id = t.account_id AND b.peer = t.peer
-WHERE r.id = ? AND agent.archived_at IS NULL
+WHERE r.id = ? AND bot.archived_at IS NULL
 `
 
 type GetAutomationOutboxInfoRow struct {
 	Name      string `json:"name"`
-	AgentID   string `json:"agent_id"`
+	BotID     string `json:"bot_id"`
 	AccountID string `json:"account_id"`
 	Peer      string `json:"peer"`
 }
@@ -56,7 +56,7 @@ func (q *Queries) GetAutomationOutboxInfo(ctx context.Context, id string) (GetAu
 	var i GetAutomationOutboxInfoRow
 	err := row.Scan(
 		&i.Name,
-		&i.AgentID,
+		&i.BotID,
 		&i.AccountID,
 		&i.Peer,
 	)
@@ -65,22 +65,22 @@ func (q *Queries) GetAutomationOutboxInfo(ctx context.Context, id string) (GetAu
 
 const getAutomationOutboxSession = `-- name: GetAutomationOutboxSession :one
 SELECT id FROM sessions
-WHERE agent_id = ? AND archived_at IS NULL AND parent_id IS NULL
+WHERE bot_id = ? AND archived_at IS NULL AND parent_id IS NULL
 ORDER BY (channel_key = 'main') DESC, id
 LIMIT 1
 `
 
 // An owner for the Outbox FK only. This is not a source input or delivery route.
-func (q *Queries) GetAutomationOutboxSession(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getAutomationOutboxSession, agentID)
+func (q *Queries) GetAutomationOutboxSession(ctx context.Context, botID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getAutomationOutboxSession, botID)
 	var id int64
 	err := row.Scan(&id)
 	return id, err
 }
 
 const getPrimaryNotificationTarget = `-- name: GetPrimaryNotificationTarget :one
-SELECT t.id, t.agent_id, t.platform, t.account_id, t.peer FROM agents a JOIN automation_notification_targets t
-ON t.id = a.primary_notification_target_id AND t.agent_id = a.id
+SELECT t.id, t.bot_id, t.platform, t.account_id, t.peer FROM bots a JOIN automation_notification_targets t
+ON t.id = a.primary_notification_target_id AND t.bot_id = a.id
 WHERE a.id = ? AND a.archived_at IS NULL
 `
 
@@ -89,7 +89,7 @@ func (q *Queries) GetPrimaryNotificationTarget(ctx context.Context, id string) (
 	var i AutomationNotificationTarget
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.Platform,
 		&i.AccountID,
 		&i.Peer,
@@ -98,13 +98,13 @@ func (q *Queries) GetPrimaryNotificationTarget(ctx context.Context, id string) (
 }
 
 const insertAutomationNotificationTarget = `-- name: InsertAutomationNotificationTarget :exec
-INSERT INTO automation_notification_targets (id, agent_id, platform, account_id, peer)
+INSERT INTO automation_notification_targets (id, bot_id, platform, account_id, peer)
 VALUES (?, ?, ?, ?, ?)
 `
 
 type InsertAutomationNotificationTargetParams struct {
 	ID        string `json:"id"`
-	AgentID   string `json:"agent_id"`
+	BotID     string `json:"bot_id"`
 	Platform  string `json:"platform"`
 	AccountID string `json:"account_id"`
 	Peer      string `json:"peer"`
@@ -113,7 +113,7 @@ type InsertAutomationNotificationTargetParams struct {
 func (q *Queries) InsertAutomationNotificationTarget(ctx context.Context, arg InsertAutomationNotificationTargetParams) error {
 	_, err := q.db.ExecContext(ctx, insertAutomationNotificationTarget,
 		arg.ID,
-		arg.AgentID,
+		arg.BotID,
 		arg.Platform,
 		arg.AccountID,
 		arg.Peer,
@@ -122,11 +122,11 @@ func (q *Queries) InsertAutomationNotificationTarget(ctx context.Context, arg In
 }
 
 const listAutomationNotificationTargets = `-- name: ListAutomationNotificationTargets :many
-SELECT id, agent_id, platform, account_id, peer FROM automation_notification_targets WHERE agent_id = ? ORDER BY platform, peer, id
+SELECT id, bot_id, platform, account_id, peer FROM automation_notification_targets WHERE bot_id = ? ORDER BY platform, peer, id
 `
 
-func (q *Queries) ListAutomationNotificationTargets(ctx context.Context, agentID string) ([]AutomationNotificationTarget, error) {
-	rows, err := q.db.QueryContext(ctx, listAutomationNotificationTargets, agentID)
+func (q *Queries) ListAutomationNotificationTargets(ctx context.Context, botID string) ([]AutomationNotificationTarget, error) {
+	rows, err := q.db.QueryContext(ctx, listAutomationNotificationTargets, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (q *Queries) ListAutomationNotificationTargets(ctx context.Context, agentID
 		var i AutomationNotificationTarget
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.BotID,
 			&i.Platform,
 			&i.AccountID,
 			&i.Peer,
@@ -155,7 +155,7 @@ func (q *Queries) ListAutomationNotificationTargets(ctx context.Context, agentID
 }
 
 const setPrimaryNotificationTarget = `-- name: SetPrimaryNotificationTarget :execrows
-UPDATE agents SET primary_notification_target_id = ? WHERE id = ?
+UPDATE bots SET primary_notification_target_id = ? WHERE id = ?
 `
 
 type SetPrimaryNotificationTargetParams struct {

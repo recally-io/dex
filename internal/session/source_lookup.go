@@ -16,7 +16,7 @@ type SourceReceipt struct {
 }
 
 // ReceivedSource reports whether a global platform source is already stored.
-// A bot credential can move between agents without changing its source identities.
+// A bot credential can move between bots without changing its source identities.
 func (s *Service) ReceivedSource(ctx context.Context, source string) (bool, error) {
 	_, err := s.q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
 	if errors.Is(err, sql.ErrNoRows) {
@@ -28,8 +28,8 @@ func (s *Service) ReceivedSource(ctx context.Context, source string) (bool, erro
 	return err == nil, err
 }
 
-// LookupSource finds stored input for an agent. It rejects another agent's source.
-func (s *Service) LookupSource(ctx context.Context, agentID, source string) (SourceReceipt, error) {
+// LookupSource finds stored input for a bot. It rejects another bot's source.
+func (s *Service) LookupSource(ctx context.Context, botID, source string) (SourceReceipt, error) {
 	id, err := s.q.GetSubmissionBySource(ctx, sql.NullString{String: source, Valid: true})
 	if errors.Is(err, sql.ErrNoRows) {
 		member, lookupErr := s.q.GetTelegramAlbumMember(ctx, source)
@@ -41,7 +41,7 @@ func (s *Service) LookupSource(ctx context.Context, agentID, source string) (Sou
 			if effectErr != nil {
 				return SourceReceipt{}, effectErr
 			}
-			if effect.AgentID != agentID {
+			if effect.BotID != botID {
 				return SourceReceipt{}, ErrSessionNotFound
 			}
 			return SourceReceipt{Staged: effect.InputJson != "{}"}, nil
@@ -49,7 +49,7 @@ func (s *Service) LookupSource(ctx context.Context, agentID, source string) (Sou
 		if lookupErr != nil {
 			return SourceReceipt{}, lookupErr
 		}
-		if member.AgentID != agentID {
+		if member.BotID != botID {
 			return SourceReceipt{}, ErrSessionNotFound
 		}
 		return SourceReceipt{Staged: true}, nil
@@ -61,7 +61,7 @@ func (s *Service) LookupSource(ctx context.Context, agentID, source string) (Sou
 	if err != nil {
 		return SourceReceipt{}, err
 	}
-	if _, err := s.Get(ctx, agentID, sub.SessionID); err != nil {
+	if _, err := s.Get(ctx, botID, sub.SessionID); err != nil {
 		return SourceReceipt{}, err
 	}
 	return SourceReceipt{ID: id, SessionID: sub.SessionID, Pending: sub.Status == "pending" && sub.ChannelRevoked == 0}, nil

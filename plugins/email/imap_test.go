@@ -114,13 +114,13 @@ func TestUserPullsAnEmailThreadFromAnIMAPFolder(t *testing.T) {
 	if err := plugin.Migrate(ctx, conn, "email", Migrations); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+	if _, err := sqlc.New(conn).CreateBot(ctx, sqlc.CreateBotParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	q := store.New(conn)
 	tasks := tasksvc.New(conn, nil)
 	secret := strings.Repeat("m", 40)
-	if _, err := q.SaveEmailSource(ctx, store.SaveEmailSourceParams{ID: "mail", Secret: secret, TaskAgentID: sqlNull("default"), HoldUnmatched: 1}); err != nil {
+	if _, err := q.SaveEmailSource(ctx, store.SaveEmailSourceParams{ID: "mail", Secret: secret, TaskBotID: sqlNull("default"), HoldUnmatched: 1}); err != nil {
 		t.Fatal(err)
 	}
 	folder := startIMAP(t)
@@ -155,7 +155,7 @@ func TestUserPullsAnEmailThreadFromAnIMAPFolder(t *testing.T) {
 	check()
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(reply))
-	if _, err := Accept(ctx, tasks, Source{ID: "mail", Secret: []byte(secret), TaskAgentID: "default", HoldUnmatched: true}, "fwd-1", "sha256="+hex.EncodeToString(mac.Sum(nil)), []byte(reply)); err != nil {
+	if _, err := Accept(ctx, tasks, Source{ID: "mail", Secret: []byte(secret), TaskBotID: "default", HoldUnmatched: true}, "fwd-1", "sha256="+hex.EncodeToString(mac.Sum(nil)), []byte(reply)); err != nil {
 		t.Fatal(err)
 	}
 	check()

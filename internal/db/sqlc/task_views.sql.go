@@ -103,7 +103,7 @@ func (q *Queries) ListTaskEvents(ctx context.Context, afterID int64) ([]ListTask
 }
 
 const listTasks = `-- name: ListTasks :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL
   AND (t.status NOT IN ('done', 'cancelled') OR ?1)
   AND (CAST(?2 AS TEXT) = '' OR t.assignee_bot_id = ?2)

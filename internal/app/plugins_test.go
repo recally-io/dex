@@ -23,7 +23,7 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret}, nil, http.StatusNoContent)
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Ship PR 2"}, &task, http.StatusCreated)
-	d.must(t, http.MethodPut, "/api/plugins/github/agents/default/tasks/"+task.Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{"revision": "abc", "afterAt": 1}}, nil, http.StatusNoContent)
+	d.must(t, http.MethodPut, "/api/plugins/github/bots/default/tasks/"+task.Id+"/pull", map[string]any{"repositoryId": 10, "pullNumber": 2, "wait": map[string]any{"revision": "abc", "afterAt": 1}}, nil, http.StatusNoContent)
 
 	// When the owner turns GitHub off, it keeps running until dex starts again.
 	d.must(t, http.MethodPut, "/api/settings/sources/github", map[string]bool{"enabled": false}, nil, http.StatusNoContent)
@@ -44,7 +44,7 @@ func TestUserTurnsOffGitHubAndKeepsItsTaskLinks(t *testing.T) {
 	deliverGitHubStatus(t, d, secret, "review-1", "pull_request_review", `{}`, http.StatusNotFound)
 	d.must(t, http.MethodPut, "/api/plugins/github/webhooks/10", map[string]string{"secret": secret}, nil, http.StatusNotFound)
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	got := taskTool(t, d, main.ID, "task_link_github_pull", map[string]any{"id": task.Id, "repositoryId": 10, "pullNumber": 3})
 	t.Logf("artifact: tool call=%s", got)
 	if !strings.Contains(got, "Tool task_link_github_pull is not available") {

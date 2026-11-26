@@ -77,21 +77,21 @@ func TestUserBackgroundActivityTracksWithoutUserWatch(t *testing.T) {
 	defer func() { unblock(); server.Close() }()
 	config.MCPServers = testMCPStore(t, config.DataDir)
 	testSetMCP(t, config.MCPServers, "alpha", "secret-token", serverConfig{Type: "http", URL: server.URL})
-	extAgents := coreEngine(t, config)
-	extRef := coreCreate(t, extAgents, "alpha", coreOptions("tool"))
-	extSub, err := extAgents.Submit(t.Context(), extRef, Input{
+	extBots := coreEngine(t, config)
+	extRef := coreCreate(t, extBots, "alpha", coreOptions("tool"))
+	extSub, err := extBots.Submit(t.Context(), extRef, Input{
 		RequestID: "masked", Content: `mcp__secret-token__append {"text":"hi"}`, Kind: "message",
 		Origin: "task", Source: "dex:alpha/task/masked", Child: true, Options: coreOptions("tool"),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForRunningTool(t, extAgents, extRef, "other")
+	waitForRunningTool(t, extBots, extRef, "other")
 	unblock()
 	coreWait(t, extSub)
 }
 
-func waitForRunningTool(t *testing.T, a *Agents, ref Ref, name string) {
+func waitForRunningTool(t *testing.T, a *Bots, ref Ref, name string) {
 	t.Helper()
 	// Start the deadline after admission. Setup and settlement of other runs do not count.
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

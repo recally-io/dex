@@ -1,5 +1,5 @@
 -- name: ListAutomationResults :many
-SELECT r.id AS run_id, a.agent_id, b.name AS agent_name,
+SELECT r.id AS run_id, a.bot_id, b.name AS bot_name,
     a.id AS automation_id, a.name AS automation_name,
     CAST(coalesce(s.session_id, 0) AS INTEGER) AS session_id,
     CAST(CASE WHEN r.status = 'failed' OR s.status = 'unanswered' THEN 'failed' ELSE r.outcome END AS TEXT) AS outcome,
@@ -7,7 +7,7 @@ SELECT r.id AS run_id, a.agent_id, b.name AS agent_name,
     r.read_at, r.dismissed_at, r.runner_id, r.cwd
 FROM automation_runs r
 JOIN automations a ON a.id = r.automation_id
-JOIN agents b ON b.id = a.agent_id AND b.archived_at IS NULL
+JOIN bots b ON b.id = a.bot_id AND b.archived_at IS NULL
 LEFT JOIN submissions s ON s.id = r.id
 WHERE (r.outcome = 'failed' OR r.status = 'failed' OR s.status = 'unanswered' OR (r.outcome = 'changed' AND r.duplicate = 0))
     AND (s.status <> 'pending' OR (s.id IS NULL AND r.status = 'failed'))

@@ -9,7 +9,7 @@ import (
 	"github.com/recally-io/dex/internal/engine"
 )
 
-func executionRef(c Session) engine.Ref { return engine.Ref{AgentID: "bot", ID: c.ExecutionID} }
+func executionRef(c Session) engine.Ref { return engine.Ref{BotID: "bot", ID: c.ExecutionID} }
 
 func TestUserStopWithdrawsQueuedInputAndClearRefusesBusy(t *testing.T) {
 	r := startNative(t, "bash")
@@ -36,7 +36,7 @@ func TestUserStopWithdrawsQueuedInputAndClearRefusesBusy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return r.agents.CheckIdle(t.Context(), executionRef(c)) == nil })
+	waitFor(t, func() bool { return r.bots.CheckIdle(t.Context(), executionRef(c)) == nil })
 	if _, err = os.Stat(output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("withdrawn input executed: %v", err)
 	}

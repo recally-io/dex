@@ -11,23 +11,23 @@ import (
 )
 
 const deleteFeishuSettings = `-- name: DeleteFeishuSettings :exec
-DELETE FROM feishu_settings WHERE agent_id = ?
+DELETE FROM feishu_settings WHERE bot_id = ?
 `
 
-func (q *Queries) DeleteFeishuSettings(ctx context.Context, agentID string) error {
-	_, err := q.db.ExecContext(ctx, deleteFeishuSettings, agentID)
+func (q *Queries) DeleteFeishuSettings(ctx context.Context, botID string) error {
+	_, err := q.db.ExecContext(ctx, deleteFeishuSettings, botID)
 	return err
 }
 
 const getFeishuSettings = `-- name: GetFeishuSettings :one
-SELECT agent_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions, verification_token, encrypt_key FROM feishu_settings WHERE agent_id = ?
+SELECT bot_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions, verification_token, encrypt_key FROM feishu_settings WHERE bot_id = ?
 `
 
-func (q *Queries) GetFeishuSettings(ctx context.Context, agentID string) (FeishuSetting, error) {
-	row := q.db.QueryRowContext(ctx, getFeishuSettings, agentID)
+func (q *Queries) GetFeishuSettings(ctx context.Context, botID string) (FeishuSetting, error) {
+	row := q.db.QueryRowContext(ctx, getFeishuSettings, botID)
 	var i FeishuSetting
 	err := row.Scan(
-		&i.AgentID,
+		&i.BotID,
 		&i.AppID,
 		&i.AppSecret,
 		&i.Brand,
@@ -43,12 +43,12 @@ func (q *Queries) GetFeishuSettings(ctx context.Context, agentID string) (Feishu
 
 const pairFeishuOwner = `-- name: PairFeishuOwner :execrows
 UPDATE feishu_settings SET owner_id = ?, pairing_code = '', pairing_expires_at = 0
-WHERE agent_id = ? AND owner_id = '' AND pairing_code = ? AND pairing_expires_at > ?
+WHERE bot_id = ? AND owner_id = '' AND pairing_code = ? AND pairing_expires_at > ?
 `
 
 type PairFeishuOwnerParams struct {
 	OwnerID          string `json:"owner_id"`
-	AgentID          string `json:"agent_id"`
+	BotID            string `json:"bot_id"`
 	PairingCode      string `json:"pairing_code"`
 	PairingExpiresAt int64  `json:"pairing_expires_at"`
 }
@@ -56,7 +56,7 @@ type PairFeishuOwnerParams struct {
 func (q *Queries) PairFeishuOwner(ctx context.Context, arg PairFeishuOwnerParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, pairFeishuOwner,
 		arg.OwnerID,
-		arg.AgentID,
+		arg.BotID,
 		arg.PairingCode,
 		arg.PairingExpiresAt,
 	)
@@ -67,16 +67,16 @@ func (q *Queries) PairFeishuOwner(ctx context.Context, arg PairFeishuOwnerParams
 }
 
 const setFeishuSettings = `-- name: SetFeishuSettings :exec
-INSERT INTO feishu_settings (agent_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions, verification_token, encrypt_key)
+INSERT INTO feishu_settings (bot_id, app_id, app_secret, brand, owner_id, pairing_code, pairing_expires_at, reactions, verification_token, encrypt_key)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (agent_id) DO UPDATE SET app_id = excluded.app_id, app_secret = excluded.app_secret,
+ON CONFLICT (bot_id) DO UPDATE SET app_id = excluded.app_id, app_secret = excluded.app_secret,
 brand = excluded.brand, owner_id = excluded.owner_id, pairing_code = excluded.pairing_code,
 pairing_expires_at = excluded.pairing_expires_at, reactions = excluded.reactions,
 verification_token = excluded.verification_token, encrypt_key = excluded.encrypt_key
 `
 
 type SetFeishuSettingsParams struct {
-	AgentID           string        `json:"agent_id"`
+	BotID             string        `json:"bot_id"`
 	AppID             string        `json:"app_id"`
 	AppSecret         string        `json:"app_secret"`
 	Brand             string        `json:"brand"`
@@ -90,7 +90,7 @@ type SetFeishuSettingsParams struct {
 
 func (q *Queries) SetFeishuSettings(ctx context.Context, arg SetFeishuSettingsParams) error {
 	_, err := q.db.ExecContext(ctx, setFeishuSettings,
-		arg.AgentID,
+		arg.BotID,
 		arg.AppID,
 		arg.AppSecret,
 		arg.Brand,

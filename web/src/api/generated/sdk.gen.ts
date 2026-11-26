@@ -2,7 +2,7 @@
 
 import { type Client, type ClientMeta, formDataBodySerializer, type Options as Options2, type RequestResult, type ServerSentEventsResult, type TDataShape } from './client';
 import { client } from './client.gen';
-import type { AbortSessionData, AbortSessionErrors, AbortSessionResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddTaskDependencyData, AddTaskDependencyErrors, AddTaskDependencyResponses, ArchiveSessionData, ArchiveSessionErrors, ArchiveSessionResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, AttachTaskExecutionData, AttachTaskExecutionErrors, AttachTaskExecutionResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelSessionMonitorData, CancelSessionMonitorErrors, CancelSessionMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactSessionData, CompactSessionErrors, CompactSessionResponses, ContinueSessionData, ContinueSessionErrors, ContinueSessionResponses, CreateAgentData, CreateAgentErrors, CreateAgentResponses, CreateAgentSessionData, CreateAgentSessionErrors, CreateAgentSessionResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateRunnerData, CreateRunnerErrors, CreateRunnerResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTaskData, CreateTaskEntryData, CreateTaskEntryErrors, CreateTaskEntryResponses, CreateTaskErrors, CreateTaskResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteRunnerData, DeleteRunnerErrors, DeleteRunnerResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissAutomationResultData, DismissAutomationResultErrors, DismissAutomationResultResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, FinishTaskExecutionData, FinishTaskExecutionErrors, FinishTaskExecutionResponses, ForgetRunnerHostKeyData, ForgetRunnerHostKeyErrors, ForgetRunnerHostKeyResponses, ForkSessionData, ForkSessionErrors, ForkSessionResponses, GetAgentData, GetAgentErrors, GetAgentResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetBoardAttentionData, GetBoardAttentionErrors, GetBoardAttentionResponses, GetBotIntegrationsData, GetBotIntegrationsErrors, GetBotIntegrationsResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainSessionData, GetMainSessionErrors, GetMainSessionResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSessionData, GetSessionErrors, GetSessionHistoryData, GetSessionHistoryErrors, GetSessionHistoryResponses, GetSessionItemData, GetSessionItemErrors, GetSessionItemResponses, GetSessionResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetUploadData, GetUploadErrors, GetUploadResponses, HeartbeatTaskExecutionData, HeartbeatTaskExecutionErrors, HeartbeatTaskExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListAgentRunnersData, ListAgentRunnersErrors, ListAgentRunnersResponses, ListAgentsData, ListAgentsErrors, ListAgentsResponses, ListArchivedAgentsData, ListArchivedAgentsErrors, ListArchivedAgentsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationResultsData, ListAutomationResultsErrors, ListAutomationResultsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListRunnersData, ListRunnersErrors, ListRunnersResponses, ListSessionMonitorsData, ListSessionMonitorsErrors, ListSessionMonitorsResponses, ListSessionOutboxData, ListSessionOutboxErrors, ListSessionOutboxResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTaskExecutionsData, ListTaskExecutionsErrors, ListTaskExecutionsResponses, ListTasksData, ListTasksErrors, ListTasksResponses, ListVaultData, ListVaultErrors, ListVaultResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostTaskExternalEntryData, PostTaskExternalEntryErrors, PostTaskExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeRunnerData, ProbeRunnerErrors, ProbeRunnerResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadAutomationResultData, ReadAutomationResultErrors, ReadAutomationResultResponses, ReadTaskExternalTaskData, ReadTaskExternalTaskErrors, ReadTaskExternalTaskResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadBotIntegrationsData, ReloadBotIntegrationsErrors, ReloadBotIntegrationsResponses, RemoveTaskDependencyData, RemoveTaskDependencyErrors, RemoveTaskDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetAgentRunnerData, ResetAgentRunnerErrors, ResetAgentRunnerResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreAgentData, RestoreAgentErrors, RestoreAgentResponses, ResumeTaskExecutionData, ResumeTaskExecutionErrors, ResumeTaskExecutionResponses, ReviewTaskData, ReviewTaskErrors, ReviewTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetSessionProjectData, SetSessionProjectErrors, SetSessionProjectResponses, SetSessionRunnerData, SetSessionRunnerErrors, SetSessionRunnerResponses, SetSessionSettingsData, SetSessionSettingsErrors, SetSessionSettingsResponses, SetSourceEnabledData, SetSourceEnabledErrors, SetSourceEnabledResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SplitTaskData, SplitTaskErrors, SplitTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, StreamTaskEventsData, StreamTaskEventsErrors, StreamTaskEventsResponse, StreamTaskEventsResponses, TestRunnerData, TestRunnerErrors, TestRunnerResponses, UnarchiveSessionData, UnarchiveSessionErrors, UnarchiveSessionResponses, UpdateAgentData, UpdateAgentErrors, UpdateAgentResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateRunnerData, UpdateRunnerErrors, UpdateRunnerResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpdateTaskData, UpdateTaskErrors, UpdateTaskResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchSessionData, WatchSessionErrors, WatchSessionResponse, WatchSessionResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
+import type { AbortSessionData, AbortSessionErrors, AbortSessionResponses, AcquireMaintenanceData, AcquireMaintenanceErrors, AcquireMaintenanceResponses, AddTaskDependencyData, AddTaskDependencyErrors, AddTaskDependencyResponses, ArchiveSessionData, ArchiveSessionErrors, ArchiveSessionResponses, AttachHeldEventData, AttachHeldEventErrors, AttachHeldEventResponses, AttachTaskExecutionData, AttachTaskExecutionErrors, AttachTaskExecutionResponses, BackupSystemDatabaseData, BackupSystemDatabaseErrors, BackupSystemDatabaseResponses, BeginFeishuData, BeginFeishuErrors, BeginFeishuResponses, BeginTelegramManagedSetupData, BeginTelegramManagedSetupErrors, BeginTelegramManagedSetupResponses, BeginWechatLoginData, BeginWechatLoginErrors, BeginWechatLoginResponses, BindTaskGitHubPullData, BindTaskGitHubPullErrors, BindTaskGitHubPullResponses, CancelSessionMonitorData, CancelSessionMonitorErrors, CancelSessionMonitorResponses, CancelSystemOperationData, CancelSystemOperationErrors, CancelSystemOperationResponses, CancelTelegramManagedSetupData, CancelTelegramManagedSetupErrors, CancelTelegramManagedSetupResponses, CheckSystemUpdateData, CheckSystemUpdateErrors, CheckSystemUpdateResponses, ClearContextData, ClearContextErrors, ClearContextResponses, CompactSessionData, CompactSessionErrors, CompactSessionResponses, ContinueSessionData, ContinueSessionErrors, ContinueSessionResponses, CreateAutomationData, CreateAutomationErrors, CreateAutomationResponses, CreateBotData, CreateBotErrors, CreateBotResponses, CreateBotSessionData, CreateBotSessionErrors, CreateBotSessionResponses, CreateRunnerData, CreateRunnerErrors, CreateRunnerResponses, CreateSessionData, CreateSessionErrors, CreateSessionResponses, CreateTaskData, CreateTaskEntryData, CreateTaskEntryErrors, CreateTaskEntryResponses, CreateTaskErrors, CreateTaskResponses, CreateTelegramPairingData, CreateTelegramPairingErrors, CreateTelegramPairingResponses, CreateUploadData, CreateUploadErrors, CreateUploadResponses, DeleteArtifactData, DeleteArtifactErrors, DeleteArtifactResponses, DeleteAutomationData, DeleteAutomationErrors, DeleteAutomationResponses, DeleteEmailImapPullData, DeleteEmailImapPullErrors, DeleteEmailImapPullResponses, DeleteEmailSourceData, DeleteEmailSourceErrors, DeleteEmailSourceResponses, DeleteFeishuData, DeleteFeishuErrors, DeleteFeishuResponses, DeleteGitHubReviewPullData, DeleteGitHubReviewPullErrors, DeleteGitHubReviewPullResponses, DeleteGitHubWebhookData, DeleteGitHubWebhookErrors, DeleteGitHubWebhookResponses, DeleteProviderData, DeleteProviderErrors, DeleteProviderResponses, DeleteRunnerData, DeleteRunnerErrors, DeleteRunnerResponses, DeleteTelegramData, DeleteTelegramErrors, DeleteTelegramResponses, DeleteVaultData, DeleteVaultErrors, DeleteVaultResponses, DeleteWebhookSourceData, DeleteWebhookSourceErrors, DeleteWebhookSourceResponses, DeleteWechatData, DeleteWechatErrors, DeleteWechatResponses, DiscoverSshConfigData, DiscoverSshConfigErrors, DiscoverSshConfigResponses, DismissAutomationResultData, DismissAutomationResultErrors, DismissAutomationResultResponses, DismissHeldEventData, DismissHeldEventErrors, DismissHeldEventResponses, FinishTaskExecutionData, FinishTaskExecutionErrors, FinishTaskExecutionResponses, ForgetRunnerHostKeyData, ForgetRunnerHostKeyErrors, ForgetRunnerHostKeyResponses, ForkSessionData, ForkSessionErrors, ForkSessionResponses, GetArtifactData, GetArtifactErrors, GetArtifactResponses, GetAutomationData, GetAutomationErrors, GetAutomationResponses, GetBoardAttentionData, GetBoardAttentionErrors, GetBoardAttentionResponses, GetBotData, GetBotErrors, GetBotIntegrationsData, GetBotIntegrationsErrors, GetBotIntegrationsResponses, GetBotResponses, GetChannelsData, GetChannelsErrors, GetChannelsResponses, GetFeishuData, GetFeishuErrors, GetFeishuResponses, GetHealthData, GetHealthResponses, GetMainSessionData, GetMainSessionErrors, GetMainSessionResponses, GetNotificationTargetsData, GetNotificationTargetsErrors, GetNotificationTargetsResponses, GetOnePasswordData, GetOnePasswordErrors, GetOnePasswordResponses, GetSessionData, GetSessionErrors, GetSessionHistoryData, GetSessionHistoryErrors, GetSessionHistoryResponses, GetSessionItemData, GetSessionItemErrors, GetSessionItemResponses, GetSessionResponses, GetSettingsData, GetSettingsErrors, GetSettingsResponses, GetSystemLogsData, GetSystemLogsErrors, GetSystemLogsResponses, GetSystemStatusData, GetSystemStatusErrors, GetSystemStatusResponses, GetTaskData, GetTaskErrors, GetTaskResponses, GetTelegramManagedSetupData, GetTelegramManagedSetupErrors, GetTelegramManagedSetupResponses, GetUploadData, GetUploadErrors, GetUploadResponses, HeartbeatTaskExecutionData, HeartbeatTaskExecutionErrors, HeartbeatTaskExecutionResponses, IssueRunnerCodeData, IssueRunnerCodeErrors, IssueRunnerCodeResponses, ListArchivedBotsData, ListArchivedBotsErrors, ListArchivedBotsResponses, ListArtifactsData, ListArtifactsErrors, ListArtifactsResponses, ListAutomationResultsData, ListAutomationResultsErrors, ListAutomationResultsResponses, ListAutomationRunsData, ListAutomationRunsErrors, ListAutomationRunsResponses, ListAutomationsData, ListAutomationsErrors, ListAutomationsResponses, ListAutomationTargetsData, ListAutomationTargetsResponses, ListBotRunnersData, ListBotRunnersErrors, ListBotRunnersResponses, ListBotsData, ListBotsErrors, ListBotsResponses, ListDirectoriesData, ListDirectoriesErrors, ListDirectoriesResponses, ListHeldEventsData, ListHeldEventsErrors, ListHeldEventsResponses, ListModelsData, ListModelsErrors, ListModelsResponses, ListProviderModelsData, ListProviderModelsErrors, ListProviderModelsResponses, ListRecentProjectsData, ListRecentProjectsErrors, ListRecentProjectsResponses, ListRunnersData, ListRunnersErrors, ListRunnersResponses, ListSessionMonitorsData, ListSessionMonitorsErrors, ListSessionMonitorsResponses, ListSessionOutboxData, ListSessionOutboxErrors, ListSessionOutboxResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, ListSourcesData, ListSourcesErrors, ListSourcesResponses, ListTaskExecutionsData, ListTaskExecutionsErrors, ListTaskExecutionsResponses, ListTasksData, ListTasksErrors, ListTasksResponses, ListVaultData, ListVaultErrors, ListVaultResponses, PollFeishuData, PollFeishuErrors, PollFeishuResponses, PollWechatLoginData, PollWechatLoginErrors, PollWechatLoginResponses, PostTaskExternalEntryData, PostTaskExternalEntryErrors, PostTaskExternalEntryResponses, PreviewScheduleData, PreviewScheduleErrors, PreviewScheduleResponses, ProbeRunnerData, ProbeRunnerErrors, ProbeRunnerResponses, PutVaultData, PutVaultErrors, PutVaultResponses, ReadAutomationResultData, ReadAutomationResultErrors, ReadAutomationResultResponses, ReadTaskExternalTaskData, ReadTaskExternalTaskErrors, ReadTaskExternalTaskResponses, ReleaseMaintenanceData, ReleaseMaintenanceErrors, ReleaseMaintenanceResponses, ReloadBotIntegrationsData, ReloadBotIntegrationsErrors, ReloadBotIntegrationsResponses, RemoveTaskDependencyData, RemoveTaskDependencyErrors, RemoveTaskDependencyResponses, RenameArtifactData, RenameArtifactErrors, RenameArtifactResponses, ResetBotRunnerData, ResetBotRunnerErrors, ResetBotRunnerResponses, RestartSystemData, RestartSystemErrors, RestartSystemResponses, RestoreBotData, RestoreBotErrors, RestoreBotResponses, ResumeTaskExecutionData, ResumeTaskExecutionErrors, ResumeTaskExecutionResponses, ReviewTaskData, ReviewTaskErrors, ReviewTaskResponses, RevokeRunnerData, RevokeRunnerErrors, RevokeRunnerResponses, RunAutomationData, RunAutomationErrors, RunAutomationResponses, SaveEmailImapPullData, SaveEmailImapPullErrors, SaveEmailImapPullResponses, SaveEmailSourceData, SaveEmailSourceErrors, SaveEmailSourceResponses, SaveGitHubReviewPullData, SaveGitHubReviewPullErrors, SaveGitHubReviewPullResponses, SaveGitHubWebhookData, SaveGitHubWebhookErrors, SaveGitHubWebhookResponses, SaveWebhookSourceData, SaveWebhookSourceErrors, SaveWebhookSourceResponses, SendMessageData, SendMessageErrors, SendMessageResponses, SetFeishuData, SetFeishuErrors, SetFeishuResponses, SetOnePasswordData, SetOnePasswordErrors, SetOnePasswordResponses, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetErrors, SetPrimaryNotificationTargetResponses, SetProviderData, SetProviderErrors, SetProviderResponses, SetSessionProjectData, SetSessionProjectErrors, SetSessionProjectResponses, SetSessionRunnerData, SetSessionRunnerErrors, SetSessionRunnerResponses, SetSessionSettingsData, SetSessionSettingsErrors, SetSessionSettingsResponses, SetSourceEnabledData, SetSourceEnabledErrors, SetSourceEnabledResponses, SetTelegramData, SetTelegramErrors, SetTelegramManagerData, SetTelegramManagerErrors, SetTelegramManagerResponses, SetTelegramResponses, SplitTaskData, SplitTaskErrors, SplitTaskResponses, StartMcpOAuthData, StartMcpOAuthErrors, StartMcpOAuthResponses, StreamTaskEventsData, StreamTaskEventsErrors, StreamTaskEventsResponse, StreamTaskEventsResponses, TestRunnerData, TestRunnerErrors, TestRunnerResponses, UnarchiveSessionData, UnarchiveSessionErrors, UnarchiveSessionResponses, UpdateAutomationData, UpdateAutomationErrors, UpdateAutomationResponses, UpdateBotData, UpdateBotErrors, UpdateBotResponses, UpdateRunnerData, UpdateRunnerErrors, UpdateRunnerResponses, UpdateSystemSettingsData, UpdateSystemSettingsErrors, UpdateSystemSettingsResponses, UpdateTaskData, UpdateTaskErrors, UpdateTaskResponses, UpgradeSystemData, UpgradeSystemErrors, UpgradeSystemResponses, WatchSessionData, WatchSessionErrors, WatchSessionResponse, WatchSessionResponses, WithdrawMessageData, WithdrawMessageErrors, WithdrawMessageResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -31,7 +31,7 @@ export const bindTaskGitHubPull = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/plugins/github/agents/{agentId}/tasks/{taskId}/pull',
+    url: '/api/plugins/github/bots/{botId}/tasks/{taskId}/pull',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -901,7 +901,7 @@ export const getOnePassword = <ThrowOnError extends boolean = false>(options?: O
 });
 
 /**
- * Saves how tools authenticate the 1Password CLI. An empty or missing token keeps the saved token. Open agents apply the change when all agents are idle.
+ * Saves how tools authenticate the 1Password CLI. An empty or missing token keeps the saved token. Open bots apply the change when all bots are idle.
  *
  */
 export const setOnePassword = <ThrowOnError extends boolean = false>(options: Options<SetOnePasswordData, ThrowOnError>): RequestResult<SetOnePasswordResponses, SetOnePasswordErrors, ThrowOnError> => (options.client ?? client).put<SetOnePasswordResponses, SetOnePasswordErrors, ThrowOnError>({
@@ -1189,7 +1189,7 @@ export const getChannels = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels',
+    url: '/api/bots/{botId}/channels',
     ...options
 });
 
@@ -1203,7 +1203,7 @@ export const getNotificationTargets = <ThrowOnError extends boolean = false>(opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/notification-targets',
+    url: '/api/bots/{botId}/notification-targets',
     ...options
 });
 
@@ -1217,7 +1217,7 @@ export const setPrimaryNotificationTarget = <ThrowOnError extends boolean = fals
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/notification-targets',
+    url: '/api/bots/{botId}/notification-targets',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1259,7 +1259,7 @@ export const beginTelegramManagedSetup = <ThrowOnError extends boolean = false>(
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/telegram/managed',
+    url: '/api/bots/{botId}/channels/telegram/managed',
     ...options
 });
 
@@ -1276,7 +1276,7 @@ export const cancelTelegramManagedSetup = <ThrowOnError extends boolean = false>
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}',
+    url: '/api/bots/{botId}/channels/telegram/managed/{setupId}',
     ...options
 });
 
@@ -1290,7 +1290,7 @@ export const getTelegramManagedSetup = <ThrowOnError extends boolean = false>(op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/telegram/managed/{setupId}',
+    url: '/api/bots/{botId}/channels/telegram/managed/{setupId}',
     ...options
 });
 
@@ -1307,7 +1307,7 @@ export const createTelegramPairing = <ThrowOnError extends boolean = false>(opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/telegram/pairing',
+    url: '/api/bots/{botId}/channels/telegram/pairing',
     ...options
 });
 
@@ -1324,7 +1324,7 @@ export const beginWechatLogin = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/wechat/login',
+    url: '/api/bots/{botId}/channels/wechat/login',
     ...options
 });
 
@@ -1341,7 +1341,7 @@ export const pollWechatLogin = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/wechat/login/{loginId}/poll',
+    url: '/api/bots/{botId}/channels/wechat/login/{loginId}/poll',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1362,7 +1362,7 @@ export const deleteWechat = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/wechat',
+    url: '/api/bots/{botId}/channels/wechat',
     ...options
 });
 
@@ -1379,7 +1379,7 @@ export const deleteTelegram = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/telegram',
+    url: '/api/bots/{botId}/channels/telegram',
     ...options
 });
 
@@ -1396,7 +1396,7 @@ export const setTelegram = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/telegram',
+    url: '/api/bots/{botId}/channels/telegram',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1414,7 +1414,7 @@ export const deleteFeishu = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/feishu',
+    url: '/api/bots/{botId}/channels/feishu',
     ...options
 });
 
@@ -1428,7 +1428,7 @@ export const getFeishu = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/feishu',
+    url: '/api/bots/{botId}/channels/feishu',
     ...options
 });
 
@@ -1442,7 +1442,7 @@ export const setFeishu = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/feishu',
+    url: '/api/bots/{botId}/channels/feishu',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1460,7 +1460,7 @@ export const beginFeishu = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/feishu/registration',
+    url: '/api/bots/{botId}/channels/feishu/registration',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1478,7 +1478,7 @@ export const pollFeishu = <ThrowOnError extends boolean = false>(options: Option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/channels/feishu/registration/poll',
+    url: '/api/bots/{botId}/channels/feishu/registration/poll',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1508,9 +1508,9 @@ export const previewSchedule = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
- * List the owner's agents in creation order.
+ * List the owner's bots in creation order.
  */
-export const listAgents = <ThrowOnError extends boolean = false>(options?: Options<ListAgentsData, ThrowOnError>): RequestResult<ListAgentsResponses, ListAgentsErrors, ThrowOnError> => (options?.client ?? client).get<ListAgentsResponses, ListAgentsErrors, ThrowOnError>({
+export const listBots = <ThrowOnError extends boolean = false>(options?: Options<ListBotsData, ThrowOnError>): RequestResult<ListBotsResponses, ListBotsErrors, ThrowOnError> => (options?.client ?? client).get<ListBotsResponses, ListBotsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1520,14 +1520,14 @@ export const listAgents = <ThrowOnError extends boolean = false>(options?: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents',
+    url: '/api/bots',
     ...options
 });
 
 /**
- * Create an agent without changing global providers or channels.
+ * Create a bot without changing global providers or channels.
  */
-export const createAgent = <ThrowOnError extends boolean = false>(options: Options<CreateAgentData, ThrowOnError>): RequestResult<CreateAgentResponses, CreateAgentErrors, ThrowOnError> => (options.client ?? client).post<CreateAgentResponses, CreateAgentErrors, ThrowOnError>({
+export const createBot = <ThrowOnError extends boolean = false>(options: Options<CreateBotData, ThrowOnError>): RequestResult<CreateBotResponses, CreateBotErrors, ThrowOnError> => (options.client ?? client).post<CreateBotResponses, CreateBotErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1537,7 +1537,7 @@ export const createAgent = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents',
+    url: '/api/bots',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1545,7 +1545,7 @@ export const createAgent = <ThrowOnError extends boolean = false>(options: Optio
     }
 });
 
-export const getAgent = <ThrowOnError extends boolean = false>(options: Options<GetAgentData, ThrowOnError>): RequestResult<GetAgentResponses, GetAgentErrors, ThrowOnError> => (options.client ?? client).get<GetAgentResponses, GetAgentErrors, ThrowOnError>({
+export const getBot = <ThrowOnError extends boolean = false>(options: Options<GetBotData, ThrowOnError>): RequestResult<GetBotResponses, GetBotErrors, ThrowOnError> => (options.client ?? client).get<GetBotResponses, GetBotErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1555,14 +1555,14 @@ export const getAgent = <ThrowOnError extends boolean = false>(options: Options<
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}',
+    url: '/api/bots/{botId}',
     ...options
 });
 
 /**
- * Save this agent's settings. Its next message uses them.
+ * Save this bot's settings. Its next message uses them.
  */
-export const updateAgent = <ThrowOnError extends boolean = false>(options: Options<UpdateAgentData, ThrowOnError>): RequestResult<UpdateAgentResponses, UpdateAgentErrors, ThrowOnError> => (options.client ?? client).put<UpdateAgentResponses, UpdateAgentErrors, ThrowOnError>({
+export const updateBot = <ThrowOnError extends boolean = false>(options: Options<UpdateBotData, ThrowOnError>): RequestResult<UpdateBotResponses, UpdateBotErrors, ThrowOnError> => (options.client ?? client).put<UpdateBotResponses, UpdateBotErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1572,7 +1572,7 @@ export const updateAgent = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}',
+    url: '/api/bots/{botId}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1581,9 +1581,9 @@ export const updateAgent = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
- * List the archived agents, newest archive first. GET /api/agents omits them.
+ * List the archived bots, newest archive first. GET /api/bots omits them.
  */
-export const listArchivedAgents = <ThrowOnError extends boolean = false>(options?: Options<ListArchivedAgentsData, ThrowOnError>): RequestResult<ListArchivedAgentsResponses, ListArchivedAgentsErrors, ThrowOnError> => (options?.client ?? client).get<ListArchivedAgentsResponses, ListArchivedAgentsErrors, ThrowOnError>({
+export const listArchivedBots = <ThrowOnError extends boolean = false>(options?: Options<ListArchivedBotsData, ThrowOnError>): RequestResult<ListArchivedBotsResponses, ListArchivedBotsErrors, ThrowOnError> => (options?.client ?? client).get<ListArchivedBotsResponses, ListArchivedBotsErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1593,15 +1593,15 @@ export const listArchivedAgents = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/archived-agents',
+    url: '/api/archived-bots',
     ...options
 });
 
 /**
- * Restores an archived agent and starts its saved channels. An agent that is not archived answers 404. There is no archive route: an agent is archived only when the owner approves a bot_delete question. Every other agent route answers 404 for an archived agent.
+ * Restores an archived bot and starts its saved channels. A bot that is not archived answers 404. There is no archive route: a bot is archived only when the owner approves a bot_delete question. Every other bot route answers 404 for an archived bot.
  *
  */
-export const restoreAgent = <ThrowOnError extends boolean = false>(options: Options<RestoreAgentData, ThrowOnError>): RequestResult<RestoreAgentResponses, RestoreAgentErrors, ThrowOnError> => (options.client ?? client).delete<RestoreAgentResponses, RestoreAgentErrors, ThrowOnError>({
+export const restoreBot = <ThrowOnError extends boolean = false>(options: Options<RestoreBotData, ThrowOnError>): RequestResult<RestoreBotResponses, RestoreBotErrors, ThrowOnError> => (options.client ?? client).delete<RestoreBotResponses, RestoreBotErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1611,15 +1611,15 @@ export const restoreAgent = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/archive',
+    url: '/api/bots/{botId}/archive',
     ...options
 });
 
 /**
- * Lists the Runners that the agent's sessions can use. The default comes first, followed by Local and the other registered Runners. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
+ * Lists the Runners that the bot's sessions can use. The default comes first, followed by Local and the other registered Runners. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
  *
  */
-export const listAgentRunners = <ThrowOnError extends boolean = false>(options: Options<ListAgentRunnersData, ThrowOnError>): RequestResult<ListAgentRunnersResponses, ListAgentRunnersErrors, ThrowOnError> => (options.client ?? client).get<ListAgentRunnersResponses, ListAgentRunnersErrors, ThrowOnError>({
+export const listBotRunners = <ThrowOnError extends boolean = false>(options: Options<ListBotRunnersData, ThrowOnError>): RequestResult<ListBotRunnersResponses, ListBotRunnersErrors, ThrowOnError> => (options.client ?? client).get<ListBotRunnersResponses, ListBotRunnersErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1629,15 +1629,15 @@ export const listAgentRunners = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/runners',
+    url: '/api/bots/{botId}/runners',
     ...options
 });
 
 /**
- * Kills any persisted E2B sandbox for an idle agent, clears its sandbox ID, and releases open resources so the next turn provisions a fresh sandbox.
+ * Kills any persisted E2B sandbox for an idle bot, clears its sandbox ID, and releases open resources so the next turn provisions a fresh sandbox.
  *
  */
-export const resetAgentRunner = <ThrowOnError extends boolean = false>(options: Options<ResetAgentRunnerData, ThrowOnError>): RequestResult<ResetAgentRunnerResponses, ResetAgentRunnerErrors, ThrowOnError> => (options.client ?? client).post<ResetAgentRunnerResponses, ResetAgentRunnerErrors, ThrowOnError>({
+export const resetBotRunner = <ThrowOnError extends boolean = false>(options: Options<ResetBotRunnerData, ThrowOnError>): RequestResult<ResetBotRunnerResponses, ResetBotRunnerErrors, ThrowOnError> => (options.client ?? client).post<ResetBotRunnerResponses, ResetBotRunnerErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1647,12 +1647,12 @@ export const resetAgentRunner = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/runner/reset',
+    url: '/api/bots/{botId}/runner/reset',
     ...options
 });
 
 /**
- * Find or create the requested agent's main timeline.
+ * Find or create the requested bot's main timeline.
  */
 export const getMainSession = <ThrowOnError extends boolean = false>(options: Options<GetMainSessionData, ThrowOnError>): RequestResult<GetMainSessionResponses, GetMainSessionErrors, ThrowOnError> => (options.client ?? client).get<GetMainSessionResponses, GetMainSessionErrors, ThrowOnError>({
     security: [{
@@ -1664,12 +1664,12 @@ export const getMainSession = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/main',
+    url: '/api/bots/{botId}/sessions/main',
     ...options
 });
 
 /**
- * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel sessions, dreams and web sessions with no message. Transcripts are not included.
+ * Session summaries of the requested bot, newest activity first, then highest ID first. Excludes main, channel sessions, dreams and web sessions with no message. Transcripts are not included.
  *
  */
 export const listSessions = <ThrowOnError extends boolean = false>(options: Options<ListSessionsData, ThrowOnError>): RequestResult<ListSessionsResponses, ListSessionsErrors, ThrowOnError> => (options.client ?? client).get<ListSessionsResponses, ListSessionsErrors, ThrowOnError>({
@@ -1682,7 +1682,7 @@ export const listSessions = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions',
+    url: '/api/bots/{botId}/sessions',
     ...options
 });
 
@@ -1690,7 +1690,7 @@ export const listSessions = <ThrowOnError extends boolean = false>(options: Opti
  * Opens a separate writable session. Reuses the newest session with no message that is not archived, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
  *
  */
-export const createAgentSession = <ThrowOnError extends boolean = false>(options: Options<CreateAgentSessionData, ThrowOnError>): RequestResult<CreateAgentSessionResponses, CreateAgentSessionErrors, ThrowOnError> => (options.client ?? client).post<CreateAgentSessionResponses, CreateAgentSessionErrors, ThrowOnError>({
+export const createBotSession = <ThrowOnError extends boolean = false>(options: Options<CreateBotSessionData, ThrowOnError>): RequestResult<CreateBotSessionResponses, CreateBotSessionErrors, ThrowOnError> => (options.client ?? client).post<CreateBotSessionResponses, CreateBotSessionErrors, ThrowOnError>({
     security: [{
             key: 'bearer',
             scheme: 'bearer',
@@ -1700,7 +1700,7 @@ export const createAgentSession = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions',
+    url: '/api/bots/{botId}/sessions',
     ...options
 });
 
@@ -1714,7 +1714,7 @@ export const getSession = <ThrowOnError extends boolean = false>(options: Option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}',
+    url: '/api/bots/{botId}/sessions/{sessionId}',
     ...options
 });
 
@@ -1731,7 +1731,7 @@ export const unarchiveSession = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/archive',
+    url: '/api/bots/{botId}/sessions/{sessionId}/archive',
     ...options
 });
 
@@ -1749,12 +1749,12 @@ export const archiveSession = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/archive',
+    url: '/api/bots/{botId}/sessions/{sessionId}/archive',
     ...options
 });
 
 /**
- * Lists visible directories on the selected Runner of the agent, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
+ * Lists visible directories on the selected Runner of the bot, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
  *
  */
 export const listDirectories = <ThrowOnError extends boolean = false>(options?: Options<ListDirectoriesData, ThrowOnError>): RequestResult<ListDirectoriesResponses, ListDirectoriesErrors, ThrowOnError> => (options?.client ?? client).get<ListDirectoriesResponses, ListDirectoriesErrors, ThrowOnError>({
@@ -1785,12 +1785,12 @@ export const listRecentProjects = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/projects',
+    url: '/api/bots/{botId}/projects',
     ...options
 });
 
 /**
- * Selects the Runner of a session before its first message. Its command and file tools use that Runner. An empty runnerId follows the agent's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Session returns 409. A read-only Session returns 403.
+ * Selects the Runner of a session before its first message. Its command and file tools use that Runner. An empty runnerId follows the bot's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Session returns 409. A read-only Session returns 403.
  *
  */
 export const setSessionRunner = <ThrowOnError extends boolean = false>(options: Options<SetSessionRunnerData, ThrowOnError>): RequestResult<SetSessionRunnerResponses, SetSessionRunnerErrors, ThrowOnError> => (options.client ?? client).put<SetSessionRunnerResponses, SetSessionRunnerErrors, ThrowOnError>({
@@ -1803,7 +1803,7 @@ export const setSessionRunner = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/runner',
+    url: '/api/bots/{botId}/sessions/{sessionId}/runner',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1812,7 +1812,7 @@ export const setSessionRunner = <ThrowOnError extends boolean = false>(options: 
 });
 
 /**
- * Sets the project directory of a session from the next message. Main, separate Web sessions, and child sessions accept the change. Read-only sessions return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
+ * Sets the project directory of a session from the next message. Main, separate Web sessions, and child sessions accept the change. Read-only sessions return 403. Empty cwd restores the bot workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
  *
  */
 export const setSessionProject = <ThrowOnError extends boolean = false>(options: Options<SetSessionProjectData, ThrowOnError>): RequestResult<SetSessionProjectResponses, SetSessionProjectErrors, ThrowOnError> => (options.client ?? client).put<SetSessionProjectResponses, SetSessionProjectErrors, ThrowOnError>({
@@ -1825,7 +1825,7 @@ export const setSessionProject = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/project',
+    url: '/api/bots/{botId}/sessions/{sessionId}/project',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1834,7 +1834,7 @@ export const setSessionProject = <ThrowOnError extends boolean = false>(options:
 });
 
 /**
- * Sets the model and the thinking level of one session. An absent field follows the agent's setting. They apply from the next message, including channel input on Main. Main, separate Web sessions, child sessions, and Automation sessions accept overrides. Other read-only sessions return 403.
+ * Sets the model and the thinking level of one session. An absent field follows the bot's setting. They apply from the next message, including channel input on Main. Main, separate Web sessions, child sessions, and Automation sessions accept overrides. Other read-only sessions return 403.
  *
  */
 export const setSessionSettings = <ThrowOnError extends boolean = false>(options: Options<SetSessionSettingsData, ThrowOnError>): RequestResult<SetSessionSettingsResponses, SetSessionSettingsErrors, ThrowOnError> => (options.client ?? client).put<SetSessionSettingsResponses, SetSessionSettingsErrors, ThrowOnError>({
@@ -1847,7 +1847,7 @@ export const setSessionSettings = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/settings',
+    url: '/api/bots/{botId}/sessions/{sessionId}/settings',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1856,7 +1856,7 @@ export const setSessionSettings = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * Stores a message in a web session and returns. An identical retry of an accepted message returns 202 with the same submissionId. A retry with the same ID and different text, attachments, mode, or session returns 409. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the session. Main and writable sessions take web messages. Automation and channel sessions return 403.
+ * Stores a message in a web session and returns. An identical retry of an accepted message returns 202 with the same submissionId. A retry with the same ID and different text, attachments, mode, or session returns 409. The answer comes through the event stream. 409 when the bot has no model, or when the mode is reject and the bot is working in the session. Main and writable sessions take web messages. Automation and channel sessions return 403.
  *
  */
 export const sendMessage = <ThrowOnError extends boolean = false>(options: Options<SendMessageData, ThrowOnError>): RequestResult<SendMessageResponses, SendMessageErrors, ThrowOnError> => (options.client ?? client).post<SendMessageResponses, SendMessageErrors, ThrowOnError>({
@@ -1869,7 +1869,7 @@ export const sendMessage = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/messages',
+    url: '/api/bots/{botId}/sessions/{sessionId}/messages',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1891,7 +1891,7 @@ export const withdrawMessage = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/messages/{messageId}/withdraw',
+    url: '/api/bots/{botId}/sessions/{sessionId}/messages/{messageId}/withdraw',
     ...options
 });
 
@@ -1909,7 +1909,7 @@ export const clearContext = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/clear',
+    url: '/api/bots/{botId}/sessions/{sessionId}/clear',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1931,7 +1931,7 @@ export const continueSession = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/continue',
+    url: '/api/bots/{botId}/sessions/{sessionId}/continue',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1953,7 +1953,7 @@ export const forkSession = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/fork',
+    url: '/api/bots/{botId}/sessions/{sessionId}/fork',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1975,7 +1975,7 @@ export const compactSession = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/compact',
+    url: '/api/bots/{botId}/sessions/{sessionId}/compact',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -1997,7 +1997,7 @@ export const getSessionHistory = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/history',
+    url: '/api/bots/{botId}/sessions/{sessionId}/history',
     ...options
 });
 
@@ -2015,7 +2015,7 @@ export const getSessionItem = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/items/{itemId}',
+    url: '/api/bots/{botId}/sessions/{sessionId}/items/{itemId}',
     ...options
 });
 
@@ -2033,7 +2033,7 @@ export const abortSession = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/abort',
+    url: '/api/bots/{botId}/sessions/{sessionId}/abort',
     ...options
 });
 
@@ -2050,7 +2050,7 @@ export const listSessionMonitors = <ThrowOnError extends boolean = false>(option
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors',
+    url: '/api/bots/{botId}/sessions/{sessionId}/monitors',
     ...options
 });
 
@@ -2067,7 +2067,7 @@ export const cancelSessionMonitor = <ThrowOnError extends boolean = false>(optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/monitors/{monitorId}',
+    url: '/api/bots/{botId}/sessions/{sessionId}/monitors/{monitorId}',
     ...options
 });
 
@@ -2084,12 +2084,12 @@ export const listSessionOutbox = <ThrowOnError extends boolean = false>(options:
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/outbox',
+    url: '/api/bots/{botId}/sessions/{sessionId}/outbox',
     ...options
 });
 
 /**
- * Server-sent events. Each event has `event: <type>` and one `data:` line with a SessionEvent as JSON. The first event is a native snapshot. An eligible Web session also gets an initial notifications page and later notification updates. Merge notifications by Outbox ID; a native snapshot does not replace them. A comment line comes every 15 s. The server closes the stream when the agent reloads, the engine closes, or the client is too slow. The client reconnects and gets a new snapshot.
+ * Server-sent events. Each event has `event: <type>` and one `data:` line with a SessionEvent as JSON. The first event is a native snapshot. An eligible Web session also gets an initial notifications page and later notification updates. Merge notifications by Outbox ID; a native snapshot does not replace them. A comment line comes every 15 s. The server closes the stream when the bot reloads, the engine closes, or the client is too slow. The client reconnects and gets a new snapshot.
  *
  */
 export const watchSession = <ThrowOnError extends boolean = false>(options: Options<WatchSessionData, ThrowOnError, WatchSessionResponse>): Promise<ServerSentEventsResult<WatchSessionResponses>> => (options.client ?? client).sse.get<WatchSessionResponses, WatchSessionErrors, ThrowOnError>({
@@ -2102,12 +2102,12 @@ export const watchSession = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/sessions/{sessionId}/events',
+    url: '/api/bots/{botId}/sessions/{sessionId}/events',
     ...options
 });
 
 /**
- * Stores one file for a later message, in the agent workspace at `uploads/<id>/<name>`. The agent reads it with its tools. The largest file is 20 MB.
+ * Stores one file for a later message, in the bot workspace at `uploads/<id>/<name>`. The bot reads it with its tools. The largest file is 20 MB.
  *
  */
 export const createUpload = <ThrowOnError extends boolean = false>(options: Options<CreateUploadData, ThrowOnError>): RequestResult<CreateUploadResponses, CreateUploadErrors, ThrowOnError> => (options.client ?? client).post<CreateUploadResponses, CreateUploadErrors, ThrowOnError>({
@@ -2121,7 +2121,7 @@ export const createUpload = <ThrowOnError extends boolean = false>(options: Opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/uploads',
+    url: '/api/bots/{botId}/uploads',
     ...options,
     headers: {
         'Content-Type': null,
@@ -2143,7 +2143,7 @@ export const getUpload = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/uploads/{uploadId}',
+    url: '/api/bots/{botId}/uploads/{uploadId}',
     ...options
 });
 
@@ -2160,7 +2160,7 @@ export const listArtifacts = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/artifacts',
+    url: '/api/bots/{botId}/artifacts',
     ...options
 });
 
@@ -2177,7 +2177,7 @@ export const deleteArtifact = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/artifacts/{artifactName}',
+    url: '/api/bots/{botId}/artifacts/{artifactName}',
     ...options
 });
 
@@ -2194,7 +2194,7 @@ export const getArtifact = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/artifacts/{artifactName}',
+    url: '/api/bots/{botId}/artifacts/{artifactName}',
     ...options
 });
 
@@ -2211,7 +2211,7 @@ export const renameArtifact = <ThrowOnError extends boolean = false>(options: Op
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/artifacts/{artifactName}',
+    url: '/api/bots/{botId}/artifacts/{artifactName}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -2220,7 +2220,7 @@ export const renameArtifact = <ThrowOnError extends boolean = false>(options: Op
 });
 
 /**
- * The agent's skills and MCP servers. It does not start MCP servers. Before the agent starts, the servers are idle.
+ * The bot's skills and MCP servers. It does not start MCP servers. Before the bot starts, the servers are idle.
  *
  */
 export const getBotIntegrations = <ThrowOnError extends boolean = false>(options: Options<GetBotIntegrationsData, ThrowOnError>): RequestResult<GetBotIntegrationsResponses, GetBotIntegrationsErrors, ThrowOnError> => (options.client ?? client).get<GetBotIntegrationsResponses, GetBotIntegrationsErrors, ThrowOnError>({
@@ -2233,7 +2233,7 @@ export const getBotIntegrations = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/integrations',
+    url: '/api/bots/{botId}/integrations',
     ...options
 });
 
@@ -2250,7 +2250,7 @@ export const startMcpOAuth = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/integrations/mcp/{name}/oauth',
+    url: '/api/bots/{botId}/integrations/mcp/{name}/oauth',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -2259,7 +2259,7 @@ export const startMcpOAuth = <ThrowOnError extends boolean = false>(options: Opt
 });
 
 /**
- * Remove a vault value. The agent reloads when idle.
+ * Remove a vault value. The bot reloads when idle.
  */
 export const deleteVault = <ThrowOnError extends boolean = false>(options: Options<DeleteVaultData, ThrowOnError>): RequestResult<DeleteVaultResponses, DeleteVaultErrors, ThrowOnError> => (options.client ?? client).delete<DeleteVaultResponses, DeleteVaultErrors, ThrowOnError>({
     security: [{
@@ -2271,12 +2271,12 @@ export const deleteVault = <ThrowOnError extends boolean = false>(options: Optio
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/vault',
+    url: '/api/bots/{botId}/vault',
     ...options
 });
 
 /**
- * List vault metadata at dex and agent levels. Values are write-only.
+ * List vault metadata at dex and bot levels. Values are write-only.
  */
 export const listVault = <ThrowOnError extends boolean = false>(options: Options<ListVaultData, ThrowOnError>): RequestResult<ListVaultResponses, ListVaultErrors, ThrowOnError> => (options.client ?? client).get<ListVaultResponses, ListVaultErrors, ThrowOnError>({
     security: [{
@@ -2288,12 +2288,12 @@ export const listVault = <ThrowOnError extends boolean = false>(options: Options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/vault',
+    url: '/api/bots/{botId}/vault',
     ...options
 });
 
 /**
- * Set a vault value. The agent reloads when idle.
+ * Set a vault value. The bot reloads when idle.
  */
 export const putVault = <ThrowOnError extends boolean = false>(options: Options<PutVaultData, ThrowOnError>): RequestResult<PutVaultResponses, PutVaultErrors, ThrowOnError> => (options.client ?? client).put<PutVaultResponses, PutVaultErrors, ThrowOnError>({
     security: [{
@@ -2305,7 +2305,7 @@ export const putVault = <ThrowOnError extends boolean = false>(options: Options<
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/vault',
+    url: '/api/bots/{botId}/vault',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -2314,7 +2314,7 @@ export const putVault = <ThrowOnError extends boolean = false>(options: Options<
 });
 
 /**
- * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Checks idle execution across all agents before replacement; returns 409 when any agent has unfinished work. Other agents can start work after this check while the selected agent reloads. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
+ * Reloads only the selected bot's Harness and MCP connections. Opens that bot if needed and returns its server connection states. Skills need no reload. Checks idle execution across all bots before replacement; returns 409 when any bot has unfinished work. Other bots can start work after this check while the selected bot reloads. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
  *
  */
 export const reloadBotIntegrations = <ThrowOnError extends boolean = false>(options: Options<ReloadBotIntegrationsData, ThrowOnError>): RequestResult<ReloadBotIntegrationsResponses, ReloadBotIntegrationsErrors, ThrowOnError> => (options.client ?? client).post<ReloadBotIntegrationsResponses, ReloadBotIntegrationsErrors, ThrowOnError>({
@@ -2327,12 +2327,12 @@ export const reloadBotIntegrations = <ThrowOnError extends boolean = false>(opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/integrations/reload',
+    url: '/api/bots/{botId}/integrations/reload',
     ...options
 });
 
 /**
- * All automations of this agent, oldest first.
+ * All automations of this bot, oldest first.
  */
 export const listAutomations = <ThrowOnError extends boolean = false>(options: Options<ListAutomationsData, ThrowOnError>): RequestResult<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError> => (options.client ?? client).get<ListAutomationsResponses, ListAutomationsErrors, ThrowOnError>({
     security: [{
@@ -2344,7 +2344,7 @@ export const listAutomations = <ThrowOnError extends boolean = false>(options: O
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations',
+    url: '/api/bots/{botId}/automations',
     ...options
 });
 
@@ -2358,7 +2358,7 @@ export const createAutomation = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations',
+    url: '/api/bots/{botId}/automations',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -2376,7 +2376,7 @@ export const listAutomationTargets = <ThrowOnError extends boolean = false>(opti
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations/targets',
+    url: '/api/bots/{botId}/automations/targets',
     ...options
 });
 
@@ -2393,7 +2393,7 @@ export const deleteAutomation = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations/{automationId}',
+    url: '/api/bots/{botId}/automations/{automationId}',
     ...options
 });
 
@@ -2407,7 +2407,7 @@ export const getAutomation = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations/{automationId}',
+    url: '/api/bots/{botId}/automations/{automationId}',
     ...options
 });
 
@@ -2425,7 +2425,7 @@ export const updateAutomation = <ThrowOnError extends boolean = false>(options: 
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations/{automationId}',
+    url: '/api/bots/{botId}/automations/{automationId}',
     ...options,
     headers: {
         'Content-Type': 'application/json',
@@ -2434,7 +2434,7 @@ export const updateAutomation = <ThrowOnError extends boolean = false>(options: 
 });
 
 /**
- * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
+ * Runs the automation now, outside its schedule. The run is skipped when the bot has no model or the previous run is still busy.
  *
  */
 export const runAutomation = <ThrowOnError extends boolean = false>(options: Options<RunAutomationData, ThrowOnError>): RequestResult<RunAutomationResponses, RunAutomationErrors, ThrowOnError> => (options.client ?? client).post<RunAutomationResponses, RunAutomationErrors, ThrowOnError>({
@@ -2447,7 +2447,7 @@ export const runAutomation = <ThrowOnError extends boolean = false>(options: Opt
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations/{automationId}/run',
+    url: '/api/bots/{botId}/automations/{automationId}/run',
     ...options
 });
 
@@ -2464,6 +2464,6 @@ export const listAutomationRuns = <ThrowOnError extends boolean = false>(options
             name: 'dex_session',
             type: 'apiKey'
         }],
-    url: '/api/agents/{agentId}/automations/{automationId}/runs',
+    url: '/api/bots/{botId}/automations/{automationId}/runs',
     ...options
 });

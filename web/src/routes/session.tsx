@@ -1,5 +1,5 @@
-import type { AgentSettings as Settings } from "../lib/agent-scope";
-import { useAgentSettings, useAgentId } from "../lib/agent-scope";
+import type { BotSettings as Settings } from "../lib/bot-scope";
+import { useBotSettings, useBotId } from "../lib/bot-scope";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -17,13 +17,13 @@ import {
   withdrawMessageMutation,
   listModelsOptions,
   listSessionsOptions,
-  listAgentsOptions,
-  listAgentRunnersOptions,
+  listBotsOptions,
+  listBotRunnersOptions,
 } from "../api/generated/@tanstack/react-query.gen";
 import { mergeHistory, retryMessage } from "../lib/session-state";
 import { useSessionStream } from "../lib/session-stream";
 import { errorText, refreshSessions, refreshBoardAttention } from "../lib/queries";
-import { agentModel, findModel } from "../lib/agent";
+import { botModel, findModel } from "../lib/bot";
 import { useApp } from "../lib/app-state";
 import { useAttachments } from "../lib/attachments";
 import { sessionKind, sessionTime } from "../lib/sessions";
@@ -33,16 +33,16 @@ import { useRunnerSendBlock } from "../components/session-runner";
 import { sessionDraftEvent, putSessionDraft, takeSessionDraft } from "../lib/session-draft";
 import { Composer, type SendMode } from "../components/composer";
 import { hasContext, useClearContext, LoadEarlierButton } from "../components/timeline-actions";
-import { QuestionCard } from "../components/agent/question-card";
-import { ThreadContext } from "../components/agent/thread";
-import { ThreadPanel } from "../components/agent/thread-panel";
+import { QuestionCard } from "../components/bot/question-card";
+import { ThreadContext } from "../components/bot/thread";
+import { ThreadPanel } from "../components/bot/thread-panel";
 import type { ThreadRef } from "../lib/threads";
 import {
   RetryNotice,
   Transcript,
   type MessageActions,
   type QueuedActions,
-} from "../components/agent/transcript";
+} from "../components/bot/transcript";
 import type { SlashCommand } from "../components/slash-commands";
 import { ModelPicker } from "../components/model-picker";
 import { Failure, Loading } from "../components/feedback";
@@ -52,8 +52,8 @@ import { Badge } from "../components/ui/badge";
 import { cn, newId } from "../lib/utils";
 
 export function SessionPage({ sessionId }: { sessionId?: number }) {
-  const agentId = useAgentId();
-  const settings = useAgentSettings(agentId);
+  const botId = useBotId();
+  const settings = useBotSettings(botId);
 
   return settings.isPending ? (
     <MainPane>
@@ -77,8 +77,8 @@ export function SessionPage({ sessionId }: { sessionId?: number }) {
 }
 
 export function MainTimeline({ settings }: { settings: Settings }) {
-  const agentId = useAgentId();
-  const main = useQuery(getMainSessionOptions({ path: { agentId } }));
+  const botId = useBotId();
+  const main = useQuery(getMainSessionOptions({ path: { botId } }));
 
   return main.isPending ? (
     <MainPane>
@@ -97,18 +97,18 @@ export function MainTimeline({ settings }: { settings: Settings }) {
 // A parent can belong to another bot, which then names it.
 function ParentLink({
   parentId,
-  parentAgentId,
-  parentAgentName,
+  parentBotId,
+  parentBotName,
 }: {
   parentId: number;
-  parentAgentId?: string;
-  parentAgentName?: string;
+  parentBotId?: string;
+  parentBotName?: string;
 }) {
-  const own = useAgentId();
-  const agentId = parentAgentId ?? own;
-  const parent = useQuery(getSessionOptions({ path: { agentId, sessionId: parentId } }));
+  const own = useBotId();
+  const botId = parentBotId ?? own;
+  const parent = useQuery(getSessionOptions({ path: { botId, sessionId: parentId } }));
   const title = parent.data ? (parent.data.main ? "Main" : parent.data.title || "a session") : "…";
-  const name = parentAgentName ? `${title} in ${parentAgentName}` : title;
+  const name = parentBotName ? `${title} in ${parentBotName}` : title;
 
   const className = cn(
     buttonVariants({ variant: "ghost", size: "sm" }),
@@ -121,19 +121,19 @@ function ParentLink({
     <>
       <GitBranch aria-hidden="true" />
       <span className="hidden truncate sm:inline">
-        {parentAgentName ? `${parentAgentName} · ${title}` : title}
+        {parentBotName ? `${parentBotName} · ${title}` : title}
       </span>
     </>
   );
 
   return parent.data?.main ? (
-    <Link to="/a/$agentId" params={{ agentId }} className={className} title={label} aria-label={label}>
+    <Link to="/b/$botId" params={{ botId }} className={className} title={label} aria-label={label}>
       {content}
     </Link>
   ) : (
     <Link
-      to="/a/$agentId/s/$sessionId"
-      params={{ agentId, sessionId: String(parentId) }}
+      to="/b/$botId/s/$sessionId"
+      params={{ botId, sessionId: String(parentId) }}
       className={className}
       title={label}
       aria-label={label}
@@ -171,8 +171,8 @@ export function SessionTitle({
       {!session.main && switchable && session.parentId !== undefined ? (
         <ParentLink
           parentId={session.parentId}
-          parentAgentId={session.parentAgentId}
-          parentAgentName={session.parentAgentName}
+          parentBotId={session.parentBotId}
+          parentBotName={session.parentBotName}
         />
       ) : null}
     </>
@@ -180,7 +180,7 @@ export function SessionTitle({
 }
 
 function ForkOrigin({ origin }: { origin: NonNullable<SessionInfo["forkedFrom"]> }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const name = origin.main ? "Main" : origin.title || "a session";
 
   return (
@@ -189,13 +189,13 @@ function ForkOrigin({ origin }: { origin: NonNullable<SessionInfo["forkedFrom"]>
       <p>
         Forked from{" "}
         {origin.main ? (
-          <Link to="/a/$agentId" params={{ agentId }} className="font-medium text-foreground underline">
+          <Link to="/b/$botId" params={{ botId }} className="font-medium text-foreground underline">
             {name}
           </Link>
         ) : (
           <Link
-            to="/a/$agentId/s/$sessionId"
-            params={{ agentId, sessionId: String(origin.id) }}
+            to="/b/$botId/s/$sessionId"
+            params={{ botId, sessionId: String(origin.id) }}
             className="font-medium text-foreground underline"
           >
             {name}
@@ -208,7 +208,7 @@ function ForkOrigin({ origin }: { origin: NonNullable<SessionInfo["forkedFrom"]>
 }
 
 function OriginPill({ session }: { session: SessionInfo }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   if (!["web", "automation"].includes(session.channel))
     return (
@@ -226,8 +226,8 @@ function OriginPill({ session }: { session: SessionInfo }) {
 
     return session.automationId ? (
       <Link
-        to="/a/$agentId/automations/$automationId"
-        params={{ agentId, automationId: session.automationId }}
+        to="/b/$botId/automations/$automationId"
+        params={{ botId, automationId: session.automationId }}
         className="shrink-0 rounded-full hover:opacity-80"
       >
         {pill}
@@ -249,7 +249,7 @@ function Session({
   settings: Settings;
   main?: boolean;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const { session, state, setState, queued, setQueued, connection, streamError, reconnect } =
     useSessionStream(sessionId);
@@ -271,7 +271,7 @@ function Session({
   }, [answerWaiting, refetchSession]);
 
   const sessions = useQuery({
-    ...listSessionsOptions({ path: { agentId } }),
+    ...listSessionsOptions({ path: { botId } }),
     enabled: !readOnly,
     refetchInterval: 3000,
   });
@@ -295,7 +295,7 @@ function Session({
 
   useEffect(() => {
     function receiveDraft() {
-      const text = takeSessionDraft(agentId, sessionId);
+      const text = takeSessionDraft(botId, sessionId);
 
       if (text) setDraft((prior) => (prior ? `${prior}\n\n${text}` : text));
     }
@@ -304,7 +304,7 @@ function Session({
     window.addEventListener(sessionDraftEvent, receiveDraft);
 
     return () => window.removeEventListener(sessionDraftEvent, receiveDraft);
-  }, [agentId, sessionId, setDraft]);
+  }, [botId, sessionId, setDraft]);
 
   const [jump, setJump] = useState(false);
   const [thread, setThread] = useState<ThreadRef | null>(null);
@@ -328,11 +328,11 @@ function Session({
 
   const model = own?.modelId
     ? findModel(own.provider ?? "", own.modelId, models.data?.models)
-    : agentModel(settings.agent, models.data?.models);
+    : botModel(settings.bot, models.data?.models);
 
   const fallback = findModel(
-    settings.agent.fallbackProvider,
-    settings.agent.fallbackModelId,
+    settings.bot.fallbackProvider,
+    settings.bot.fallbackModelId,
     models.data?.models,
   );
 
@@ -348,7 +348,7 @@ function Session({
     // Edit does not keep the queue position. The text returns to the box and sends again as a new message.
     edit: (id) =>
       withdraw.mutate(
-        { path: { agentId, sessionId, messageId: id } },
+        { path: { botId, sessionId, messageId: id } },
         {
           onSuccess: (message) => {
             setDraft((prior) => (prior.trim() ? `${message.text}\n\n${prior}` : message.text));
@@ -356,14 +356,14 @@ function Session({
           },
         },
       ),
-    remove: (id) => withdraw.mutate({ path: { agentId, sessionId, messageId: id } }),
+    remove: (id) => withdraw.mutate({ path: { botId, sessionId, messageId: id } }),
   };
 
   const abort = useMutation({
     ...abortSessionMutation(),
     onSuccess: async () => {
       if (!isMain) setQueued([]);
-      await Promise.all([refreshSessions(agentId), refetchSession()]);
+      await Promise.all([refreshSessions(botId), refetchSession()]);
     },
   });
 
@@ -407,13 +407,12 @@ function Session({
     state.historyBefore === undefined &&
     connection === "ready";
 
-  const agents = useQuery(listAgentsOptions());
+  const bots = useQuery(listBotsOptions());
 
-  const channelsRunning =
-    agents.data?.agents.find((item) => item.id === agentId)?.activity?.runningChannels ?? 0;
+  const channelsRunning = bots.data?.bots.find((item) => item.id === botId)?.activity?.runningChannels ?? 0;
 
   const recent = (sessions.data?.sessions ?? [])
-    .filter((item) => !item.main && !item.archivedAt && item.id !== sessionId && item.agentId === undefined)
+    .filter((item) => !item.main && !item.archivedAt && item.id !== sessionId && item.botId === undefined)
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 3);
 
@@ -427,7 +426,7 @@ function Session({
 
   const continueRun = useMutation({
     ...continueSessionMutation(),
-    onSuccess: () => void refreshSessions(agentId),
+    onSuccess: () => void refreshSessions(botId),
   });
 
   const compact = useMutation(compactSessionMutation());
@@ -444,7 +443,7 @@ function Session({
     id: string;
   } | null>(null);
 
-  const runners = useQuery(listAgentRunnersOptions({ path: { agentId } }));
+  const runners = useQuery(listBotRunnersOptions({ path: { botId } }));
   const runnerList = runners.data?.runners ?? [];
   const runsIn = session.data?.runnerId || runnerList.find((env) => env.default)?.id;
 
@@ -467,17 +466,17 @@ function Session({
       failedFork.current = { ...body, sessionId };
 
       fork.mutate(
-        { path: { agentId, sessionId }, body },
+        { path: { botId, sessionId }, body },
         {
           onSuccess: async (created) => {
             failedFork.current = null;
 
-            if (text) putSessionDraft(agentId, created.sessionId, text);
+            if (text) putSessionDraft(botId, created.sessionId, text);
 
-            await refreshSessions(agentId);
+            await refreshSessions(botId);
             await navigate({
-              to: "/a/$agentId/s/$sessionId",
-              params: { agentId, sessionId: String(created.sessionId) },
+              to: "/b/$botId/s/$sessionId",
+              params: { botId, sessionId: String(created.sessionId) },
             });
           },
         },
@@ -510,7 +509,7 @@ function Session({
         failedCompact.current = { sessionId, instructions, id };
 
         await compact.mutateAsync({
-          path: { agentId, sessionId },
+          path: { botId, sessionId },
           body: { id, instructions },
         });
         failedCompact.current = null;
@@ -553,11 +552,11 @@ function Session({
     setQueued((previous) => [...previous, local]);
 
     try {
-      await send.mutateAsync({ path: { agentId, sessionId }, body });
+      await send.mutateAsync({ path: { botId, sessionId }, body });
       failedMessage.current = null;
       setDraft((current) => (current.trim() === text ? "" : current));
       files.sent(ids);
-      await refreshSessions(agentId);
+      await refreshSessions(botId);
 
       // The question card shows the saved answer. A plain message leaves the question as it was.
       if (answersQuestionId) await Promise.all([refetchSession(), refreshBoardAttention()]);
@@ -577,7 +576,7 @@ function Session({
     // The run already holds the message, so native continue answers it without a second copy.
     if (item?.kind === "error" && item.failure) {
       abort.reset();
-      continueRun.mutate({ path: { agentId, sessionId }, body: { id: newId() } });
+      continueRun.mutate({ path: { botId, sessionId }, body: { id: newId() } });
 
       return;
     }
@@ -634,8 +633,8 @@ function Session({
       {clear.refused ? (
         <div role="alert" className="mb-3">
           <Note tone="warn">
-            <strong className="font-medium">Context not cleared.</strong> {settings.agent.name} is working.
-            Wait for the reply or stop it, then try again.
+            <strong className="font-medium">Context not cleared.</strong> {settings.bot.name} is working. Wait
+            for the reply or stop it, then try again.
           </Note>
         </div>
       ) : null}
@@ -683,7 +682,7 @@ function Session({
         }
         pending={pending}
         disabledReason={reason}
-        placeholder={`Message ${settings.agent.name}`}
+        placeholder={`Message ${settings.bot.name}`}
         autoFocus
         onSend={(text, mode) => sendText(text, files.ready, undefined, mode)}
         onStop={() => {
@@ -692,9 +691,9 @@ function Session({
           if (isMain) {
             if (connection !== "ready" || !running || !state.runTarget) return;
 
-            abort.mutate({ path: { agentId, sessionId }, query: { runTarget: state.runTarget } });
+            abort.mutate({ path: { botId, sessionId }, query: { runTarget: state.runTarget } });
           } else {
-            abort.mutate({ path: { agentId, sessionId } });
+            abort.mutate({ path: { botId, sessionId } });
           }
         }}
         text={draft}
@@ -715,11 +714,7 @@ function Session({
           error={session.error}
           retry={() => void session.refetch()}
         />
-        <Link
-          className="text-[13px] font-medium text-primary underline"
-          to="/a/$agentId"
-          params={{ agentId }}
-        >
+        <Link className="text-[13px] font-medium text-primary underline" to="/b/$botId" params={{ botId }}>
           Open timeline
         </Link>
       </div>
@@ -829,7 +824,7 @@ function Session({
                   {blank ? (
                     <div className="mb-4 px-2">
                       <p className="text-[20px] leading-tight font-semibold tracking-[-0.01em] text-foreground">
-                        {`What should ${settings.agent.name} do?`}
+                        {`What should ${settings.bot.name} do?`}
                       </p>
                       <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
                         {session.data?.main
@@ -895,8 +890,8 @@ function Session({
                         {recent.map((item) => (
                           <li key={item.id}>
                             <Link
-                              to="/a/$agentId/s/$sessionId"
-                              params={{ agentId, sessionId: String(item.id) }}
+                              to="/b/$botId/s/$sessionId"
+                              params={{ botId, sessionId: String(item.id) }}
                               className="flex items-baseline gap-3 rounded-md px-2 py-2 hover:bg-accent"
                             >
                               <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">

@@ -35,8 +35,8 @@ type DirectoryListing struct {
 	Truncated bool             `json:"truncated"`
 }
 
-func remoteBotWorkspace(base, sep, agentID string) string {
-	return joinRemoteSegments(base, sep, agentID, "workspace")
+func remoteBotWorkspace(base, sep, botID string) string {
+	return joinRemoteSegments(base, sep, botID, "workspace")
 }
 
 func createRemoteBotWorkspace(ctx context.Context, h lease) error {

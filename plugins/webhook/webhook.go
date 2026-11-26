@@ -30,8 +30,8 @@ const AuthorClass = "SOURCE"
 
 // Rule is the source rule for events that match no Task.
 type Rule struct {
-	// TaskAgentID creates a Task under this agent for an unmatched event with exactly one object.
-	TaskAgentID string
+	// TaskBotID creates a Task under this bot for an unmatched event with exactly one object.
+	TaskBotID string
 	// HoldUnmatched keeps other unmatched events for the owner.
 	HoldUnmatched bool
 }
@@ -73,8 +73,8 @@ func Accept(ctx context.Context, store *tasksvc.Service, sourceID string, secret
 		Objects: p.Objects, Revision: p.Revision, Content: p.Content, SourceURL: p.SourceURL, OccurredAt: p.OccurredAt.UnixMilli(),
 		AuthorAssociation: AuthorClass, HoldUnmatched: rule.HoldUnmatched,
 	}
-	if rule.TaskAgentID == "" || len(p.Objects) != 1 {
+	if rule.TaskBotID == "" || len(p.Objects) != 1 {
 		return store.Accept(ctx, event)
 	}
-	return store.AcceptCreating(ctx, event, rule.TaskAgentID, cmp.Or(title, p.Type))
+	return store.AcceptCreating(ctx, event, rule.TaskBotID, cmp.Or(title, p.Type))
 }

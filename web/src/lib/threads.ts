@@ -1,8 +1,8 @@
 import type { ChildEvent, ToolItem } from "../api/generated/types.gen";
 import { arg } from "./tools";
 
-/** A child session. A missing agentId means the bot of the open page. */
-export type ThreadRef = { sessionId: number; agentId?: string };
+/** A child session. A missing botId means the bot of the open page. */
+export type ThreadRef = { sessionId: number; botId?: string };
 
 /**
  * A session tool call as the transcript shows it. A card is a child that the call created.
@@ -48,7 +48,7 @@ export function threadCall(tool: ToolItem): ThreadCall | undefined {
     kind: send ? "send" : "card",
     title: done.title || arg(tool, "title") || (send ? "session" : "New session"),
     bot: botId ? { id: botId, name: done.bot || botId } : undefined,
-    thread: sessionId ? { sessionId, agentId: botId || undefined } : undefined,
+    thread: sessionId ? { sessionId, botId: botId || undefined } : undefined,
     status: tool.status,
     error: tool.status === "error" ? tool.output : undefined,
   };

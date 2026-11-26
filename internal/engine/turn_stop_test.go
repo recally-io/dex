@@ -72,7 +72,7 @@ func TestUserMainStopResumesNativeInboxAfterRestart(t *testing.T) {
 	}
 
 	// When the host stops after AbortTask but before the Inbox boundary.
-	h, err := a.harness(t.Context(), ref.AgentID)
+	h, err := a.harness(t.Context(), ref.BotID)
 	if err != nil {
 		t.Fatal(err)
 	}

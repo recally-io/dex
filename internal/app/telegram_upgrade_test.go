@@ -81,7 +81,7 @@ func TestUserUpgradeDoesNotResumeRetiredTelegramGroup(t *testing.T) {
 	w := d.watch(t, private)
 	w.until(t, "private answer after upgrade", answered("bash: private continued"))
 	for _, id := range []int64{group, scoped} {
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", id), nil, nil, http.StatusNotFound)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", id), nil, nil, http.StatusNotFound)
 	}
 
 	// Then the native group input is withdrawn without running. Its control receipt is sealed.
@@ -92,7 +92,7 @@ func TestUserUpgradeDoesNotResumeRetiredTelegramGroup(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close(context.WithoutCancel(t.Context())) })
 	var outcome engine.Outcome
 	eventually(t, "retired group input settles", func() (bool, any) {
-		out, err := reader.RecoveryOutcome(t.Context(), engine.Ref{AgentID: "default", ID: groupExec}, queued)
+		out, err := reader.RecoveryOutcome(t.Context(), engine.Ref{BotID: "default", ID: groupExec}, queued)
 		if err != nil {
 			return false, err
 		}

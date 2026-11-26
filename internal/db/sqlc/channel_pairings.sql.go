@@ -22,17 +22,17 @@ func (q *Queries) CanSendOutbox(ctx context.Context, id string) (bool, error) {
 
 const channelPaired = `-- name: ChannelPaired :one
 SELECT EXISTS (SELECT 1 FROM configured_channel_addresses
-WHERE agent_id = ?1 AND peer = ?2 AND account_id = ?3)
+WHERE bot_id = ?1 AND peer = ?2 AND account_id = ?3)
 `
 
 type ChannelPairedParams struct {
-	AgentID   string      `json:"agent_id"`
+	BotID     string      `json:"bot_id"`
 	Peer      interface{} `json:"peer"`
 	AccountID string      `json:"account_id"`
 }
 
 func (q *Queries) ChannelPaired(ctx context.Context, arg ChannelPairedParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, channelPaired, arg.AgentID, arg.Peer, arg.AccountID)
+	row := q.db.QueryRowContext(ctx, channelPaired, arg.BotID, arg.Peer, arg.AccountID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -40,11 +40,11 @@ func (q *Queries) ChannelPaired(ctx context.Context, arg ChannelPairedParams) (b
 
 const listPairedChannel = `-- name: ListPairedChannel :many
 SELECT CAST(peer AS TEXT) AS peer, account_id FROM configured_channel_addresses
-WHERE agent_id = ?1 AND platform = ?2 ORDER BY peer
+WHERE bot_id = ?1 AND platform = ?2 ORDER BY peer
 `
 
 type ListPairedChannelParams struct {
-	AgentID  string `json:"agent_id"`
+	BotID    string `json:"bot_id"`
 	Platform string `json:"platform"`
 }
 
@@ -54,7 +54,7 @@ type ListPairedChannelRow struct {
 }
 
 func (q *Queries) ListPairedChannel(ctx context.Context, arg ListPairedChannelParams) ([]ListPairedChannelRow, error) {
-	rows, err := q.db.QueryContext(ctx, listPairedChannel, arg.AgentID, arg.Platform)
+	rows, err := q.db.QueryContext(ctx, listPairedChannel, arg.BotID, arg.Platform)
 	if err != nil {
 		return nil, err
 	}

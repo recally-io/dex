@@ -1,11 +1,11 @@
 -- name: CreateMonitor :execrows
 INSERT INTO monitors (
-    id, operation_key, agent_id, session_id, root_request_id, source_submission_id,
+    id, operation_key, bot_id, session_id, root_request_id, source_submission_id,
     chain_depth, due_at, time_zone, prompt, state, created_at, updated_at,
     check_command, check_env, interval_seconds, max_runs, expires_at,
     target_execution_id, target_runner_id, target_runner_revision, target_cwd
 ) VALUES (
-    @id, @operation_key, @agent_id, @session_id, @root_request_id, @source_submission_id,
+    @id, @operation_key, @bot_id, @session_id, @root_request_id, @source_submission_id,
     @chain_depth, @due_at, @time_zone, @prompt, 'scheduled', @created_at, @updated_at,
     @check_command, @check_env, @interval_seconds, @max_runs, @expires_at,
     @target_execution_id, @target_runner_id, @target_runner_revision, @target_cwd

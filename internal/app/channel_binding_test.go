@@ -19,7 +19,7 @@ func TestUserDoesNotReceiveCancelledOutboxAfterPairingSameTelegramPeer(t *testin
 	})
 
 	// When the owner disconnects and reconnects the same bot and peer.
-	const path = "/api/agents/default/channels/telegram"
+	const path = "/api/bots/default/channels/telegram"
 	d.must(t, http.MethodDelete, path, nil, nil, http.StatusOK)
 	f.failSend.Store(false)
 	d.must(t, http.MethodPut, path, map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)

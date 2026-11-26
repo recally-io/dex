@@ -1,11 +1,11 @@
 -- name: EnqueueChannelWebhook :exec
-INSERT INTO channel_webhook_queue (platform, account, event_id, agent_id, received_at, payload)
+INSERT INTO channel_webhook_queue (platform, account, event_id, bot_id, received_at, payload)
 VALUES (?, ?, ?, ?, ?, ?)
 ON CONFLICT (platform, account, event_id) DO NOTHING;
 
 -- name: NextChannelWebhook :one
 SELECT id, payload FROM channel_webhook_queue
-WHERE agent_id = ? AND platform = ? AND account = ? AND payload IS NOT NULL
+WHERE bot_id = ? AND platform = ? AND account = ? AND payload IS NOT NULL
 ORDER BY id LIMIT 1;
 
 -- name: FinishChannelWebhook :exec

@@ -21,13 +21,13 @@ type NotificationPage struct {
 
 // TimelineNotifications reads newest first. A positive limit reads a page; a
 // negative limit drains changes after the stream's last read position.
-func (s *Service) TimelineNotifications(ctx context.Context, agentID string, sessionID int64, before string, after int64, limit int) (NotificationPage, error) {
+func (s *Service) TimelineNotifications(ctx context.Context, botID string, sessionID int64, before string, after int64, limit int) (NotificationPage, error) {
 	size := limit
 	if limit > 0 {
 		size++
 	}
 	rows, err := s.q.ListTimelineNotifications(ctx, sqlc.ListTimelineNotificationsParams{
-		AgentID: agentID, SessionID: sessionID, BeforeID: before, AfterPosition: after, PageSize: int64(size),
+		BotID: botID, SessionID: sessionID, BeforeID: before, AfterPosition: after, PageSize: int64(size),
 	})
 	if err != nil {
 		return NotificationPage{}, err

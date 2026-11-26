@@ -1,4 +1,4 @@
-// Package runner decouples agent workspace, filesystem, and shell execution from the control host.
+// Package runner decouples bot workspace, filesystem, and shell execution from the control host.
 package runner
 
 import (
@@ -8,7 +8,7 @@ import (
 	durableenv "github.com/MichaelKinsy/PiG/durable/env"
 )
 
-// Kind identifies an agent execution environment backend.
+// Kind identifies a bot execution environment backend.
 type Kind string
 
 const (
@@ -41,7 +41,7 @@ var ErrUnavailable = errors.New("execution environment is unavailable")
 // LocalID selects the control host. The control host has no runners row.
 const LocalID = "local"
 
-// Handle is one agent's lease on an opened execution environment.
+// Handle is one bot's lease on an opened execution environment.
 // The backend owns the connection; Close releases only the lease.
 type Handle interface {
 	Kind() Kind
@@ -55,12 +55,12 @@ type Handle interface {
 	Close(ctx context.Context) error
 }
 
-// Provider opens agent execution environment handles. An empty runnerID selects the
-// environment of the agent. LocalID or a registered environment ID selects that environment.
+// Provider opens bot execution environment handles. An empty runnerID selects the
+// environment of the bot. LocalID or a registered environment ID selects that environment.
 type Provider interface {
-	Open(ctx context.Context, agentID, runnerID string) (Handle, error)
+	Open(ctx context.Context, botID, runnerID string) (Handle, error)
 	// Stamp returns the current fingerprint of the selected environment.
-	Stamp(ctx context.Context, agentID, runnerID string) (string, error)
+	Stamp(ctx context.Context, botID, runnerID string) (string, error)
 	Close(ctx context.Context) error
 }
 
@@ -97,13 +97,13 @@ type backend interface {
 	normalize(spec Spec) (string, error)
 	// probe checks connectivity. saved is the stored spec when the user edits a saved environment.
 	probe(ctx context.Context, saved *Spec, spec Spec) (TestResult, error)
-	open(ctx context.Context, agentID string, spec Spec) (lease, error)
+	open(ctx context.Context, botID string, spec Spec) (lease, error)
 	// changed runs after the row changed. cur is nil when the row was deleted.
 	changed(ctx context.Context, old Spec, cur *Spec) error
-	// release drops the agent's state in the environment: an environment switch, an archive, or a reset.
-	// sandboxID is the agent's stored sandbox reference, or empty.
-	release(ctx context.Context, agentID string, spec Spec, sandboxID string) error
-	// disposable reports that release discards the agent's files, so the user can reset the environment.
+	// release drops the bot's state in the environment: an environment switch, an archive, or a reset.
+	// sandboxID is the bot's stored sandbox reference, or empty.
+	release(ctx context.Context, botID string, spec Spec, sandboxID string) error
+	// disposable reports that release discards the bot's files, so the user can reset the environment.
 	disposable() bool
 	// identity fingerprints the state of an environment beyond its stored spec that a lease
 	// depends on, such as a machine enrollment or a retired SSH connection. A change makes the

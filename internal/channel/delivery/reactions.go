@@ -228,19 +228,19 @@ func (m *Manager) telegramQueueState(ctx context.Context, watch *reactionWatch) 
 
 func (m *Manager) reactionAllowed(ctx context.Context, platform string, watch *reactionWatch) bool {
 	if platform == "feishu" {
-		if err := db.RequireActive(ctx, m.q, m.agentID); err != nil {
+		if err := db.RequireActive(ctx, m.q, m.botID); err != nil {
 			return false
 		}
-		cfg, err := m.q.GetFeishuSettings(ctx, m.agentID)
+		cfg, err := m.q.GetFeishuSettings(ctx, m.botID)
 		return err == nil && cfg.OwnerID != "" && watch.peer == "feishu:"+cfg.OwnerID &&
 			watch.source.SenderID == cfg.OwnerID && watch.source.AccountID == cfg.AppID &&
 			(!cfg.Reactions.Valid || cfg.Reactions.Int64 == 1)
 	}
-	enabled, err := m.q.TelegramPrivateReactionsEnabled(ctx, m.agentID)
+	enabled, err := m.q.TelegramPrivateReactionsEnabled(ctx, m.botID)
 	if err != nil || !enabled {
 		return false
 	}
-	allowed, err := m.sessions.TelegramInputAllowed(ctx, m.agentID, watch.peer, watch.source)
+	allowed, err := m.sessions.TelegramInputAllowed(ctx, m.botID, watch.peer, watch.source)
 	return err == nil && allowed
 }
 

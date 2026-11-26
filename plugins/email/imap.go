@@ -118,7 +118,7 @@ func (p *puller) pull(ctx context.Context, pull store.ListEmailIMAPPullsRow) err
 	// "n:*" also returns the last message when its UID is below n.
 	sizes = slices.DeleteFunc(sizes, func(m *imapclient.FetchMessageBuffer) bool { return int64(m.UID) <= pull.LastUid })
 	slices.SortFunc(sizes, func(a, b *imapclient.FetchMessageBuffer) int { return int(a.UID) - int(b.UID) })
-	source := Source{ID: pull.SourceID, TaskAgentID: pull.TaskAgentID.String, HoldUnmatched: pull.HoldUnmatched == 1}
+	source := Source{ID: pull.SourceID, TaskBotID: pull.TaskBotID.String, HoldUnmatched: pull.HoldUnmatched == 1}
 	for _, m := range sizes[:min(len(sizes), imapBatch)] {
 		if err := p.accept(ctx, c, source, box.UIDValidity, m); err != nil {
 			return err

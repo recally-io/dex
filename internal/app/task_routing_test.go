@@ -16,14 +16,14 @@ func TestUserSendsTaskContextToMain(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	const tasks = "/api/tasks"
 	var first, second api.TaskSummary
 	d.must(t, http.MethodPost, tasks, map[string]string{"assigneeBotId": "default", "title": "Login"}, &first, http.StatusCreated)
 	d.must(t, http.MethodPost, tasks, map[string]string{"assigneeBotId": "default", "title": "Logout"}, &second, http.StatusCreated)
 
 	// When the owner sends an input and retries it, Main sees the selected Task once.
-	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID)
+	path := fmt.Sprintf("/api/bots/default/sessions/%d/messages", main.ID)
 	input := map[string]string{"id": uuid.NewV7().String(), "text": "Check the sign-in flow", "taskId": first.Key}
 	d.must(t, http.MethodPost, path, input, nil, http.StatusAccepted)
 	input["taskId"] = first.Id
@@ -54,12 +54,12 @@ func TestUserAnswersQuestionForItsOriginalTask(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	const tasks = "/api/tasks"
 	var first, second api.TaskSummary
 	d.must(t, http.MethodPost, tasks, map[string]string{"assigneeBotId": "default", "title": "Banner"}, &first, http.StatusCreated)
 	d.must(t, http.MethodPost, tasks, map[string]string{"assigneeBotId": "default", "title": "Unrelated"}, &second, http.StatusCreated)
-	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID)
+	path := fmt.Sprintf("/api/bots/default/sessions/%d/messages", main.ID)
 	d.must(t, http.MethodPost, path, map[string]string{"id": uuid.NewV7().String(), "text": askJSON, "taskId": first.Id}, nil, http.StatusAccepted)
 	question := d.awaitQuestion(t, main.ID, "open")
 	d.awaitIdle(t, main.ID)

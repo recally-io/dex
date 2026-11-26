@@ -24,7 +24,7 @@ func (d *dex) question(t *testing.T, sessionID int64) *questionView {
 	var c struct {
 		Question *questionView `json:"question"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &c)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", sessionID), nil, &c)
 	return c.Question
 }
 
@@ -51,7 +51,7 @@ func (d *dex) awaitIdle(t *testing.T, sessionID int64) {
 	t.Helper()
 	eventually(t, "session idle", func() (bool, any) {
 		var c sessionListItem
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &c)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", sessionID), nil, &c)
 		return !c.Busy, c
 	})
 }
@@ -61,7 +61,7 @@ const askJSON = `ask_user {"question":"How should I handle the banner flicker?",
 func (d *dex) answer(t *testing.T, sessionID int64, questionID, text string, want int) string {
 	t.Helper()
 	id := uuid.NewV7().String()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID),
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", sessionID),
 		map[string]string{"id": id, "text": text, "answersQuestionId": questionID}, nil, want)
 	return id
 }
@@ -109,7 +109,7 @@ func TestUserAnswersQuestionFromCard(t *testing.T) {
 
 	// Then a second answer to the closed question is refused, and a retry of the first answer is accepted.
 	d.answer(t, sessionID, q.ID, "Investigate only", http.StatusConflict)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID),
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", sessionID),
 		map[string]string{"id": answerID, "text": "Start a separate session", "answersQuestionId": q.ID}, nil, http.StatusAccepted)
 	d.must(t, http.MethodPost, sessionPath(sessionID, "messages"),
 		map[string]string{"id": answerID, "text": "Start a separate session"}, nil, http.StatusConflict)
@@ -141,7 +141,7 @@ func TestUserStopDismissesQuestion(t *testing.T) {
 	d.awaitIdle(t, sessionID)
 
 	// When the user presses Stop, then the question is dismissed and cannot be answered.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", sessionID), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", sessionID), nil, nil)
 	d.awaitNoQuestion(t, sessionID)
 	if status := questionStatus(t, conn, q.ID); status != "dismissed" {
 		t.Fatalf("status: %s", status)
@@ -164,7 +164,7 @@ func TestUserClearAndArchiveDismissQuestion(t *testing.T) {
 	d.awaitIdle(t, archived)
 
 	// When the user clears one and archives the other, then both questions are dismissed.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/clear", cleared), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/clear", cleared), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
 	d.archive(t, http.MethodPut, archived, http.StatusOK)
 	d.awaitNoQuestion(t, cleared)
 	d.awaitNoQuestion(t, archived)
@@ -304,15 +304,15 @@ func TestUserAnswersQuestionsFromTwoBotsWithTheSameRemoteMessageID(t *testing.T)
 	data := t.TempDir()
 	d := startDex(t, data, boundary.URL)
 	d.setModel(t, "tool")
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &other, http.StatusCreated)
+	var other apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Other", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &other, http.StatusCreated)
 	bots := []struct {
 		bot          *fakeTelegram
-		agent, token string
+		botID, token string
 	}{{first, "default", fakeToken}, {second, other.ID, secondToken}}
 	conn := sessionDB(t, d)
 	for _, entry := range bots {
-		base := "/api/agents/" + entry.agent
+		base := "/api/bots/" + entry.botID
 		d.must(t, http.MethodPut, base+"/channels/telegram", map[string]any{"token": entry.token, "allowedUsers": []int64{ownerID}}, nil)
 		entry.bot.message(1, ownerID, ownerID, askJSON)
 		if sent := entry.bot.next(t); !strings.Contains(sent.Text, "Reply to this message") {
@@ -322,8 +322,8 @@ func TestUserAnswersQuestionsFromTwoBotsWithTheSameRemoteMessageID(t *testing.T)
 			var delivered bool
 			err := conn.QueryRowContext(t.Context(), `SELECT EXISTS (
 				SELECT 1 FROM outbox_messages
-				WHERE agent_id = ? AND kind = 'question' AND status = 'sent'
-			)`, entry.agent).Scan(&delivered)
+				WHERE bot_id = ? AND kind = 'question' AND status = 'sent'
+			)`, entry.botID).Scan(&delivered)
 			return err == nil && delivered, fmt.Sprintf("delivered=%t err=%v", delivered, err)
 		})
 		d.must(t, http.MethodPut, base, map[string]string{"name": "Bot", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
@@ -336,14 +336,14 @@ func TestUserAnswersQuestionsFromTwoBotsWithTheSameRemoteMessageID(t *testing.T)
 		entry.bot.reply(2, ownerID, ownerID, "Investigate only", remoteID)
 		reply := entry.bot.next(t).Text
 		if !strings.Contains(reply, "echo: Answer to: How should I handle the banner flicker?\nInvestigate only") {
-			t.Errorf("agent %s lost its quoted question: %q", entry.agent, reply)
+			t.Errorf("bot %s lost its quoted question: %q", entry.botID, reply)
 		}
 		var main struct {
 			Question *questionView `json:"question"`
 		}
-		d.must(t, http.MethodGet, "/api/agents/"+entry.agent+"/sessions/main", nil, &main)
+		d.must(t, http.MethodGet, "/api/bots/"+entry.botID+"/sessions/main", nil, &main)
 		if main.Question != nil {
-			t.Errorf("agent %s still waits for an answer: %+v", entry.agent, main.Question)
+			t.Errorf("bot %s still waits for an answer: %+v", entry.botID, main.Question)
 		}
 	}
 }

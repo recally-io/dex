@@ -64,13 +64,13 @@ func TestUserKeepsQuotedQuestionsAfterAgentScopeUpgrade(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 	q := sqlc.New(conn)
-	if err := q.AddQuestionMessage(t.Context(), sqlc.AddQuestionMessageParams{AgentID: "second", Peer: "telegram:7", RemoteID: "7001", QuestionID: "q2"}); err != nil {
+	if err := q.AddQuestionMessage(t.Context(), sqlc.AddQuestionMessageParams{BotID: "second", Peer: "telegram:7", RemoteID: "7001", QuestionID: "q2"}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Then both the old and the new quote resolve to the question of the correct bot.
 	for agentID, want := range map[string]string{"first": "q1", "second": "q2"} {
-		got, err := q.GetQuestionByMessage(t.Context(), sqlc.GetQuestionByMessageParams{AgentID: agentID, Peer: "telegram:7", RemoteID: "7001"})
+		got, err := q.GetQuestionByMessage(t.Context(), sqlc.GetQuestionByMessageParams{BotID: agentID, Peer: "telegram:7", RemoteID: "7001"})
 		if err != nil || got != want {
 			t.Fatalf("agent %s: got %q, want %q: %v", agentID, got, want, err)
 		}

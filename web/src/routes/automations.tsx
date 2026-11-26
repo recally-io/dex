@@ -1,4 +1,4 @@
-import { useAgentSettings, useAgentId } from "../lib/agent-scope";
+import { useBotSettings, useBotId } from "../lib/bot-scope";
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -19,7 +19,7 @@ import {
 } from "../lib/automation-results";
 import { boardAttentionOptions } from "../lib/board-attention";
 import { refreshAutomations } from "../lib/queries";
-import { useAgentModel } from "../lib/agent";
+import { useBotModel } from "../lib/bot";
 import { ago, runTime, scheduleText } from "../lib/automations";
 import { formatDuration } from "../lib/sessions";
 import { Failure, Loading, Spinner } from "../components/feedback";
@@ -72,18 +72,18 @@ function RunPill({ run, className = "" }: { run: AutomationRun; className?: stri
 
 // The update endpoint takes the whole automation, so a change to one field resends the others.
 function useAutomationUpdate(automation: Automation) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const update = useMutation({
     ...updateAutomationMutation(),
-    onSuccess: () => refreshAutomations(agentId),
+    onSuccess: () => refreshAutomations(botId),
   });
 
   return {
     ...update,
     change: (patch: Partial<Pick<Automation, "enabled" | "session">>) =>
       update.mutate({
-        path: { agentId, automationId: automation.id },
+        path: { botId, automationId: automation.id },
         body: {
           name: automation.name,
           prompt: automation.prompt,
@@ -133,19 +133,19 @@ export function AutomationsPage() {
 }
 
 function AutomationsSection() {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const automations = useQuery({
-    ...listAutomationsOptions({ path: { agentId } }),
+    ...listAutomationsOptions({ path: { botId } }),
     refetchInterval: 10_000,
   });
 
-  const settings = useAgentSettings(agentId);
+  const settings = useBotSettings(botId);
   const [create, setCreate] = useState(false);
   const list = automations.data?.automations ?? [];
   const on = list.filter((a) => a.enabled).length;
   // Every automation uses the bot model. Without one, a new automation could not run.
-  const noModel = !!settings.data && !settings.data.agent.modelId;
+  const noModel = !!settings.data && !settings.data.bot.modelId;
 
   return (
     <>
@@ -173,8 +173,8 @@ function AutomationsSection() {
               {list.map((automation) => (
                 <li key={automation.id} className="flex items-start gap-3 px-4 py-3">
                   <Link
-                    to="/a/$agentId/automations/$automationId"
-                    params={{ agentId, automationId: automation.id }}
+                    to="/b/$botId/automations/$automationId"
+                    params={{ botId, automationId: automation.id }}
                     className="group min-w-0 flex-1"
                   >
                     <span className="flex flex-wrap items-center gap-2">
@@ -225,7 +225,7 @@ function ReplyComposer({
   botName: string;
   onCancel: () => void;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const [text, setText] = useState("");
   const outcome = run.outcome || (run.status === "failed" ? "failed" : "unknown");
   const summary = run.summary || run.reason || "";
@@ -236,7 +236,7 @@ function ReplyComposer({
 
     start.mutate({
       result: {
-        agentId,
+        botId,
         automationName: automation.name,
         runId: run.id,
         sessionId: run.sessionId,
@@ -298,7 +298,7 @@ function RunBlock({
   now: number;
   item?: AutomationResult;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   const handle = useDismissResults();
 
@@ -358,8 +358,8 @@ function RunBlock({
           ) : null}
           {run.sessionId ? (
             <Link
-              to="/a/$agentId/s/$sessionId"
-              params={{ agentId, sessionId: String(run.sessionId) }}
+              to="/b/$botId/s/$sessionId"
+              params={{ botId, sessionId: String(run.sessionId) }}
               className="ml-auto text-[12px] font-medium text-primary hover:underline"
             >
               Run transcript
@@ -467,30 +467,30 @@ function PauseButton({ automation }: { automation: Automation }) {
 export function AutomationPage({ automationId }: { automationId: string }) {
   const results = useQuery(automationResultsOptions());
   const attention = useQuery(boardAttentionOptions());
-  const agentId = useAgentId();
+  const botId = useBotId();
   const navigate = useNavigate();
 
   const automation = useQuery({
-    ...getAutomationOptions({ path: { agentId, automationId } }),
+    ...getAutomationOptions({ path: { botId, automationId } }),
     refetchInterval: 10_000,
   });
 
   const runs = useQuery({
-    ...listAutomationRunsOptions({ path: { agentId, automationId } }),
+    ...listAutomationRunsOptions({ path: { botId, automationId } }),
     refetchInterval: 10_000,
   });
 
-  const settings = useAgentSettings(agentId);
-  const model = useAgentModel(settings.data);
+  const settings = useBotSettings(botId);
+  const model = useBotModel(settings.data);
   const [edit, setEdit] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  const run = useMutation({ ...runAutomationMutation(), onSuccess: () => refreshAutomations(agentId) });
+  const run = useMutation({ ...runAutomationMutation(), onSuccess: () => refreshAutomations(botId) });
 
   const remove = useMutation({
     ...deleteAutomationMutation(),
     onSuccess: async () => {
-      await refreshAutomations(agentId);
-      await navigate({ to: "/a/$agentId/automations", params: { agentId } });
+      await refreshAutomations(botId);
+      await navigate({ to: "/b/$botId/automations", params: { botId } });
     },
   });
 
@@ -512,7 +512,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
         : undefined;
 
   const crumb = (
-    <Link to="/a/$agentId/automations" params={{ agentId }} className="hover:underline">
+    <Link to="/b/$botId/automations" params={{ botId }} className="hover:underline">
       Automations
     </Link>
   );
@@ -535,7 +535,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
     );
 
   const data = automation.data;
-  const botName = settings.data?.agent.name ?? "the bot";
+  const botName = settings.data?.bot.name ?? "the bot";
   const byRun = new Map((items ?? []).map((item) => [item.runId, item]));
 
   return (
@@ -561,7 +561,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             variant="default"
             disabled={run.isPending || remove.isPending || busy || !!blocked}
             title={blocked ?? (busy ? "A run is in progress." : undefined)}
-            onClick={() => run.mutate({ path: { agentId, automationId } })}
+            onClick={() => run.mutate({ path: { botId, automationId } })}
           >
             {run.isPending ? (
               <Spinner className="border-primary-foreground/30 border-t-primary-foreground" />
@@ -599,8 +599,8 @@ export function AutomationPage({ automationId }: { automationId: string }) {
               <RunPill run={latestRun} />
               {latestRun.sessionId ? (
                 <Link
-                  to="/a/$agentId/s/$sessionId"
-                  params={{ agentId, sessionId: String(latestRun.sessionId) }}
+                  to="/b/$botId/s/$sessionId"
+                  params={{ botId, sessionId: String(latestRun.sessionId) }}
                   className="font-medium text-primary hover:underline"
                 >
                   Run transcript
@@ -664,7 +664,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
           pending={remove.isPending}
           error={remove.error}
           onCancel={() => setConfirm(false)}
-          onConfirm={() => remove.mutate({ path: { agentId, automationId } })}
+          onConfirm={() => remove.mutate({ path: { botId, automationId } })}
         />
       ) : null}
     </FramedPage>

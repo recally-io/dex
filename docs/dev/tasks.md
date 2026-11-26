@@ -37,7 +37,7 @@ Timeline. The composer sends to the Assignee's Main by default. Select
 ## Storage and HTTP API
 
 Task state lives in `control.sqlite`. Native execution state stays in
-`agents/<id>/state.sqlite`.
+`<data dir>/agents/<id>/state.sqlite`. The Bot table is `bots` in `control.sqlite`.
 
 | Table                   | Purpose                                                                                                                                    |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |

@@ -101,10 +101,10 @@ func TestUserRevokedTelegramAlbumDoesNotResumeOnReauthorization(t *testing.T) {
 	f.albumFiles("revoked-album", 1, "one.txt", "two.txt")
 	waitTelegramAlbumStoredAndACKed(t, f, conn)
 	// When access is revoked and later granted again, the old staged input remains discarded.
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"allowedUsers": []int64{99}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"allowedUsers": []int64{99}}, nil)
 	eventually(t, "revoked album uploads removed", func() (bool, any) { n := uploadCount(t, d.dataDir(t)); return n == 0, n })
 	execSQL(t, conn, "DROP TRIGGER hold_album_seal")
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"allowedUsers": []int64{42}}, nil)
 	f.message(3, 42, 42, "new permission")
 	if got := f.next(t).Text; got != "echo: new permission" {
 		t.Fatalf("revoked album resumed: %q", got)

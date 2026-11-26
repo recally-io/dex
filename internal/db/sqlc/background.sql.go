@@ -33,11 +33,11 @@ func (q *Queries) ConsumeBackgroundWake(ctx context.Context, arg ConsumeBackgrou
 const countRunningBackgroundCommands = `-- name: CountRunningBackgroundCommands :one
 SELECT count(*) FROM background_commands b
 JOIN sessions c ON c.id = b.session_id
-WHERE c.agent_id = ? AND b.state IN ('starting', 'running')
+WHERE c.bot_id = ? AND b.state IN ('starting', 'running')
 `
 
-func (q *Queries) CountRunningBackgroundCommands(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countRunningBackgroundCommands, agentID)
+func (q *Queries) CountRunningBackgroundCommands(ctx context.Context, botID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countRunningBackgroundCommands, botID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -91,7 +91,7 @@ SELECT ?1, b.session_id, ?2, 'null', ?1, s.origin, 'scheduler', '', '', 'wake', 
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
 JOIN sessions c ON c.id = b.session_id
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 WHERE b.id = ?4 AND a.archived_at IS NULL
 ON CONFLICT DO NOTHING
 `
@@ -288,14 +288,14 @@ func (q *Queries) ListRunningBackgroundIDs(ctx context.Context, sessionID int64)
 	return items, nil
 }
 
-const listRunningBackgroundIDsByAgent = `-- name: ListRunningBackgroundIDsByAgent :many
+const listRunningBackgroundIDsByBot = `-- name: ListRunningBackgroundIDsByBot :many
 SELECT b.id FROM background_commands b
 JOIN sessions c ON c.id = b.session_id
-WHERE c.agent_id = ? AND b.state IN ('starting', 'running')
+WHERE c.bot_id = ? AND b.state IN ('starting', 'running')
 `
 
-func (q *Queries) ListRunningBackgroundIDsByAgent(ctx context.Context, agentID string) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listRunningBackgroundIDsByAgent, agentID)
+func (q *Queries) ListRunningBackgroundIDsByBot(ctx context.Context, botID string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRunningBackgroundIDsByBot, botID)
 	if err != nil {
 		return nil, err
 	}

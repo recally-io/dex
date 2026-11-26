@@ -26,7 +26,7 @@ func TestUserFollowsAnEmailThreadOnOneTask(t *testing.T) {
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
 	secret := strings.Repeat("m", 40)
-	source := map[string]any{"secret": secret, "taskAgentId": "default", "holdUnmatched": true}
+	source := map[string]any{"secret": secret, "taskBotId": "default", "holdUnmatched": true}
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail", source, nil, http.StatusNotFound)
 	d.must(t, http.MethodPut, "/api/settings/sources/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
@@ -144,7 +144,7 @@ func TestUserLetsDexReadAMailboxFolder(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/settings/sources/email", map[string]bool{"enabled": true}, nil, http.StatusNoContent)
 	d.stop()
 	d = startDex(t, dataDir, "")
-	source := map[string]any{"secret": strings.Repeat("m", 40), "taskAgentId": "default"}
+	source := map[string]any{"secret": strings.Repeat("m", 40), "taskBotId": "default"}
 	d.must(t, http.MethodPut, "/api/plugins/email/sources/mail", source, nil, http.StatusNoContent)
 
 	// When the owner saves a Pull and dex starts again.

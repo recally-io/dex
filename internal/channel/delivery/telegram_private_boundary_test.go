@@ -23,19 +23,19 @@ func TestUserCannotReachMainThroughNonPrivateTelegramPeer(t *testing.T) {
 	}
 	defer conn.Close()
 	q := sqlc.New(conn)
-	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "bot", Name: "Bot"}); err != nil {
+	if err := q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "bot", Name: "Bot"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
+	if err := q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "bot", Name: "Bot", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	home := t.TempDir()
-	agents, err := engine.New(engine.Config{DataDir: directory, Home: home, BaseEnv: map[string]string{"PATH": os.Getenv("PATH"), "HOME": home}, FakeModel: true})
+	bots, err := engine.New(engine.Config{DataDir: directory, Home: home, BaseEnv: map[string]string{"PATH": os.Getenv("PATH"), "HOME": home}, FakeModel: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer agents.Close(context.WithoutCancel(t.Context()))
-	service := session.New(conn, agents, time.Now, nil, nil)
+	defer bots.Close(context.WithoutCancel(t.Context()))
+	service := session.New(conn, bots, time.Now, nil, nil)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); service.Run(ctx) }()

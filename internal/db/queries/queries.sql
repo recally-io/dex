@@ -1,10 +1,10 @@
--- name: CreateAgentIfMissing :exec
-INSERT INTO agents (id, name, model_provider, model_id, created_at)
+-- name: CreateBotIfMissing :exec
+INSERT INTO bots (id, name, model_provider, model_id, created_at)
 VALUES (?, ?, '', '', ?)
 ON CONFLICT (id) DO NOTHING;
 
--- name: UpdateAgentSettings :exec
-UPDATE agents SET
+-- name: UpdateBotSettings :exec
+UPDATE bots SET
     name = @name,
     model_provider = @model_provider,
     model_id = @model_id,
@@ -16,105 +16,105 @@ UPDATE agents SET
     runner_id = @runner_id
 WHERE id = @id;
 
--- name: GetAgent :one
-SELECT * FROM agents WHERE id = ?;
+-- name: GetBot :one
+SELECT * FROM bots WHERE id = ?;
 
--- name: ListAgents :many
+-- name: ListBots :many
 -- Active bots only. Startup starts channels for these bots.
-SELECT * FROM agents WHERE archived_at IS NULL ORDER BY created_at, id;
+SELECT * FROM bots WHERE archived_at IS NULL ORDER BY created_at, id;
 
--- name: ListArchivedAgents :many
-SELECT * FROM agents WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id;
+-- name: ListArchivedBots :many
+SELECT * FROM bots WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id;
 
--- name: AgentArchiveBlocker :one
+-- name: BotArchiveBlocker :one
 -- Why a bot cannot be archived now, or an empty string. Busy means any pending input in any
 -- session of the bot, including automation runs and dreams. A queued task has a pending
 -- input too, so the check needs no task table.
 SELECT CAST(CASE
-    WHEN NOT EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id) THEN 'missing'
-    WHEN @agent_id = 'default' THEN 'default'
-    WHEN EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id AND archived_at IS NOT NULL) THEN 'archived'
+    WHEN NOT EXISTS (SELECT 1 FROM bots WHERE bots.id = @bot_id) THEN 'missing'
+    WHEN @bot_id = 'default' THEN 'default'
+    WHEN EXISTS (SELECT 1 FROM bots WHERE bots.id = @bot_id AND archived_at IS NOT NULL) THEN 'archived'
     WHEN EXISTS (
         SELECT 1 FROM submissions s JOIN sessions c ON c.id = s.session_id
-        WHERE c.agent_id = @agent_id AND s.status = 'pending'
+        WHERE c.bot_id = @bot_id AND s.status = 'pending'
     ) THEN 'busy'
     ELSE ''
 END AS TEXT);
 
--- name: AgentRunningSessions :many
+-- name: BotRunningSessions :many
 -- The sessions of each bot that have a pending input, Main included. This is the busy rule of
--- AgentArchiveBlocker, so a bot with a count above zero is a bot that cannot be archived.
-SELECT c.agent_id, CAST(count(DISTINCT c.id) AS INTEGER) AS sessions
+-- BotArchiveBlocker, so a bot with a count above zero is a bot that cannot be archived.
+SELECT c.bot_id, CAST(count(DISTINCT c.id) AS INTEGER) AS sessions
 FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending'
-GROUP BY c.agent_id;
+GROUP BY c.bot_id;
 
--- name: AgentArchived :one
+-- name: BotArchived :one
 -- Input writers call this after they hold the SQLite writer, so an input and an archive are ordered.
-SELECT CAST(EXISTS (SELECT 1 FROM agents WHERE agents.id = @agent_id AND archived_at IS NOT NULL) AS INTEGER);
+SELECT CAST(EXISTS (SELECT 1 FROM bots WHERE bots.id = @bot_id AND archived_at IS NOT NULL) AS INTEGER);
 
--- name: SessionAgentArchived :one
-SELECT CAST(EXISTS (SELECT 1 FROM sessions c JOIN agents a ON a.id = c.agent_id
+-- name: SessionBotArchived :one
+SELECT CAST(EXISTS (SELECT 1 FROM sessions c JOIN bots a ON a.id = c.bot_id
     WHERE c.id = @session_id AND a.archived_at IS NOT NULL) AS INTEGER);
 
--- name: ArchiveAgent :execrows
--- One statement holds the rules of AgentArchiveBlocker, so a caller outside a transaction cannot
+-- name: ArchiveBot :execrows
+-- One statement holds the rules of BotArchiveBlocker, so a caller outside a transaction cannot
 -- archive a bot that has just become busy.
-UPDATE agents SET archived_at = @now
-WHERE agents.id = @agent_id AND archived_at IS NULL AND agents.id <> 'default'
+UPDATE bots SET archived_at = @now
+WHERE bots.id = @bot_id AND archived_at IS NULL AND bots.id <> 'default'
     AND NOT EXISTS (
         SELECT 1 FROM submissions s JOIN sessions c ON c.id = s.session_id
-        WHERE c.agent_id = agents.id AND s.status = 'pending'
+        WHERE c.bot_id = bots.id AND s.status = 'pending'
     );
 
--- name: RestoreAgent :execrows
-UPDATE agents SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL;
+-- name: RestoreBot :execrows
+UPDATE bots SET archived_at = NULL WHERE id = ? AND archived_at IS NOT NULL;
 
--- name: CreateAgent :one
-INSERT INTO agents (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, runner_id, created_at)
+-- name: CreateBot :one
+INSERT INTO bots (id, name, model_provider, model_id, thinking_level, fallback_provider, fallback_model_id, instructions, runner_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: EnsureSession :one
 -- The title and the settings are set only when the session is created.
-INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, model_provider, model_id, thinking_level, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+ON CONFLICT (bot_id, channel_key) DO UPDATE SET bot_id = excluded.bot_id
     WHERE sessions.channel_key NOT LIKE 'retired-telegram:%'
 RETURNING *;
 
 -- name: EnsureEmptySession :one
 -- One write statement serializes concurrent opens and first-message admission.
-INSERT INTO sessions (agent_id, channel_key, title, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, created_at)
 VALUES (
-    @agent_id,
+    @bot_id,
     coalesce((
         SELECT c.channel_key FROM sessions c
-        WHERE c.agent_id = @agent_id AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
+        WHERE c.bot_id = @bot_id AND c.channel_key LIKE 'chat:%' AND c.archived_at IS NULL
             AND c.forked_from IS NULL
             AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.session_id = c.id AND s.kind = 'message')
         ORDER BY c.created_at DESC, c.id DESC LIMIT 1
     ), @channel_key),
     '', @created_at
 )
-ON CONFLICT (agent_id, channel_key) DO UPDATE SET agent_id = excluded.agent_id
+ON CONFLICT (bot_id, channel_key) DO UPDATE SET bot_id = excluded.bot_id
 RETURNING *;
 
 -- name: CreateFork :one
 -- A fork is a new Session with the settings and the parent of its source. execution_id is NULL when
 -- the fork starts empty, so the first message creates the native conversation.
-INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, execution_id, forked_from, parent_id, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, execution_id, forked_from, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ArchiveSession :exec
 -- Keep the first archive time. The owner can archive Sessions and child sessions.
 UPDATE sessions SET archived_at = coalesce(archived_at, @archived_at)
-WHERE id = @id AND agent_id = @agent_id AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND bot_id = @bot_id AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: UnarchiveSession :exec
 UPDATE sessions SET archived_at = NULL
-WHERE id = @id AND agent_id = @agent_id AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
+WHERE id = @id AND bot_id = @bot_id AND channel_key NOT LIKE 'retired-telegram:%' AND (channel_key LIKE 'chat:%' OR parent_id IS NOT NULL);
 
 -- name: SetFirstSessionTitle :exec
 UPDATE sessions SET title = ? WHERE id = ? AND title = '';
@@ -127,11 +127,11 @@ SELECT * FROM sessions WHERE id = ? AND channel_key NOT LIKE 'retired-telegram:%
 SELECT * FROM sessions WHERE id = ?;
 
 -- name: GetSessionByKey :one
-SELECT * FROM sessions WHERE agent_id = ? AND channel_key = ? AND channel_key NOT LIKE 'retired-telegram:%';
+SELECT * FROM sessions WHERE bot_id = ? AND channel_key = ? AND channel_key NOT LIKE 'retired-telegram:%';
 
 -- name: SetSessionSettings :exec
 UPDATE sessions SET model_provider = ?, model_id = ?, thinking_level = ?
-WHERE id = ? AND agent_id = ?;
+WHERE id = ? AND bot_id = ?;
 
 -- name: SetExecution :exec
 UPDATE sessions SET execution_id = ? WHERE id = ?;
@@ -197,7 +197,7 @@ SELECT
     s.admitted_at,
     s.when_busy,
     s.session_id,
-    c.agent_id,
+    c.bot_id,
     c.channel_key
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
@@ -208,10 +208,10 @@ ORDER BY (s.kind = 'task_wake'), s.rowid;
 -- The sessions of one bot, and the children of its sessions that belong to another bot.
 SELECT
     c.id,
-    c.agent_id,
-    a.name AS agent_name,
-    p.agent_id AS parent_agent_id,
-    pa.name AS parent_agent_name,
+    c.bot_id,
+    a.name AS bot_name,
+    p.bot_id AS parent_bot_id,
+    pa.name AS parent_bot_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -229,11 +229,11 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST(coalesce(sum(s.status = 'pending'), 0) AS INTEGER) AS pending
 FROM sessions c
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 LEFT JOIN sessions p ON p.id = c.parent_id
-LEFT JOIN agents pa ON pa.id = p.agent_id
+LEFT JOIN bots pa ON pa.id = p.bot_id
 LEFT JOIN submissions s ON s.session_id = c.id
-WHERE (c.agent_id = @agent_id OR p.agent_id = @agent_id) AND c.channel_key NOT LIKE 'retired-telegram:%'
+WHERE (c.bot_id = @bot_id OR p.bot_id = @bot_id) AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.channel_key LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.channel_key LIKE 'automation:%')
     AND (c.channel_key NOT LIKE 'chat:%' OR c.parent_id IS NOT NULL OR c.forked_from IS NOT NULL OR EXISTS (
         SELECT 1 FROM submissions m WHERE m.session_id = c.id AND m.kind = 'message'
@@ -244,8 +244,8 @@ ORDER BY updated_at DESC, c.id DESC;
 -- name: GetSessionDetails :one
 SELECT
     c.id,
-    p.agent_id AS parent_agent_id,
-    pa.name AS parent_agent_name,
+    p.bot_id AS parent_bot_id,
+    pa.name AS parent_bot_name,
     c.channel_key,
     c.title,
     c.model_provider,
@@ -270,8 +270,8 @@ FROM sessions c
 LEFT JOIN submissions s ON s.session_id = c.id
 LEFT JOIN sessions f ON f.id = c.forked_from
 LEFT JOIN sessions p ON p.id = c.parent_id
-LEFT JOIN agents pa ON pa.id = p.agent_id
-WHERE c.id = ? AND c.agent_id = ? AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.channel_key NOT LIKE 'dream:%'
+LEFT JOIN bots pa ON pa.id = p.bot_id
+WHERE c.id = ? AND c.bot_id = ? AND c.channel_key NOT LIKE 'retired-telegram:%' AND c.channel_key NOT LIKE 'dream:%'
 GROUP BY c.id;
 
 -- name: ListProviders :many
@@ -294,18 +294,18 @@ ON CONFLICT (id) DO UPDATE SET
 DELETE FROM providers WHERE id = ?;
 
 -- name: GetTelegramSettings :one
-SELECT * FROM telegram_settings WHERE agent_id = ?;
+SELECT * FROM telegram_settings WHERE bot_id = ?;
 
 -- name: SetTelegramSettings :one
-INSERT INTO telegram_settings (agent_id, token, allowed_users, options, webhook_url, webhook_secret)
+INSERT INTO telegram_settings (bot_id, token, allowed_users, options, webhook_url, webhook_secret)
 VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT (agent_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, options = excluded.options, pairing_code = '', pairing_expires = 0,
+ON CONFLICT (bot_id) DO UPDATE SET token = excluded.token, allowed_users = excluded.allowed_users, options = excluded.options, pairing_code = '', pairing_expires = 0,
 webhook_url = excluded.webhook_url, webhook_secret = excluded.webhook_secret,
 retry_at = CASE WHEN substr(token, 1, instr(token, ':') - 1) = substr(excluded.token, 1, instr(excluded.token, ':') - 1) THEN retry_at ELSE 0 END
 RETURNING retry_at;
 
 -- name: DeleteTelegramSettings :exec
-DELETE FROM telegram_settings WHERE agent_id = ?;
+DELETE FROM telegram_settings WHERE bot_id = ?;
 
 -- name: CreateAccessTokenIfMissing :exec
 INSERT INTO access_token (id, token) VALUES (1, ?) ON CONFLICT (id) DO NOTHING;
@@ -314,34 +314,34 @@ INSERT INTO access_token (id, token) VALUES (1, ?) ON CONFLICT (id) DO NOTHING;
 SELECT token FROM access_token WHERE id = 1;
 
 -- name: CreateDream :exec
-INSERT INTO dreams (id, agent_id, through_settled_at, through_id, created_at)
+INSERT INTO dreams (id, bot_id, through_settled_at, through_id, created_at)
 VALUES (?, ?, ?, ?, ?);
 
 -- name: LatestDream :one
--- The newest dream of an agent. status is NULL when its message was never stored.
+-- The newest dream of a bot. status is NULL when its message was never stored.
 SELECT
     d.id,
     d.created_at,
     s.status
 FROM dreams d
 LEFT JOIN submissions s ON s.id = d.id
-WHERE d.agent_id = ?
+WHERE d.bot_id = ?
 ORDER BY d.created_at DESC, d.id DESC
 LIMIT 1;
 
 -- name: DreamBoundary :one
--- Where the newest done dream of an agent stopped reading.
+-- Where the newest done dream of a bot stopped reading.
 SELECT
     d.through_settled_at,
     d.through_id
 FROM dreams d
 JOIN submissions s ON s.id = d.id
-WHERE d.agent_id = ? AND s.status = 'done'
+WHERE d.bot_id = ? AND s.status = 'done'
 ORDER BY d.created_at DESC, d.id DESC
 LIMIT 1;
 
 -- name: ListDreamInput :many
--- The settled messages of an agent's sessions after a dream boundary, oldest first.
+-- The settled messages of a bot's sessions after a dream boundary, oldest first.
 SELECT
     s.id,
     s.content,
@@ -355,7 +355,7 @@ SELECT
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
 WHERE
-    c.agent_id = @agent_id
+    c.bot_id = @bot_id
     AND c.channel_key NOT LIKE 'dream:%' AND c.parent_id IS NULL
     AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.kind = 'message'
@@ -364,28 +364,28 @@ WHERE
 ORDER BY s.settled_at, s.id
 LIMIT @max_rows;
 
--- name: ListAgentIDs :many
-SELECT id FROM agents WHERE archived_at IS NULL ORDER BY id;
+-- name: ListBotIDs :many
+SELECT id FROM bots WHERE archived_at IS NULL ORDER BY id;
 
 -- name: CreateAutomation :exec
 INSERT INTO automations (
-    id, agent_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id
+    id, bot_id, name, prompt, schedule, time_zone, enabled, next_due_at, created_at, updated_at, cwd, notification_route, notification_target_id, runner_id, session, target_session_id
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: UpdateAutomation :execrows
 UPDATE automations SET
     cwd = ?, name = ?, prompt = ?, schedule = ?, time_zone = ?, session = ?, enabled = ?, next_due_at = ?,
     notification_route = ?, notification_target_id = ?, runner_id = ?, updated_at = ?, target_session_id = ?
-WHERE id = ? AND agent_id = ?;
+WHERE id = ? AND bot_id = ?;
 
 -- name: GetAutomation :one
-SELECT * FROM automations WHERE id = ? AND agent_id = ?;
+SELECT * FROM automations WHERE id = ? AND bot_id = ?;
 
 -- name: ListAutomations :many
-SELECT * FROM automations WHERE agent_id = ? ORDER BY created_at, id;
+SELECT * FROM automations WHERE bot_id = ? ORDER BY created_at, id;
 
 -- name: ListDueAutomations :many
-SELECT a.* FROM automations a JOIN agents b ON b.id = a.agent_id
+SELECT a.* FROM automations a JOIN bots b ON b.id = a.bot_id
 WHERE a.enabled = 1 AND a.next_due_at <= ? AND b.archived_at IS NULL ORDER BY a.next_due_at;
 
 -- name: SetAutomationNextDue :execrows
@@ -397,7 +397,7 @@ WHERE id = @id AND next_due_at = @expected_due_at AND updated_at = @expected_upd
 DELETE FROM automation_runs WHERE automation_id = ?;
 
 -- name: DeleteAutomation :exec
-DELETE FROM automations WHERE id = ? AND agent_id = ?;
+DELETE FROM automations WHERE id = ? AND bot_id = ?;
 
 -- name: CreateAutomationRun :execrows
 -- A run for a scheduled time that has a run already is not stored again.
@@ -434,7 +434,7 @@ WHERE
         OR c.channel_key LIKE 'automation:' || CAST(@automation_id AS TEXT) || ':%');
 
 -- name: ListAutomationTargetCandidates :many
-SELECT * FROM sessions WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' ORDER BY created_at DESC, id DESC;
+SELECT * FROM sessions WHERE bot_id = ? AND channel_key NOT LIKE 'retired-telegram:%' ORDER BY created_at DESC, id DESC;
 
 -- name: CountBoundAutomationPending :one
 SELECT count(*) FROM automation_runs r
@@ -442,13 +442,13 @@ JOIN submissions s ON s.id = r.id
 WHERE r.automation_id = ? AND s.status = 'pending';
 
 -- name: SetTelegramPairing :exec
-UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE agent_id = ?;
+UPDATE telegram_settings SET pairing_code = ?, pairing_expires = ? WHERE bot_id = ?;
 
 -- name: PairTelegramOwner :one
 UPDATE telegram_settings
 SET allowed_users = CAST(sqlc.arg(user_id) AS TEXT),
     pairing_code = '', pairing_expires = 0
-WHERE agent_id = sqlc.arg(agent_id) AND allowed_users = '' AND token = sqlc.arg(token) AND pairing_code = sqlc.arg(code)
+WHERE bot_id = sqlc.arg(bot_id) AND allowed_users = '' AND token = sqlc.arg(token) AND pairing_code = sqlc.arg(code)
     AND pairing_code <> '' AND pairing_expires > sqlc.arg(now)
 RETURNING allowed_users;
 
@@ -465,11 +465,11 @@ UPDATE sessions SET abort_pending = 1 WHERE id = ?;
 UPDATE sessions SET abort_pending = 0 WHERE id = ?;
 
 -- name: ListPendingExecutionAborts :many
-SELECT c.id, c.agent_id, c.execution_id FROM sessions c
+SELECT c.id, c.bot_id, c.execution_id FROM sessions c
 WHERE c.abort_pending = 1;
 
 -- name: SetSessionCwd :exec
-UPDATE sessions SET cwd = ? WHERE id = ? AND agent_id = ?;
+UPDATE sessions SET cwd = ? WHERE id = ? AND bot_id = ?;
 
 -- name: ListRecentProjects :many
 WITH activity AS (
@@ -480,7 +480,7 @@ WITH activity AS (
     ) AS updated_at
     FROM sessions c
     LEFT JOIN submissions s ON s.session_id = c.id
-    WHERE c.agent_id = ? AND c.cwd <> ''
+    WHERE c.bot_id = ? AND c.cwd <> ''
     GROUP BY c.id
 )
 SELECT cwd FROM activity

@@ -5,9 +5,9 @@ the problem, the scope, and the non-goals.
 
 ## Users and problem
 
-dex is for one person who wants personal AI agents that they
+dex is for one person who wants personal AI bots that they
 can reach from chat apps and a browser, and that keep working over long
-tasks. Hosted agent platforms keep the data elsewhere and are hard to change.
+tasks. Hosted bot platforms keep the data elsewhere and are hard to change.
 dex runs on one machine, keeps all data in local files, and stays small enough
 to read in an afternoon.
 
@@ -16,7 +16,7 @@ to read in an afternoon.
 - One `dex` binary. The host needs no other runtime. Access dex through a
   browser or a channel.
 - Runtime: foreground execution, or a per-user launchd/systemd service that
-  starts at login. Optional daily updates wait until agent work is idle.
+  starts at login. Optional daily updates wait until bot work is idle.
   Loopback access needs no token by default. Other listening addresses require
   an access token. See [network access](../README.md#access-from-other-devices).
 - Bot settings have four pages: General, Skills, Integrations, and Secrets.
@@ -29,22 +29,22 @@ to read in an afternoon.
   Integrations manages external sources. Global Secrets holds shared Vault
   entries and 1Password.
   The CLI manages the service address, data directory, and update policy.
-- Several agents for one owner, each with a name, primary model, thinking
+- Several bots for one owner, each with a name, primary model, thinking
   level, optional fallback model, instructions, sessions, automations, and
   workspace directory. The API
-  can create, list, read, and update agents. Each agent's API paths include its
+  can create, list, read, and update bots. Each bot's API paths include its
   ID, including default. Global settings contain no
-  implicit agent. A resource from another agent returns 404. The session tools
-  are the exception (see "Cross-bot sessions"). The web sidebar lists agents
+  implicit bot. A resource from another bot returns 404. The session tools
+  are the exception (see "Cross-bot sessions"). The web sidebar lists bots
   with default first. Its New bot dialog pre-fills the primary model, fallback
   model, and Runner from the `default` bot, then opens the new
-  bot's empty timeline. Providers stay global. Each agent has its own channels.
+  bot's empty timeline. Providers stay global. Each bot has its own channels.
   When a bot's primary model is missing or fails before answering, dex switches
   to the bot's fallback model automatically.
 - Durable sessions: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
-- One main timeline per agent. The web opens it at `/a/{agentId}` and defaults to the Bot's
+- One main timeline per bot. The web opens it at `/b/{botId}` and defaults to the Bot's
   model and thinking settings for Web and channel input.
   `/clear` starts a new model context when the timeline is idle. Text after
   the command is carried into the new context. Earlier messages stay readable
@@ -78,11 +78,11 @@ to read in an afternoon.
   again, with an orange dot when Board has attention items. The header shows the bot's
   avatar. On a phone, the menu button opens the sidebar as a drawer. It shows
   the same orange dot.
-  The browser keeps the sidebar's open or collapsed state. Each agent keeps its unsent main message, uploaded
-  attachments, and instructions draft when the user switches agents. Board
+  The browser keeps the sidebar's open or collapsed state. Each bot keeps its unsent main message, uploaded
+  attachments, and instructions draft when the user switches bots. Board
   opens at `/board`.
-  An unknown agent shows a not-found page.
-  Every agent has channel setup controls.
+  An unknown bot shows a not-found page.
+  Every bot has channel setup controls.
   Channel input shares main. Automation runs have separate read-only transcripts.
   Each run requires an explicit changed, unchanged or failed report. Missing
   reports and execution errors fail the run. Run records include a summary
@@ -90,13 +90,13 @@ to read in an afternoon.
 - Main answers short requests directly. It sends longer work to background
   execution and replies at once, so the user can keep writing while the work
   runs.
-- Each Session and automation session runs one main agent loop that does the work itself.
+- Each Session and automation session runs one main bot loop that does the work itself.
   Skills, tools and the project directory provide capabilities.
   Internal background execution is limited to independent parallel work,
   long commands whose output would flood the context, and independent review.
-  Each execution has one input and fixed model settings. The main agent
+  Each execution has one input and fixed model settings. The main bot
   handles implementation, review findings, tests, and the final answer.
-  Each child session starts as soon as it is created. There is no limit on the number of child sessions, and sessions in one directory run at the same time. Session cancellation on a parent follows the child rules below. A tool may still complete actions. A child session cannot delegate more work. The main agent handles failures and decides the
+  Each child session starts as soon as it is created. There is no limit on the number of child sessions, and sessions in one directory run at the same time. Session cancellation on a parent follows the child rules below. A tool may still complete actions. A child session cannot delegate more work. The main bot handles failures and decides the
   next action.
 - Telegram setup: save a bot token, then open a single-use pairing link to
   allow the owner's account while the bot has no owner. Links expire after
@@ -113,8 +113,8 @@ to read in an afternoon.
   for automation results.
 - Entry points: the web UI, Telegram, WeChat, and Feishu / Lark. All channels
   are for the owner. Paired private chats and the web have the same owner
-  access. Each bot belongs to one agent. The web selects an agent.
-  Web input and channel input for that agent share its main context. Input from one entry can
+  access. Each Channel belongs to one Dex Bot. The web selects a Bot.
+  Web input and channel input for that bot share its main context. Input from one entry can
   affect an answer at another entry. Channel messages show their channel name
   in the web timeline. Replies return only to the input's origin. Web input
   sends no channel reply. Each input gets its own answer, in admission order.
@@ -133,8 +133,8 @@ to read in an afternoon.
   A cross-Bot child can return its artifact URL to the parent. Telegram file
   delivery keeps an immutable byte snapshot in the Outbox. See [Files](dev/files.md).
 - In main and sessions, the user can attach files and images (at most 10 per
-  message, 20 MB each). The agent reads them with its tools. Telegram
-  input uses Main's model settings and saved project. Automations default to the agent's settings.
+  message, 20 MB each). The bot reads them with its tools. Telegram
+  input uses Main's model settings and saved project. Automations default to the bot's settings.
   Telegram accepts photos and
   documents up to 20 MB, with caption text. Telegram replies show progress,
   code blocks, and basic text formatting. Final-send failures, including flood
@@ -144,7 +144,7 @@ to read in an afternoon.
   WeChat accepts images and files with the same limits. It uses voice transcription
   as text and shows a placeholder for videos.
 - WeChat setup: scan a QR code and confirm on the phone. Only that owner
-  can send private messages to the agent. QR status polling stops when the page
+  can send private messages to the bot. QR status polling stops when the page
   closes. Remote QR expiry permits at most three replacements per attempt;
   there is no fixed five-minute login deadline. Local activation must succeed
   before the page reports a connection. A failed save can retry the same
@@ -154,7 +154,7 @@ to read in an afternoon.
   message for retry. A replay does not download admitted attachments again.
 - Feishu / Lark: QR app creation or manual credentials with a one-time
   pairing code. Only the owner can use the bot in private messages. Text,
-  rich posts (including code blocks), images and files reach the agent.
+  rich posts (including code blocks), images and files reach the bot.
   Replies use a streamed card. A card content rejection allows plain text
   as a fallback. Temporary failures retry the card. Startup and connection
   failures recover without a settings change. Bot settings show runtime
@@ -167,8 +167,8 @@ to read in an afternoon.
   active Monitor in a writable session. The panel does not list Processes;
   a writable session manages them with the `process_*` tools.
 - Automations: long-lived automation. In Main or a writable Session, the
-  owner can ask the agent to list, create, inspect, update, pause, resume, or
-  run an automation. The agent can read the 10 most recent run results and their
+  owner can ask the bot to list, create, inspect, update, pause, resume, or
+  run an automation. The bot can read the 10 most recent run results and their
   transcript references. These tools use the current bot; they cannot manage another bot's
   Automations. The tools require a user turn in Main or a top-level Session.
   A partial update keeps fields that the owner did not change. Creation uses
@@ -181,7 +181,7 @@ to read in an afternoon.
   or paired channel answer can approve it. The default Bot, the asking Bot,
   and a Bot with a running Session cannot be archived. Archive stops the
   Bot's Channels and Automations and keeps its Sessions, memory, and files.
-  **Settings → Archived** restores the Bot. See [Bot tools](dev/agents.md#bot-tools).
+  **Settings → Archived** restores the Bot. See [Bot tools](dev/bots.md#bot-tools).
 - Cross-bot sessions. One
   owner has all the bots, so a bot can give work to another bot. `session_new`
   with `bot` (an ID or a name) creates a child session in that bot. The child
@@ -199,7 +199,7 @@ to read in an afternoon.
   A file that a child delivers in a turn of its parent shows in the parent
   conversation, also when the child belongs to another bot. Bot
   isolation holds for everything else: the API returns 404 for another bot's
-  resources, and channels, automations, and agent-level vault secrets stay with their bot.
+  resources, and channels, automations, and bot-level vault secrets stay with their bot.
 
 Inputs store their origin. Web input uses `web`. Channel input uses the exact
 peer, such as `telegram:7`. A background result keeps the origin of its source
@@ -208,7 +208,7 @@ and memory consolidation use `automation`, `task`, and `dream`. Channel delivery
 uses the pairing saved with the source input, even if the result finishes after
 another input or a new pairing. Channel input cannot reach a separate session.
 
-The main session shows the user's messages and the main agent's answers.
+The main session shows the user's messages and the main bot's answers.
 The thoughts and tool calls between two answers show as one collapsed row. While
 a tool runs, the row shows its command or path. The row opens by itself when a
 call fails. A channel message shows its channel and time below it. The composer
@@ -325,7 +325,7 @@ stored result and its run reference. Automation history shows outcome dots, summ
 duplicate marks, and links to saved results. The Automations
 entry in the header shows a red dot when an enabled automation's latest run failed.
 
-When the main agent starts background work, it continues independent local
+When the main bot starts background work, it continues independent local
 work within the same scope. When no local work remains, it names the background
 work in one brief reply and returns without polling for the result. When a report returns,
 the reply first names that work and gives its outcome. If work failed or
@@ -333,15 +333,15 @@ remains incomplete, the reply states that outcome, the blocker, and what
 remains. If the user has changed topics, the reply gives a brief update about
 the earlier work. Channel replies also name the work because channels do not
 show the web result group.
-The main agent checks saved execution records before it reports progress or
+The main bot checks saved execution records before it reports progress or
 starts follow-up work. dex has no built-in coding skill. A user who wants a coding method writes a
-skill, for example `coding`, in the dex or agent directory.
+skill, for example `coding`, in the dex or bot directory.
 
 A queued message in the web shows Edit and Remove until its run starts. Remove
 withdraws it. Edit withdraws it and puts the text and files back in the box.
 A message that already started cannot be withdrawn, and the web says so.
 
-Main and sessions have the `ask_user` tool. The agent asks one question
+Main and sessions have the `ask_user` tool. The bot asks one question
 with 2 to 4 options and the turn ends. The web shows a question card above the
 composer. The user picks an option or writes another answer. A plain message
 does not answer the question, and the question stays open. Session cancellation, Clear and
@@ -366,7 +366,7 @@ stop it there. Automation transcripts are read-only.
 Stop does not need a model. Its reply does not confirm process exit. Processes
 and remote work can continue. Cancellation does not undo prior actions.
 
-Normal completion and execution failure return a report to the main agent.
+Normal completion and execution failure return a report to the main bot.
 A completed run that holds parent input returns its answer once. A failed run
 returns one report for each parent input in it. Work cancelled by Stop or
 cancellation does not create a result turn. A kept parent-started run can
@@ -374,16 +374,16 @@ return a result that starts a new parent turn. A restart interruption creates
 one durable result for each parent input that the run held, and the result
 warns that side effects may exist.
 A saved report stays unchanged after cancellation or a late execution event.
-The system does not retry failed execution or result delivery. The main agent
+The system does not retry failed execution or result delivery. The main bot
 reads saved records and artifacts, then decides whether to retry or continue
-from saved work. After a user Stop, the main agent waits for new user
+from saved work. After a user Stop, the main bot waits for new user
 authorization before it resumes cancelled work. A later user message does not retry an old result. Result
 delivery keeps the source input's origin after `/clear`.
 
 After a dex restart, running execution becomes interrupted and does not restart
 automatically. Queued execution that never started can start for the first
 time. Cancelled execution stays cancelled. A dex restart does not prove that old
-tool processes ended. Before another execution, the main agent must check prior
+tool processes ended. Before another execution, the main bot must check prior
 artifacts and side effects. In the built-in **Local** Runner, tools run on the
 host without a sandbox. Settings → Runners manages **Machine** Runners with
 **SSH** or **Outbound** connections and **Sandbox** Runners. Outbound uses

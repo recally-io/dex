@@ -107,7 +107,7 @@ func TestUserSharedRunSendsNoSecondResultAfter256LaterInputs(t *testing.T) {
 	waitResults(t, write, parent, 1)
 	steer := childTurns(t, write, child.conversation(t))[1].id
 	// And 256 later inputs that run and settle.
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%s/settings", child.ID), map[string]string{"provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%s/settings", child.ID), map[string]string{"provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
 	for i := range 256 {
 		d.send(t, child.conversation(t), fmt.Sprintf("later-%03d", i))
 	}

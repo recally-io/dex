@@ -60,14 +60,14 @@ func TestUserDelegatesTaskToChildSessionWithScopedTools(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	const tasks = "/api/tasks"
 	var task, unrelated api.TaskSummary
 	d.must(t, http.MethodPost, tasks, map[string]string{"title": "Verify release", "assigneeBotId": "default"}, &task, http.StatusCreated)
 	d.must(t, http.MethodPost, tasks, map[string]string{"title": "Unrelated work", "assigneeBotId": "default"}, &unrelated, http.StatusCreated)
 	path := tasks + "/" + task.Key
 	const note = "Child verified the release."
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID), map[string]string{
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", main.ID), map[string]string{
 		"id": uuid.NewV7().String(), "taskId": task.Id,
 		"text": "session_new " + childJSON(t, map[string]any{
 			"title": "Verify", "provider": "faux", "modelId": "tool",

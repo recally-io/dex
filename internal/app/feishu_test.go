@@ -330,7 +330,7 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	var result struct {
 		PairingCode string `json:"pairingCode"`
 	}
-	d.must(t, http.MethodPut, "/api/agents/default/channels/feishu", map[string]string{"appId": "app", "appSecret": "app-secret", "brand": "feishu"}, &result)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/feishu", map[string]string{"appId": "app", "appSecret": "app-secret", "brand": "feishu"}, &result)
 	if result.PairingCode == "" {
 		t.Fatal("missing one-time code")
 	}
@@ -341,10 +341,10 @@ func pairFeishu(t *testing.T, d *dex, f *fakeFeishu) {
 	f.waitReply(t, "Paired.")
 	f.text(t, "owner-pair", "owner", "p2p", "/pair "+result.PairingCode)
 	if sessions := d.sessions(t); len(sessions) != 0 {
-		t.Fatalf("pair retry reached agent: %+v", sessions)
+		t.Fatalf("pair retry reached bot: %+v", sessions)
 	}
 	assertNoStoredInput(t, d)
-	_, body := d.call(t, http.MethodGet, "/api/agents/default/channels/feishu", nil)
+	_, body := d.call(t, http.MethodGet, "/api/bots/default/channels/feishu", nil)
 	if strings.Contains(body, "app-secret") || strings.Contains(body, result.PairingCode) || !strings.Contains(body, `"paired":true`) {
 		t.Fatalf("unsafe settings response: %s", body)
 	}
@@ -479,7 +479,7 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 		Session string `json:"session"`
 		Status  string `json:"status"`
 	}
-	d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
+	d.must(t, http.MethodPost, "/api/bots/default/channels/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
 	if !strings.Contains(setup.QRURL, "addons=") || !strings.Contains(setup.QRURL, "createOnly=true") {
 		t.Fatal("missing setup parameters")
 	}
@@ -497,9 +497,9 @@ func TestUserCreatesFeishuAppAndPairsTheCreator(t *testing.T) {
 		case <-deadline.C:
 			t.Fatal("registration did not finish")
 		}
-		d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
+		d.must(t, http.MethodPost, "/api/bots/default/channels/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
 	}
-	_, body := d.call(t, http.MethodGet, "/api/agents/default/channels/feishu", nil)
+	_, body := d.call(t, http.MethodGet, "/api/bots/default/channels/feishu", nil)
 	if !strings.Contains(body, `"appId":"qr-app"`) {
 		t.Fatalf("missing saved app ID: %s", body)
 	}
@@ -651,7 +651,7 @@ func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
 			defer once.Do(func() { close(release) })
 			f := newFakeFeishu(t)
 			d := startDexWith(t, app.Config{DataDir: t.TempDir(), FeishuAccountsURL: accounts.URL, FeishuAPIURL: f.server.URL})
-			path := "/api/agents/default/channels/feishu/registration"
+			path := "/api/bots/default/channels/feishu/registration"
 			body := map[string]string{"brand": "feishu"}
 			if action == "poll" {
 				var setup struct {
@@ -686,7 +686,7 @@ func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
 			// When the user turns the channel off, then cancellation completes before accounts respond.
 			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 			defer cancel()
-			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, d.srv.URL+"/api/agents/default/channels/feishu", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodDelete, d.srv.URL+"/api/bots/default/channels/feishu", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -710,7 +710,7 @@ func TestUserCancelsFeishuSetupWhileAccountsServiceWaits(t *testing.T) {
 			var saved struct {
 				Enabled bool `json:"enabled"`
 			}
-			d.must(t, http.MethodGet, "/api/agents/default/channels/feishu", nil, &saved)
+			d.must(t, http.MethodGet, "/api/bots/default/channels/feishu", nil, &saved)
 			if saved.Enabled {
 				t.Fatal("late credentials restored a canceled channel")
 			}
@@ -730,7 +730,7 @@ func TestUserFeishuDisconnectDoesNotStrandDurableAdmission(t *testing.T) {
 	conn := controlWriteDB(t, dataDir)
 	webSession := d.newSession(t)
 	webID := uuid.NewV7().String()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", webSession.ID), map[string]string{"id": webID, "text": "web input during maintenance"}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", webSession.ID), map[string]string{"id": webID, "text": "web input during maintenance"}, nil, http.StatusConflict)
 	var webReceipts int
 	if err := conn.QueryRowContext(t.Context(), "SELECT count(*) FROM submissions WHERE id=?", webID).Scan(&webReceipts); err != nil {
 		t.Fatal(err)
@@ -829,7 +829,7 @@ func TestUserFeishuRegistrationFollowsLarkBrandRedirect(t *testing.T) {
 		Session string `json:"session"`
 		Status  string `json:"status"`
 	}
-	d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
+	d.must(t, http.MethodPost, "/api/bots/default/channels/feishu/registration", map[string]string{"brand": "feishu"}, &setup)
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(50 * time.Millisecond)
@@ -840,7 +840,7 @@ func TestUserFeishuRegistrationFollowsLarkBrandRedirect(t *testing.T) {
 		case <-deadline.C:
 			t.Fatal("lark registration did not finish")
 		}
-		d.must(t, http.MethodPost, "/api/agents/default/channels/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
+		d.must(t, http.MethodPost, "/api/bots/default/channels/feishu/registration/poll", map[string]string{"session": setup.Session}, &setup)
 	}
 	if polls != 2 {
 		t.Fatalf("poll attempts = %d, want 2 (redirected for lark)", polls)
@@ -849,7 +849,7 @@ func TestUserFeishuRegistrationFollowsLarkBrandRedirect(t *testing.T) {
 		Brand  string `json:"brand"`
 		Paired bool   `json:"paired"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/channels/feishu", nil, &status)
+	d.must(t, http.MethodGet, "/api/bots/default/channels/feishu", nil, &status)
 	if status.Brand != "lark" || !status.Paired {
 		t.Fatalf("feishu status after lark redirect = %+v", status)
 	}

@@ -66,36 +66,36 @@ func (s *Service) release() error {
 }
 
 // ReloadExtensions orders file reload with business receipt admission.
-func (s *Service) ReloadExtensions(ctx context.Context, agentID string) error {
-	return s.reloadExtensions(ctx, agentID, s.engine.Reload)
+func (s *Service) ReloadExtensions(ctx context.Context, botID string) error {
+	return s.reloadExtensions(ctx, botID, s.engine.Reload)
 }
 
-func (s *Service) ReloadDirtyExtensions(ctx context.Context, agentID string) error {
-	return s.reloadExtensions(ctx, agentID, s.engine.ReloadDirty)
+func (s *Service) ReloadDirtyExtensions(ctx context.Context, botID string) error {
+	return s.reloadExtensions(ctx, botID, s.engine.ReloadDirty)
 }
 
-func (s *Service) reloadExtensions(ctx context.Context, agentID string, reload func(context.Context, string) error) error {
+func (s *Service) reloadExtensions(ctx context.Context, botID string, reload func(context.Context, string) error) error {
 	defer s.Wake()
-	return reload(ctx, agentID)
+	return reload(ctx, botID)
 }
 
-// ResetRunner verifies agentID is idle, closes its active runtime resources and background
+// ResetRunner verifies botID is idle, closes its active runtime resources and background
 // commands, and invokes reset to tear down remote sandbox state.
-func (s *Service) ResetRunner(ctx context.Context, agentID string, reset func(context.Context) error) error {
+func (s *Service) ResetRunner(ctx context.Context, botID string, reset func(context.Context) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	defer s.Wake()
-	pending, err := s.q.CountPendingAgent(ctx, agentID)
+	pending, err := s.q.CountPendingBot(ctx, botID)
 	if err != nil {
 		return err
 	}
 	if pending > 0 {
 		return ErrSessionBusy
 	}
-	return s.engine.ResetAgent(ctx, agentID, func(ctx context.Context) error {
+	return s.engine.ResetBot(ctx, botID, func(ctx context.Context) error {
 		if s.background != nil {
-			if err := s.background.StopAgent(ctx, agentID); err != nil {
+			if err := s.background.StopBot(ctx, botID); err != nil {
 				return err
 			}
 		}

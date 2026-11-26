@@ -101,7 +101,7 @@ func TestUserTaskWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
 		}
 	}
 	create(1)
-	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{AgentID: "bot", ChannelKey: MainKey})
+	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{BotID: "bot", ChannelKey: MainKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestUserTaskWakeReplaysAdmissionAndKeepsLatePointers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := r.agents.Submit(ctx, ref, engine.Input{
+	native, err := r.bots.Submit(ctx, ref, engine.Input{
 		RequestID: wake.ID, Content: wake.Content, Kind: "task_wake", Origin: "web", Main: true, Options: options,
 		RefreshContent: func(ctx context.Context) (string, error) { return r.service.snapshotTaskWake(ctx, wake.ID) },
 	})

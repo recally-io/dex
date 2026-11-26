@@ -11,20 +11,20 @@ import (
 )
 
 const getSessionByExecution = `-- name: GetSessionByExecution :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' AND execution_id = ?
+SELECT id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE bot_id = ? AND channel_key NOT LIKE 'retired-telegram:%' AND execution_id = ?
 `
 
 type GetSessionByExecutionParams struct {
-	AgentID     string        `json:"agent_id"`
+	BotID       string        `json:"bot_id"`
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
 func (q *Queries) GetSessionByExecution(ctx context.Context, arg GetSessionByExecutionParams) (Session, error) {
-	row := q.db.QueryRowContext(ctx, getSessionByExecution, arg.AgentID, arg.ExecutionID)
+	row := q.db.QueryRowContext(ctx, getSessionByExecution, arg.BotID, arg.ExecutionID)
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -45,7 +45,7 @@ func (q *Queries) GetSessionByExecution(ctx context.Context, arg GetSessionByExe
 const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
 SELECT sessions.id FROM sessions
 JOIN sessions parent ON parent.id = sessions.parent_id
-WHERE (sessions.agent_id = ?1 OR parent.agent_id = ?1)
+WHERE (sessions.bot_id = ?1 OR parent.bot_id = ?1)
 AND sessions.channel_key NOT LIKE 'retired-telegram:%' AND parent.channel_key NOT LIKE 'retired-telegram:%' AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.session_id = sessions.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
@@ -54,8 +54,8 @@ AND sessions.channel_key NOT LIKE 'retired-telegram:%' AND parent.channel_key NO
 
 // The children that Stop on their parent reaches. Keep the rule equal to ListSessionsForStop: the
 // web UI shows Stop on a parent page only for these.
-func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID string) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listChildrenStoppedByParent, agentID)
+func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, botID string) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listChildrenStoppedByParent, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -78,9 +78,9 @@ func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID strin
 }
 
 const listSessionsForStop = `-- name: ListSessionsForStop :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions
+SELECT id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions
 WHERE channel_key NOT LIKE 'retired-telegram:%' AND (
-    (sessions.id = ?1 AND sessions.agent_id = ?2)
+    (sessions.id = ?1 AND sessions.bot_id = ?2)
     OR (sessions.parent_id = ?1 AND EXISTS (
     SELECT 1 FROM submissions s WHERE s.session_id = sessions.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
@@ -90,14 +90,14 @@ ORDER BY sessions.id
 
 type ListSessionsForStopParams struct {
 	SessionID int64  `json:"session_id"`
-	AgentID   string `json:"agent_id"`
+	BotID     string `json:"bot_id"`
 }
 
 // Stop reaches the session and the children of it that have pending input that the parent
 // started. The children can belong to different bots.
 // A child with only user input is not reached.
 func (q *Queries) ListSessionsForStop(ctx context.Context, arg ListSessionsForStopParams) ([]Session, error) {
-	rows, err := q.db.QueryContext(ctx, listSessionsForStop, arg.SessionID, arg.AgentID)
+	rows, err := q.db.QueryContext(ctx, listSessionsForStop, arg.SessionID, arg.BotID)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (q *Queries) ListSessionsForStop(ctx context.Context, arg ListSessionsForSt
 		var i Session
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.BotID,
 			&i.ChannelKey,
 			&i.ExecutionID,
 			&i.CreatedAt,

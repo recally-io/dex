@@ -56,8 +56,8 @@ func newMainEntry(t *testing.T, platform string) mainEntry {
 		f := newFakeWechat(t)
 		e.d = startWechat(t, f, e.dir)
 		var login wechatLogin
-		e.d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login", nil, &login)
-		e.d.must(t, http.MethodPost, "/api/agents/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
+		e.d.must(t, http.MethodPost, "/api/bots/default/channels/wechat/login", nil, &login)
+		e.d.must(t, http.MethodPost, "/api/bots/default/channels/wechat/login/"+login.ID+"/poll", map[string]string{}, &login)
 		e.peer = "wechat:owner"
 		e.send = func(text string) { serial++; f.batch(fmt.Sprint(serial), wxText(uint64(serial), "owner", text)) }
 		e.sends = func() []channelSend {
@@ -119,7 +119,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 				t.Fatal(err)
 			}
 			var session sessionListItem
-			d.must(t, http.MethodPost, "/api/agents/default/sessions", nil, &session, http.StatusCreated)
+			d.must(t, http.MethodPost, "/api/bots/default/sessions", nil, &session, http.StatusCreated)
 			d.setModel(t, "context")
 			d.send(t, session.ID, "Session secret")
 			d.watch(t, session.ID).until(t, "separate Session", answered(`context: ["Session secret"]`))
@@ -180,7 +180,7 @@ func TestUserChannelMainSharesContextAndRoutesReplies(t *testing.T) {
 			var page struct {
 				Items []item `json:"items"`
 			}
-			d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991", main), nil, &page)
+			d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/history?before=9007199254740991", main), nil, &page)
 			if !slices.ContainsFunc(page.Items, func(it item) bool { return it.ID == id && it.Origin == e.peer }) {
 				t.Fatalf("history lost channel entry: %+v", page.Items)
 			}
@@ -468,7 +468,7 @@ func TestUserRevokedChannelStopDoesNotReplyOrAffectLaterWork(t *testing.T) {
 	f.message(1, 42, 7, "/stop")
 	waitResultSubmission(t, conn, first, "unanswered")
 	waitChannelCommandFailure(t, d)
-	d.must(t, http.MethodDelete, "/api/agents/default/channels/telegram", nil, nil)
+	d.must(t, http.MethodDelete, "/api/bots/default/channels/telegram", nil, nil)
 	waitTaskPIDGone(t, filepath.Join(dir, "first-stop.pid"))
 	spawnExecution(t, d, main, "Later task", taskGate(t, dir, "later-task"), "bash")
 	waitTaskFile(t, filepath.Join(dir, "later-task.pid"))
@@ -480,7 +480,7 @@ func TestUserRevokedChannelStopDoesNotReplyOrAffectLaterWork(t *testing.T) {
 	if _, err := conn.ExecContext(t.Context(), "DROP TRIGGER fail_command_completion"); err != nil {
 		t.Fatal(err)
 	}
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	if n := count(t, conn, `SELECT count(*) FROM channel_commands c
 WHERE c.source_key = 'telegram:123:1' AND c.delivered_at IS NOT NULL`); n != 1 {
 		t.Fatal("the old acknowledgment did not close with its binding")
@@ -523,7 +523,7 @@ func failChannelCommandCompletion(t *testing.T, conn *sql.DB) {
 func waitChannelCommandFailure(t *testing.T, d *dex) {
 	t.Helper()
 	eventually(t, "command completion failure", func() (bool, any) {
-		_, body := d.call(t, http.MethodGet, "/api/agents/default/channels", nil)
+		_, body := d.call(t, http.MethodGet, "/api/bots/default/channels", nil)
 		return strings.Contains(body, "command completion failure"), "waiting for the database error"
 	})
 }

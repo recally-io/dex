@@ -57,7 +57,7 @@ func boolDefaultTrue(v *bool) bool {
 	return *v
 }
 
-func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
+func OutboxExtension(botID string, tools OutboxTools) *engine.Extension {
 	return &engine.Extension{
 		Name: "outbox",
 		Tools: []*durable.ToolRegistration{
@@ -74,7 +74,7 @@ func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 					},
 				},
 				Replay: durable.ReplaySafe,
-				Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
+				Execute: engine.BindTool(botID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 					if tools.NotifyUser == nil {
 						return durable.ToolExecutionResult{}, errors.New("outbox service is unavailable")
 					}
@@ -118,7 +118,7 @@ func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 				if tools.RecentOutbox == nil {
 					return nil, nil
 				}
-				rows, err := tools.RecentOutbox(ctx, engine.Ref{AgentID: agentID, ID: int64(input.ConversationId)})
+				rows, err := tools.RecentOutbox(ctx, engine.Ref{BotID: botID, ID: int64(input.ConversationId)})
 				if err != nil || len(rows) == 0 {
 					return nil, err
 				}
@@ -150,7 +150,7 @@ func OutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 }
 
 // ChildOutboxExtension lets a child report without access to the parent dispatch tools.
-func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
+func ChildOutboxExtension(botID string, tools OutboxTools) *engine.Extension {
 	execute := func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 		if tools.ReportParent == nil {
 			return durable.ToolExecutionResult{}, errors.New("parent reporting is unavailable")
@@ -196,7 +196,7 @@ func ChildOutboxExtension(agentID string, tools OutboxTools) *engine.Extension {
 			},
 		},
 		Replay:  durable.ReplaySafe,
-		Execute: engine.BindTool(agentID, execute),
+		Execute: engine.BindTool(botID, execute),
 	}
 	return &engine.Extension{
 		Name:  "child-outbox",

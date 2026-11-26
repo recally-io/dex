@@ -13,7 +13,7 @@ describe("Web composer feedback", () => {
       const baseURL = new URL(await browser.url()).origin;
       const name = withModel ? "Composer with model" : "Composer without model";
 
-      const created = await fetch(`${baseURL}/api/agents`, {
+      const created = await fetch(`${baseURL}/api/bots`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -25,10 +25,10 @@ describe("Web composer feedback", () => {
 
       if (created.status !== 201) throw new Error(`Create composer fixture: ${created.status}`);
 
-      const agent = await created.json();
+      const bot = await created.json();
 
       // When the user opens the composer (and the slash menu if enabled).
-      await app.open(`/a/${agent.id}`);
+      await app.open(`/b/${bot.id}`);
       const composer = screen.getByRole("textbox", `Message ${name}`);
       await composer.waitFor();
 

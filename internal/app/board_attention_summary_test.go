@@ -21,10 +21,10 @@ func TestUserSeesAutomationSetupAcrossBotsOnBoard(t *testing.T) {
 	var bot struct {
 		ID string `json:"id"`
 	}
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other bot", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &bot, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Other bot", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &bot, http.StatusCreated)
 	for _, id := range []string{"default", bot.ID} {
 		var created automationInfo
-		d.must(t, http.MethodPost, "/api/agents/"+id+"/automations", map[string]any{
+		d.must(t, http.MethodPost, "/api/bots/"+id+"/automations", map[string]any{
 			"name": "Daily check", "prompt": "Check", "schedule": map[string]string{"kind": "daily", "time": "09:00"},
 			"timeZone": "UTC", "session": "new", "enabled": true,
 		}, &created, http.StatusCreated)
@@ -40,18 +40,18 @@ func TestUserSeesAutomationSetupAcrossBotsOnBoard(t *testing.T) {
 		if a.Name != "Daily check" {
 			t.Fatalf("automation unexpected: %+v", a)
 		}
-		seen[a.AgentId] = true
+		seen[a.BotId] = true
 	}
 	if len(result.Automations) != 2 || !seen["default"] || !seen[bot.ID] {
 		t.Fatalf("automations across bots: %+v", result.Automations)
 	}
 
 	// When one bot loses its model, its active automation needs setup.
-	d.must(t, http.MethodPut, "/api/agents/"+bot.ID, map[string]string{"name": "Other bot", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/bots/"+bot.ID, map[string]string{"name": "Other bot", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
 	result.Automations = nil
 	d.must(t, http.MethodGet, "/api/board/attention", nil, &result)
 	for _, a := range result.Automations {
-		if a.Setup != (a.AgentId == bot.ID) {
+		if a.Setup != (a.BotId == bot.ID) {
 			t.Fatalf("unexpected setup state: %+v", a)
 		}
 	}
@@ -62,17 +62,17 @@ func TestUserSeesAutomationSetupAcrossBotsOnBoard(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	if _, err := conn.ExecContext(t.Context(), "UPDATE agents SET model_provider = 'missing', model_id = 'missing' WHERE id = ?", bot.ID); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "UPDATE bots SET model_provider = 'missing', model_id = 'missing' WHERE id = ?", bot.ID); err != nil {
 		t.Fatal(err)
 	}
 	result.Automations = nil
 	d.must(t, http.MethodGet, "/api/board/attention", nil, &result)
 	for _, a := range result.Automations {
-		if a.Setup != (a.AgentId == bot.ID) {
+		if a.Setup != (a.BotId == bot.ID) {
 			t.Fatalf("unavailable model setup state: %+v", a)
 		}
 	}
-	d.must(t, http.MethodPut, "/api/agents/"+bot.ID, map[string]string{"name": "Other bot", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/bots/"+bot.ID, map[string]string{"name": "Other bot", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
 	result.Automations = nil
 	d.must(t, http.MethodGet, "/api/board/attention", nil, &result)
 	for _, a := range result.Automations {
@@ -89,9 +89,9 @@ func TestUserSeesSetupBasedOnBoundSessionModel(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: dir, AutomationCheck: time.Hour})
 	d.setModel(t, "echo")
 	session := d.newSession(t)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/settings", session.ID),
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/default/sessions/%d/settings", session.ID),
 		map[string]string{"provider": "faux", "modelId": "shout"}, nil)
-	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
+	d.must(t, http.MethodPost, "/api/bots/default/automations", map[string]any{
 		"name": "Bound check", "prompt": "Check", "schedule": map[string]string{"kind": "daily", "time": "09:00"},
 		"timeZone": "UTC", "session": "session", "targetSessionId": session.ID, "enabled": true,
 	}, nil, http.StatusCreated)
@@ -106,7 +106,7 @@ func TestUserSeesSetupBasedOnBoundSessionModel(t *testing.T) {
 	}
 
 	// When the Bot default is cleared, the valid session override needs no setup.
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
 	assertSetup(false)
 
 	// A missing provider for the Bot default also leaves the session override usable.
@@ -115,7 +115,7 @@ func TestUserSeesSetupBasedOnBoundSessionModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	if _, err := conn.ExecContext(t.Context(), "UPDATE agents SET model_provider = 'missing', model_id = 'missing' WHERE id = 'default'"); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "UPDATE bots SET model_provider = 'missing', model_id = 'missing' WHERE id = 'default'"); err != nil {
 		t.Fatal(err)
 	}
 	assertSetup(false)
@@ -128,7 +128,7 @@ func TestUserSeesSetupBasedOnBoundSessionModel(t *testing.T) {
 	assertSetup(true)
 
 	// The Bot fallback remains available to the bound session.
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "faux", "modelId": "echo", "thinkingLevel": "off", "fallbackProvider": "faux", "fallbackModelId": "shout"}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "faux", "modelId": "echo", "thinkingLevel": "off", "fallbackProvider": "faux", "fallbackModelId": "shout"}, nil)
 	assertSetup(false)
 }
 
@@ -139,7 +139,7 @@ func (d *dex) openQuestions(t *testing.T) map[int64]string {
 	open := map[int64]string{}
 	for _, s := range attention.Sessions {
 		if q := s.Question; q != nil {
-			open[s.Id] = s.AgentId + ":" + q.Id
+			open[s.Id] = s.BotId + ":" + q.Id
 		}
 	}
 	return open
@@ -151,7 +151,7 @@ func TestUserSeesOpenQuestionOnBoardUntilAnswered(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	d.send(t, main.ID, askJSON)
 	sessionID := d.newSessionWithMessage(t, askJSON)
 	mainQ := d.awaitQuestion(t, main.ID, "open")

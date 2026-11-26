@@ -21,20 +21,20 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 			t.Run(mode+"/"+kind, func(t *testing.T) {
 				// Given an admitted input behind a running real bash tool.
 				config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
-				agents := coreEngine(t, config)
-				ref := coreCreate(t, agents, "alpha", coreOptions("bash"))
+				bots := coreEngine(t, config)
+				ref := coreCreate(t, bots, "alpha", coreOptions("bash"))
 				workspace := filepath.Join(config.DataDir, "agents", "alpha", "workspace")
-				coreSubmit(t, agents, ref, "running", "echo start >> starts; touch started; while :; do sleep 1; done", "bash")
+				coreSubmit(t, bots, ref, "running", "echo start >> starts; touch started; while :; do sleep 1; done", "bash")
 				coreFile(t, filepath.Join(workspace, "started"))
 				input := Input{RequestID: "queued", Content: "saved passive content", Kind: kind, Origin: "telegram:7", Source: "dex:alpha/chat/1", Attachments: []Attachment{{ID: "file", Name: "note.txt", Path: "uploads/file/note.txt", MimeType: "text/plain", Size: 5}}, Options: coreOptions("echo")}
 				if kind == "session_result" {
 					input.Title = "Saved report"
 				}
-				admitted, err := agents.Submit(t.Context(), ref, input)
+				admitted, err := bots.Submit(t.Context(), ref, input)
 				if err != nil {
 					t.Fatal(err)
 				}
-				before, err := agents.Watch(t.Context(), ref)
+				before, err := bots.Watch(t.Context(), ref)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -49,19 +49,19 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 					t.Fatal("precondition: admitted input was not queued")
 				}
 
-				// When Stop runs on an open agent, a cold agent, or a saved startup abort intent.
+				// When Stop runs on an open bot, a cold bot, or a saved startup abort intent.
 				if mode != "open" {
-					if err := agents.Close(t.Context()); err != nil {
+					if err := bots.Close(t.Context()); err != nil {
 						t.Fatal(err)
 					}
-					agents = coreEngine(t, config)
+					bots = coreEngine(t, config)
 				}
 				if mode == "startup_recovery" {
-					if err := agents.Recover(t.Context(), []Ref{ref}); err != nil {
+					if err := bots.Recover(t.Context(), []Ref{ref}); err != nil {
 						t.Fatal(err)
 					}
 					// Opening must complete isolation even before the business Abort retry.
-					watch, err := agents.Watch(t.Context(), ref)
+					watch, err := bots.Watch(t.Context(), ref)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -69,11 +69,11 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 					watch.Close()
 				}
 				for range 2 {
-					if err := agents.StopSession(t.Context(), ref); err != nil {
+					if err := bots.StopSession(t.Context(), ref); err != nil {
 						t.Fatal(err)
 					}
 				}
-				replay, err := agents.Submit(t.Context(), ref, input)
+				replay, err := bots.Submit(t.Context(), ref, input)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -85,25 +85,25 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 				}
 
 				// Then snapshot and history retain exactly one passive input after another reopen.
-				if err := agents.Close(t.Context()); err != nil {
+				if err := bots.Close(t.Context()); err != nil {
 					t.Fatal(err)
 				}
-				agents = coreEngine(t, config)
-				if err := agents.StopSession(t.Context(), ref); err != nil {
+				bots = coreEngine(t, config)
+				if err := bots.StopSession(t.Context(), ref); err != nil {
 					t.Fatal(err)
 				}
-				watch, err := agents.Watch(t.Context(), ref)
+				watch, err := bots.Watch(t.Context(), ref)
 				if err != nil {
 					t.Fatal(err)
 				}
 				assertWithdrawnInput(t, watch.Snapshot.Items, input)
 				watch.Close()
-				history, err := agents.History(t.Context(), ref, 1<<60, 100)
+				history, err := bots.History(t.Context(), ref, 1<<60, 100)
 				if err != nil {
 					t.Fatal(err)
 				}
 				assertWithdrawnInput(t, history.Items, input)
-				conversation, err := agents.conversation(t.Context(), ref)
+				conversation, err := bots.conversation(t.Context(), ref)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -140,7 +140,7 @@ func TestUserStopKeepsQueuedMetadataAcrossRecovery(t *testing.T) {
 				if string(actions) != "start\n" {
 					t.Fatalf("Stop resumed stored tool: %q", actions)
 				}
-				if outcome := coreWait(t, coreSubmit(t, agents, ref, "after", "after stop", "context")); outcome.Status != "done" || strings.Contains(outcome.Answer, input.Content) {
+				if outcome := coreWait(t, coreSubmit(t, bots, ref, "after", "after stop", "context")); outcome.Status != "done" || strings.Contains(outcome.Answer, input.Content) {
 					t.Fatalf("withdrawn input reached next model: %+v", outcome)
 				}
 				t.Logf("request=%s native=unanswered/aborted snapshot=1 history=1 passive=1 tool_starts=1", input.RequestID)
@@ -171,8 +171,8 @@ func assertWithdrawnInput(t *testing.T, items []Item, input Input) {
 	}
 }
 
-func TestUserReloadOpensUnopenedAgentAndReportsMCPResults(t *testing.T) {
-	// Given an unopened agent with a real MCP server and an unavailable command.
+func TestUserReloadOpensUnopenedBotAndReportsMCPResults(t *testing.T) {
+	// Given an unopened bot with a real MCP server and an unavailable command.
 	config := Config{DataDir: t.TempDir(), Home: t.TempDir()}
 	binary, err := os.Executable()
 	if err != nil {
@@ -182,13 +182,13 @@ func TestUserReloadOpensUnopenedAgentAndReportsMCPResults(t *testing.T) {
 	config.MCPServers = testMCPStore(t, config.DataDir)
 	testSetMCP(t, config.MCPServers, "alpha", "good", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserReloadStartsOnlyOneReplacementMCP$"}, Env: map[string]string{"DEX_CORE_RELOAD_CHILD": "1", "MCP_STARTS": starts, "MCP_DIR": t.TempDir()}})
 	testSetMCP(t, config.MCPServers, "alpha", "broken", serverConfig{Command: filepath.Join(t.TempDir(), "missing-command")})
-	agents := coreEngine(t, config)
+	bots := coreEngine(t, config)
 	// When the caller explicitly reloads before creating a conversation.
-	if err := agents.Reload(t.Context(), "alpha"); err != nil {
+	if err := bots.Reload(t.Context(), "alpha"); err != nil {
 		t.Fatal(err)
 	}
 	// Then the result reports actual connection states, with one MCP start.
-	info, err := agents.Extensions(t.Context(), "alpha")
+	info, err := bots.Extensions(t.Context(), "alpha")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,13 +212,13 @@ func TestUserReloadOpensUnopenedAgentAndReportsMCPResults(t *testing.T) {
 func TestUserConcurrentCloseAndReloadLeavesNoOpenResources(t *testing.T) {
 	// Given an idle engine; race shutdown against reload at the public boundary.
 	for range 20 {
-		agents := coreEngine(t, Config{})
-		coreCreate(t, agents, "alpha", coreOptions("echo"))
+		bots := coreEngine(t, Config{})
+		coreCreate(t, bots, "alpha", coreOptions("echo"))
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		start, reloaded := make(chan struct{}), make(chan error, 1)
-		go func() { <-start; reloaded <- agents.Reload(ctx, "alpha") }()
+		go func() { <-start; reloaded <- bots.Reload(ctx, "alpha") }()
 		close(start)
-		closeErr := agents.Close(ctx)
+		closeErr := bots.Close(ctx)
 		reloadErr := <-reloaded
 		cancel()
 		if closeErr != nil {
@@ -228,10 +228,10 @@ func TestUserConcurrentCloseAndReloadLeavesNoOpenResources(t *testing.T) {
 			t.Fatal(reloadErr)
 		}
 		// Then Close owns every installed resource and future Reload reports ErrClosed.
-		if err := agents.Reload(t.Context(), "alpha"); !errors.Is(err, ErrClosed) {
+		if err := bots.Reload(t.Context(), "alpha"); !errors.Is(err, ErrClosed) {
 			t.Fatalf("Reload after Close: %v", err)
 		}
-		for _, resource := range agents.resources {
+		for _, resource := range bots.resources {
 			select {
 			case <-resource.harness.Closed():
 			default:
@@ -261,11 +261,11 @@ func TestUserCloseDuringReloadReportsClosed(t *testing.T) {
 	starts := filepath.Join(t.TempDir(), "starts")
 	config.MCPServers = testMCPStore(t, config.DataDir)
 	testSetMCP(t, config.MCPServers, "alpha", "silent", serverConfig{Command: binary, Args: []string{"-test.run=^TestUserCloseDuringReloadReportsClosed$"}, Env: map[string]string{"DEX_CORE_SILENT_CHILD": "1", "MCP_STARTS": starts}})
-	agents := coreEngine(t, config)
+	bots := coreEngine(t, config)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	reloaded := make(chan error, 1)
-	go func() { reloaded <- agents.Reload(ctx, "alpha") }()
+	go func() { reloaded <- bots.Reload(ctx, "alpha") }()
 	for deadline := time.Now().Add(20 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		if _, err := os.Stat(starts); err == nil {
 			break
@@ -275,8 +275,8 @@ func TestUserCloseDuringReloadReportsClosed(t *testing.T) {
 		}
 	}
 
-	// When the engine closes while Reload opens the agent.
-	if err := agents.Close(ctx); err != nil {
+	// When the engine closes while Reload opens the bot.
+	if err := bots.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
 

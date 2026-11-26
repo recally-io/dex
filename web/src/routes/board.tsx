@@ -3,10 +3,10 @@ import { formatDistanceToNow } from "date-fns";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
-import { listAgentsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
+import { listBotsOptions, listTasksOptions } from "../api/generated/@tanstack/react-query.gen";
 import { createTask } from "../api/generated/sdk.gen";
-import type { Agent, TaskSummary } from "../api/generated/types.gen";
-import { AgentAvatar } from "../components/agent-avatar";
+import type { Bot, TaskSummary } from "../api/generated/types.gen";
+import { BotAvatar } from "../components/bot-avatar";
 import { QuestionRow, ResultGroupRow, TaskReviewRow, groupResults } from "../components/board-results";
 import { Failure, Loading } from "../components/feedback";
 import { HeldEventRows } from "../components/held-events";
@@ -20,13 +20,13 @@ import { isClosed, statusLabel } from "../lib/tasks";
 // Add a Bot filter control here when active tasks routinely exceed 30.
 export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bot?: string) => void }) {
   const [showCompleted, setShowCompleted] = useState(false);
-  const agents = useQuery(listAgentsOptions());
+  const botList = useQuery(listBotsOptions());
   const summary = useQuery(boardAttentionOptions());
   const held = useQuery(heldEventsOptions());
   const tasks = useQuery(listTasksOptions({ query: { botId: bot, includeClosed: true } }));
 
-  const bots = agents.data?.agents ?? [];
-  const botById = new Map<string | undefined, Agent>(bots.map((agent) => [agent.id, agent]));
+  const bots = botList.data?.bots ?? [];
+  const botById = new Map<string | undefined, Bot>(bots.map((item) => [item.id, item]));
 
   const botOf = (id: string) => ({ id, name: botById.get(id)?.name ?? id });
 
@@ -103,8 +103,8 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
               <ul className="divide-y divide-border">
                 {questions.map(({ session, question }) => (
                   <QuestionRow
-                    key={`${session.agentId}:${session.id}:${question.id}`}
-                    agent={botOf(session.agentId)}
+                    key={`${session.botId}:${session.id}:${question.id}`}
+                    bot={botOf(session.botId)}
                     session={session}
                     questionId={question.id}
                     text={question.text}
@@ -112,36 +112,36 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
                   />
                 ))}
                 {taskReviews.map((task) => (
-                  <TaskReviewRow key={task.key} task={task} agent={botOf(task.assigneeBotId)} />
+                  <TaskReviewRow key={task.key} task={task} bot={botOf(task.assigneeBotId)} />
                 ))}
-                {setup.map(({ agentId, id, name, targetSessionId }) => {
-                  const agent = botOf(agentId);
+                {setup.map(({ botId, id, name, targetSessionId }) => {
+                  const setupBot = botOf(botId);
 
                   return (
                     <li key={id} className="flex flex-wrap items-center justify-between gap-3 py-3.5">
                       <div className="flex min-w-0 items-center gap-2.5">
                         <AlertTriangle className="size-4 shrink-0 text-orange" aria-hidden />
-                        <AgentAvatar agent={agent} className="size-5 text-[10px]" />
+                        <BotAvatar bot={setupBot} className="size-5 text-[10px]" />
                         <div className="min-w-0">
                           <p className="truncate text-[14px] font-medium text-foreground">{name}</p>
                           <p className="text-[12.5px] text-muted-foreground">
-                            {agent.name} · No available model
+                            {setupBot.name} · No available model
                           </p>
                         </div>
                       </div>
                       {targetSessionId ? (
                         <Link
                           className={buttonVariants({ variant: "secondary", size: "sm" })}
-                          to="/a/$agentId/s/$sessionId"
-                          params={{ agentId, sessionId: String(targetSessionId) }}
+                          to="/b/$botId/s/$sessionId"
+                          params={{ botId, sessionId: String(targetSessionId) }}
                         >
                           Configure session model
                         </Link>
                       ) : (
                         <Link
                           className={buttonVariants({ variant: "secondary", size: "sm" })}
-                          to="/a/$agentId/agent"
-                          params={{ agentId }}
+                          to="/b/$botId/bot"
+                          params={{ botId }}
                         >
                           Configure model
                         </Link>
@@ -158,7 +158,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
             <BoardSection title="Blocked" count={blockedTasks.length}>
               <ul className="divide-y divide-border">
                 {blockedTasks.map((task) => (
-                  <TaskRow key={task.id} task={task} agent={botOf(task.assigneeBotId)} />
+                  <TaskRow key={task.id} task={task} bot={botOf(task.assigneeBotId)} />
                 ))}
               </ul>
             </BoardSection>
@@ -168,7 +168,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
             <BoardSection title="Active" count={activeTasks.length}>
               <ul className="divide-y divide-border">
                 {activeTasks.map((task) => (
-                  <TaskRow key={task.id} task={task} agent={botOf(task.assigneeBotId)} />
+                  <TaskRow key={task.id} task={task} bot={botOf(task.assigneeBotId)} />
                 ))}
               </ul>
             </BoardSection>
@@ -194,7 +194,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
               {dismissAll.error ? <Failure title="Could not clear updates" error={dismissAll.error} /> : null}
               <ul className="divide-y divide-border">
                 {resultGroups.map((group) => (
-                  <ResultGroupRow key={group.automationId} group={group} agent={botOf(group.agentId)} />
+                  <ResultGroupRow key={group.automationId} group={group} bot={botOf(group.botId)} />
                 ))}
               </ul>
             </BoardSection>
@@ -204,7 +204,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
             <BoardSection title="Later" count={laterTasks.length}>
               <ul className="divide-y divide-border">
                 {laterTasks.map((task) => (
-                  <TaskRow key={task.id} task={task} agent={botOf(task.assigneeBotId)} />
+                  <TaskRow key={task.id} task={task} bot={botOf(task.assigneeBotId)} />
                 ))}
               </ul>
             </BoardSection>
@@ -233,7 +233,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
               {showCompleted ? (
                 <ul className="mt-1 divide-y divide-border">
                   {completedTasks.map((task) => (
-                    <TaskRow key={task.id} task={task} agent={botOf(task.assigneeBotId)} muted />
+                    <TaskRow key={task.id} task={task} bot={botOf(task.assigneeBotId)} muted />
                   ))}
                 </ul>
               ) : null}
@@ -270,11 +270,11 @@ function BoardSection({
   );
 }
 
-function QuickAddTask({ bot, bots }: { bot?: string; bots: Agent[] }) {
+function QuickAddTask({ bot, bots }: { bot?: string; bots: Bot[] }) {
   const [title, setTitle] = useState("");
   const [selected, setSelected] = useState("");
   const client = useQueryClient();
-  const assigneeBotId = selected || bots.find((agent) => agent.id === bot)?.id || bots[0]?.id || "";
+  const assigneeBotId = selected || bots.find((item) => item.id === bot)?.id || bots[0]?.id || "";
 
   const create = useMutation({
     mutationFn: () =>
@@ -319,9 +319,9 @@ function QuickAddTask({ bot, bots }: { bot?: string; bots: Agent[] }) {
             onChange={(event) => setSelected(event.target.value)}
             className="h-7 max-w-36 shrink-0 truncate rounded-control bg-muted/60 px-2 text-[12.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none"
           >
-            {bots.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
+            {bots.map((choice) => (
+              <option key={choice.id} value={choice.id}>
+                {choice.name}
               </option>
             ))}
           </select>
@@ -339,11 +339,11 @@ function QuickAddTask({ bot, bots }: { bot?: string; bots: Agent[] }) {
 
 function TaskRow({
   task,
-  agent,
+  bot,
   muted = false,
 }: {
   task: TaskSummary;
-  agent: Pick<Agent, "id" | "name">;
+  bot: Pick<Bot, "id" | "name">;
   muted?: boolean;
 }) {
   const hint = taskStatusHint(task);
@@ -376,8 +376,8 @@ function TaskRow({
           >
             {hint.label}
           </span>
-          <AgentAvatar agent={agent} className="size-5 text-[10px]" />
-          <span className="hidden max-w-24 truncate sm:inline">{agent.name}</span>
+          <BotAvatar bot={bot} className="size-5 text-[10px]" />
+          <span className="hidden max-w-24 truncate sm:inline">{bot.name}</span>
           <span aria-hidden className="hidden md:inline">
             ·
           </span>

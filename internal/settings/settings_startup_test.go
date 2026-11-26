@@ -45,12 +45,12 @@ func TestUserModelChecksDistinguishPendingDiscoveryFromInvalidModels(t *testing.
 			t.Fatal(err)
 		}
 	}
-	agents, err := engine.New(engine.Config{DataDir: t.TempDir(), Home: t.TempDir(), FakeModel: true})
+	bots, err := engine.New(engine.Config{DataDir: t.TempDir(), Home: t.TempDir(), FakeModel: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = agents.Close(context.WithoutCancel(t.Context())) })
-	service := New(q, agents.Catalog, nil, nil)
+	t.Cleanup(func() { _ = bots.Close(context.WithoutCancel(t.Context())) })
+	service := New(q, bots.Catalog, nil, nil)
 	discovery, err := service.RegisterProviders(t.Context())
 	if err != nil {
 		t.Fatal(err)

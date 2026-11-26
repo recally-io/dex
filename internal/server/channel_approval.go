@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/bot"
 )
 
 var channelApprovalPage = template.Must(template.New("channel approval").Parse(`<!doctype html>
@@ -54,18 +54,18 @@ func (h *handler) channelApproval(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	id := r.PathValue("id")
-	var review *agent.ChannelApproval
+	var review *bot.ChannelApproval
 	if r.Method == http.MethodPost {
 		if err := r.ParseForm(); err != nil || r.PostForm.Get("confirm") != "yes" {
 			deny(http.StatusBadRequest, "Use the confirmation button on the review page.")
 			return
 		}
-		if err := h.Agents.ConfirmChannelChange(r.Context(), id); err != nil {
+		if err := h.Bots.ConfirmChannelChange(r.Context(), id); err != nil {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
 	} else {
-		p, err := h.Agents.ChannelApproval(id)
+		p, err := h.Bots.ChannelApproval(id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return

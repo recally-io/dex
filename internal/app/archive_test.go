@@ -18,7 +18,7 @@ func (d *dex) archive(t *testing.T, method string, sessionID int64, want int) ar
 	if want != http.StatusOK {
 		out = nil
 	}
-	d.must(t, method, fmt.Sprintf("/api/agents/default/sessions/%d/archive", sessionID), nil, out, want)
+	d.must(t, method, fmt.Sprintf("/api/bots/default/sessions/%d/archive", sessionID), nil, out, want)
 	return c
 }
 
@@ -27,7 +27,7 @@ func listed(t *testing.T, d *dex, id int64) (archivedInfo, bool) {
 	var list struct {
 		Sessions []archivedInfo `json:"sessions"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/sessions", nil, &list)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions", nil, &list)
 	for _, c := range list.Sessions {
 		if c.ID == id {
 			return c, true
@@ -50,7 +50,7 @@ func TestUserArchivesAndRestoresSessionSession(t *testing.T) {
 		t.Fatalf("archived session: %+v", archived)
 	}
 	var got archivedInfo
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", session), nil, &got)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", session), nil, &got)
 	if got.ArchivedAt == nil || *got.ArchivedAt != *archived.ArchivedAt {
 		t.Fatalf("session after archive: %+v", got)
 	}

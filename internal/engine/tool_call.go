@@ -13,7 +13,7 @@ import (
 
 // TaskContext binds a tool invocation to its persisted initiating input.
 type TaskContext struct {
-	AgentID         string
+	BotID           string
 	ConversationID  int64
 	SourceRequestID string
 	RunInputIDs     []string
@@ -35,24 +35,24 @@ type RunnerInfo struct {
 // ToolCall provides the execution context of one durable tool invocation.
 // Source lookup is explicit so each tool can keep its argument validation order.
 type ToolCall struct {
-	api     durable.ToolExecutionApi
-	agentID string
+	api   durable.ToolExecutionApi
+	botID string
 }
 
-func BindTool(agentID string, execute func(context.Context, any, ToolCall) (durable.ToolExecutionResult, error)) func(context.Context, any, durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
+func BindTool(botID string, execute func(context.Context, any, ToolCall) (durable.ToolExecutionResult, error)) func(context.Context, any, durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
 	return func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
-		return execute(ctx, raw, ToolCall{api: api, agentID: agentID})
+		return execute(ctx, raw, ToolCall{api: api, botID: botID})
 	}
 }
 
 func (c ToolCall) ConversationID() int64                      { return int64(c.api.ConversationId()) }
-func (c ToolCall) Key() string                                { return fmt.Sprintf("%s/%d", c.agentID, c.api.TaskId()) }
+func (c ToolCall) Key() string                                { return fmt.Sprintf("%s/%d", c.botID, c.api.TaskId()) }
 func (c ToolCall) Source(ctx context.Context) (string, error) { return taskSource(ctx, c.api) }
 func (c ToolCall) Context(ctx context.Context) (TaskContext, error) {
-	return toolCall(ctx, c.api, c.agentID)
+	return toolCall(ctx, c.api, c.botID)
 }
 func (c ToolCall) TurnEnding(ctx context.Context, name string) (TaskContext, error) {
-	return turnEndingCall(ctx, c.api, c.agentID, name)
+	return turnEndingCall(ctx, c.api, c.botID, name)
 }
 
 func (c ToolCall) SetCwd(ctx context.Context, path string) error {
@@ -67,7 +67,7 @@ func (c ToolCall) SetCwd(ctx context.Context, path string) error {
 }
 
 // JSONTool binds a typed operation to its source input and encodes the result.
-func JSONTool[A, R any](agentID, name, description string, schema map[string]any, present bool, invoke func(context.Context, TaskContext, A) (R, error)) *durable.ToolRegistration {
+func JSONTool[A, R any](botID, name, description string, schema map[string]any, present bool, invoke func(context.Context, TaskContext, A) (R, error)) *durable.ToolRegistration {
 	return &durable.ToolRegistration{
 		Name: name, Description: description, Parameters: schema, Replay: durable.ReplaySafe,
 		Execute: func(ctx context.Context, raw any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
@@ -82,7 +82,7 @@ func JSONTool[A, R any](agentID, name, description string, schema map[string]any
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			source := TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}
+			source := TaskContext{BotID: botID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, Key: fmt.Sprintf("%s/%d", botID, api.TaskId())}
 			result, err := invoke(ctx, source, args)
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
@@ -107,7 +107,7 @@ func ObjectSchema(required []string, properties map[string]any) map[string]any {
 // turnEndingCall returns the call context of a tool that ends the turn with Terminate. Native
 // Terminate ends the turn only when every call of the round asks for it. The round's tool slots are
 // saved before any tool starts, so a mixed round is visible here.
-func turnEndingCall(ctx context.Context, api durable.ToolExecutionApi, agentID, tool string) (TaskContext, error) {
+func turnEndingCall(ctx context.Context, api durable.ToolExecutionApi, botID, tool string) (TaskContext, error) {
 	live, err := durable.Snapshot[harness.LiveState](ctx, api, harness.LiveDoc, api.ConversationId())
 	if err != nil {
 		return TaskContext{}, err
@@ -115,11 +115,11 @@ func turnEndingCall(ctx context.Context, api durable.ToolExecutionApi, agentID, 
 	if live == nil || len(live.Tools) != 1 {
 		return TaskContext{}, fmt.Errorf("%s must be the only tool call", tool)
 	}
-	return toolCall(ctx, api, agentID)
+	return toolCall(ctx, api, botID)
 }
 
-// toolCall names the agent, the conversation, the source input, live run inputs, and the tool operation key of a call.
-func toolCall(ctx context.Context, api durable.ToolExecutionApi, agentID string) (TaskContext, error) {
+// toolCall names the bot, the conversation, the source input, live run inputs, and the tool operation key of a call.
+func toolCall(ctx context.Context, api durable.ToolExecutionApi, botID string) (TaskContext, error) {
 	requestID, err := taskSource(ctx, api)
 	if err != nil {
 		return TaskContext{}, err
@@ -131,7 +131,7 @@ func toolCall(ctx context.Context, api durable.ToolExecutionApi, agentID string)
 	if len(inputIDs) == 0 {
 		inputIDs = []string{requestID}
 	}
-	return TaskContext{AgentID: agentID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, RunInputIDs: inputIDs, Key: fmt.Sprintf("%s/%d", agentID, api.TaskId())}, nil
+	return TaskContext{BotID: botID, ConversationID: int64(api.ConversationId()), SourceRequestID: requestID, RunInputIDs: inputIDs, Key: fmt.Sprintf("%s/%d", botID, api.TaskId())}, nil
 }
 
 func runInputRequestIDs(ctx context.Context, api durable.ToolExecutionApi) ([]string, error) {

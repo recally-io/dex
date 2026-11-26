@@ -489,12 +489,12 @@ func TestUserSessionReadReturnsOnlyInputsAndAnswers(t *testing.T) {
 	main := d.mainSession(t)
 	d.send(t, main, "main only")
 	d.watch(t, main).until(t, "main answer", answeredWith("echo: main only"))
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
+	var other apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
 	var otherMain sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/"+other.ID+"/sessions/main", nil, &otherMain)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "other bot secret"}, nil, http.StatusAccepted)
-	d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: other bot secret"))
+	d.must(t, http.MethodGet, "/api/bots/"+other.ID+"/sessions/main", nil, &otherMain)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "other bot secret"}, nil, http.StatusAccepted)
+	d.watchPath(t, fmt.Sprintf("/api/bots/%s/sessions/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: other bot secret"))
 	dream := sessionFixture(t, d, "dream:private", 1)
 	if _, err := sessionDB(t, d).ExecContext(t.Context(), "INSERT INTO submissions (id, session_id, content, attachments, kind, status, created_at) VALUES ('dream-turn', ?, 'dream input', 'null', 'message', 'done', 2)", dream); err != nil {
 		t.Fatal(err)
@@ -590,12 +590,12 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	d.watch(t, notes).until(t, "answer", answeredWith("echo: 数据库迁移方案已经确定"))
 	english := d.newSessionWithMessage(t, "Quarterly Report draft for Alpha")
 	d.watch(t, english).until(t, "answer", answeredWith("echo: Quarterly Report draft for Alpha"))
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
+	var other apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
 	var otherMain sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/"+other.ID+"/sessions/main", nil, &otherMain)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "zebra quarterly"}, nil, http.StatusAccepted)
-	d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: zebra quarterly"))
+	d.must(t, http.MethodGet, "/api/bots/"+other.ID+"/sessions/main", nil, &otherMain)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "zebra quarterly"}, nil, http.StatusAccepted)
+	d.watchPath(t, fmt.Sprintf("/api/bots/%s/sessions/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: zebra quarterly"))
 	// The parent of the child holds the result rows. The Session that searches is another one.
 	parent := newParent(t, d)
 	spawnChild(t, d, parent, "Finder", "child-only needle", "echo")
@@ -648,7 +648,7 @@ func childCwd(t *testing.T, conn *sql.DB, child int64) string {
 
 func TestUserChildSessionRunsInTheGivenProject(t *testing.T) {
 	t.Parallel()
-	// Given a parent in the agent workspace and a project with a skill that only the project has.
+	// Given a parent in the bot workspace and a project with a skill that only the project has.
 	data := t.TempDir()
 	project, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {

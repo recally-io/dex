@@ -11,33 +11,33 @@ import (
 	"github.com/recally-io/dex/internal/vault"
 )
 
-func (a *Agents) VaultList(agentID string) ([]vault.Metadata, error) {
-	if !agentIDPattern.MatchString(agentID) {
+func (a *Bots) VaultList(botID string) ([]vault.Metadata, error) {
+	if !botIDPattern.MatchString(botID) {
 		return nil, ErrInvalidInput
 	}
-	snapshot, err := a.vault.Load(agentID)
+	snapshot, err := a.vault.Load(botID)
 	return snapshot.All(), err
 }
 
-func (a *Agents) VaultEdit(agentID, scope, name string, value *string) error {
-	if !agentIDPattern.MatchString(agentID) {
+func (a *Bots) VaultEdit(botID, scope, name string, value *string) error {
+	if !botIDPattern.MatchString(botID) {
 		return ErrInvalidInput
 	}
-	err := a.vault.Edit(agentID, scope, name, value)
+	err := a.vault.Edit(botID, scope, name, value)
 	if errors.Is(err, vault.ErrInvalid) {
 		return errors.Join(ErrInvalidInput, err)
 	}
 	if err == nil {
-		a.markExtensionChange(agentID, scope, "vault write")
+		a.markExtensionChange(botID, scope, "vault write")
 	}
 	return err
 }
 
-func vaultExtension(agentID string, secrets vault.Snapshot) *durable.Extension {
+func vaultExtension(botID string, secrets vault.Snapshot) *durable.Extension {
 	return &durable.Extension{
 		Name: "vault",
 		Tools: []*durable.ToolRegistration{
-			JSONTool(agentID, "secret_list", "List the available vault secrets by name, level, and last change. Values are not returned. Use vault:NAME to refer to a secret.",
+			JSONTool(botID, "secret_list", "List the available vault secrets by name, level, and last change. Values are not returned. Use vault:NAME to refer to a secret.",
 				ObjectSchema([]string{}, map[string]any{}), true, func(context.Context, TaskContext, struct{}) ([]vault.Metadata, error) {
 					return secrets.List(), nil
 				}),

@@ -24,8 +24,8 @@ type WithdrawnMessage struct {
 // Withdraw removes one queued message of a writable session. Native execution decides whether the
 // input is still queued; the receipt then settles as withdrawn and keeps its request ID and
 // source key. A repeated call returns the same message.
-func (s *Service) Withdraw(ctx context.Context, agentID string, sessionID int64, id string) (WithdrawnMessage, error) {
-	c, err := s.Get(ctx, agentID, sessionID)
+func (s *Service) Withdraw(ctx context.Context, botID string, sessionID int64, id string) (WithdrawnMessage, error) {
+	c, err := s.Get(ctx, botID, sessionID)
 	if err != nil {
 		return WithdrawnMessage{}, err
 	}
@@ -70,7 +70,7 @@ func (s *Service) Withdraw(ctx context.Context, agentID string, sessionID int64,
 		return WithdrawnMessage{}, err
 	}
 	if conv.ExecutionID.Valid {
-		outcome, err := s.engine.Withdraw(ctx, engine.Ref{AgentID: agentID, ID: conv.ExecutionID.Int64}, id)
+		outcome, err := s.engine.Withdraw(ctx, engine.Ref{BotID: botID, ID: conv.ExecutionID.Int64}, id)
 		if err != nil {
 			return WithdrawnMessage{}, err
 		}

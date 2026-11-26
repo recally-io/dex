@@ -10,35 +10,35 @@ import (
 )
 
 const getMCPServer = `-- name: GetMCPServer :one
-SELECT config FROM mcp_servers WHERE agent_id = ? AND name = ?
+SELECT config FROM mcp_servers WHERE bot_id = ? AND name = ?
 `
 
 type GetMCPServerParams struct {
-	AgentID string `json:"agent_id"`
-	Name    string `json:"name"`
+	BotID string `json:"bot_id"`
+	Name  string `json:"name"`
 }
 
 func (q *Queries) GetMCPServer(ctx context.Context, arg GetMCPServerParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, getMCPServer, arg.AgentID, arg.Name)
+	row := q.db.QueryRowContext(ctx, getMCPServer, arg.BotID, arg.Name)
 	var config string
 	err := row.Scan(&config)
 	return config, err
 }
 
 const listMCPServers = `-- name: ListMCPServers :many
-SELECT agent_id, name, config FROM mcp_servers
-WHERE agent_id = '' OR agent_id = ?
-ORDER BY agent_id, position
+SELECT bot_id, name, config FROM mcp_servers
+WHERE bot_id = '' OR bot_id = ?
+ORDER BY bot_id, position
 `
 
 type ListMCPServersRow struct {
-	AgentID string `json:"agent_id"`
-	Name    string `json:"name"`
-	Config  string `json:"config"`
+	BotID  string `json:"bot_id"`
+	Name   string `json:"name"`
+	Config string `json:"config"`
 }
 
-func (q *Queries) ListMCPServers(ctx context.Context, agentID string) ([]ListMCPServersRow, error) {
-	rows, err := q.db.QueryContext(ctx, listMCPServers, agentID)
+func (q *Queries) ListMCPServers(ctx context.Context, botID string) ([]ListMCPServersRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMCPServers, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (q *Queries) ListMCPServers(ctx context.Context, agentID string) ([]ListMCP
 	items := []ListMCPServersRow{}
 	for rows.Next() {
 		var i ListMCPServersRow
-		if err := rows.Scan(&i.AgentID, &i.Name, &i.Config); err != nil {
+		if err := rows.Scan(&i.BotID, &i.Name, &i.Config); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -61,16 +61,16 @@ func (q *Queries) ListMCPServers(ctx context.Context, agentID string) ([]ListMCP
 }
 
 const removeMCPServer = `-- name: RemoveMCPServer :execrows
-DELETE FROM mcp_servers WHERE agent_id = ? AND name = ?
+DELETE FROM mcp_servers WHERE bot_id = ? AND name = ?
 `
 
 type RemoveMCPServerParams struct {
-	AgentID string `json:"agent_id"`
-	Name    string `json:"name"`
+	BotID string `json:"bot_id"`
+	Name  string `json:"name"`
 }
 
 func (q *Queries) RemoveMCPServer(ctx context.Context, arg RemoveMCPServerParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, removeMCPServer, arg.AgentID, arg.Name)
+	result, err := q.db.ExecContext(ctx, removeMCPServer, arg.BotID, arg.Name)
 	if err != nil {
 		return 0, err
 	}
@@ -78,20 +78,20 @@ func (q *Queries) RemoveMCPServer(ctx context.Context, arg RemoveMCPServerParams
 }
 
 const setMCPServer = `-- name: SetMCPServer :exec
-INSERT INTO mcp_servers (agent_id, name, config, position, updated_at)
+INSERT INTO mcp_servers (bot_id, name, config, position, updated_at)
 VALUES (?1, ?2, ?3,
-    (SELECT coalesce(max(position), 0) + 1 FROM mcp_servers WHERE agent_id = ?1),
+    (SELECT coalesce(max(position), 0) + 1 FROM mcp_servers WHERE bot_id = ?1),
     unixepoch())
-ON CONFLICT (agent_id, name) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at
+ON CONFLICT (bot_id, name) DO UPDATE SET config = excluded.config, updated_at = excluded.updated_at
 `
 
 type SetMCPServerParams struct {
-	AgentID string `json:"agent_id"`
-	Name    string `json:"name"`
-	Config  string `json:"config"`
+	BotID  string `json:"bot_id"`
+	Name   string `json:"name"`
+	Config string `json:"config"`
 }
 
 func (q *Queries) SetMCPServer(ctx context.Context, arg SetMCPServerParams) error {
-	_, err := q.db.ExecContext(ctx, setMCPServer, arg.AgentID, arg.Name, arg.Config)
+	_, err := q.db.ExecContext(ctx, setMCPServer, arg.BotID, arg.Name, arg.Config)
 	return err
 }

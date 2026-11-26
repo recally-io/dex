@@ -13,7 +13,7 @@ import (
 
 func localWorkspaceReader(dataDir string) artifact.WorkspaceReader {
 	return func(_ context.Context, caller engine.TaskContext, relPath string, maxBytes int64) ([]byte, error) {
-		root, err := os.OpenRoot(filepath.Join(dataDir, "agents", caller.AgentID, "workspace"))
+		root, err := os.OpenRoot(filepath.Join(dataDir, "agents", caller.BotID, "workspace"))
 		if err != nil {
 			return nil, err
 		}
@@ -125,7 +125,7 @@ func TestUserCannotDeliverOutsideWorkspaceOrOverTheLimit(t *testing.T) {
 	}
 	service := artifact.New(data, localWorkspaceReader(data))
 	for _, path := range []string{"../outside.md", outside, "link", "large.bin"} {
-		if _, err := service.Deliver(t.Context(), engine.TaskContext{AgentID: "default"}, path); err == nil {
+		if _, err := service.Deliver(t.Context(), engine.TaskContext{BotID: "default"}, path); err == nil {
 			t.Fatalf("delivered %s", path)
 		}
 	}

@@ -3,15 +3,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { listAutomationResultsOptions } from "../api/generated/@tanstack/react-query.gen";
 import {
-  createAgentSession,
+  createBotSession,
   dismissAutomationResult,
-  listAgentRunners,
+  listBotRunners,
   readAutomationResult,
   sendMessage,
   setSessionRunner,
   setSessionProject,
 } from "../api/generated/sdk.gen";
-import type { AgentRunners, AutomationResult, Ok } from "../api/generated/types.gen";
+import type { BotRunners, AutomationResult, Ok } from "../api/generated/types.gen";
 import { queryClient, refreshBoardAttention, refreshSessions } from "./queries";
 import { newId } from "./utils";
 
@@ -76,10 +76,7 @@ export function useDismissResults() {
   });
 }
 
-type ResultQuote = Pick<
-  AutomationResult,
-  "automationName" | "summary" | "agentId" | "sessionId" | "runId"
-> & {
+type ResultQuote = Pick<AutomationResult, "automationName" | "summary" | "botId" | "sessionId" | "runId"> & {
   outcome: AutomationResult["outcome"] | "unchanged" | "unknown";
 };
 
@@ -89,7 +86,7 @@ export function resultQuote(item: ResultQuote) {
     item.automationName,
     `Outcome: ${item.outcome}`,
     item.summary,
-    `Run transcript: /a/${item.agentId}/s/${item.sessionId} (run ${item.runId})`,
+    `Run transcript: /b/${item.botId}/s/${item.sessionId} (run ${item.runId})`,
   ]
     .join("\n\n")
     .split("\n")
@@ -103,7 +100,7 @@ export function resultQuote(item: ResultQuote) {
 // paths and files exist only where it ran, so the session pins local, SSH, or Runner.
 // An E2B selection does not identify the exact sandbox. Older runs may record
 // no environment. Stop rather than guess.
-export function continuationRunner(ranIn: string, runners: AgentRunners["runners"]) {
+export function continuationRunner(ranIn: string, runners: BotRunners["runners"]) {
   const env = runners.find((e) => e.id === ranIn);
 
   if (env && env.kind !== "e2b" && env.status === "available") return env.id;
@@ -132,20 +129,20 @@ export function useContinueResult() {
 
   return useMutation({
     mutationFn: async ({ result, message }: { result: ContinuableResult; message?: string }) => {
-      const { agentId, runId } = result;
+      const { botId, runId } = result;
       let attempt = attempts.current.get(runId);
 
       if (!attempt) {
-        const list = await listAgentRunners({ path: { agentId }, throwOnError: true });
+        const list = await listBotRunners({ path: { botId }, throwOnError: true });
         const runnerId = continuationRunner(result.runnerId ?? "", list.data.runners);
-        const session = await createAgentSession({ path: { agentId }, throwOnError: true });
+        const session = await createBotSession({ path: { botId }, throwOnError: true });
         attempt = { sessionId: session.data.id, messageId: newId(), runnerId, configured: false };
         // A retry of the same run keeps the session and message ID.
         attempts.current.set(runId, attempt);
       }
 
       const { sessionId, messageId, runnerId } = attempt;
-      const path = { agentId, sessionId };
+      const path = { botId, sessionId };
 
       if (!attempt.configured) {
         // The project path belongs to this Runner. Select it before setting the project.
@@ -161,8 +158,8 @@ export function useContinueResult() {
         body: { id: messageId, text: extra ? `${quote}\n\n${extra}` : quote },
         throwOnError: true,
       });
-      await Promise.all([refreshSessions(agentId), refreshAutomationResults(client)]);
-      await navigate({ to: "/a/$agentId/s/$sessionId", params: { agentId, sessionId: String(sessionId) } });
+      await Promise.all([refreshSessions(botId), refreshAutomationResults(client)]);
+      await navigate({ to: "/b/$botId/s/$sessionId", params: { botId, sessionId: String(sessionId) } });
       attempts.current.delete(runId);
     },
   });

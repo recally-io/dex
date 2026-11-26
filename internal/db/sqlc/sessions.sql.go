@@ -11,13 +11,13 @@ import (
 )
 
 const createChildSession = `-- name: CreateChildSession :one
-INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
+INSERT INTO sessions (bot_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
+RETURNING id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id
 `
 
 type CreateChildSessionParams struct {
-	AgentID       string        `json:"agent_id"`
+	BotID         string        `json:"bot_id"`
 	ChannelKey    string        `json:"channel_key"`
 	Title         string        `json:"title"`
 	ModelProvider string        `json:"model_provider"`
@@ -32,7 +32,7 @@ type CreateChildSessionParams struct {
 // A child session is a Session with a parent. Its first turn is stored in the same transaction.
 func (q *Queries) CreateChildSession(ctx context.Context, arg CreateChildSessionParams) (Session, error) {
 	row := q.db.QueryRowContext(ctx, createChildSession,
-		arg.AgentID,
+		arg.BotID,
 		arg.ChannelKey,
 		arg.Title,
 		arg.ModelProvider,
@@ -46,7 +46,7 @@ func (q *Queries) CreateChildSession(ctx context.Context, arg CreateChildSession
 	var i Session
 	err := row.Scan(
 		&i.ID,
-		&i.AgentID,
+		&i.BotID,
 		&i.ChannelKey,
 		&i.ExecutionID,
 		&i.CreatedAt,
@@ -239,8 +239,8 @@ func (q *Queries) LatestTurn(ctx context.Context, sessionID int64) (LatestTurnRo
 }
 
 const listChannelChildren = `-- name: ListChannelChildren :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions
-WHERE parent_id = ?1 AND agent_id = ?2
+SELECT id, bot_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions
+WHERE parent_id = ?1 AND bot_id = ?2
     AND channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY id DESC
 LIMIT 50
@@ -248,11 +248,11 @@ LIMIT 50
 
 type ListChannelChildrenParams struct {
 	ParentID sql.NullInt64 `json:"parent_id"`
-	AgentID  string        `json:"agent_id"`
+	BotID    string        `json:"bot_id"`
 }
 
 func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildrenParams) ([]Session, error) {
-	rows, err := q.db.QueryContext(ctx, listChannelChildren, arg.ParentID, arg.AgentID)
+	rows, err := q.db.QueryContext(ctx, listChannelChildren, arg.ParentID, arg.BotID)
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (q *Queries) ListChannelChildren(ctx context.Context, arg ListChannelChildr
 		var i Session
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
+			&i.BotID,
 			&i.ChannelKey,
 			&i.ExecutionID,
 			&i.CreatedAt,
@@ -354,7 +354,7 @@ func (q *Queries) ListParentInputStops(ctx context.Context, sessionID int64) ([]
 }
 
 const listRecoveryChildren = `-- name: ListRecoveryChildren :many
-SELECT DISTINCT c.id, c.agent_id, c.execution_id
+SELECT DISTINCT c.id, c.bot_id, c.execution_id
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
@@ -364,7 +364,7 @@ ORDER BY c.id
 
 type ListRecoveryChildrenRow struct {
 	ID          int64         `json:"id"`
-	AgentID     string        `json:"agent_id"`
+	BotID       string        `json:"bot_id"`
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
@@ -379,7 +379,7 @@ func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChild
 	items := []ListRecoveryChildrenRow{}
 	for rows.Next() {
 		var i ListRecoveryChildrenRow
-		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
+		if err := rows.Scan(&i.ID, &i.BotID, &i.ExecutionID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -394,14 +394,14 @@ func (q *Queries) ListRecoveryChildren(ctx context.Context) ([]ListRecoveryChild
 }
 
 const listRecoveryParentInputStops = `-- name: ListRecoveryParentInputStops :many
-SELECT s.id, c.agent_id, c.execution_id
+SELECT s.id, c.bot_id, c.execution_id
 FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%'
 `
 
 type ListRecoveryParentInputStopsRow struct {
 	ID          string        `json:"id"`
-	AgentID     string        `json:"agent_id"`
+	BotID       string        `json:"bot_id"`
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
@@ -414,7 +414,7 @@ func (q *Queries) ListRecoveryParentInputStops(ctx context.Context) ([]ListRecov
 	items := []ListRecoveryParentInputStopsRow{}
 	for rows.Next() {
 		var i ListRecoveryParentInputStopsRow
-		if err := rows.Scan(&i.ID, &i.AgentID, &i.ExecutionID); err != nil {
+		if err := rows.Scan(&i.ID, &i.BotID, &i.ExecutionID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -431,8 +431,8 @@ func (q *Queries) ListRecoveryParentInputStops(ctx context.Context) ([]ListRecov
 const listSessions = `-- name: ListSessions :many
 SELECT
     c.id,
-    c.agent_id,
-    a.name AS agent_name,
+    c.bot_id,
+    a.name AS bot_name,
     c.title,
     c.model_provider,
     c.model_id,
@@ -444,11 +444,11 @@ SELECT
     ) AS INTEGER) AS updated_at,
     CAST((SELECT count(*) FROM submissions s WHERE s.session_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
 FROM sessions c
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 WHERE c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.parent_id = ?1 OR (
         CAST(?2 AS INTEGER) = 1
-        AND (CAST(?3 AS INTEGER) = 1 OR c.agent_id = ?4)
+        AND (CAST(?3 AS INTEGER) = 1 OR c.bot_id = ?4)
     ))
 ORDER BY updated_at DESC, c.id DESC
 LIMIT ?5
@@ -458,14 +458,14 @@ type ListSessionsParams struct {
 	ParentID    sql.NullInt64 `json:"parent_id"`
 	AllSessions int64         `json:"all_sessions"`
 	AllBots     int64         `json:"all_bots"`
-	AgentID     string        `json:"agent_id"`
+	BotID       string        `json:"bot_id"`
 	MaxRows     int64         `json:"max_rows"`
 }
 
 type ListSessionsRow struct {
 	ID            int64         `json:"id"`
-	AgentID       string        `json:"agent_id"`
-	AgentName     string        `json:"agent_name"`
+	BotID         string        `json:"bot_id"`
+	BotName       string        `json:"bot_name"`
 	Title         string        `json:"title"`
 	ModelProvider string        `json:"model_provider"`
 	ModelID       string        `json:"model_id"`
@@ -481,7 +481,7 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 		arg.ParentID,
 		arg.AllSessions,
 		arg.AllBots,
-		arg.AgentID,
+		arg.BotID,
 		arg.MaxRows,
 	)
 	if err != nil {
@@ -493,8 +493,8 @@ func (q *Queries) ListSessions(ctx context.Context, arg ListSessionsParams) ([]L
 		var i ListSessionsRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.AgentID,
-			&i.AgentName,
+			&i.BotID,
+			&i.BotName,
 			&i.Title,
 			&i.ModelProvider,
 			&i.ModelID,
@@ -624,13 +624,13 @@ func (q *Queries) RequestParentInputStop(ctx context.Context, sessionID int64) e
 }
 
 const searchTurns = `-- name: SearchTurns :many
-SELECT s.id, s.session_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
+SELECT s.id, s.session_id, c.bot_id, a.name AS bot_name, c.title, s.content, s.answer, s.created_at
 FROM submissions s
 JOIN sessions c ON c.id = s.session_id
-JOIN agents a ON a.id = c.agent_id
+JOIN bots a ON a.id = c.bot_id
 WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.id <> ?1
-    AND (CAST(?2 AS INTEGER) = 1 OR c.agent_id = ?3)
+    AND (CAST(?2 AS INTEGER) = 1 OR c.bot_id = ?3)
     AND (CAST(?4 AS INTEGER) = 0 OR c.id = ?4)
     AND s.created_at >= ?5
     AND (CAST(?6 AS TEXT) = '' OR instr(lower(s.content), CAST(?6 AS TEXT)) > 0 OR instr(lower(coalesce(s.answer, '')), CAST(?6 AS TEXT)) > 0)
@@ -646,7 +646,7 @@ LIMIT ?12
 type SearchTurnsParams struct {
 	ExcludedTurnID string `json:"excluded_turn_id"`
 	AllBots        int64  `json:"all_bots"`
-	AgentID        string `json:"agent_id"`
+	BotID          string `json:"bot_id"`
 	SessionID      int64  `json:"session_id"`
 	Since          int64  `json:"since"`
 	W1             string `json:"w1"`
@@ -661,8 +661,8 @@ type SearchTurnsParams struct {
 type SearchTurnsRow struct {
 	ID        string         `json:"id"`
 	SessionID int64          `json:"session_id"`
-	AgentID   string         `json:"agent_id"`
-	AgentName string         `json:"agent_name"`
+	BotID     string         `json:"bot_id"`
+	BotName   string         `json:"bot_name"`
 	Title     string         `json:"title"`
 	Content   string         `json:"content"`
 	Answer    sql.NullString `json:"answer"`
@@ -675,7 +675,7 @@ func (q *Queries) SearchTurns(ctx context.Context, arg SearchTurnsParams) ([]Sea
 	rows, err := q.db.QueryContext(ctx, searchTurns,
 		arg.ExcludedTurnID,
 		arg.AllBots,
-		arg.AgentID,
+		arg.BotID,
 		arg.SessionID,
 		arg.Since,
 		arg.W1,
@@ -696,8 +696,8 @@ func (q *Queries) SearchTurns(ctx context.Context, arg SearchTurnsParams) ([]Sea
 		if err := rows.Scan(
 			&i.ID,
 			&i.SessionID,
-			&i.AgentID,
-			&i.AgentName,
+			&i.BotID,
+			&i.BotName,
 			&i.Title,
 			&i.Content,
 			&i.Answer,

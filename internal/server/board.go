@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/automation"
+	"github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/settings"
@@ -14,7 +14,7 @@ import (
 )
 
 func (h *handler) GetBoardAttention(ctx context.Context, _ api.GetBoardAttentionRequestObject) (api.GetBoardAttentionResponseObject, error) {
-	agents, err := h.Agents.ListAgents(ctx)
+	bots, err := h.Bots.ListBots(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +32,7 @@ func (h *handler) GetBoardAttention(ctx context.Context, _ api.GetBoardAttention
 	}
 	for _, r := range results {
 		out.Results = append(out.Results, api.AutomationResultSummary{
-			RunId: r.RunID, AgentId: r.AgentID, AutomationId: r.AutomationID, AutomationName: r.AutomationName,
+			RunId: r.RunID, BotId: r.BotID, AutomationId: r.AutomationID, AutomationName: r.AutomationName,
 			SessionId: r.SessionID, Outcome: api.AutomationResultSummaryOutcome(r.Outcome), Summary: r.Summary,
 			CreatedAt: r.CreatedAt, Read: r.Read, RunnerId: r.RunnerID, Cwd: r.Cwd,
 		})
@@ -43,7 +43,7 @@ func (h *handler) GetBoardAttention(ctx context.Context, _ api.GetBoardAttention
 		})
 	}
 	modelChecks := make(map[engine.ModelRef]bool)
-	for _, bot := range agents {
+	for _, bot := range bots {
 		main, err := h.Sessions.ExistingMain(ctx, bot.ID)
 		if err != nil {
 			return nil, err
@@ -58,7 +58,7 @@ func (h *handler) GetBoardAttention(ctx context.Context, _ api.GetBoardAttention
 		for _, session := range sessions {
 			_, automationRun := automation.SessionAutomation(session.ChannelKey)
 			// Cross-Bot child sessions appear in both lists. Count them for their own Bot.
-			if session.AgentID == "" && !automationRun {
+			if session.BotID == "" && !automationRun {
 				out.Sessions = appendBoardSession(out.Sessions, bot.ID, session)
 			}
 		}
@@ -67,7 +67,7 @@ func (h *handler) GetBoardAttention(ctx context.Context, _ api.GetBoardAttention
 			return nil, err
 		}
 		for _, a := range list {
-			item := api.BoardAttentionAutomation{Id: a.ID, AgentId: bot.ID, Name: a.Name}
+			item := api.BoardAttentionAutomation{Id: a.ID, BotId: bot.ID, Name: a.Name}
 			if a.Enabled {
 				item.Setup, err = h.automationNeedsModel(ctx, bot, a, modelChecks)
 				if err != nil {
@@ -87,7 +87,7 @@ func appendBoardSession(sessions []api.BoardAttentionSession, botID string, c se
 	if c.ArchivedAt != 0 {
 		return sessions
 	}
-	item := api.BoardAttentionSession{Id: c.ID, AgentId: botID, Title: c.Title, Main: c.ChannelKey == session.MainKey, Busy: c.Busy}
+	item := api.BoardAttentionSession{Id: c.ID, BotId: botID, Title: c.Title, Main: c.ChannelKey == session.MainKey, Busy: c.Busy}
 	if q := c.Question; q != nil && q.Status == "open" {
 		item.Question = &api.BoardAttentionQuestion{Id: q.ID, Text: q.Text, Options: q.Options}
 	}
@@ -97,7 +97,7 @@ func appendBoardSession(sessions []api.BoardAttentionSession, botID string, c se
 	return sessions
 }
 
-func (h *handler) automationNeedsModel(ctx context.Context, bot agent.Agent, a automation.Automation, checked map[engine.ModelRef]bool) (bool, error) {
+func (h *handler) automationNeedsModel(ctx context.Context, bot bot.Bot, a automation.Automation, checked map[engine.ModelRef]bool) (bool, error) {
 	primary := engine.ModelRef{Provider: bot.Provider, ModelID: bot.ModelID}
 	if a.Session == "session" && a.TargetSessionID != 0 {
 		target, err := h.Sessions.Get(ctx, bot.ID, a.TargetSessionID)

@@ -45,7 +45,7 @@ func validateMCPOAuth(c serverConfig) error {
 // MCPAuthorization is a pending browser grant. Keep it in memory until the
 // callback consumes its state. It is never part of a declaration or tool result.
 type MCPAuthorization struct {
-	agentID  string
+	botID    string
 	entry    serverEntry
 	grant    mcpGrant
 	redirect string
@@ -119,8 +119,8 @@ func (g *mcpGrant) saveTokens(tokens *oauth.OAuthTokens) error {
 
 func (g *mcpGrant) expired() bool { return !g.Expires.IsZero() && time.Until(g.Expires) <= 0 }
 
-func (a *Agents) mcpOAuthEntry(ctx context.Context, agentID, scope, name string) (serverEntry, error) {
-	entries, err := a.config.MCPServers.list(ctx, agentID)
+func (a *Bots) mcpOAuthEntry(ctx context.Context, botID, scope, name string) (serverEntry, error) {
+	entries, err := a.config.MCPServers.list(ctx, botID)
 	if err != nil {
 		return serverEntry{}, err
 	}
@@ -132,8 +132,8 @@ func (a *Agents) mcpOAuthEntry(ctx context.Context, agentID, scope, name string)
 	return serverEntry{}, ErrItemNotFound
 }
 
-func (a *Agents) StartMCPAuthorization(ctx context.Context, agentID, scope, name, redirect, state string) (string, *MCPAuthorization, error) {
-	entry, err := a.mcpOAuthEntry(ctx, agentID, scope, name)
+func (a *Bots) StartMCPAuthorization(ctx context.Context, botID, scope, name, redirect, state string) (string, *MCPAuthorization, error) {
+	entry, err := a.mcpOAuthEntry(ctx, botID, scope, name)
 	if err != nil {
 		return "", nil, err
 	}
@@ -235,10 +235,10 @@ func (a *Agents) StartMCPAuthorization(ctx context.Context, agentID, scope, name
 	if err != nil {
 		return fail("cannot start MCP authorization", err)
 	}
-	return link.Href(), &MCPAuthorization{agentID: agentID, entry: entry, redirect: redirect, verifier: verifier, grant: mcpGrant{Binding: entry.grantBinding(), Resource: resourceID, Redirect: redirect, Metadata: *metadata, Client: client, Scope: requestedScope}}, nil
+	return link.Href(), &MCPAuthorization{botID: botID, entry: entry, redirect: redirect, verifier: verifier, grant: mcpGrant{Binding: entry.grantBinding(), Resource: resourceID, Redirect: redirect, Metadata: *metadata, Client: client, Scope: requestedScope}}, nil
 }
 
-func (a *Agents) FinishMCPAuthorization(ctx context.Context, p *MCPAuthorization, code string, iss *string) error {
+func (a *Bots) FinishMCPAuthorization(ctx context.Context, p *MCPAuthorization, code string, iss *string) error {
 	g := &p.grant
 	if code == "" || (iss != nil && *iss != g.Metadata.Issuer) || (iss == nil && g.Metadata.AuthorizationResponseIssParameterSupported != nil && *g.Metadata.AuthorizationResponseIssParameterSupported) {
 		return errors.New("invalid MCP authorization response")
@@ -246,7 +246,7 @@ func (a *Agents) FinishMCPAuthorization(ctx context.Context, p *MCPAuthorization
 	// Re-read the effective entry before exchange and again before commit. A
 	// removed, changed, or shadowed declaration must not receive this grant.
 	current := func() error {
-		entry, err := a.mcpOAuthEntry(ctx, p.agentID, p.entry.info.Scope, p.entry.info.Name)
+		entry, err := a.mcpOAuthEntry(ctx, p.botID, p.entry.info.Scope, p.entry.info.Name)
 		if err != nil || entry.grantBinding() != g.Binding {
 			return errors.New("the MCP declaration changed; start authorization again")
 		}
@@ -286,7 +286,7 @@ func (a *Agents) FinishMCPAuthorization(ctx context.Context, p *MCPAuthorization
 	if err != nil {
 		return err
 	}
-	a.markExtensionChange(p.agentID, p.entry.info.Scope, "MCP authorization")
+	a.markExtensionChange(p.botID, p.entry.info.Scope, "MCP authorization")
 	return nil
 }
 

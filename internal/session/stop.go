@@ -22,15 +22,15 @@ import (
 //   - A child with pending user input, running or queued, keeps its run, because native abort cannot
 //     spare queued input. Stop withdraws only the parent input that is still queued. A run that the
 //     parent started continues, and its result can start a new parent turn after Stop.
-func (s *Service) CancelSession(ctx context.Context, agentID string, id int64) error {
-	_, err := s.cancelSession(ctx, agentID, id, nil, nil)
+func (s *Service) CancelSession(ctx context.Context, botID string, id int64) error {
+	_, err := s.cancelSession(ctx, botID, id, nil, nil)
 	return err
 }
 
 // StopChannelCommand saves the answer in the withdrawal transaction.
 // A repeated channel command can finish its receipt without stopping later work.
-func (s *Service) StopChannelCommand(ctx context.Context, agentID string, id int64, sourceKey, answer string) error {
-	_, err := s.cancelSession(ctx, agentID, id, &sqlc.SaveChannelCommandAnswerParams{SourceKey: sourceKey, Answer: answer}, nil)
+func (s *Service) StopChannelCommand(ctx context.Context, botID string, id int64, sourceKey, answer string) error {
+	_, err := s.cancelSession(ctx, botID, id, &sqlc.SaveChannelCommandAnswerParams{SourceKey: sourceKey, Answer: answer}, nil)
 	return err
 }
 
@@ -47,15 +47,15 @@ type stopCall struct {
 const toolStopAction = "session_stop"
 
 // cancelSession returns the stored result of a replayed tool call, and an empty string otherwise.
-func (s *Service) cancelSession(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (string, error) {
-	if _, err := s.Get(ctx, agentID, id); err != nil {
+func (s *Service) cancelSession(ctx context.Context, botID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (string, error) {
+	if _, err := s.Get(ctx, botID, id); err != nil {
 		return "", err
 	}
 	unlock, err := s.lockSession(ctx, id)
 	if err != nil {
 		return "", err
 	}
-	w, err := s.withdraw(ctx, agentID, id, command, call)
+	w, err := s.withdraw(ctx, botID, id, command, call)
 	// Do not take a child's gate until the parent gate is released.
 	unlock()
 	if err != nil || w.stored != "" {
@@ -69,7 +69,7 @@ func (s *Service) cancelSession(ctx context.Context, agentID string, id int64, c
 	}
 	var errs []error
 	for _, c := range w.sessions {
-		if c.AgentID != agentID {
+		if c.BotID != botID {
 			continue // the target's dispatcher owns cross-bot cancellations
 		}
 		gate := s.sessionGate(c.ID)
@@ -102,7 +102,7 @@ type withdrawal struct {
 // Withdraw takes the writer before reading. The first commit defines Stop's scope: the conversation
 // and, when included, its child sessions with pending input of the parent. The writer also admits
 // user input, so a child is either stopped as a whole or has the user input that this read saw.
-func (s *Service) withdraw(ctx context.Context, agentID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (withdrawal, error) {
+func (s *Service) withdraw(ctx context.Context, botID string, id int64, command *sqlc.SaveChannelCommandAnswerParams, call *stopCall) (withdrawal, error) {
 	s.admissionMu.RLock()
 	defer s.admissionMu.RUnlock()
 	s.writeMu.Lock()
@@ -113,14 +113,14 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 	}
 	defer func() { _ = tx.Rollback() }()
 	if command != nil {
-		if err := checkTelegramControl(ctx, q, command.SourceKey, agentID, id); err != nil {
+		if err := checkTelegramControl(ctx, q, command.SourceKey, botID, id); err != nil {
 			return withdrawal{}, err
 		}
 	}
 	if call != nil {
 		prior, err := q.GetAutomationToolOperation(ctx, call.task.Key)
 		if err == nil {
-			if prior.AgentID != call.task.AgentID || prior.SessionID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
+			if prior.BotID != call.task.BotID || prior.SessionID != call.parent || prior.SourceRequestID != call.task.SourceRequestID || prior.Action != toolStopAction {
 				return withdrawal{}, fmt.Errorf("%w: tool key belongs to another operation", errSessionInvalid)
 			}
 			return withdrawal{stored: prior.Result}, nil
@@ -129,7 +129,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 			return withdrawal{}, err
 		}
 	}
-	sessions, err := q.ListSessionsForStop(ctx, sqlc.ListSessionsForStopParams{AgentID: agentID, SessionID: id})
+	sessions, err := q.ListSessionsForStop(ctx, sqlc.ListSessionsForStopParams{BotID: botID, SessionID: id})
 	if err != nil {
 		return withdrawal{}, err
 	}
@@ -150,20 +150,20 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 				continue
 			}
 		}
-		if c.AgentID == agentID && c.ChannelKey == MainKey {
+		if c.BotID == botID && c.ChannelKey == MainKey {
 			// Session cancellation withdraws the Inbox, so no task Stop needs to resume it.
 			if err := q.SupersedeMainTurnStops(ctx, c.ID); err != nil {
 				return withdrawal{}, err
 			}
-			if err := q.DiscardTelegramInputEffects(ctx, agentID); err != nil {
+			if err := q.DiscardTelegramInputEffects(ctx, botID); err != nil {
 				return withdrawal{}, err
 			}
-			if err := q.DiscardPrivateTelegramAlbums(ctx, agentID); err != nil {
+			if err := q.DiscardPrivateTelegramAlbums(ctx, botID); err != nil {
 				return withdrawal{}, err
 			}
 		}
 		if !c.ParentID.Valid {
-			if err := q.InsertStoppedOutboxForSession(ctx, sqlc.InsertStoppedOutboxForSessionParams{AgentID: c.AgentID, SessionID: c.ID, Now: now.Int64}); err != nil {
+			if err := q.InsertStoppedOutboxForSession(ctx, sqlc.InsertStoppedOutboxForSessionParams{BotID: c.BotID, SessionID: c.ID, Now: now.Int64}); err != nil {
 				return withdrawal{}, err
 			}
 		}
@@ -200,7 +200,7 @@ func (s *Service) withdraw(ctx context.Context, agentID string, id int64, comman
 		if err != nil {
 			return withdrawal{}, err
 		}
-		if err := q.CreateAutomationToolOperation(ctx, sqlc.CreateAutomationToolOperationParams{Key: call.task.Key, AgentID: call.task.AgentID, SessionID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
+		if err := q.CreateAutomationToolOperation(ctx, sqlc.CreateAutomationToolOperationParams{Key: call.task.Key, BotID: call.task.BotID, SessionID: call.parent, SourceRequestID: call.task.SourceRequestID, Action: toolStopAction, Result: string(data)}); err != nil {
 			return withdrawal{}, err
 		}
 	}
@@ -218,7 +218,7 @@ func (s *Service) reconcileStop(ctx context.Context, id int64) error {
 	if err != nil {
 		return err
 	}
-	ref := engine.Ref{AgentID: c.AgentID, ID: c.ExecutionID.Int64}
+	ref := engine.Ref{BotID: c.BotID, ID: c.ExecutionID.Int64}
 	if c.AbortPending != 0 {
 		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 6*time.Second)
 		defer cancel()

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/app"
+	botpkg "github.com/recally-io/dex/internal/bot"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 )
@@ -73,7 +73,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	owner.Jar = jar
 	d.must(t, http.MethodPost, "/api/session", map[string]string{"token": token}, nil, http.StatusNoContent)
 	bot := d.createCoder(t)
-	base := "/api/agents/" + bot.ID
+	base := "/api/bots/" + bot.ID
 	setTelegram := func(users ...int64) {
 		d.must(t, http.MethodPut, base+"/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": users}, nil)
 	}
@@ -97,7 +97,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		t.Fatalf("default bot status: %q", got)
 	}
 	got := read("channel_notification_targets", bot.ID)
-	var targets agent.NotificationTargets
+	var targets botpkg.NotificationTargets
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(got, "tool: ")), &targets); err != nil || len(targets.Targets) != 2 {
 		t.Fatalf("notification destinations: %q (%v)", got, err)
 	}
@@ -138,7 +138,7 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 		t.Fatal("the review page does not show the exact redacted operation")
 	}
 	primary := func() string {
-		var result agent.NotificationTargets
+		var result botpkg.NotificationTargets
 		d.must(t, http.MethodGet, base+"/notification-targets", nil, &result)
 		return result.PrimaryID
 	}
@@ -165,8 +165,8 @@ func TestUserManagesChannelsOnlyThroughOwnerReview(t *testing.T) {
 	reviewChannelChange(t, d, owner, http.MethodPost, removed, "", http.StatusConflict)
 	setTelegram(42, 44)
 	conn := sessionDB(t, d)
-	if _, err := conn.ExecContext(t.Context(), `INSERT INTO automation_notification_targets (id, agent_id, platform, account_id, peer)
-		SELECT ?, agent_id, 'telegram', substr(token, 1, instr(token, ':') - 1), 'telegram:44' FROM telegram_settings WHERE agent_id = ?`, target.ID, bot.ID); err != nil {
+	if _, err := conn.ExecContext(t.Context(), `INSERT INTO automation_notification_targets (id, bot_id, platform, account_id, peer)
+		SELECT ?, bot_id, 'telegram', substr(token, 1, instr(token, ':') - 1), 'telegram:44' FROM telegram_settings WHERE bot_id = ?`, target.ID, bot.ID); err != nil {
 		t.Fatal(err)
 	}
 	reviewChannelChange(t, d, owner, http.MethodPost, reused, "", http.StatusConflict)
@@ -246,13 +246,13 @@ func TestUserRevokesFeishuPairingWithoutReplacingCredentials(t *testing.T) {
 	path := channelApprovalPath(t, answer)
 	reviewChannelChange(t, d, d.srv.Client(), http.MethodPost, path, "", http.StatusOK)
 	// Then the app stays connected to settings, and the secure form can issue a new code without a new secret.
-	var config agent.Feishu
-	base := "/api/agents/default/channels/feishu"
+	var config botpkg.Feishu
+	base := "/api/bots/default/channels/feishu"
 	d.must(t, http.MethodGet, base, nil, &config)
 	if !config.Enabled || config.Paired {
 		t.Fatalf("Feishu settings after revocation: %+v", config)
 	}
-	var setup agent.FeishuSetup
+	var setup botpkg.FeishuSetup
 	d.must(t, http.MethodPut, base, map[string]string{"appId": "app", "brand": "feishu"}, &setup)
 	got := taskTool(t, d, session, "channel_pairing", map[string]string{})
 	if setup.PairingCode == "" || !strings.Contains(got, `"feishu":false`) || strings.Contains(got, setup.PairingCode) || strings.Contains(got, "app-secret") {

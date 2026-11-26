@@ -63,17 +63,17 @@ func eventKey(value string) bool {
 func validObject(o Object) bool { return eventKey(o.Type) && eventKey(o.Key) }
 
 // LinkObject binds an object to one Task. Repeating the binding does not change it.
-func (s *Service) LinkObject(ctx context.Context, agentID, taskID, namespace string, object Object) error {
+func (s *Service) LinkObject(ctx context.Context, botID, taskID, namespace string, object Object) error {
 	if !eventKey(namespace) || !validObject(object) {
 		return ErrInvalid
 	}
 	return s.write(ctx, func(l *Ledger, now int64) error {
-		return bindObject(ctx, l, agentID, taskID, namespace, object, nil, now)
+		return bindObject(ctx, l, botID, taskID, namespace, object, nil, now)
 	})
 }
 
-func linkObject(ctx context.Context, q *sqlc.Queries, agentID, taskID, namespace string, object Object) error {
-	n, err := q.LinkTaskObject(ctx, sqlc.LinkTaskObjectParams{AgentID: agentID, TaskID: taskID, Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key})
+func linkObject(ctx context.Context, q *sqlc.Queries, botID, taskID, namespace string, object Object) error {
+	n, err := q.LinkTaskObject(ctx, sqlc.LinkTaskObjectParams{BotID: botID, TaskID: taskID, Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key})
 	if err == nil && n == 0 {
 		return ErrObjectConflict
 	}
@@ -81,15 +81,15 @@ func linkObject(ctx context.Context, q *sqlc.Queries, agentID, taskID, namespace
 }
 
 // AddWait records a condition on an object already linked to an open Task.
-func (s *Service) AddWait(ctx context.Context, agentID, taskID string, wait Wait) error {
+func (s *Service) AddWait(ctx context.Context, botID, taskID string, wait Wait) error {
 	if !eventKey(wait.Namespace) || !eventKey(wait.Type) || !validObject(wait.Object) || wait.AfterAt <= 0 || len(wait.Revision) > 512 {
 		return ErrInvalid
 	}
 	return s.write(ctx, func(l *Ledger, now int64) error {
-		if err := addWait(ctx, l.q, agentID, taskID, wait); err != nil {
+		if err := addWait(ctx, l.q, botID, taskID, wait); err != nil {
 			return err
 		}
-		task, err := l.q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, AgentID: agentID})
+		task, err := l.q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, BotID: botID})
 		if err != nil {
 			return err
 		}
@@ -97,12 +97,12 @@ func (s *Service) AddWait(ctx context.Context, agentID, taskID string, wait Wait
 	})
 }
 
-func addWait(ctx context.Context, q *sqlc.Queries, agentID, taskID string, wait Wait) error {
+func addWait(ctx context.Context, q *sqlc.Queries, botID, taskID string, wait Wait) error {
 	var alert int64
 	if wait.Alert {
 		alert = 1
 	}
-	n, err := q.AddTaskWait(ctx, sqlc.AddTaskWaitParams{AgentID: agentID, TaskID: taskID, Namespace: wait.Namespace, EventType: wait.Type, ObjectType: wait.Object.Type, ObjectKey: wait.Object.Key, Revision: wait.Revision, AfterAt: wait.AfterAt, Alert: alert})
+	n, err := q.AddTaskWait(ctx, sqlc.AddTaskWaitParams{BotID: botID, TaskID: taskID, Namespace: wait.Namespace, EventType: wait.Type, ObjectType: wait.Object.Type, ObjectKey: wait.Object.Key, Revision: wait.Revision, AfterAt: wait.AfterAt, Alert: alert})
 	if err == nil && n == 0 {
 		return ErrObjectConflict
 	}
@@ -110,35 +110,35 @@ func addWait(ctx context.Context, q *sqlc.Queries, agentID, taskID string, wait 
 }
 
 // BindObject saves an object link and its optional initial wait in one transaction.
-func (s *Service) BindObject(ctx context.Context, agentID, taskID, namespace string, object Object, wait *Wait) error {
+func (s *Service) BindObject(ctx context.Context, botID, taskID, namespace string, object Object, wait *Wait) error {
 	if !eventKey(namespace) || !validObject(object) || wait != nil && (wait.Namespace != namespace || wait.Object != object || !eventKey(wait.Type) || wait.AfterAt <= 0 || len(wait.Revision) > 512) {
 		return ErrInvalid
 	}
 	return s.write(ctx, func(l *Ledger, now int64) error {
-		if _, err := l.q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, AgentID: agentID}); err != nil {
+		if _, err := l.q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, BotID: botID}); err != nil {
 			return err
 		}
-		return bindObject(ctx, l, agentID, taskID, namespace, object, wait, now)
+		return bindObject(ctx, l, botID, taskID, namespace, object, wait, now)
 	})
 }
 
-func bindObject(ctx context.Context, ledger *Ledger, agentID, taskID, namespace string, object Object, wait *Wait, now int64) error {
+func bindObject(ctx context.Context, ledger *Ledger, botID, taskID, namespace string, object Object, wait *Wait, now int64) error {
 	q := ledger.q
 	bound, err := q.HasTaskObject(ctx, sqlc.HasTaskObjectParams{Namespace: namespace, ObjectType: object.Type, ObjectKey: object.Key})
 	if err != nil {
 		return err
 	}
-	if err := linkObject(ctx, q, agentID, taskID, namespace, object); err != nil {
+	if err := linkObject(ctx, q, botID, taskID, namespace, object); err != nil {
 		return err
 	}
 	if wait != nil {
-		if err := addWait(ctx, q, agentID, taskID, *wait); err != nil {
+		if err := addWait(ctx, q, botID, taskID, *wait); err != nil {
 			return err
 		}
 	} else if bound != 0 {
 		return nil
 	}
-	task, err := q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, AgentID: agentID})
+	task, err := q.GetAssignedTask(ctx, sqlc.GetAssignedTaskParams{ID: taskID, BotID: botID})
 	if err != nil {
 		return err
 	}
@@ -152,16 +152,16 @@ func (s *Service) Accept(ctx context.Context, event Event) (Receipt, error) {
 	return s.accept(ctx, event, "", "")
 }
 
-// AcceptCreating links an unmatched event to a new Task under an explicitly selected agent.
+// AcceptCreating links an unmatched event to a new Task under an explicitly selected bot.
 // The event must provide exactly one creation reference. Existing links always win.
-func (s *Service) AcceptCreating(ctx context.Context, event Event, agentID, title string) (Receipt, error) {
-	if agentID == "" || title == "" || utf8.RuneCountInString(title) > 160 || len(event.Objects) != 1 {
+func (s *Service) AcceptCreating(ctx context.Context, event Event, botID, title string) (Receipt, error) {
+	if botID == "" || title == "" || utf8.RuneCountInString(title) > 160 || len(event.Objects) != 1 {
 		return Receipt{}, ErrInvalid
 	}
-	return s.accept(ctx, event, agentID, title)
+	return s.accept(ctx, event, botID, title)
 }
 
-func (s *Service) accept(ctx context.Context, event Event, agentID, title string) (Receipt, error) {
+func (s *Service) accept(ctx context.Context, event Event, botID, title string) (Receipt, error) {
 	if !eventKey(event.Namespace) || !eventKey(event.ReceiptKey) || !eventKey(event.Type) ||
 		event.ChangeKey != "" && !eventKey(event.ChangeKey) || event.OccurredAt <= 0 ||
 		len(event.Objects) > 16 || len(event.Revision) > 512 || len(event.SourceURL) > 4096 ||
@@ -213,8 +213,8 @@ func (s *Service) accept(ctx context.Context, event Event, agentID, title string
 	}
 	now := time.Now().UnixMilli()
 	created := false
-	if disposition == "unmatched" && agentID != "" && !event.RecordOnly {
-		task, err = createEventTask(ctx, ledger, event, agentID, title, now)
+	if disposition == "unmatched" && botID != "" && !event.RecordOnly {
+		task, err = createEventTask(ctx, ledger, event, botID, title, now)
 		if err != nil {
 			return Receipt{}, err
 		}
@@ -268,7 +268,7 @@ func (s *Service) accept(ctx context.Context, event Event, agentID, title string
 	return receipt, nil
 }
 
-func createEventTask(ctx context.Context, ledger *Ledger, event Event, agentID, title string, now int64) (sqlc.Task, error) {
+func createEventTask(ctx context.Context, ledger *Ledger, event Event, botID, title string, now int64) (sqlc.Task, error) {
 	q := ledger.q
 	object := event.Objects[0]
 	// A link to an archived Task still owns the reference. Do not take it over.
@@ -276,7 +276,7 @@ func createEventTask(ctx context.Context, ledger *Ledger, event Event, agentID, 
 	if err != nil || bound != 0 {
 		return sqlc.Task{}, err
 	}
-	task, err := ledger.createProjection(ctx, sqlc.CreateTaskParams{ID: uuid.NewV7().String(), AgentID: agentID, Title: title, At: now,
+	task, err := ledger.createProjection(ctx, sqlc.CreateTaskParams{ID: uuid.NewV7().String(), BotID: botID, Title: title, At: now,
 		Status: StatusReady, CreatorKind: CreatorSource, CreatorID: event.Namespace})
 	if errors.Is(err, sql.ErrNoRows) {
 		return sqlc.Task{}, nil
@@ -284,7 +284,7 @@ func createEventTask(ctx context.Context, ledger *Ledger, event Event, agentID, 
 	if err != nil {
 		return sqlc.Task{}, err
 	}
-	n, err := q.LinkTaskObject(ctx, sqlc.LinkTaskObjectParams{AgentID: agentID, TaskID: task.ID, Namespace: event.Namespace, ObjectType: object.Type, ObjectKey: object.Key})
+	n, err := q.LinkTaskObject(ctx, sqlc.LinkTaskObjectParams{BotID: botID, TaskID: task.ID, Namespace: event.Namespace, ObjectType: object.Type, ObjectKey: object.Key})
 	if err == nil && n == 0 {
 		return sqlc.Task{}, ErrObjectConflict
 	}
@@ -340,7 +340,7 @@ func applyEvent(ctx context.Context, ledger *Ledger, task sqlc.Task, event Event
 	return resolved, alerts, nil
 }
 
-// Link is an object that an agent tool links to a Task, with an optional wait on it.
+// Link is an object that a bot tool links to a Task, with an optional wait on it.
 type Link struct {
 	Namespace string
 	Object    Object
@@ -351,11 +351,11 @@ type Link struct {
 	Name string
 }
 
-// LinkTool is an agent tool that a source adds to link its objects to Tasks. The core adds the
+// LinkTool is a bot tool that a source adds to link its objects to Tasks. The core adds the
 // Task id argument, checks the caller, and writes the link with its replay record.
 type LinkTool struct {
 	Name, Description string
-	// Rules is a paragraph for the system prompt that tells the agent when to use the tool.
+	// Rules is a paragraph for the system prompt that tells the bot when to use the tool.
 	Rules      string
 	Properties map[string]any
 	Required   []string

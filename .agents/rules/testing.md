@@ -36,8 +36,8 @@ Read this before you write or change a test.
   with a deadline, and fail with the last observed state.
 - **Isolation.** Each test uses its own `t.TempDir()` for the data directory
   and passes the engine an explicit tool environment. Set a separate Home
-  directory when a test reads extension files. Never open production agent data.
-- **Clean ends.** Close every `app.App`, `engine.Agents`, and native watch that a test
+  directory when a test reads extension files. Never open production bot data.
+- **Clean ends.** Close every `app.App`, `engine.Bots`, and native watch that a test
   starts. Cancellation of one subscription must not stop another subscription.
 
 ## Tiers

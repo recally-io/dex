@@ -283,7 +283,7 @@ func TestUserStopsTheSessionAndItsBackgroundCommandsEnd(t *testing.T) {
 	killAtEnd(t, pidFile(t, leader))
 	killAtEnd(t, pidFile(t, child))
 	// When the user stops the session.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", session), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", session), nil, nil)
 	// Then dex ends the process group, and the session gets no wake-up.
 	waitBgState(t, conn, info.ID, "stopped")
 	waitTaskPIDGone(t, leader)
@@ -379,7 +379,7 @@ func TestUserGetsAStoppedStateAndAWakeUpWhenDexShutsDown(t *testing.T) {
 	if state, reason := bgRow(t, conn, info.ID); state != "stopped" || reason != "shutdown" {
 		t.Fatalf("state %s, reason %s", state, reason)
 	}
-	// And the next start gives the agent the wake-up that tells it to start the command again.
+	// And the next start gives the bot the wake-up that tells it to start the command again.
 	d = startDex(t, dir, "")
 	wake := waitWakes(t, conn, session, 1)[0]
 	if wake.result.Event != "stopped" || !strings.Contains(wake.result.Notice, "shut down") {
@@ -411,7 +411,7 @@ func TestUserDoesNotSeeAWithdrawnWakeUpAsTheirOwnMessage(t *testing.T) {
 		return err == nil && admitted.Valid, err
 	})
 	// When the user stops the session, which withdraws the queued wake-up.
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", session), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", session), nil, nil)
 	waitResultSubmission(t, conn, "background:"+bgWakes(t, conn, session)[0].result.ID+":end", "unanswered")
 	// Then the live stream and the history show a background result, and no message of the user.
 	check := func(source string, items []item) {
@@ -433,7 +433,7 @@ func TestUserDoesNotSeeAWithdrawnWakeUpAsTheirOwnMessage(t *testing.T) {
 	var history struct {
 		Items []item `json:"items"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991&limit=100", session), nil, &history)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d/history?before=9007199254740991&limit=100", session), nil, &history)
 	check("the history", history.Items)
 }
 

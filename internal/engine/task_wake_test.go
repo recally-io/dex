@@ -21,8 +21,8 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// Given a running turn and a Task wake and a channel message from different origins.
 			config := Config{DataDir: t.TempDir()}
-			agents := coreEngine(t, config)
-			ref := coreCreate(t, agents, "alpha", coreOptions("bash"))
+			bots := coreEngine(t, config)
+			ref := coreCreate(t, bots, "alpha", coreOptions("bash"))
 			workspace := filepath.Join(config.DataDir, "agents", "alpha", "workspace")
 			release := func() error { return os.WriteFile(filepath.Join(workspace, "release"), nil, 0o600) }
 			t.Cleanup(func() {
@@ -30,7 +30,7 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 					t.Error(err)
 				}
 			})
-			running := coreSubmit(t, agents, ref, "running", "touch started; while [ ! -f release ]; do sleep 0.02; done", "bash")
+			running := coreSubmit(t, bots, ref, "running", "touch started; while [ ! -f release ]; do sleep 0.02; done", "bash")
 			coreFile(t, filepath.Join(workspace, "started"))
 			const pointers = `{"highWaterEntryId":42,"items":[{"taskKey":"T-42","reason":"assigned"}]}`
 			wake := Input{RequestID: "board-wake", Kind: "task_wake", Origin: "web", Content: pointers, Options: coreOptions("context")}
@@ -46,14 +46,14 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 			reject.RefreshContent = func(context.Context) (string, error) {
 				return "", errors.New("busy wake reached refresh")
 			}
-			if _, err := agents.Submit(t.Context(), ref, reject); !errors.Is(err, ErrBusy) {
+			if _, err := bots.Submit(t.Context(), ref, reject); !errors.Is(err, ErrBusy) {
 				t.Fatalf("busy wake: got %v, want ErrBusy", err)
 			}
 
 			// When both follow-ups enter the native inbox, an ordinary foreign origin still waits.
 			var queued []*Submission
 			for _, input := range order {
-				admitted, err := agents.Submit(t.Context(), ref, input)
+				admitted, err := bots.Submit(t.Context(), ref, input)
 				if err != nil {
 					t.Fatalf("queue %s: %v", input.RequestID, err)
 				}
@@ -63,10 +63,10 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 			foreign.RefreshContent = func(context.Context) (string, error) {
 				return "", errors.New("foreign origin reached refresh")
 			}
-			if _, err := agents.Submit(t.Context(), ref, foreign); !errors.Is(err, ErrOriginBusy) {
+			if _, err := bots.Submit(t.Context(), ref, foreign); !errors.Is(err, ErrOriginBusy) {
 				t.Fatalf("ordinary foreign origin: got %v, want ErrOriginBusy", err)
 			}
-			watch, err := agents.Watch(t.Context(), ref)
+			watch, err := bots.Watch(t.Context(), ref)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,7 +85,7 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 			if first.Status != "done" || !first.Equal(second) || !slices.Equal(first.RunInputIDs, want) {
 				t.Fatalf("shared run: first=%+v second=%+v want inputs=%v", first, second, want)
 			}
-			history, err := agents.History(t.Context(), ref, 1<<60, 100)
+			history, err := bots.History(t.Context(), ref, 1<<60, 100)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +94,7 @@ func TestUserBoardWakeSharesFollowUpWithoutChangingOriginGuards(t *testing.T) {
 				t.Fatalf("model did not receive Board guidance and pointers: %q", first.Answer)
 			}
 			mark, _ := find(history.Items, wake.RequestID)
-			conv, err := agents.conversation(t.Context(), ref)
+			conv, err := bots.conversation(t.Context(), ref)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -117,8 +117,8 @@ func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
 	var envErr, beforeErr, validationErr, snapshotErr error
 	config := Config{DataDir: t.TempDir()}
 	config.SessionRunner = func(context.Context, Ref) (string, error) { return "", envErr }
-	agents := coreEngine(t, config)
-	ref := coreCreate(t, agents, "alpha", coreOptions("echo"))
+	bots := coreEngine(t, config)
+	ref := coreCreate(t, bots, "alpha", coreOptions("echo"))
 	var refreshes int
 	input := Input{
 		RequestID: "input", Kind: "message", Origin: "web", Content: "old snapshot",
@@ -134,22 +134,22 @@ func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
 	// When an admission check rejects the input, the caller must not save a snapshot.
 	for _, gate := range []*error{&envErr, &beforeErr, &validationErr} {
 		*gate = blocked
-		if _, err := agents.Submit(t.Context(), ref, input); !errors.Is(err, blocked) || refreshes != 0 {
+		if _, err := bots.Submit(t.Context(), ref, input); !errors.Is(err, blocked) || refreshes != 0 {
 			t.Fatalf("blocked admission: error=%v refreshes=%d", err, refreshes)
 		}
 		*gate = nil
 	}
 	snapshotErr = refreshErr
-	if _, err := agents.Submit(t.Context(), ref, input); !errors.Is(err, refreshErr) || refreshes != 1 {
+	if _, err := bots.Submit(t.Context(), ref, input); !errors.Is(err, refreshErr) || refreshes != 1 {
 		t.Fatalf("failed refresh: error=%v refreshes=%d", err, refreshes)
 	}
-	if got, err := agents.PeekWithdrawal(t.Context(), ref, input.RequestID); err != nil || got != NotAdmitted {
+	if got, err := bots.PeekWithdrawal(t.Context(), ref, input.RequestID); err != nil || got != NotAdmitted {
 		t.Fatalf("failed refresh left a native submission: state=%v err=%v", got, err)
 	}
 
 	// Then retry uses the new snapshot in the model and in the saved user message.
 	snapshotErr = nil
-	admitted, err := agents.Submit(t.Context(), ref, input)
+	admitted, err := bots.Submit(t.Context(), ref, input)
 	if err != nil || refreshes != 2 {
 		t.Fatalf("new admission: error=%v refreshes=%d", err, refreshes)
 	}
@@ -157,19 +157,19 @@ func TestUserRefreshesContentOnlyForNewAdmission(t *testing.T) {
 	if out.Status != "done" || out.Answer != "echo: Dex Task: T-42\n\nfresh snapshot\nModel guidance" {
 		t.Fatalf("model input: %+v", out)
 	}
-	if err := agents.Close(t.Context()); err != nil {
+	if err := bots.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	agents = coreEngine(t, config)
+	bots = coreEngine(t, config)
 	snapshotErr = refreshErr
-	replay, err := agents.Submit(t.Context(), ref, input)
+	replay, err := bots.Submit(t.Context(), ref, input)
 	if err != nil || replay.ID != admitted.ID || refreshes != 2 {
 		t.Fatalf("replay: submission=%v error=%v refreshes=%d", replay, err, refreshes)
 	}
 	if got := coreWait(t, replay); !got.Equal(out) {
 		t.Fatalf("replay outcome: got %+v, want %+v", got, out)
 	}
-	history, err := agents.History(t.Context(), ref, 1<<60, 100)
+	history, err := bots.History(t.Context(), ref, 1<<60, 100)
 	if err != nil {
 		t.Fatal(err)
 	}

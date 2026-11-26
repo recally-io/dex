@@ -7,7 +7,7 @@ import {
   listSessionOutboxOptions,
   listSessionMonitorsOptions,
 } from "../api/generated/@tanstack/react-query.gen";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { errorText } from "../lib/queries";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -71,17 +71,17 @@ function outboxBadgeVariant(
 }
 
 export function SessionActivity({ sessionId, writable }: { sessionId: number; writable: boolean }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
   const monitorsQuery = useQuery({
-    ...listSessionMonitorsOptions({ path: { agentId, sessionId } }),
+    ...listSessionMonitorsOptions({ path: { botId, sessionId } }),
     refetchInterval: open ? 5000 : 30000,
   });
 
   const outboxQuery = useQuery({
-    ...listSessionOutboxOptions({ path: { agentId, sessionId } }),
+    ...listSessionOutboxOptions({ path: { botId, sessionId } }),
     refetchInterval: open ? 5000 : 30000,
   });
 
@@ -89,7 +89,7 @@ export function SessionActivity({ sessionId, writable }: { sessionId: number; wr
     ...cancelSessionMonitorMutation(),
     onSuccess: () => {
       void queryClient.invalidateQueries({
-        queryKey: listSessionMonitorsOptions({ path: { agentId, sessionId } }).queryKey,
+        queryKey: listSessionMonitorsOptions({ path: { botId, sessionId } }).queryKey,
       });
     },
   });
@@ -192,7 +192,7 @@ export function SessionActivity({ sessionId, writable }: { sessionId: number; wr
                         aria-label={`Cancel monitor ${t.id}`}
                         title="Cancel monitor"
                         disabled={cancel.isPending}
-                        onClick={() => cancel.mutate({ path: { agentId, sessionId, monitorId: t.id } })}
+                        onClick={() => cancel.mutate({ path: { botId, sessionId, monitorId: t.id } })}
                       >
                         <X className="size-3.5" />
                       </Button>

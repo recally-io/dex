@@ -85,7 +85,7 @@ func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
 
 func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	t.Parallel()
-	// Given a Telegram chat whose agent runs a long command.
+	// Given a Telegram chat whose bot runs a long command.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
 	d.setModel(t, "bash")
@@ -112,7 +112,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	}
 	// Then the runtime status is visible without credentials.
 	var settings map[string]any
-	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &settings)
+	d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &settings)
 	tg := settings["telegram"].(map[string]any)
 	if tg["status"].(map[string]any)["state"] != "running" {
 		t.Fatalf("status: %v", tg)
@@ -131,7 +131,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	for _, platform := range []string{"telegram", "wechat", "feishu"} {
-		res, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (agent_id,channel_key,created_at) VALUES ('default',?,1)", platform+":owner/old")
+		res, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (bot_id,channel_key,created_at) VALUES ('default',?,1)", platform+":owner/old")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 			if method == http.MethodPut {
 				suffix = "settings"
 			}
-			status, raw := d.call(t, method, fmt.Sprintf("/api/agents/default/sessions/%d/%s", id, suffix), body)
+			status, raw := d.call(t, method, fmt.Sprintf("/api/bots/default/sessions/%d/%s", id, suffix), body)
 			if status != http.StatusForbidden {
 				t.Fatalf("%s %s: %d %s", platform, method, status, raw)
 			}

@@ -21,7 +21,7 @@ func TestUserMainStopIntentRecoversWithoutNewInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	watch, err := r.agents.Watch(t.Context(), executionRef(c))
+	watch, err := r.bots.Watch(t.Context(), executionRef(c))
 	if err != nil {
 		t.Fatal(err)
 	}

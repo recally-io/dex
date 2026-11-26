@@ -38,7 +38,7 @@ func TestUserDescribesRunners(t *testing.T) {
 			Runners []environment `json:"runners"`
 		}
 		d.must(t, http.MethodGet, settingsPath, nil, &settings)
-		d.must(t, http.MethodGet, "/api/agents/default/runners", nil, &sessions)
+		d.must(t, http.MethodGet, "/api/bots/default/runners", nil, &sessions)
 		taskToolJSON(t, d, session, "runner_list", map[string]any{}, &tool)
 		for path, list := range map[string][]environment{"Settings": settings.Runners, "sessions": sessions.Runners, "tool": tool.Runners} {
 			found := false

@@ -30,7 +30,7 @@ func routineRuns(t *testing.T, d *dex, id string) []routineRun {
 	var list struct {
 		Runs []routineRun `json:"runs"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/automations/"+id+"/runs", nil, &list)
+	d.must(t, http.MethodGet, "/api/bots/default/automations/"+id+"/runs", nil, &list)
 	return list.Runs
 }
 func settledRoutine(t *testing.T, d *dex, id, runID string) routineRun {
@@ -65,7 +65,7 @@ func TestUserAutomationInputFailureCannotCommitARunWithoutItsMessage(t *testing.
 		t.Fatal(err)
 	}
 	// When input storage fails after the run insert.
-	status, body := d.call(t, http.MethodPost, "/api/agents/default/automations/"+a.ID+"/run", nil)
+	status, body := d.call(t, http.MethodPost, "/api/bots/default/automations/"+a.ID+"/run", nil)
 	// Then no run can commit without a message intent.
 	var count int
 	if err = conn.QueryRowContext(t.Context(), "SELECT count(*) FROM automation_runs WHERE automation_id = ?", a.ID).Scan(&count); err != nil {
@@ -132,7 +132,7 @@ func TestUserAutomationReportsStructuredOutcomesAndDuplicates(t *testing.T) {
 			// When a third run reports another outcome with the same key, it is not a duplicate.
 			other := map[string]string{"changed": "unchanged", "unchanged": "changed", "failed": "changed"}[outcome]
 			body := map[string]any{"name": "Check", "prompt": fmt.Sprintf(`automation_report {"outcome":%q,"summary":"fixture check completed","changeKey":%q}`, other, key), "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "Asia/Shanghai", "session": "new", "enabled": true}
-			d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
+			d.must(t, http.MethodPut, "/api/bots/default/automations/"+a.ID, body, nil)
 			third := settledRoutine(t, d, a.ID, d.runNow(t, a.ID).ID)
 			if third.Outcome != other || third.Duplicate {
 				t.Fatalf("other outcome with the same key = %+v", third)
@@ -156,13 +156,13 @@ func TestUserAutomationAppliesItsProjectOnEveryRun(t *testing.T) {
 	}
 	body := map[string]any{"name": "Project check", "prompt": "pwd", "schedule": map[string]any{"kind": "daily", "time": "09:00"}, "timeZone": "Asia/Shanghai", "session": "reuse", "enabled": true, "cwd": first}
 	var a automationInfo
-	d.must(t, http.MethodPost, "/api/agents/default/automations", body, &a, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", body, &a, http.StatusCreated)
 	run := d.runNow(t, a.ID)
 	d.watch(t, run.SessionID).until(t, "project cwd", answered("bash: "+first))
 	settledRoutine(t, d, a.ID, run.ID)
 	// When the project changes before the next run.
 	body["cwd"] = second
-	d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/automations/"+a.ID, body, nil)
 	next := d.runNow(t, a.ID)
 	// Then the same session uses the new project.
 	if next.SessionID != run.SessionID {
@@ -170,9 +170,9 @@ func TestUserAutomationAppliesItsProjectOnEveryRun(t *testing.T) {
 	}
 	d.watch(t, next.SessionID).until(t, "updated project cwd", answered("bash: "+second))
 	settledRoutine(t, d, a.ID, next.ID)
-	// And clearing the override restores the agent workspace on the same session.
+	// And clearing the override restores the bot workspace on the same session.
 	body["cwd"] = ""
-	d.must(t, http.MethodPut, "/api/agents/default/automations/"+a.ID, body, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/automations/"+a.ID, body, nil)
 	cleared := d.runNow(t, a.ID)
 	d.watch(t, cleared.SessionID).until(t, "workspace restored", func(tr *transcript) bool {
 		for _, item := range tr.items {
@@ -247,7 +247,7 @@ func TestUserAutomationExecutionErrorOverridesItsReport(t *testing.T) {
 	defer boundary.Close()
 	d := startDex(t, t.TempDir(), "")
 	d.must(t, http.MethodPut, "/api/settings/providers/routine", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "models": []string{"routine"}}, nil)
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "routine", "modelId": "routine", "thinkingLevel": "off", "instructions": ""}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "routine", "modelId": "routine", "thinkingLevel": "off", "instructions": ""}, nil)
 	a := d.createAutomation(t, "Error after report", "run the check", "new", map[string]any{"kind": "daily", "time": "09:00"})
 	// When the provider fails after automation_report succeeds.
 	run := d.runNow(t, a.ID)

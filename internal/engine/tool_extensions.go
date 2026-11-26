@@ -13,11 +13,11 @@ import (
 // Extension is the native registration descriptor for tools, prompt sections, and hooks.
 type Extension = durable.Extension
 
-// ExtensionRuntime provides agent resources before recovery can execute tools.
+// ExtensionRuntime provides bot resources before recovery can execute tools.
 type ExtensionRuntime struct {
-	AgentID, AgentDir string
-	Environment       func(context.Context, int64) (ToolEnvironment, error)
-	Secrets           vault.Snapshot
+	BotID, BotDir string
+	Environment   func(context.Context, int64) (ToolEnvironment, error)
+	Secrets       vault.Snapshot
 }
 
 type ToolEnvironment struct {

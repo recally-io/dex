@@ -19,12 +19,12 @@ import (
 	"github.com/recally-io/dex/internal/mcptest"
 )
 
-func warmOtherAgent(t *testing.T, r *nativeTest) {
+func warmOtherBot(t *testing.T, r *nativeTest) {
 	t.Helper()
-	if err := r.q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "other", Name: "Other"}); err != nil {
+	if err := r.q.CreateBotIfMissing(t.Context(), sqlc.CreateBotIfMissingParams{ID: "other", Name: "Other"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.UpdateAgentSettings(t.Context(), sqlc.UpdateAgentSettingsParams{ID: "other", Name: "Other", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
+	if err := r.q.UpdateBotSettings(t.Context(), sqlc.UpdateBotSettingsParams{ID: "other", Name: "Other", ModelProvider: "faux", ModelID: "echo", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.service.Post(t.Context(), "other", MainKey, "", "warm", "ready"); err != nil {
@@ -33,7 +33,7 @@ func warmOtherAgent(t *testing.T, r *nativeTest) {
 	awaitReceipt(t, r, "warm")
 }
 
-func holdAgentMCP(t *testing.T, r *nativeTest) (<-chan struct{}, func()) {
+func holdBotMCP(t *testing.T, r *nativeTest) (<-chan struct{}, func()) {
 	t.Helper()
 	entered, release := make(chan struct{}), make(chan struct{})
 	enteredOnce := sync.OnceFunc(func() { close(entered) })
@@ -53,23 +53,23 @@ func holdAgentMCP(t *testing.T, r *nativeTest) (<-chan struct{}, func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.SetMCPServer(t.Context(), sqlc.SetMCPServerParams{AgentID: "bot", Name: "slow", Config: string(config)}); err != nil {
+	if err := r.q.SetMCPServer(t.Context(), sqlc.SetMCPServerParams{BotID: "bot", Name: "slow", Config: string(config)}); err != nil {
 		t.Fatal(err)
 	}
 	return entered, releaseOnce
 }
 
-func TestUserWarmAgentSendCompletesDuringOtherAgentLoading(t *testing.T) {
+func TestUserWarmBotSendCompletesDuringOtherBotLoading(t *testing.T) {
 	for _, reload := range []bool{false, true} {
 		name := "cold open"
 		if reload {
 			name = "reload"
 		}
 		t.Run(name, func(t *testing.T) {
-			// Given a warm agent and another agent held at a real MCP handshake.
+			// Given a warm bot and another bot held at a real MCP handshake.
 			r := startNative(t, "echo")
-			warmOtherAgent(t, r)
-			entered, release := holdAgentMCP(t, r)
+			warmOtherBot(t, r)
+			entered, release := holdBotMCP(t, r)
 			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 			defer cancel()
 			loaded := make(chan error, 1)
@@ -85,9 +85,9 @@ func TestUserWarmAgentSendCompletesDuringOtherAgentLoading(t *testing.T) {
 			select {
 			case <-entered:
 			case <-ctx.Done():
-				t.Fatal("cold agent did not reach MCP")
+				t.Fatal("cold bot did not reach MCP")
 			}
-			// When the user sends to the warm agent before releasing MCP.
+			// When the user sends to the warm bot before releasing MCP.
 			sendCtx, stop := context.WithTimeout(t.Context(), 2*time.Second)
 			defer stop()
 			sent := make(chan error, 1)
@@ -101,10 +101,10 @@ func TestUserWarmAgentSendCompletesDuringOtherAgentLoading(t *testing.T) {
 			select {
 			case err := <-sent:
 				if err != nil {
-					t.Fatalf("warm agent Send failed during %s: %v", name, err)
+					t.Fatalf("warm bot Send failed during %s: %v", name, err)
 				}
 			case <-sendCtx.Done():
-				t.Fatalf("warm agent Send blocked by another agent's %s", name)
+				t.Fatalf("warm bot Send blocked by another bot's %s", name)
 			}
 			// Then Send has already durably admitted this input.
 			if !receipt(t, r, "independent").AdmittedAt.Valid {
@@ -114,15 +114,15 @@ func TestUserWarmAgentSendCompletesDuringOtherAgentLoading(t *testing.T) {
 	}
 }
 
-func TestUserBackgroundRecoverySkipsOtherAgentLoading(t *testing.T) {
-	// Given pending inputs for a cold agent and a warm agent.
+func TestUserBackgroundRecoverySkipsOtherBotLoading(t *testing.T) {
+	// Given pending inputs for a cold bot and a warm bot.
 	r := startNative(t, "echo")
-	warmOtherAgent(t, r)
+	warmOtherBot(t, r)
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	for _, agent := range []string{"bot", "other"} {
-		if err := r.service.SubmitMessage(t.Context(), agent, "telegram:7", agent+"-pending", Message{Content: "recover"}); err != nil {
+	for _, bot := range []string{"bot", "other"} {
+		if err := r.service.SubmitMessage(t.Context(), bot, "telegram:7", bot+"-pending", Message{Content: "recover"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -130,11 +130,11 @@ func TestUserBackgroundRecoverySkipsOtherAgentLoading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entered, release := holdAgentMCP(t, r)
+	entered, release := holdBotMCP(t, r)
 	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	// When recovery opens the cold agent and waits on MCP.
+	// When recovery opens the cold bot and waits on MCP.
 	runReconciler(t, r)
 	defer release()
 	select {
@@ -142,7 +142,7 @@ func TestUserBackgroundRecoverySkipsOtherAgentLoading(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("recovery did not reach MCP")
 	}
-	// Then the warm agent's durable work completes before the cold agent opens.
+	// Then the warm bot's durable work completes before the cold bot opens.
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(10 * time.Millisecond)
@@ -151,7 +151,7 @@ func TestUserBackgroundRecoverySkipsOtherAgentLoading(t *testing.T) {
 		select {
 		case <-tick.C:
 		case <-deadline.C:
-			t.Fatal("warm agent pending recovery blocked by another agent's MCP")
+			t.Fatal("warm bot pending recovery blocked by another bot's MCP")
 		}
 	}
 	if sub := receipt(t, r, id); !sub.AdmittedAt.Valid || sub.Answer.String != "echo: recover" {
@@ -160,9 +160,9 @@ func TestUserBackgroundRecoverySkipsOtherAgentLoading(t *testing.T) {
 }
 
 func TestUserCancelledWaitForSharedReloadKeepsOrderedDurableInputs(t *testing.T) {
-	// Given an agent whose reload is held at a real MCP handshake.
+	// Given a bot whose reload is held at a real MCP handshake.
 	r := startNative(t, "context")
-	entered, release := holdAgentMCP(t, r)
+	entered, release := holdBotMCP(t, r)
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
 	loaded := make(chan error, 1)
@@ -218,9 +218,9 @@ func TestUserCancelledWaitForSharedReloadKeepsOrderedDurableInputs(t *testing.T)
 }
 
 func TestUserMaintenanceAndReloadRemainMutuallyExclusive(t *testing.T) {
-	// Given an agent whose Reload is held at a real MCP handshake.
+	// Given a bot whose Reload is held at a real MCP handshake.
 	r := startNative(t, "echo")
-	entered, release := holdAgentMCP(t, r)
+	entered, release := holdBotMCP(t, r)
 	defer release()
 	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
 	defer cancel()
@@ -333,7 +333,7 @@ func TestUserMaintenanceConfirmationOrdersWebReceiptCreation(t *testing.T) {
 	}
 }
 
-func TestUserReconcilerShutdownJoinsColdAgentWorker(t *testing.T) {
+func TestUserReconcilerShutdownJoinsColdBotWorker(t *testing.T) {
 	// Given a durable pending input that needs a cold MCP connection.
 	r := startNative(t, "echo")
 	if err := r.service.AcquireMaintenance(t.Context()); err != nil {
@@ -342,7 +342,7 @@ func TestUserReconcilerShutdownJoinsColdAgentWorker(t *testing.T) {
 	if err := r.service.SubmitMessage(t.Context(), "bot", "telegram:7", "shutdown-pending", Message{Content: "recover later"}); err != nil {
 		t.Fatal(err)
 	}
-	entered, release := holdAgentMCP(t, r)
+	entered, release := holdBotMCP(t, r)
 	defer release()
 	if err := r.service.ReleaseMaintenance(t.Context()); err != nil {
 		t.Fatal(err)
@@ -373,10 +373,10 @@ func TestUserReconcilerShutdownJoinsColdAgentWorker(t *testing.T) {
 	}
 }
 
-func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
+func TestUserTaskResultWakeRunsWhileOtherBotLoads(t *testing.T) {
 	// Given an idle warm parent and its child session that has not answered.
 	r := startNative(t, "echo")
-	warmOtherAgent(t, r)
+	warmOtherBot(t, r)
 	parent, err := r.service.Main(t.Context(), "other")
 	if err != nil {
 		t.Fatal(err)
@@ -386,7 +386,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	}
 	marker, taskRelease := filepath.Join(r.dir, "task-started"), filepath.Join(r.dir, "task-release")
 	defer func() { _ = os.WriteFile(taskRelease, nil, 0600) }()
-	_, err = r.service.ToolSessionNew(t.Context(), engine.TaskContext{AgentID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, NewArgs{
+	_, err = r.service.ToolSessionNew(t.Context(), engine.TaskContext{BotID: "other", ConversationID: parent.ExecutionID, SourceRequestID: "source", Key: "other/result"}, NewArgs{
 		Title: "Result", Message: "touch " + marker + "; while [ ! -f " + taskRelease + " ]; do sleep 0.01; done; printf 'saved report'", Provider: "faux", ModelID: "bash",
 	})
 	if err != nil {
@@ -407,7 +407,7 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "cold", SessionID: cold.ID, Content: "cold", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 2}); err != nil {
 		t.Fatal(err)
 	}
-	entered, release := holdAgentMCP(t, r)
+	entered, release := holdBotMCP(t, r)
 	runReconciler(t, r)
 	defer release()
 	select {
@@ -429,10 +429,10 @@ func TestUserTaskResultWakeRunsWhileOtherAgentLoads(t *testing.T) {
 		select {
 		case <-tick.C:
 		case <-deadline.C:
-			t.Fatal("result-only turn blocked by cold agent")
+			t.Fatal("result-only turn blocked by cold bot")
 		}
 	}
-	// Then the parent receives the saved answer before the other agent opens.
+	// Then the parent receives the saved answer before the other bot opens.
 	if sub := receipt(t, r, resultID); !sub.AdmittedAt.Valid || !strings.Contains(sub.Answer.String, "saved report") {
 		t.Fatalf("parent result: %+v", sub)
 	}

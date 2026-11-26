@@ -50,7 +50,7 @@ func TestUserMaintenanceRejectsWorkUntilReleaseOrRestart(t *testing.T) {
 			d.must(t, http.MethodPost, "/api/maintenance", nil, nil)
 			marker := filepath.Join(t.TempDir(), "executed")
 			requestID := uuid.NewV7().String()
-			path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", conversation.ID)
+			path := fmt.Sprintf("/api/bots/default/sessions/%d/messages", conversation.ID)
 			body := map[string]string{"id": requestID, "text": fmt.Sprintf("touch '%s'; echo released", marker)}
 
 			// When submission is refused, it stores no intent that could execute later.

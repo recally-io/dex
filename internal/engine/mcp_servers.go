@@ -26,20 +26,20 @@ func NewMCPStore(db *sql.DB) *MCPStore {
 	return &MCPStore{db: db, revisions: make(map[string]uint64)}
 }
 
-func (s *MCPStore) stamp(agentID string) string {
+func (s *MCPStore) stamp(botID string) string {
 	if s == nil {
 		return ""
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return fmt.Sprintf("|mcp:%d:%d|", s.revisions[""], s.revisions[agentID])
+	return fmt.Sprintf("|mcp:%d:%d|", s.revisions[""], s.revisions[botID])
 }
 
-func (s *MCPStore) list(ctx context.Context, agentID string) ([]serverEntry, error) {
+func (s *MCPStore) list(ctx context.Context, botID string) ([]serverEntry, error) {
 	if s == nil {
 		return nil, nil
 	}
-	rows, err := sqlc.New(s.db).ListMCPServers(ctx, agentID)
+	rows, err := sqlc.New(s.db).ListMCPServers(ctx, botID)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +52,7 @@ func (s *MCPStore) list(ctx context.Context, agentID string) ([]serverEntry, err
 		}
 		pos, override := positions[row.Name]
 		info := McpServerInfo{Name: row.Name, Scope: "dex", Overrides: override, State: "idle", Tools: []string{}, VaultReferences: listMCPVaultReferences(c)}
-		if row.AgentID != "" {
+		if row.BotID != "" {
 			info.Scope = "agent"
 		}
 		switch {
@@ -64,7 +64,7 @@ func (s *MCPStore) list(ctx context.Context, agentID string) ([]serverEntry, err
 		if c.Disabled {
 			info.State = "disabled"
 		}
-		entry := serverEntry{info: info, config: c, scopeID: row.AgentID}
+		entry := serverEntry{info: info, config: c, scopeID: row.BotID}
 		if override {
 			servers[pos] = entry
 		} else {
@@ -75,13 +75,13 @@ func (s *MCPStore) list(ctx context.Context, agentID string) ([]serverEntry, err
 	return servers, nil
 }
 
-func (s *MCPStore) get(ctx context.Context, agentID, name string) (serverConfig, error) {
-	return getMCPConfig(ctx, sqlc.New(s.db), agentID, name)
+func (s *MCPStore) get(ctx context.Context, botID, name string) (serverConfig, error) {
+	return getMCPConfig(ctx, sqlc.New(s.db), botID, name)
 }
 
-func getMCPConfig(ctx context.Context, q *sqlc.Queries, agentID, name string) (serverConfig, error) {
+func getMCPConfig(ctx context.Context, q *sqlc.Queries, botID, name string) (serverConfig, error) {
 	var c serverConfig
-	raw, err := q.GetMCPServer(ctx, sqlc.GetMCPServerParams{AgentID: agentID, Name: name})
+	raw, err := q.GetMCPServer(ctx, sqlc.GetMCPServerParams{BotID: botID, Name: name})
 	if err != nil {
 		return c, err
 	}
@@ -91,7 +91,7 @@ func getMCPConfig(ctx context.Context, q *sqlc.Queries, agentID, name string) (s
 	return c, nil
 }
 
-func (s *MCPStore) set(ctx context.Context, agentID, name string, c serverConfig) error {
+func (s *MCPStore) set(ctx context.Context, botID, name string, c serverConfig) error {
 	if !serverName.MatchString(name) || (!c.Disabled && ((c.Type == "http" && c.URL == "") || (c.Type != "http" && (c.Command == "" || c.Type != "" && c.Type != "stdio")))) {
 		return fmt.Errorf("%w: invalid MCP server declaration", ErrInvalidInput)
 	}
@@ -103,7 +103,7 @@ func (s *MCPStore) set(ctx context.Context, agentID, name string, c serverConfig
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := sqlc.New(tx)
-	previous, err := getMCPConfig(ctx, q, agentID, name)
+	previous, err := getMCPConfig(ctx, q, botID, name)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -136,28 +136,28 @@ func (s *MCPStore) set(ctx context.Context, agentID, name string, c serverConfig
 	if err != nil {
 		return &privateError{message: "cannot encode MCP declaration", cause: err}
 	}
-	if err := q.SetMCPServer(ctx, sqlc.SetMCPServerParams{AgentID: agentID, Name: name, Config: string(raw)}); err != nil {
+	if err := q.SetMCPServer(ctx, sqlc.SetMCPServerParams{BotID: botID, Name: name, Config: string(raw)}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.revisions[agentID]++
+	s.revisions[botID]++
 	return nil
 }
 
-func (s *MCPStore) remove(ctx context.Context, agentID, name string) error {
+func (s *MCPStore) remove(ctx context.Context, botID, name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// One SQL statement is a transaction. The revision changes only after it commits.
-	count, err := sqlc.New(s.db).RemoveMCPServer(ctx, sqlc.RemoveMCPServerParams{AgentID: agentID, Name: name})
+	count, err := sqlc.New(s.db).RemoveMCPServer(ctx, sqlc.RemoveMCPServerParams{BotID: botID, Name: name})
 	if err != nil {
 		return err
 	}
 	if count == 0 {
 		return sql.ErrNoRows
 	}
-	s.revisions[agentID]++
+	s.revisions[botID]++
 	return nil
 }
 

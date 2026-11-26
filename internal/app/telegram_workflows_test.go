@@ -76,12 +76,12 @@ func TestUserTelegramCallbackExpiryRevocationAndClearGenerationSurviveRestart(t 
 		t.Fatal("expired callback executed")
 	}
 	// A current revocation permanently cancels that button; regrant does not revive it.
-	execSQL(t, conn, "UPDATE telegram_settings SET allowed_users='43' WHERE agent_id='default'")
+	execSQL(t, conn, "UPDATE telegram_settings SET allowed_users='43' WHERE bot_id='default'")
 	f.callback(5, 42, 7, 0, menu.ID, stop)
 	if event := f.callbackResult(t); event.Text == "Accepted." {
 		t.Fatal("revoked callback executed")
 	}
-	execSQL(t, conn, "UPDATE telegram_settings SET allowed_users='42' WHERE agent_id='default'")
+	execSQL(t, conn, "UPDATE telegram_settings SET allowed_users='42' WHERE bot_id='default'")
 	f.callback(6, 42, 7, 0, menu.ID, stop)
 	if event := f.callbackResult(t); event.Text == "Accepted." {
 		t.Fatal("regrant revived canceled button")

@@ -9,7 +9,7 @@ import (
 )
 
 func continuePath(sessionID int64) string {
-	return fmt.Sprintf("/api/agents/default/sessions/%d/continue", sessionID)
+	return fmt.Sprintf("/api/bots/default/sessions/%d/continue", sessionID)
 }
 
 func lastItem(tr *transcript) item {
@@ -43,7 +43,7 @@ func TestUserRetriesStoppedRunWithoutSendingTheMessageAgain(t *testing.T) {
 	w := d.watch(t, sessionID)
 	// A continue cannot start while the run is active.
 	d.must(t, http.MethodPost, continuePath(sessionID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", sessionID), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", sessionID), nil, nil)
 	w.until(t, "stopped card", func(tr *transcript) bool {
 		last := lastItem(tr)
 		return !tr.running && last.Kind == "error" && last.Failure == "aborted"

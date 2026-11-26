@@ -1,5 +1,5 @@
 // Package upload stores the files that the user attaches to messages. A file goes to
-// <workspace>/uploads/<ID>/<name>, in the agent workspace, so the agent's tools can read it. The
+// <workspace>/uploads/<ID>/<name>, in the bot workspace, so the bot's tools can read it. The
 // directory is the only record of an upload: an ID is known while its directory has its file.
 package upload
 
@@ -30,40 +30,40 @@ var (
 	ErrInvalidName = errors.New("invalid file name")
 )
 
-// Store keeps the uploads of one agent.
+// Store keeps the uploads of one bot.
 type Store struct {
-	agentDir string // <data>/agents/<agent>, the parent of the workspace
+	botDir string // <data>/agents/<bot>, the parent of the workspace
 }
 
-// New returns the Store of the agent with the directory agentDir.
-func New(agentDir string) *Store {
-	return &Store{agentDir: agentDir}
+// New returns the Store of the bot with the directory botDir.
+func New(botDir string) *Store {
+	return &Store{botDir: botDir}
 }
 
-// uploadsDir is the uploads directory, relative to the agent directory.
+// uploadsDir is the uploads directory, relative to the bot directory.
 const uploadsDir = "workspace/uploads"
 
-// uploads opens the uploads directory, and makes it first when create is true. The agent's tools
+// uploads opens the uploads directory, and makes it first when create is true. The bot's tools
 // can write in the workspace, also a symlink in the place of the uploads directory. The root at
-// the agent directory refuses each symlink that leads out of it.
+// the bot directory refuses each symlink that leads out of it.
 func (s *Store) uploads(create bool) (*os.Root, error) {
-	// The engine creates the agent directory on first use.
+	// The engine creates the bot directory on first use.
 	if create {
-		if err := os.MkdirAll(s.agentDir, 0o700); err != nil {
+		if err := os.MkdirAll(s.botDir, 0o700); err != nil {
 			return nil, err
 		}
 	}
-	agent, err := os.OpenRoot(s.agentDir)
+	bot, err := os.OpenRoot(s.botDir)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = agent.Close() }()
+	defer func() { _ = bot.Close() }()
 	if create {
-		if err := agent.MkdirAll(uploadsDir, 0o700); err != nil {
+		if err := bot.MkdirAll(uploadsDir, 0o700); err != nil {
 			return nil, err
 		}
 	}
-	return agent.OpenRoot(uploadsDir)
+	return bot.OpenRoot(uploadsDir)
 }
 
 // Save stores the file name with the content of r as a new upload.
@@ -147,7 +147,7 @@ func (s *Store) Open(id string) (*os.File, engine.Attachment, error) {
 	}
 	root, err := s.uploads(false)
 	if err != nil {
-		// Also no uploads directory yet, or a symlink that leads out of the agent directory.
+		// Also no uploads directory yet, or a symlink that leads out of the bot directory.
 		return nil, engine.Attachment{}, fmt.Errorf("%w: %w", ErrNotFound, err)
 	}
 	defer func() { _ = root.Close() }()

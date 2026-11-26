@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-func TestUserMemoryGitIgnoresAgentRepositoryCommands(t *testing.T) {
+func TestUserMemoryGitIgnoresBotRepositoryCommands(t *testing.T) {
 	for _, command := range []string{"hook", "fsmonitor"} {
 		t.Run(command, func(t *testing.T) {
-			// Given a memory repository with an agent-controlled Git command.
+			// Given a memory repository with a bot-controlled Git command.
 			repo := newMemoryRepo(t.TempDir(), map[string]string{"PATH": os.Getenv("PATH")})
 			if err := repo.Open(t.Context()); err != nil {
 				t.Fatal(err)
@@ -42,14 +42,14 @@ func TestUserMemoryGitIgnoresAgentRepositoryCommands(t *testing.T) {
 				t.Fatalf("memory commit: changed=%t err=%v", committed, err)
 			}
 			if _, err := os.Stat(marker); !os.IsNotExist(err) {
-				t.Fatalf("agent Git %s ran: %v", command, err)
+				t.Fatalf("bot Git %s ran: %v", command, err)
 			}
 		})
 	}
 }
 
 func TestUserMemoryGitDoesNotInheritProcessSecrets(t *testing.T) {
-	// Given an agent-controlled clean filter and a value outside the explicit tool environment.
+	// Given a bot-controlled clean filter and a value outside the explicit tool environment.
 	t.Setenv("DEX_PROCESS_SENTINEL", "process-only-test-value")
 	repo := newMemoryRepo(t.TempDir(), map[string]string{"PATH": os.Getenv("PATH")})
 	if err := repo.Open(t.Context()); err != nil {

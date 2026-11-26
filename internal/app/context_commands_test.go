@@ -13,7 +13,7 @@ import (
 )
 
 func sessionPath(sessionID int64, action string) string {
-	return fmt.Sprintf("/api/agents/default/sessions/%d/%s", sessionID, action)
+	return fmt.Sprintf("/api/bots/default/sessions/%d/%s", sessionID, action)
 }
 
 // compaction matches a compaction boundary with status; "" is a placed summary.
@@ -30,7 +30,7 @@ func (d *dex) waitSettled(t *testing.T, sessionID int64) {
 	t.Helper()
 	eventually(t, "session settled", func() (bool, any) {
 		var c sessionListItem
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &c)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", sessionID), nil, &c)
 		return !c.Busy, c
 	})
 }
@@ -119,7 +119,7 @@ func TestUserCompactRetryAfterSynchronousFailure(t *testing.T) {
 	d.send(t, sessionID, "short")
 	w.until(t, "answer", answered("echo: short"))
 	d.waitSettled(t, sessionID)
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "", "modelId": "", "thinkingLevel": "off"}, nil)
 	body := map[string]string{"id": uuid.NewV7().String()}
 	d.must(t, http.MethodPost, sessionPath(sessionID, "compact"), body, nil, http.StatusConflict)
 	d.setModel(t, "echo")

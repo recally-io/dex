@@ -52,7 +52,7 @@ func (m *Manager) Webhook(w http.ResponseWriter, r *http.Request, platform strin
 		return
 	}
 	if err := m.q.EnqueueChannelWebhook(r.Context(), sqlc.EnqueueChannelWebhookParams{
-		Platform: platform, Account: hook.Account, EventID: event.ID, AgentID: m.agentID, ReceivedAt: time.Now().UnixMilli(), Payload: event.Payload,
+		Platform: platform, Account: hook.Account, EventID: event.ID, BotID: m.botID, ReceivedAt: time.Now().UnixMilli(), Payload: event.Payload,
 	}); err != nil {
 		slog.Warn("channel: callback could not commit", "channel", platform, "err", err)
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -80,7 +80,7 @@ func (m *Manager) DrainWebhookInbox(ctx context.Context, platform, account strin
 	if active == nil {
 		return ctx.Err()
 	}
-	key := sqlc.NextChannelWebhookParams{AgentID: m.agentID, Platform: platform, Account: account}
+	key := sqlc.NextChannelWebhookParams{BotID: m.botID, Platform: platform, Account: account}
 	for ctx.Err() == nil {
 		// Do not start processing a new row before its HTTP handler writes the ACK.
 		m.intakeMu.Lock()

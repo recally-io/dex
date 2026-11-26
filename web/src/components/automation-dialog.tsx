@@ -1,11 +1,11 @@
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Automation, AutomationInput, Schedule, ScheduleInput } from "../api/generated/types.gen";
 import {
   createAutomationMutation,
   getNotificationTargetsOptions,
-  listAgentRunnersOptions,
+  listBotRunnersOptions,
   listAutomationTargetsOptions,
   updateAutomationMutation,
 } from "../api/generated/@tanstack/react-query.gen";
@@ -32,7 +32,7 @@ function localDateTime(at: number) {
 }
 
 export function AutomationDialog({ existing, onClose }: { existing?: Automation; onClose: () => void }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const formId = useId();
   const browserZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const [name, setName] = useState(existing?.name ?? "");
@@ -55,18 +55,18 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
       : (existing?.notification?.mode ?? (existing ? "none" : "default")),
   );
 
-  const targets = useQuery(getNotificationTargetsOptions({ path: { agentId } }));
+  const targets = useQuery(getNotificationTargetsOptions({ path: { botId } }));
   const bound = session === "session";
 
   const sessions = useQuery({
-    ...listAutomationTargetsOptions({ path: { agentId } }),
+    ...listAutomationTargetsOptions({ path: { botId } }),
     enabled: bound,
     staleTime: 0,
   });
 
   const targetsForRoutine = sessions.data?.targets ?? [];
   const validTarget = !bound || targetsForRoutine.some((target) => target.id === targetId);
-  const runners = useQuery({ ...listAgentRunnersOptions({ path: { agentId } }), enabled: !bound });
+  const runners = useQuery({ ...listBotRunnersOptions({ path: { botId } }), enabled: !bound });
   const runnerList = runners.data?.runners ?? [];
   const own = runnerList.find((env) => env.default);
 
@@ -119,7 +119,7 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
   });
 
   const saved = async () => {
-    await refreshAutomations(agentId);
+    await refreshAutomations(botId);
     onClose();
   };
 
@@ -190,8 +190,8 @@ export function AutomationDialog({ existing, onClose }: { existing?: Automation;
               : { mode: notification === "default" ? ("default" as const) : ("none" as const) },
           };
 
-          if (existing) update.mutate({ path: { agentId, automationId: existing.id }, body });
-          else create.mutate({ path: { agentId }, body });
+          if (existing) update.mutate({ path: { botId, automationId: existing.id }, body });
+          else create.mutate({ path: { botId }, body });
         }}
       >
         <Field label="Name">

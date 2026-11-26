@@ -32,14 +32,14 @@ func userOrigin(origin string) bool {
 }
 
 // questionAction is the action that control runs when the owner approves a question.
-type questionAction struct{ kind, agentID, approve string }
+type questionAction struct{ kind, botID, approve string }
 
 func (a *questionAction) store(p *sqlc.CreateQuestionParams) {
 	if a == nil {
 		return
 	}
 	p.Action = sql.NullString{String: a.kind, Valid: true}
-	p.ActionAgentID = sql.NullString{String: a.agentID, Valid: true}
+	p.ActionBotID = sql.NullString{String: a.botID, Valid: true}
 	p.ApproveText = sql.NullString{String: a.approve, Valid: true}
 }
 
@@ -49,10 +49,10 @@ func (a *questionAction) allowed(ctx context.Context, q *sqlc.Queries, r engine.
 	if source.Kind != "message" || !userOrigin(source.Origin) {
 		return fmt.Errorf("%w: this action needs a user input in this conversation", ErrQuestionInvalid)
 	}
-	if a.agentID == r.AgentID {
+	if a.botID == r.BotID {
 		return fmt.Errorf("%w: a bot cannot archive itself", ErrQuestionInvalid)
 	}
-	return db.CheckArchive(ctx, q, a.agentID)
+	return db.CheckArchive(ctx, q, a.botID)
 }
 
 // ToolAskArchive asks the owner to archive a bot. It saves the question with the action and does
@@ -66,7 +66,7 @@ func (s *Service) ToolAskArchive(ctx context.Context, r engine.TaskContext, botI
 	name := strings.Join(strings.Fields(botName), " ")
 	approve := "Archive " + name
 	text := fmt.Sprintf("Archive bot %q? It leaves the sidebar, its channels stop, and its automations pause. You can restore it. Reason: %s", name, reason)
-	return s.askQuestion(ctx, r, AskUserArgs{Question: text, Options: []string{approve, "Cancel"}}, &questionAction{kind: archiveAction, agentID: botID, approve: approve})
+	return s.askQuestion(ctx, r, AskUserArgs{Question: text, Options: []string{approve, "Cancel"}}, &questionAction{kind: archiveAction, botID: botID, approve: approve})
 }
 
 // answerDecision is the content of an answer and what control decided for it.
@@ -85,7 +85,7 @@ func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Q
 	if row.Action.String != archiveAction {
 		return fmt.Errorf("unknown question action %q", row.Action.String)
 	}
-	bot, err := q.GetAgent(ctx, row.ActionAgentID.String)
+	bot, err := q.GetBot(ctx, row.ActionBotID.String)
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,7 @@ func (d *answerDecision) decide(ctx context.Context, q *sqlc.Queries, row sqlc.Q
 	} else if err := db.CheckArchive(ctx, q, bot.ID); err == nil {
 		d.archive = bot.ID
 		outcome = fmt.Sprintf("dex: Approved. Bot %q is archived.", bot.Name)
-	} else if errors.Is(err, db.ErrAgentBusy) || errors.Is(err, db.ErrDefaultAgent) || errors.Is(err, db.ErrAgentArchived) || errors.Is(err, db.ErrAgentMissing) {
+	} else if errors.Is(err, db.ErrBotBusy) || errors.Is(err, db.ErrDefaultBot) || errors.Is(err, db.ErrBotArchived) || errors.Is(err, db.ErrBotMissing) {
 		outcome = fmt.Sprintf("dex: Approved, but bot %q is not archived: %s.", bot.Name, err)
 	} else {
 		return err
@@ -110,13 +110,13 @@ func (d *answerDecision) apply(ctx context.Context, q *sqlc.Queries, now time.Ti
 	if d.archive == "" {
 		return nil
 	}
-	return db.ArchiveAgent(ctx, q, d.archive, now)
+	return db.ArchiveBot(ctx, q, d.archive, now)
 }
 
 // botArchived tells the runtime that a bot is archived. Call it after the commit.
-func (s *Service) botArchived(agentID string) {
-	if agentID != "" && s.OnBotArchived != nil {
-		s.OnBotArchived(agentID)
+func (s *Service) botArchived(botID string) {
+	if botID != "" && s.OnBotArchived != nil {
+		s.OnBotArchived(botID)
 	}
 }
 

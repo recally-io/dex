@@ -20,13 +20,13 @@ func (q *Queries) ClearTaskPrimarySession(ctx context.Context, taskID string) er
 }
 
 const createTaskToolOperation = `-- name: CreateTaskToolOperation :exec
-INSERT INTO task_tool_operations (key, agent_id, session_id, source_request_id, action, result)
+INSERT INTO task_tool_operations (key, bot_id, session_id, source_request_id, action, result)
 VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateTaskToolOperationParams struct {
 	Key             string `json:"key"`
-	AgentID         string `json:"agent_id"`
+	BotID           string `json:"bot_id"`
 	SessionID       int64  `json:"session_id"`
 	SourceRequestID string `json:"source_request_id"`
 	Action          string `json:"action"`
@@ -36,7 +36,7 @@ type CreateTaskToolOperationParams struct {
 func (q *Queries) CreateTaskToolOperation(ctx context.Context, arg CreateTaskToolOperationParams) error {
 	_, err := q.db.ExecContext(ctx, createTaskToolOperation,
 		arg.Key,
-		arg.AgentID,
+		arg.BotID,
 		arg.SessionID,
 		arg.SourceRequestID,
 		arg.Action,
@@ -46,7 +46,7 @@ func (q *Queries) CreateTaskToolOperation(ctx context.Context, arg CreateTaskToo
 }
 
 const getTaskByNumber = `-- name: GetTaskByNumber :one
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE t.number = ? AND a.archived_at IS NULL
 `
 
@@ -101,7 +101,7 @@ func (q *Queries) GetTaskSession(ctx context.Context, arg GetTaskSessionParams) 
 }
 
 const getTaskToolOperation = `-- name: GetTaskToolOperation :one
-SELECT "key", agent_id, session_id, source_request_id, "action", result FROM task_tool_operations WHERE key = ?
+SELECT "key", bot_id, session_id, source_request_id, "action", result FROM task_tool_operations WHERE key = ?
 `
 
 func (q *Queries) GetTaskToolOperation(ctx context.Context, key string) (TaskToolOperation, error) {
@@ -109,7 +109,7 @@ func (q *Queries) GetTaskToolOperation(ctx context.Context, key string) (TaskToo
 	var i TaskToolOperation
 	err := row.Scan(
 		&i.Key,
-		&i.AgentID,
+		&i.BotID,
 		&i.SessionID,
 		&i.SourceRequestID,
 		&i.Action,
@@ -171,7 +171,7 @@ func (q *Queries) HasTaskTitleEntry(ctx context.Context, arg HasTaskTitleEntryPa
 
 const linkTaskSession = `-- name: LinkTaskSession :one
 INSERT INTO task_sessions (id, task_id, session_id, bot_id, is_primary, started_at, turn_request_id)
-SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.agent_id,
+SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.bot_id,
   NOT EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = ?1 AND s.is_primary = 1), ?2,
   COALESCE((SELECT s.id FROM submissions s WHERE s.session_id = c.id AND s.kind = 'message'
     AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
@@ -204,7 +204,7 @@ func (q *Queries) LinkTaskSession(ctx context.Context, arg LinkTaskSessionParams
 }
 
 const listBotTasks = `-- name: ListBotTasks :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL AND (
   (CAST(?1 AS INTEGER) = 0 AND
     (t.assignee_bot_id = ?2 OR (t.reviewer_kind = 'bot' AND t.reviewer_id = ?2)))
@@ -264,7 +264,7 @@ func (q *Queries) ListBotTasks(ctx context.Context, arg ListBotTasksParams) ([]T
 }
 
 const listBotWorkload = `-- name: ListBotWorkload :many
-SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.id, t.assignee_bot_id, t.title, t.created_at, t.updated_at, t.number, t.status, t.parent_task_id, t.authorized_by_root_id, t.creator_kind, t.creator_id, t.reviewer_kind, t.reviewer_id, t.review_seq, t.next_entry_seq, t.revision FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 CROSS JOIN (SELECT CAST(?1 AS TEXT) AS id) AS caller
 WHERE a.archived_at IS NULL AND t.status NOT IN ('done', 'cancelled')
 AND (t.assignee_bot_id = caller.id OR (t.reviewer_kind = 'bot' AND t.reviewer_id = caller.id))
@@ -364,15 +364,15 @@ func (q *Queries) ListTaskSessionExecutions(ctx context.Context, arg ListTaskSes
 }
 
 const listTaskSessions = `-- name: ListTaskSessions :many
-SELECT c.id AS session_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
-FROM task_sessions s JOIN sessions c ON c.id = s.session_id JOIN agents a ON a.id = s.bot_id
+SELECT c.id AS session_id, s.bot_id AS bot_id, a.name AS bot_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
+FROM task_sessions s JOIN sessions c ON c.id = s.session_id JOIN bots a ON a.id = s.bot_id
 WHERE s.task_id = ? ORDER BY s.is_primary DESC, s.started_at, c.id
 `
 
 type ListTaskSessionsRow struct {
 	SessionID int64         `json:"session_id"`
-	AgentID   string        `json:"agent_id"`
-	AgentName string        `json:"agent_name"`
+	BotID     string        `json:"bot_id"`
+	BotName   string        `json:"bot_name"`
 	Title     string        `json:"title"`
 	IsPrimary int64         `json:"is_primary"`
 	LinkedAt  int64         `json:"linked_at"`
@@ -391,8 +391,8 @@ func (q *Queries) ListTaskSessions(ctx context.Context, taskID string) ([]ListTa
 		var i ListTaskSessionsRow
 		if err := rows.Scan(
 			&i.SessionID,
-			&i.AgentID,
-			&i.AgentName,
+			&i.BotID,
+			&i.BotName,
 			&i.Title,
 			&i.IsPrimary,
 			&i.LinkedAt,

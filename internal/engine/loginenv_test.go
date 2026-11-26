@@ -17,7 +17,7 @@ func TestUserSeesAWarningWhenTheLoginShellFails(t *testing.T) {
 	env := newToolEnv(home, map[string]string{"PATH": "/usr/bin:/bin"}, func(context.Context, map[string]string) (map[string]string, error) {
 		return nil, errors.New("exit status 1")
 	})
-	a := newAgentExtensions(home, data, "a", nil, env)
+	a := newBotExtensions(home, data, "a", nil, env)
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -34,13 +34,13 @@ func TestUserSeesAWarningWhenTheLoginShellFails(t *testing.T) {
 }
 
 func TestUserLoginShellIsCapturedAgainAfterAnRcEdit(t *testing.T) {
-	// Given a loaded agent with a captured environment.
+	// Given a loaded bot with a captured environment.
 	home, data := t.TempDir(), t.TempDir()
 	value := "first"
 	env := newToolEnv(home, nil, func(context.Context, map[string]string) (map[string]string, error) {
 		return map[string]string{"FROM_RC": value}, nil
 	})
-	a := newAgentExtensions(home, data, "a", nil, env)
+	a := newBotExtensions(home, data, "a", nil, env)
 	loaded, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -49,9 +49,9 @@ func TestUserLoginShellIsCapturedAgainAfterAnRcEdit(t *testing.T) {
 	// When the user edits .zshrc.
 	value = "second"
 	extensionFile(t, filepath.Join(home, ".zshrc"), "export FROM_RC=second\n")
-	// Then the agent is stale, and the next load sees the new value.
+	// Then the bot is stale, and the next load sees the new value.
 	if a.stamp() == loaded.stamp {
-		t.Fatal("rc edit did not make the agent stale")
+		t.Fatal("rc edit did not make the bot stale")
 	}
 	next, err := a.Load(t.Context())
 	if err != nil {
@@ -71,12 +71,12 @@ func TestUserBotUsesOnePasswordThroughTheCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := newToolEnv(home, map[string]string{"PATH": bin, "OP_CONNECT_HOST": "http://shell", "OP_CONNECT_TOKEN": "shell-token"}, nil)
-	a := newAgentExtensions(home, data, "a", nil, env)
+	a := newBotExtensions(home, data, "a", nil, env)
 	before := a.stamp()
 	// When the user selects a service account.
 	env.setOnePassword(OnePassword{Mode: "service-account", ServiceAccountToken: "ops-token"})
 	if a.stamp() == before {
-		t.Fatal("1Password change did not make the agent stale")
+		t.Fatal("1Password change did not make the bot stale")
 	}
 	loaded, err := a.Load(t.Context())
 	if err != nil {
@@ -94,7 +94,7 @@ func TestUserBotUsesOnePasswordThroughTheCLI(t *testing.T) {
 	// When op is not installed, then the prompt does not mention it and the page warns.
 	env = newToolEnv(home, map[string]string{"PATH": t.TempDir()}, nil)
 	env.setOnePassword(OnePassword{Mode: "connect", ConnectHost: "http://connect", ConnectToken: "c-token"})
-	a = newAgentExtensions(home, data, "a", nil, env)
+	a = newBotExtensions(home, data, "a", nil, env)
 	missing, err := a.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestUserBrokenShellIsNotRetriedOnEveryOpen(t *testing.T) {
 		calls++
 		return nil, errors.New("exit status 1")
 	})
-	// When two agents open, then dex runs the shell once.
+	// When two bots open, then dex runs the shell once.
 	env.load(t.Context())
 	env.load(t.Context())
 	if calls != 1 {

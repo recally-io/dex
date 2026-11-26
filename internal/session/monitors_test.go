@@ -30,7 +30,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 	}
 
 	call := engine.TaskContext{
-		AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
+		BotID: "bot", ConversationID: cRow.ExecutionID.Int64,
 		SourceRequestID: "user-root-1", Key: "bot/t-invalid-1",
 	}
 	// Rejects delay < 60s and > 7 days.
@@ -81,7 +81,7 @@ func TestUserMonitorsBoundsChainDepthAndAuthority(t *testing.T) {
 		sourceReq = "monitor:" + strings.TrimPrefix(info.ID, "schedule-") + ":1"
 		// Fire submission cannot call change=true bot tools.
 		if err := r.service.ToolBotCaller(t.Context(), engine.TaskContext{
-			AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
+			BotID: "bot", ConversationID: cRow.ExecutionID.Int64,
 			SourceRequestID: sourceReq, Key: fmt.Sprintf("bot/botcheck-%d", depth),
 		}, true); err == nil {
 			t.Fatal("expected ToolBotCaller to reject monitor submission")
@@ -112,7 +112,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	}
 
 	call := engine.TaskContext{
-		AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
+		BotID: "bot", ConversationID: cRow.ExecutionID.Int64,
 		SourceRequestID: "user-root-2", Key: "bot/t-expire",
 	}
 	expInfo, err := r.service.ToolMonitorSet(t.Context(), call, MonitorSetArgs{DelaySeconds: 60, Prompt: "missed check"})
@@ -157,7 +157,7 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 		t.Fatalf("expected cancelled after Clear, got %+v, err=%v", row, err)
 	}
 
-	// Wait for Clear's context_reset to settle before ArchiveAgent.
+	// Wait for Clear's context_reset to settle before ArchiveBot.
 	awaitReceipt(t, r, "reset-monitors")
 
 	call.Key = "bot/t-archive"
@@ -165,22 +165,22 @@ func TestUserMonitorsExpiryAndCancelHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.ArchiveAgent(t.Context(), r.q, "bot", r.service.now()); err != nil {
+	if err := db.ArchiveBot(t.Context(), r.q, "bot", r.service.now()); err != nil {
 		t.Fatal(err)
 	}
 	if row, err := r.q.GetMonitor(t.Context(), strings.TrimPrefix(archMonitor.ID, "schedule-")); err != nil || row.State != "cancelled" {
-		t.Fatalf("expected cancelled after ArchiveAgent, got %+v, err=%v", row, err)
+		t.Fatalf("expected cancelled after ArchiveBot, got %+v, err=%v", row, err)
 	}
 }
 
 func TestUserAutomationOutboxSkipsUnchanged(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
-	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := r.q.InsertAutomationNotificationTarget(t.Context(), sqlc.InsertAutomationNotificationTargetParams{
-		ID: "tgt-1", AgentID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
+		ID: "tgt-1", BotID: "bot", Platform: "telegram", AccountID: "123", Peer: "telegram:42",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestUserAutomationOutboxSkipsUnchanged(t *testing.T) {
 	}
 	// Create automation + unchanged run + changed run.
 	if _, err := r.conn.ExecContext(t.Context(), `
-		INSERT INTO automations (id, agent_id, name, prompt, schedule, time_zone, session, enabled, notification_route, created_at, updated_at)
+		INSERT INTO automations (id, bot_id, name, prompt, schedule, time_zone, session, enabled, notification_route, created_at, updated_at)
 		VALUES ('auto-1', 'bot', 'HealthCheck', 'check', '{"kind":"daily","time":"09:00"}', 'UTC', 'new', 1, 'default', 1, 1)
 	`); err != nil {
 		t.Fatal(err)

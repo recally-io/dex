@@ -59,14 +59,14 @@ func TestUserChannelRepliesKeepInputOrderThroughStopAndRetry(t *testing.T) {
 	}
 
 	// Given the second answer is ready before the first input has settled.
-	exec(`INSERT INTO agents (id, name, model_provider, model_id, created_at) VALUES ('bot', 'Bot', '', '', 1);
-INSERT INTO sessions (id, agent_id, channel_key, created_at) VALUES (1, 'bot', 'main', 1);
-INSERT INTO telegram_settings (agent_id, token, allowed_users) VALUES ('bot', '123:fixture', '42,43');
+	exec(`INSERT INTO bots (id, name, model_provider, model_id, created_at) VALUES ('bot', 'Bot', '', '', 1);
+INSERT INTO sessions (id, bot_id, channel_key, created_at) VALUES (1, 'bot', 'main', 1);
+INSERT INTO telegram_settings (bot_id, token, allowed_users) VALUES ('bot', '123:fixture', '42,43');
 INSERT INTO submissions (id, session_id, content, status, origin, created_at, channel_context) VALUES
     ('first', 1, 'first', 'pending', 'telegram:42', 1, '{"accountId":"123"}'),
     ('second', 1, 'second', 'done', 'telegram:42', 2, '{"accountId":"123"}'),
     ('other', 1, 'other', 'done', 'telegram:43', 3, '{"accountId":"123"}');
-INSERT INTO outbox_messages (id, event_id, agent_id, session_id, source_submission_id, kind, peer, channel_context, body, created_at)
+INSERT INTO outbox_messages (id, event_id, bot_id, session_id, source_submission_id, kind, peer, channel_context, body, created_at)
 VALUES ('second', 'reply:bot:second', 'bot', 1, 'second', 'reply', 'telegram:42', '{"accountId":"123"}', 'second answer', 2),
        ('other', 'reply:bot:other', 'bot', 1, 'other', 'reply', 'telegram:43', '{"accountId":"123"}', 'other answer', 3);`)
 	flush("other")
@@ -79,7 +79,7 @@ VALUES ('second', 'reply:bot:second', 'bot', 1, 'second', 'reply', 'telegram:42'
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := sqlc.New(tx)
-	if err := q.InsertStoppedOutboxForSession(ctx, sqlc.InsertStoppedOutboxForSessionParams{AgentID: "bot", SessionID: 1, Now: 4}); err != nil {
+	if err := q.InsertStoppedOutboxForSession(ctx, sqlc.InsertStoppedOutboxForSessionParams{BotID: "bot", SessionID: 1, Now: 4}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := q.StopSessionSubmissions(ctx, sqlc.StopSessionSubmissionsParams{SessionID: 1}); err != nil {
@@ -102,7 +102,7 @@ VALUES ('second', 'reply:bot:second', 'bot', 1, 'second', 'reply', 'telegram:42'
     ('revoked', 1, 'revoked', 'pending', 'telegram:42', 6, 1),
     ('failed', 1, 'failed', 'pending', 'telegram:42', 7, 0),
     ('last', 1, 'last', 'done', 'telegram:42', 8, 0);
-INSERT INTO outbox_messages (id, event_id, agent_id, session_id, source_submission_id, kind, peer, channel_context, body, created_at)
+INSERT INTO outbox_messages (id, event_id, bot_id, session_id, source_submission_id, kind, peer, channel_context, body, created_at)
 VALUES ('failed', 'reply:bot:failed', 'bot', 1, 'failed', 'reply', 'telegram:42', '{"accountId":"123"}', 'failed answer', 7),
        ('last', 'reply:bot:last', 'bot', 1, 'last', 'reply', 'telegram:42', '{"accountId":"123"}', 'last answer', 8);`)
 	bot.fail = channel.ErrPermanent

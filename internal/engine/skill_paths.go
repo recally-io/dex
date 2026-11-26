@@ -15,7 +15,7 @@ func withinSkillPath(base, target string) bool {
 	return target == base || strings.HasPrefix(target, base+"/") || strings.HasPrefix(target, base+`\`)
 }
 
-func (a *agentExtensions) protectedSkillPath(p string) bool {
+func (a *botExtensions) protectedSkillPath(p string) bool {
 	for _, level := range a.levels {
 		if withinSkillPath(filepath.Join(level.Dir, "skills"), p) {
 			return true

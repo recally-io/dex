@@ -25,7 +25,7 @@ func taskParent(t *testing.T, r *nativeTest) (int64, engine.TaskContext) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c.ID, engine.TaskContext{AgentID: "bot", ConversationID: ref.ID, SourceRequestID: "source", Key: "bot/spawn-1"}
+	return c.ID, engine.TaskContext{BotID: "bot", ConversationID: ref.ID, SourceRequestID: "source", Key: "bot/spawn-1"}
 }
 
 func taskInput(t *testing.T, r *nativeTest, id string) sqlc.ListPendingSubmissionsRow {
@@ -60,7 +60,7 @@ func TestUserSessionNewReplayKeepsIdentity(t *testing.T) {
 	if replay.ID != first.ID || replay.Title != "One" {
 		t.Fatalf("replay changed the child: %+v, %+v", first, replay)
 	}
-	children, err := r.q.ListSessions(t.Context(), sqlc.ListSessionsParams{AgentID: "bot", ParentID: sql.NullInt64{Int64: parent, Valid: true}, MaxRows: 20})
+	children, err := r.q.ListSessions(t.Context(), sqlc.ListSessionsParams{BotID: "bot", ParentID: sql.NullInt64{Int64: parent, Valid: true}, MaxRows: 20})
 	if err != nil || len(children) != 1 {
 		t.Fatalf("children: %+v, %v", children, err)
 	}
@@ -105,7 +105,7 @@ func TestUserSessionNewReplayKeepsTheSavedDirectory(t *testing.T) {
 	if err != nil || child.Cwd != a {
 		t.Fatalf("child cwd = %q, want %q (%v)", child.Cwd, a, err)
 	}
-	children, err := r.q.ListSessions(t.Context(), sqlc.ListSessionsParams{AgentID: "bot", ParentID: sql.NullInt64{Int64: parent, Valid: true}, MaxRows: 20})
+	children, err := r.q.ListSessions(t.Context(), sqlc.ListSessionsParams{BotID: "bot", ParentID: sql.NullInt64{Int64: parent, Valid: true}, MaxRows: 20})
 	if err != nil || len(children) != 1 {
 		t.Fatalf("children: %+v, %v", children, err)
 	}
@@ -119,7 +119,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	warmOtherAgent(t, r)
+	warmOtherBot(t, r)
 	other, err := r.service.Main(t.Context(), "other")
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "other-source", SessionID: other.ID, Content: "go", Attachments: "null", Origin: "web", Producer: ProducerUser, Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	foreign := engine.TaskContext{AgentID: "other", ConversationID: otherRef.ID, SourceRequestID: "other-source", Key: "other/send"}
+	foreign := engine.TaskContext{BotID: "other", ConversationID: otherRef.ID, SourceRequestID: "other-source", Key: "other/send"}
 	if _, err := r.service.ToolSessionSend(t.Context(), foreign, SendArgs{ID: child.ID, Message: "hi"}); !errors.Is(err, ErrSessionNotFound) {
 		t.Fatalf("foreign send: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestUserSessionToolsStayWithinTheParent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	asChild := engine.TaskContext{AgentID: "bot", ConversationID: childRef.ID, SourceRequestID: turnID(source.Key), Key: "bot/child-new"}
+	asChild := engine.TaskContext{BotID: "bot", ConversationID: childRef.ID, SourceRequestID: turnID(source.Key), Key: "bot/child-new"}
 	if _, err := r.service.ToolSessionNew(t.Context(), asChild, NewArgs{Title: "Grandchild", Message: "no"}); !errors.Is(err, errSessionInvalid) {
 		t.Fatalf("child new: %v", err)
 	}

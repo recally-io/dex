@@ -53,7 +53,7 @@ func TestUserSystemTurnDoesNotSendAnImplicitReply(t *testing.T) {
 func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	r := startNative(t, "echo")
 	conv, _ := taskParent(t, r)
-	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
+	if _, err := r.q.SetTelegramSettings(t.Context(), sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "42"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := r.q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{
@@ -81,7 +81,7 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 		}
 	}
 	call := engine.TaskContext{
-		AgentID: "bot", ConversationID: row.ExecutionID.Int64,
+		BotID: "bot", ConversationID: row.ExecutionID.Int64,
 		SourceRequestID: "sys-notify-src", RunInputIDs: []string{"sys-notify-src"}, Key: "bot/101",
 	}
 	nonFinal := false
@@ -110,7 +110,7 @@ func TestUserNotifyUserSupersedesPendingTopicAndRecentOutbox(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	recent, err := r.service.ToolRecentOutbox(t.Context(), engine.Ref{AgentID: "bot", ID: row.ExecutionID.Int64})
+	recent, err := r.service.ToolRecentOutbox(t.Context(), engine.Ref{BotID: "bot", ID: row.ExecutionID.Int64})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestUserChildReportsToParentFromSystemTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	resultID, err := r.service.ToolReportParent(t.Context(), engine.TaskContext{
-		AgentID: "bot", ConversationID: cRow.ExecutionID.Int64,
+		BotID: "bot", ConversationID: cRow.ExecutionID.Int64,
 		SourceRequestID: "child-bg-wake", RunInputIDs: []string{"child-bg-wake"}, Key: "bot/202",
 	}, ReportParentArgs{Content: "explicit child escalation"})
 	if err != nil {

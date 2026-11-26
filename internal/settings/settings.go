@@ -68,15 +68,15 @@ type Provider struct {
 type Service struct {
 	q       *sqlc.Queries
 	catalog *engine.Catalog
-	agents  *engine.Agents
+	bots    *engine.Bots
 	envs    *runner.Manager
-	// Serializes provider save and apply. Agent and channel changes have their own lock.
+	// Serializes provider save and apply. Bot and channel changes have their own lock.
 	mu sync.Mutex
 }
 
 // New returns the global settings service.
-func New(q *sqlc.Queries, catalog *engine.Catalog, agents *engine.Agents, envs *runner.Manager) *Service {
-	return &Service{q: q, catalog: catalog, agents: agents, envs: envs}
+func New(q *sqlc.Queries, catalog *engine.Catalog, bots *engine.Bots, envs *runner.Manager) *Service {
+	return &Service{q: q, catalog: catalog, bots: bots, envs: envs}
 }
 
 // Get returns all settings. It asks the runtime which providers exist.
@@ -309,10 +309,10 @@ func (s *Service) SpeechEndpoint(ctx context.Context, id string) (speech.Endpoin
 		return speech.Endpoint{}, errors.New("speech provider credentials are unavailable")
 	}
 	if strings.HasPrefix(key, "op://") {
-		if s.agents == nil {
+		if s.bots == nil {
 			return speech.Endpoint{}, errors.New("speech provider credential references are unavailable")
 		}
-		key, err = s.agents.ResolveProviderAPIKey(ctx, key)
+		key, err = s.bots.ResolveProviderAPIKey(ctx, key)
 		if err != nil {
 			return speech.Endpoint{}, errors.New("speech provider credentials are unavailable")
 		}

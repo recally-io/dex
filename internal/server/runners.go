@@ -147,9 +147,9 @@ func (h *handler) ForgetRunnerHostKey(ctx context.Context, req api.ForgetRunnerH
 	return api.ForgetRunnerHostKey200JSONResponse(ok), nil
 }
 
-func (h *handler) ResetAgentRunner(ctx context.Context, _ api.ResetAgentRunnerRequestObject) (api.ResetAgentRunnerResponseObject, error) {
-	id := agentID(ctx)
-	canReset, err := h.Envs.CanResetAgent(ctx, id)
+func (h *handler) ResetBotRunner(ctx context.Context, _ api.ResetBotRunnerRequestObject) (api.ResetBotRunnerResponseObject, error) {
+	id := botID(ctx)
+	canReset, err := h.Envs.CanResetBot(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -157,11 +157,11 @@ func (h *handler) ResetAgentRunner(ctx context.Context, _ api.ResetAgentRunnerRe
 		return nil, fmt.Errorf("%w: environment reset applies only to disposable sandboxes", settings.ErrInvalid)
 	}
 	if err := h.Sessions.ResetRunner(ctx, id, func(rctx context.Context) error {
-		return h.Envs.ResetAgent(rctx, id)
+		return h.Envs.ResetBot(rctx, id)
 	}); err != nil {
 		return nil, err
 	}
-	return api.ResetAgentRunner200JSONResponse(ok), nil
+	return api.ResetBotRunner200JSONResponse(ok), nil
 }
 
 func encodeRunnerConfig(cfg *api.RunnerConfig) ([]byte, error) {

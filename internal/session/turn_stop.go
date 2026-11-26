@@ -13,8 +13,8 @@ import (
 
 // Stop cancels the observed task on Main. Without a target, other writable
 // sessions use session cancellation.
-func (s *Service) Stop(ctx context.Context, agentID string, id int64, target *string) error {
-	c, err := s.Get(ctx, agentID, id)
+func (s *Service) Stop(ctx context.Context, botID string, id int64, target *string) error {
+	c, err := s.Get(ctx, botID, id)
 	if err != nil {
 		return err
 	}
@@ -25,7 +25,7 @@ func (s *Service) Stop(ctx context.Context, agentID string, id int64, target *st
 		if target != nil {
 			return engine.ErrStaleRunTarget
 		}
-		return s.CancelSession(ctx, agentID, id)
+		return s.CancelSession(ctx, botID, id)
 	}
 	if target == nil || *target == "" {
 		return fmt.Errorf("%w: Main Stop requires a task target", engine.ErrInvalidInput)
@@ -46,8 +46,8 @@ func (s *Service) Stop(ctx context.Context, agentID string, id int64, target *st
 	if conv.AbortPending != 0 {
 		return engine.ErrStaleRunTarget
 	}
-	ref := engine.Ref{AgentID: agentID, ID: c.ExecutionID}
-	trace := slog.With("session", id, "agent", agentID, "native_conversation_id", ref.ID)
+	ref := engine.Ref{BotID: botID, ID: c.ExecutionID}
+	trace := slog.With("session", id, "agent", botID, "native_conversation_id", ref.ID)
 	if err := s.engine.ValidateRunTarget(ctx, ref, *target); err != nil {
 		trace.InfoContext(ctx, "session stop", "phase", "stop_rejected", "reason", admissionRetryReason(err))
 		return err

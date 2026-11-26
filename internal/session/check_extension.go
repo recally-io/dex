@@ -30,14 +30,14 @@ func RoutineCheckInstructions() *engine.Extension {
 	}}
 }
 
-func CheckExtension(agentID string, report func(context.Context, engine.TaskContext, CheckReport) error) *engine.Extension {
+func CheckExtension(botID string, report func(context.Context, engine.TaskContext, CheckReport) error) *engine.Extension {
 	schema := map[string]any{"type": "object", "additionalProperties": false, "required": []string{"outcome", "summary"}, "properties": map[string]any{
 		"outcome":   map[string]any{"type": "string", "enum": []string{"changed", "unchanged", "failed"}},
 		"summary":   map[string]any{"type": "string", "minLength": 1, "maxLength": 1000},
 		"changeKey": map[string]any{"type": "string", "maxLength": 200},
 	}}
 	return &engine.Extension{Name: "automation-reporting", Tools: []*durable.ToolRegistration{{Name: "automation_report", Description: "Report the outcome of the current Automation run. This tool only works during an Automation run. Use a stable change key to identify the same change across runs.", Replay: durable.ReplaySafe, Parameters: schema,
-		Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
+		Execute: engine.BindTool(botID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 			if report == nil {
 				return durable.ToolExecutionResult{}, errors.New("automation_report reporting is unavailable")
 			}
@@ -49,7 +49,7 @@ func CheckExtension(agentID string, report func(context.Context, engine.TaskCont
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			if err = report(ctx, engine.TaskContext{AgentID: agentID, ConversationID: invocation.ConversationID(), SourceRequestID: id}, args); err != nil {
+			if err = report(ctx, engine.TaskContext{BotID: botID, ConversationID: invocation.ConversationID(), SourceRequestID: id}, args); err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
 			return durable.ToolExecutionResult{Output: []ai.ToolResultMessageContent{ai.TextContent{Text: "Automation report saved."}}}, nil

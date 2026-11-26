@@ -3,8 +3,8 @@
 import { type DefaultError, type InfiniteData, infiniteQueryOptions, queryOptions, type UseMutationOptions } from '@tanstack/react-query';
 
 import { client } from '../client.gen';
-import { abortSession, acquireMaintenance, addTaskDependency, archiveSession, attachHeldEvent, attachTaskExecution, backupSystemDatabase, beginFeishu, beginTelegramManagedSetup, beginWechatLogin, bindTaskGitHubPull, cancelSessionMonitor, cancelSystemOperation, cancelTelegramManagedSetup, checkSystemUpdate, clearContext, compactSession, continueSession, createAgent, createAgentSession, createAutomation, createRunner, createSession, createTask, createTaskEntry, createTelegramPairing, createUpload, deleteArtifact, deleteAutomation, deleteEmailImapPull, deleteEmailSource, deleteFeishu, deleteGitHubReviewPull, deleteGitHubWebhook, deleteProvider, deleteRunner, deleteTelegram, deleteVault, deleteWebhookSource, deleteWechat, discoverSshConfig, dismissAutomationResult, dismissHeldEvent, finishTaskExecution, forgetRunnerHostKey, forkSession, getAgent, getArtifact, getAutomation, getBoardAttention, getBotIntegrations, getChannels, getFeishu, getHealth, getMainSession, getNotificationTargets, getOnePassword, getSession, getSessionHistory, getSessionItem, getSettings, getSystemLogs, getSystemStatus, getTask, getTelegramManagedSetup, getUpload, heartbeatTaskExecution, issueRunnerCode, listAgentRunners, listAgents, listArchivedAgents, listArtifacts, listAutomationResults, listAutomationRuns, listAutomations, listAutomationTargets, listDirectories, listHeldEvents, listModels, listProviderModels, listRecentProjects, listRunners, listSessionMonitors, listSessionOutbox, listSessions, listSources, listTaskExecutions, listTasks, listVault, type Options, pollFeishu, pollWechatLogin, postTaskExternalEntry, previewSchedule, probeRunner, putVault, readAutomationResult, readTaskExternalTask, releaseMaintenance, reloadBotIntegrations, removeTaskDependency, renameArtifact, resetAgentRunner, restartSystem, restoreAgent, resumeTaskExecution, reviewTask, revokeRunner, runAutomation, saveEmailImapPull, saveEmailSource, saveGitHubReviewPull, saveGitHubWebhook, saveWebhookSource, sendMessage, setFeishu, setOnePassword, setPrimaryNotificationTarget, setProvider, setSessionProject, setSessionRunner, setSessionSettings, setSourceEnabled, setTelegram, setTelegramManager, splitTask, startMcpOAuth, testRunner, unarchiveSession, updateAgent, updateAutomation, updateRunner, updateSystemSettings, updateTask, upgradeSystem, withdrawMessage } from '../sdk.gen';
-import type { AbortSessionData, AbortSessionError, AbortSessionResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, AddTaskDependencyData, AddTaskDependencyError, AddTaskDependencyResponse, ArchiveSessionData, ArchiveSessionError, ArchiveSessionResponse, AttachHeldEventData, AttachHeldEventError, AttachHeldEventResponse, AttachTaskExecutionData, AttachTaskExecutionError, AttachTaskExecutionResponse, BackupSystemDatabaseData, BackupSystemDatabaseError, BackupSystemDatabaseResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginTelegramManagedSetupData, BeginTelegramManagedSetupError, BeginTelegramManagedSetupResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, BindTaskGitHubPullData, BindTaskGitHubPullError, BindTaskGitHubPullResponse, CancelSessionMonitorData, CancelSessionMonitorError, CancelSessionMonitorResponse, CancelSystemOperationData, CancelSystemOperationError, CancelSystemOperationResponse, CancelTelegramManagedSetupData, CancelTelegramManagedSetupError, CancelTelegramManagedSetupResponse, CheckSystemUpdateData, CheckSystemUpdateError, CheckSystemUpdateResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactSessionData, CompactSessionError, ContinueSessionData, ContinueSessionError, ContinueSessionResponse, CreateAgentData, CreateAgentError, CreateAgentResponse, CreateAgentSessionData, CreateAgentSessionError, CreateAgentSessionResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateRunnerData, CreateRunnerError, CreateRunnerResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTaskData, CreateTaskEntryData, CreateTaskEntryError, CreateTaskEntryResponse, CreateTaskError, CreateTaskResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteEmailImapPullData, DeleteEmailImapPullError, DeleteEmailImapPullResponse, DeleteEmailSourceData, DeleteEmailSourceError, DeleteEmailSourceResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteGitHubReviewPullData, DeleteGitHubReviewPullError, DeleteGitHubReviewPullResponse, DeleteGitHubWebhookData, DeleteGitHubWebhookError, DeleteGitHubWebhookResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteRunnerData, DeleteRunnerError, DeleteRunnerResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteVaultData, DeleteVaultError, DeleteVaultResponse, DeleteWebhookSourceData, DeleteWebhookSourceError, DeleteWebhookSourceResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DiscoverSshConfigData, DiscoverSshConfigError, DiscoverSshConfigResponse, DismissAutomationResultData, DismissAutomationResultError, DismissAutomationResultResponse, DismissHeldEventData, DismissHeldEventError, DismissHeldEventResponse, FinishTaskExecutionData, FinishTaskExecutionError, FinishTaskExecutionResponse, ForgetRunnerHostKeyData, ForgetRunnerHostKeyError, ForgetRunnerHostKeyResponse, ForkSessionData, ForkSessionError, ForkSessionResponse, GetAgentData, GetAgentError, GetAgentResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetBoardAttentionData, GetBoardAttentionError, GetBoardAttentionResponse, GetBotIntegrationsData, GetBotIntegrationsError, GetBotIntegrationsResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainSessionData, GetMainSessionError, GetMainSessionResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSessionData, GetSessionError, GetSessionHistoryData, GetSessionHistoryError, GetSessionHistoryResponse, GetSessionItemData, GetSessionItemError, GetSessionItemResponse, GetSessionResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetSystemLogsData, GetSystemLogsError, GetSystemLogsResponse, GetSystemStatusData, GetSystemStatusError, GetSystemStatusResponse, GetTaskData, GetTaskError, GetTaskResponse, GetTelegramManagedSetupData, GetTelegramManagedSetupError, GetTelegramManagedSetupResponse, GetUploadData, GetUploadError, GetUploadResponse, HeartbeatTaskExecutionData, HeartbeatTaskExecutionError, HeartbeatTaskExecutionResponse, IssueRunnerCodeData, IssueRunnerCodeError, IssueRunnerCodeResponse, ListAgentRunnersData, ListAgentRunnersError, ListAgentRunnersResponse, ListAgentsData, ListAgentsError, ListAgentsResponse, ListArchivedAgentsData, ListArchivedAgentsError, ListArchivedAgentsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationResultsData, ListAutomationResultsError, ListAutomationResultsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListAutomationTargetsData, ListAutomationTargetsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListHeldEventsData, ListHeldEventsError, ListHeldEventsResponse, ListModelsData, ListModelsError, ListModelsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, ListRunnersData, ListRunnersError, ListRunnersResponse, ListSessionMonitorsData, ListSessionMonitorsError, ListSessionMonitorsResponse, ListSessionOutboxData, ListSessionOutboxError, ListSessionOutboxResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListSourcesData, ListSourcesError, ListSourcesResponse, ListTaskExecutionsData, ListTaskExecutionsError, ListTaskExecutionsResponse, ListTasksData, ListTasksError, ListTasksResponse, ListVaultData, ListVaultError, ListVaultResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PostTaskExternalEntryData, PostTaskExternalEntryError, PostTaskExternalEntryResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ProbeRunnerData, ProbeRunnerError, ProbeRunnerResponse, PutVaultData, PutVaultError, PutVaultResponse, ReadAutomationResultData, ReadAutomationResultError, ReadAutomationResultResponse, ReadTaskExternalTaskData, ReadTaskExternalTaskError, ReadTaskExternalTaskResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadBotIntegrationsData, ReloadBotIntegrationsError, ReloadBotIntegrationsResponse, RemoveTaskDependencyData, RemoveTaskDependencyError, RemoveTaskDependencyResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, ResetAgentRunnerData, ResetAgentRunnerError, ResetAgentRunnerResponse, RestartSystemData, RestartSystemError, RestartSystemResponse, RestoreAgentData, RestoreAgentError, RestoreAgentResponse, ResumeTaskExecutionData, ResumeTaskExecutionError, ResumeTaskExecutionResponse, ReviewTaskData, ReviewTaskError, ReviewTaskResponse, RevokeRunnerData, RevokeRunnerError, RevokeRunnerResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SaveEmailImapPullData, SaveEmailImapPullError, SaveEmailImapPullResponse, SaveEmailSourceData, SaveEmailSourceError, SaveEmailSourceResponse, SaveGitHubReviewPullData, SaveGitHubReviewPullError, SaveGitHubReviewPullResponse, SaveGitHubWebhookData, SaveGitHubWebhookError, SaveGitHubWebhookResponse, SaveWebhookSourceData, SaveWebhookSourceError, SaveWebhookSourceResponse, SendMessageData, SendMessageError, SendMessageResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetSessionProjectData, SetSessionProjectError, SetSessionProjectResponse, SetSessionRunnerData, SetSessionRunnerError, SetSessionRunnerResponse, SetSessionSettingsData, SetSessionSettingsError, SetSessionSettingsResponse, SetSourceEnabledData, SetSourceEnabledError, SetSourceEnabledResponse, SetTelegramData, SetTelegramError, SetTelegramManagerData, SetTelegramManagerError, SetTelegramManagerResponse, SetTelegramResponse, SplitTaskData, SplitTaskError, SplitTaskResponse, StartMcpOAuthData, StartMcpOAuthError, StartMcpOAuthResponse, TestRunnerData, TestRunnerError, TestRunnerResponse, UnarchiveSessionData, UnarchiveSessionError, UnarchiveSessionResponse, UpdateAgentData, UpdateAgentError, UpdateAgentResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, UpdateRunnerData, UpdateRunnerError, UpdateRunnerResponse, UpdateSystemSettingsData, UpdateSystemSettingsError, UpdateSystemSettingsResponse, UpdateTaskData, UpdateTaskError, UpdateTaskResponse, UpgradeSystemData, UpgradeSystemError, UpgradeSystemResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
+import { abortSession, acquireMaintenance, addTaskDependency, archiveSession, attachHeldEvent, attachTaskExecution, backupSystemDatabase, beginFeishu, beginTelegramManagedSetup, beginWechatLogin, bindTaskGitHubPull, cancelSessionMonitor, cancelSystemOperation, cancelTelegramManagedSetup, checkSystemUpdate, clearContext, compactSession, continueSession, createAutomation, createBot, createBotSession, createRunner, createSession, createTask, createTaskEntry, createTelegramPairing, createUpload, deleteArtifact, deleteAutomation, deleteEmailImapPull, deleteEmailSource, deleteFeishu, deleteGitHubReviewPull, deleteGitHubWebhook, deleteProvider, deleteRunner, deleteTelegram, deleteVault, deleteWebhookSource, deleteWechat, discoverSshConfig, dismissAutomationResult, dismissHeldEvent, finishTaskExecution, forgetRunnerHostKey, forkSession, getArtifact, getAutomation, getBoardAttention, getBot, getBotIntegrations, getChannels, getFeishu, getHealth, getMainSession, getNotificationTargets, getOnePassword, getSession, getSessionHistory, getSessionItem, getSettings, getSystemLogs, getSystemStatus, getTask, getTelegramManagedSetup, getUpload, heartbeatTaskExecution, issueRunnerCode, listArchivedBots, listArtifacts, listAutomationResults, listAutomationRuns, listAutomations, listAutomationTargets, listBotRunners, listBots, listDirectories, listHeldEvents, listModels, listProviderModels, listRecentProjects, listRunners, listSessionMonitors, listSessionOutbox, listSessions, listSources, listTaskExecutions, listTasks, listVault, type Options, pollFeishu, pollWechatLogin, postTaskExternalEntry, previewSchedule, probeRunner, putVault, readAutomationResult, readTaskExternalTask, releaseMaintenance, reloadBotIntegrations, removeTaskDependency, renameArtifact, resetBotRunner, restartSystem, restoreBot, resumeTaskExecution, reviewTask, revokeRunner, runAutomation, saveEmailImapPull, saveEmailSource, saveGitHubReviewPull, saveGitHubWebhook, saveWebhookSource, sendMessage, setFeishu, setOnePassword, setPrimaryNotificationTarget, setProvider, setSessionProject, setSessionRunner, setSessionSettings, setSourceEnabled, setTelegram, setTelegramManager, splitTask, startMcpOAuth, testRunner, unarchiveSession, updateAutomation, updateBot, updateRunner, updateSystemSettings, updateTask, upgradeSystem, withdrawMessage } from '../sdk.gen';
+import type { AbortSessionData, AbortSessionError, AbortSessionResponse, AcquireMaintenanceData, AcquireMaintenanceError, AcquireMaintenanceResponse, AddTaskDependencyData, AddTaskDependencyError, AddTaskDependencyResponse, ArchiveSessionData, ArchiveSessionError, ArchiveSessionResponse, AttachHeldEventData, AttachHeldEventError, AttachHeldEventResponse, AttachTaskExecutionData, AttachTaskExecutionError, AttachTaskExecutionResponse, BackupSystemDatabaseData, BackupSystemDatabaseError, BackupSystemDatabaseResponse, BeginFeishuData, BeginFeishuError, BeginFeishuResponse, BeginTelegramManagedSetupData, BeginTelegramManagedSetupError, BeginTelegramManagedSetupResponse, BeginWechatLoginData, BeginWechatLoginError, BeginWechatLoginResponse, BindTaskGitHubPullData, BindTaskGitHubPullError, BindTaskGitHubPullResponse, CancelSessionMonitorData, CancelSessionMonitorError, CancelSessionMonitorResponse, CancelSystemOperationData, CancelSystemOperationError, CancelSystemOperationResponse, CancelTelegramManagedSetupData, CancelTelegramManagedSetupError, CancelTelegramManagedSetupResponse, CheckSystemUpdateData, CheckSystemUpdateError, CheckSystemUpdateResponse, ClearContextData, ClearContextError, ClearContextResponse, CompactSessionData, CompactSessionError, ContinueSessionData, ContinueSessionError, ContinueSessionResponse, CreateAutomationData, CreateAutomationError, CreateAutomationResponse, CreateBotData, CreateBotError, CreateBotResponse, CreateBotSessionData, CreateBotSessionError, CreateBotSessionResponse, CreateRunnerData, CreateRunnerError, CreateRunnerResponse, CreateSessionData, CreateSessionError, CreateSessionResponse, CreateTaskData, CreateTaskEntryData, CreateTaskEntryError, CreateTaskEntryResponse, CreateTaskError, CreateTaskResponse, CreateTelegramPairingData, CreateTelegramPairingError, CreateTelegramPairingResponse, CreateUploadData, CreateUploadError, CreateUploadResponse, DeleteArtifactData, DeleteArtifactError, DeleteArtifactResponse, DeleteAutomationData, DeleteAutomationError, DeleteAutomationResponse, DeleteEmailImapPullData, DeleteEmailImapPullError, DeleteEmailImapPullResponse, DeleteEmailSourceData, DeleteEmailSourceError, DeleteEmailSourceResponse, DeleteFeishuData, DeleteFeishuError, DeleteFeishuResponse, DeleteGitHubReviewPullData, DeleteGitHubReviewPullError, DeleteGitHubReviewPullResponse, DeleteGitHubWebhookData, DeleteGitHubWebhookError, DeleteGitHubWebhookResponse, DeleteProviderData, DeleteProviderError, DeleteProviderResponse, DeleteRunnerData, DeleteRunnerError, DeleteRunnerResponse, DeleteTelegramData, DeleteTelegramError, DeleteTelegramResponse, DeleteVaultData, DeleteVaultError, DeleteVaultResponse, DeleteWebhookSourceData, DeleteWebhookSourceError, DeleteWebhookSourceResponse, DeleteWechatData, DeleteWechatError, DeleteWechatResponse, DiscoverSshConfigData, DiscoverSshConfigError, DiscoverSshConfigResponse, DismissAutomationResultData, DismissAutomationResultError, DismissAutomationResultResponse, DismissHeldEventData, DismissHeldEventError, DismissHeldEventResponse, FinishTaskExecutionData, FinishTaskExecutionError, FinishTaskExecutionResponse, ForgetRunnerHostKeyData, ForgetRunnerHostKeyError, ForgetRunnerHostKeyResponse, ForkSessionData, ForkSessionError, ForkSessionResponse, GetArtifactData, GetArtifactError, GetArtifactResponse, GetAutomationData, GetAutomationError, GetAutomationResponse, GetBoardAttentionData, GetBoardAttentionError, GetBoardAttentionResponse, GetBotData, GetBotError, GetBotIntegrationsData, GetBotIntegrationsError, GetBotIntegrationsResponse, GetBotResponse, GetChannelsData, GetChannelsError, GetChannelsResponse, GetFeishuData, GetFeishuError, GetFeishuResponse, GetHealthData, GetHealthResponse, GetMainSessionData, GetMainSessionError, GetMainSessionResponse, GetNotificationTargetsData, GetNotificationTargetsError, GetNotificationTargetsResponse, GetOnePasswordData, GetOnePasswordError, GetOnePasswordResponse, GetSessionData, GetSessionError, GetSessionHistoryData, GetSessionHistoryError, GetSessionHistoryResponse, GetSessionItemData, GetSessionItemError, GetSessionItemResponse, GetSessionResponse, GetSettingsData, GetSettingsError, GetSettingsResponse, GetSystemLogsData, GetSystemLogsError, GetSystemLogsResponse, GetSystemStatusData, GetSystemStatusError, GetSystemStatusResponse, GetTaskData, GetTaskError, GetTaskResponse, GetTelegramManagedSetupData, GetTelegramManagedSetupError, GetTelegramManagedSetupResponse, GetUploadData, GetUploadError, GetUploadResponse, HeartbeatTaskExecutionData, HeartbeatTaskExecutionError, HeartbeatTaskExecutionResponse, IssueRunnerCodeData, IssueRunnerCodeError, IssueRunnerCodeResponse, ListArchivedBotsData, ListArchivedBotsError, ListArchivedBotsResponse, ListArtifactsData, ListArtifactsError, ListArtifactsResponse, ListAutomationResultsData, ListAutomationResultsError, ListAutomationResultsResponse, ListAutomationRunsData, ListAutomationRunsError, ListAutomationRunsResponse, ListAutomationsData, ListAutomationsError, ListAutomationsResponse, ListAutomationTargetsData, ListAutomationTargetsResponse, ListBotRunnersData, ListBotRunnersError, ListBotRunnersResponse, ListBotsData, ListBotsError, ListBotsResponse, ListDirectoriesData, ListDirectoriesError, ListDirectoriesResponse, ListHeldEventsData, ListHeldEventsError, ListHeldEventsResponse, ListModelsData, ListModelsError, ListModelsResponse, ListProviderModelsData, ListProviderModelsError, ListProviderModelsResponse, ListRecentProjectsData, ListRecentProjectsError, ListRecentProjectsResponse, ListRunnersData, ListRunnersError, ListRunnersResponse, ListSessionMonitorsData, ListSessionMonitorsError, ListSessionMonitorsResponse, ListSessionOutboxData, ListSessionOutboxError, ListSessionOutboxResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, ListSourcesData, ListSourcesError, ListSourcesResponse, ListTaskExecutionsData, ListTaskExecutionsError, ListTaskExecutionsResponse, ListTasksData, ListTasksError, ListTasksResponse, ListVaultData, ListVaultError, ListVaultResponse, PollFeishuData, PollFeishuError, PollFeishuResponse, PollWechatLoginData, PollWechatLoginError, PollWechatLoginResponse, PostTaskExternalEntryData, PostTaskExternalEntryError, PostTaskExternalEntryResponse, PreviewScheduleData, PreviewScheduleError, PreviewScheduleResponse, ProbeRunnerData, ProbeRunnerError, ProbeRunnerResponse, PutVaultData, PutVaultError, PutVaultResponse, ReadAutomationResultData, ReadAutomationResultError, ReadAutomationResultResponse, ReadTaskExternalTaskData, ReadTaskExternalTaskError, ReadTaskExternalTaskResponse, ReleaseMaintenanceData, ReleaseMaintenanceError, ReleaseMaintenanceResponse, ReloadBotIntegrationsData, ReloadBotIntegrationsError, ReloadBotIntegrationsResponse, RemoveTaskDependencyData, RemoveTaskDependencyError, RemoveTaskDependencyResponse, RenameArtifactData, RenameArtifactError, RenameArtifactResponse, ResetBotRunnerData, ResetBotRunnerError, ResetBotRunnerResponse, RestartSystemData, RestartSystemError, RestartSystemResponse, RestoreBotData, RestoreBotError, RestoreBotResponse, ResumeTaskExecutionData, ResumeTaskExecutionError, ResumeTaskExecutionResponse, ReviewTaskData, ReviewTaskError, ReviewTaskResponse, RevokeRunnerData, RevokeRunnerError, RevokeRunnerResponse, RunAutomationData, RunAutomationError, RunAutomationResponse, SaveEmailImapPullData, SaveEmailImapPullError, SaveEmailImapPullResponse, SaveEmailSourceData, SaveEmailSourceError, SaveEmailSourceResponse, SaveGitHubReviewPullData, SaveGitHubReviewPullError, SaveGitHubReviewPullResponse, SaveGitHubWebhookData, SaveGitHubWebhookError, SaveGitHubWebhookResponse, SaveWebhookSourceData, SaveWebhookSourceError, SaveWebhookSourceResponse, SendMessageData, SendMessageError, SendMessageResponse, SetFeishuData, SetFeishuError, SetFeishuResponse, SetOnePasswordData, SetOnePasswordError, SetOnePasswordResponse, SetPrimaryNotificationTargetData, SetPrimaryNotificationTargetError, SetPrimaryNotificationTargetResponse, SetProviderData, SetProviderError, SetProviderResponse, SetSessionProjectData, SetSessionProjectError, SetSessionProjectResponse, SetSessionRunnerData, SetSessionRunnerError, SetSessionRunnerResponse, SetSessionSettingsData, SetSessionSettingsError, SetSessionSettingsResponse, SetSourceEnabledData, SetSourceEnabledError, SetSourceEnabledResponse, SetTelegramData, SetTelegramError, SetTelegramManagerData, SetTelegramManagerError, SetTelegramManagerResponse, SetTelegramResponse, SplitTaskData, SplitTaskError, SplitTaskResponse, StartMcpOAuthData, StartMcpOAuthError, StartMcpOAuthResponse, TestRunnerData, TestRunnerError, TestRunnerResponse, UnarchiveSessionData, UnarchiveSessionError, UnarchiveSessionResponse, UpdateAutomationData, UpdateAutomationError, UpdateAutomationResponse, UpdateBotData, UpdateBotError, UpdateBotResponse, UpdateRunnerData, UpdateRunnerError, UpdateRunnerResponse, UpdateSystemSettingsData, UpdateSystemSettingsError, UpdateSystemSettingsResponse, UpdateTaskData, UpdateTaskError, UpdateTaskResponse, UpgradeSystemData, UpgradeSystemError, UpgradeSystemResponse, WithdrawMessageData, WithdrawMessageError, WithdrawMessageResponse } from '../types.gen';
 
 /**
  * Bind a GitHub PR to one Task. Optionally add a wait for a review of a specific commit.
@@ -850,7 +850,7 @@ export const getOnePasswordOptions = (options?: Options<GetOnePasswordData>) => 
 });
 
 /**
- * Saves how tools authenticate the 1Password CLI. An empty or missing token keeps the saved token. Open agents apply the change when all agents are idle.
+ * Saves how tools authenticate the 1Password CLI. An empty or missing token keeps the saved token. Open bots apply the change when all bots are idle.
  *
  */
 export const setOnePasswordMutation = (options?: Partial<Options<SetOnePasswordData>>): UseMutationOptions<SetOnePasswordResponse, SetOnePasswordError, Options<SetOnePasswordData>> => {
@@ -1407,14 +1407,14 @@ export const previewScheduleMutation = (options?: Partial<Options<PreviewSchedul
     return mutationOptions;
 };
 
-export const listAgentsQueryKey = (options?: Options<ListAgentsData>) => createQueryKey('listAgents', options);
+export const listBotsQueryKey = (options?: Options<ListBotsData>) => createQueryKey('listBots', options);
 
 /**
- * List the owner's agents in creation order.
+ * List the owner's bots in creation order.
  */
-export const listAgentsOptions = (options?: Options<ListAgentsData>) => queryOptions<ListAgentsResponse, ListAgentsError, ListAgentsResponse, ReturnType<typeof listAgentsQueryKey>>({
+export const listBotsOptions = (options?: Options<ListBotsData>) => queryOptions<ListBotsResponse, ListBotsError, ListBotsResponse, ReturnType<typeof listBotsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listAgents({
+        const { data } = await listBots({
             ...options,
             ...queryKey[0],
             signal,
@@ -1422,16 +1422,16 @@ export const listAgentsOptions = (options?: Options<ListAgentsData>) => queryOpt
         });
         return data;
     },
-    queryKey: listAgentsQueryKey(options)
+    queryKey: listBotsQueryKey(options)
 });
 
 /**
- * Create an agent without changing global providers or channels.
+ * Create a bot without changing global providers or channels.
  */
-export const createAgentMutation = (options?: Partial<Options<CreateAgentData>>): UseMutationOptions<CreateAgentResponse, CreateAgentError, Options<CreateAgentData>> => {
-    const mutationOptions: UseMutationOptions<CreateAgentResponse, CreateAgentError, Options<CreateAgentData>> = {
+export const createBotMutation = (options?: Partial<Options<CreateBotData>>): UseMutationOptions<CreateBotResponse, CreateBotError, Options<CreateBotData>> => {
+    const mutationOptions: UseMutationOptions<CreateBotResponse, CreateBotError, Options<CreateBotData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await createAgent({
+            const { data } = await createBot({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1442,11 +1442,11 @@ export const createAgentMutation = (options?: Partial<Options<CreateAgentData>>)
     return mutationOptions;
 };
 
-export const getAgentQueryKey = (options: Options<GetAgentData>) => createQueryKey('getAgent', options);
+export const getBotQueryKey = (options: Options<GetBotData>) => createQueryKey('getBot', options);
 
-export const getAgentOptions = (options: Options<GetAgentData>) => queryOptions<GetAgentResponse, GetAgentError, GetAgentResponse, ReturnType<typeof getAgentQueryKey>>({
+export const getBotOptions = (options: Options<GetBotData>) => queryOptions<GetBotResponse, GetBotError, GetBotResponse, ReturnType<typeof getBotQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await getAgent({
+        const { data } = await getBot({
             ...options,
             ...queryKey[0],
             signal,
@@ -1454,16 +1454,16 @@ export const getAgentOptions = (options: Options<GetAgentData>) => queryOptions<
         });
         return data;
     },
-    queryKey: getAgentQueryKey(options)
+    queryKey: getBotQueryKey(options)
 });
 
 /**
- * Save this agent's settings. Its next message uses them.
+ * Save this bot's settings. Its next message uses them.
  */
-export const updateAgentMutation = (options?: Partial<Options<UpdateAgentData>>): UseMutationOptions<UpdateAgentResponse, UpdateAgentError, Options<UpdateAgentData>> => {
-    const mutationOptions: UseMutationOptions<UpdateAgentResponse, UpdateAgentError, Options<UpdateAgentData>> = {
+export const updateBotMutation = (options?: Partial<Options<UpdateBotData>>): UseMutationOptions<UpdateBotResponse, UpdateBotError, Options<UpdateBotData>> => {
+    const mutationOptions: UseMutationOptions<UpdateBotResponse, UpdateBotError, Options<UpdateBotData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await updateAgent({
+            const { data } = await updateBot({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1474,14 +1474,14 @@ export const updateAgentMutation = (options?: Partial<Options<UpdateAgentData>>)
     return mutationOptions;
 };
 
-export const listArchivedAgentsQueryKey = (options?: Options<ListArchivedAgentsData>) => createQueryKey('listArchivedAgents', options);
+export const listArchivedBotsQueryKey = (options?: Options<ListArchivedBotsData>) => createQueryKey('listArchivedBots', options);
 
 /**
- * List the archived agents, newest archive first. GET /api/agents omits them.
+ * List the archived bots, newest archive first. GET /api/bots omits them.
  */
-export const listArchivedAgentsOptions = (options?: Options<ListArchivedAgentsData>) => queryOptions<ListArchivedAgentsResponse, ListArchivedAgentsError, ListArchivedAgentsResponse, ReturnType<typeof listArchivedAgentsQueryKey>>({
+export const listArchivedBotsOptions = (options?: Options<ListArchivedBotsData>) => queryOptions<ListArchivedBotsResponse, ListArchivedBotsError, ListArchivedBotsResponse, ReturnType<typeof listArchivedBotsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listArchivedAgents({
+        const { data } = await listArchivedBots({
             ...options,
             ...queryKey[0],
             signal,
@@ -1489,17 +1489,17 @@ export const listArchivedAgentsOptions = (options?: Options<ListArchivedAgentsDa
         });
         return data;
     },
-    queryKey: listArchivedAgentsQueryKey(options)
+    queryKey: listArchivedBotsQueryKey(options)
 });
 
 /**
- * Restores an archived agent and starts its saved channels. An agent that is not archived answers 404. There is no archive route: an agent is archived only when the owner approves a bot_delete question. Every other agent route answers 404 for an archived agent.
+ * Restores an archived bot and starts its saved channels. A bot that is not archived answers 404. There is no archive route: a bot is archived only when the owner approves a bot_delete question. Every other bot route answers 404 for an archived bot.
  *
  */
-export const restoreAgentMutation = (options?: Partial<Options<RestoreAgentData>>): UseMutationOptions<RestoreAgentResponse, RestoreAgentError, Options<RestoreAgentData>> => {
-    const mutationOptions: UseMutationOptions<RestoreAgentResponse, RestoreAgentError, Options<RestoreAgentData>> = {
+export const restoreBotMutation = (options?: Partial<Options<RestoreBotData>>): UseMutationOptions<RestoreBotResponse, RestoreBotError, Options<RestoreBotData>> => {
+    const mutationOptions: UseMutationOptions<RestoreBotResponse, RestoreBotError, Options<RestoreBotData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await restoreAgent({
+            const { data } = await restoreBot({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1510,15 +1510,15 @@ export const restoreAgentMutation = (options?: Partial<Options<RestoreAgentData>
     return mutationOptions;
 };
 
-export const listAgentRunnersQueryKey = (options: Options<ListAgentRunnersData>) => createQueryKey('listAgentRunners', options);
+export const listBotRunnersQueryKey = (options: Options<ListBotRunnersData>) => createQueryKey('listBotRunners', options);
 
 /**
- * Lists the Runners that the agent's sessions can use. The default comes first, followed by Local and the other registered Runners. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
+ * Lists the Runners that the bot's sessions can use. The default comes first, followed by Local and the other registered Runners. Each entry has a status, but no configuration or secrets. Registration does not guarantee connectivity.
  *
  */
-export const listAgentRunnersOptions = (options: Options<ListAgentRunnersData>) => queryOptions<ListAgentRunnersResponse, ListAgentRunnersError, ListAgentRunnersResponse, ReturnType<typeof listAgentRunnersQueryKey>>({
+export const listBotRunnersOptions = (options: Options<ListBotRunnersData>) => queryOptions<ListBotRunnersResponse, ListBotRunnersError, ListBotRunnersResponse, ReturnType<typeof listBotRunnersQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
-        const { data } = await listAgentRunners({
+        const { data } = await listBotRunners({
             ...options,
             ...queryKey[0],
             signal,
@@ -1526,17 +1526,17 @@ export const listAgentRunnersOptions = (options: Options<ListAgentRunnersData>) 
         });
         return data;
     },
-    queryKey: listAgentRunnersQueryKey(options)
+    queryKey: listBotRunnersQueryKey(options)
 });
 
 /**
- * Kills any persisted E2B sandbox for an idle agent, clears its sandbox ID, and releases open resources so the next turn provisions a fresh sandbox.
+ * Kills any persisted E2B sandbox for an idle bot, clears its sandbox ID, and releases open resources so the next turn provisions a fresh sandbox.
  *
  */
-export const resetAgentRunnerMutation = (options?: Partial<Options<ResetAgentRunnerData>>): UseMutationOptions<ResetAgentRunnerResponse, ResetAgentRunnerError, Options<ResetAgentRunnerData>> => {
-    const mutationOptions: UseMutationOptions<ResetAgentRunnerResponse, ResetAgentRunnerError, Options<ResetAgentRunnerData>> = {
+export const resetBotRunnerMutation = (options?: Partial<Options<ResetBotRunnerData>>): UseMutationOptions<ResetBotRunnerResponse, ResetBotRunnerError, Options<ResetBotRunnerData>> => {
+    const mutationOptions: UseMutationOptions<ResetBotRunnerResponse, ResetBotRunnerError, Options<ResetBotRunnerData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await resetAgentRunner({
+            const { data } = await resetBotRunner({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1550,7 +1550,7 @@ export const resetAgentRunnerMutation = (options?: Partial<Options<ResetAgentRun
 export const getMainSessionQueryKey = (options: Options<GetMainSessionData>) => createQueryKey('getMainSession', options);
 
 /**
- * Find or create the requested agent's main timeline.
+ * Find or create the requested bot's main timeline.
  */
 export const getMainSessionOptions = (options: Options<GetMainSessionData>) => queryOptions<GetMainSessionResponse, GetMainSessionError, GetMainSessionResponse, ReturnType<typeof getMainSessionQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -1568,7 +1568,7 @@ export const getMainSessionOptions = (options: Options<GetMainSessionData>) => q
 export const listSessionsQueryKey = (options: Options<ListSessionsData>) => createQueryKey('listSessions', options);
 
 /**
- * Session summaries of the requested agent, newest activity first, then highest ID first. Excludes main, channel sessions, dreams and web sessions with no message. Transcripts are not included.
+ * Session summaries of the requested bot, newest activity first, then highest ID first. Excludes main, channel sessions, dreams and web sessions with no message. Transcripts are not included.
  *
  */
 export const listSessionsOptions = (options: Options<ListSessionsData>) => queryOptions<ListSessionsResponse, ListSessionsError, ListSessionsResponse, ReturnType<typeof listSessionsQueryKey>>({
@@ -1588,10 +1588,10 @@ export const listSessionsOptions = (options: Options<ListSessionsData>) => query
  * Opens a separate writable session. Reuses the newest session with no message that is not archived, or creates one. No request body or model is needed. The first message sets its title. The session uses the bot's settings.
  *
  */
-export const createAgentSessionMutation = (options?: Partial<Options<CreateAgentSessionData>>): UseMutationOptions<CreateAgentSessionResponse, CreateAgentSessionError, Options<CreateAgentSessionData>> => {
-    const mutationOptions: UseMutationOptions<CreateAgentSessionResponse, CreateAgentSessionError, Options<CreateAgentSessionData>> = {
+export const createBotSessionMutation = (options?: Partial<Options<CreateBotSessionData>>): UseMutationOptions<CreateBotSessionResponse, CreateBotSessionError, Options<CreateBotSessionData>> => {
+    const mutationOptions: UseMutationOptions<CreateBotSessionResponse, CreateBotSessionError, Options<CreateBotSessionData>> = {
         mutationFn: async (fnOptions) => {
-            const { data } = await createAgentSession({
+            const { data } = await createBotSession({
                 ...options,
                 ...fnOptions,
                 throwOnError: true
@@ -1655,7 +1655,7 @@ export const archiveSessionMutation = (options?: Partial<Options<ArchiveSessionD
 export const listDirectoriesQueryKey = (options?: Options<ListDirectoriesData>) => createQueryKey('listDirectories', options);
 
 /**
- * Lists visible directories on the selected Runner of the agent, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
+ * Lists visible directories on the selected Runner of the bot, including symlinks to directories. An absent path selects home. Paths must be absolute or start with ~ or ~/. Entries are sorted by name without case and capped at 500.
  *
  */
 export const listDirectoriesOptions = (options?: Options<ListDirectoriesData>) => queryOptions<ListDirectoriesResponse, ListDirectoriesError, ListDirectoriesResponse, ReturnType<typeof listDirectoriesQueryKey>>({
@@ -1691,7 +1691,7 @@ export const listRecentProjectsOptions = (options: Options<ListRecentProjectsDat
 });
 
 /**
- * Selects the Runner of a session before its first message. Its command and file tools use that Runner. An empty runnerId follows the agent's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Session returns 409. A read-only Session returns 403.
+ * Selects the Runner of a session before its first message. Its command and file tools use that Runner. An empty runnerId follows the bot's default. The selection clears the project directory. Specify Local or a registered Machine or Sandbox. An invalid selection returns 400. A started Session returns 409. A read-only Session returns 403.
  *
  */
 export const setSessionRunnerMutation = (options?: Partial<Options<SetSessionRunnerData>>): UseMutationOptions<SetSessionRunnerResponse, SetSessionRunnerError, Options<SetSessionRunnerData>> => {
@@ -1709,7 +1709,7 @@ export const setSessionRunnerMutation = (options?: Partial<Options<SetSessionRun
 };
 
 /**
- * Sets the project directory of a session from the next message. Main, separate Web sessions, and child sessions accept the change. Read-only sessions return 403. Empty cwd restores the agent workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
+ * Sets the project directory of a session from the next message. Main, separate Web sessions, and child sessions accept the change. Read-only sessions return 403. Empty cwd restores the bot workspace. The path must be an existing absolute directory; ~ and ~/ expand to the home directory.
  *
  */
 export const setSessionProjectMutation = (options?: Partial<Options<SetSessionProjectData>>): UseMutationOptions<SetSessionProjectResponse, SetSessionProjectError, Options<SetSessionProjectData>> => {
@@ -1727,7 +1727,7 @@ export const setSessionProjectMutation = (options?: Partial<Options<SetSessionPr
 };
 
 /**
- * Sets the model and the thinking level of one session. An absent field follows the agent's setting. They apply from the next message, including channel input on Main. Main, separate Web sessions, child sessions, and Automation sessions accept overrides. Other read-only sessions return 403.
+ * Sets the model and the thinking level of one session. An absent field follows the bot's setting. They apply from the next message, including channel input on Main. Main, separate Web sessions, child sessions, and Automation sessions accept overrides. Other read-only sessions return 403.
  *
  */
 export const setSessionSettingsMutation = (options?: Partial<Options<SetSessionSettingsData>>): UseMutationOptions<SetSessionSettingsResponse, SetSessionSettingsError, Options<SetSessionSettingsData>> => {
@@ -1745,7 +1745,7 @@ export const setSessionSettingsMutation = (options?: Partial<Options<SetSessionS
 };
 
 /**
- * Stores a message in a web session and returns. An identical retry of an accepted message returns 202 with the same submissionId. A retry with the same ID and different text, attachments, mode, or session returns 409. The answer comes through the event stream. 409 when the agent has no model, or when the mode is reject and the agent is working in the session. Main and writable sessions take web messages. Automation and channel sessions return 403.
+ * Stores a message in a web session and returns. An identical retry of an accepted message returns 202 with the same submissionId. A retry with the same ID and different text, attachments, mode, or session returns 409. The answer comes through the event stream. 409 when the bot has no model, or when the mode is reject and the bot is working in the session. Main and writable sessions take web messages. Automation and channel sessions return 403.
  *
  */
 export const sendMessageMutation = (options?: Partial<Options<SendMessageData>>): UseMutationOptions<SendMessageResponse, SendMessageError, Options<SendMessageData>> => {
@@ -2022,7 +2022,7 @@ export const listSessionOutboxOptions = (options: Options<ListSessionOutboxData>
 });
 
 /**
- * Stores one file for a later message, in the agent workspace at `uploads/<id>/<name>`. The agent reads it with its tools. The largest file is 20 MB.
+ * Stores one file for a later message, in the bot workspace at `uploads/<id>/<name>`. The bot reads it with its tools. The largest file is 20 MB.
  *
  */
 export const createUploadMutation = (options?: Partial<Options<CreateUploadData>>): UseMutationOptions<CreateUploadResponse, CreateUploadError, Options<CreateUploadData>> => {
@@ -2131,7 +2131,7 @@ export const renameArtifactMutation = (options?: Partial<Options<RenameArtifactD
 export const getBotIntegrationsQueryKey = (options: Options<GetBotIntegrationsData>) => createQueryKey('getBotIntegrations', options);
 
 /**
- * The agent's skills and MCP servers. It does not start MCP servers. Before the agent starts, the servers are idle.
+ * The bot's skills and MCP servers. It does not start MCP servers. Before the bot starts, the servers are idle.
  *
  */
 export const getBotIntegrationsOptions = (options: Options<GetBotIntegrationsData>) => queryOptions<GetBotIntegrationsResponse, GetBotIntegrationsError, GetBotIntegrationsResponse, ReturnType<typeof getBotIntegrationsQueryKey>>({
@@ -2165,7 +2165,7 @@ export const startMcpOAuthMutation = (options?: Partial<Options<StartMcpOAuthDat
 };
 
 /**
- * Remove a vault value. The agent reloads when idle.
+ * Remove a vault value. The bot reloads when idle.
  */
 export const deleteVaultMutation = (options?: Partial<Options<DeleteVaultData>>): UseMutationOptions<DeleteVaultResponse, DeleteVaultError, Options<DeleteVaultData>> => {
     const mutationOptions: UseMutationOptions<DeleteVaultResponse, DeleteVaultError, Options<DeleteVaultData>> = {
@@ -2184,7 +2184,7 @@ export const deleteVaultMutation = (options?: Partial<Options<DeleteVaultData>>)
 export const listVaultQueryKey = (options: Options<ListVaultData>) => createQueryKey('listVault', options);
 
 /**
- * List vault metadata at dex and agent levels. Values are write-only.
+ * List vault metadata at dex and bot levels. Values are write-only.
  */
 export const listVaultOptions = (options: Options<ListVaultData>) => queryOptions<ListVaultResponse, ListVaultError, ListVaultResponse, ReturnType<typeof listVaultQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -2200,7 +2200,7 @@ export const listVaultOptions = (options: Options<ListVaultData>) => queryOption
 });
 
 /**
- * Set a vault value. The agent reloads when idle.
+ * Set a vault value. The bot reloads when idle.
  */
 export const putVaultMutation = (options?: Partial<Options<PutVaultData>>): UseMutationOptions<PutVaultResponse, PutVaultError, Options<PutVaultData>> => {
     const mutationOptions: UseMutationOptions<PutVaultResponse, PutVaultError, Options<PutVaultData>> = {
@@ -2217,7 +2217,7 @@ export const putVaultMutation = (options?: Partial<Options<PutVaultData>>): UseM
 };
 
 /**
- * Reloads only the selected agent's Harness and MCP connections. Opens that agent if needed and returns its server connection states. Skills need no reload. Checks idle execution across all agents before replacement; returns 409 when any agent has unfinished work. Other agents can start work after this check while the selected agent reloads. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
+ * Reloads only the selected bot's Harness and MCP connections. Opens that bot if needed and returns its server connection states. Skills need no reload. Checks idle execution across all bots before replacement; returns 409 when any bot has unfinished work. Other bots can start work after this check while the selected bot reloads. Returns 400 when a file is not valid and keeps the current resources. Returns 503 while model discovery is pending.
  *
  */
 export const reloadBotIntegrationsMutation = (options?: Partial<Options<ReloadBotIntegrationsData>>): UseMutationOptions<ReloadBotIntegrationsResponse, ReloadBotIntegrationsError, Options<ReloadBotIntegrationsData>> => {
@@ -2237,7 +2237,7 @@ export const reloadBotIntegrationsMutation = (options?: Partial<Options<ReloadBo
 export const listAutomationsQueryKey = (options: Options<ListAutomationsData>) => createQueryKey('listAutomations', options);
 
 /**
- * All automations of this agent, oldest first.
+ * All automations of this bot, oldest first.
  */
 export const listAutomationsOptions = (options: Options<ListAutomationsData>) => queryOptions<ListAutomationsResponse, ListAutomationsError, ListAutomationsResponse, ReturnType<typeof listAutomationsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -2332,7 +2332,7 @@ export const updateAutomationMutation = (options?: Partial<Options<UpdateAutomat
 };
 
 /**
- * Runs the automation now, outside its schedule. The run is skipped when the agent has no model or the previous run is still busy.
+ * Runs the automation now, outside its schedule. The run is skipped when the bot has no model or the previous run is still busy.
  *
  */
 export const runAutomationMutation = (options?: Partial<Options<RunAutomationData>>): UseMutationOptions<RunAutomationResponse, RunAutomationError, Options<RunAutomationData>> => {

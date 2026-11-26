@@ -24,13 +24,13 @@ type subscriber struct {
 // Hub routes reference and child-state notifications to each transcript connection.
 type Hub struct {
 	sessions  *session.Service
-	agents    *engine.Agents
+	bots      *engine.Bots
 	mu        sync.Mutex
 	bySession map[int64]map[*subscriber]struct{}
 }
 
-func New(sessions *session.Service, agents *engine.Agents) *Hub {
-	return &Hub{sessions: sessions, agents: agents, bySession: map[int64]map[*subscriber]struct{}{}}
+func New(sessions *session.Service, bots *engine.Bots) *Hub {
+	return &Hub{sessions: sessions, bots: bots, bySession: map[int64]map[*subscriber]struct{}{}}
 }
 
 // Changed coalesces notifications for the session and parents that observe this child.
@@ -46,16 +46,16 @@ func (h *Hub) Changed(sessionID int64) {
 	}
 }
 
-func (h *Hub) Open(ctx context.Context, agentID string, sessionID int64) (io.ReadCloser, error) {
-	return h.open(ctx, agentID, sessionID, false)
+func (h *Hub) Open(ctx context.Context, botID string, sessionID int64) (io.ReadCloser, error) {
+	return h.open(ctx, botID, sessionID, false)
 }
 
-func (h *Hub) OpenWeb(ctx context.Context, agentID string, sessionID int64) (io.ReadCloser, error) {
-	return h.open(ctx, agentID, sessionID, true)
+func (h *Hub) OpenWeb(ctx context.Context, botID string, sessionID int64) (io.ReadCloser, error) {
+	return h.open(ctx, botID, sessionID, true)
 }
 
-func (h *Hub) open(ctx context.Context, agentID string, sessionID int64, web bool) (io.ReadCloser, error) {
-	c, err := h.sessions.Get(ctx, agentID, sessionID)
+func (h *Hub) open(ctx context.Context, botID string, sessionID int64, web bool) (io.ReadCloser, error) {
+	c, err := h.sessions.Get(ctx, botID, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (h *Hub) open(ctx context.Context, agentID string, sessionID int64, web boo
 	reader, writer := io.Pipe()
 	stop := context.AfterFunc(ctx, func() { _ = writer.CloseWithError(ctx.Err()) })
 	go func() {
-		err := h.serve(ctx, agentID, c, sub, writer, web)
+		err := h.serve(ctx, botID, c, sub, writer, web)
 		h.unsubscribe(c.ID, sub)
 		stop()
 		cancel()
@@ -81,7 +81,7 @@ type streamReader struct {
 
 func (r *streamReader) Close() error { r.cancel(); return r.PipeReader.Close() }
 
-func (h *Hub) serve(ctx context.Context, agentID string, c session.Session, sub *subscriber, writer io.Writer, web bool) error {
+func (h *Hub) serve(ctx context.Context, botID string, c session.Session, sub *subscriber, writer io.Writer, web bool) error {
 	children := map[int64]string{}
 	states := map[int64]string{}
 	defer func() {
@@ -109,7 +109,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c session.Session, sub 
 			items = []engine.Item{*event.Item}
 		}
 		for _, item := range items {
-			if id, bot := childRef(item, agentID); id != 0 && id != c.ID {
+			if id, bot := childRef(item, botID); id != 0 && id != c.ID {
 				found[id] = bot
 			}
 		}
@@ -118,7 +118,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c session.Session, sub 
 				if _, ok := found[id]; !ok {
 					h.unsubscribe(id, sub)
 					delete(children, id)
-					if err := send(childEvent{Type: "child", SessionID: id, AgentID: bot, State: "unavailable"}); err != nil {
+					if err := send(childEvent{Type: "child", SessionID: id, BotID: bot, State: "unavailable"}); err != nil {
 						return err
 					}
 					delete(states, id)
@@ -153,7 +153,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c session.Session, sub 
 		if watch != nil {
 			native = &running
 		}
-		state, err := h.childState(ctx, c.ID, c.ID, agentID, native)
+		state, err := h.childState(ctx, c.ID, c.ID, botID, native)
 		if err != nil {
 			return err
 		}
@@ -168,14 +168,14 @@ func (h *Hub) serve(ctx context.Context, agentID string, c session.Session, sub 
 		if watch != nil {
 			return nil
 		}
-		latest, err := h.sessions.Get(ctx, agentID, c.ID)
+		latest, err := h.sessions.Get(ctx, botID, c.ID)
 		if err != nil {
 			return err
 		}
 		if latest.ExecutionID == 0 {
 			return nil
 		}
-		watch, err = h.agents.Watch(ctx, engine.Ref{AgentID: agentID, ID: latest.ExecutionID})
+		watch, err = h.bots.Watch(ctx, engine.Ref{BotID: botID, ID: latest.ExecutionID})
 		if err != nil {
 			return err
 		}
@@ -203,7 +203,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c session.Session, sub 
 		if initial {
 			limit = 30
 		}
-		page, err := h.sessions.TimelineNotifications(ctx, agentID, c.ID, "", noticePosition, limit)
+		page, err := h.sessions.TimelineNotifications(ctx, botID, c.ID, "", noticePosition, limit)
 		if err != nil {
 			return err
 		}
@@ -297,24 +297,24 @@ func writeJSONEvent(w io.Writer, kind string, event any) error {
 }
 
 // Detail returns the full tool output or thought of one committed item.
-func (h *Hub) Detail(ctx context.Context, agentID string, sessionID, entryID int64, itemID string) (engine.Item, error) {
-	c, err := h.sessions.Get(ctx, agentID, sessionID)
+func (h *Hub) Detail(ctx context.Context, botID string, sessionID, entryID int64, itemID string) (engine.Item, error) {
+	c, err := h.sessions.Get(ctx, botID, sessionID)
 	if err != nil {
 		return engine.Item{}, err
 	}
 	if c.ExecutionID == 0 {
 		return engine.Item{}, engine.ErrItemNotFound
 	}
-	return h.agents.Detail(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, entryID, itemID)
+	return h.bots.Detail(ctx, engine.Ref{BotID: botID, ID: c.ExecutionID}, entryID, itemID)
 }
 
-func (h *Hub) History(ctx context.Context, agentID string, sessionID, before int64, limit int) (engine.History, error) {
-	c, err := h.sessions.Get(ctx, agentID, sessionID)
+func (h *Hub) History(ctx context.Context, botID string, sessionID, before int64, limit int) (engine.History, error) {
+	c, err := h.sessions.Get(ctx, botID, sessionID)
 	if err != nil {
 		return engine.History{}, err
 	}
 	if c.ExecutionID == 0 {
 		return engine.History{Items: []engine.Item{}}, nil
 	}
-	return h.agents.History(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, before, limit)
+	return h.bots.History(ctx, engine.Ref{BotID: botID, ID: c.ExecutionID}, before, limit)
 }

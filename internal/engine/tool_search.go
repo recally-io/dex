@@ -19,27 +19,27 @@ func toolSearchExtension() *durable.Extension {
 	})
 	search := tool.Execute
 	tool.Execute = func(ctx context.Context, args any, api durable.ToolExecutionApi) (durable.ToolExecutionResult, error) {
-		agent, err := api.Agent(ctx)
+		bot, err := api.Agent(ctx)
 		if err != nil {
 			return durable.ToolExecutionResult{}, err
 		}
-		offered := make(map[string]bool, len(agent.Tools))
-		candidates := make([]*durable.ToolRegistration, 0, len(agent.Deferred)+len(agent.Tools))
+		offered := make(map[string]bool, len(bot.Tools))
+		candidates := make([]*durable.ToolRegistration, 0, len(bot.Deferred)+len(bot.Tools))
 		catalog := make(map[string]*durable.ToolRegistration, cap(candidates))
-		for _, entry := range agent.Tools {
+		for _, entry := range bot.Tools {
 			offered[entry.Name] = true
 			catalog[entry.Name] = entry
 			candidates = append(candidates, entry)
 		}
-		for _, entry := range agent.Deferred {
+		for _, entry := range bot.Deferred {
 			if catalog[entry.Name] == nil {
 				catalog[entry.Name] = entry
 				candidates = append(candidates, entry)
 			}
 		}
 		// Use PiG's ranking without changing which tools the model receives up front.
-		agent.Deferred = candidates
-		result, err := search(ctx, args, toolSearchCatalog{ToolExecutionApi: api, agent: agent})
+		bot.Deferred = candidates
+		result, err := search(ctx, args, toolSearchCatalog{ToolExecutionApi: api, bot: bot})
 		if err != nil || result.Control == nil {
 			return result, err
 		}
@@ -69,9 +69,9 @@ func toolSearchExtension() *durable.Extension {
 
 type toolSearchCatalog struct {
 	durable.ToolExecutionApi
-	agent durable.Agent
+	bot durable.Agent
 }
 
 func (c toolSearchCatalog) Agent(context.Context) (durable.Agent, error) {
-	return c.agent, nil
+	return c.bot, nil
 }

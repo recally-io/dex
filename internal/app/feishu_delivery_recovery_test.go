@@ -98,7 +98,7 @@ func TestUserFeishuCredentialRotationRevokesPendingOutbox(t *testing.T) {
 	})
 
 	// When Feishu credentials are deleted (or rotated to a new app), the pending outbox row is revoked atomically.
-	d.must(t, http.MethodDelete, "/api/agents/default/channels/feishu", nil, nil)
+	d.must(t, http.MethodDelete, "/api/bots/default/channels/feishu", nil, nil)
 	eventually(t, "revoked feishu outbox row", func() (bool, any) {
 		n := count(t, conn, "SELECT count(*) FROM outbox_messages WHERE status='failed' AND peer='feishu:owner'")
 		return n == 1, n

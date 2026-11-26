@@ -40,7 +40,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{
+	if _, err := q.CreateBot(t.Context(), sqlc.CreateBotParams{
 		ID: "bot-ssh", Name: "SSH Bot", ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
@@ -59,7 +59,7 @@ func TestUserPiEnvManagerConnectsWithTOFUAndRejectsChangedHostKey(t *testing.T) 
 		t.Fatalf("probe=%+v err=%v", probe, err)
 	}
 
-	// Open creates per-agent workspace and runs remote commands over PiG/env.
+	// Open creates per-bot workspace and runs remote commands over PiG/env.
 	h, err := mgr.Open(t.Context(), "bot-ssh", "")
 	if err != nil {
 		t.Fatal(err)
@@ -152,11 +152,11 @@ func TestUserPiEnvUsesLoginShellByDefaultAndRespectsOptOut(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, agent := range []sqlc.CreateAgentParams{
+	for _, bot := range []sqlc.CreateBotParams{
 		{ID: "bot-login", Name: "Login Bot", ThinkingLevel: "off", RunnerID: "env-login-default", CreatedAt: now},
 		{ID: "bot-nologin", Name: "No Login Bot", ThinkingLevel: "off", RunnerID: "env-login-off", CreatedAt: now},
 	} {
-		if _, err := q.CreateAgent(t.Context(), agent); err != nil {
+		if _, err := q.CreateBot(t.Context(), bot); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -228,7 +228,7 @@ func TestUserPiEnvBotsShareOneConnectionUntilConfigChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"bot-a", "bot-b"} {
-		if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: id, Name: id, ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now}); err != nil {
+		if _, err := q.CreateBot(t.Context(), sqlc.CreateBotParams{ID: id, Name: id, ThinkingLevel: "off", RunnerID: envRow.ID, CreatedAt: now}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -332,7 +332,7 @@ func TestUserPiEnvOpenFailsWhenDexStopsDuringTheFirstConnect(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateAgent(t.Context(), sqlc.CreateAgentParams{ID: "bot-slow", Name: "Slow", ThinkingLevel: "off", RunnerID: "env-slow", CreatedAt: now}); err != nil {
+	if _, err := q.CreateBot(t.Context(), sqlc.CreateBotParams{ID: "bot-slow", Name: "Slow", ThinkingLevel: "off", RunnerID: "env-slow", CreatedAt: now}); err != nil {
 		t.Fatal(err)
 	}
 	mgr := runner.NewManager(runner.ManagerConfig{DataDir: dataDir, Queries: q, SSHProgram: sshFix.SSHProgram})

@@ -10,10 +10,10 @@ func TestUserCanReceiveAnEventOnMultiplePairedChannels(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	conv, _ := taskParent(t, r)
-	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: "42,99"}); err != nil {
+	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: "42,99"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{AgentID: "bot", BotID: "wx", Owner: "owner"}); err != nil {
+	if err := r.q.SetWechatSettings(ctx, sqlc.SetWechatSettingsParams{BotID: "bot", WechatBotID: "wx", Owner: "owner"}); err != nil {
 		t.Fatal(err)
 	}
 	// Given one alert with deliveries to three paired destinations.
@@ -22,7 +22,7 @@ func TestUserCanReceiveAnEventOnMultiplePairedChannels(t *testing.T) {
 		{"telegram:99", `{"accountId":"123","senderId":"99"}`},
 		{"wechat:owner", `{"accountId":"wx"}`},
 	} {
-		row := sqlc.InsertOutboxMessageParams{ID: target.peer, EventID: "remind:alert", AgentID: "bot", SessionID: conv, Kind: "proactive", Peer: target.peer, ChannelContext: target.identity, Body: "Alert", Status: "pending"}
+		row := sqlc.InsertOutboxMessageParams{ID: target.peer, EventID: "remind:alert", BotID: "bot", SessionID: conv, Kind: "proactive", Peer: target.peer, ChannelContext: target.identity, Body: "Alert", Status: "pending"}
 		if n, err := r.q.InsertOutboxMessage(ctx, row); err != nil || n != 1 {
 			t.Fatalf("enqueue %s: %d, %v", target.peer, n, err)
 		}
@@ -33,7 +33,7 @@ func TestUserCanReceiveAnEventOnMultiplePairedChannels(t *testing.T) {
 	}
 	// When the owner unpairs one peer and later pairs it again.
 	for _, users := range []string{"99", "42,99"} {
-		if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{AgentID: "bot", Token: "123:fixture", AllowedUsers: users}); err != nil {
+		if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{BotID: "bot", Token: "123:fixture", AllowedUsers: users}); err != nil {
 			t.Fatal(err)
 		}
 	}

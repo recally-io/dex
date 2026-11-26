@@ -31,7 +31,7 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 	}, &env, http.StatusCreated)
 
 	// When the owner configures the default bot.
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{
 		"name":             "Dex",
 		"provider":         "faux",
 		"modelId":          "echo",
@@ -42,22 +42,22 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 	}, nil)
 
 	// Then a bot with only a name copies its model, fallback, and environment and answers at once.
-	var quick api.Agent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Quick Bot"}, &quick, http.StatusCreated)
+	var quick api.Bot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Quick Bot"}, &quick, http.StatusCreated)
 	if quick.Provider != "faux" || quick.ModelID != "echo" || quick.ThinkingLevel != "off" ||
 		quick.FallbackProvider != "faux" || quick.FallbackModelID != "shout" || quick.RunnerID != env.ID {
 		t.Fatalf("quick bot did not copy the default bot: %+v", quick)
 	}
 	var quickMain sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/"+quick.ID+"/sessions/main", nil, &quickMain)
-	quickWatch := d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", quick.ID, quickMain.ID))
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", quick.ID, quickMain.ID),
+	d.must(t, http.MethodGet, "/api/bots/"+quick.ID+"/sessions/main", nil, &quickMain)
+	quickWatch := d.watchPath(t, fmt.Sprintf("/api/bots/%s/sessions/%d/events", quick.ID, quickMain.ID))
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/messages", quick.ID, quickMain.ID),
 		map[string]string{"id": uuid.NewV7().String(), "text": "ready out of the box"}, nil, http.StatusAccepted)
 	quickWatch.until(t, "quick bot answers with the copied model", answered("echo: ready out of the box"))
 
 	// Explicit fields win over the copy.
-	var local api.Agent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{
+	var local api.Bot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{
 		"name": "Local Bot", "modelId": "tool", "provider": "faux", "runnerId": "",
 	}, &local, http.StatusCreated)
 	if local.ModelID != "tool" || local.RunnerID != "" || local.FallbackModelID != "shout" {
@@ -69,35 +69,35 @@ func TestUserCreatesReadyBotsFromTheDefaultBot(t *testing.T) {
 	toolSession := d.newSession(t)
 	_ = taskTool(t, d, toolSession.ID, "bot_create", map[string]string{"name": "Tool Bot"})
 	var listed struct {
-		Agents []api.Agent `json:"agents"`
+		Bots []api.Bot `json:"bots"`
 	}
-	d.must(t, http.MethodGet, "/api/agents", nil, &listed)
-	var foundToolBot *api.Agent
-	for i := range listed.Agents {
-		if listed.Agents[i].Name == "Tool Bot" {
-			foundToolBot = &listed.Agents[i]
+	d.must(t, http.MethodGet, "/api/bots", nil, &listed)
+	var foundToolBot *api.Bot
+	for i := range listed.Bots {
+		if listed.Bots[i].Name == "Tool Bot" {
+			foundToolBot = &listed.Bots[i]
 			break
 		}
 	}
-	var template api.Agent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &template)
+	var template api.Bot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &template)
 	if foundToolBot == nil || foundToolBot.ModelID == "" || foundToolBot.ModelID != template.ModelID ||
 		foundToolBot.FallbackModelID != template.FallbackModelID || foundToolBot.RunnerID != env.ID {
-		t.Fatalf("bot_create did not copy the default bot: %+v", listed.Agents)
+		t.Fatalf("bot_create did not copy the default bot: %+v", listed.Bots)
 	}
 
 	// Keep the environment unchanged so the PUT tests only a model change.
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{
 		"name": "Dex", "provider": "faux", "modelId": "shout", "thinkingLevel": "off",
 		"runnerId": template.RunnerID,
 	}, nil)
-	d.must(t, http.MethodGet, "/api/agents/"+quick.ID, nil, &quick)
+	d.must(t, http.MethodGet, "/api/bots/"+quick.ID, nil, &quick)
 	if quick.ModelID != "echo" {
 		t.Fatalf("existing bot changed with the default bot: %+v", quick)
 	}
 
 	// A fallback model needs a model.
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{
 		"name": "Fallback Only", "modelId": "", "fallbackProvider": "faux", "fallbackModelId": "shout",
 	}, nil, http.StatusBadRequest)
 }
@@ -127,7 +127,7 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 		"baseUrl": upstream.URL + "/v1",
 		"apiKey":  "test-key",
 	}, nil)
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{
 		"name":             "Dex",
 		"provider":         "flaky",
 		"modelId":          "broken-primary",
@@ -137,7 +137,7 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 	}, nil)
 
 	// An active automation counts fallback as usable on /api/board/attention.
-	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
+	d.must(t, http.MethodPost, "/api/bots/default/automations", map[string]any{
 		"name":     "Health check",
 		"prompt":   "Check status",
 		"schedule": map[string]string{"kind": "daily", "time": "09:00"},
@@ -160,8 +160,8 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 
 	var work struct {
 		Automations []struct {
-			AgentID string `json:"agentId"`
-			Setup   bool   `json:"setup"`
+			BotID string `json:"botId"`
+			Setup bool   `json:"setup"`
 		} `json:"automations"`
 	}
 	d.must(t, http.MethodGet, "/api/board/attention", nil, &work)
@@ -173,8 +173,8 @@ func TestUserFallsBackWhenPrimaryModelFailsOrDisappears(t *testing.T) {
 	d.watch(t, missingSession).until(t, "fallback answer when primary missing", answered("echo: missing provider check"))
 
 	// A new bot does not copy the default bot's removed model, and so no fallback model either.
-	var fresh api.Agent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Fresh"}, &fresh, http.StatusCreated)
+	var fresh api.Bot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Fresh"}, &fresh, http.StatusCreated)
 	if fresh.ModelID != "" || fresh.FallbackModelID != "" {
 		t.Fatalf("bot copied a removed model: %+v", fresh)
 	}

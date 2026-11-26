@@ -135,7 +135,7 @@ func (s *Service) settleIn(ctx context.Context, q *sqlc.Queries, id string, even
 		return 0, 0, "", err
 	}
 	if parent == 0 && conv.ParentID.Valid && !sub.ParentRequestID.Valid && sub.Origin != "automation" && !isUserOrigin(sub.Origin) && event.Status == "unanswered" && event.Reason != "stopped" && event.Reason != "withdrawn" && event.Reason != "aborted" {
-		if archived, aerr := q.SessionAgentArchived(ctx, conv.ParentID.Int64); aerr != nil {
+		if archived, aerr := q.SessionBotArchived(ctx, conv.ParentID.Int64); aerr != nil {
 			return 0, 0, "", aerr
 		} else if archived == 0 {
 			body := sessionResult{

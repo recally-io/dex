@@ -1,5 +1,5 @@
 import type { Channels as Settings, TelegramOptions } from "../api/generated/types.gen";
-import { useAgentId } from "../lib/agent-scope";
+import { useBotId } from "../lib/bot-scope";
 import { useState, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -40,15 +40,15 @@ import { TelegramOptionsFields } from "../components/telegram-options";
 import { TelegramManagedCreation, TelegramManagerSettings } from "../components/telegram-managed";
 
 function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string; state: string }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
 
   return (
     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
       <ChannelIcon channel={channel} />
       <span className="min-w-0 flex-1">
         <Link
-          to="/a/$agentId/channels/$channelId"
-          params={{ agentId, channelId: channel }}
+          to="/b/$botId/channels/$channelId"
+          params={{ botId, channelId: channel }}
           className="block w-fit text-[13.5px] font-medium text-foreground hover:underline"
         >
           {channelInfo[channel].name}
@@ -62,12 +62,12 @@ function ChannelRow({ channel, text, state }: { channel: ChannelId; text: string
 }
 
 function ChannelsSection({ settings }: { settings: Settings }) {
-  const agentId = useAgentId();
-  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const botId = useBotId();
+  const saved = useQuery({ ...getChannelsOptions({ path: { botId } }), refetchInterval: 3000 });
   const current = saved.data ?? settings;
 
   const targets = useQuery({
-    ...getNotificationTargetsOptions({ path: { agentId } }),
+    ...getNotificationTargetsOptions({ path: { botId } }),
     refetchInterval: 3000,
   });
 
@@ -108,7 +108,7 @@ function ChannelsSection({ settings }: { settings: Settings }) {
                 disabled={!targets.data || primary.isPending}
                 value={targets.data?.primaryId ?? ""}
                 onChange={(event) =>
-                  primary.mutate({ path: { agentId }, body: { targetId: event.target.value } })
+                  primary.mutate({ path: { botId }, body: { targetId: event.target.value } })
                 }
               >
                 <option value="">None</option>
@@ -149,8 +149,8 @@ const descriptions: Record<ChannelId, string> = {
 };
 
 export function ChannelPage({ channel }: { channel: ChannelId }) {
-  const agentId = useAgentId();
-  const saved = useQuery({ ...getChannelsOptions({ path: { agentId } }), refetchInterval: 3000 });
+  const botId = useBotId();
+  const saved = useQuery({ ...getChannelsOptions({ path: { botId } }), refetchInterval: 3000 });
   const data = saved.data;
   const state = data && (channel === "feishu" ? data.feishu.status : data[channel].status.state);
 
@@ -174,15 +174,15 @@ export function ChannelPage({ channel }: { channel: ChannelId }) {
 }
 
 function Telegram({ settings }: { settings: Settings }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const { notify } = useApp();
   const telegram = settings.telegram;
   const [edit, setEdit] = useState(false);
   const [off, setOff] = useState(false);
-  const pairing = useMutation(createTelegramPairingMutation({ path: { agentId } }));
+  const pairing = useMutation(createTelegramPairingMutation({ path: { botId } }));
 
   const deletion = useMutation({
-    ...deleteTelegramMutation({ path: { agentId } }),
+    ...deleteTelegramMutation({ path: { botId } }),
     onSuccess: async () => {
       await refreshSettings();
       setOff(false);
@@ -282,7 +282,7 @@ function Telegram({ settings }: { settings: Settings }) {
                 <Button
                   size="sm"
                   disabled={pairing.isPending}
-                  onClick={() => pairing.mutate({ path: { agentId } })}
+                  onClick={() => pairing.mutate({ path: { botId } })}
                 >
                   {pairing.isPending ? "Creating link…" : "Create owner pairing link"}
                 </Button>
@@ -332,7 +332,7 @@ function Telegram({ settings }: { settings: Settings }) {
         <TelegramDialog
           settings={settings}
           onClose={() => setEdit(false)}
-          onNeedsPairing={() => pairing.mutate({ path: { agentId } })}
+          onNeedsPairing={() => pairing.mutate({ path: { botId } })}
         />
       ) : null}
       {off ? (
@@ -341,7 +341,7 @@ function Telegram({ settings }: { settings: Settings }) {
           description="dex stops reading the bot and forgets the saved token. The main timeline stays. To turn Telegram on again, enter the token again."
           confirmLabel="Turn off"
           onCancel={() => setOff(false)}
-          onConfirm={() => deletion.mutate({ path: { agentId } })}
+          onConfirm={() => deletion.mutate({ path: { botId } })}
           pending={deletion.isPending}
           error={deletion.error}
         />
@@ -372,7 +372,7 @@ function TelegramDialog({
   onClose: () => void;
   onNeedsPairing: () => void;
 }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const { notify } = useApp();
   const saved = settings.telegram.enabled;
   const [token, setToken] = useState("");
@@ -384,7 +384,7 @@ function TelegramDialog({
   const tokenError = !saved && !token.trim() ? "Enter the bot token from @BotFather." : "";
 
   const save = useMutation({
-    ...setTelegramMutation({ path: { agentId } }),
+    ...setTelegramMutation({ path: { botId } }),
     onSuccess: async (_, variables) => {
       await refreshSettings();
       onClose();
@@ -401,7 +401,7 @@ function TelegramDialog({
     setTried(true);
 
     if (tokenError || parsed.error || save.isPending) return;
-    save.mutate({ path: { agentId }, body: { token: token.trim(), allowedUsers: parsed.users, options } });
+    save.mutate({ path: { botId }, body: { token: token.trim(), allowedUsers: parsed.users, options } });
   }
 
   return (
@@ -506,8 +506,8 @@ function TelegramDialog({
 }
 
 function WithChannels({ children }: { children: (settings: Settings) => ReactNode }) {
-  const agentId = useAgentId();
-  const settings = useQuery(getChannelsOptions({ path: { agentId } }));
+  const botId = useBotId();
+  const settings = useQuery(getChannelsOptions({ path: { botId } }));
 
   if (settings.isPending) return <Loading />;
 

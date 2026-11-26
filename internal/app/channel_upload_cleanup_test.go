@@ -82,7 +82,7 @@ func TestUserTelegramUploadRetryCleansUncommittedFile(t *testing.T) {
 			} `json:"status"`
 		} `json:"telegram"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &status)
+	d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &status)
 	if !strings.Contains(status.Telegram.Status.Reason, "upload receipt failure") {
 		t.Fatalf("retry lost receipt failure: %q", status.Telegram.Status.Reason)
 	}

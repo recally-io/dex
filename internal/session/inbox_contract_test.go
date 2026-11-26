@@ -14,7 +14,7 @@ func TestUserInboxContractRecordsProducerAndRejectsImmutableIntentMismatch(t *te
 
 	// Given a paired Telegram channel on the test bot.
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		AgentID:      "bot",
+		BotID:        "bot",
 		Token:        "123:tok",
 		AllowedUsers: "42",
 		Options:      "{}",

@@ -27,7 +27,7 @@ func TestUserCanHandleFailedRunWithoutTranscript(t *testing.T) {
 	dir := t.TempDir()
 	d := startDexWith(t, app.Config{DataDir: dir, AutomationCheck: time.Hour})
 	var a automationInfo
-	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{"name": "Failed run", "prompt": "Check", "schedule": map[string]string{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true}, &a, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/default/automations", map[string]any{"name": "Failed run", "prompt": "Check", "schedule": map[string]string{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true}, &a, http.StatusCreated)
 	conn, err := db.Open(t.Context(), filepath.Join(dir, "control.sqlite"))
 	if err != nil {
 		t.Fatal(err)
@@ -62,19 +62,19 @@ func TestUserSeesOnlyActionableAutomationResultsAcrossBots(t *testing.T) {
 	var bot struct {
 		ID string `json:"id"`
 	}
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Second bot", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &bot, http.StatusCreated)
-	for _, agent := range []string{"default", bot.ID} {
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Second bot", "provider": "faux", "modelId": "tool", "thinkingLevel": "off"}, &bot, http.StatusCreated)
+	for _, bot := range []string{"default", bot.ID} {
 		for _, outcome := range []string{"changed", "failed", "unchanged"} {
 			var a automationInfo
-			d.must(t, http.MethodPost, "/api/agents/"+agent+"/automations", map[string]any{"name": outcome + " check", "prompt": fmt.Sprintf(`automation_report {"outcome":%q,"summary":"check result","changeKey":"same"}`, outcome), "schedule": map[string]string{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true}, &a, http.StatusCreated)
+			d.must(t, http.MethodPost, "/api/bots/"+bot+"/automations", map[string]any{"name": outcome + " check", "prompt": fmt.Sprintf(`automation_report {"outcome":%q,"summary":"check result","changeKey":"same"}`, outcome), "schedule": map[string]string{"kind": "daily", "time": "09:00"}, "timeZone": "UTC", "session": "new", "enabled": true}, &a, http.StatusCreated)
 			for range 2 {
 				var r runInfo
-				d.must(t, http.MethodPost, "/api/agents/"+agent+"/automations/"+a.ID+"/run", nil, &r, http.StatusAccepted)
+				d.must(t, http.MethodPost, "/api/bots/"+bot+"/automations/"+a.ID+"/run", nil, &r, http.StatusAccepted)
 				eventually(t, "routine settled", func() (bool, any) {
 					var list struct {
 						Runs []routineRun `json:"runs"`
 					}
-					d.must(t, http.MethodGet, "/api/agents/"+agent+"/automations/"+a.ID+"/runs", nil, &list)
+					d.must(t, http.MethodGet, "/api/bots/"+bot+"/automations/"+a.ID+"/runs", nil, &list)
 					for _, row := range list.Runs {
 						if row.ID == r.ID {
 							return row.Status != "running", row
@@ -101,8 +101,8 @@ func TestUserSeesOnlyActionableAutomationResultsAcrossBots(t *testing.T) {
 	}
 	counts := map[string]int{}
 	for _, r := range rows {
-		counts[r.AgentID]++
-		if r.SessionID == 0 || r.Summary != "check result" || r.Read || r.Dismissed || r.AgentName == "" || r.AutomationName == "" || (r.Outcome != "changed" && r.Outcome != "failed") {
+		counts[r.BotID]++
+		if r.SessionID == 0 || r.Summary != "check result" || r.Read || r.Dismissed || r.BotName == "" || r.AutomationName == "" || (r.Outcome != "changed" && r.Outcome != "failed") {
 			t.Fatalf("invalid Automation result: %+v", r)
 		}
 	}
@@ -110,17 +110,17 @@ func TestUserSeesOnlyActionableAutomationResultsAcrossBots(t *testing.T) {
 		t.Fatalf("bot counts: %v", counts)
 	}
 	var response struct {
-		Agents []struct {
+		Bots []struct {
 			ID       string `json:"id"`
 			Activity struct {
 				AutomationFailed bool `json:"automationFailed"`
 			} `json:"activity"`
-		} `json:"agents"`
+		} `json:"bots"`
 	}
-	d.must(t, http.MethodGet, "/api/agents", nil, &response)
-	for _, agent := range response.Agents {
-		if !agent.Activity.AutomationFailed {
-			t.Fatalf("agent %s activity=%+v, want automationFailed=true", agent.ID, agent.Activity)
+	d.must(t, http.MethodGet, "/api/bots", nil, &response)
+	for _, bot := range response.Bots {
+		if !bot.Activity.AutomationFailed {
+			t.Fatalf("bot %s activity=%+v, want automationFailed=true", bot.ID, bot.Activity)
 		}
 	}
 	// When the owner reads and dismisses one bot's results, repeated writes are safe.

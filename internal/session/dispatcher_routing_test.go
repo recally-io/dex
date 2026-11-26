@@ -23,7 +23,7 @@ func TestUserPureBackgroundRunNeverAutoSendsAndMixedRunRoutesToLastUser(t *testi
 	ctx := t.Context()
 	conv, _ := taskParent(t, r)
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		AgentID:      "bot",
+		BotID:        "bot",
 		Token:        "123:tok",
 		AllowedUsers: "42",
 		Options:      "{}",
@@ -145,7 +145,7 @@ func TestUserWebSteerDuringTelegramRunKeepsAnswerInWebAndPreservesOrderAcrossRes
 	r := openNativeTest(t, dataDir, "bash")
 	ctx := t.Context()
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		AgentID:      "bot",
+		BotID:        "bot",
 		Token:        "123:tok",
 		AllowedUsers: "42",
 		Options:      "{}",
@@ -153,7 +153,7 @@ func TestUserWebSteerDuringTelegramRunKeepsAnswerInWebAndPreservesOrderAcrossRes
 		t.Fatal(err)
 	}
 	if err := r.q.SetFeishuSettings(ctx, sqlc.SetFeishuSettingsParams{
-		AgentID:   "bot",
+		BotID:     "bot",
 		AppID:     "cli_1",
 		AppSecret: "sec",
 		OwnerID:   "ou_1",
@@ -214,7 +214,7 @@ func TestUserWebSteerDuringTelegramRunKeepsAnswerInWebAndPreservesOrderAcrossRes
 	for _, id := range []string{tgID, webID} {
 		waitSubSettled(t, r, id)
 	}
-	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{AgentID: "bot", ChannelKey: MainKey})
+	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{BotID: "bot", ChannelKey: MainKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestUserWebSteerDuringTelegramRunKeepsAnswerInWebAndPreservesOrderAcrossRes
 	// And cold RecoveryOutcome on a fresh engine instance recovers exact RunInputIDs = [A, B] (C excluded).
 	r.close()
 	cold := newColdEngine(t, dataDir)
-	rec, err := cold.RecoveryOutcome(ctx, engine.Ref{AgentID: "bot", ID: conv.ExecutionID.Int64}, tgID)
+	rec, err := cold.RecoveryOutcome(ctx, engine.Ref{BotID: "bot", ID: conv.ExecutionID.Int64}, tgID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +255,7 @@ func TestUserBackToBackTelegramMessagesKeepFilesAndQuestionButtonsAndWebSteerCle
 	r := startNative(t, "bash")
 	ctx := t.Context()
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		AgentID:      "bot",
+		BotID:        "bot",
 		Token:        "123:tok",
 		AllowedUsers: "42",
 		Options:      "{}",
@@ -296,7 +296,7 @@ func TestUserBackToBackTelegramMessagesKeepFilesAndQuestionButtonsAndWebSteerCle
 	if err != nil {
 		t.Fatal(err)
 	}
-	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{AgentID: "bot", ChannelKey: MainKey})
+	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{BotID: "bot", ChannelKey: MainKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestUserBackToBackTelegramMessagesKeepFilesAndQuestionButtonsAndWebSteerCle
 		ID:           "file-a1",
 		OperationKey: "op-a1",
 		SubmissionID: a1Receipt.ID,
-		AgentID:      "bot",
+		BotID:        "bot",
 		ExecutionID:  conv.ExecutionID,
 		Name:         "report.txt",
 		MimeType:     "text/plain",
@@ -316,7 +316,7 @@ func TestUserBackToBackTelegramMessagesKeepFilesAndQuestionButtonsAndWebSteerCle
 	}
 	if err := r.q.CreateQuestion(ctx, sqlc.CreateQuestionParams{
 		ID:                 "q-a1",
-		AgentID:            "bot",
+		BotID:              "bot",
 		SessionID:          conv.ID,
 		SourceSubmissionID: a1Receipt.ID,
 		ToolOperationKey:   "op-q-a1",
@@ -387,7 +387,7 @@ func TestUserBackToBackTelegramMessagesKeepFilesAndQuestionButtonsAndWebSteerCle
 		ID:           "file-tg4",
 		OperationKey: "op-tg4",
 		SubmissionID: tg4.ID,
-		AgentID:      "bot",
+		BotID:        "bot",
 		ExecutionID:  conv.ExecutionID,
 		Name:         "leak.txt",
 		MimeType:     "text/plain",
@@ -415,7 +415,7 @@ func TestUserChannelClearWritesZeroOutboxRows(t *testing.T) {
 	r := startNative(t, "echo")
 	ctx := t.Context()
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		AgentID:      "bot",
+		BotID:        "bot",
 		Token:        "123:tok",
 		AllowedUsers: "42",
 		Options:      "{}",
@@ -438,7 +438,7 @@ func TestUserChannelClearWritesZeroOutboxRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{AgentID: "bot", ChannelKey: MainKey})
+	conv, err := r.q.GetSessionByKey(ctx, sqlc.GetSessionByKeyParams{BotID: "bot", ChannelKey: MainKey})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ func TestUserWebRunSteeredByTelegramRoutesReplyToTelegram(t *testing.T) {
 	r := startNative(t, "bash")
 	ctx := t.Context()
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		AgentID:      "bot",
+		BotID:        "bot",
 		Token:        "123:tok",
 		AllowedUsers: "42",
 		Options:      "{}",
@@ -529,7 +529,7 @@ func TestCrashBeforeControlSettleHelper(t *testing.T) {
 	ctx := context.Background()
 	r := openNativeTest(t, dataDir, "bash")
 	if _, err := r.q.SetTelegramSettings(ctx, sqlc.SetTelegramSettingsParams{
-		AgentID:      "bot",
+		BotID:        "bot",
 		Token:        "123:tok",
 		AllowedUsers: "42",
 		Options:      "{}",
@@ -565,12 +565,12 @@ func TestCrashBeforeControlSettleHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	model := engine.ModelRef{Provider: "faux", ModelID: "bash"}
-	subA, err := r.agents.Submit(ctx, ref, engine.Input{RequestID: tgID, Content: gateCmd, Origin: "telegram:42", Source: "telegram:42", Kind: "message", WhenBusy: "followUp", Model: model})
+	subA, err := r.bots.Submit(ctx, ref, engine.Input{RequestID: tgID, Content: gateCmd, Origin: "telegram:42", Source: "telegram:42", Kind: "message", WhenBusy: "followUp", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitFile(t, started)
-	subB, err := r.agents.Submit(ctx, ref, engine.Input{RequestID: webID, Content: "echo crash-b", Origin: "web", Source: "web", Kind: "message", WhenBusy: "steer", Model: model})
+	subB, err := r.bots.Submit(ctx, ref, engine.Input{RequestID: webID, Content: "echo crash-b", Origin: "web", Source: "web", Kind: "message", WhenBusy: "steer", Model: model})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -658,7 +658,7 @@ func TestUserDelegationPermanentAdmissionRejectionReportsOnceToParentWithoutChan
 	ctx := t.Context()
 	parentConv, parentReq := taskParent(t, r)
 	childConv, err := r.q.CreateChildSession(ctx, sqlc.CreateChildSessionParams{
-		AgentID:    "bot",
+		BotID:      "bot",
 		ChannelKey: "chat:child-reject",
 		Title:      "Rejected Child",
 		ParentID:   sql.NullInt64{Int64: parentConv, Valid: true},
@@ -716,7 +716,7 @@ func waitSubSettled(t *testing.T, r *nativeTest, id string) {
 	}
 }
 
-func newColdEngine(t *testing.T, dataDir string) *engine.Agents {
+func newColdEngine(t *testing.T, dataDir string) *engine.Bots {
 	t.Helper()
 	a, err := engine.New(engine.Config{DataDir: dataDir})
 	if err != nil {

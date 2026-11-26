@@ -42,12 +42,12 @@ func SessionBot(botID string, sessionID int64) Actor {
 // BotInConversation identifies a Bot in an authenticated, writable conversation.
 func BotInConversation(conv sqlc.Session) Actor {
 	if conv.ParentID.Valid {
-		return SessionBot(conv.AgentID, conv.ID)
+		return SessionBot(conv.BotID, conv.ID)
 	}
 	if conv.ChannelKey == "main" {
-		return Bot(conv.AgentID)
+		return Bot(conv.BotID)
 	}
-	return Actor{kind: ActorBot, botID: conv.AgentID, scope: botSession, sessionID: conv.ID}
+	return Actor{kind: ActorBot, botID: conv.BotID, scope: botSession, sessionID: conv.ID}
 }
 
 func ExternalAgent(executionID string) Actor {

@@ -168,11 +168,11 @@ func TestUserReassignsBlockedTaskAndAnswersInOriginalMain(t *testing.T) {
 	d.setModel(t, "tool")
 	coder := d.createCoder(t)
 	var main sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions/main", nil, &main)
 	const tasks = "/api/tasks"
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, tasks, map[string]string{"title": "Choose a fix", "assigneeBotId": "default"}, &task, http.StatusCreated)
-	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID)
+	path := fmt.Sprintf("/api/bots/default/sessions/%d/messages", main.ID)
 	d.must(t, http.MethodPost, path, map[string]string{"id": uuid.NewV7().String(), "text": askJSON, "taskId": task.Id}, nil, http.StatusAccepted)
 	question := d.awaitQuestion(t, main.ID, "open")
 	d.awaitIdle(t, main.ID)
@@ -181,8 +181,8 @@ func TestUserReassignsBlockedTaskAndAnswersInOriginalMain(t *testing.T) {
 	taskPath := tasks + "/" + task.Key
 	d.must(t, http.MethodPatch, taskPath, map[string]string{"assigneeBotId": coder.ID}, &task)
 	var newMain sessionListItem
-	d.must(t, http.MethodGet, "/api/agents/"+coder.ID+"/sessions/main", nil, &newMain)
-	w := d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", coder.ID, newMain.ID))
+	d.must(t, http.MethodGet, "/api/bots/"+coder.ID+"/sessions/main", nil, &newMain)
+	w := d.watchPath(t, fmt.Sprintf("/api/bots/%s/sessions/%d/events", coder.ID, newMain.ID))
 	w.until(t, "assigned wake on the new Main", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "task_wake" && it.Title == "Task wake" })
 	})

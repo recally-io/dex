@@ -7,7 +7,7 @@ import (
 	"github.com/MichaelKinsy/PiG/durable/harness"
 )
 
-func (a *Agents) updateActivity(ref Ref, event Event, view harness.ConversationView, observedAt int64) {
+func (a *Bots) updateActivity(ref Ref, event Event, view harness.ConversationView, observedAt int64) {
 	if !event.Running {
 		a.mu.Lock()
 		delete(a.activity, ref)

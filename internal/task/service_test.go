@@ -16,7 +16,7 @@ func TestUserTracksWorkAcrossTaskLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	if _, err := sqlc.New(conn).CreateAgent(ctx, sqlc.CreateAgentParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
+	if _, err := sqlc.New(conn).CreateBot(ctx, sqlc.CreateBotParams{ID: "default", Name: "Dex", ThinkingLevel: "off"}); err != nil {
 		t.Fatal(err)
 	}
 	s := New(conn, nil)

@@ -25,7 +25,7 @@ func NewToolService(db *sql.DB, service *Service, wake func(int64)) *ToolService
 }
 
 func toolCaller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Session, sqlc.Submission, error) {
-	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
+	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{BotID: c.BotID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err
 	}
@@ -58,7 +58,7 @@ func (s *ToolService) List(ctx context.Context, c engine.TaskContext) ([]ToolInf
 	if _, _, err := toolCaller(ctx, s.service.q, c); err != nil {
 		return nil, err
 	}
-	rows, err := s.service.List(ctx, c.AgentID)
+	rows, err := s.service.List(ctx, c.BotID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,11 +74,11 @@ func (s *ToolService) Get(ctx context.Context, c engine.TaskContext, id string) 
 	if _, _, err := toolCaller(ctx, s.service.q, c); err != nil {
 		return ToolInfo{}, err
 	}
-	a, err := s.service.Get(ctx, c.AgentID, id)
+	a, err := s.service.Get(ctx, c.BotID, id)
 	if err != nil {
 		return ToolInfo{}, err
 	}
-	runs, err := s.service.Runs(ctx, c.AgentID, id, 10)
+	runs, err := s.service.Runs(ctx, c.BotID, id, 10)
 	if err != nil {
 		return ToolInfo{}, err
 	}
@@ -93,7 +93,7 @@ func (s *ToolService) Get(ctx context.Context, c engine.TaskContext, id string) 
 // mutate returns the committed result even when replay occurs after input settlement.
 // A new mutation must still have an active source; the writer lock orders it with Stop.
 func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action string, invoke func(*Service, sqlc.Session) (any, error), out any) error {
-	if c.Key == "" || !strings.HasPrefix(c.Key, c.AgentID+"/") {
+	if c.Key == "" || !strings.HasPrefix(c.Key, c.BotID+"/") {
 		return invalid("a durable tool key is required")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -111,7 +111,7 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	}
 	prior, err := q.GetAutomationToolOperation(ctx, c.Key)
 	if err == nil {
-		if prior.AgentID != c.AgentID || prior.SessionID != conv.ID || prior.SourceRequestID != source.ID || prior.Action != action {
+		if prior.BotID != c.BotID || prior.SessionID != conv.ID || prior.SourceRequestID != source.ID || prior.Action != action {
 			return invalid("tool key belongs to another operation")
 		}
 		return json.Unmarshal([]byte(prior.Result), out)
@@ -137,7 +137,7 @@ func (s *ToolService) mutate(ctx context.Context, c engine.TaskContext, action s
 	if err != nil {
 		return err
 	}
-	if err = q.CreateAutomationToolOperation(ctx, sqlc.CreateAutomationToolOperationParams{Key: c.Key, AgentID: c.AgentID, SessionID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
+	if err = q.CreateAutomationToolOperation(ctx, sqlc.CreateAutomationToolOperationParams{Key: c.Key, BotID: c.BotID, SessionID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -202,7 +202,7 @@ func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p ToolPa
 		// The Automation uses the Session's Runner and working directory.
 		in := Input{Enabled: true, Session: "new", Cwd: conv.Cwd, RunnerID: conv.RunnerID, Notification: &Notification{Mode: "default"}}
 		applyPatch(&in, p)
-		a, err := local.Create(ctx, c.AgentID, in)
+		a, err := local.Create(ctx, c.BotID, in)
 		return toolView(a), err
 	}, &out)
 	return out, err
@@ -211,7 +211,7 @@ func (s *ToolService) Create(ctx context.Context, c engine.TaskContext, p ToolPa
 func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p ToolPatch) (ToolInfo, error) {
 	var out ToolInfo
 	err := s.mutate(ctx, c, "update", func(local *Service, _ sqlc.Session) (any, error) {
-		a, err := local.Get(ctx, c.AgentID, p.ID)
+		a, err := local.Get(ctx, c.BotID, p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -232,7 +232,7 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p ToolPa
 			return nil, err
 		}
 		if string(before) == string(after) && a.TimeZone == cleanIn.TimeZone && a.Enabled == cleanIn.Enabled {
-			row, err := local.get(ctx, c.AgentID, p.ID)
+			row, err := local.get(ctx, c.BotID, p.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -242,7 +242,7 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p ToolPa
 			if err := local.checkRunner(ctx, cleanIn.RunnerID, row.RunnerID); err != nil {
 				return nil, err
 			}
-			if err := local.checkTarget(ctx, c.AgentID, cleanIn); err != nil {
+			if err := local.checkTarget(ctx, c.BotID, cleanIn); err != nil {
 				return nil, err
 			}
 			row.Cwd, row.RunnerID, row.TargetSessionID = cleanIn.Cwd, cleanIn.RunnerID, targetID(cleanIn)
@@ -250,14 +250,14 @@ func (s *ToolService) Update(ctx context.Context, c engine.TaskContext, p ToolPa
 			row.Prompt = cleanIn.Prompt
 			row.Session = cleanIn.Session
 			row.UpdatedAt = local.now().UnixMilli()
-			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, RunnerID: row.RunnerID, TargetSessionID: row.TargetSessionID, UpdatedAt: row.UpdatedAt, ID: row.ID, AgentID: row.AgentID})
+			_, err = local.q.UpdateAutomation(ctx, sqlc.UpdateAutomationParams{Cwd: row.Cwd, Name: row.Name, Prompt: row.Prompt, Schedule: row.Schedule, TimeZone: row.TimeZone, Session: row.Session, Enabled: row.Enabled, NextDueAt: row.NextDueAt, NotificationRoute: row.NotificationRoute, NotificationTargetID: row.NotificationTargetID, RunnerID: row.RunnerID, TargetSessionID: row.TargetSessionID, UpdatedAt: row.UpdatedAt, ID: row.ID, BotID: row.BotID})
 			if err != nil {
 				return nil, err
 			}
 			a, err = local.view(ctx, row)
 			return toolView(a), err
 		}
-		a, err = local.Update(ctx, c.AgentID, p.ID, cleanIn)
+		a, err = local.Update(ctx, c.BotID, p.ID, cleanIn)
 		return toolView(a), err
 	}, &out)
 	return out, err
@@ -270,7 +270,7 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 	// if the Automation exists so a retry of a stored call can still replay.
 	var pre *Target
 	var preRow sqlc.Automation
-	if row, err := s.service.get(ctx, c.AgentID, id); err == nil {
+	if row, err := s.service.get(ctx, c.BotID, id); err == nil {
 		t, err := s.service.Preflight(ctx, row)
 		if err != nil {
 			return out, err
@@ -278,7 +278,7 @@ func (s *ToolService) Run(ctx context.Context, c engine.TaskContext, id string) 
 		pre, preRow = &t, row
 	}
 	err := s.mutate(ctx, c, "run", func(local *Service, _ sqlc.Session) (any, error) {
-		row, err := local.get(ctx, c.AgentID, id)
+		row, err := local.get(ctx, c.BotID, id)
 		if err != nil {
 			return nil, err
 		}

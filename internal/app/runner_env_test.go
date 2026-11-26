@@ -189,16 +189,16 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	m.connect(d)
 	// Both bots remain local by default and explicitly select the same runner for a session.
 	d.setModel(t, "bash")
-	var second apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{
+	var second apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{
 		"name": "Second bot", "provider": "faux", "modelId": "bash", "thinkingLevel": "off",
 	}, &second, http.StatusCreated)
-	newSession := func(agentID, runnerID string) botSession {
+	newSession := func(botID, runnerID string) botSession {
 		var session sessionInfo
-		d.must(t, http.MethodPost, "/api/agents/"+agentID+"/sessions", nil, &session, http.StatusCreated)
-		d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/%s/sessions/%d/runner", agentID, session.ID),
+		d.must(t, http.MethodPost, "/api/bots/"+botID+"/sessions", nil, &session, http.StatusCreated)
+		d.must(t, http.MethodPut, fmt.Sprintf("/api/bots/%s/sessions/%d/runner", botID, session.ID),
 			map[string]string{"runnerId": runnerID}, nil)
-		return botSession{bots: &bots{t: t, d: d}, agent: agentID, id: session.ID}
+		return botSession{bots: &bots{t: t, d: d}, bot: botID, id: session.ID}
 	}
 	first, other := newSession("default", m.envID), newSession(second.ID, m.envID)
 	first.send(`printf 'first' > note.txt; cat note.txt`)
@@ -213,10 +213,10 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	}
 
 	// Changing the bot default still connects to the machine and survives an extension reload.
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	var bot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 	bot.RunnerID = m.envID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, &bot)
 	for range 2 {
 		reloadBot(t, d)
 	}
@@ -245,7 +245,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 	var listed struct {
 		Runners []apiSessionRunner `json:"runners"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/"+second.ID+"/runners", nil, &listed)
+	d.must(t, http.MethodGet, "/api/bots/"+second.ID+"/runners", nil, &listed)
 	if len(listed.Runners) != 2 || listed.Runners[1].ID != m.envID || listed.Runners[1].Status != "offline" {
 		t.Fatalf("offline runner: %+v", listed.Runners)
 	}
@@ -277,7 +277,7 @@ func TestUserEnrollsRemoteMachine(t *testing.T) {
 func reloadBot(t *testing.T, d *dex) {
 	t.Helper()
 	eventually(t, "reload of the default bot", func() (bool, any) {
-		status, body := d.call(t, http.MethodPost, "/api/agents/default/integrations/reload", nil)
+		status, body := d.call(t, http.MethodPost, "/api/bots/default/integrations/reload", nil)
 		if status != http.StatusOK && status != http.StatusConflict {
 			t.Fatalf("reload: %d %s", status, body)
 		}
@@ -288,10 +288,10 @@ func reloadBot(t *testing.T, d *dex) {
 // useMachine makes the machine the environment of the default bot and waits for the bot to load it.
 func useMachine(t *testing.T, d *dex, m *machine, model string) {
 	t.Helper()
-	var bot apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
+	var bot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &bot)
 	bot.Provider, bot.ModelID, bot.ThinkingLevel, bot.RunnerID = "faux", model, "off", m.envID
-	d.must(t, http.MethodPut, "/api/agents/default", bot, &bot)
+	d.must(t, http.MethodPut, "/api/bots/default", bot, &bot)
 	reloadBot(t, d)
 }
 
@@ -307,11 +307,11 @@ func TestUserBotKeepsItsMachineAcrossAReconnect(t *testing.T) {
 	if got := taskTurn(t, d, session, `printf before > note.txt; cat note.txt`); got != "bash: before" {
 		t.Fatalf("turn before the reconnect: %q", got)
 	}
-	var other apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Busy", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "runnerId": "local"}, &other, http.StatusCreated)
+	var other apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Busy", "provider": "faux", "modelId": "bash", "thinkingLevel": "off", "runnerId": "local"}, &other, http.StatusCreated)
 	var opened sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/"+other.ID+"/sessions", nil, &opened, http.StatusCreated)
-	busy := botSession{bots: &bots{t: t, d: d}, agent: other.ID, id: opened.ID}
+	d.must(t, http.MethodPost, "/api/bots/"+other.ID+"/sessions", nil, &opened, http.StatusCreated)
+	busy := botSession{bots: &bots{t: t, d: d}, bot: other.ID, id: opened.ID}
 	busy.send(`while :; do sleep 1; done`)
 	busy.watch().until(t, "the other bot runs", func(tr *transcript) bool { return tr.running })
 
@@ -325,7 +325,7 @@ func TestUserBotKeepsItsMachineAcrossAReconnect(t *testing.T) {
 	d.watch(t, session).until(t, "answer to "+id+" after the reconnect", answeredWith("bash: before after"))
 	busy.watch().until(t, "the other bot still runs", func(tr *transcript) bool { return tr.running })
 	var ext apiExtensionsPending
-	d.must(t, http.MethodGet, "/api/agents/default/integrations", nil, &ext)
+	d.must(t, http.MethodGet, "/api/bots/default/integrations", nil, &ext)
 	if ext.ReloadPending {
 		t.Fatal("a reconnect of the same machine made the bot stale")
 	}
@@ -348,7 +348,7 @@ func TestUserBotRecoversItsMachineAfterAnOfflineStart(t *testing.T) {
 	id := d.send(t, session, "skills")
 	// The extensions of a bot that is not open need its machine, so success means the bot opened.
 	eventually(t, "the bot opens without its machine", func() (bool, any) {
-		status, body := d.call(t, http.MethodGet, "/api/agents/default/integrations", nil)
+		status, body := d.call(t, http.MethodGet, "/api/bots/default/integrations", nil)
 		return status == http.StatusOK, body
 	})
 

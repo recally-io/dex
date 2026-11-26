@@ -60,7 +60,7 @@ func TestUserRegistersAnMCPClientOnlyWhenAdvertised(t *testing.T) {
 	d := startDex(t, data, "")
 	start := func(want int, expected string) {
 		t.Helper()
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/integrations/mcp/notes/oauth", strings.NewReader(`{"scope":"agent"}`))
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/bots/default/integrations/mcp/notes/oauth", strings.NewReader(`{"scope":"agent"}`))
 		if err != nil {
 			t.Fatal(err)
 		}

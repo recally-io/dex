@@ -35,7 +35,7 @@ type WakePayload struct {
 // queueWake uses the entry just appended by this mutation. It returns false if the Bot has no active Main.
 func (l *Ledger) queueWake(ctx context.Context, botID string, task sqlc.Task, reason string, now int64) (bool, error) {
 	q := l.q
-	if err := q.EnsureTaskMain(ctx, sqlc.EnsureTaskMainParams{AgentID: botID, CreatedAt: now}); err != nil {
+	if err := q.EnsureTaskMain(ctx, sqlc.EnsureTaskMainParams{BotID: botID, CreatedAt: now}); err != nil {
 		return false, err
 	}
 	main, err := q.GetTaskMain(ctx, botID)

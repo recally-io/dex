@@ -34,7 +34,7 @@ run = [
 ]
 
 [tasks.build]
-description = "Build bin/dex with the native agent runtime and web UI"
+description = "Build bin/dex with the native bot runtime and web UI"
 depends = ["build:web"]
 run = "go build -o bin/dex ./cmd/dex"
 

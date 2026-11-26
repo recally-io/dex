@@ -24,21 +24,21 @@ type botQuestion struct {
 	Action  string   `json:"action"`
 }
 
-func (d *dex) createCoder(t *testing.T) apiAgent {
+func (d *dex) createCoder(t *testing.T) apiBot {
 	t.Helper()
-	var a apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Coder", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &a, http.StatusCreated)
+	var a apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Coder", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &a, http.StatusCreated)
 	return a
 }
 
 func (d *dex) botNames(t *testing.T, path string) []string {
 	t.Helper()
 	var list struct {
-		Agents []apiAgent `json:"agents"`
+		Bots []apiBot `json:"bots"`
 	}
 	d.must(t, http.MethodGet, path, nil, &list)
-	names := make([]string, len(list.Agents))
-	for i, a := range list.Agents {
+	names := make([]string, len(list.Bots))
+	for i, a := range list.Bots {
 		names[i] = a.Name
 	}
 	return names
@@ -54,7 +54,7 @@ func askArchive(t *testing.T, d *dex, bot string) (int64, botQuestion) {
 		var c struct {
 			Question *botQuestion `json:"question"`
 		}
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &c)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/bots/default/sessions/%d", sessionID), nil, &c)
 		if c.Question != nil {
 			q = *c.Question
 		}
@@ -114,16 +114,16 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 	d := startDexWith(t, app.Config{DataDir: dir, TelegramAPIURL: f.srv.URL, AutomationCheck: 100 * time.Millisecond})
 	conn := sessionDB(t, d)
 	bot := d.createCoder(t)
-	d.must(t, http.MethodPut, "/api/agents/"+bot.ID+"/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
+	d.must(t, http.MethodPut, "/api/bots/"+bot.ID+"/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": []int64{42}}, nil)
 	waitSignal(t, f.pollStarted, "Telegram polling starts")
 	var history sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/"+bot.ID+"/sessions", nil, &history, http.StatusCreated)
+	d.must(t, http.MethodPost, "/api/bots/"+bot.ID+"/sessions", nil, &history, http.StatusCreated)
 	var auto automationInfo
-	d.must(t, http.MethodPost, "/api/agents/"+bot.ID+"/automations", map[string]any{
+	d.must(t, http.MethodPost, "/api/bots/"+bot.ID+"/automations", map[string]any{
 		"name": "Nightly", "prompt": "summarize", "timeZone": "UTC", "session": "new", "enabled": true,
 		"schedule": map[string]any{"kind": "once", "at": time.Now().Add(time.Hour).UnixMilli()},
 	}, &auto, http.StatusCreated)
-	historyBefore := count(t, conn, "SELECT count(*) FROM sessions WHERE agent_id = ?", bot.ID)
+	historyBefore := count(t, conn, "SELECT count(*) FROM sessions WHERE bot_id = ?", bot.ID)
 	if historyBefore == 0 {
 		t.Fatal("the bot has no conversation")
 	}
@@ -133,8 +133,8 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 	if q.Action != "archive" || len(q.Options) != 2 || q.Options[0] != "Archive Coder" || !strings.Contains(q.Text, "Not used any more") {
 		t.Fatalf("question: %+v", q)
 	}
-	if !slices.Equal(d.botNames(t, "/api/agents"), []string{"Dex", "Coder"}) {
-		t.Fatalf("bots before approval: %v", d.botNames(t, "/api/agents"))
+	if !slices.Equal(d.botNames(t, "/api/bots"), []string{"Dex", "Coder"}) {
+		t.Fatalf("bots before approval: %v", d.botNames(t, "/api/bots"))
 	}
 
 	// And the owner approves in the web card.
@@ -143,24 +143,24 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 	d.watch(t, sessionID).until(t, "approval reaches the model", answeredWith(`Approved. Bot "Coder" is archived.`))
 
 	// Then the bot leaves the list, appears in the archived list, and its channel stops.
-	if got := d.botNames(t, "/api/agents"); !slices.Equal(got, []string{"Dex"}) {
+	if got := d.botNames(t, "/api/bots"); !slices.Equal(got, []string{"Dex"}) {
 		t.Fatalf("bots after approval: %v", got)
 	}
-	if got := d.botNames(t, "/api/archived-agents"); !slices.Equal(got, []string{"Coder"}) {
+	if got := d.botNames(t, "/api/archived-bots"); !slices.Equal(got, []string{"Coder"}) {
 		t.Fatalf("archived bots: %v", got)
 	}
 	waitSignal(t, f.pollCanceled, "Telegram polling stops")
 	if got := questionOutcome(t, conn, q.ID); got != `dex: Approved. Bot "Coder" is archived.` {
 		t.Fatalf("outcome: %q", got)
 	}
-	status, _ := d.call(t, http.MethodGet, "/api/agents/"+bot.ID, nil)
+	status, _ := d.call(t, http.MethodGet, "/api/bots/"+bot.ID, nil)
 	if status != http.StatusNotFound {
 		t.Fatalf("archived bot GET = %d", status)
 	}
 
 	// And its automation does not run when it is due, though the setting stays on.
 	var tickAuto automationInfo
-	d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
+	d.must(t, http.MethodPost, "/api/bots/default/automations", map[string]any{
 		"name": "Tick check", "prompt": "ok", "timeZone": "UTC", "session": "new", "enabled": true,
 		"schedule": map[string]any{"kind": "once", "at": time.Now().Add(time.Hour).UnixMilli()},
 	}, &tickAuto, http.StatusCreated)
@@ -181,11 +181,11 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 
 	// When the owner restores the bot, then it is listed again, the channel polls again, the
 	// automation runs, and the history is kept.
-	d.must(t, http.MethodDelete, "/api/agents/"+bot.ID+"/archive", nil, nil)
-	if got := d.botNames(t, "/api/agents"); !slices.Equal(got, []string{"Dex", "Coder"}) {
+	d.must(t, http.MethodDelete, "/api/bots/"+bot.ID+"/archive", nil, nil)
+	if got := d.botNames(t, "/api/bots"); !slices.Equal(got, []string{"Dex", "Coder"}) {
 		t.Fatalf("bots after restore: %v", got)
 	}
-	if got := d.botNames(t, "/api/archived-agents"); len(got) != 0 {
+	if got := d.botNames(t, "/api/archived-bots"); len(got) != 0 {
 		t.Fatalf("archived bots after restore: %v", got)
 	}
 	waitSignal(t, f.pollStarted, "Telegram polling restarts")
@@ -193,7 +193,7 @@ func TestOwnerArchivesAndRestoresBotWithApproval(t *testing.T) {
 		n := count(t, conn, "SELECT count(*) FROM automation_runs WHERE automation_id = ?", auto.ID)
 		return n == 1, n
 	})
-	if n := count(t, conn, "SELECT count(*) FROM sessions WHERE agent_id = ?", bot.ID); n < historyBefore {
+	if n := count(t, conn, "SELECT count(*) FROM sessions WHERE bot_id = ?", bot.ID); n < historyBefore {
 		t.Fatalf("history: %d before, %d after", historyBefore, n)
 	}
 }
@@ -228,9 +228,9 @@ func TestOwnerManagesBotsThroughSession(t *testing.T) {
 		t.Fatalf("update model: %s", update)
 	}
 	var writerMain sessionInfo
-	d.must(t, http.MethodGet, "/api/agents/"+created.ID+"/sessions/main", nil, &writerMain)
+	d.must(t, http.MethodGet, "/api/bots/"+created.ID+"/sessions/main", nil, &writerMain)
 	gate := t.TempDir()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", created.ID, writerMain.ID),
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/%s/sessions/%d/messages", created.ID, writerMain.ID),
 		map[string]string{"id": uuid.NewString(), "text": taskGate(t, gate, "main")}, nil, http.StatusAccepted)
 	waitTaskFile(t, filepath.Join(gate, "main.output"))
 	got = taskTool(t, d, session, "bot_list", map[string]string{})
@@ -258,7 +258,7 @@ func TestOwnerManagesBotsThroughSession(t *testing.T) {
 	if counts[created.ID] != 1 {
 		t.Fatalf("bot_list reports %d running sessions for writer (%s): %s", counts[created.ID], created.ID, got)
 	}
-	if names := d.botNames(t, "/api/agents"); !slices.Equal(names, []string{"Dex", "Writer"}) {
+	if names := d.botNames(t, "/api/bots"); !slices.Equal(names, []string{"Dex", "Writer"}) {
 		t.Fatalf("bots: %v", names)
 	}
 	// The tools accept a registered Runner and report its ID on the saved bot.

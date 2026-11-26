@@ -31,7 +31,7 @@ ON CONFLICT DO NOTHING;
 DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_task_id = ?;
 
 -- name: ListOwnerTaskReviews :many
-SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.* FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE a.archived_at IS NULL AND t.status = 'in_review' AND t.reviewer_kind = 'owner'
 ORDER BY t.updated_at DESC, t.number DESC;
 

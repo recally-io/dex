@@ -1,4 +1,4 @@
-// Package telegram connects Telegram chats to an agent through the Bot API.
+// Package telegram connects Telegram chats to a bot through the Bot API.
 package telegram
 
 import (
@@ -35,8 +35,8 @@ type Config struct {
 	Token   string
 	// CredentialRef is the stored key for a vault-backed token.
 	CredentialRef string
-	// AllowedUsers are the Telegram user IDs that can talk to the agent. The bot ignores all other
-	// users, because agent tools run on the host.
+	// AllowedUsers are the Telegram user IDs that can talk to the bot. The bot ignores all other
+	// users, because bot tools run on the host.
 	AllowedUsers []int64
 	APIURL       string // default https://api.telegram.org
 	// Pair consumes a code and returns the new allowlist, or nil for an invalid code.
@@ -91,7 +91,7 @@ type inbound interface {
 	CleanupTelegramAlbums(ctx context.Context, store *upload.Store) error
 }
 
-// Bot is one Telegram bot that talks to one agent.
+// Bot is one Telegram bot that talks to one bot.
 type Bot struct {
 	cfg       Config
 	chats     inbound

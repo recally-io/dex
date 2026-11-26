@@ -1,0 +1,305 @@
+package app_test
+
+import (
+	"bytes"
+	"encoding/json/v2"
+	"fmt"
+	"io"
+	"maps"
+	"mime/multipart"
+	"net/http"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"uuid"
+)
+
+type apiBot struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Provider      string `json:"provider"`
+	ModelID       string `json:"modelId"`
+	ThinkingLevel string `json:"thinkingLevel"`
+	Instructions  string `json:"instructions"`
+	RunnerID      string `json:"runnerId"`
+}
+
+func TestUserCreatesAndValidatesBots(t *testing.T) {
+	t.Parallel()
+	// Given dex with its default bot.
+	d := startDex(t, t.TempDir(), "")
+	var listed struct {
+		Bots []apiBot `json:"bots"`
+	}
+	d.must(t, http.MethodGet, "/api/bots", nil, &listed)
+	if len(listed.Bots) != 1 || listed.Bots[0].ID != "default" {
+		t.Fatalf("initial bots=%+v", listed)
+	}
+	// When the owner creates a second bot without instructions.
+	input := map[string]string{"name": " Second ", "provider": "faux", "modelId": "echo", "thinkingLevel": "off", "id": "default"}
+	var created apiBot
+	d.must(t, http.MethodPost, "/api/bots", input, &created, http.StatusCreated)
+	id, err := uuid.Parse(created.ID)
+	if err != nil || id[6]>>4 != 7 || created.Name != "Second" || created.Instructions != "" {
+		t.Fatalf("created=%+v uuid error=%v", created, err)
+	}
+	base := "/api/bots/" + created.ID
+	var saved apiBot
+	d.must(t, http.MethodGet, base, nil, &saved)
+	if saved != created {
+		t.Fatalf("saved=%+v created=%+v", saved, created)
+	}
+	// Then invalid names, models and thinking levels fail at both write paths.
+	for _, invalid := range []map[string]string{
+		{"name": ""}, {"name": strings.Repeat("字", 41)}, {"provider": "missing"}, {"modelId": "missing"}, {"thinkingLevel": "unknown"},
+	} {
+		bad := map[string]string{"name": "Second", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}
+		maps.Copy(bad, invalid)
+		d.must(t, http.MethodPost, "/api/bots", bad, nil, http.StatusBadRequest)
+		d.must(t, http.MethodPut, base, bad, nil, http.StatusBadRequest)
+	}
+	input["name"], input["modelId"], input["instructions"] = "Renamed", "shout", "Second instructions"
+	d.must(t, http.MethodPut, base, input, &saved)
+	if saved.ID != created.ID || saved.Name != "Renamed" || saved.ModelID != "shout" || saved.Instructions != "Second instructions" {
+		t.Fatalf("updated=%+v", saved)
+	}
+	d.must(t, http.MethodGet, "/api/bots", nil, &listed)
+	if len(listed.Bots) != 2 || listed.Bots[1] != saved {
+		t.Fatalf("listed=%+v", listed)
+	}
+	var defaultBot apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &defaultBot)
+	if defaultBot.ID != "default" || defaultBot.Name != "Dex" {
+		t.Fatalf("default changed: %+v", defaultBot)
+	}
+	t.Logf("artifact: created bot=%s; list=%+v", created.ID, listed.Bots)
+}
+
+func TestUserKeepsBotSessionsAndUploadsSeparate(t *testing.T) {
+	t.Parallel()
+	// Given two bots whose first execution sessions can have the same ID.
+	dataDir := t.TempDir()
+	d := startDex(t, dataDir, "")
+	d.setModel(t, "echo")
+	var b apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "B", "provider": "faux", "modelId": "shout", "thinkingLevel": "off"}, &b, http.StatusCreated)
+	aBase, bBase := "/api/bots/default", "/api/bots/"+b.ID
+	var aMain, bMain sessionListItem
+	d.must(t, http.MethodGet, aBase+"/sessions/main", nil, &aMain)
+	d.must(t, http.MethodGet, bBase+"/sessions/main", nil, &bMain)
+	if aMain.ID == bMain.ID || aMain.ID != d.mainSession(t) {
+		t.Fatalf("main A=%+v B=%+v", aMain, bMain)
+	}
+	aPath, bPath := fmt.Sprintf("%s/sessions/%d", aBase, aMain.ID), fmt.Sprintf("%s/sessions/%d", bBase, bMain.ID)
+	aWatch, bWatch := d.watchPath(t, aPath+"/events"), d.watchPath(t, bPath+"/events")
+	// When each bot receives its own message.
+	d.must(t, http.MethodPost, aPath+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": "A secret"}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, bPath+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": "B secret"}, nil, http.StatusAccepted)
+	aWatch.until(t, "A answer", answered("echo: A secret"))
+	bWatch.until(t, "B answer", answered("shout: B secret"))
+	conn := taskResultDB(t, d.dataDir(t))
+	var aExecution, bExecution int64
+	for _, c := range []struct {
+		id        int64
+		execution *int64
+	}{{aMain.ID, &aExecution}, {bMain.ID, &bExecution}} {
+		if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM sessions WHERE id = ?", c.id).Scan(c.execution); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if aExecution == 0 || aExecution != bExecution {
+		t.Fatalf("expected equal execution conversation IDs: A=%d B=%d", aExecution, bExecution)
+	}
+	t.Logf("artifact: execution conversation ID=%d in both bots", aExecution)
+	// Then snapshots and history use each stream's bot.
+	for _, tc := range []struct{ path, want, other string }{{aPath, "A secret", "B secret"}, {bPath, "B secret", "A secret"}} {
+		snapshot := d.watchPath(t, tc.path+"/events")
+		snapshot.until(t, "snapshot", func(tr *transcript) bool { return tr.snapshots > 0 })
+		raw, err := json.Marshal(snapshot.tr.items)
+		if err != nil || !bytes.Contains(raw, []byte(tc.want)) || bytes.Contains(raw, []byte(tc.other)) {
+			t.Fatalf("snapshot=%s err=%v", raw, err)
+		}
+		snapshot.cancel()
+		status, history := d.call(t, http.MethodGet, tc.path+"/history?before=9007199254740991", nil)
+		if status != http.StatusOK || !strings.Contains(history, tc.want) || strings.Contains(history, tc.other) {
+			t.Fatalf("history %s: %d %s", tc.path, status, history)
+		}
+	}
+	// And an upload above the small JSON body limit stays inside B's store.
+	data := bytes.Repeat([]byte("bot B file\n"), 30000)
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("file", "large.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+bBase+"/uploads", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	resp, err := d.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil || resp.StatusCode != http.StatusCreated {
+		t.Fatalf("large upload: %d %s err=%v", resp.StatusCode, raw, err)
+	}
+	var uploaded attachment
+	if err := json.Unmarshal(raw, &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	if uploaded.Size != int64(len(data)) {
+		t.Fatalf("upload=%+v", uploaded)
+	}
+	status, downloaded := d.call(t, http.MethodGet, bBase+"/uploads/"+uploaded.ID, nil)
+	if status != http.StatusOK || downloaded != string(data) {
+		t.Fatalf("download: status=%d bytes=%d", status, len(downloaded))
+	}
+	d.must(t, http.MethodGet, aBase+"/uploads/"+uploaded.ID, nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodPost, bPath+"/messages", map[string]any{"id": uuid.NewV7().String(), "text": "B attachment", "attachments": []string{uploaded.ID}}, nil, http.StatusAccepted)
+	bWatch.until(t, "B attachment answer", answered("shout: B attachment\n\nAttached files:\n- "+filepath.Join(dataDir, "agents", b.ID, "workspace", uploaded.Path)))
+	if !slices.ContainsFunc(bWatch.tr.items, func(i item) bool { return len(i.Attachments) == 1 && i.Attachments[0].ID == uploaded.ID }) {
+		t.Fatalf("missing attachment: %+v", bWatch.tr.items)
+	}
+	// And all cross-bot session entry points refuse A's conversation under B.
+	cross := fmt.Sprintf("%s/sessions/%d", bBase, aMain.ID)
+	for _, tc := range []struct {
+		method, suffix string
+		body           any
+	}{
+		{http.MethodGet, "", nil}, {http.MethodGet, "/events", nil}, {http.MethodGet, "/history?before=1", nil},
+		{http.MethodPost, "/messages", map[string]string{"id": uuid.NewV7().String(), "text": "cross"}},
+		{http.MethodPost, "/abort", nil}, {http.MethodPost, "/clear", map[string]string{"id": uuid.NewV7().String()}},
+		{http.MethodPut, "/settings", map[string]string{}},
+	} {
+		d.must(t, tc.method, cross+tc.suffix, tc.body, nil, http.StatusNotFound)
+	}
+	var session sessionListItem
+	d.must(t, http.MethodPost, bBase+"/sessions", nil, &session, http.StatusCreated)
+	sessionPath := fmt.Sprintf("%s/sessions/%d", bBase, session.ID)
+	d.must(t, http.MethodPost, sessionPath+"/messages", map[string]string{"id": uuid.NewV7().String(), "text": "B session"}, nil, http.StatusAccepted)
+	d.watchPath(t, sessionPath+"/events").until(t, "B session answer", answered("shout: B session"))
+	status, list := d.call(t, http.MethodGet, bBase+"/sessions", nil)
+	if status != http.StatusOK || !strings.Contains(list, "B session") {
+		t.Fatalf("B list: %d %s", status, list)
+	}
+	status, list = d.call(t, http.MethodGet, "/api/bots/default/sessions", nil)
+	if status != http.StatusOK || strings.Contains(list, "B session") {
+		t.Fatalf("A list: %d %s", status, list)
+	}
+	legacy := d.mustUpload(t, "default.txt", []byte("default"))
+	d.must(t, http.MethodGet, aBase+"/uploads/"+legacy.ID, nil, nil)
+	d.must(t, http.MethodGet, bBase+"/uploads/"+legacy.ID, nil, nil, http.StatusNotFound)
+	t.Logf("artifact: main A=%d B=%d; B upload=%s size=%d", aMain.ID, bMain.ID, uploaded.ID, uploaded.Size)
+}
+
+func TestUserKeepsBotAutomationsAndTasksSeparate(t *testing.T) {
+	t.Parallel()
+	// Given a second bot that can spawn native tasks.
+	dir := t.TempDir()
+	d := startDex(t, dir, "")
+	var b apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "B", "provider": "faux", "modelId": "spawn", "thinkingLevel": "off"}, &b, http.StatusCreated)
+	base := "/api/bots/" + b.ID
+	input := map[string]any{"name": "B timer", "prompt": "B scheduled prompt", "schedule": map[string]any{"kind": "every", "minutes": 60}, "timeZone": "UTC", "session": "reuse", "enabled": true}
+	var auto automationInfo
+	d.must(t, http.MethodPost, base+"/automations", input, &auto, http.StatusCreated)
+	var listed struct {
+		Automations []automationInfo `json:"automations"`
+	}
+	d.must(t, http.MethodGet, base+"/automations", nil, &listed)
+	if len(listed.Automations) != 1 || listed.Automations[0].ID != auto.ID {
+		t.Fatalf("B automations=%+v", listed)
+	}
+	d.must(t, http.MethodGet, "/api/bots/default/automations", nil, &listed)
+	if len(listed.Automations) != 0 {
+		t.Fatalf("default automations=%+v", listed)
+	}
+	path := base + "/automations/" + auto.ID
+	d.must(t, http.MethodGet, path, nil, nil)
+	d.must(t, http.MethodPut, path, input, nil)
+	for _, tc := range []struct {
+		method, suffix string
+		body           any
+	}{
+		{http.MethodGet, "", nil}, {http.MethodPut, "", input}, {http.MethodDelete, "", nil}, {http.MethodPost, "/run", nil}, {http.MethodGet, "/runs", nil},
+	} {
+		d.must(t, tc.method, "/api/bots/default/automations/"+auto.ID+tc.suffix, tc.body, nil, http.StatusNotFound)
+	}
+	// When the owner asks B's main conversation for a child session.
+	var main sessionListItem
+	d.must(t, http.MethodGet, base+"/sessions/main", nil, &main)
+	text := childJSON(t, map[string]string{"title": "B child", "message": "B report", "provider": "faux", "modelId": "echo"})
+	d.must(t, http.MethodPost, fmt.Sprintf("%s/sessions/%d/messages", base, main.ID), map[string]string{"id": uuid.NewV7().String(), "text": text}, nil, http.StatusAccepted)
+	conn := taskResultDB(t, dir)
+	rows := waitResults(t, conn, main.ID, 1)
+	// Then only B owns the child, and the result names it.
+	child := resultBody(t, rows[0].content)["session"].(string)
+	if resultBody(t, rows[0].content)["answer"] != "echo: B report" {
+		t.Fatalf("result=%+v", rows[0])
+	}
+	var bot string
+	if err := conn.QueryRowContext(t.Context(), "SELECT bot_id FROM sessions WHERE id = ?", child).Scan(&bot); err != nil || bot != b.ID {
+		t.Fatalf("child bot=%q err=%v", bot, err)
+	}
+	// Reading is open across bots, but the default bot cannot write to the child.
+	if got := callSessionTool(t, d, d.mainSession(t), "session_read", map[string]any{"id": child}); !strings.Contains(got, "B report") || !strings.Contains(got, `"bot":"B"`) {
+		t.Fatalf("the default bot could not read a child of B: %s", got)
+	}
+	if got := callSessionTool(t, d, d.mainSession(t), "session_send", map[string]any{"id": child, "message": "intrude"}); !strings.Contains(got, "not found") {
+		t.Fatalf("the default bot wrote to a child of B: %s", got)
+	}
+	// And B can run and remove its automation without changing the default list.
+	d.must(t, http.MethodPut, base, map[string]string{"name": "B", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, nil)
+	input["prompt"] = "no delegated work"
+	d.must(t, http.MethodPut, path, input, nil)
+	var run runInfo
+	d.must(t, http.MethodPost, path+"/run", nil, &run, http.StatusAccepted)
+	if run.SessionID == 0 {
+		t.Fatalf("run=%+v", run)
+	}
+	d.must(t, http.MethodGet, path+"/runs", nil, nil)
+	runPath := fmt.Sprintf("%s/sessions/%d", base, run.SessionID)
+	d.watchPath(t, runPath+"/events").until(t, "B automation answer", answered("echo: no delegated work"))
+	d.must(t, http.MethodPut, runPath+"/settings", map[string]string{"provider": "faux", "modelId": "shout", "thinkingLevel": "high"}, nil)
+	d.must(t, http.MethodGet, base+"/integrations", nil, nil)
+	d.must(t, http.MethodDelete, path, nil, nil)
+	d.must(t, http.MethodGet, path, nil, nil, http.StatusNotFound)
+	t.Logf("artifact: B=%s child=%s automation=%s run=%s", b.ID, child, auto.ID, run.ID)
+}
+
+func TestUserGetsNotFoundForUnknownBots(t *testing.T) {
+	t.Parallel()
+	// Given an ID that is absent from control storage.
+	d := startDex(t, t.TempDir(), "")
+	base := "/api/bots/" + uuid.NewV7().String()
+	// Then every bot-scoped API refuses the unknown ID before doing work.
+	for _, tc := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodGet, "", nil}, {http.MethodPut, "", map[string]string{"name": "Unknown", "thinkingLevel": "off"}},
+		{http.MethodGet, "/sessions/main", nil}, {http.MethodGet, "/sessions", nil}, {http.MethodPost, "/sessions", nil},
+		{http.MethodGet, "/sessions/1", nil}, {http.MethodGet, "/sessions/1/events", nil},
+		{http.MethodGet, "/sessions/1/history?before=1", nil}, {http.MethodPut, "/sessions/1/settings", map[string]string{}},
+		{http.MethodPost, "/sessions/1/messages", map[string]string{"id": uuid.NewV7().String(), "text": "unknown"}},
+		{http.MethodPost, "/sessions/1/clear", map[string]string{"id": uuid.NewV7().String()}}, {http.MethodPost, "/sessions/1/abort", nil},
+		{http.MethodGet, "/tasks/missing", nil}, {http.MethodGet, "/uploads/" + uuid.NewV7().String(), nil},
+		{http.MethodPost, "/uploads", nil}, {http.MethodGet, "/integrations", nil}, {http.MethodPost, "/integrations/reload", nil},
+		{http.MethodGet, "/automations", nil}, {http.MethodPost, "/automations", map[string]string{}},
+		{http.MethodGet, "/automations/missing", nil}, {http.MethodPut, "/automations/missing", map[string]string{}},
+		{http.MethodDelete, "/automations/missing", nil}, {http.MethodPost, "/automations/missing/run", nil}, {http.MethodGet, "/automations/missing/runs", nil},
+	} {
+		d.must(t, tc.method, base+tc.path, tc.body, nil, http.StatusNotFound)
+	}
+}

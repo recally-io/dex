@@ -97,9 +97,9 @@ func TestUserDirectoryListingIsCapped(t *testing.T) {
 	t.Logf("artifact: count=%d truncated=%v last=%s", len(got.Entries), got.Truncated, got.Entries[499].Name)
 }
 
-func TestUserListsRecentAgentProjects(t *testing.T) {
+func TestUserListsRecentBotProjects(t *testing.T) {
 	t.Parallel()
-	// Given distinct projects, duplicates, a deleted project and another agent.
+	// Given distinct projects, duplicates, a deleted project and another bot.
 	d := startDex(t, t.TempDir(), "")
 	conn := sessionDB(t, d)
 	var secondID int64
@@ -111,9 +111,9 @@ func TestUserListsRecentAgentProjects(t *testing.T) {
 			secondID = id
 		}
 	}
-	var b apiAgent
-	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &b, http.StatusCreated)
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (agent_id,channel_key,created_at,cwd) VALUES (?, 'chat:other', 999, ?)", b.ID, other); err != nil {
+	var b apiBot
+	d.must(t, http.MethodPost, "/api/bots", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &b, http.StatusCreated)
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (bot_id,channel_key,created_at,cwd) VALUES (?, 'chat:other', 999, ?)", b.ID, other); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(deleted); err != nil {
@@ -123,7 +123,7 @@ func TestUserListsRecentAgentProjects(t *testing.T) {
 	var got struct {
 		Projects []string `json:"projects"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/projects", nil, &got)
+	d.must(t, http.MethodGet, "/api/bots/default/projects", nil, &got)
 	if !slices.Equal(got.Projects, []string{first, second}) {
 		t.Fatalf("projects=%v", got.Projects)
 	}
@@ -132,7 +132,7 @@ func TestUserListsRecentAgentProjects(t *testing.T) {
 	if answer := taskTurn(t, d, secondID, "recent project activity"); answer != "echo: recent project activity" {
 		t.Fatal(answer)
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/projects", nil, &got)
+	d.must(t, http.MethodGet, "/api/bots/default/projects", nil, &got)
 	if !slices.Equal(got.Projects, []string{second, first}) {
 		t.Fatalf("projects after activity=%v", got.Projects)
 	}
@@ -145,7 +145,7 @@ func TestUserListsRecentAgentProjects(t *testing.T) {
 		d.must(t, http.MethodPut, projectURL(id), map[string]string{"cwd": path}, nil)
 		expected = slices.Insert(expected, 1, path)
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/projects", nil, &got)
+	d.must(t, http.MethodGet, "/api/bots/default/projects", nil, &got)
 	if !slices.Equal(got.Projects, expected[:8]) {
 		t.Fatalf("capped projects=%v want=%v", got.Projects, expected[:8])
 	}

@@ -12,13 +12,13 @@ func TestUserDreamUsesNativeToolToReadItsEvidence(t *testing.T) {
 	// Given a dream with a clipped source record in the real control database.
 	r := startNative(t, "tool")
 	ctx := t.Context()
-	ref, err := r.agents.Create(ctx, "bot", engine.Options{Model: engine.ModelRef{Provider: "faux", ModelID: "tool"}, ThinkingLevel: "off"})
+	ref, err := r.bots.Create(ctx, "bot", engine.Options{Model: engine.ModelRef{Provider: "faux", ModelID: "tool"}, ThinkingLevel: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, query := range []string{
-		`INSERT INTO sessions (id, agent_id, channel_key, title, created_at) VALUES (101, 'bot', 'chat:original', '', 1)`,
-		`INSERT INTO sessions (id, agent_id, channel_key, title, created_at, execution_id) VALUES (102, 'bot', 'dream:run', '', 1, ?)`,
+		`INSERT INTO sessions (id, bot_id, channel_key, title, created_at) VALUES (101, 'bot', 'chat:original', '', 1)`,
+		`INSERT INTO sessions (id, bot_id, channel_key, title, created_at, execution_id) VALUES (102, 'bot', 'dream:run', '', 1, ?)`,
 		`INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, kind, status, created_at, settled_at) VALUES ('original', 101, 'correction', '[]', NULL, 'web', 'message', 'done', 1, 2)`,
 		`INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, kind, status, created_at) VALUES ('run', 102, ?, '[]', NULL, 'dream', 'message', 'pending', 3)`,
 	} {
@@ -36,7 +36,7 @@ func TestUserDreamUsesNativeToolToReadItsEvidence(t *testing.T) {
 		}
 	}
 	// When the actual native model invokes the dream-only tool.
-	sub, err := r.agents.Submit(ctx, ref, engine.Input{RequestID: "run", Origin: "dream", Kind: "message", Source: "dex:bot/dream/run", Content: `memory_source_read {"messageId":"original","field":"user","offset":0}`, Model: engine.ModelRef{Provider: "faux", ModelID: "tool"}, ThinkingLevel: "off"})
+	sub, err := r.bots.Submit(ctx, ref, engine.Input{RequestID: "run", Origin: "dream", Kind: "message", Source: "dex:bot/dream/run", Content: `memory_source_read {"messageId":"original","field":"user","offset":0}`, Model: engine.ModelRef{Provider: "faux", ModelID: "tool"}, ThinkingLevel: "off"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,8 +53,8 @@ func TestUserDreamReadsOnlyItsOwnIncludedMessage(t *testing.T) {
 	ctx := t.Context()
 	long := strings.Repeat("记", 4000) + "CORRECTION" + strings.Repeat("忆", 100)
 	for _, query := range []string{
-		`INSERT INTO sessions (id, agent_id, channel_key, title, created_at) VALUES (101, 'bot', 'chat:original', '', 1)`,
-		`INSERT INTO sessions (id, agent_id, channel_key, title, created_at, execution_id) VALUES (102, 'bot', 'dream:run', '', 1, 102)`,
+		`INSERT INTO sessions (id, bot_id, channel_key, title, created_at) VALUES (101, 'bot', 'chat:original', '', 1)`,
+		`INSERT INTO sessions (id, bot_id, channel_key, title, created_at, execution_id) VALUES (102, 'bot', 'dream:run', '', 1, 102)`,
 		`INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, kind, status, created_at, settled_at) VALUES ('original', 101, ?, '[]', NULL, 'web', 'message', 'done', 1, 2)`,
 		`INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, kind, status, created_at) VALUES ('run', 102, ?, '[]', NULL, 'dream', 'message', 'pending', 3)`,
 	} {
@@ -71,19 +71,19 @@ func TestUserDreamReadsOnlyItsOwnIncludedMessage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	caller := engine.TaskContext{AgentID: "bot", ConversationID: 102, SourceRequestID: "run"}
+	caller := engine.TaskContext{BotID: "bot", ConversationID: 102, SourceRequestID: "run"}
 	// When the dream requests the next page at a Unicode character boundary.
 	page, err := r.service.ToolReadDreamMessage(ctx, caller, DreamMessageRequest{MessageID: "original", Field: "user", Offset: 4000})
 	if err != nil || !strings.HasPrefix(page.Text, "CORRECTION") || page.HasMore {
 		t.Fatalf("page = %+v, %v", page, err)
 	}
-	// Then other agents, non-dream callers, and messages not in the digest are denied.
+	// Then other bots, non-dream callers, and messages not in the digest are denied.
 	for _, tc := range []struct {
 		caller engine.TaskContext
 		id     string
 	}{
-		{engine.TaskContext{AgentID: "other", ConversationID: 102, SourceRequestID: "run"}, "original"},
-		{engine.TaskContext{AgentID: "bot", ConversationID: 101, SourceRequestID: "run"}, "original"},
+		{engine.TaskContext{BotID: "other", ConversationID: 102, SourceRequestID: "run"}, "original"},
+		{engine.TaskContext{BotID: "bot", ConversationID: 101, SourceRequestID: "run"}, "original"},
 		{caller, "run"},
 	} {
 		if _, err := r.service.ToolReadDreamMessage(ctx, tc.caller, DreamMessageRequest{MessageID: tc.id, Field: "user"}); err == nil {

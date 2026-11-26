@@ -80,7 +80,7 @@ func (q *Queries) CountScheduledMonitors(ctx context.Context, sessionID int64) (
 
 const createMonitor = `-- name: CreateMonitor :execrows
 INSERT INTO monitors (
-    id, operation_key, agent_id, session_id, root_request_id, source_submission_id,
+    id, operation_key, bot_id, session_id, root_request_id, source_submission_id,
     chain_depth, due_at, time_zone, prompt, state, created_at, updated_at,
     check_command, check_env, interval_seconds, max_runs, expires_at,
     target_execution_id, target_runner_id, target_runner_revision, target_cwd
@@ -96,7 +96,7 @@ ON CONFLICT (operation_key) DO NOTHING
 type CreateMonitorParams struct {
 	ID                   string `json:"id"`
 	OperationKey         string `json:"operation_key"`
-	AgentID              string `json:"agent_id"`
+	BotID                string `json:"bot_id"`
 	SessionID            int64  `json:"session_id"`
 	RootRequestID        string `json:"root_request_id"`
 	SourceSubmissionID   string `json:"source_submission_id"`
@@ -121,7 +121,7 @@ func (q *Queries) CreateMonitor(ctx context.Context, arg CreateMonitorParams) (i
 	result, err := q.db.ExecContext(ctx, createMonitor,
 		arg.ID,
 		arg.OperationKey,
-		arg.AgentID,
+		arg.BotID,
 		arg.SessionID,
 		arg.RootRequestID,
 		arg.SourceSubmissionID,
@@ -213,7 +213,7 @@ func (q *Queries) FinishMonitor(ctx context.Context, arg FinishMonitorParams) (i
 }
 
 const getMonitor = `-- name: GetMonitor :one
-SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE id = ?
+SELECT id, operation_key, bot_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE id = ?
 `
 
 func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
@@ -222,7 +222,7 @@ func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.OperationKey,
-		&i.AgentID,
+		&i.BotID,
 		&i.SessionID,
 		&i.RootRequestID,
 		&i.SourceSubmissionID,
@@ -252,7 +252,7 @@ func (q *Queries) GetMonitor(ctx context.Context, id string) (Monitor, error) {
 }
 
 const getMonitorByOperationKey = `-- name: GetMonitorByOperationKey :one
-SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE operation_key = ?
+SELECT id, operation_key, bot_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors WHERE operation_key = ?
 `
 
 func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey string) (Monitor, error) {
@@ -261,7 +261,7 @@ func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey str
 	err := row.Scan(
 		&i.ID,
 		&i.OperationKey,
-		&i.AgentID,
+		&i.BotID,
 		&i.SessionID,
 		&i.RootRequestID,
 		&i.SourceSubmissionID,
@@ -291,7 +291,7 @@ func (q *Queries) GetMonitorByOperationKey(ctx context.Context, operationKey str
 }
 
 const listDueMonitors = `-- name: ListDueMonitors :many
-SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
+SELECT id, operation_key, bot_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
 WHERE state = 'scheduled' AND (running = 1 OR due_at <= ?1 OR (expires_at > 0 AND expires_at <= ?1))
 ORDER BY due_at ASC, rowid ASC
 `
@@ -308,7 +308,7 @@ func (q *Queries) ListDueMonitors(ctx context.Context, now int64) ([]Monitor, er
 		if err := rows.Scan(
 			&i.ID,
 			&i.OperationKey,
-			&i.AgentID,
+			&i.BotID,
 			&i.SessionID,
 			&i.RootRequestID,
 			&i.SourceSubmissionID,
@@ -348,7 +348,7 @@ func (q *Queries) ListDueMonitors(ctx context.Context, now int64) ([]Monitor, er
 }
 
 const listMonitorsBySession = `-- name: ListMonitorsBySession :many
-SELECT id, operation_key, agent_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
+SELECT id, operation_key, bot_id, session_id, root_request_id, source_submission_id, chain_depth, due_at, time_zone, prompt, state, fire_submission_id, created_at, updated_at, check_command, interval_seconds, max_runs, runs, expires_at, target_execution_id, target_runner_id, target_runner_revision, target_cwd, output_hash, outcome, running, check_env FROM monitors
 WHERE session_id = ?
 ORDER BY CASE WHEN state = 'scheduled' THEN 0 ELSE 1 END, due_at ASC, rowid DESC
 LIMIT 50
@@ -366,7 +366,7 @@ func (q *Queries) ListMonitorsBySession(ctx context.Context, sessionID int64) ([
 		if err := rows.Scan(
 			&i.ID,
 			&i.OperationKey,
-			&i.AgentID,
+			&i.BotID,
 			&i.SessionID,
 			&i.RootRequestID,
 			&i.SourceSubmissionID,

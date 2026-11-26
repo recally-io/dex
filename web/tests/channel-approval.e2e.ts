@@ -5,7 +5,7 @@ test("reviews and applies a single channel change", async ({ app, browser, scree
   await app.open("/");
   const baseUrl = new URL(await browser.url()).origin;
 
-  const settings = await fetch(`${baseUrl}/api/agents`, {
+  const settings = await fetch(`${baseUrl}/api/bots`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name: "Channel Review", provider: "faux", modelId: "tool" }),
@@ -13,7 +13,7 @@ test("reviews and applies a single channel change", async ({ app, browser, scree
 
   expect(settings.status).toBe(201);
   const { id } = await settings.json();
-  await app.open(`/a/${id}`);
+  await app.open(`/b/${id}`);
   await screen
     .getByRole("textbox", "Message Channel Review")
     .fill(`channel_request_change {"operation":"clear_notification_target"}`);

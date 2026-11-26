@@ -3,9 +3,9 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Archive, MessageCircle } from "lucide-react";
 import type { Session } from "../api/generated/types.gen";
-import { listAgentsOptions, listSessionsOptions } from "../api/generated/@tanstack/react-query.gen";
-import { sessionAgentId } from "../lib/sessions";
-import { AgentAvatar } from "./agent-avatar";
+import { listBotsOptions, listSessionsOptions } from "../api/generated/@tanstack/react-query.gen";
+import { sessionBotId } from "../lib/sessions";
+import { BotAvatar } from "./bot-avatar";
 import { Failure } from "./feedback";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "./ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
@@ -45,26 +45,26 @@ export function SearchDialog({
 
 function SearchResults({ close }: { close: () => void }) {
   const navigate = useNavigate();
-  const agents = useQuery(listAgentsOptions());
-  const bots = agents.data?.agents ?? [];
+  const botList = useQuery(listBotsOptions());
+  const bots = botList.data?.bots ?? [];
 
   // Lists include archived sessions and cross-bot children. Load only while search is open.
   const lists = useQueries({
-    queries: bots.map((agent) => ({
-      ...listSessionsOptions({ path: { agentId: agent.id! } }),
+    queries: bots.map((bot) => ({
+      ...listSessionsOptions({ path: { botId: bot.id! } }),
       staleTime: 30_000,
     })),
   });
 
-  const sessions = new Map<string, { session: Session; agentId: string; name: string }>();
+  const sessions = new Map<string, { session: Session; botId: string; name: string }>();
 
   lists.forEach((list, index) => {
     const bot = bots[index]!;
 
     for (const session of list.data?.sessions ?? []) {
-      const agentId = sessionAgentId(session, bot.id!);
-      const name = bots.find((agent) => agent.id === agentId)?.name ?? session.agentName ?? bot.name;
-      sessions.set(`${agentId}/${session.id}`, { session, agentId, name });
+      const botId = sessionBotId(session, bot.id!);
+      const name = bots.find((item) => item.id === botId)?.name ?? session.botName ?? bot.name;
+      sessions.set(`${botId}/${session.id}`, { session, botId, name });
     }
   });
 
@@ -72,7 +72,7 @@ function SearchResults({ close }: { close: () => void }) {
     (a, b) => b.session.updatedAt - a.session.updatedAt || b.session.id - a.session.id,
   );
 
-  const loading = agents.isPending || lists.some((list) => list.isPending);
+  const loading = botList.isPending || lists.some((list) => list.isPending);
 
   return (
     <Command>
@@ -86,33 +86,33 @@ function SearchResults({ close }: { close: () => void }) {
           <CommandEmpty>No matches.</CommandEmpty>
         )}
         <CommandGroup heading="Bots">
-          {bots.map((agent) => (
+          {bots.map((bot) => (
             <CommandItem
-              key={agent.id}
-              value={`bot/${agent.id}`}
-              keywords={[agent.name, "Main"]}
+              key={bot.id}
+              value={`bot/${bot.id}`}
+              keywords={[bot.name, "Main"]}
               onSelect={() => {
                 close();
-                void navigate({ to: "/a/$agentId", params: { agentId: agent.id! } });
+                void navigate({ to: "/b/$botId", params: { botId: bot.id! } });
               }}
             >
-              <AgentAvatar agent={agent} className="size-5 text-[10px]" />
-              <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+              <BotAvatar bot={bot} className="size-5 text-[10px]" />
+              <span className="min-w-0 flex-1 truncate">{bot.name}</span>
               <span className="text-muted-foreground">Main</span>
             </CommandItem>
           ))}
         </CommandGroup>
         <CommandGroup heading="Sessions">
-          {sorted.map(({ session, agentId, name }) => (
+          {sorted.map(({ session, botId, name }) => (
             <CommandItem
-              key={`${agentId}/${session.id}`}
-              value={`session/${agentId}/${session.id}`}
+              key={`${botId}/${session.id}`}
+              value={`session/${botId}/${session.id}`}
               keywords={[session.title || "New session", name]}
               onSelect={() => {
                 close();
                 void navigate({
-                  to: "/a/$agentId/s/$sessionId",
-                  params: { agentId, sessionId: String(session.id) },
+                  to: "/b/$botId/s/$sessionId",
+                  params: { botId, sessionId: String(session.id) },
                 });
               }}
             >
@@ -128,8 +128,8 @@ function SearchResults({ close }: { close: () => void }) {
           ))}
         </CommandGroup>
       </CommandList>
-      {agents.isError ? (
-        <Failure title="Could not load bots" error={agents.error} retry={() => void agents.refetch()} />
+      {botList.isError ? (
+        <Failure title="Could not load bots" error={botList.error} retry={() => void botList.refetch()} />
       ) : null}
       {lists.map((list, index) =>
         list.isError ? (

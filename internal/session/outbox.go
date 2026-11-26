@@ -89,7 +89,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 			}
 		}
 		if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
-			ID: outboxID, EventID: eventID, AgentID: conv.AgentID, SessionID: conv.ID,
+			ID: outboxID, EventID: eventID, BotID: conv.BotID, SessionID: conv.ID,
 			SourceSubmissionID: sql.NullString{String: source.ID, Valid: true},
 			Kind:               "proactive", Peer: peer, ChannelContext: identity, TopicKey: a.TopicKey,
 			Body: a.Content, Status: "pending", CreatedAt: now,
@@ -101,7 +101,7 @@ func (s *Service) ToolNotifyUser(ctx context.Context, r engine.TaskContext, a No
 	}
 	if writeWeb {
 		if err := q.InsertWebNotification(ctx, sqlc.InsertWebNotificationParams{
-			ID: outboxID, EventID: eventID, AgentID: conv.AgentID, SessionID: conv.ID,
+			ID: outboxID, EventID: eventID, BotID: conv.BotID, SessionID: conv.ID,
 			SourceSubmissionID: source.ID, Body: a.Content, CreatedAt: now,
 		}); err != nil {
 			return "", err
@@ -161,10 +161,10 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 	if !conv.ParentID.Valid {
 		return "", errors.New("only child sessions can report to a parent")
 	}
-	if archived, err := q.SessionAgentArchived(ctx, conv.ParentID.Int64); err != nil {
+	if archived, err := q.SessionBotArchived(ctx, conv.ParentID.Int64); err != nil {
 		return "", err
 	} else if archived != 0 {
-		return "", errors.New("parent session agent is archived")
+		return "", errors.New("parent session bot is archived")
 	}
 	body := sessionResult{
 		Session: strconv.FormatInt(conv.ID, 10),
@@ -204,7 +204,7 @@ func (s *Service) ToolReportParent(ctx context.Context, r engine.TaskContext, a 
 
 func (s *Service) ToolRecentOutbox(ctx context.Context, ref engine.Ref) ([]OutboxSummary, error) {
 	conv, err := s.q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{
-		AgentID: ref.AgentID,
+		BotID: ref.BotID,
 
 		ExecutionID: sql.NullInt64{Int64: ref.ID, Valid: true},
 	})
@@ -248,8 +248,8 @@ type OutboxEntry struct {
 }
 
 // ListOutbox returns recent outbound messages for a conversation.
-func (s *Service) ListOutbox(ctx context.Context, agentID string, sessionID int64) ([]OutboxEntry, error) {
-	if _, err := s.Get(ctx, agentID, sessionID); err != nil {
+func (s *Service) ListOutbox(ctx context.Context, botID string, sessionID int64) ([]OutboxEntry, error) {
+	if _, err := s.Get(ctx, botID, sessionID); err != nil {
 		return nil, err
 	}
 	rows, err := s.q.ListOutboxBySession(ctx, sessionID)
@@ -361,15 +361,15 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 			return "", err
 		}
 		identity := sub.ChannelContext
-		eventID := "reply:" + conv.AgentID + ":" + sub.ID
+		eventID := "reply:" + conv.BotID + ":" + sub.ID
 		if event.AnswerID > 0 {
-			eventID = fmt.Sprintf("reply:%s:%d:%d", conv.AgentID, conv.ID, event.AnswerID)
+			eventID = fmt.Sprintf("reply:%s:%d:%d", conv.BotID, conv.ID, event.AnswerID)
 		}
 		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
 		inserted, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 			ID:                 sub.ID,
 			EventID:            eventID,
-			AgentID:            conv.AgentID,
+			BotID:              conv.BotID,
 			SessionID:          conv.ID,
 			SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
 			Kind:               kind,
@@ -413,8 +413,8 @@ func writeOutboxOnSettle(ctx context.Context, q *sqlc.Queries, sub sqlc.Submissi
 		status, deliveredAt := outboxInitialStatus(peer, sub.ChannelRevoked, now)
 		if _, err := q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 			ID:                 sub.ID,
-			EventID:            "reply:" + conv.AgentID + ":" + sub.ID,
-			AgentID:            conv.AgentID,
+			EventID:            "reply:" + conv.BotID + ":" + sub.ID,
+			BotID:              conv.BotID,
 			SessionID:          conv.ID,
 			SourceSubmissionID: sql.NullString{String: sub.ID, Valid: true},
 			Kind:               "reply",
@@ -450,7 +450,7 @@ func outboxInitialStatus(peer string, channelRevoked int64, now int64) (string, 
 
 func notificationRoute(ctx context.Context, q *sqlc.Queries, conv sqlc.Session, channel string) (string, string, error) {
 	if channel == "" {
-		target, err := q.GetPrimaryNotificationTarget(ctx, conv.AgentID)
+		target, err := q.GetPrimaryNotificationTarget(ctx, conv.BotID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", "{}", nil
 		}
@@ -461,7 +461,7 @@ func notificationRoute(ctx context.Context, q *sqlc.Queries, conv sqlc.Session, 
 		return target.Peer, string(identity), err
 	}
 	platform, _, explicitPeer := strings.Cut(channel, ":")
-	paired, err := q.ListPairedChannel(ctx, sqlc.ListPairedChannelParams{AgentID: conv.AgentID, Platform: platform})
+	paired, err := q.ListPairedChannel(ctx, sqlc.ListPairedChannelParams{BotID: conv.BotID, Platform: platform})
 	if err != nil {
 		return "", "", err
 	}
@@ -544,7 +544,7 @@ func queueAutomationOutbox(ctx context.Context, q *sqlc.Queries, runID string, c
 	}
 	source := sql.NullString{String: runID, Valid: convID != 0}
 	if convID == 0 {
-		convID, err = q.GetAutomationOutboxSession(ctx, info.AgentID)
+		convID, err = q.GetAutomationOutboxSession(ctx, info.BotID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return q.SetAutomationRunNotificationNote(ctx, sqlc.SetAutomationRunNotificationNoteParams{ID: runID, NotificationNote: "not delivered: no existing bot conversation"})
 		}
@@ -579,7 +579,7 @@ func queueAutomationOutbox(ctx context.Context, q *sqlc.Queries, runID string, c
 	_, err = q.InsertOutboxMessage(ctx, sqlc.InsertOutboxMessageParams{
 		ID:                 "automation:" + runID,
 		EventID:            "remind:" + runID,
-		AgentID:            info.AgentID,
+		BotID:              info.BotID,
 		SessionID:          convID,
 		SourceSubmissionID: source,
 		Kind:               "automation",

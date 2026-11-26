@@ -30,7 +30,7 @@ type mcpOAuthRequests struct {
 type pendingMCPGrant struct {
 	binding string
 	host    string
-	agentID string
+	botID   string
 	secure  bool
 	expires time.Time
 	grant   *engine.MCPAuthorization
@@ -51,7 +51,7 @@ func (h *handler) StartMcpOAuth(ctx context.Context, req api.StartMcpOAuthReques
 	if !secure && (origin.Scheme != "http" || !loopback) {
 		return nil, fmt.Errorf("%w: open Dex over HTTPS or on localhost to authorize MCP", errInvalid)
 	}
-	id := agentID(ctx)
+	id := botID(ctx)
 	state := rand.Text()
 	requests := &h.mcpOAuth
 	requests.mu.Lock()
@@ -73,7 +73,7 @@ func (h *handler) StartMcpOAuth(ctx context.Context, req api.StartMcpOAuthReques
 		delete(requests.pending, state)
 		return nil, err
 	}
-	p := pendingMCPGrant{binding: rand.Text(), host: origin.Host, secure: secure, agentID: id, expires: time.Now().Add(mcpOAuthTTL), grant: grant}
+	p := pendingMCPGrant{binding: rand.Text(), host: origin.Host, secure: secure, botID: id, expires: time.Now().Add(mcpOAuthTTL), grant: grant}
 	requests.pending[state] = p
 	out := api.StartMcpOAuth200JSONResponse{}
 	out.Body.AuthorizationUrl = link
@@ -117,7 +117,7 @@ func (h *handler) finishMcpOAuth(w http.ResponseWriter, r *http.Request) {
 	if query.Has("iss") {
 		iss = new(query.Get("iss"))
 	}
-	if archived, err := h.Agents.Agent(r.Context(), p.agentID); err != nil || archived.ArchivedAt != 0 {
+	if archived, err := h.Bots.Bot(r.Context(), p.botID); err != nil || archived.ArchivedAt != 0 {
 		writeError(w, 400, "the MCP authorization target is no longer available")
 		return
 	}
@@ -125,5 +125,5 @@ func (h *handler) finishMcpOAuth(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "MCP authorization failed; return to Tools and try again")
 		return
 	}
-	http.Redirect(w, r, "/a/"+url.PathEscape(p.agentID)+"/integrations", http.StatusSeeOther)
+	http.Redirect(w, r, "/b/"+url.PathEscape(p.botID)+"/integrations", http.StatusSeeOther)
 }

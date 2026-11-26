@@ -1,4 +1,4 @@
-import { useAgentSettings, useAgentId } from "../lib/agent-scope";
+import { useBotSettings, useBotId } from "../lib/bot-scope";
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -15,7 +15,7 @@ import {
   activeSessionCount,
   isStalled,
   parentName,
-  sessionAgentId,
+  sessionBotId,
   sessionKind,
   sessionTime,
 } from "../lib/sessions";
@@ -27,19 +27,19 @@ import { Badge } from "../components/ui/badge";
 import { Select } from "../components/form";
 
 export function SessionsPage() {
-  const agentId = useAgentId();
-  const settings = useAgentSettings(agentId);
+  const botId = useBotId();
+  const settings = useBotSettings(botId);
 
   const sessions = useQuery({
-    ...listSessionsOptions({ path: { agentId } }),
+    ...listSessionsOptions({ path: { botId } }),
     placeholderData: (previous) => previous,
     refetchInterval: 3000,
   });
 
-  const main = useQuery(getMainSessionOptions({ path: { agentId } }));
+  const main = useQuery(getMainSessionOptions({ path: { botId } }));
   const [kind, setKind] = useState("All kinds");
   const [archivedOpen, setArchivedOpen] = useState(false);
-  const name = settings.data?.agent.name ?? "dex";
+  const name = settings.data?.bot.name ?? "dex";
   const everySession = sessions.data?.sessions ?? [];
   const all = everySession.filter((session) => !session.archivedAt);
   const list = all.filter((session) => kind === "All kinds" || sessionKind(session) === kind);
@@ -133,7 +133,7 @@ export function SessionsPage() {
 
 /** A busy row says Running, or Stalled when the session shows no sign of work. */
 function SessionRow({ session, parent }: { session: Session; parent?: string }) {
-  const agentId = useAgentId();
+  const botId = useBotId();
   const kind = sessionKind(session);
   const Icon = kind === "Session" ? MessageCircle : Clock3;
   const now = useNow();
@@ -141,15 +141,15 @@ function SessionRow({ session, parent }: { session: Session; parent?: string }) 
 
   const changeArchive = useMutation({
     ...(session.archivedAt ? unarchiveSessionMutation() : archiveSessionMutation()),
-    onSuccess: () => refreshSessions(agentId),
+    onSuccess: () => refreshSessions(botId),
   });
 
   return (
     <li className="flex items-center gap-3 border-t border-border px-4 py-3.5 first:border-t-0">
       <Icon size={16} className="mt-0.5 shrink-0 self-start text-muted-foreground" />
       <Link
-        to="/a/$agentId/s/$sessionId"
-        params={{ agentId: sessionAgentId(session, agentId), sessionId: String(session.id) }}
+        to="/b/$botId/s/$sessionId"
+        params={{ botId: sessionBotId(session, botId), sessionId: String(session.id) }}
         className="min-w-0 flex-1 hover:underline"
       >
         <span className="block text-[13.5px] font-medium text-foreground [overflow-wrap:anywhere]">
@@ -174,7 +174,7 @@ function SessionRow({ session, parent }: { session: Session; parent?: string }) 
           disabled={changeArchive.isPending}
           onClick={() =>
             changeArchive.mutate({
-              path: { agentId: sessionAgentId(session, agentId), sessionId: session.id },
+              path: { botId: sessionBotId(session, botId), sessionId: session.id },
             })
           }
         >

@@ -24,7 +24,7 @@ func (m *Manager) SpeechInput(ctx context.Context, source string) (*session.Mess
 	if err != nil {
 		return nil, false, err
 	}
-	if row.AgentID != m.agentID || row.State == "discarded" {
+	if row.BotID != m.botID || row.State == "discarded" {
 		return nil, true, nil
 	}
 	if row.InputJson == "{}" {
@@ -46,7 +46,7 @@ func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg sessi
 		if marshalErr != nil {
 			return msg, marshalErr
 		}
-		n, createErr := m.q.CreateTelegramEffect(ctx, sqlc.CreateTelegramEffectParams{OperationKey: key, AgentID: m.agentID, AccountID: msg.ChannelContext.AccountID, SenderID: msg.ChannelContext.SenderID, Peer: peer, SourceKey: source, Kind: "stt", InputJson: string(input), CreatedAt: time.Now().UnixMilli()})
+		n, createErr := m.q.CreateTelegramEffect(ctx, sqlc.CreateTelegramEffectParams{OperationKey: key, BotID: m.botID, AccountID: msg.ChannelContext.AccountID, SenderID: msg.ChannelContext.SenderID, Peer: peer, SourceKey: source, Kind: "stt", InputJson: string(input), CreatedAt: time.Now().UnixMilli()})
 		if createErr != nil {
 			return msg, createErr
 		}
@@ -58,7 +58,7 @@ func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg sessi
 	if err != nil {
 		return msg, err
 	}
-	if row.AgentID != m.agentID || row.State == "discarded" {
+	if row.BotID != m.botID || row.State == "discarded" {
 		return msg, errors.New("speech input is no longer authorized")
 	}
 	if row.State == "processing" {
@@ -164,10 +164,10 @@ func (m *Manager) FinishSpeechInput(ctx context.Context, source string, album bo
 	if err != nil {
 		return err
 	}
-	if effect.AgentID != m.agentID || effect.InputJson == "{}" {
+	if effect.BotID != m.botID || effect.InputJson == "{}" {
 		return nil
 	}
-	receipt, err := m.sessions.LookupSource(ctx, m.agentID, source)
+	receipt, err := m.sessions.LookupSource(ctx, m.botID, source)
 	if err != nil {
 		return err
 	}
@@ -178,12 +178,12 @@ func (m *Manager) FinishSpeechInput(ctx context.Context, source string, album bo
 }
 
 func (m *Manager) cleanupSpeechInputs(ctx context.Context, store *upload.Store) error {
-	rows, err := m.q.ListDiscardedTelegramEffectInputs(ctx, m.agentID)
+	rows, err := m.q.ListDiscardedTelegramEffectInputs(ctx, m.botID)
 	if err != nil {
 		return err
 	}
 	for _, row := range rows {
-		receipt, err := m.sessions.LookupSource(ctx, m.agentID, row.SourceKey)
+		receipt, err := m.sessions.LookupSource(ctx, m.botID, row.SourceKey)
 		if err != nil {
 			return err
 		}

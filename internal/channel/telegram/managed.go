@@ -17,7 +17,7 @@ type ManagedUpdate struct {
 	Bot  user `json:"bot"`
 }
 
-// Manager uses a dedicated Bot API account for setup. It never handles agent messages.
+// Manager uses a dedicated Bot API account for setup. It never handles bot messages.
 type Manager struct{ bot *Bot }
 
 func NewManager(apiURL, token string) *Manager {

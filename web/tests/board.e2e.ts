@@ -3,7 +3,7 @@ import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import { createClient } from "../src/api/generated/client";
 import {
-  createAgent,
+  createBot,
   createAutomation,
   createTask,
   splitTask,
@@ -13,7 +13,7 @@ import {
   listHeldEvents,
   runAutomation,
   sendMessage,
-  updateAgent,
+  updateBot,
   updateTask,
 } from "../src/api/generated/sdk.gen";
 
@@ -80,7 +80,7 @@ test("unblocks a subtask by approving its dependency from Board", async ({ app, 
 
   const baseline = await attentionBaseline(client);
 
-  const { data: reviewerBot } = await createAgent({
+  const { data: reviewerBot } = await createBot({
     client,
     body: { name: "Dependency fixture", provider: "faux", modelId: "echo" },
     throwOnError: true,
@@ -154,19 +154,19 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
 
   const client = createClient({ baseUrl: origin.origin });
 
-  const { data: owner } = await createAgent({
+  const { data: owner } = await createBot({
     client,
     body: { name: "Board owner fixture", provider: "faux", modelId: "tool" },
     throwOnError: true,
   });
 
-  const { data: collaborator } = await createAgent({
+  const { data: collaborator } = await createBot({
     client,
     body: { name: "Board reviewer fixture", provider: "faux", modelId: "echo" },
     throwOnError: true,
   });
 
-  const { data: main } = await getMainSession({ client, path: { agentId: owner.id }, throwOnError: true });
+  const { data: main } = await getMainSession({ client, path: { botId: owner.id }, throwOnError: true });
 
   const { data: task } = await createTask({
     client,
@@ -182,7 +182,7 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
   async function startChild(title: string, bot?: string) {
     await sendMessage({
       client,
-      path: { agentId: owner.id, sessionId: main.id },
+      path: { botId: owner.id, sessionId: main.id },
       body: {
         id: randomUUID(),
         taskId: task.key,
@@ -198,11 +198,11 @@ test("opens a collaborator Session from a Board Task", async ({ app, browser, sc
   await expect(sessions.getByText(collaborator.name, { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(sessions.getByText("Primary", { exact: true })).toHaveCount(1);
   const { data: detail } = await getTask({ client, path, throwOnError: true });
-  const review = detail.sessions.find((session) => session.agentId === collaborator.id);
+  const review = detail.sessions.find((session) => session.botId === collaborator.id);
 
   if (!review) throw new Error("Missing the collaborator Session");
   await screen.getByRole("link", "Review the change", { exact: true }).tap();
-  expect(new URL(await browser.url()).pathname).toBe(`/a/${collaborator.id}/s/${review.sessionId}`);
+  expect(new URL(await browser.url()).pathname).toBe(`/b/${collaborator.id}/s/${review.sessionId}`);
 });
 
 test("answers questions and resolves automation updates directly from Board", async ({
@@ -222,13 +222,13 @@ test("answers questions and resolves automation updates directly from Board", as
 
   const baseline = await attentionBaseline(client);
 
-  const { data: bot } = await createAgent({
+  const { data: bot } = await createBot({
     client,
     body: { name: "Board fixture", provider: "faux", modelId: "tool", runnerId: "local" },
     throwOnError: true,
   });
 
-  const { data: unconfigured } = await createAgent({
+  const { data: unconfigured } = await createBot({
     client,
     body: { name: "Board setup fixture", provider: "", modelId: "", runnerId: "local" },
     throwOnError: true,
@@ -243,7 +243,7 @@ test("answers questions and resolves automation updates directly from Board", as
 
   const { data: changed } = await createAutomation({
     client,
-    path: { agentId: bot.id },
+    path: { botId: bot.id },
     body: {
       ...routine,
       name: "Board changed fixture",
@@ -255,15 +255,15 @@ test("answers questions and resolves automation updates directly from Board", as
 
   await createAutomation({
     client,
-    path: { agentId: unconfigured.id },
+    path: { botId: unconfigured.id },
     body: { ...routine, name: "Board missing model fixture", enabled: true, prompt: "Check board" },
     throwOnError: true,
   });
-  await runAutomation({ client, path: { agentId: bot.id, automationId: changed.id }, throwOnError: true });
-  const { data: main } = await getMainSession({ client, path: { agentId: bot.id }, throwOnError: true });
+  await runAutomation({ client, path: { botId: bot.id, automationId: changed.id }, throwOnError: true });
+  const { data: main } = await getMainSession({ client, path: { botId: bot.id }, throwOnError: true });
   await sendMessage({
     client,
-    path: { agentId: bot.id, sessionId: main.id },
+    path: { botId: bot.id, sessionId: main.id },
     body: {
       id: randomUUID(),
       text: 'ask_user {"question":"Which color should the bot use?","options":["Blue","Green"]}',
@@ -271,7 +271,7 @@ test("answers questions and resolves automation updates directly from Board", as
     throwOnError: true,
   });
 
-  await app.open(`/a/${bot.id}`);
+  await app.open(`/b/${bot.id}`);
   await expect(screen.getByRole("button", "A Blue", { exact: true })).toBeVisible();
 
   // Allow one 10-second attention refresh if the initial read comes before the result.
@@ -285,9 +285,9 @@ test("answers questions and resolves automation updates directly from Board", as
   await expect(screen.getByRole("link", boardLabel(baseline + 3), { exact: true })).toBeVisible();
 
   // The tool fixture expects a tool call as input. Use echo for the owner's answer.
-  await updateAgent({
+  await updateBot({
     client,
-    path: { agentId: bot.id },
+    path: { botId: bot.id },
     body: { name: bot.name, provider: "faux", modelId: "echo", thinkingLevel: "off", runnerId: "local" },
     throwOnError: true,
   });
@@ -331,7 +331,7 @@ test("links a PR and sees its reviews and wait on the Issue Task", async ({ app,
   const settings = await fetch(`${origin}/api/plugins/github/webhooks/${repositoryId}`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ secret, issueAgentId: "default", holdUnmatched: true }),
+    body: JSON.stringify({ secret, issueBotId: "default", holdUnmatched: true }),
   });
 
   if (settings.status !== 204) throw new Error(`Webhook setup: ${settings.status}`);

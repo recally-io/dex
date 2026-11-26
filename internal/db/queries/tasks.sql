@@ -2,21 +2,21 @@
 INSERT INTO task_numbers DEFAULT VALUES RETURNING number;
 
 -- name: GetActiveTaskAssignee :one
-SELECT id FROM agents WHERE id = ? AND archived_at IS NULL;
+SELECT id FROM bots WHERE id = ? AND archived_at IS NULL;
 
 -- name: CreateTask :one
 INSERT INTO tasks (id, assignee_bot_id, title, created_at, updated_at, number, status,
   creator_kind, creator_id, authorized_by_root_id, reviewer_kind, reviewer_id, parent_task_id)
-VALUES (@id, @agent_id, @title, @at, @at, @number, @status,
+VALUES (@id, @bot_id, @title, @at, @at, @number, @status,
   @creator_kind, @creator_id, sqlc.narg(authorized_by_root_id), @reviewer_kind, @reviewer_id, sqlc.narg(parent_task_id))
 RETURNING *;
 
 -- name: GetAssignedTask :one
-SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
-WHERE t.id = @id AND t.assignee_bot_id = @agent_id AND a.archived_at IS NULL;
+SELECT t.* FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
+WHERE t.id = @id AND t.assignee_bot_id = @bot_id AND a.archived_at IS NULL;
 
 -- name: GetTask :one
-SELECT t.* FROM tasks t JOIN agents a ON a.id = t.assignee_bot_id
+SELECT t.* FROM tasks t JOIN bots a ON a.id = t.assignee_bot_id
 WHERE t.id = ? AND a.archived_at IS NULL;
 
 -- name: LockTaskWriter :exec

@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/agent"
+	"github.com/recally-io/dex/internal/bot"
 )
 
 // fakeTelegram is a Bot API server. Telegram is a system boundary, so the tests use a fake instead
@@ -476,7 +476,7 @@ func startTelegram(t *testing.T, f *fakeTelegram, dataDir string, allowed ...int
 	}
 	d := startDex(t, dataDir, f.srv.URL)
 	d.setModel(t, "echo")
-	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": allowed}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": fakeToken, "allowedUsers": allowed}, nil)
 	return d
 }
 
@@ -489,7 +489,7 @@ func TestUserGetsAnswerInTelegram(t *testing.T) {
 	// When user 42 sends a message in session 7
 	f.message(1, 42, 7, "hi")
 
-	// Then the bot sends the agent's answer to session 7
+	// Then the bot sends the bot's answer to session 7
 	got := f.next(t)
 	got.ID = 0 // the fake assigns IDs; only the quote-reply test reads them
 	if got != (sentMessage{ChatID: 7, Text: "echo: hi", RichHTML: "<p>echo: hi</p>"}) {
@@ -560,7 +560,7 @@ func TestTelegramMessageDeliveredTwiceIsAnsweredOnce(t *testing.T) {
 	f.message(1, 42, 7, "hi")
 	f.message(2, 42, 7, "after")
 
-	// Then the agent answers the first message once, then the second message
+	// Then the bot answers the first message once, then the second message
 	got := []string{f.next(t).Text, f.next(t).Text}
 	if !slices.Equal(got, []string{"echo: hi", "echo: after"}) {
 		t.Fatalf("sent = %q", got)
@@ -575,7 +575,7 @@ func TestUserPairsTelegramOwnerOnce(t *testing.T) {
 	var pair struct {
 		URL string `json:"url"`
 	}
-	d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
+	d.must(t, http.MethodPost, "/api/bots/default/channels/telegram/pairing", nil, &pair)
 	link, err := url.Parse(pair.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -689,7 +689,7 @@ func TestUserCannotPairTelegramWithExpiredCode(t *testing.T) {
 	var pair struct {
 		URL string `json:"url"`
 	}
-	d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
+	d.must(t, http.MethodPost, "/api/bots/default/channels/telegram/pairing", nil, &pair)
 	link, err := url.Parse(pair.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -727,7 +727,7 @@ func TestUserPairsTelegramAfterControlRestart(t *testing.T) {
 	var pair struct {
 		URL string `json:"url"`
 	}
-	d.must(t, http.MethodPost, "/api/agents/default/channels/telegram/pairing", nil, &pair)
+	d.must(t, http.MethodPost, "/api/bots/default/channels/telegram/pairing", nil, &pair)
 	link, err := url.Parse(pair.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -793,9 +793,9 @@ func waitTelegramState(t *testing.T, d *dex, state string) {
 	t.Helper()
 	eventually(t, "Telegram status "+state, func() (bool, any) {
 		var got struct {
-			Telegram agent.Telegram `json:"telegram"`
+			Telegram bot.Telegram `json:"telegram"`
 		}
-		d.must(t, http.MethodGet, "/api/agents/default/channels", nil, &got)
+		d.must(t, http.MethodGet, "/api/bots/default/channels", nil, &got)
 		if strings.Contains(got.Telegram.Status.Reason, fakeToken) {
 			t.Fatal("status exposed the token")
 		}

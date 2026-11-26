@@ -21,7 +21,7 @@ type ToolSchedule struct {
 	At      int64  `json:"at,omitzero"`
 }
 
-// Notification selects no notification, the agent default, or an authorized target.
+// Notification selects no notification, the bot default, or an authorized target.
 type Notification struct {
 	Mode     string `json:"mode"`
 	TargetID string `json:"targetId,omitempty"`
@@ -85,7 +85,7 @@ type ToolHandlers struct {
 	Run    func(context.Context, engine.TaskContext, string) (ToolRun, error)
 }
 
-func ToolExtension(agentID string, handlers ToolHandlers) *engine.Extension {
+func ToolExtension(botID string, handlers ToolHandlers) *engine.Extension {
 	str := func() map[string]any { return map[string]any{"type": "string"} }
 	variant := func(kind string, props map[string]any, required ...string) map[string]any {
 		props["kind"] = map[string]any{"type": "string", "enum": []string{kind}}
@@ -98,7 +98,7 @@ func ToolExtension(agentID string, handlers ToolHandlers) *engine.Extension {
 		variant("once", map[string]any{"at": map[string]any{"type": "integer", "minimum": 1, "description": "Unix milliseconds."}}, "at"),
 	}}
 	props := func() map[string]any {
-		return map[string]any{"notification": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"mode"}, "properties": map[string]any{"mode": map[string]any{"type": "string", "enum": []string{"none", "default", "target"}}, "targetId": str()}}, "name": str(), "prompt": str(), "schedule": schedule, "timeZone": map[string]any{"type": "string", "description": "Explicit IANA time zone, for example Asia/Shanghai or UTC."}, "session": map[string]any{"type": "string", "enum": []string{"new", "reuse", "session"}}, "targetConversationId": map[string]any{"type": "integer", "minimum": 1, "description": "Required in session mode. An existing writable session of this bot."}, "enabled": map[string]any{"type": "boolean"}, "cwd": map[string]any{"type": "string", "description": "Absolute project directory. Omit to inherit this conversation. Empty uses the agent workspace."}, "runnerId": map[string]any{"type": "string", "description": "local or an SSH Machine ID from runner_list. Omit to inherit the Runner of this session. Empty follows the bot's Runner. A run never uses another Runner: when this one is removed, runs are skipped. A new Runner drops the inherited cwd."}}
+		return map[string]any{"notification": map[string]any{"type": "object", "additionalProperties": false, "required": []string{"mode"}, "properties": map[string]any{"mode": map[string]any{"type": "string", "enum": []string{"none", "default", "target"}}, "targetId": str()}}, "name": str(), "prompt": str(), "schedule": schedule, "timeZone": map[string]any{"type": "string", "description": "Explicit IANA time zone, for example Asia/Shanghai or UTC."}, "session": map[string]any{"type": "string", "enum": []string{"new", "reuse", "session"}}, "targetConversationId": map[string]any{"type": "integer", "minimum": 1, "description": "Required in session mode. An existing writable session of this bot."}, "enabled": map[string]any{"type": "boolean"}, "cwd": map[string]any{"type": "string", "description": "Absolute project directory. Omit to inherit this conversation. Empty uses the bot workspace."}, "runnerId": map[string]any{"type": "string", "description": "local or an SSH Machine ID from runner_list. Omit to inherit the Runner of this session. Empty follows the bot's Runner. A run never uses another Runner: when this one is removed, runs are skipped. A new Runner drops the inherited cwd."}}
 	}
 	create := map[string]any{"type": "object", "properties": props(), "required": []string{"name", "prompt", "schedule", "timeZone"}, "additionalProperties": false}
 	updateProps := props()
@@ -107,7 +107,7 @@ func ToolExtension(agentID string, handlers ToolHandlers) *engine.Extension {
 	idSchema := map[string]any{"type": "object", "properties": map[string]any{"id": str()}, "required": []string{"id"}, "additionalProperties": false}
 	var tools []*durable.ToolRegistration
 	add := func(name, desc string, schema map[string]any, invoke func(context.Context, engine.TaskContext, ToolPatch) (any, error)) {
-		tools = append(tools, &durable.ToolRegistration{Name: name, Description: desc, Parameters: schema, Replay: durable.ReplaySafe, Execute: engine.BindTool(agentID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
+		tools = append(tools, &durable.ToolRegistration{Name: name, Description: desc, Parameters: schema, Replay: durable.ReplaySafe, Execute: engine.BindTool(botID, func(ctx context.Context, raw any, invocation engine.ToolCall) (durable.ToolExecutionResult, error) {
 			request, err := invocation.Source(ctx)
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
@@ -116,7 +116,7 @@ func ToolExtension(agentID string, handlers ToolHandlers) *engine.Extension {
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}
-			result, err := invoke(ctx, engine.TaskContext{AgentID: agentID, ConversationID: invocation.ConversationID(), SourceRequestID: request, Key: invocation.Key()}, args)
+			result, err := invoke(ctx, engine.TaskContext{BotID: botID, ConversationID: invocation.ConversationID(), SourceRequestID: request, Key: invocation.Key()}, args)
 			if err != nil {
 				return durable.ToolExecutionResult{}, err
 			}

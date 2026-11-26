@@ -32,21 +32,21 @@ func TelegramCallbackObject(row sqlc.TelegramCallback) bool {
 
 // checkTelegramControl runs under the effect's SQLite writer, after a callback queued its intent.
 // It prevents a queued action from gaining a new context or a later authorization grant.
-func checkTelegramControl(ctx context.Context, q *sqlc.Queries, source, agentID string, sessionID int64) error {
+func checkTelegramControl(ctx context.Context, q *sqlc.Queries, source, botID string, sessionID int64) error {
 	if !strings.HasPrefix(source, "telegram-callback:") {
 		return nil
 	}
 	if err := q.LockAutomationTools(ctx); err != nil {
 		return err
 	}
-	return ValidateTelegramControl(ctx, q, source, agentID, sessionID)
+	return ValidateTelegramControl(ctx, q, source, botID, sessionID)
 }
 
 // ValidateTelegramControl is the read-only validity check of a claimed callback command. Other
 // sources pass. The command must keep its button's peer, conversation, generation, object,
 // expiry, actor, and active binding. It returns ErrTelegramUnauthorized for a stale command.
 // Effects must call it again under their writer through checkTelegramControl.
-func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agentID string, sessionID int64) error {
+func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, botID string, sessionID int64) error {
 	id, callback := strings.CutPrefix(source, "telegram-callback:")
 	if !callback {
 		return nil
@@ -67,7 +67,7 @@ func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agent
 	if err != nil {
 		return err
 	}
-	if !TelegramCallbackObject(row) || row.AgentID != agentID || row.SessionID != sessionID || !row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || command.AgentID != row.AgentID || command.Peer != row.Peer || command.Command != row.Action || command.ChannelKey != conv.ChannelKey || conv.AgentID != row.AgentID || conv.ExecutionID.Int64 != row.ExecutionID || revision != row.ContextRevision {
+	if !TelegramCallbackObject(row) || row.BotID != botID || row.SessionID != sessionID || !row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || command.BotID != row.BotID || command.Peer != row.Peer || command.Command != row.Action || command.ChannelKey != conv.ChannelKey || conv.BotID != row.BotID || conv.ExecutionID.Int64 != row.ExecutionID || revision != row.ContextRevision {
 		return ErrTelegramUnauthorized
 	}
 	var actor, original ChannelContext
@@ -80,7 +80,7 @@ func ValidateTelegramControl(ctx context.Context, q *sqlc.Queries, source, agent
 	if !strings.HasPrefix(row.Peer, "telegram:") || NonPrivateTelegramPeer(row.Peer) || actor.AccountID != original.AccountID || actor.SenderID != original.SenderID || actor.MessageID != row.MessageID {
 		return ErrTelegramUnauthorized
 	}
-	return authorizeTelegramActor(ctx, q, agentID, actor.AccountID, actor.SenderID)
+	return authorizeTelegramActor(ctx, q, botID, actor.AccountID, actor.SenderID)
 }
 
 // NonPrivateTelegramPeer checks only Telegram routes. A private peer has a positive ID.
@@ -94,17 +94,17 @@ func positiveTelegramID(value string) bool {
 	return err == nil && id > 0 && strconv.FormatInt(id, 10) == value
 }
 
-func authorizeTelegramActor(ctx context.Context, q *sqlc.Queries, agentID, accountID, senderID string) error {
+func authorizeTelegramActor(ctx context.Context, q *sqlc.Queries, botID, accountID, senderID string) error {
 	if !positiveTelegramID(accountID) || !positiveTelegramID(senderID) {
 		return ErrTelegramUnauthorized
 	}
-	if err := db.RequireActive(ctx, q, agentID); err != nil {
-		if errors.Is(err, db.ErrAgentArchived) {
+	if err := db.RequireActive(ctx, q, botID); err != nil {
+		if errors.Is(err, db.ErrBotArchived) {
 			return errors.Join(ErrTelegramUnauthorized, err)
 		}
 		return err
 	}
-	cfg, err := q.GetTelegramSettings(ctx, agentID)
+	cfg, err := q.GetTelegramSettings(ctx, botID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrTelegramUnauthorized
 	}
@@ -124,16 +124,16 @@ func authorizeTelegramActor(ctx context.Context, q *sqlc.Queries, agentID, accou
 }
 
 // TelegramInputAllowed checks current pairing before a transport downloads any bytes.
-func (s *Service) TelegramInputAllowed(ctx context.Context, agentID, peer string, source ChannelContext) (bool, error) {
-	return TelegramInputAllowed(ctx, s.q, agentID, peer, source)
+func (s *Service) TelegramInputAllowed(ctx context.Context, botID, peer string, source ChannelContext) (bool, error) {
+	return TelegramInputAllowed(ctx, s.q, botID, peer, source)
 }
 
 // TelegramInputAllowed also serves writer transactions that commit Telegram control intents.
-func TelegramInputAllowed(ctx context.Context, q *sqlc.Queries, agentID, peer string, source ChannelContext) (bool, error) {
+func TelegramInputAllowed(ctx context.Context, q *sqlc.Queries, botID, peer string, source ChannelContext) (bool, error) {
 	if !strings.HasPrefix(peer, "telegram:") || NonPrivateTelegramPeer(peer) {
 		return false, nil
 	}
-	err := authorizeTelegramActor(ctx, q, agentID, source.AccountID, source.SenderID)
+	err := authorizeTelegramActor(ctx, q, botID, source.AccountID, source.SenderID)
 	if errors.Is(err, ErrTelegramUnauthorized) {
 		return false, nil
 	}
@@ -141,28 +141,28 @@ func TelegramInputAllowed(ctx context.Context, q *sqlc.Queries, agentID, peer st
 }
 
 // ChannelConversation returns Main only for an authorized private Telegram actor.
-func (s *Service) ChannelConversation(ctx context.Context, agentID, peer string, identity ChannelContext) (Session, error) {
-	allowed, err := s.TelegramInputAllowed(ctx, agentID, peer, identity)
+func (s *Service) ChannelConversation(ctx context.Context, botID, peer string, identity ChannelContext) (Session, error) {
+	allowed, err := s.TelegramInputAllowed(ctx, botID, peer, identity)
 	if err != nil {
 		return Session{}, err
 	}
 	if !allowed {
 		return Session{}, ErrTelegramUnauthorized
 	}
-	return s.Main(ctx, agentID)
+	return s.Main(ctx, botID)
 }
 
 // ChannelChildren lists the direct children of an already resolved channel target, never the
 // private global session list.
-func (s *Service) ChannelChildren(ctx context.Context, agentID string, target Session) ([]Ref, error) {
+func (s *Service) ChannelChildren(ctx context.Context, botID string, target Session) ([]Ref, error) {
 	parent, err := s.q.GetSession(ctx, target.ID)
 	if err != nil {
 		return nil, err
 	}
-	if parent.AgentID != agentID || parent.ParentID.Valid || parent.ChannelKey != target.ChannelKey {
+	if parent.BotID != botID || parent.ParentID.Valid || parent.ChannelKey != target.ChannelKey {
 		return nil, ErrTelegramUnauthorized
 	}
-	children, err := s.q.ListChannelChildren(ctx, sqlc.ListChannelChildrenParams{AgentID: parent.AgentID, ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}})
+	children, err := s.q.ListChannelChildren(ctx, sqlc.ListChannelChildrenParams{BotID: parent.BotID, ParentID: sql.NullInt64{Int64: parent.ID, Valid: true}})
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +179,8 @@ func (s *Service) ChannelChildren(ctx context.Context, agentID string, target Se
 
 // ResumeChannelWorkflow reuses a saved direct child and its immutable initiating parent source.
 // It does not run a private Routine or create another work engine.
-func (s *Service) ResumeChannelWorkflow(ctx context.Context, agentID, peer, operation, id, message string, identity ChannelContext) error {
-	target, err := s.ChannelConversation(ctx, agentID, peer, identity)
+func (s *Service) ResumeChannelWorkflow(ctx context.Context, botID, peer, operation, id, message string, identity ChannelContext) error {
+	target, err := s.ChannelConversation(ctx, botID, peer, identity)
 	if err != nil {
 		return err
 	}
@@ -191,13 +191,13 @@ func (s *Service) ResumeChannelWorkflow(ctx context.Context, agentID, peer, oper
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := checkTelegramControl(ctx, q, operation, agentID, target.ID); err != nil {
+	if err := checkTelegramControl(ctx, q, operation, botID, target.ID); err != nil {
 		return err
 	}
 	if err := q.LockAutomationTools(ctx); err != nil {
 		return err
 	}
-	allowed, err := TelegramInputAllowed(ctx, q, agentID, peer, identity)
+	allowed, err := TelegramInputAllowed(ctx, q, botID, peer, identity)
 	if err != nil {
 		return err
 	}

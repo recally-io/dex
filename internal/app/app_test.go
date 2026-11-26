@@ -148,12 +148,12 @@ func cmpOr(want []int, def int) int {
 
 func (d *dex) setModel(t *testing.T, modelID string) {
 	t.Helper()
-	var current apiAgent
-	d.must(t, http.MethodGet, "/api/agents/default", nil, &current)
+	var current apiBot
+	d.must(t, http.MethodGet, "/api/bots/default", nil, &current)
 	current.Provider = "faux"
 	current.ModelID = modelID
 	current.ThinkingLevel = "off"
-	d.must(t, http.MethodPut, "/api/agents/default", current, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", current, nil)
 }
 
 type sessionListItem struct {
@@ -175,7 +175,7 @@ func (d *dex) newSessionWithMessage(t *testing.T, text string) int64 {
 func (d *dex) send(t *testing.T, sessionID int64, text string) string {
 	t.Helper()
 	id := uuid.NewV7().String()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID), map[string]string{"id": id, "text": text},
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", sessionID), map[string]string{"id": id, "text": text},
 		nil, http.StatusAccepted)
 	return id
 }
@@ -185,7 +185,7 @@ func (d *dex) sessions(t *testing.T) []sessionListItem {
 	var list struct {
 		Sessions []sessionListItem `json:"sessions"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/sessions", nil, &list)
+	d.must(t, http.MethodGet, "/api/bots/default/sessions", nil, &list)
 	return list.Sessions
 }
 
@@ -288,7 +288,7 @@ type watcher struct {
 
 func (d *dex) watch(t *testing.T, sessionID int64) *watcher {
 	t.Helper()
-	return d.watchPath(t, fmt.Sprintf("/api/agents/default/sessions/%d/events", sessionID))
+	return d.watchPath(t, fmt.Sprintf("/api/bots/default/sessions/%d/events", sessionID))
 }
 
 func (d *dex) watchPath(t *testing.T, path string) *watcher {
@@ -370,7 +370,7 @@ func answered(text string) func(*transcript) bool {
 	}
 }
 
-func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
+func TestUserGetsStreamedAnswerFromBot(t *testing.T) {
 	t.Parallel()
 	// Given a running dex with a model, and a new session
 	d := startDex(t, t.TempDir(), "")
@@ -409,7 +409,7 @@ func answeredWith(text string) func(*transcript) bool {
 	}
 }
 
-func TestAgentRemembersAcrossSessions(t *testing.T) {
+func TestBotRemembersAcrossSessions(t *testing.T) {
 	t.Parallel()
 	// Given a new dex: the user's memory repo has the default MEMORY.md
 	dataDir := t.TempDir()
@@ -420,7 +420,7 @@ func TestAgentRemembersAcrossSessions(t *testing.T) {
 	r := d.watch(t, recall)
 	r.until(t, "default memory", answeredWith("## Index"))
 
-	// When the agent saves an entry in another session
+	// When the bot saves an entry in another session
 	d.setModel(t, "bash")
 	entry := "- The user drinks green tea [added: 2026-10-14]"
 	write := d.newSessionWithMessage(t, fmt.Sprintf("printf '%%s\\n' '%s' >> %s && echo saved", entry, filepath.Join(repo, "MEMORY.md")))
@@ -477,7 +477,7 @@ func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// When dex starts again and the agent opens the memory
+	// When dex starts again and the bot opens the memory
 	d = startDex(t, dataDir, "")
 	d.watch(t, d.newSessionWithMessage(t, "again")).until(t, "answer", answered("echo: again"))
 
@@ -606,7 +606,7 @@ func TestToolCallsAreShownAndRunCanBeStopped(t *testing.T) {
 	w.until(t, "queued message", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == queued && it.Queued })
 	})
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", sessionID), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/abort", sessionID), nil, nil)
 
 	// Then the queued message shows as stopped
 	w.until(t, "withdrawn message", func(tr *transcript) bool {
@@ -631,7 +631,7 @@ func TestUserMustChooseModelBeforeChatting(t *testing.T) {
 
 	// When the user sends input to a session without a model.
 	c := d.newSession(t)
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", c.ID), map[string]string{"id": uuid.NewV7().String(), "text": "hello"})
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/bots/default/sessions/%d/messages", c.ID), map[string]string{"id": uuid.NewV7().String(), "text": "hello"})
 
 	// Then dex refuses it, tells the user to choose a model, and stores nothing
 	if status != http.StatusConflict || !strings.Contains(raw, "choose one in Settings") {
@@ -648,7 +648,7 @@ func TestUserMustChooseModelBeforeChatting(t *testing.T) {
 	d.setModel(t, "echo")
 	sessionID := d.newSessionWithMessage(t, "hello")
 
-	// Then the agent answers
+	// Then the bot answers
 	d.watch(t, sessionID).until(t, "answer", answered("echo: hello"))
 }
 
@@ -659,7 +659,7 @@ func TestRetriedMessageIsStoredOnce(t *testing.T) {
 	d.setModel(t, "echo")
 	first := map[string]string{"id": uuid.NewV7().String(), "text": "hi"}
 	sessionID := d.newSession(t).ID
-	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID)
+	path := fmt.Sprintf("/api/bots/default/sessions/%d/messages", sessionID)
 	d.must(t, http.MethodPost, path, first, nil, http.StatusAccepted)
 
 	// When the browser sends the same requests again, for example after a network error
@@ -780,7 +780,7 @@ func TestUserAddsCustomProviders(t *testing.T) {
 		"api": "openai-responses", "baseUrl": "http://127.0.0.1:9/v1", "models": []string{"m1", " m2 ", "m1"},
 	}, nil)
 
-	// Then the model list has the models of all three, and the agent can use one
+	// Then the model list has the models of all three, and the bot can use one
 	if gw.ModelCount != 1 {
 		t.Fatalf("gw model count = %d", gw.ModelCount)
 	}
@@ -788,7 +788,7 @@ func TestUserAddsCustomProviders(t *testing.T) {
 	if got := d.models(t); !containsAll(got, want) {
 		t.Fatalf("models = %q, want %q in them", got, want)
 	}
-	d.must(t, http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "local", "modelId": "m2", "thinkingLevel": "off", "instructions": ""}, nil)
+	d.must(t, http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "local", "modelId": "m2", "thinkingLevel": "off", "instructions": ""}, nil)
 
 	// When the user removes the gateway
 	d.must(t, http.MethodDelete, "/api/settings/providers/gw", nil, nil)
@@ -919,7 +919,7 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 		body               any
 		status             int
 	}{
-		{"unknown model", http.MethodPut, "/api/agents/default", map[string]string{"name": "Dex", "provider": "faux", "modelId": "nope", "thinkingLevel": "off"}, 400},
+		{"unknown model", http.MethodPut, "/api/bots/default", map[string]string{"name": "Dex", "provider": "faux", "modelId": "nope", "thinkingLevel": "off"}, 400},
 		{"unknown built-in provider", http.MethodPut, "/api/settings/providers/nope", map[string]string{"api": "", "apiKey": "k"}, 400},
 		{"unknown API", http.MethodPut, "/api/settings/providers/x", map[string]string{"api": "bogus", "baseUrl": "http://127.0.0.1:1"}, 400},
 		{"custom ID of a built-in provider", http.MethodPut, "/api/settings/providers/anthropic",
@@ -928,15 +928,15 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 			map[string]string{"api": "openai-completions", "baseUrl": "http://127.0.0.1:1/v1"}, 400},
 		{"base URL with a password", http.MethodPut, "/api/settings/providers/gw",
 			map[string]string{"api": "openai-completions", "baseUrl": "http://user:pw@127.0.0.1:1/v1"}, 400},
-		{"negative Telegram user ID", http.MethodPut, "/api/agents/default/channels/telegram",
+		{"negative Telegram user ID", http.MethodPut, "/api/bots/default/channels/telegram",
 			map[string]any{"token": "123:abc", "allowedUsers": []int64{-1}}, 400},
-		{"bad Telegram token", http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "abc", "allowedUsers": []int64{1}}, 400},
-		{"message ID that is not a UUID", http.MethodPost, "/api/agents/default/sessions/999/messages", map[string]string{"id": "1", "text": "hi"}, 400},
-		{"empty message", http.MethodPost, "/api/agents/default/sessions/999/messages", map[string]string{"id": uuid.NewV7().String(), "text": "  "}, 400},
-		{"body that is not JSON", http.MethodPost, "/api/agents/default/sessions/999/messages", "hi", 400},
-		{"message to a session that does not exist", http.MethodPost, "/api/agents/default/sessions/999/messages",
+		{"bad Telegram token", http.MethodPut, "/api/bots/default/channels/telegram", map[string]any{"token": "abc", "allowedUsers": []int64{1}}, 400},
+		{"message ID that is not a UUID", http.MethodPost, "/api/bots/default/sessions/999/messages", map[string]string{"id": "1", "text": "hi"}, 400},
+		{"empty message", http.MethodPost, "/api/bots/default/sessions/999/messages", map[string]string{"id": uuid.NewV7().String(), "text": "  "}, 400},
+		{"body that is not JSON", http.MethodPost, "/api/bots/default/sessions/999/messages", "hi", 400},
+		{"message to a session that does not exist", http.MethodPost, "/api/bots/default/sessions/999/messages",
 			map[string]string{"id": uuid.NewV7().String(), "text": "hi"}, 404},
-		{"events of a session that does not exist", http.MethodGet, "/api/agents/default/sessions/999/events", nil, 404},
+		{"events of a session that does not exist", http.MethodGet, "/api/bots/default/sessions/999/events", nil, 404},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			status, raw := d.call(t, c.method, c.path, c.body)
@@ -953,7 +953,7 @@ func TestCrossSiteWriteIsRefused(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 
 	// When another web site in the user's browser posts a message to dex
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/sessions",
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/bots/default/sessions",
 		strings.NewReader(`{"id":"0199e1c2-0000-7000-8000-000000000001","text":"rm -rf"}`))
 	if err != nil {
 		t.Fatal(err)

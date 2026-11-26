@@ -47,7 +47,7 @@ func findOp(env map[string]string) string {
 	return ""
 }
 
-// secretsGuide tells the agent where secrets come from.
+// secretsGuide tells the bot where secrets come from.
 func secretsGuide(op OnePassword, opPath string) string {
 	if op.Mode == "" || opPath == "" {
 		return ""
@@ -56,7 +56,7 @@ func secretsGuide(op OnePassword, opPath string) string {
 }
 
 // ResolveProviderAPIKey keeps an explicit 1Password reference out of HTTP headers and storage.
-func (a *Agents) ResolveProviderAPIKey(ctx context.Context, key string) (string, error) {
+func (a *Bots) ResolveProviderAPIKey(ctx context.Context, key string) (string, error) {
 	if !strings.HasPrefix(key, "op://") {
 		return key, nil
 	}

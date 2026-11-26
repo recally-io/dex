@@ -15,8 +15,8 @@ export function sessionKind(session: Pick<Session, "channel" | "main">) {
 }
 
 /** The bot in the route of a session. A child in another bot names it, so its list row opens there. */
-export function sessionAgentId(session: Pick<Session, "agentId">, agentId: string) {
-  return session.agentId ?? agentId;
+export function sessionBotId(session: Pick<Session, "botId">, botId: string) {
+  return session.botId ?? botId;
 }
 
 /**
@@ -24,14 +24,14 @@ export function sessionAgentId(session: Pick<Session, "agentId">, agentId: strin
  * name of that bot stands for it. A child that runs in another bot adds the name of that bot.
  */
 function startedBy(
-  session: Pick<Session, "parentId" | "parentAgentName" | "agentName">,
+  session: Pick<Session, "parentId" | "parentBotName" | "botName">,
   parentTitle: string | undefined,
 ) {
   if (session.parentId === undefined) return undefined;
 
-  const parent = session.parentAgentName ?? parentTitle ?? "a session";
+  const parent = session.parentBotName ?? parentTitle ?? "a session";
 
-  return session.agentName ? `${parent} · ${session.agentName}` : parent;
+  return session.botName ? `${parent} · ${session.botName}` : parent;
 }
 
 /**
@@ -39,7 +39,7 @@ function startedBy(
  * ID says Main. The list must hold archived sessions too: an archived parent keeps its title.
  */
 export function parentName(
-  session: Pick<Session, "parentId" | "parentAgentName" | "agentName">,
+  session: Pick<Session, "parentId" | "parentBotName" | "botName">,
   mainId: number | undefined,
   all: Pick<Session, "id" | "title">[],
 ) {
