@@ -12,7 +12,7 @@ import (
 	"uuid"
 )
 
-func (d *dex) mainChat(t *testing.T) int64 {
+func (d *dex) mainSession(t *testing.T) int64 {
 	t.Helper()
 	return d.mainInfo(t).ID
 }
@@ -20,7 +20,7 @@ func (d *dex) mainChat(t *testing.T) int64 {
 func (d *dex) mainInfo(t *testing.T) sessionInfo {
 	t.Helper()
 	var c sessionInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &c)
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &c)
 	return c
 }
 
@@ -30,8 +30,8 @@ func TestUserReturnsToMainAfterRestart(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
-	id := d.mainChat(t)
-	if again := d.mainChat(t); again != id {
+	id := d.mainSession(t)
+	if again := d.mainSession(t); again != id {
 		t.Fatalf("main changed: %d != %d", again, id)
 	}
 	d.send(t, id, "keep this timeline")
@@ -40,9 +40,9 @@ func TestUserReturnsToMainAfterRestart(t *testing.T) {
 	before := w.tr.items
 	d.stop()
 
-	// When dex starts again, the same chat and committed items remain.
+	// When dex starts again, the same session and committed items remain.
 	d = startDex(t, dir, "")
-	if again := d.mainChat(t); again != id {
+	if again := d.mainSession(t); again != id {
 		t.Fatalf("main changed after restart: %d != %d", again, id)
 	}
 	w = d.watch(t, id)
@@ -52,10 +52,10 @@ func TestUserReturnsToMainAfterRestart(t *testing.T) {
 	}
 }
 
-func (d *dex) clearMain(t *testing.T, chatID int64, id string) {
+func (d *dex) clearMain(t *testing.T, sessionID int64, id string) {
 	t.Helper()
 	eventually(t, "idle timeline accepts clear", func() (bool, any) {
-		status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", chatID), map[string]string{"id": id})
+		status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/clear", sessionID), map[string]string{"id": id})
 		return status == http.StatusAccepted, fmt.Sprintf("%d %s", status, raw)
 	})
 }
@@ -66,7 +66,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "context")
-	id := d.mainChat(t)
+	id := d.mainSession(t)
 	d.send(t, id, "old context")
 	w := d.watch(t, id)
 	w.until(t, "old answer", answered(`context: ["old context"]`))
@@ -107,7 +107,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 		Items      []item `json:"items"`
 		NextBefore *int64 `json:"nextBefore"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9223372036854775807&limit=1", id), nil, &history)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9223372036854775807&limit=1", id), nil, &history)
 	all := map[string]item{}
 	for _, it := range fresh.tr.items {
 		all[it.ID] = it
@@ -121,7 +121,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 		}
 		cursor := *history.NextBefore
 		history.NextBefore = nil
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=%d&limit=1", id, cursor), nil, &history)
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=%d&limit=1", id, cursor), nil, &history)
 		if history.NextBefore != nil && *history.NextBefore >= cursor {
 			t.Fatal("history cursor did not advance")
 		}
@@ -143,7 +143,7 @@ func TestUserClearsMainAndReadsEarlierHistory(t *testing.T) {
 	// A duplicate reset did not cut the new input from the model context.
 	d.send(t, id, "still here")
 	d.watch(t, id).until(t, "context after replay", answered(`context: ["new context","still here"]`))
-	t.Logf("artifact: chat=%d reset=%s stable_items=%d dividers=%d", id, resetID, len(all), dividers)
+	t.Logf("artifact: session=%d reset=%s stable_items=%d dividers=%d", id, resetID, len(all), dividers)
 }
 
 func TestUserCannotClearBusyMain(t *testing.T) {
@@ -152,7 +152,7 @@ func TestUserCannotClearBusyMain(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "bash")
-	id := d.mainChat(t)
+	id := d.mainSession(t)
 	d.send(t, id, taskGate(t, dir, "clear-busy"))
 	waitTaskFile(t, filepath.Join(dir, "clear-busy.pid"))
 	queued := d.send(t, id, "printf queued")
@@ -160,7 +160,7 @@ func TestUserCannotClearBusyMain(t *testing.T) {
 	resetID := uuid.NewV7().String()
 
 	// When the owner clears, the server refuses without storing a command.
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": resetID})
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/clear", id), map[string]string{"id": resetID})
 	if status != http.StatusConflict {
 		t.Fatalf("busy clear: %d %s", status, raw)
 	}
@@ -186,7 +186,7 @@ func TestUserReadsFailedInputAcrossClear(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "spawn")
-	id := d.mainChat(t)
+	id := d.mainSession(t)
 	input := d.send(t, id, "invalid JSON")
 	conn := taskResultDB(t, dir)
 	waitResultSubmission(t, conn, input, "unanswered")
@@ -203,7 +203,7 @@ func TestUserReadsFailedInputAcrossClear(t *testing.T) {
 	var page struct {
 		Items []item `json:"items"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d/history?before=9007199254740991&limit=100", id), nil, &page)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d/history?before=9007199254740991&limit=100", id), nil, &page)
 	all := map[string]item{}
 	for _, it := range append(fresh.tr.items, page.Items...) {
 		all[it.ID] = it
@@ -230,12 +230,12 @@ func TestUserMainModelAppliesToWebAndChannelInput(t *testing.T) {
 	// Given Main on the agent model and a paired channel.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
-	id := d.mainChat(t)
+	id := d.mainSession(t)
 	if got := taskTurn(t, d, id, "one"); got != "echo: one" {
 		t.Fatal(got)
 	}
 	// When the user picks another model and thinking level for Main.
-	url := fmt.Sprintf("/api/agents/default/chats/%d/settings", id)
+	url := fmt.Sprintf("/api/agents/default/sessions/%d/settings", id)
 	d.must(t, http.MethodPut, url, map[string]string{"provider": "faux", "modelId": "think", "thinkingLevel": "high"}, nil)
 	// Then web input and the next channel input both use them.
 	if got := taskTurn(t, d, id, "two"); got != "think high: two" {
@@ -247,9 +247,9 @@ func TestUserMainModelAppliesToWebAndChannelInput(t *testing.T) {
 	}
 	// And the setting is part of Main's view.
 	var view struct {
-		Settings chatSettings `json:"settings"`
+		Settings sessionSettings `json:"settings"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &view)
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &view)
 	if view.Settings.ModelID != "think" || view.Settings.ThinkingLevel != "high" {
 		t.Fatalf("settings: %+v", view.Settings)
 	}
@@ -261,7 +261,7 @@ func TestUserClearOrdersWithConcurrentInput(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
-	id := d.mainChat(t)
+	id := d.mainSession(t)
 	conn := taskResultDB(t, dir)
 	accepted := 0
 	for range 8 {
@@ -274,12 +274,12 @@ func TestUserClearOrdersWithConcurrentInput(t *testing.T) {
 		cleared, sent := make(chan response, 1), make(chan response, 1)
 		go func() {
 			<-start
-			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": resetID})
+			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/clear", id), map[string]string{"id": resetID})
 			cleared <- response{status, raw}
 		}()
 		go func() {
 			<-start
-			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", id), map[string]string{"id": inputID, "text": "concurrent input"})
+			status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", id), map[string]string{"id": inputID, "text": "concurrent input"})
 			sent <- response{status, raw}
 		}()
 		close(start)
@@ -321,7 +321,7 @@ func TestUserClearsEmptyMainWithoutModel(t *testing.T) {
 	// Given a new timeline without a model, Clear does not need generation settings.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
-	id := d.mainChat(t)
+	id := d.mainSession(t)
 	resetID := uuid.NewV7().String()
 	d.clearMain(t, id, resetID)
 	conn := taskResultDB(t, dir)
@@ -335,7 +335,7 @@ func TestUserClearsEmptyMainWithoutModel(t *testing.T) {
 	d.setModel(t, "echo")
 	inputID := d.send(t, id, "keep this input")
 	waitResultSubmission(t, conn, inputID, "done")
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/clear", id), map[string]string{"id": inputID})
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/clear", id), map[string]string{"id": inputID})
 	if status != http.StatusConflict || !strings.Contains(raw, "another input") {
 		t.Fatalf("request ID collision: %d %s", status, raw)
 	}

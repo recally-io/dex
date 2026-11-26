@@ -9,17 +9,17 @@ import (
 	"context"
 )
 
-const hasTaskConversation = `-- name: HasTaskConversation :one
+const hasTaskSession = `-- name: HasTaskSession :one
 SELECT EXISTS (
-  SELECT 1 FROM task_sessions s WHERE s.conversation_id = ?1
+  SELECT 1 FROM task_sessions s WHERE s.session_id = ?1
   UNION ALL
   SELECT 1 FROM submissions s JOIN task_inputs i ON i.submission_id = s.id
-  WHERE s.conversation_id = ?1
+  WHERE s.session_id = ?1
 )
 `
 
-func (q *Queries) HasTaskConversation(ctx context.Context, chatID int64) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasTaskConversation, chatID)
+func (q *Queries) HasTaskSession(ctx context.Context, sessionID int64) (bool, error) {
+	row := q.db.QueryRowContext(ctx, hasTaskSession, sessionID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err

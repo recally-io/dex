@@ -98,7 +98,7 @@ test("user sees which child session returned after a topic change", async () => 
 
   // The title remains visible even when the model's reply does not name the work.
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: true }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: true }),
   );
 
   expect(html).toContain("Session result");
@@ -129,7 +129,7 @@ test("user sees two returned results as separate groups", async () => {
   ]);
 
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: false }),
   );
 
   // Each result is one line. A turn that did not finish says why on its line.
@@ -151,7 +151,7 @@ test.each(["", " \n "])("user sees no copy action for an empty reply (%j)", asyn
 
   // When the finished reply is shown, then only the tool row has visible content.
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: true }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: true }),
   );
 
   expect(html).toContain("Check logs");
@@ -190,7 +190,7 @@ test("user sees reset handoffs and each compaction outcome", async () => {
   ];
 
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: false }),
   );
 
   // Only a placed summary and a reset divide the transcript.
@@ -218,7 +218,7 @@ test("user sees message actions only where a fork can start", async () => {
 
   const html = await render(
     createElement(Transcript, {
-      chatId: 1,
+      sessionId: 1,
       items,
       running: false,
       retry: () => {},
@@ -237,7 +237,7 @@ test("user sees message actions only where a fork can start", async () => {
   // A streaming answer has no actions.
   const live = await render(
     createElement(Transcript, {
-      chatId: 1,
+      sessionId: 1,
       items: [items[0], { kind: "assistant", id: "a3", entryId: 5, text: "Writ" }],
       running: true,
       retry: () => {},
@@ -257,7 +257,7 @@ test("user sees an ask_user answer as the muted question above the answer", asyn
   // Then the bubble shows the question above the answer without the wrapper.
   const html = await render(
     createElement(Transcript, {
-      chatId: 1,
+      sessionId: 1,
       items: [{ kind: "user", id: "u", text }],
       running: false,
       retry: () => {},
@@ -302,7 +302,7 @@ test("user sees where and when a message came in below it", async () => {
 
   const html = await render(
     createElement(Transcript, {
-      chatId: 1,
+      sessionId: 1,
       items: [{ kind: "user", id: "u", origin: "telegram:7", at: at.getTime(), text: "hello" }],
       running: false,
       retry: () => {},

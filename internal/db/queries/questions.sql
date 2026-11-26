@@ -2,14 +2,14 @@
 SELECT * FROM questions WHERE tool_operation_key = ?;
 
 -- name: CreateQuestion :exec
-INSERT INTO questions (id, agent_id, conversation_id, source_submission_id, tool_operation_key, text, options_json, status, created_at,
+INSERT INTO questions (id, agent_id, session_id, source_submission_id, tool_operation_key, text, options_json, status, created_at,
     action, action_agent_id, approve_text, queued)
-VALUES (@id, @agent_id, @conversation_id, @source_submission_id, @tool_operation_key, @text, @options_json, 'open', @created_at,
+VALUES (@id, @agent_id, @session_id, @source_submission_id, @tool_operation_key, @text, @options_json, 'open', @created_at,
     @action, @action_agent_id, @approve_text, @queued);
 
 -- name: GetCurrentQuestion :one
 -- The question that waits for the user, or whose answer waits in the queue.
-SELECT * FROM questions WHERE conversation_id = ? AND queued = 0 AND status IN ('open', 'answered')
+SELECT * FROM questions WHERE session_id = ? AND queued = 0 AND status IN ('open', 'answered')
 ORDER BY rowid DESC LIMIT 1;
 
 -- name: ListCurrentQuestions :many
@@ -19,10 +19,10 @@ SELECT * FROM questions WHERE agent_id = ? AND queued = 0 AND status IN ('open',
 UPDATE questions SET queued = 0
 WHERE id = (
   SELECT q.id FROM questions q JOIN submissions s ON s.id = q.source_submission_id
-  WHERE q.conversation_id = @chat_id AND q.queued = 1 AND q.status = 'open' AND s.status = 'done'
+  WHERE q.session_id = @session_id AND q.queued = 1 AND q.status = 'open' AND s.status = 'done'
   ORDER BY q.rowid LIMIT 1
 ) AND NOT EXISTS (
-  SELECT 1 FROM questions current WHERE current.conversation_id = @chat_id
+  SELECT 1 FROM questions current WHERE current.session_id = @session_id
   AND current.queued = 0 AND current.status IN ('open', 'answered')
 )
 RETURNING *;
@@ -37,10 +37,10 @@ SELECT * FROM questions WHERE answer_submission_id = ?;
 SELECT * FROM questions WHERE source_submission_id = ? ORDER BY rowid LIMIT 1;
 
 -- name: AnswerQuestion :execrows
--- Only an open question of this agent and conversation accepts an answer. The outcome is the
+-- Only an open question of this agent and session accepts an answer. The outcome is the
 -- decision of an action question; control decides it in the same transaction.
 UPDATE questions SET status = 'answered', answer_submission_id = @submission_id, outcome = @outcome
-WHERE id = @id AND agent_id = @agent_id AND conversation_id = @conversation_id AND status = 'open';
+WHERE id = @id AND agent_id = @agent_id AND session_id = @session_id AND status = 'open';
 
 -- name: ConsumeQuestion :exec
 UPDATE questions SET status = 'consumed', settled_at = @now
@@ -58,7 +58,7 @@ WHERE answer_submission_id = @submission_id AND status = 'answered';
 -- name: DismissQuestions :exec
 -- Stop, Clear and archive close the question and an answer that never ran.
 UPDATE questions SET status = 'dismissed', settled_at = @now
-WHERE conversation_id = @conversation_id AND status IN ('open', 'answered');
+WHERE session_id = @session_id AND status IN ('open', 'answered');
 
 -- name: AddQuestionMessage :exec
 INSERT OR IGNORE INTO question_messages (agent_id, peer, remote_id, question_id) VALUES (?, ?, ?, ?);

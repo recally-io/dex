@@ -51,7 +51,7 @@ type Automation struct {
 	NotificationTargetID sql.NullString `json:"notification_target_id"`
 	RunnerID             string         `json:"runner_id"`
 	Session              string         `json:"session"`
-	TargetConversationID sql.NullInt64  `json:"target_conversation_id"`
+	TargetSessionID      sql.NullInt64  `json:"target_session_id"`
 }
 
 type AutomationNotificationTarget struct {
@@ -83,7 +83,7 @@ type AutomationRun struct {
 type AutomationToolOperation struct {
 	Key             string `json:"key"`
 	AgentID         string `json:"agent_id"`
-	ConversationID  int64  `json:"conversation_id"`
+	SessionID       int64  `json:"session_id"`
 	SourceRequestID string `json:"source_request_id"`
 	Action          string `json:"action"`
 	Result          string `json:"result"`
@@ -92,7 +92,7 @@ type AutomationToolOperation struct {
 type BackgroundCommand struct {
 	ID               string        `json:"id"`
 	CallKey          string        `json:"call_key"`
-	ConversationID   int64         `json:"conversation_id"`
+	SessionID        int64         `json:"session_id"`
 	SourceRequestID  string        `json:"source_request_id"`
 	Wake             string        `json:"wake"`
 	Label            string        `json:"label"`
@@ -137,9 +137,9 @@ type ChannelWebhookQueue struct {
 }
 
 type CompactReceipt struct {
-	ID             string `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
-	Instructions   string `json:"instructions"`
+	ID           string `json:"id"`
+	SessionID    int64  `json:"session_id"`
+	Instructions string `json:"instructions"`
 }
 
 type ConfiguredChannelAddress struct {
@@ -147,24 +147,6 @@ type ConfiguredChannelAddress struct {
 	Platform  string      `json:"platform"`
 	AccountID string      `json:"account_id"`
 	Peer      interface{} `json:"peer"`
-}
-
-type Conversation struct {
-	ID            int64         `json:"id"`
-	AgentID       string        `json:"agent_id"`
-	ChannelKey    string        `json:"channel_key"`
-	ExecutionID   sql.NullInt64 `json:"execution_id"`
-	CreatedAt     int64         `json:"created_at"`
-	Title         string        `json:"title"`
-	ModelProvider string        `json:"model_provider"`
-	ModelID       string        `json:"model_id"`
-	ThinkingLevel string        `json:"thinking_level"`
-	AbortPending  int64         `json:"abort_pending"`
-	ArchivedAt    sql.NullInt64 `json:"archived_at"`
-	Cwd           string        `json:"cwd"`
-	ForkedFrom    sql.NullInt64 `json:"forked_from"`
-	ParentID      sql.NullInt64 `json:"parent_id"`
-	RunnerID      string        `json:"runner_id"`
 }
 
 type Dream struct {
@@ -201,8 +183,8 @@ type ForkReceipt struct {
 }
 
 type MainTurnStop struct {
-	ConversationID int64  `json:"conversation_id"`
-	Target         string `json:"target"`
+	SessionID int64  `json:"session_id"`
+	Target    string `json:"target"`
 }
 
 type McpServer struct {
@@ -217,7 +199,7 @@ type Monitor struct {
 	ID                   string         `json:"id"`
 	OperationKey         string         `json:"operation_key"`
 	AgentID              string         `json:"agent_id"`
-	ConversationID       int64          `json:"conversation_id"`
+	SessionID            int64          `json:"session_id"`
 	RootRequestID        string         `json:"root_request_id"`
 	SourceSubmissionID   string         `json:"source_submission_id"`
 	ChainDepth           int64          `json:"chain_depth"`
@@ -274,7 +256,7 @@ type OutboxMessage struct {
 	ID                 string         `json:"id"`
 	EventID            string         `json:"event_id"`
 	AgentID            string         `json:"agent_id"`
-	ConversationID     int64          `json:"conversation_id"`
+	SessionID          int64          `json:"session_id"`
 	SourceSubmissionID sql.NullString `json:"source_submission_id"`
 	Kind               string         `json:"kind"`
 	Peer               string         `json:"peer"`
@@ -307,7 +289,7 @@ type Provider struct {
 type Question struct {
 	ID                 string         `json:"id"`
 	AgentID            string         `json:"agent_id"`
-	ConversationID     int64          `json:"conversation_id"`
+	SessionID          int64          `json:"session_id"`
 	SourceSubmissionID string         `json:"source_submission_id"`
 	ToolOperationKey   string         `json:"tool_operation_key"`
 	Text               string         `json:"text"`
@@ -348,9 +330,27 @@ type RunnerPairing struct {
 	CredentialDigest string `json:"credential_digest"`
 }
 
+type Session struct {
+	ID            int64         `json:"id"`
+	AgentID       string        `json:"agent_id"`
+	ChannelKey    string        `json:"channel_key"`
+	ExecutionID   sql.NullInt64 `json:"execution_id"`
+	CreatedAt     int64         `json:"created_at"`
+	Title         string        `json:"title"`
+	ModelProvider string        `json:"model_provider"`
+	ModelID       string        `json:"model_id"`
+	ThinkingLevel string        `json:"thinking_level"`
+	AbortPending  int64         `json:"abort_pending"`
+	ArchivedAt    sql.NullInt64 `json:"archived_at"`
+	Cwd           string        `json:"cwd"`
+	ForkedFrom    sql.NullInt64 `json:"forked_from"`
+	ParentID      sql.NullInt64 `json:"parent_id"`
+	RunnerID      string        `json:"runner_id"`
+}
+
 type Submission struct {
 	ID              string         `json:"id"`
-	ConversationID  int64          `json:"conversation_id"`
+	SessionID       int64          `json:"session_id"`
 	Content         string         `json:"content"`
 	Status          string         `json:"status"`
 	Answer          sql.NullString `json:"answer"`
@@ -470,15 +470,15 @@ type TaskObject struct {
 }
 
 type TaskSession struct {
-	ID             string        `json:"id"`
-	TaskID         string        `json:"task_id"`
-	BotID          string        `json:"bot_id"`
-	ConversationID int64         `json:"conversation_id"`
-	TurnRequestID  string        `json:"turn_request_id"`
-	IsPrimary      int64         `json:"is_primary"`
-	State          string        `json:"state"`
-	StartedAt      int64         `json:"started_at"`
-	EndedAt        sql.NullInt64 `json:"ended_at"`
+	ID            string        `json:"id"`
+	TaskID        string        `json:"task_id"`
+	BotID         string        `json:"bot_id"`
+	SessionID     int64         `json:"session_id"`
+	TurnRequestID string        `json:"turn_request_id"`
+	IsPrimary     int64         `json:"is_primary"`
+	State         string        `json:"state"`
+	StartedAt     int64         `json:"started_at"`
+	EndedAt       sql.NullInt64 `json:"ended_at"`
 }
 
 type TaskSourceEvent struct {
@@ -514,7 +514,7 @@ type TaskSourceReceipt struct {
 type TaskToolOperation struct {
 	Key             string `json:"key"`
 	AgentID         string `json:"agent_id"`
-	ConversationID  int64  `json:"conversation_id"`
+	SessionID       int64  `json:"session_id"`
 	SourceRequestID string `json:"source_request_id"`
 	Action          string `json:"action"`
 	Result          string `json:"result"`
@@ -559,7 +559,7 @@ type TelegramCallback struct {
 	Ordinal         int64         `json:"ordinal"`
 	Peer            string        `json:"peer"`
 	ChannelContext  string        `json:"channel_context"`
-	ConversationID  int64         `json:"conversation_id"`
+	SessionID       int64         `json:"session_id"`
 	ExecutionID     int64         `json:"execution_id"`
 	ContextRevision string        `json:"context_revision"`
 	Label           string        `json:"label"`
@@ -626,7 +626,7 @@ type WebNotification struct {
 	ID                 string `json:"id"`
 	EventID            string `json:"event_id"`
 	AgentID            string `json:"agent_id"`
-	ConversationID     int64  `json:"conversation_id"`
+	SessionID          int64  `json:"session_id"`
 	SourceSubmissionID string `json:"source_submission_id"`
 	Body               string `json:"body"`
 	CreatedAt          int64  `json:"created_at"`

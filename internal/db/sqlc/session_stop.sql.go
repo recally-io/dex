@@ -10,18 +10,18 @@ import (
 	"database/sql"
 )
 
-const getConversationByExecution = `-- name: GetConversationByExecution :one
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' AND execution_id = ?
+const getSessionByExecution = `-- name: GetSessionByExecution :one
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions WHERE agent_id = ? AND channel_key NOT LIKE 'retired-telegram:%' AND execution_id = ?
 `
 
-type GetConversationByExecutionParams struct {
+type GetSessionByExecutionParams struct {
 	AgentID     string        `json:"agent_id"`
 	ExecutionID sql.NullInt64 `json:"execution_id"`
 }
 
-func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConversationByExecutionParams) (Conversation, error) {
-	row := q.db.QueryRowContext(ctx, getConversationByExecution, arg.AgentID, arg.ExecutionID)
-	var i Conversation
+func (q *Queries) GetSessionByExecution(ctx context.Context, arg GetSessionByExecutionParams) (Session, error) {
+	row := q.db.QueryRowContext(ctx, getSessionByExecution, arg.AgentID, arg.ExecutionID)
+	var i Session
 	err := row.Scan(
 		&i.ID,
 		&i.AgentID,
@@ -43,16 +43,16 @@ func (q *Queries) GetConversationByExecution(ctx context.Context, arg GetConvers
 }
 
 const listChildrenStoppedByParent = `-- name: ListChildrenStoppedByParent :many
-SELECT conversations.id FROM conversations
-JOIN conversations parent ON parent.id = conversations.parent_id
-WHERE (conversations.agent_id = ?1 OR parent.agent_id = ?1)
-AND conversations.channel_key NOT LIKE 'retired-telegram:%' AND parent.channel_key NOT LIKE 'retired-telegram:%' AND EXISTS (
-    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+SELECT sessions.id FROM sessions
+JOIN sessions parent ON parent.id = sessions.parent_id
+WHERE (sessions.agent_id = ?1 OR parent.agent_id = ?1)
+AND sessions.channel_key NOT LIKE 'retired-telegram:%' AND parent.channel_key NOT LIKE 'retired-telegram:%' AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.session_id = sessions.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
 )
 `
 
-// The children that Stop on their parent reaches. Keep the rule equal to ListStopConversations: the
+// The children that Stop on their parent reaches. Keep the rule equal to ListSessionsForStop: the
 // web UI shows Stop on a parent page only for these.
 func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID string) ([]int64, error) {
 	rows, err := q.db.QueryContext(ctx, listChildrenStoppedByParent, agentID)
@@ -77,34 +77,34 @@ func (q *Queries) ListChildrenStoppedByParent(ctx context.Context, agentID strin
 	return items, nil
 }
 
-const listStopConversations = `-- name: ListStopConversations :many
-SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM conversations
+const listSessionsForStop = `-- name: ListSessionsForStop :many
+SELECT id, agent_id, channel_key, execution_id, created_at, title, model_provider, model_id, thinking_level, abort_pending, archived_at, cwd, forked_from, parent_id, runner_id FROM sessions
 WHERE channel_key NOT LIKE 'retired-telegram:%' AND (
-    (conversations.id = ?1 AND conversations.agent_id = ?2)
-    OR (conversations.parent_id = ?1 AND EXISTS (
-    SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id AND s.status = 'pending'
+    (sessions.id = ?1 AND sessions.agent_id = ?2)
+    OR (sessions.parent_id = ?1 AND EXISTS (
+    SELECT 1 FROM submissions s WHERE s.session_id = sessions.id AND s.status = 'pending'
         AND s.parent_request_id IS NOT NULL
 )))
-ORDER BY conversations.id
+ORDER BY sessions.id
 `
 
-type ListStopConversationsParams struct {
-	ChatID  int64  `json:"chat_id"`
-	AgentID string `json:"agent_id"`
+type ListSessionsForStopParams struct {
+	SessionID int64  `json:"session_id"`
+	AgentID   string `json:"agent_id"`
 }
 
-// Stop reaches the conversation and the children of it that have pending input that the parent
+// Stop reaches the session and the children of it that have pending input that the parent
 // started. The children can belong to different bots.
 // A child with only user input is not reached.
-func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConversationsParams) ([]Conversation, error) {
-	rows, err := q.db.QueryContext(ctx, listStopConversations, arg.ChatID, arg.AgentID)
+func (q *Queries) ListSessionsForStop(ctx context.Context, arg ListSessionsForStopParams) ([]Session, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionsForStop, arg.SessionID, arg.AgentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []Conversation{}
+	items := []Session{}
 	for rows.Next() {
-		var i Conversation
+		var i Session
 		if err := rows.Scan(
 			&i.ID,
 			&i.AgentID,
@@ -135,18 +135,18 @@ func (q *Queries) ListStopConversations(ctx context.Context, arg ListStopConvers
 	return items, nil
 }
 
-const stopConversationSubmissions = `-- name: StopConversationSubmissions :execrows
+const stopSessionSubmissions = `-- name: StopSessionSubmissions :execrows
 UPDATE submissions SET status = 'unanswered', reason = 'stopped', settled_at = ?1
-WHERE conversation_id = ?2 AND status = 'pending'
+WHERE session_id = ?2 AND status = 'pending'
 `
 
-type StopConversationSubmissionsParams struct {
-	Now    sql.NullInt64 `json:"now"`
-	ChatID int64         `json:"chat_id"`
+type StopSessionSubmissionsParams struct {
+	Now       sql.NullInt64 `json:"now"`
+	SessionID int64         `json:"session_id"`
 }
 
-func (q *Queries) StopConversationSubmissions(ctx context.Context, arg StopConversationSubmissionsParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, stopConversationSubmissions, arg.Now, arg.ChatID)
+func (q *Queries) StopSessionSubmissions(ctx context.Context, arg StopSessionSubmissionsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, stopSessionSubmissions, arg.Now, arg.SessionID)
 	if err != nil {
 		return 0, err
 	}

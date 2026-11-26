@@ -66,14 +66,14 @@ func TestUserManagesE2BSandboxResetsAndSwitchesRunners(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
 	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil)
 
-	chatID := d.newSession(t).ID
-	out := taskTurn(t, d, chatID, `printf "%s|%s|%s" "$REMOTE_E2B_MARKER" "${HOST_E2B_SECRET:-}" "${LOGIN_E2B_SECRET:-}"`)
+	sessionID := d.newSession(t).ID
+	out := taskTurn(t, d, sessionID, `printf "%s|%s|%s" "$REMOTE_E2B_MARKER" "${HOST_E2B_SECRET:-}" "${LOGIN_E2B_SECRET:-}"`)
 	if out != "bash: e2b-fake-ok||" {
 		t.Fatalf("unexpected e2b bash output: %q", out)
 	}
 
-	_ = taskTool(t, d, chatID, "write", map[string]any{"path": "report.md", "content": "# E2B Report\n"})
-	delivered := deliverArtifact(t, d, chatID, "report.md")
+	_ = taskTool(t, d, sessionID, "write", map[string]any{"path": "report.md", "content": "# E2B Report\n"})
+	delivered := deliverArtifact(t, d, sessionID, "report.md")
 	if delivered.Name != "report.md" {
 		t.Fatalf("delivered=%+v", delivered)
 	}
@@ -82,15 +82,15 @@ func TestUserManagesE2BSandboxResetsAndSwitchesRunners(t *testing.T) {
 		t.Fatalf("artifact=%q", artBody)
 	}
 
-	memRes := taskTool(t, d, chatID, "memory_write", map[string]any{"path": "projects/e2b.md", "content": "# E2B Memory\n- durable fact\n"})
+	memRes := taskTool(t, d, sessionID, "memory_write", map[string]any{"path": "projects/e2b.md", "content": "# E2B Memory\n- durable fact\n"})
 	if strings.HasPrefix(memRes, "tool error:") {
 		t.Fatalf("memory_write failed: %s", memRes)
 	}
 
 	// Stateless reset kills current sandbox; next message starts a fresh sandbox where report.md is gone.
-	eventually(t, "chat settled before reset", func() (bool, any) {
-		var info chatInfo
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &info)
+	eventually(t, "session settled before reset", func() (bool, any) {
+		var info sessionListItem
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &info)
 		return !info.Busy, info.Busy
 	})
 	killsBefore := fake.Counts().Killed
@@ -98,16 +98,16 @@ func TestUserManagesE2BSandboxResetsAndSwitchesRunners(t *testing.T) {
 	if fake.Counts().Killed <= killsBefore {
 		t.Fatalf("expected sandbox kill on reset, counts=%+v", fake.Counts())
 	}
-	missingRead := taskTool(t, d, chatID, "read", map[string]any{"path": "report.md"})
+	missingRead := taskTool(t, d, sessionID, "read", map[string]any{"path": "report.md"})
 	if !strings.HasPrefix(missingRead, "tool error:") {
 		t.Fatalf("expected fresh sandbox without old report.md, got %q", missingRead)
 	}
 
 	// Switching bot back to local cleans up the E2B sandbox automatically.
-	// The turn returns its answer before the chat settles, and a busy chat blocks the switch.
-	eventually(t, "chat settled before switch", func() (bool, any) {
-		var info chatInfo
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &info)
+	// The turn returns its answer before the session settles, and a busy session blocks the switch.
+	eventually(t, "session settled before switch", func() (bool, any) {
+		var info sessionListItem
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &info)
 		return !info.Busy, info.Busy
 	})
 	killsBeforeSwitch := fake.Counts().Killed
@@ -179,15 +179,15 @@ func TestUserManagesCustomE2BEndpointWithoutKeyOverHTTP(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/agents/default", defAgent, &defAgent)
 	d.must(t, http.MethodPost, "/api/agents/default/integrations/reload", nil, nil)
 
-	chatID := d.newSession(t).ID
-	out := taskTurn(t, d, chatID, `printf "%s" "$REMOTE_E2B_MARKER"`)
+	sessionID := d.newSession(t).ID
+	out := taskTurn(t, d, sessionID, `printf "%s" "$REMOTE_E2B_MARKER"`)
 	if out != "bash: e2b-fake-ok" {
 		t.Fatalf("unexpected bash output: %q", out)
 	}
 
-	eventually(t, "chat settled before keyless reset", func() (bool, any) {
-		var info chatInfo
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &info)
+	eventually(t, "session settled before keyless reset", func() (bool, any) {
+		var info sessionListItem
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &info)
 		return !info.Busy, info.Busy
 	})
 	killsBefore := fake.Counts().Killed

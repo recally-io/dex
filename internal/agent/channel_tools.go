@@ -11,9 +11,9 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 const (
@@ -39,16 +39,16 @@ type channelApproval struct {
 	expires     time.Time
 }
 
-func (s *Service) ChannelToolHandlers(chats *chat.Service) ChannelTools {
+func (s *Service) ChannelToolHandlers(sessions *session.Service) ChannelTools {
 	return ChannelTools{
 		Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
-			if _, err := chats.ChannelToolCaller(ctx, c); err != nil {
+			if _, err := sessions.ChannelToolCaller(ctx, c); err != nil {
 				return nil, err
 			}
 			return s.channelToolRead(ctx, cmp.Or(bot, c.AgentID), view)
 		},
 		Request: func(ctx context.Context, c engine.TaskContext, bot, op, target string) (any, error) {
-			session, err := chats.ChannelToolCaller(ctx, c)
+			session, err := sessions.ChannelToolCaller(ctx, c)
 			if err != nil {
 				auditChannelMutation("denied", channelApproval{caller: c.AgentID})
 				return nil, err
@@ -212,8 +212,8 @@ func (s *Service) ConfirmChannelChange(ctx context.Context, id string) (err erro
 	if !ok || !time.Now().Before(p.expires) {
 		return ErrChannelApproval
 	}
-	conv, err := s.q.GetConversation(ctx, p.session)
-	if err != nil || conv.AgentID != p.caller || conv.ArchivedAt.Valid || conv.ParentID.Valid || !chat.Writable(conv.ChannelKey) {
+	conv, err := s.q.GetSession(ctx, p.session)
+	if err != nil || conv.AgentID != p.caller || conv.ArchivedAt.Valid || conv.ParentID.Valid || !session.Writable(conv.ChannelKey) {
 		return ErrChannelApproval
 	}
 	if db.RequireActive(ctx, s.q, p.caller) != nil || db.RequireActive(ctx, s.q, p.BotID) != nil {

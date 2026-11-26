@@ -2,17 +2,17 @@
 
 This document describes automations, schedules, and their results.
 
-Main and writable Chat conversations have five automation tools:
+Main and writable top-level Web sessions have five automation tools:
 `automation_list`, `automation_get`, `automation_create`, `automation_update`, and
 `automation_run`. Typed engine callbacks call the automation service. The model
 cannot select another bot. Business validation checks the calling execution
 and input before it exposes automation data or changes. These tools require a
-user turn in Main or a top-level Chat.
+user turn in Main or a top-level Web session.
 
 Updates are partial. An enabled-only update pauses or resumes an automation
 without replacing its prompt or project directory. Creation inherits the
-calling conversation's project when `cwd` is omitted. A run result includes
-its chat ID so the agent can link to the saved transcript. Tool results name
+calling session's project when `cwd` is omitted. A run result includes
+its session ID so the agent can link to the saved transcript. Tool results name
 the duplicate-finding flag `repeatedFinding` to distinguish it from execution
 counts. The HTTP API keeps its `duplicate` field. The tools do not provide deletion.
 
@@ -27,8 +27,8 @@ An automation runs a prompt on a schedule.
 automations and their runs in `control.sqlite`. One scheduler job calls its
 `Check` every minute for all agents. Each row supplies its owning agent ID.
 `Check` posts the prompt of each automation whose
-`next_due_at` has come, as a message to its chat (`automation:<id>`, or
-`automation:<id>:<run id>` for a new chat each run), or to a saved existing
+`next_due_at` has come, as a message to its session (`automation:<id>`, or
+`automation:<id>:<run id>` for a new session each run), or to a saved existing
 session, and moves `next_due_at` past now. The message uses normal durable
 delivery.
 
@@ -56,9 +56,9 @@ new `cwd` clears the project. A Bot's Runner change also clears the project
 for Automations that follow it.
 
 Each run stores its effective Runner and project (`automation_runs.runner_id`
-and `cwd`). A reused Chat (`automation:<id>`) continues only if the last run
-has the same recorded Runner. Otherwise Dex gives the old Chat a
-run-specific key (`automation:<id>:<run id>`) and starts a new Chat. The old
+and `cwd`). A reused Session (`automation:<id>`) continues only if the last run
+has the same recorded Runner. Otherwise Dex gives the old Session a
+run-specific key (`automation:<id>:<run id>`) and starts a new Session. The old
 transcript stays readable.
 
 The `automation_notification_targets` table stores authorized recipients. The
@@ -88,13 +88,13 @@ Run records and durable message intents commit in one control transaction.
 Before it stores scheduled input, that transaction takes the SQLite writer and
 checks that the automation still matches the scheduler's snapshot. A saved edit,
 pause, or deletion invalidates the old snapshot. The run ID is the input request ID. A crash before commit leaves neither
-record. A crash after commit leaves an input that normal chat reconciliation
+record. A crash after commit leaves an input that normal session reconciliation
 can admit. If the schedule cursor did not advance, the unique automation/due
 key prevents another input for that scheduled time.
 
-An automation can store a project `cwd`. The API uses the Chat path validator.
-In `new` and `reuse` mode, each run sets or clears its chat's cwd before it stores the input. Project
-skills therefore follow the run directory, including when a chat is reused.
+An automation can store a project `cwd`. The API uses the Session path validator.
+In `new` and `reuse` mode, each run sets or clears its session's cwd before it stores the input. Project
+skills therefore follow the run directory, including when a session is reused.
 
 Only an Automation input can write a report with `automation_report`, including a run
 bound to an existing Session. The tool checks the current input's source receipt before it writes a result. Bound
@@ -140,5 +140,5 @@ invalidate the result list and Board attention. Dismissed details remain readabl
 Continue in a session pins the run's available Local or Machine Runner and
 sets its project. A Sandbox, unavailable Runner, or missing Runner record
 prevents creation. The first message quotes the Automation name, outcome,
-summary, and run transcript reference. A retry in the same detail view keeps the Chat and
+summary, and run transcript reference. A retry in the same detail view keeps the Session and
 message request IDs.

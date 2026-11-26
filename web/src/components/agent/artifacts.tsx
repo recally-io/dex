@@ -3,16 +3,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { Files } from "lucide-react";
 import {
-  createChat,
+  createAgentSession,
   deleteArtifact,
-  getChat,
+  getSession,
   renameArtifact,
-  setChatProject,
+  setSessionProject,
 } from "../../api/generated/sdk.gen";
 import { listArtifactsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import type { Artifact } from "../../api/generated/types.gen";
 import { useAgentId } from "../../lib/agent-scope";
-import { putChatDraft } from "../../lib/chat-draft";
+import { putSessionDraft } from "../../lib/session-draft";
 import { Markdown } from "./transcript";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -26,7 +26,7 @@ function reference(agentId: string, item: Artifact) {
   return `Continue editing the bot artifact ${item.name} at /api/agents/${encodeURIComponent(agentId)}/artifacts/${encodeURIComponent(item.name)}. This file is in this bot's artifacts directory, not the workspace source.`;
 }
 
-export function Artifacts({ chatId }: { chatId: number }) {
+export function Artifacts({ sessionId }: { sessionId: number }) {
   const agentId = useAgentId();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -90,28 +90,29 @@ export function Artifacts({ chatId }: { chatId: number }) {
 
   const continuation = useMutation({
     mutationFn: async (item: Artifact) => {
-      const source = await getChat({
-        path: { agentId, chatId },
+      const source = await getSession({
+        path: { agentId, sessionId },
         throwOnError: true,
       });
 
       let target = source.data;
 
       if (target.readOnly) {
-        const chat = await createChat({ path: { agentId }, throwOnError: true });
-        target = chat.data;
-        await setChatProject({
-          path: { agentId, chatId: target.id },
+        const session = await createAgentSession({ path: { agentId }, throwOnError: true });
+        target = session.data;
+        await setSessionProject({
+          path: { agentId, sessionId: target.id },
           body: { cwd: source.data.cwd ?? "" },
           throwOnError: true,
         });
       }
 
-      putChatDraft(agentId, target.id, reference(agentId, item));
+      putSessionDraft(agentId, target.id, reference(agentId, item));
       setOpen(false);
 
       if (target.main) await navigate({ to: "/a/$agentId", params: { agentId } });
-      else await navigate({ to: "/a/$agentId/c/$chatId", params: { agentId, chatId: String(target.id) } });
+      else
+        await navigate({ to: "/a/$agentId/s/$sessionId", params: { agentId, sessionId: String(target.id) } });
     },
   });
 
@@ -138,7 +139,7 @@ export function Artifacts({ chatId }: { chatId: number }) {
       {open ? (
         <Modal
           title="Artifacts"
-          description="Files in this bot’s artifacts directory. All conversations in this bot show the same files."
+          description="Files in this bot’s artifacts directory. All sessions in this bot show the same files."
           onClose={() => setOpen(false)}
           footer={
             <Button variant="secondary" onClick={() => setOpen(false)}>
@@ -207,7 +208,9 @@ export function Artifacts({ chatId }: { chatId: number }) {
                   Delete
                 </Button>
               </div>
-              {continuation.isError ? <p role="alert">Could not open a writable chat. Try again.</p> : null}
+              {continuation.isError ? (
+                <p role="alert">Could not open a writable session. Try again.</p>
+              ) : null}
               {markdown ? (
                 content.isPending ? (
                   <p>Loading file…</p>

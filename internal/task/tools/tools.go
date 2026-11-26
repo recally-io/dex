@@ -1,4 +1,4 @@
-// Package tools implements the task_* tools of Main and writable Chats.
+// Package tools implements the task_* tools of Main and writable Sessions.
 package tools
 
 import (
@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 	tasksvc "github.com/recally-io/dex/internal/task"
 )
 
@@ -60,19 +60,19 @@ func invalid(format string, args ...any) error {
 }
 
 // caller returns the writable conversation and its authenticated source input.
-func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Conversation, sqlc.Submission, error) {
-	conv, err := q.GetConversationByExecution(ctx, sqlc.GetConversationByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
+func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Session, sqlc.Submission, error) {
+	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: c.AgentID, ExecutionID: sql.NullInt64{Int64: c.ConversationID, Valid: true}})
 	if err != nil {
 		return conv, sqlc.Submission{}, err
 	}
-	if !chat.Writable(conv.ChannelKey) {
-		return conv, sqlc.Submission{}, invalid("Tasks need main or a writable Chat")
+	if !session.Writable(conv.ChannelKey) {
+		return conv, sqlc.Submission{}, invalid("Tasks need main or a writable Session")
 	}
 	source, err := q.GetSubmission(ctx, c.SourceRequestID)
 	if err != nil {
 		return conv, source, err
 	}
-	if source.ConversationID != conv.ID {
+	if source.SessionID != conv.ID {
 		return conv, source, invalid("the run does not belong to this conversation")
 	}
 	return conv, source, nil
@@ -80,11 +80,11 @@ func caller(ctx context.Context, q *sqlc.Queries, c engine.TaskContext) (sqlc.Co
 
 func taskOrigin(source sqlc.Submission) tasksvc.Origin {
 	switch {
-	case source.Kind == "message" && chat.UserOrigin(source.Origin):
+	case source.Kind == "message" && session.UserOrigin(source.Origin):
 		return tasksvc.OriginUser
 	case source.Kind == "task_wake":
 		return tasksvc.OriginTaskWake
-	case source.Producer == chat.ProducerSubSession && (source.Kind == "session_result" || source.Kind == "message" && source.ParentRequestID.Valid):
+	case source.Producer == session.ProducerSubSession && (source.Kind == "session_result" || source.Kind == "message" && source.ParentRequestID.Valid):
 		return tasksvc.OriginSessionResult
 	case source.Kind == "wake":
 		return tasksvc.OriginWake
@@ -131,7 +131,7 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	}
 	prior, err := q.GetTaskToolOperation(ctx, c.Key)
 	if err == nil {
-		if prior.AgentID != c.AgentID || prior.ConversationID != conv.ID || prior.SourceRequestID != source.ID || prior.Action != action {
+		if prior.AgentID != c.AgentID || prior.SessionID != conv.ID || prior.SourceRequestID != source.ID || prior.Action != action {
 			return zero, invalid("the tool key belongs to another operation")
 		}
 		var out R
@@ -150,7 +150,7 @@ func mutate[R any](ctx context.Context, s *Service, c engine.TaskContext, action
 	if err != nil {
 		return zero, err
 	}
-	if err := q.CreateTaskToolOperation(ctx, sqlc.CreateTaskToolOperationParams{Key: c.Key, AgentID: c.AgentID, ConversationID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
+	if err := q.CreateTaskToolOperation(ctx, sqlc.CreateTaskToolOperationParams{Key: c.Key, AgentID: c.AgentID, SessionID: conv.ID, SourceRequestID: source.ID, Action: action, Result: string(data)}); err != nil {
 		return zero, err
 	}
 	if err := tx.Commit(); err != nil {

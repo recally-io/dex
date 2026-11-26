@@ -12,8 +12,8 @@ import (
 	"uuid"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/session"
 )
 
 type menuAction struct{ text, action, object string }
@@ -21,43 +21,43 @@ type menuAction struct{ text, action, object string }
 // completeTelegram resolves a Telegram command's target once for this processing entry. It
 // returns done after it completes the command itself: silently for an unauthorized, stale or
 // moved command, or with the answer of a Telegram-only command. Effects recheck under the writer.
-func (m *Manager) completeTelegram(ctx context.Context, c sqlc.ChannelCommand) (chat.Chat, bool, error) {
-	var identity chat.ChannelContext
+func (m *Manager) completeTelegram(ctx context.Context, c sqlc.ChannelCommand) (session.Session, bool, error) {
+	var identity session.ChannelContext
 	if err := json.Unmarshal([]byte(c.ChannelContext), &identity); err != nil {
-		return chat.Chat{}, false, err
+		return session.Session{}, false, err
 	}
-	silent := func() (chat.Chat, bool, error) {
-		return chat.Chat{}, true, m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
+	silent := func() (session.Session, bool, error) {
+		return session.Session{}, true, m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: ""})
 	}
-	target, err := m.chats.ChannelConversation(ctx, m.agentID, c.Peer, identity)
-	if errors.Is(err, chat.ErrTelegramUnauthorized) {
+	target, err := m.sessions.ChannelConversation(ctx, m.agentID, c.Peer, identity)
+	if errors.Is(err, session.ErrTelegramUnauthorized) {
 		return silent()
 	}
 	if err != nil {
-		return chat.Chat{}, false, err
+		return session.Session{}, false, err
 	}
 	current, err := m.callbackCurrent(ctx, c, target)
 	if err != nil {
-		return chat.Chat{}, false, err
+		return session.Session{}, false, err
 	}
 	if !current {
 		return silent()
 	}
 	answer, handled, err := m.telegramCommand(ctx, c, target, identity)
-	if errors.Is(err, chat.ErrTelegramUnauthorized) {
+	if errors.Is(err, session.ErrTelegramUnauthorized) {
 		return silent()
 	}
 	if err != nil || !handled {
 		return target, false, err
 	}
 	if err := m.q.CompleteChannelCommand(ctx, sqlc.CompleteChannelCommandParams{SourceKey: c.SourceKey, Answer: answer}); err != nil {
-		return chat.Chat{}, false, err
+		return session.Session{}, false, err
 	}
 	m.Notify(c.Peer)
 	return target, true, nil
 }
 
-func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, target chat.Chat, identity chat.ChannelContext) (string, bool, error) {
+func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, target session.Session, identity session.ChannelContext) (string, bool, error) {
 	switch c.Command {
 	case "/menu", "/help":
 		return "Current conversation\n\n/help and /menu open these controls. /status shows this conversation. /settings shows Telegram preferences. /sessions lists its direct children. /workflows lists saved child workflows. /run <child ID> [message] resumes a saved child as its initiating sender. /question shows its open question. /stop stops only this conversation and its permitted child work. /clear and /new clear only this conversation. Use /feedback in private for a public GitHub issue draft.", true, nil
@@ -68,7 +68,7 @@ func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, ta
 	case "/settings":
 		return "Change Telegram preferences on the Channels page in Dex.", true, nil
 	case "/sessions", "/workflows":
-		children, err := m.chats.ChannelChildren(ctx, m.agentID, target)
+		children, err := m.sessions.ChannelChildren(ctx, m.agentID, target)
 		if err != nil {
 			return "", true, err
 		}
@@ -97,8 +97,8 @@ func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, ta
 	}
 	if rest, ok := strings.CutPrefix(c.Command, "/run "); ok {
 		id, message, _ := strings.Cut(strings.TrimSpace(rest), " ")
-		err := m.chats.ResumeChannelWorkflow(ctx, m.agentID, c.Peer, c.SourceKey, id, message, identity)
-		if errors.Is(err, chat.ErrTelegramUnauthorized) || errors.Is(err, chat.ErrSessionNotFound) {
+		err := m.sessions.ResumeChannelWorkflow(ctx, m.agentID, c.Peer, c.SourceKey, id, message, identity)
+		if errors.Is(err, session.ErrTelegramUnauthorized) || errors.Is(err, session.ErrSessionNotFound) {
 			return "This saved child is not available to this sender in the current conversation.", true, nil
 		}
 		return "Saved child workflow queued in its existing session.", true, err
@@ -109,7 +109,7 @@ func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, ta
 			return "Invalid question choice.", true, nil
 		}
 		question, err := m.q.GetQuestion(ctx, id)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && (question.AgentID != m.agentID || question.ConversationID != target.ID || question.Status != "open") {
+		if errors.Is(err, sql.ErrNoRows) || err == nil && (question.AgentID != m.agentID || question.SessionID != target.ID || question.Status != "open") {
 			return "This question is no longer open in this conversation.", true, nil
 		}
 		if err != nil {
@@ -129,8 +129,8 @@ func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, ta
 		if index < 0 {
 			return "Invalid question choice.", true, nil
 		}
-		err = m.chats.SubmitMessage(ctx, m.agentID, c.Peer, c.SourceKey, chat.Message{Content: options[index], AnswersQuestion: id, QuestionOnly: true, ChannelContext: identity})
-		if errors.Is(err, chat.ErrQuestionClosed) {
+		err = m.sessions.SubmitMessage(ctx, m.agentID, c.Peer, c.SourceKey, session.Message{Content: options[index], AnswersQuestion: id, QuestionOnly: true, ChannelContext: identity})
+		if errors.Is(err, session.ErrQuestionClosed) {
 			return "This question is no longer open for this sender.", true, nil
 		}
 		return "Answer queued in the current conversation.", true, err
@@ -138,7 +138,7 @@ func (m *Manager) telegramCommand(ctx context.Context, c sqlc.ChannelCommand, ta
 	return "", false, nil
 }
 
-func (m *Manager) menuActions(ctx context.Context, command string, target chat.Chat) ([]menuAction, error) {
+func (m *Manager) menuActions(ctx context.Context, command string, target session.Session) ([]menuAction, error) {
 	actions := []menuAction{}
 	switch command {
 	case "/menu", "/help":
@@ -146,7 +146,7 @@ func (m *Manager) menuActions(ctx context.Context, command string, target chat.C
 			actions = append(actions, menuAction{item.text, item.command, strconv.FormatInt(target.ID, 10)})
 		}
 	case "/sessions", "/workflows":
-		children, err := m.chats.ChannelChildren(ctx, m.agentID, target)
+		children, err := m.sessions.ChannelChildren(ctx, m.agentID, target)
 		if err != nil {
 			return nil, err
 		}
@@ -181,7 +181,7 @@ func questionActions(question sqlc.Question) ([]menuAction, error) {
 	return out, nil
 }
 
-func (m *Manager) addButtons(ctx context.Context, part *channel.Part, source, peer string, identity chat.ChannelContext, target chat.Chat, actions []menuAction) error {
+func (m *Manager) addButtons(ctx context.Context, part *channel.Part, source, peer string, identity session.ChannelContext, target session.Session, actions []menuAction) error {
 	if len(actions) == 0 || part.Rich == nil {
 		return nil
 	}
@@ -195,7 +195,7 @@ func (m *Manager) addButtons(ctx context.Context, part *channel.Part, source, pe
 	}
 	for ordinal, action := range actions {
 		id := uuid.NewV7().String()
-		if err := m.q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, AgentID: m.agentID, SourceID: source, Ordinal: int64(ordinal), Peer: peer, ChannelContext: string(encoded), ConversationID: target.ID, ExecutionID: target.ExecutionID, ContextRevision: revision, Label: action.text, ObjectID: action.object, Action: action.action, ExpiresAt: time.Now().Add(15 * time.Minute).UnixMilli()}); err != nil {
+		if err := m.q.CreateTelegramCallback(ctx, sqlc.CreateTelegramCallbackParams{ID: id, AgentID: m.agentID, SourceID: source, Ordinal: int64(ordinal), Peer: peer, ChannelContext: string(encoded), SessionID: target.ID, ExecutionID: target.ExecutionID, ContextRevision: revision, Label: action.text, ObjectID: action.object, Action: action.action, ExpiresAt: time.Now().Add(15 * time.Minute).UnixMilli()}); err != nil {
 			return err
 		}
 		stored, err := m.q.GetTelegramCallbackSlot(ctx, sqlc.GetTelegramCallbackSlotParams{SourceID: source, Ordinal: int64(ordinal)})
@@ -209,7 +209,7 @@ func (m *Manager) addButtons(ctx context.Context, part *channel.Part, source, pe
 
 // ClaimTelegramCallback consumes a button and queues its durable command in the same transaction.
 // The adapter must verify the signature before it calls this method.
-func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity chat.ChannelContext) (bool, error) {
+func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote string, identity session.ChannelContext) (bool, error) {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -226,14 +226,14 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 	if err != nil {
 		return false, err
 	}
-	var original chat.ChannelContext
+	var original session.ChannelContext
 	if err := json.Unmarshal([]byte(row.ChannelContext), &original); err != nil {
 		return false, err
 	}
-	if !chat.TelegramCallbackObject(row) || row.AgentID != m.agentID || row.Peer != peer || row.MessageID != remote || remote == "" || row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || original.AccountID != identity.AccountID || original.SenderID != identity.SenderID {
+	if !session.TelegramCallbackObject(row) || row.AgentID != m.agentID || row.Peer != peer || row.MessageID != remote || remote == "" || row.ConsumedAt.Valid || row.ExpiresAt <= time.Now().UnixMilli() || original.AccountID != identity.AccountID || original.SenderID != identity.SenderID {
 		return false, nil
 	}
-	allowed, err := chat.TelegramInputAllowed(ctx, q, m.agentID, peer, identity)
+	allowed, err := session.TelegramInputAllowed(ctx, q, m.agentID, peer, identity)
 	if err != nil {
 		return false, err
 	}
@@ -243,7 +243,7 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 		}
 		return false, tx.Commit()
 	}
-	conv, err := q.GetConversation(ctx, row.ConversationID)
+	conv, err := q.GetSession(ctx, row.SessionID)
 	if err != nil {
 		return false, err
 	}
@@ -263,7 +263,7 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 		return false, err
 	}
 	source := "telegram-callback:" + id
-	if err := chat.RequirePairedChannel(ctx, q, m.agentID, peer, identity); err != nil {
+	if err := session.RequirePairedChannel(ctx, q, m.agentID, peer, identity); err != nil {
 		return false, err
 	}
 	if err := q.CreateChannelCommand(ctx, sqlc.CreateChannelCommandParams{AgentID: m.agentID, SourceKey: source, Peer: peer, ChannelKey: conv.ChannelKey, Command: row.Action, ChannelContext: string(encoded)}); err != nil {
@@ -276,14 +276,14 @@ func (m *Manager) ClaimTelegramCallback(ctx context.Context, id, peer, remote st
 }
 
 // callbackCurrent applies the same post-claim validity check that effects repeat under the writer.
-func (m *Manager) callbackCurrent(ctx context.Context, c sqlc.ChannelCommand, target chat.Chat) (bool, error) {
-	err := chat.ValidateTelegramControl(ctx, m.q, c.SourceKey, m.agentID, target.ID)
-	if errors.Is(err, chat.ErrTelegramUnauthorized) {
+func (m *Manager) callbackCurrent(ctx context.Context, c sqlc.ChannelCommand, target session.Session) (bool, error) {
+	err := session.ValidateTelegramControl(ctx, m.q, c.SourceKey, m.agentID, target.ID)
+	if errors.Is(err, session.ErrTelegramUnauthorized) {
 		return false, nil
 	}
 	return err == nil, err
 }
 
-func (m *Manager) TelegramInputAllowed(ctx context.Context, peer string, source chat.ChannelContext) (bool, error) {
-	return m.chats.TelegramInputAllowed(ctx, m.agentID, peer, source)
+func (m *Manager) TelegramInputAllowed(ctx context.Context, peer string, source session.ChannelContext) (bool, error) {
+	return m.sessions.TelegramInputAllowed(ctx, m.agentID, peer, source)
 }

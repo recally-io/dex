@@ -23,7 +23,6 @@ import (
 	"github.com/recally-io/dex/internal/channel/feishu"
 	"github.com/recally-io/dex/internal/channel/telegram"
 	"github.com/recally-io/dex/internal/channel/wechat"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/dream"
@@ -33,6 +32,7 @@ import (
 	"github.com/recally-io/dex/internal/runner"
 	"github.com/recally-io/dex/internal/scheduler"
 	"github.com/recally-io/dex/internal/server"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 	tasksvc "github.com/recally-io/dex/internal/task"
@@ -129,21 +129,21 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	var (
 		artifacts     *artifact.Service
-		chats         *chat.Service
+		sessions      *session.Service
 		routineTools  *automation.ToolService
 		prefs         *settings.Service
 		agentsService *agent.Service
 		hub           *live.Hub
 		bots          *channelRegistry
 	)
-	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { chats.WakeConversation(id) })
+	bg := background.New(conn, time.Now, cfg.Background, func(id int64) { sessions.WakeSession(id) })
 	// A previous run owned the processes of running commands. This must precede any new command.
 	if err := bg.Recover(ctx); err != nil {
 		cancel()
 		jobs.Close()
 		return nil, errors.Join(err, conn.Close())
 	}
-	tasks := tasksvc.New(conn, func(id int64) { chats.WakeConversation(id) })
+	tasks := tasksvc.New(conn, func(id int64) { sessions.WakeSession(id) })
 	if err := tasks.ExtendActiveLeasesOnStartup(ctx, time.Now(), tasksvc.ExternalLeaseTTL); err != nil {
 		cancel()
 		jobs.Close()
@@ -199,27 +199,27 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		LoginEnv:   cfg.LoginEnv,
 		ExecEnv:    execProvider,
 		SessionRunner: func(ctx context.Context, ref engine.Ref) (string, error) {
-			return chats.SessionRunner(ctx, ref)
+			return sessions.SessionRunner(ctx, ref)
 		},
 		FakeModel:       cfg.FakeModel,
-		FakeInputSuffix: chat.BoundRoutineCheckSuffix,
+		FakeInputSuffix: session.BoundRoutineCheckSuffix,
 		Extensions: func(rt engine.ExtensionRuntime) engine.ExtensionSet {
 			id := rt.AgentID
-			sessions := chat.SessionHandlers{
-				SetProject: chats.ToolSetProject,
-				Sessions: chat.SessionTools{
-					New: chats.ToolSessionNew, Send: chats.ToolSessionSend, Stop: chats.ToolSessionStop,
-					Fork: chats.ToolSessionFork, List: chats.ToolSessionList, Read: chats.ToolSessionRead, Search: chats.ToolSessionSearch,
+			sessionHandlers := session.Handlers{
+				SetProject: sessions.ToolSetProject,
+				Sessions: session.Tools{
+					New: sessions.ToolSessionNew, Send: sessions.ToolSessionSend, Stop: sessions.ToolSessionStop,
+					Fork: sessions.ToolSessionFork, List: sessions.ToolSessionList, Read: sessions.ToolSessionRead, Search: sessions.ToolSessionSearch,
 				},
 				Runners: func(ctx context.Context, c engine.TaskContext) ([]engine.RunnerInfo, error) {
 					return prefs.SessionRunners(ctx, c.AgentID)
 				},
 			}
-			outbox := chat.OutboxTools{NotifyUser: chats.ToolNotifyUser, ReportParent: chats.ToolReportParent, RecentOutbox: chats.ToolRecentOutbox}
+			outbox := session.OutboxTools{NotifyUser: sessions.ToolNotifyUser, ReportParent: sessions.ToolReportParent, RecentOutbox: sessions.ToolRecentOutbox}
 			botHandlers := botTools.Handlers()
 			optional := []*engine.Extension{
-				chat.FrontDeskExtension(), chat.OutboxExtension(id, outbox), chat.ChildOutboxExtension(id, outbox),
-				chat.AskUserExtension(id, chats.ToolAskUser), agent.BotReadExtension(id, botHandlers), agent.BotManageExtension(id, botHandlers),
+				session.FrontDeskExtension(), session.OutboxExtension(id, outbox), session.ChildOutboxExtension(id, outbox),
+				session.AskUserExtension(id, sessions.ToolAskUser), agent.BotReadExtension(id, botHandlers), agent.BotManageExtension(id, botHandlers),
 			}
 			optional = append(optional, agent.ChannelExtensions(id, agent.ChannelTools{
 				Read: func(ctx context.Context, c engine.TaskContext, view, bot string) (any, error) {
@@ -231,25 +231,25 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			})...)
 			mainTaskTools := taskTools
 			mainTaskTools.Dispatch = func(ctx context.Context, c engine.TaskContext, args tasktools.DispatchArgs) (tasktools.DispatchResult, error) {
-				return taskToolService.DispatchExternal(ctx, c, args, rt, chats.ToolProcessStart)
+				return taskToolService.DispatchExternal(ctx, c, args, rt, sessions.ToolProcessStart)
 			}
-			optional = append(optional, tasktools.TaskExtension(id, mainTaskTools), chat.ChildExtension(),
+			optional = append(optional, tasktools.TaskExtension(id, mainTaskTools), session.ChildExtension(),
 				tasktools.ChildTaskExtension(id, taskTools),
-				chat.DreamMessageExtension(id, chats.ToolReadDreamMessage), chat.RoutineCheckInstructions())
+				session.DreamMessageExtension(id, sessions.ToolReadDreamMessage), session.RoutineCheckInstructions())
 			return engine.ExtensionSet{
 				Before: map[string][]*engine.Extension{
-					"tool-search": {chat.CheckExtension(id, chats.ToolReportCheck)},
+					"tool-search": {session.CheckExtension(id, sessions.ToolReportCheck)},
 					"vault": {
 						automation.ToolExtension(id, automation.ToolHandlers{
 							List: routineTools.List, Get: routineTools.Get, Create: routineTools.Create, Update: routineTools.Update, Run: routineTools.Run,
 						}),
-						chat.SessionExtension(id, sessions), chat.SessionReadExtension(id, sessions),
-						chat.MonitorExtension(rt, chat.MonitorTools{
-							StartProcess: chats.ToolProcessStart, ListProcesses: chats.ToolProcessList, StopProcess: chats.ToolProcessStop,
-							Set: chats.ToolMonitorSet, List: chats.ToolMonitorList, Cancel: chats.ToolMonitorCancel,
+						session.Extension(id, sessionHandlers), session.ReadExtension(id, sessionHandlers),
+						session.MonitorExtension(rt, session.MonitorTools{
+							StartProcess: sessions.ToolProcessStart, ListProcesses: sessions.ToolProcessList, StopProcess: sessions.ToolProcessStop,
+							Set: sessions.ToolMonitorSet, List: sessions.ToolMonitorList, Cancel: sessions.ToolMonitorCancel,
 						}),
 					},
-					"memory": {chat.WorkLoopExtension(), artifact.Extension(rt, deliverArtifact)},
+					"memory": {session.WorkLoopExtension(), artifact.Extension(rt, deliverArtifact)},
 				},
 				Optional: optional,
 			}
@@ -271,10 +271,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	}
 	artifacts = artifact.New(cfg.DataDir, native.ReadWorkspaceFile)
 	bg.ConfigureEnvOpener(native.ExecEnv)
-	chats = chat.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) {
+	sessions = session.New(conn, native, time.Now, func(key string) { bots.Notify(key) }, func(id int64) {
 		hub.Changed(id)
 		if taskEvents.HasSubscribers() {
-			linked, err := q.HasTaskConversation(runCtx, id)
+			linked, err := q.HasTaskSession(runCtx, id)
 			if err != nil && runCtx.Err() == nil {
 				slog.Error("check Task conversation", "err", err)
 			}
@@ -283,9 +283,9 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			}
 		}
 	})
-	chats.ConfigureTasks(tasks)
-	chats.ConfigureBackground(bg)
-	automations := automation.New(q, chats, time.Now)
+	sessions.ConfigureTasks(tasks)
+	sessions.ConfigureBackground(bg)
+	automations := automation.New(q, sessions, time.Now)
 	automations.ConfigureRunnerStatus(envs.Status)
 	// Check admits due Automations one at a time. An offline SSH host can delay
 	// the others by this timeout. Probe in parallel if many Automations use SSH.
@@ -298,10 +298,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		}
 		return h.Close(context.WithoutCancel(ctx))
 	})
-	routineTools = automation.NewToolService(conn, automations, chats.WakeConversation)
-	hub = live.New(chats, native)
-	bots = &channelRegistry{ctx: runCtx, db: conn, chats: chats, managers: make(map[string]*delivery.Manager)}
-	chats.ConfigureChannelReceipts(bots.reactionIntake, bots.reactionAdmission)
+	routineTools = automation.NewToolService(conn, automations, sessions.WakeSession)
+	hub = live.New(sessions, native)
+	bots = &channelRegistry{ctx: runCtx, db: conn, sessions: sessions, managers: make(map[string]*delivery.Manager)}
+	sessions.ConfigureChannelReceipts(bots.reactionIntake, bots.reactionAdmission)
 
 	a := &App{db: conn, engine: native, envs: envs, bots: bots, jobs: jobs, background: bg, cancel: cancel}
 	defer func() { //nolint:contextcheck // Shutdown joins the app lifetime.
@@ -327,7 +327,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	if err := prefs.ApplyOnePassword(ctx); err != nil {
 		return nil, err
 	}
-	if err := chats.RecoverSessions(ctx); err != nil {
+	if err := sessions.RecoverSessions(ctx); err != nil {
 		return nil, err
 	}
 	discovery, err := prefs.RegisterProviders(runCtx)
@@ -344,10 +344,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			slog.Warn("release the earlier Runner of a bot", "agent", agentID, "err", err)
 		}
 	}
-	*botTools = agent.BotTools{Agents: agentsService, Chats: chats, Extensions: native.Extensions}
-	channelTools = agentsService.ChannelToolHandlers(chats)
-	// An approved archive commits in a chat receipt; the channels stop right after it.
-	chats.OnBotArchived = func(id string) {
+	*botTools = agent.BotTools{Agents: agentsService, Sessions: sessions, Extensions: native.Extensions}
+	channelTools = agentsService.ChannelToolHandlers(sessions)
+	// An approved archive commits in a session receipt; the channels stop right after it.
+	sessions.OnBotArchived = func(id string) {
 		if err := bg.StopAgent(runCtx, id); err != nil {
 			slog.Error("stop background commands of an archived bot", "agent", id, "err", err)
 		}
@@ -361,7 +361,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 			slog.Error("stop channels of an archived bot", "agent", id, "err", err)
 		}
 	}
-	chats.ConfigureSessions(prefs.CheckChat)
+	sessions.ConfigureSessions(prefs.CheckSession)
 	setFeishu := func(agentID string, config *feishu.Config) { //nolint:contextcheck // The manager owns the bot lifetime.
 		manager := bots.Agent(agentID)
 		uploads := upload.New(agent.Home(cfg.DataDir, agentID))
@@ -411,10 +411,10 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Executable:         cfg.Executable,
 		ReleaseBase:        cfg.ReleaseBase,
 		Logs:               logs,
-		AcquireMaintenance: chats.AcquireMaintenance,
-		ReleaseMaintenance: chats.ReleaseMaintenance,
+		AcquireMaintenance: sessions.AcquireMaintenance,
+		ReleaseMaintenance: sessions.ReleaseMaintenance,
 		RequestRestart:     cfg.RequestRestart,
-		IsBusyErr:          func(err error) bool { return errors.Is(err, chat.ErrMaintenanceBusy) },
+		IsBusyErr:          func(err error) bool { return errors.Is(err, session.ErrMaintenanceBusy) },
 		WaitInterval:       cfg.SystemWaitInterval,
 		WaitTimeout:        cfg.SystemWaitTimeout,
 		RestartDelay:       cfg.SystemRestartDelay,
@@ -436,7 +436,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 	// Restore the default even when no input is waiting for the machine.
 	envs.Runners().OnOnline(func(id string) {
 		forRunnerBots(runCtx, id, func(agentID string) { native.MarkRestorable(runCtx, agentID) })
-		chats.RetryNow()
+		sessions.RetryNow()
 	})
 	a.handler = server.New(server.Config{
 		ChannelWebhooks: http.HandlerFunc(bots.webhook),
@@ -454,20 +454,20 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		Runners:     envs.Runners(),
 		System:      sys,
 		ReleaseBase: cfg.ReleaseBase,
-		Chats:       chats, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
+		Sessions:    sessions, Automations: automations, Settings: prefs, Agents: agentsService, Artifacts: artifacts, Live: hub, DataDir: cfg.DataDir, Version: cfg.Version, Token: token,
 	})
-	a.wg.Go(func() { chats.Run(runCtx) })
+	a.wg.Go(func() { sessions.Run(runCtx) })
 	a.wg.Go(func() { tasks.RunLeaseWatchdog(runCtx) })
-	a.wg.Go(func() { runReloads(runCtx, native, chats) })
+	a.wg.Go(func() { runReloads(runCtx, native, sessions) })
 	a.wg.Go(func() {
 		select {
 		case <-discovery.Done():
-			chats.Wake()
+			sessions.Wake()
 		case <-runCtx.Done():
 		}
 	})
 	every := cmp.Or(cfg.DreamEvery, 24*time.Hour)
-	dreamer := dream.New(q, chats.Post, every, time.Now)
+	dreamer := dream.New(q, sessions.Post, every, time.Now)
 	if err := jobs.Every("dream", min(every, time.Hour), dreamer.Check); err != nil {
 		return nil, err
 	}
@@ -475,7 +475,7 @@ func Start(ctx context.Context, cfg Config) (_ *App, err error) {
 		return nil, err
 	}
 	if err := jobs.Every("followup-monitors", min(cmp.Or(cfg.AutomationCheck, 5*time.Second), 5*time.Second), func(ctx context.Context) {
-		if err := chats.FireDueMonitors(ctx); err != nil && ctx.Err() == nil {
+		if err := sessions.FireDueMonitors(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("fire due followup monitors", "err", err)
 		}
 	}); err != nil {
@@ -550,7 +550,7 @@ func ToolEnv(environ []string) map[string]string {
 
 // runReloads waits for a change or settlement. The one-shot delay groups writes
 // and lets the Harness finish its turn before the idle check.
-func runReloads(ctx context.Context, native *engine.Agents, chats *chat.Service) {
+func runReloads(ctx context.Context, native *engine.Agents, sessions *session.Service) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -570,7 +570,7 @@ func runReloads(ctx context.Context, native *engine.Agents, chats *chat.Service)
 		}
 		var batch sync.WaitGroup
 		for _, id := range native.ReadyReloads() {
-			batch.Go(func() { _ = chats.ReloadDirtyExtensions(ctx, id) })
+			batch.Go(func() { _ = sessions.ReloadDirtyExtensions(ctx, id) })
 		}
 		batch.Wait()
 	}

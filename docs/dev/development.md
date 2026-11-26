@@ -19,11 +19,11 @@ Check: `mise run check` passes.
    touch an installed dex on port 8787 or its data in `~/.dex`.
 2. Open <http://127.0.0.1:18787>. The default agent timeline opens.
 3. On Providers, add a built-in provider with its API key, or a custom one with its
-   API (OpenAI Chat Completions, OpenAI Responses, or Anthropic Messages), base
+   API (OpenAI Session Completions, OpenAI Responses, or Anthropic Messages), base
    URL, and key. Add more providers if you want.
 4. In the agent Settings tab, choose a model.
 
-Check: a new chat answers a message, and the answer appears while the model
+Check: a new session answers a message, and the answer appears while the model
 writes it.
 
 To change the web UI with hot reload, run `mise run dev:server` and

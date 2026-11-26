@@ -28,10 +28,10 @@ SELECT CAST(coalesce(max(id), 0) AS INTEGER) FROM task_entries;
 -- name: ListTaskEvents :many
 SELECT id, task_id FROM task_entries WHERE id > @after_id ORDER BY id LIMIT 128;
 
--- name: HasTaskConversation :one
+-- name: HasTaskSession :one
 SELECT EXISTS (
-  SELECT 1 FROM task_sessions s WHERE s.conversation_id = sqlc.arg(chat_id)
+  SELECT 1 FROM task_sessions s WHERE s.session_id = sqlc.arg(session_id)
   UNION ALL
   SELECT 1 FROM submissions s JOIN task_inputs i ON i.submission_id = s.id
-  WHERE s.conversation_id = sqlc.arg(chat_id)
+  WHERE s.session_id = sqlc.arg(session_id)
 );

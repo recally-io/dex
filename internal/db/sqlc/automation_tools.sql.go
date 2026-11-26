@@ -10,14 +10,14 @@ import (
 )
 
 const createAutomationToolOperation = `-- name: CreateAutomationToolOperation :exec
-INSERT INTO automation_tool_operations (key, agent_id, conversation_id, source_request_id, action, result)
+INSERT INTO automation_tool_operations (key, agent_id, session_id, source_request_id, action, result)
 VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateAutomationToolOperationParams struct {
 	Key             string `json:"key"`
 	AgentID         string `json:"agent_id"`
-	ConversationID  int64  `json:"conversation_id"`
+	SessionID       int64  `json:"session_id"`
 	SourceRequestID string `json:"source_request_id"`
 	Action          string `json:"action"`
 	Result          string `json:"result"`
@@ -27,7 +27,7 @@ func (q *Queries) CreateAutomationToolOperation(ctx context.Context, arg CreateA
 	_, err := q.db.ExecContext(ctx, createAutomationToolOperation,
 		arg.Key,
 		arg.AgentID,
-		arg.ConversationID,
+		arg.SessionID,
 		arg.SourceRequestID,
 		arg.Action,
 		arg.Result,
@@ -36,7 +36,7 @@ func (q *Queries) CreateAutomationToolOperation(ctx context.Context, arg CreateA
 }
 
 const getAutomationToolOperation = `-- name: GetAutomationToolOperation :one
-SELECT "key", agent_id, conversation_id, source_request_id, "action", result FROM automation_tool_operations WHERE key = ?
+SELECT "key", agent_id, session_id, source_request_id, "action", result FROM automation_tool_operations WHERE key = ?
 `
 
 func (q *Queries) GetAutomationToolOperation(ctx context.Context, key string) (AutomationToolOperation, error) {
@@ -45,7 +45,7 @@ func (q *Queries) GetAutomationToolOperation(ctx context.Context, key string) (A
 	err := row.Scan(
 		&i.Key,
 		&i.AgentID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.SourceRequestID,
 		&i.Action,
 		&i.Result,

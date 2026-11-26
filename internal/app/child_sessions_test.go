@@ -15,7 +15,7 @@ import (
 )
 
 // The tests in this file drive real PiG, real SQLite files, and the faux provider. The parent
-// chat uses the model "spawn": its message is the JSON arguments of one session tool.
+// session uses the model "spawn": its message is the JSON arguments of one session tool.
 
 type childRef struct {
 	ID    string `json:"id"`
@@ -29,13 +29,13 @@ type resultRow struct {
 	id, status, content, answer string
 }
 
-// callSessionTool lets the parent chat call one session tool through the model "spawn".
-func callSessionTool(t *testing.T, d *dex, chatID int64, tool string, args map[string]any) string {
+// callSessionTool lets the parent session call one session tool through the model "spawn".
+func callSessionTool(t *testing.T, d *dex, sessionID int64, tool string, args map[string]any) string {
 	t.Helper()
 	d.setModel(t, "spawn")
 	args["tool"] = tool
-	id := d.send(t, chatID, childJSON(t, args))
-	w := d.watch(t, chatID)
+	id := d.send(t, sessionID, childJSON(t, args))
+	w := d.watch(t, sessionID)
 	var answer string
 	// Results of other children can follow this turn. The answer of this turn is the first
 	// assistant item after its input, and it is complete when the run is idle.
@@ -69,16 +69,16 @@ func toolJSON(t *testing.T, answer string, out any) {
 	}
 }
 
-// newParent starts a chat whose first turn is an ordinary answer.
+// newParent starts a session whose first turn is an ordinary answer.
 func newParent(t *testing.T, d *dex) int64 {
 	t.Helper()
 	d.setModel(t, "echo")
-	parent := d.newChat(t, "parent")
+	parent := d.newSessionWithMessage(t, "parent")
 	d.watch(t, parent).until(t, "first answer", answeredWith("echo: parent"))
 	return parent
 }
 
-// spawnChild asks the parent chat to create a child session on a faux model.
+// spawnChild asks the parent session to create a child session on a faux model.
 func spawnChild(t *testing.T, d *dex, parent int64, title, message, model string) childRef {
 	t.Helper()
 	var ref childRef
@@ -100,7 +100,7 @@ func (r childRef) conversation(t *testing.T) int64 {
 
 func resultRows(t *testing.T, conn *sql.DB, parent int64) []resultRow {
 	t.Helper()
-	rows, err := conn.QueryContext(t.Context(), `SELECT id, status, content, coalesce(answer, '') FROM submissions WHERE conversation_id = ? AND kind = 'session_result' ORDER BY rowid`, parent)
+	rows, err := conn.QueryContext(t.Context(), `SELECT id, status, content, coalesce(answer, '') FROM submissions WHERE session_id = ? AND kind = 'session_result' ORDER BY rowid`, parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ type childTurnRow struct {
 
 func childTurns(t *testing.T, conn *sql.DB, child int64) []childTurnRow {
 	t.Helper()
-	rows, err := conn.QueryContext(t.Context(), `SELECT id, status, coalesce(reason, ''), coalesce(answer, ''), coalesce(parent_request_id, '') FROM submissions WHERE conversation_id = ? AND kind = 'message' ORDER BY rowid`, child)
+	rows, err := conn.QueryContext(t.Context(), `SELECT id, status, coalesce(reason, ''), coalesce(answer, ''), coalesce(parent_request_id, '') FROM submissions WHERE session_id = ? AND kind = 'message' ORDER BY rowid`, child)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func resultBody(t *testing.T, content string) map[string]any {
 
 func TestUserChildSessionSendsOneResultToItsParent(t *testing.T) {
 	t.Parallel()
-	// Given a parent chat that creates a child session on a model that echoes its message.
+	// Given a parent session that creates a child session on a model that echoes its message.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
@@ -207,7 +207,7 @@ func TestUserChildSessionSendsOneResultToItsParent(t *testing.T) {
 		t.Fatalf("parent did not process the result: %+v", rows[0])
 	}
 	var parentID sql.NullInt64
-	if err := conn.QueryRowContext(t.Context(), `SELECT parent_id FROM conversations WHERE id = ?`, child.conversation(t)).Scan(&parentID); err != nil || parentID.Int64 != parent {
+	if err := conn.QueryRowContext(t.Context(), `SELECT parent_id FROM sessions WHERE id = ?`, child.conversation(t)).Scan(&parentID); err != nil || parentID.Int64 != parent {
 		t.Fatalf("child parent_id = %v: %v", parentID, err)
 	}
 	// And the child is idle in session_list.
@@ -231,7 +231,7 @@ func TestUserChildSessionSendRunsAgainAndSendsAnotherResult(t *testing.T) {
 	var child childRef
 	toolJSON(t, created, &child)
 	var parent int64
-	if err := conn.QueryRowContext(t.Context(), `SELECT parent_id FROM conversations WHERE id = ?`, child.conversation(t)).Scan(&parent); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT parent_id FROM sessions WHERE id = ?`, child.conversation(t)).Scan(&parent); err != nil {
 		t.Fatal(err)
 	}
 	firstRows := waitResults(t, conn, parent, 1)
@@ -364,7 +364,7 @@ func TestUserRestartInterruptsRunningChildOnceAndNeverReruns(t *testing.T) {
 	// And a second restart sends no further result.
 	d.stop()
 	d = startDex(t, dir, "")
-	d.mainChat(t)
+	d.mainSession(t)
 	waitResults(t, conn, parent, 1)
 	if got := waitTaskFile(t, counter); got != "run\n" {
 		t.Fatalf("shell ran again after the second restart: %q", got)
@@ -409,9 +409,9 @@ func TestUserRestartWithdrawsQueuedChildInputsAndNamesThem(t *testing.T) {
 	}
 }
 
-func TestUserOtherConversationsCannotSendToOrStopAChild(t *testing.T) {
+func TestUserOtherSessionsCannotSendToOrStopAChild(t *testing.T) {
 	t.Parallel()
-	// Given a child of one chat and another chat of the same bot.
+	// Given a child of one session and another session of the same bot.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
@@ -419,9 +419,9 @@ func TestUserOtherConversationsCannotSendToOrStopAChild(t *testing.T) {
 	child := spawnChild(t, d, parent, "Owned", "hello", "echo")
 	waitResults(t, conn, parent, 1)
 	d.setModel(t, "echo")
-	other := d.newChat(t, "other")
+	other := d.newSessionWithMessage(t, "other")
 	d.watch(t, other).until(t, "other answer", answeredWith("echo: other"))
-	// When the other chat tries to send to or stop the child, the child is not found.
+	// When the other session tries to send to or stop the child, the child is not found.
 	for _, call := range []struct {
 		tool string
 		args map[string]any
@@ -430,7 +430,7 @@ func TestUserOtherConversationsCannotSendToOrStopAChild(t *testing.T) {
 		{"session_stop", map[string]any{"id": child.ID}},
 	} {
 		if got := callSessionTool(t, d, other, call.tool, call.args); !strings.HasPrefix(got, "spawn error") || !strings.Contains(got, "not found") {
-			t.Fatalf("%s from another chat: %s", call.tool, got)
+			t.Fatalf("%s from another session: %s", call.tool, got)
 		}
 	}
 	if turns := childTurns(t, conn, child.conversation(t)); len(turns) != 1 {
@@ -443,7 +443,7 @@ func TestUserOtherConversationsCannotSendToOrStopAChild(t *testing.T) {
 		t.Fatalf("child called a session tool: %s", got)
 	}
 	var grandchildren int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM conversations WHERE parent_id = ?`, nested.conversation(t)).Scan(&grandchildren); err != nil || grandchildren != 0 {
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM sessions WHERE parent_id = ?`, nested.conversation(t)).Scan(&grandchildren); err != nil || grandchildren != 0 {
 		t.Fatalf("grandchildren: %d %v", grandchildren, err)
 	}
 }
@@ -474,35 +474,35 @@ func readSession(t *testing.T, d *dex, caller int64, args map[string]any) readPa
 
 func TestUserSessionReadReturnsOnlyInputsAndAnswers(t *testing.T) {
 	t.Parallel()
-	// Given a Chat with three turns, one of them long, the main chat, a chat of another bot, and a dream.
+	// Given a Session with three turns, one of them long, the main session, a session of another bot, and a dream.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
-	chat := d.newChat(t, "one")
+	session := d.newSessionWithMessage(t, "one")
 	for _, text := range []string{"two", "three"} {
-		d.send(t, chat, text)
-		d.watch(t, chat).until(t, "answer "+text, answeredWith("echo: "+text))
+		d.send(t, session, text)
+		d.watch(t, session).until(t, "answer "+text, answeredWith("echo: "+text))
 	}
 	long := strings.Repeat("x", 5000)
-	d.send(t, chat, long)
-	d.watch(t, chat).until(t, "long answer", answeredWith("echo: xxxx"))
-	main := d.mainChat(t)
+	d.send(t, session, long)
+	d.watch(t, session).until(t, "long answer", answeredWith("echo: xxxx"))
+	main := d.mainSession(t)
 	d.send(t, main, "main only")
 	d.watch(t, main).until(t, "main answer", answeredWith("echo: main only"))
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
-	var otherMain chatInfo
-	d.must(t, http.MethodGet, "/api/agents/"+other.ID+"/chats/main", nil, &otherMain)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "other bot secret"}, nil, http.StatusAccepted)
-	d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: other bot secret"))
+	var otherMain sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/"+other.ID+"/sessions/main", nil, &otherMain)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "other bot secret"}, nil, http.StatusAccepted)
+	d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: other bot secret"))
 	dream := sessionFixture(t, d, "dream:private", 1)
-	if _, err := sessionDB(t, d).ExecContext(t.Context(), "INSERT INTO submissions (id, conversation_id, content, attachments, kind, status, created_at) VALUES ('dream-turn', ?, 'dream input', 'null', 'message', 'done', 2)", dream); err != nil {
+	if _, err := sessionDB(t, d).ExecContext(t.Context(), "INSERT INTO submissions (id, session_id, content, attachments, kind, status, created_at) VALUES ('dream-turn', ?, 'dream input', 'null', 'message', 'done', 2)", dream); err != nil {
 		t.Fatal(err)
 	}
 	reader := d.newSession(t).ID
-	// When another Chat reads it by ID.
-	chatID := fmt.Sprint(chat)
-	page := readSession(t, d, reader, map[string]any{"id": chatID, "limit": 2})
+	// When another Session reads it by ID.
+	sessionID := fmt.Sprint(session)
+	page := readSession(t, d, reader, map[string]any{"id": sessionID, "limit": 2})
 	// Then it gets the newest turns first with their inputs and answers, cut at 4000 characters.
 	if len(page.Turns) != 2 || page.Next == "" {
 		t.Fatalf("first page: %+v", page)
@@ -515,16 +515,16 @@ func TestUserSessionReadReturnsOnlyInputsAndAnswers(t *testing.T) {
 		t.Fatalf("second turn: %+v", page.Turns[1])
 	}
 	// And before pages back to the older turns.
-	older := readSession(t, d, reader, map[string]any{"id": chatID, "before": page.Next, "limit": 5})
+	older := readSession(t, d, reader, map[string]any{"id": sessionID, "before": page.Next, "limit": 5})
 	if len(older.Turns) != 2 || older.Turns[0].Input != "two" || older.Turns[1].Input != "one" || older.Next != "" {
 		t.Fatalf("older page: %+v", older)
 	}
 	// And turn with offset reads the rest of a cut text.
-	rest := readSession(t, d, reader, map[string]any{"id": chatID, "turn": first.Turn, "field": "input", "offset": 4000})
+	rest := readSession(t, d, reader, map[string]any{"id": sessionID, "turn": first.Turn, "field": "input", "offset": 4000})
 	if rest.Text != strings.Repeat("x", 1000) || rest.HasMore {
 		t.Fatalf("rest of input: %d %v", len(rest.Text), rest.HasMore)
 	}
-	rest = readSession(t, d, reader, map[string]any{"id": chatID, "turn": first.Turn, "offset": 4000})
+	rest = readSession(t, d, reader, map[string]any{"id": sessionID, "turn": first.Turn, "offset": 4000})
 	if len(rest.Text) != 1006 {
 		t.Fatalf("rest of answer: %d", len(rest.Text))
 	}
@@ -564,9 +564,9 @@ func TestUserSessionSearchDefaultsToCurrentSession(t *testing.T) {
 	// Given two sessions with matching messages, with the other session newer.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
-	current := d.newChat(t, "needle in current history")
+	current := d.newSessionWithMessage(t, "needle in current history")
 	d.watch(t, current).until(t, "current answer", answered("echo: needle in current history"))
-	other := d.newChat(t, "needle in other history")
+	other := d.newSessionWithMessage(t, "needle in other history")
 	d.watch(t, other).until(t, "other answer", answered("echo: needle in other history"))
 
 	// When the current session searches without a target, it finds its own earlier turn.
@@ -586,22 +586,22 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 	d := startDex(t, dir, "")
 	conn := taskResultDB(t, dir)
 	d.setModel(t, "echo")
-	notes := d.newChat(t, "数据库迁移方案已经确定")
+	notes := d.newSessionWithMessage(t, "数据库迁移方案已经确定")
 	d.watch(t, notes).until(t, "answer", answeredWith("echo: 数据库迁移方案已经确定"))
-	english := d.newChat(t, "Quarterly Report draft for Alpha")
+	english := d.newSessionWithMessage(t, "Quarterly Report draft for Alpha")
 	d.watch(t, english).until(t, "answer", answeredWith("echo: Quarterly Report draft for Alpha"))
 	var other apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &other, http.StatusCreated)
-	var otherMain chatInfo
-	d.must(t, http.MethodGet, "/api/agents/"+other.ID+"/chats/main", nil, &otherMain)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/chats/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "zebra quarterly"}, nil, http.StatusAccepted)
-	d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: zebra quarterly"))
-	// The parent of the child holds the result rows. The Chat that searches is another one.
+	var otherMain sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/"+other.ID+"/sessions/main", nil, &otherMain)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/%s/sessions/%d/messages", other.ID, otherMain.ID), map[string]string{"id": uuid.NewV7().String(), "text": "zebra quarterly"}, nil, http.StatusAccepted)
+	d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", other.ID, otherMain.ID)).until(t, "other answer", answeredWith("echo: zebra quarterly"))
+	// The parent of the child holds the result rows. The Session that searches is another one.
 	parent := newParent(t, d)
 	spawnChild(t, d, parent, "Finder", "child-only needle", "echo")
 	waitResults(t, conn, parent, 1)
 	searcher := d.newSession(t).ID
-	// When a Chat searches, a Chinese phrase matches inside a sentence.
+	// When a Session searches, a Chinese phrase matches inside a sentence.
 	if got := searchSessions(t, d, searcher, map[string]any{"query": "迁移方案", "session": "all"}); len(got) != 1 || got[0].Session != fmt.Sprint(notes) || !strings.Contains(got[0].Snippet, "迁移方案") {
 		t.Fatalf("chinese: %+v", got)
 	}
@@ -640,7 +640,7 @@ func TestUserSessionSearchFindsInputsAndAnswers(t *testing.T) {
 func childCwd(t *testing.T, conn *sql.DB, child int64) string {
 	t.Helper()
 	var cwd string
-	if err := conn.QueryRowContext(t.Context(), `SELECT cwd FROM conversations WHERE id = ?`, child).Scan(&cwd); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT cwd FROM sessions WHERE id = ?`, child).Scan(&cwd); err != nil {
 		t.Fatal(err)
 	}
 	return cwd
@@ -686,7 +686,7 @@ func TestUserChildSessionRunsInTheGivenProject(t *testing.T) {
 
 func TestUserChildSessionInheritsTheParentProject(t *testing.T) {
 	t.Parallel()
-	// Given a Chat with a selected project.
+	// Given a Session with a selected project.
 	data := t.TempDir()
 	project, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -696,7 +696,7 @@ func TestUserChildSessionInheritsTheParentProject(t *testing.T) {
 	conn := taskResultDB(t, data)
 	parent := newParent(t, d)
 	d.must(t, http.MethodPut, projectURL(parent), map[string]string{"cwd": project}, nil)
-	// When the Chat creates a child without cwd.
+	// When the Session creates a child without cwd.
 	child := spawnChild(t, d, parent, "Inherit", "pwd > inherited-cwd", "bash")
 	waitResults(t, conn, parent, 1)
 	// Then the child has the cwd of the parent.

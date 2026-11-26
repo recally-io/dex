@@ -25,16 +25,16 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 	m := enrollMachine(t, d)
 	m.connect(d)
 	d.setModel(t, "tool")
-	var session sessionInfo
-	d.must(t, http.MethodPost, "/api/agents/default/chats", nil, &session, http.StatusCreated)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", session.ID), map[string]string{"runnerId": m.envID}, nil)
-	chat := botChat{bots: &bots{t: t, d: d}, agent: "default", id: session.ID}
+	var opened sessionInfo
+	d.must(t, http.MethodPost, "/api/agents/default/sessions", nil, &opened, http.StatusCreated)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", opened.ID), map[string]string{"runnerId": m.envID}, nil)
+	session := botSession{bots: &bots{t: t, d: d}, agent: "default", id: opened.ID}
 	server := httpServer(t, t.TempDir())
 	url := server["url"].(string)
 
 	// When the agent adds an HTTP server, wait for the automatic reload without a new turn.
-	chat.send(`mcp_server_set {"name":"files","level":"dex","config":{"type":"http","url":"` + url + `"}}`)
-	chat.watch().until(t, "write result", answeredWith("tool: "))
+	session.send(`mcp_server_set {"name":"files","level":"dex","config":{"type":"http","url":"` + url + `"}}`)
+	session.watch().until(t, "write result", answeredWith("tool: "))
 	settled := time.Now()
 	var apiServers []serverInfo
 	eventually(t, "new MCP connection", func() (bool, any) {
@@ -48,8 +48,8 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 	}
 
 	// Then the list tool and the Extensions API (also used by the web) agree, and the runner session can call the new tool.
-	chat.send(`mcp_server_list {}`)
-	w := chat.watch()
+	session.send(`mcp_server_list {}`)
+	w := session.watch()
 	w.until(t, "list matches API", func(tr *transcript) bool {
 		for _, item := range tr.items {
 			if raw, found := strings.CutPrefix(item.Text, "tool: ["); found {
@@ -59,11 +59,11 @@ func TestUserManagesMCPServersFromRunner(t *testing.T) {
 		}
 		return false
 	})
-	chat.send(`mcp__files__append {"text":"new"}`)
+	session.send(`mcp__files__append {"text":"new"}`)
 	w.until(t, "MCP answer", answered("tool: appended 1"))
 
 	// An agent-level override disables the server for this bot only.
-	chat.send(`mcp_server_set {"name":"files","level":"agent","config":{"disabled":true}}`)
+	session.send(`mcp_server_set {"name":"files","level":"agent","config":{"disabled":true}}`)
 	eventually(t, "disabled override", func() (bool, any) {
 		got := d.extensions(t).server("files")
 		return got.Scope == "agent" && got.Overrides && got.State == "disabled", got
@@ -90,7 +90,7 @@ func TestUserEditsMCPWithoutReadingSecretsAndBacksUpDeclarations(t *testing.T) {
 	})
 	d := startDexHome(t, app.Config{DataDir: data, Version: "v1.0.0"}, t.TempDir())
 	d.setModel(t, "tool")
-	w := d.watch(t, d.newChat(t, "mcp_server_get "+args))
+	w := d.watch(t, d.newSessionWithMessage(t, "mcp_server_get "+args))
 	w.until(t, "redacted declaration", func(tr *transcript) bool {
 		for _, item := range tr.items {
 			if strings.Contains(item.Text, secret) {
@@ -106,7 +106,7 @@ func TestUserEditsMCPWithoutReadingSecretsAndBacksUpDeclarations(t *testing.T) {
 	// When the agent edits the args, tries an invalid replacement, and deletes a different declaration.
 	call := func(input, answer string) {
 		t.Helper()
-		d.watch(t, d.newChat(t, input)).until(t, input, answeredWith(answer))
+		d.watch(t, d.newSessionWithMessage(t, input)).until(t, input, answeredWith(answer))
 	}
 	call(`mcp_server_set {"name":"first","level":"agent","config":{"disabled":true,"args":["new"],"env":{"API_KEY":"[hidden]"},"headers":{"Authorization":"${vault:NOTION_TOKEN}"},"url":"https://example.invalid/mcp?[hidden]"}}`, "tool: ")
 	call(`mcp_server_set {"name":"first","level":"agent","config":{"type":"http"}}`, "tool error: ")

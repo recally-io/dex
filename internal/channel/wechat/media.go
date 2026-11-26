@@ -14,14 +14,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/upload"
 )
 
 var errInvalidMessage = errors.New("invalid inbound WeChat message")
 
-func (b *Bot) convert(ctx context.Context, items []item) (chat.Message, error) {
-	var input chat.Message
+func (b *Bot) convert(ctx context.Context, items []item) (session.Message, error) {
+	var input session.Message
 	var texts []string
 	for _, it := range items {
 		if it.Ref != nil {

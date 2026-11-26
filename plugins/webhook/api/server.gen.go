@@ -27,11 +27,11 @@ type AgentId = string
 // AutomationId defines model for AutomationId.
 type AutomationId = string
 
-// ChatId defines model for ChatId.
-type ChatId = int64
-
 // RunnerId defines model for RunnerId.
 type RunnerId = string
+
+// SessionId defines model for SessionId.
+type SessionId = int64
 
 // TaskKey defines model for TaskKey.
 type TaskKey = string

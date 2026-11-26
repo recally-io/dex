@@ -12,16 +12,16 @@ import (
 	"sync"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/upload"
 )
 
 type inbound interface {
 	channel.WebhookInbox
-	Receive(ctx context.Context, peer, source string, msg chat.Message) error
-	QueueChannelNotice(ctx context.Context, peer, source string, identity chat.ChannelContext, body string) error
+	Receive(ctx context.Context, peer, source string, msg session.Message) error
+	QueueChannelNotice(ctx context.Context, peer, source string, identity session.ChannelContext, body string) error
 	ReceivedSource(ctx context.Context, source string) (bool, error)
-	Source(ctx context.Context, source string) (chat.SourceReceipt, error)
+	Source(ctx context.Context, source string) (session.SourceReceipt, error)
 	Report(name string, status channel.Status)
 }
 
@@ -110,7 +110,7 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 		b.cfg.OwnerID = m.Sender
 		b.manager.Report("feishu", channel.Status{State: "running"})
 		return b.manager.QueueChannelNotice(sessionCtx, "feishu:"+m.Sender, "feishu:"+b.cfg.AppID+":"+m.ID,
-			chat.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender}, "Paired. Send a message to start.")
+			session.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender}, "Paired. Send a message to start.")
 	}
 	// Pairing codes are control data, including repeated setup events.
 	if strings.HasPrefix(m.Text, "/pair ") {
@@ -131,15 +131,15 @@ func (b *Bot) receive(sessionCtx, botCtx context.Context, data []byte) error {
 		return nil
 	}
 	peer := "feishu:" + m.Sender
-	actor := chat.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender, MessageID: m.ID}
+	actor := session.ChannelContext{AccountID: b.cfg.AppID, SenderID: m.Sender, MessageID: m.ID}
 	if channel.IsFeedbackCommand(m.Text) {
 		text := channel.FeedbackCommand
 		if m.PlainText {
 			text = m.Text
 		}
-		return b.manager.Receive(botCtx, peer, source, chat.Message{Content: text, ChannelContext: actor})
+		return b.manager.Receive(botCtx, peer, source, session.Message{Content: text, ChannelContext: actor})
 	}
-	msg := chat.Message{Content: m.Text, ReplyTo: m.ReplyTo, ChannelContext: actor}
+	msg := session.Message{Content: m.Text, ReplyTo: m.ReplyTo, ChannelContext: actor}
 	stored := false
 	defer func() {
 		if !stored {

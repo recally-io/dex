@@ -17,7 +17,7 @@ import (
 
 func configureTelegramSpeech(t *testing.T, d *dex, endpoint string, stt map[string]any) {
 	t.Helper()
-	d.must(t, http.MethodPut, "/api/settings/providers/speech", map[string]any{"api": "openai-completions", "baseUrl": endpoint + "/v1", "apiKey": "synthetic-local-key", "models": []string{"chat-only"}}, nil)
+	d.must(t, http.MethodPut, "/api/settings/providers/speech", map[string]any{"api": "openai-completions", "baseUrl": endpoint + "/v1", "apiKey": "synthetic-local-key", "models": []string{"session-only"}}, nil)
 	options := map[string]any{"stt": stt}
 	d.must(t, http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "", "allowedUsers": []int64{42}, "options": options}, nil)
 }
@@ -34,7 +34,7 @@ func localSTT(t *testing.T, text string) (*httptest.Server, *atomic.Int64) {
 	calls := new(atomic.Int64)
 	boundary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
-			_ = json.MarshalWrite(w, map[string]any{"data": []any{map[string]any{"id": "chat-only"}}})
+			_ = json.MarshalWrite(w, map[string]any{"data": []any{map[string]any{"id": "session-only"}}})
 			return
 		}
 		if r.URL.Path != "/v1/audio/transcriptions" {
@@ -238,7 +238,7 @@ printf synthetic-local-key
 	d.must(t, http.MethodPut, "/api/settings/onepassword", map[string]any{"mode": "service-account", "serviceAccountToken": "synthetic-auth"}, nil)
 	boundary, calls := localSTT(t, "reference credential works")
 	configureTelegramSpeech(t, d, boundary.URL, map[string]any{"enabled": true, "allowSending": true, "provider": "speech", "model": "transcribe-explicit"})
-	d.must(t, http.MethodPut, "/api/settings/providers/speech", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "apiKey": "op://Synthetic/provider/api-key", "models": []string{"chat-only"}}, nil)
+	d.must(t, http.MethodPut, "/api/settings/providers/speech", map[string]any{"api": "openai-completions", "baseUrl": boundary.URL + "/v1", "apiKey": "op://Synthetic/provider/api-key", "models": []string{"session-only"}}, nil)
 	// When STT starts, only its selected endpoint receives the resolved in-memory key.
 	f.voice()
 	if got := f.next(t).Text; !strings.Contains(got, "reference credential works") {

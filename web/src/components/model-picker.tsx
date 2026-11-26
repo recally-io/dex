@@ -65,7 +65,7 @@ function search(list: Group[], query: string): Group[] {
   });
 }
 
-/** The model of one chat or override field. null clears or follows the default. */
+/** The model of one session or override field. null clears or follows the default. */
 export type ModelOverride = {
   value: { provider: string; modelId: string } | null;
   defaultName: string;

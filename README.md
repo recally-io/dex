@@ -121,7 +121,7 @@ dex reads skills from these directories:
 | Project | `<cwd>/.agents/skills/<name>/SKILL.md`              |
 
 dex does not read `~/.agents`. A narrower entry replaces the wider entry with the same name; Project is the
-narrowest. Main and Chats, including child Sessions, can select a project
+narrowest. Main and Sessions, including child Sessions, can select a project
 directory. The picker browses folders on the Session's Runner and lists recent projects for the
 current agent. Use Up or Home to navigate, or enter a path and press Enter.
 Select **Use this folder** to save the current folder. The `set_project` tool

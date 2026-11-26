@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { listArchivedAgentsOptions, restoreAgentMutation } from "../api/generated/@tanstack/react-query.gen";
-import { queryClient, refreshChats } from "../lib/queries";
+import { queryClient, refreshSessions } from "../lib/queries";
 import { refreshAutomationResults } from "../lib/automation-results";
 import { useApp } from "../lib/app-state";
 import { Failure, Loading } from "../components/feedback";
@@ -57,7 +57,7 @@ function ArchivedRow({ id, name, at }: { id: string; name: string; at?: number }
     onSuccess: async () => {
       await Promise.all([
         refreshAutomationResults(),
-        refreshChats(id),
+        refreshSessions(id),
         queryClient.invalidateQueries({ queryKey: [{ _id: "listAgents" }] }),
         queryClient.invalidateQueries({ queryKey: [{ _id: "listArchivedAgents" }] }),
       ]);

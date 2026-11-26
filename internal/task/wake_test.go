@@ -127,7 +127,7 @@ func TestUserGetsCrossBotReviewWakesOnlyAfterCommit(t *testing.T) {
 	q := sqlc.New(conn)
 	var woken []string
 	svc := tasksvc.New(conn, func(id int64) {
-		conv, err := q.GetConversation(t.Context(), id)
+		conv, err := q.GetSession(t.Context(), id)
 		if err != nil || conv.ChannelKey != "main" {
 			t.Fatalf("wake did not target a committed Main: %+v, %v", conv, err)
 		}

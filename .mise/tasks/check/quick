@@ -5,7 +5,7 @@ set -euo pipefail
 # CI runs the full `mise run check`. This check must stay fast, so it does three things:
 # - It skips the checks whose inputs did not change since origin/main.
 # - It runs the Go tests without -race. The race detector instruments the modernc SQLite engine,
-#   so internal/chat takes about 510 s with -race and about 40 s without it. CI keeps -race.
+#   so internal/session takes about 510 s with -race and about 40 s without it. CI keeps -race.
 # - It runs the independent checks in parallel.
 # It skips internal/app (about 5 minutes) and the four cross-platform builds.
 

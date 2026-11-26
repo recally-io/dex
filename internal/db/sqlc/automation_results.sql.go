@@ -35,7 +35,7 @@ func (q *Queries) DismissAutomationResult(ctx context.Context, arg DismissAutoma
 const listAutomationResults = `-- name: ListAutomationResults :many
 SELECT r.id AS run_id, a.agent_id, b.name AS agent_name,
     a.id AS automation_id, a.name AS automation_name,
-    CAST(coalesce(s.conversation_id, 0) AS INTEGER) AS chat_id,
+    CAST(coalesce(s.session_id, 0) AS INTEGER) AS session_id,
     CAST(CASE WHEN r.status = 'failed' OR s.status = 'unanswered' THEN 'failed' ELSE r.outcome END AS TEXT) AS outcome,
     CAST(CASE WHEN r.summary = '' THEN coalesce(r.reason, s.reason, '') ELSE r.summary END AS TEXT) AS summary, r.created_at,
     r.read_at, r.dismissed_at, r.runner_id, r.cwd
@@ -55,7 +55,7 @@ type ListAutomationResultsRow struct {
 	AgentName      string        `json:"agent_name"`
 	AutomationID   string        `json:"automation_id"`
 	AutomationName string        `json:"automation_name"`
-	ChatID         int64         `json:"chat_id"`
+	SessionID      int64         `json:"session_id"`
 	Outcome        string        `json:"outcome"`
 	Summary        string        `json:"summary"`
 	CreatedAt      int64         `json:"created_at"`
@@ -80,7 +80,7 @@ func (q *Queries) ListAutomationResults(ctx context.Context, includeDismissed in
 			&i.AgentName,
 			&i.AutomationID,
 			&i.AutomationName,
-			&i.ChatID,
+			&i.SessionID,
 			&i.Outcome,
 			&i.Summary,
 			&i.CreatedAt,

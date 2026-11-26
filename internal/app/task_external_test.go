@@ -120,11 +120,11 @@ func TestUserExternalTaskTokenOnlyActsOnItsExecution(t *testing.T) {
 
 	// The execution list still includes Session links when no kind is selected.
 	q := sqlc.New(conn)
-	conv, err := q.EnsureConversation(t.Context(), sqlc.EnsureConversationParams{AgentID: "default", ChannelKey: "chat:list", Title: "List"})
+	conv, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "default", ChannelKey: "chat:list", Title: "List"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	link, err := q.LinkTaskSession(t.Context(), sqlc.LinkTaskSessionParams{TaskID: first.Id, ConversationID: conv.ID, LinkedAt: initial.Execution.StartedAt + 1})
+	link, err := q.LinkTaskSession(t.Context(), sqlc.LinkTaskSessionParams{TaskID: first.Id, SessionID: conv.ID, LinkedAt: initial.Execution.StartedAt + 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,8 +149,8 @@ func TestUserDispatchesExternalBoardRunThroughARunnerProcess(t *testing.T) {
 	d.must(t, http.MethodGet, "/api/agents/default", nil, &bot)
 	bot.Provider, bot.ModelID, bot.ThinkingLevel, bot.RunnerID = "faux", "tool", "off", m.envID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"title": "Dispatch a build", "assigneeBotId": "default"}, &task, http.StatusCreated)
 	workspace := filepath.Join(m.state, "workspace")

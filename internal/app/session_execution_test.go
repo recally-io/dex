@@ -15,7 +15,7 @@ func TestUserSeesCurrentChildStateWithoutText(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "spawn")
-	parent := d.mainChat(t)
+	parent := d.mainSession(t)
 	pw := d.watch(t, parent)
 	release := filepath.Join(dir, "first")
 	nextRelease := filepath.Join(dir, "second")

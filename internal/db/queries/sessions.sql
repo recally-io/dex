@@ -1,14 +1,14 @@
--- name: CreateChildConversation :one
--- A child session is a Chat with a parent. Its first turn is stored in the same transaction.
-INSERT INTO conversations (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
+-- name: CreateChildSession :one
+-- A child session is a Session with a parent. Its first turn is stored in the same transaction.
+INSERT INTO sessions (agent_id, channel_key, title, model_provider, model_id, thinking_level, cwd, runner_id, parent_id, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: CreateParentTurn :execrows
 -- A turn that the parent session sends. The origin task keeps the turn out of user channels
 -- and routine creation. A turn whose ID exists already is not stored again.
-INSERT INTO submissions (id, conversation_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
-VALUES (@id, @conversation_id, @content, 'null', 'task', 'sub_session', '', '', 'message', @when_busy, @parent_request_id, 'pending', @created_at)
+INSERT INTO submissions (id, session_id, content, attachments, origin, producer, reply_channel, reply_peer, kind, when_busy, parent_request_id, status, created_at)
+VALUES (@id, @session_id, @content, 'null', 'task', 'sub_session', '', '', 'message', @when_busy, @parent_request_id, 'pending', @created_at)
 ON CONFLICT DO NOTHING;
 
 -- name: ListSessions :many
@@ -24,11 +24,11 @@ SELECT
     c.parent_id,
     CAST(max(
         c.created_at,
-        coalesce((SELECT max(s.created_at) FROM submissions s WHERE s.conversation_id = c.id), c.created_at),
-        coalesce((SELECT max(s.settled_at) FROM submissions s WHERE s.conversation_id = c.id), c.created_at)
+        coalesce((SELECT max(s.created_at) FROM submissions s WHERE s.session_id = c.id), c.created_at),
+        coalesce((SELECT max(s.settled_at) FROM submissions s WHERE s.session_id = c.id), c.created_at)
     ) AS INTEGER) AS updated_at,
-    CAST((SELECT count(*) FROM submissions s WHERE s.conversation_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
-FROM conversations c
+    CAST((SELECT count(*) FROM submissions s WHERE s.session_id = c.id AND s.status = 'pending') AS INTEGER) AS pending
+FROM sessions c
 JOIN agents a ON a.id = c.agent_id
 WHERE c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND (c.parent_id = @parent_id OR (
@@ -39,19 +39,19 @@ ORDER BY updated_at DESC, c.id DESC
 LIMIT @max_rows;
 
 -- name: PendingCount :one
-SELECT CAST(count(*) AS INTEGER) FROM submissions WHERE conversation_id = ? AND status = 'pending';
+SELECT CAST(count(*) AS INTEGER) FROM submissions WHERE session_id = ? AND status = 'pending';
 
 -- name: LatestTurn :one
 SELECT s.id, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
-WHERE s.conversation_id = ? AND s.kind = 'message'
+WHERE s.session_id = ? AND s.kind = 'message'
 ORDER BY s.rowid DESC LIMIT 1;
 
 -- name: GetTurn :one
 -- A turn is an input of a person or a session. The wake-up of a background command is a turn too: a
 -- parent reads it when the result of a child session cut its answer. It stays a non-user input,
 -- and ListTurns does not list it.
-SELECT s.id, s.conversation_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
+SELECT s.id, s.session_id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
 WHERE s.id = ? AND (s.kind = 'message' OR (s.kind = 'wake' AND s.id LIKE 'background:%'));
 
@@ -59,7 +59,7 @@ WHERE s.id = ? AND (s.kind = 'message' OR (s.kind = 'wake' AND s.id LIKE 'backgr
 -- The turns of a session, newest first. A non-empty before is the turn ID that the page follows.
 SELECT s.id, s.content, s.origin, s.status, s.reason, s.answer, s.created_at, s.settled_at
 FROM submissions s
-WHERE s.conversation_id = @conversation_id AND s.kind = 'message'
+WHERE s.session_id = @session_id AND s.kind = 'message'
     AND (CAST(@before AS TEXT) = '' OR s.rowid < (SELECT x.rowid FROM submissions x WHERE x.id = @before))
 ORDER BY s.rowid DESC
 LIMIT @max_rows;
@@ -67,9 +67,9 @@ LIMIT @max_rows;
 -- name: SearchTurns :many
 -- A turn matches when every non-empty word is a substring of its input or its answer. The caller
 -- lowercases ASCII letters of the words, and lower() does the same for the text.
-SELECT s.id, s.conversation_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
+SELECT s.id, s.session_id, c.agent_id, a.name AS agent_name, c.title, s.content, s.answer, s.created_at
 FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
+JOIN sessions c ON c.id = s.session_id
 JOIN agents a ON a.id = c.agent_id
 WHERE s.kind = 'message' AND c.channel_key NOT LIKE 'dream:%' AND c.channel_key NOT LIKE 'retired-telegram:%'
     AND s.id <> @excluded_turn_id
@@ -90,16 +90,16 @@ LIMIT @max_rows;
 -- a parent turn.
 SELECT s.parent_request_id, s.created_at, c.id AS child_id, c.title, c.parent_id
 FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
+JOIN sessions c ON c.id = s.session_id
 WHERE s.id = ? AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL;
 
 -- name: CreateTurnResult :execrows
 -- The result of a parent turn goes to the parent session as an internal sub_session input
 -- with no inherited channel origin. The ID follows the turn, so a replay does not store a second result.
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
+INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, result_child_id, native_answer_id, channel_context, channel_revoked)
 SELECT @id, c.parent_id, @content, 'null', @id, 'task', 'sub_session', '', '', 'session_result', 'pending', @created_at, c.id, sqlc.narg(native_answer_id), '{}', 0
 FROM submissions turn
-JOIN conversations c ON c.id = turn.conversation_id
+JOIN sessions c ON c.id = turn.session_id
 WHERE turn.id = @turn_id AND c.parent_id IS NOT NULL
 ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 
@@ -108,13 +108,13 @@ ON CONFLICT (result_child_id, native_answer_id) DO NOTHING;
 -- input, because the admission receipt and the native admission are not one transaction.
 SELECT DISTINCT c.id, c.agent_id, c.execution_id
 FROM submissions s
-JOIN conversations c ON c.id = s.conversation_id
+JOIN sessions c ON c.id = s.session_id
 WHERE s.status = 'pending' AND s.parent_request_id IS NOT NULL
     AND c.parent_id IS NOT NULL AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY c.id;
 
 -- name: ListChannelChildren :many
-SELECT * FROM conversations
+SELECT * FROM sessions
 WHERE parent_id = @parent_id AND agent_id = @agent_id
     AND channel_key NOT LIKE 'retired-telegram:%'
 ORDER BY id DESC
@@ -123,24 +123,24 @@ LIMIT 50;
 -- name: ListChildPending :many
 SELECT id, parent_request_id IS NOT NULL AS from_parent, stop_requested
 FROM submissions
-WHERE conversation_id = ? AND status = 'pending'
+WHERE session_id = ? AND status = 'pending'
 ORDER BY rowid;
 
 -- name: RequestParentInputStop :exec
 UPDATE submissions SET stop_requested = 1
-WHERE conversation_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL;
+WHERE session_id = ? AND status = 'pending' AND parent_request_id IS NOT NULL;
 
 -- name: ListStopPendingSessions :many
-SELECT DISTINCT conversation_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
-UNION SELECT conversation_id FROM main_turn_stops;
+SELECT DISTINCT session_id FROM submissions WHERE stop_requested = 1 AND status = 'pending'
+UNION SELECT session_id FROM main_turn_stops;
 
 -- name: ListRecoveryParentInputStops :many
 SELECT s.id, c.agent_id, c.execution_id
-FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE s.stop_requested = 1 AND s.status = 'pending' AND c.execution_id IS NOT NULL AND c.channel_key NOT LIKE 'retired-telegram:%';
 
 -- name: ListParentInputStops :many
-SELECT id FROM submissions WHERE conversation_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid;
+SELECT id FROM submissions WHERE session_id = ? AND stop_requested = 1 AND status = 'pending' ORDER BY rowid;
 
 -- name: FinishParentInputStop :exec
 UPDATE submissions SET stop_requested = 0 WHERE id = ?;

@@ -404,7 +404,7 @@ func TestUserWechatMediaBecomesUploadsAndVoiceBecomesText(t *testing.T) {
 	f.batch("c1", msg)
 	dir := t.TempDir()
 	d := startWechat(t, f, dir)
-	// When the owner sends them, real uploads and chat attachments share the decrypted data.
+	// When the owner sends them, real uploads and session attachments share the decrypted data.
 	connectWechat(t, d)
 	sent := wxSentText(f.next(t))
 	if !strings.Contains(sent, "[引用: earlier answer]\nlook\nspoken words\n[video]") {
@@ -596,7 +596,7 @@ func TestUserWechatStaleLoginNeedsNewScan(t *testing.T) {
 
 func TestUserWechatCommandsStop(t *testing.T) {
 	t.Parallel()
-	// Given an owner chat whose command source IDs are stable.
+	// Given an owner session whose command source IDs are stable.
 	f := newFakeWechat(t)
 	f.batch("c1", wxText(1, "owner", "first"))
 	d := startWechat(t, f, t.TempDir())

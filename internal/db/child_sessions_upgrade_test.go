@@ -96,7 +96,7 @@ func TestUserUpgradesTaskConversationsToChildSessions(t *testing.T) {
 	// Then the task conversation is a child of its parent, the task input is a parent turn, and
 	// every other input stays as it was.
 	parents := map[int64]sql.NullInt64{}
-	readRows(t, conn, `SELECT id, parent_id FROM conversations`, func(scan func(...any) error) error {
+	readRows(t, conn, `SELECT id, parent_id FROM sessions`, func(scan func(...any) error) error {
 		var id int64
 		var parent sql.NullInt64
 		if err := scan(&id, &parent); err != nil {

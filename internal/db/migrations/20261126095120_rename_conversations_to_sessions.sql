@@ -1,0 +1,70 @@
+-- +goose Up
+ALTER TABLE conversations RENAME TO sessions;
+ALTER TABLE submissions RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE automations RENAME COLUMN target_conversation_id TO target_session_id;
+ALTER TABLE automation_tool_operations RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE questions RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE compact_receipts RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE background_commands RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE monitors RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE task_tool_operations RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE main_turn_stops RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE web_notifications RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE telegram_callbacks RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE outbox_messages RENAME COLUMN conversation_id TO session_id;
+ALTER TABLE task_sessions RENAME COLUMN conversation_id TO session_id;
+
+-- SQLite updates index definitions when columns change, but it does not rename indexes.
+DROP INDEX conversations_native;
+CREATE UNIQUE INDEX sessions_native ON sessions (agent_id, execution_id) WHERE execution_id IS NOT NULL;
+DROP INDEX conversations_parent;
+CREATE INDEX sessions_parent ON sessions (parent_id) WHERE parent_id IS NOT NULL;
+DROP INDEX automations_target_conversation;
+CREATE INDEX automations_target_session ON automations (target_session_id) WHERE target_session_id IS NOT NULL;
+DROP INDEX background_commands_conversation;
+CREATE INDEX background_commands_session ON background_commands (session_id, process_started_at);
+DROP INDEX monitors_conv;
+CREATE INDEX monitors_session ON monitors (session_id, created_at DESC);
+DROP INDEX outbox_messages_conversation;
+CREATE INDEX outbox_messages_session ON outbox_messages (session_id, created_at DESC);
+DROP INDEX submissions_conversation_kind;
+CREATE INDEX submissions_session_kind ON submissions (session_id, kind);
+DROP INDEX task_sessions_conversation;
+CREATE INDEX task_sessions_session ON task_sessions (session_id);
+DROP INDEX web_notifications_conversation;
+CREATE INDEX web_notifications_session ON web_notifications (session_id);
+
+-- +goose Down
+ALTER TABLE sessions RENAME TO conversations;
+ALTER TABLE submissions RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE automations RENAME COLUMN target_session_id TO target_conversation_id;
+ALTER TABLE automation_tool_operations RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE questions RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE compact_receipts RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE background_commands RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE monitors RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE task_tool_operations RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE main_turn_stops RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE web_notifications RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE telegram_callbacks RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE outbox_messages RENAME COLUMN session_id TO conversation_id;
+ALTER TABLE task_sessions RENAME COLUMN session_id TO conversation_id;
+
+DROP INDEX sessions_native;
+CREATE UNIQUE INDEX conversations_native ON conversations (agent_id, execution_id) WHERE execution_id IS NOT NULL;
+DROP INDEX sessions_parent;
+CREATE INDEX conversations_parent ON conversations (parent_id) WHERE parent_id IS NOT NULL;
+DROP INDEX automations_target_session;
+CREATE INDEX automations_target_conversation ON automations (target_conversation_id) WHERE target_conversation_id IS NOT NULL;
+DROP INDEX background_commands_session;
+CREATE INDEX background_commands_conversation ON background_commands (conversation_id, process_started_at);
+DROP INDEX monitors_session;
+CREATE INDEX monitors_conv ON monitors (conversation_id, created_at DESC);
+DROP INDEX outbox_messages_session;
+CREATE INDEX outbox_messages_conversation ON outbox_messages (conversation_id, created_at DESC);
+DROP INDEX submissions_session_kind;
+CREATE INDEX submissions_conversation_kind ON submissions (conversation_id, kind);
+DROP INDEX task_sessions_session;
+CREATE INDEX task_sessions_conversation ON task_sessions (conversation_id);
+DROP INDEX web_notifications_session;
+CREATE INDEX web_notifications_conversation ON web_notifications (conversation_id);

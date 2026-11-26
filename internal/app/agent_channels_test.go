@@ -47,9 +47,9 @@ func TestUserConnectsTelegramBotsToSeparateAgents(t *testing.T) {
 			if sent := check.bot.next(t); sent.Text != check.want {
 				t.Fatalf("%s reply=%+v want=%s", check.base, sent, check.want)
 			}
-			var main chatInfo
-			d.must(t, http.MethodGet, check.base+"/chats/main", nil, &main)
-			snapshot := d.watchPath(t, fmt.Sprintf("%s/chats/%d/events", check.base, main.ID))
+			var main sessionListItem
+			d.must(t, http.MethodGet, check.base+"/sessions/main", nil, &main)
+			snapshot := d.watchPath(t, fmt.Sprintf("%s/sessions/%d/events", check.base, main.ID))
 			snapshot.until(t, "bot input in owning main", answered(check.want))
 			raw, err := json.Marshal(snapshot.tr.items)
 			snapshot.cancel()

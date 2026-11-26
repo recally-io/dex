@@ -13,17 +13,17 @@ type botScope uint8
 
 const (
 	botMain botScope = iota
-	botChat
+	botSession
 	botChild
 )
 
 // Actor is the authenticated identity, separate from the run origin.
 type Actor struct {
-	kind           string
-	botID          string
-	scope          botScope
-	conversationID int64
-	executionID    string
+	kind        string
+	botID       string
+	scope       botScope
+	sessionID   int64
+	executionID string
 }
 
 var (
@@ -35,19 +35,19 @@ var (
 // Bot represents a Bot acting from Main.
 func Bot(botID string) Actor { return Actor{kind: ActorBot, botID: botID, scope: botMain} }
 
-func SessionBot(botID string, conversationID int64) Actor {
-	return Actor{kind: ActorBot, botID: botID, scope: botChild, conversationID: conversationID}
+func SessionBot(botID string, sessionID int64) Actor {
+	return Actor{kind: ActorBot, botID: botID, scope: botChild, sessionID: sessionID}
 }
 
 // BotInConversation identifies a Bot in an authenticated, writable conversation.
-func BotInConversation(conv sqlc.Conversation) Actor {
+func BotInConversation(conv sqlc.Session) Actor {
 	if conv.ParentID.Valid {
 		return SessionBot(conv.AgentID, conv.ID)
 	}
 	if conv.ChannelKey == "main" {
 		return Bot(conv.AgentID)
 	}
-	return Actor{kind: ActorBot, botID: conv.AgentID, scope: botChat, conversationID: conv.ID}
+	return Actor{kind: ActorBot, botID: conv.AgentID, scope: botSession, sessionID: conv.ID}
 }
 
 func ExternalAgent(executionID string) Actor {
@@ -93,9 +93,9 @@ func (a Actor) isReviewer(task sqlc.Task) bool {
 
 func (a Actor) bound(ctx context.Context, q *sqlc.Queries, taskID string) (bool, error) {
 	switch {
-	case a.isBot() && a.scope == botChild && a.conversationID != 0:
+	case a.isBot() && a.scope == botChild && a.sessionID != 0:
 		return q.HasTaskBotExecution(ctx, sqlc.HasTaskBotExecutionParams{
-			TaskID: taskID, BotID: a.botID, ConversationID: a.conversationID,
+			TaskID: taskID, BotID: a.botID, SessionID: a.sessionID,
 		})
 	case a.kind == ActorExternalAgent && a.executionID != "":
 		return q.HasTaskExternalExecution(ctx, sqlc.HasTaskExternalExecutionParams{TaskID: taskID, ID: a.executionID})
@@ -116,15 +116,15 @@ func CanRead(ctx context.Context, q *sqlc.Queries, actor Actor, task sqlc.Task) 
 func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, task sqlc.Task, action Action) (bool, error) {
 	owner := actor.kind == ActorOwner
 	main := actor.isBot() && actor.scope == botMain
-	chat := actor.isBot() && actor.scope == botChat
+	session := actor.isBot() && actor.scope == botSession
 	assigneeMain := main && actor.isAssignee(task)
 	user := origin == OriginUser
 	interactive := user || origin == OriginTaskWake
-	// A top-level Chat can rename a Task or link its own child on user turns.
-	assigneeUserChat := chat && user && actor.isAssignee(task)
+	// A top-level Session can rename a Task or link its own child on user turns.
+	assigneeUserSession := session && user && actor.isAssignee(task)
 	switch action {
 	case ActionPost, ActionLinkObject:
-		if action == ActionLinkObject && !main && !chat {
+		if action == ActionLinkObject && !main && !session {
 			return owner && user, nil
 		}
 		if owner {
@@ -133,12 +133,12 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		if !interactive && origin != OriginSessionResult {
 			return false, nil
 		}
-		if main || chat {
+		if main || session {
 			return actor.isAssignee(task) || actor.isReviewer(task), nil
 		}
 		return actor.bound(ctx, q, task.ID)
 	case ActionRename, ActionLinkSession:
-		return interactive && (owner || assigneeMain) || assigneeUserChat, nil
+		return interactive && (owner || assigneeMain) || assigneeUserSession, nil
 	case ActionDispatchExternal, ActionTransition, ActionSubmitReview:
 		return interactive && (owner || assigneeMain), nil
 	case ActionReview:
@@ -155,7 +155,7 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 		parent, err := q.GetRelatedTask(ctx, task.ParentTaskID.String)
 		return actor.isAssignee(parent), err
 	case ActionCreateTopLevel:
-		return user && (owner || main || chat), nil
+		return user && (owner || main || session), nil
 	case ActionOwnerLifecycle:
 		return owner && user, nil
 	default:
@@ -165,22 +165,22 @@ func CanWrite(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, 
 
 // AuthorizeSessionLink checks both the Task and the parent of the Session to link.
 // The child can belong to another Bot; its parent still controls the link.
-func AuthorizeSessionLink(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, task sqlc.Task, conversationID int64) error {
+func AuthorizeSessionLink(ctx context.Context, q *sqlc.Queries, actor Actor, origin Origin, task sqlc.Task, sessionID int64) error {
 	if err := authorize(ctx, q, actor, origin, task, ActionLinkSession); err != nil {
 		return err
 	}
 	if actor.kind == ActorOwner {
 		return nil
 	}
-	notChild := fmt.Errorf("%w: session %d is not a child session of this conversation", ErrForbidden, conversationID)
-	child, err := q.GetConversation(ctx, conversationID)
+	notChild := fmt.Errorf("%w: session %d is not a child session of this conversation", ErrForbidden, sessionID)
+	child, err := q.GetSession(ctx, sessionID)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && !child.ParentID.Valid {
 		return notChild
 	}
 	if err != nil {
 		return err
 	}
-	parent, err := q.GetConversation(ctx, child.ParentID.Int64)
+	parent, err := q.GetSession(ctx, child.ParentID.Int64)
 	if err != nil {
 		return err
 	}

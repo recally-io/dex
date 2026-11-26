@@ -39,8 +39,8 @@ describe("Automation run history", () => {
       throwOnError: true,
     });
 
-    expect(run.chatId).toBeDefined();
-    await app.open(`/a/${agent.id}/c/${run.chatId}`);
+    expect(run.sessionId).toBeDefined();
+    await app.open(`/a/${agent.id}/s/${run.sessionId}`);
     await screen.getByRole("button", "Session activity").tap();
     await expect(screen.getByText("No outbound messages yet.")).toBeVisible();
     await expect(screen.getByRole("textbox", "Message Dex")).toHaveCount(0);

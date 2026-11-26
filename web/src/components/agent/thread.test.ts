@@ -3,8 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { expect, test } from "vite-plus/test";
-import type { Chat, Item, ToolItem } from "../../api/generated/types.gen";
-import { listChatsOptions } from "../../api/generated/@tanstack/react-query.gen";
+import type { Session, Item, ToolItem } from "../../api/generated/types.gen";
+import { listSessionsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { threadCall, threadState } from "../../lib/threads";
 import { describeTool, stepTitle } from "../../lib/tools";
 import { ResultLine, ThreadContext } from "./thread";
@@ -20,7 +20,7 @@ const bash = (id: string): ToolItem => ({
   status: "done",
 });
 
-const session = (id: string, name: string, args: ToolItem["args"], output: string): ToolItem => ({
+const sessionTool = (id: string, name: string, args: ToolItem["args"], output: string): ToolItem => ({
   kind: "tool",
   id,
   name,
@@ -35,7 +35,7 @@ test("Task tools show their action and Task key in transcript steps", () => {
     ["task_post", "Post to Task", "Posted to Task"],
     ["task_review", "Review Task", "Reviewed Task"],
   ]) {
-    const tool = session("call", name, { id: "T-42" }, "{}");
+    const tool = sessionTool("call", name, { id: "T-42" }, "{}");
 
     expect(describeTool(tool)).toEqual({ verb, target: "T-42" });
     expect(stepTitle([tool]).done).toBe(done);
@@ -43,7 +43,7 @@ test("Task tools show their action and Task key in transcript steps", () => {
 });
 
 const created = (id: string, child: number, title: string) =>
-  session(
+  sessionTool(
     id,
     "session_new",
     { title, message: "Do it" },
@@ -56,7 +56,7 @@ const created = (id: string, child: number, title: string) =>
     }),
   );
 
-const chat = (id: number, title: string, busy: boolean): Chat => ({
+const session = (id: number, title: string, busy: boolean): Session => ({
   id,
   channel: "web",
   main: false,
@@ -110,13 +110,13 @@ test("user sees one card with native execution status and no copied child text",
   expect(html).not.toContain("First line");
   expect(html).not.toContain("Third line");
   // Without a panel, the card opens the child as a session page.
-  expect(html).toContain('href="/a/default/c/7"');
+  expect(html).toContain('href="/a/default/s/7"');
   // The other steps stay collapsed while the card shows.
   expect(html).not.toContain("echo a");
 });
 
 test("user sees the bot of a child in another bot, and one card for each fork", async () => {
-  const other = session(
+  const other = sessionTool(
     "s2",
     "session_fork",
     { id: "7", message: "Branch" },
@@ -127,12 +127,12 @@ test("user sees the bot of a child in another bot, and one card for each fork", 
 
   expect(html.match(/Child session:/g)).toHaveLength(2);
   expect(html).toContain("Ops");
-  expect(html).toContain('href="/a/ops/c/9"');
+  expect(html).toContain('href="/a/ops/s/9"');
   expect(html.match(/>Default</g) ?? []).toHaveLength(0);
 });
 
 test("user sees a send as one compact line that opens the same thread", async () => {
-  const send = session(
+  const send = sessionTool(
     "s3",
     "session_send",
     { id: "7", message: "More" },
@@ -143,7 +143,7 @@ test("user sees a send as one compact line that opens the same thread", async ()
 
   expect(html).toContain("Sent to Check logs");
   expect(html).not.toContain("Child session");
-  expect(html).toContain('href="/a/default/c/7"');
+  expect(html).toContain('href="/a/default/s/7"');
 
   // With a panel on the page, the line is a button instead of a link.
   const inPanel = await render(
@@ -170,8 +170,8 @@ test("user sees a failed dispatch with its reason and no thread", async () => {
 test("user sees a result as one line without the answer", async () => {
   const client = seeded();
 
-  client.setQueryData(listChatsOptions({ path: { agentId: "default" } }).queryKey, {
-    chats: [{ ...chat(7, "Check logs", false), agentId: "coder" }, chat(8, "Build", false)],
+  client.setQueryData(listSessionsOptions({ path: { agentId: "default" } }).queryKey, {
+    sessions: [{ ...session(7, "Check logs", false), agentId: "coder" }, session(8, "Build", false)],
   });
 
   const items: Item[] = [
@@ -188,15 +188,15 @@ test("user sees a result as one line without the answer", async () => {
   ];
 
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: false }),
     client,
   );
 
   expect(html).toContain("Check logs</span> replied");
   expect(html).toContain("Build</span> failed: model down");
   expect(html.match(/View session/g)).toHaveLength(2);
-  expect(html).toContain('href="/a/coder/c/7"');
-  expect(html).toContain('href="/a/default/c/8"');
+  expect(html).toContain('href="/a/coder/s/7"');
+  expect(html).toContain('href="/a/default/s/8"');
   expect(html).not.toContain("<details");
   expect(html).toContain("Main reply");
 
@@ -225,8 +225,8 @@ test("user sees the child transcript in the panel, with its title, bot and state
   const html = await render(
     createElement(ThreadView, {
       agentId: "default",
-      chatId: 7,
-      chat: { data: chat(7, "Check logs", false), isError: false, isPending: false, refetch: () => {} },
+      sessionId: 7,
+      session: { data: session(7, "Check logs", false), isError: false, isPending: false, refetch: () => {} },
       items,
       running: false,
       status: "idle",
@@ -245,7 +245,7 @@ test("user sees the child transcript in the panel, with its title, bot and state
   expect(html).toContain('data-state="idle"');
   expect(html).not.toContain('data-state="done"');
   expect(html).toContain('aria-label="Close child session"');
-  expect(html).toContain('href="/a/default/c/7"');
+  expect(html).toContain('href="/a/default/s/7"');
 });
 
 test("thread state is current state, and disconnect makes it unknown", () => {
@@ -265,8 +265,8 @@ test("user sees preparation before a child exists and running without text", asy
   const html = await render(
     createElement(ThreadView, {
       agentId: "default",
-      chatId: 7,
-      chat: { data: chat(7, "Check logs", true), isError: false, isPending: false, refetch: () => {} },
+      sessionId: 7,
+      session: { data: session(7, "Check logs", true), isError: false, isPending: false, refetch: () => {} },
       items: [{ kind: "user", id: "dispatch", text: "Go" }],
       running: true,
       status: "running",
@@ -295,7 +295,7 @@ test("user sees a silent Process trace folded under its wake", async () => {
   ];
 
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: false }),
   );
 
   expect(html).toContain("Build</span> · timed out: Time limit");
@@ -308,7 +308,7 @@ test("user can open the Board from a Task wake", async () => {
   const items: Item[] = [{ kind: "task_wake", id: "board", title: "Task wake" }];
 
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: false }),
   );
 
   expect(html).toMatch(/<a\b[^>]*href="\/board"[^>]*>Task wake<\/a>/);
@@ -334,7 +334,7 @@ test("user sees a child report to its parent as a step, never as a thread line",
   const transcript = (...tools: ToolItem[]) =>
     render(
       createElement(Transcript, {
-        chatId: 2,
+        sessionId: 2,
         items: [mark(tools[0].id), ...tools],
         running: false,
         retry: () => {},
@@ -375,7 +375,7 @@ test("user sees a child report to its parent as a step, never as a thread line",
   // A retired tool in history does not render as a session_report.
 
   // A session_send stays a thread line, even if its arguments are invalid.
-  const dispatch = session(
+  const dispatch = sessionTool(
     "d1",
     "session_send",
     { id: "7", message: "More" },
@@ -404,7 +404,7 @@ test("user sees a Task alert on Main with the Task title", async () => {
   ];
 
   const html = await render(
-    createElement(Transcript, { chatId: 1, items, running: false, retry: () => {}, canRetry: false }),
+    createElement(Transcript, { sessionId: 1, items, running: false, retry: () => {}, canRetry: false }),
   );
 
   expect(html).toContain("Task alert");

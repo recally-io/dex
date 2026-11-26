@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 func TestUserModelChecksDistinguishPendingDiscoveryFromInvalidModels(t *testing.T) {
@@ -64,8 +64,8 @@ func TestUserModelChecksDistinguishPendingDiscoveryFromInvalidModels(t *testing.
 	if err := service.CheckModel(t.Context(), "dynamic", "remote"); !errors.Is(err, engine.ErrModelsPending) || errors.Is(err, ErrInvalid) {
 		t.Fatalf("pending model check: %v", err)
 	}
-	if err := service.CheckChat(t.Context(), chat.Settings{Provider: "dynamic", ModelID: "remote"}); !errors.Is(err, engine.ErrModelsPending) {
-		t.Fatalf("pending chat check: %v", err)
+	if err := service.CheckSession(t.Context(), session.Settings{Provider: "dynamic", ModelID: "remote"}); !errors.Is(err, engine.ErrModelsPending) {
+		t.Fatalf("pending session check: %v", err)
 	}
 	// Static and builtin checks remain usable while unrelated discovery is held.
 	for _, selection := range [][2]string{{"static", "fixed"}, {"faux", "echo"}} {

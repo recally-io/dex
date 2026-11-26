@@ -20,14 +20,14 @@ func (q *Queries) ClearTaskPrimarySession(ctx context.Context, taskID string) er
 }
 
 const createTaskToolOperation = `-- name: CreateTaskToolOperation :exec
-INSERT INTO task_tool_operations (key, agent_id, conversation_id, source_request_id, action, result)
+INSERT INTO task_tool_operations (key, agent_id, session_id, source_request_id, action, result)
 VALUES (?, ?, ?, ?, ?, ?)
 `
 
 type CreateTaskToolOperationParams struct {
 	Key             string `json:"key"`
 	AgentID         string `json:"agent_id"`
-	ConversationID  int64  `json:"conversation_id"`
+	SessionID       int64  `json:"session_id"`
 	SourceRequestID string `json:"source_request_id"`
 	Action          string `json:"action"`
 	Result          string `json:"result"`
@@ -37,7 +37,7 @@ func (q *Queries) CreateTaskToolOperation(ctx context.Context, arg CreateTaskToo
 	_, err := q.db.ExecContext(ctx, createTaskToolOperation,
 		arg.Key,
 		arg.AgentID,
-		arg.ConversationID,
+		arg.SessionID,
 		arg.SourceRequestID,
 		arg.Action,
 		arg.Result,
@@ -75,22 +75,22 @@ func (q *Queries) GetTaskByNumber(ctx context.Context, number int64) (Task, erro
 }
 
 const getTaskSession = `-- name: GetTaskSession :one
-SELECT id, task_id, bot_id, conversation_id, turn_request_id, is_primary, state, started_at, ended_at FROM task_sessions WHERE task_id = ? AND conversation_id = ?
+SELECT id, task_id, bot_id, session_id, turn_request_id, is_primary, state, started_at, ended_at FROM task_sessions WHERE task_id = ? AND session_id = ?
 `
 
 type GetTaskSessionParams struct {
-	TaskID         string `json:"task_id"`
-	ConversationID int64  `json:"conversation_id"`
+	TaskID    string `json:"task_id"`
+	SessionID int64  `json:"session_id"`
 }
 
 func (q *Queries) GetTaskSession(ctx context.Context, arg GetTaskSessionParams) (TaskSession, error) {
-	row := q.db.QueryRowContext(ctx, getTaskSession, arg.TaskID, arg.ConversationID)
+	row := q.db.QueryRowContext(ctx, getTaskSession, arg.TaskID, arg.SessionID)
 	var i TaskSession
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.TurnRequestID,
 		&i.IsPrimary,
 		&i.State,
@@ -101,7 +101,7 @@ func (q *Queries) GetTaskSession(ctx context.Context, arg GetTaskSessionParams) 
 }
 
 const getTaskToolOperation = `-- name: GetTaskToolOperation :one
-SELECT "key", agent_id, conversation_id, source_request_id, "action", result FROM task_tool_operations WHERE key = ?
+SELECT "key", agent_id, session_id, source_request_id, "action", result FROM task_tool_operations WHERE key = ?
 `
 
 func (q *Queries) GetTaskToolOperation(ctx context.Context, key string) (TaskToolOperation, error) {
@@ -110,7 +110,7 @@ func (q *Queries) GetTaskToolOperation(ctx context.Context, key string) (TaskToo
 	err := row.Scan(
 		&i.Key,
 		&i.AgentID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.SourceRequestID,
 		&i.Action,
 		&i.Result,
@@ -120,17 +120,17 @@ func (q *Queries) GetTaskToolOperation(ctx context.Context, key string) (TaskToo
 
 const hasTaskBotExecution = `-- name: HasTaskBotExecution :one
 SELECT EXISTS (SELECT 1 FROM task_sessions WHERE task_id = ?1 AND bot_id = ?2
-  AND conversation_id = CAST(?3 AS INTEGER))
+  AND session_id = CAST(?3 AS INTEGER))
 `
 
 type HasTaskBotExecutionParams struct {
-	TaskID         string `json:"task_id"`
-	BotID          string `json:"bot_id"`
-	ConversationID int64  `json:"conversation_id"`
+	TaskID    string `json:"task_id"`
+	BotID     string `json:"bot_id"`
+	SessionID int64  `json:"session_id"`
 }
 
 func (q *Queries) HasTaskBotExecution(ctx context.Context, arg HasTaskBotExecutionParams) (bool, error) {
-	row := q.db.QueryRowContext(ctx, hasTaskBotExecution, arg.TaskID, arg.BotID, arg.ConversationID)
+	row := q.db.QueryRowContext(ctx, hasTaskBotExecution, arg.TaskID, arg.BotID, arg.SessionID)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
@@ -170,30 +170,30 @@ func (q *Queries) HasTaskTitleEntry(ctx context.Context, arg HasTaskTitleEntryPa
 }
 
 const linkTaskSession = `-- name: LinkTaskSession :one
-INSERT INTO task_sessions (id, task_id, conversation_id, bot_id, is_primary, started_at, turn_request_id)
+INSERT INTO task_sessions (id, task_id, session_id, bot_id, is_primary, started_at, turn_request_id)
 SELECT 'session:' || ?1 || ':' || c.id, ?1, c.id, c.agent_id,
   NOT EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = ?1 AND s.is_primary = 1), ?2,
-  COALESCE((SELECT s.id FROM submissions s WHERE s.conversation_id = c.id AND s.kind = 'message'
+  COALESCE((SELECT s.id FROM submissions s WHERE s.session_id = c.id AND s.kind = 'message'
     AND s.parent_request_id IS NOT NULL AND c.parent_id IS NOT NULL ORDER BY s.rowid LIMIT 1), '')
-FROM conversations c WHERE c.id = ?3
-ON CONFLICT DO NOTHING RETURNING id, task_id, bot_id, conversation_id, turn_request_id, is_primary, state, started_at, ended_at
+FROM sessions c WHERE c.id = ?3
+ON CONFLICT DO NOTHING RETURNING id, task_id, bot_id, session_id, turn_request_id, is_primary, state, started_at, ended_at
 `
 
 type LinkTaskSessionParams struct {
-	TaskID         string `json:"task_id"`
-	LinkedAt       int64  `json:"linked_at"`
-	ConversationID int64  `json:"conversation_id"`
+	TaskID    string `json:"task_id"`
+	LinkedAt  int64  `json:"linked_at"`
+	SessionID int64  `json:"session_id"`
 }
 
 // Keep the original timestamp and child turn on replay. The first link becomes primary.
 func (q *Queries) LinkTaskSession(ctx context.Context, arg LinkTaskSessionParams) (TaskSession, error) {
-	row := q.db.QueryRowContext(ctx, linkTaskSession, arg.TaskID, arg.LinkedAt, arg.ConversationID)
+	row := q.db.QueryRowContext(ctx, linkTaskSession, arg.TaskID, arg.LinkedAt, arg.SessionID)
 	var i TaskSession
 	err := row.Scan(
 		&i.ID,
 		&i.TaskID,
 		&i.BotID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.TurnRequestID,
 		&i.IsPrimary,
 		&i.State,
@@ -209,7 +209,7 @@ WHERE a.archived_at IS NULL AND (
   (CAST(?1 AS INTEGER) = 0 AND
     (t.assignee_bot_id = ?2 OR (t.reviewer_kind = 'bot' AND t.reviewer_id = ?2)))
   OR EXISTS (SELECT 1 FROM task_sessions s WHERE s.task_id = t.id AND s.bot_id = ?2
-    AND s.conversation_id = ?1)
+    AND s.session_id = ?1)
 )
 AND (CAST(?3 AS TEXT) = 'all' OR t.status = ?3
   OR (?3 = 'open' AND t.status NOT IN ('done', 'cancelled')))
@@ -217,14 +217,14 @@ ORDER BY t.updated_at DESC, t.id DESC LIMIT 50
 `
 
 type ListBotTasksParams struct {
-	ChildConversationID int64  `json:"child_conversation_id"`
-	BotID               string `json:"bot_id"`
-	StatusFilter        string `json:"status_filter"`
+	ChildSessionID int64  `json:"child_session_id"`
+	BotID          string `json:"bot_id"`
+	StatusFilter   string `json:"status_filter"`
 }
 
 // Match CanRead for Bot actors before applying the limit.
 func (q *Queries) ListBotTasks(ctx context.Context, arg ListBotTasksParams) ([]Task, error) {
-	rows, err := q.db.QueryContext(ctx, listBotTasks, arg.ChildConversationID, arg.BotID, arg.StatusFilter)
+	rows, err := q.db.QueryContext(ctx, listBotTasks, arg.ChildSessionID, arg.BotID, arg.StatusFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +313,7 @@ func (q *Queries) ListBotWorkload(ctx context.Context, botID string) ([]Task, er
 }
 
 const listTaskSessionExecutions = `-- name: ListTaskSessionExecutions :many
-SELECT s.id, s.task_id, s.bot_id, s.conversation_id, s.turn_request_id, s.is_primary, s.state, s.started_at, s.ended_at, t.number AS task_number
+SELECT s.id, s.task_id, s.bot_id, s.session_id, s.turn_request_id, s.is_primary, s.state, s.started_at, s.ended_at, t.number AS task_number
 FROM task_sessions s JOIN tasks t ON t.id = s.task_id
 WHERE (CAST(?1 AS TEXT) = '' OR s.task_id = ?1)
   AND (CAST(?2 AS TEXT) = '' OR s.state = ?2)
@@ -342,7 +342,7 @@ func (q *Queries) ListTaskSessionExecutions(ctx context.Context, arg ListTaskSes
 			&i.TaskSession.ID,
 			&i.TaskSession.TaskID,
 			&i.TaskSession.BotID,
-			&i.TaskSession.ConversationID,
+			&i.TaskSession.SessionID,
 			&i.TaskSession.TurnRequestID,
 			&i.TaskSession.IsPrimary,
 			&i.TaskSession.State,
@@ -364,20 +364,20 @@ func (q *Queries) ListTaskSessionExecutions(ctx context.Context, arg ListTaskSes
 }
 
 const listTaskSessions = `-- name: ListTaskSessions :many
-SELECT c.id AS conversation_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
-FROM task_sessions s JOIN conversations c ON c.id = s.conversation_id JOIN agents a ON a.id = s.bot_id
+SELECT c.id AS session_id, s.bot_id AS agent_id, a.name AS agent_name, c.title, s.is_primary, s.started_at AS linked_at, s.state, s.ended_at
+FROM task_sessions s JOIN sessions c ON c.id = s.session_id JOIN agents a ON a.id = s.bot_id
 WHERE s.task_id = ? ORDER BY s.is_primary DESC, s.started_at, c.id
 `
 
 type ListTaskSessionsRow struct {
-	ConversationID int64         `json:"conversation_id"`
-	AgentID        string        `json:"agent_id"`
-	AgentName      string        `json:"agent_name"`
-	Title          string        `json:"title"`
-	IsPrimary      int64         `json:"is_primary"`
-	LinkedAt       int64         `json:"linked_at"`
-	State          string        `json:"state"`
-	EndedAt        sql.NullInt64 `json:"ended_at"`
+	SessionID int64         `json:"session_id"`
+	AgentID   string        `json:"agent_id"`
+	AgentName string        `json:"agent_name"`
+	Title     string        `json:"title"`
+	IsPrimary int64         `json:"is_primary"`
+	LinkedAt  int64         `json:"linked_at"`
+	State     string        `json:"state"`
+	EndedAt   sql.NullInt64 `json:"ended_at"`
 }
 
 func (q *Queries) ListTaskSessions(ctx context.Context, taskID string) ([]ListTaskSessionsRow, error) {
@@ -390,7 +390,7 @@ func (q *Queries) ListTaskSessions(ctx context.Context, taskID string) ([]ListTa
 	for rows.Next() {
 		var i ListTaskSessionsRow
 		if err := rows.Scan(
-			&i.ConversationID,
+			&i.SessionID,
 			&i.AgentID,
 			&i.AgentName,
 			&i.Title,

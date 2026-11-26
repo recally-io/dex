@@ -24,7 +24,7 @@ agent's primary model is missing or returns an error before any response block
 streams (excluding aborts and context-overflow errors), `agentModels` switches to
 the agent's fallback model.
 
-Agent resources are under `/api/agents/{agentId}`: main, chats and their
+Agent resources are under `/api/agents/{agentId}`: main, sessions and their
 settings, messages, clear, history, abort and events; turn lookup; uploads;
 integrations and reload; automations and their run and runs endpoints. An unknown
 agent or a resource owned by another agent returns `404`. Upload storage uses
@@ -77,13 +77,13 @@ setup and status use `/api/agents/{agentId}/channels`, with `/telegram`,
 The web UI edits all settings.
 [`settings.Service`](../../internal/settings/settings.go) owns providers, model
 checks, and the access token. [`agent.Service`](../../internal/agent/agent.go)
-owns agent settings, activity, and channel configuration. `chat.Service` saves
-chat settings with an injected validator. Each change stays in `control.sqlite`:
+owns agent settings, activity, and channel configuration. `session.Service` saves
+session settings with an injected validator. Each change stays in `control.sqlite`:
 
 | Setting                                 | Table                                               | Applied by                                     |
 | --------------------------------------- | --------------------------------------------------- | ---------------------------------------------- |
-| Bot model, thinking level, instructions | `agents`                                            | the next `submit` of each chat                 |
-| Chat model, chat thinking level         | `conversations`                                     | the next `submit` of that chat                 |
+| Bot model, thinking level, instructions | `agents`                                            | the next `submit` of each session              |
+| Session model, session thinking level   | `sessions`                                          | the next `submit` of that session              |
 | Providers                               | `providers`                                         | the engine catalog, and again at process start |
 | Telegram credential, allowed users      | `telegram_settings`; managed token in private vault | a restart of the bot                           |
 
@@ -137,7 +137,7 @@ share it.
 
 - **Read.** The [`memory` extension](../../internal/engine/memory.go) adds three
   system prompt sections: the memory rules (the repo path, the entry format,
-  and the chat's `source`), shared `MEMORY.md`, and that agent's
+  and the session's `source`), shared `MEMORY.md`, and that agent's
   `agents/<agentId>/MEMORY.md`. Other agents do not load this last section.
   They render before each model
   request, so a change applies from the next request, also inside a run.
@@ -146,7 +146,7 @@ share it.
 - **Write.** The agent changes the files with its edit and write tools,
   without approval. It does not run git. When a submission settles, the
   engine commits all changes as `Update memory from <source>`. The source is
-  `dex:<agentId>/chat/<chatId>`, or `dex:<agentId>/dream/<dreamId>`.
+  `dex:<agentId>/chat/<sessionId>`, or `dex:<agentId>/dream/<dreamId>`.
   Owner facts go in shared `MEMORY.md` and its topic files. Role experience
   and ways of working go in `agents/<agentId>/`, with its own `MEMORY.md`
   entry point. This keeps one bot's habits out of the owner's preferences.
@@ -157,32 +157,32 @@ share it.
   across all agents,
   the last dream started 24 h ago or more, and the oldest settled message that
   no dream read is 24 h old or more, the check starts a dream. A dream is a
-  hidden chat (channel key `dream:<id>`). Its system prompt holds the dream
+  hidden session (channel key `dream:<id>`). Its system prompt holds the dream
   instructions and the privacy and language parts of the agent instructions.
   Its message holds the new messages as JSON lines, in settle order, with
   local times: up to 500 messages or 100,000 bytes. A text longer than 4,000
   characters keeps its first 3,000 and last 1,000 characters and is marked as
-  cut. The agent adds what repeats across its chats. It tidies its own folder
-  and shared entries whose chat sources all belong to it. Entries with other
+  cut. The agent adds what repeats across its sessions. It tidies its own folder
+  and shared entries whose session sources all belong to it. Entries with other
   agents' sources, including mixed sources, can only gain `uncertain: yes`.
-  Shared entries with no chat source stay unchanged. The
+  Shared entries with no session source stay unchanged. The
   `dreams` table records the last message that each dream read; the next dream
   starts after that agent's newest done dream.
 
 ## Bot tools
 
-`bot_list` reports `runningSessions` from `AgentRunningSessions`: the conversations
+`bot_list` reports `runningSessions` from `AgentRunningSessions`: the sessions
 of the bot with a pending input, Main included. It is the busy rule of the archive
 guard, so a count above zero means `bot_delete` refuses the bot. The sidebar's
 `activeSessions` is a different count and leaves Main out.
 
-Main and Chat conversations have `bot_list` and `bot_get`, and the three change
+Main and top-level Web sessions have `bot_list` and `bot_get`, and the three change
 tools `bot_create`, `bot_update` and `bot_delete`. An Automation conversation
 has only the read tools. The app selects the `bots` and `bot-manage` extensions
 at admission. A child Session or Dream does not get the change tools. Tool
 visibility does not grant authorization. `internal/agent.BotTools` maps each call to the same service methods as the
-web (`CreateAgent`, `PatchAgent`). `chat.Service.ToolBotCaller` checks the caller
-again in control: the conversation is Main or a Chat, and the source input is a
+web (`CreateAgent`, `PatchAgent`). `session.Service.ToolBotCaller` checks the caller
+again in control: the conversation is Main or a Session, and the source input is a
 `message` with a user origin in that conversation. A user origin is an allow-list:
 `web`, `telegram:`, `feishu:` and `wechat:`. `bot_create` and `bot_update` replay
 as unsafe, because they have no receipt. A tool that PiG interrupted returns an
@@ -193,7 +193,7 @@ interruption error, and the model reads the list again.
 `ask_user` does. It must be the only call in its round. Control archives inside
 the receipt transaction of the answer, before the model sees the answer. The
 transaction takes the answer text and origin, and archives only when the origin
-is a user origin and the text equals `approve_text` after `chat.NormalizeText`
+is a user origin and the text equals `approve_text` after `session.NormalizeText`
 (trim surrounding whitespace). The HTTP handler and this check use the same
 function, so a channel that does not trim gets the same result as the web. It runs the archive guard
 again, because the bot can become busy after the question. It stores the
@@ -202,6 +202,6 @@ model reads `dex: Approved. Bot "X" is archived.`, `dex: Not approved. ...` or
 `dex: Approved, but bot "X" is not archived: <reason>.`. The channel stop runs
 after the commit through `Service.OnBotArchived`, so a slow channel cannot hold
 the admission gate. A decided action question cannot be withdrawn or reopened.
-The archived bot's workspace, `state.sqlite`, memory and conversations stay on
+The archived bot's workspace, `state.sqlite`, memory and sessions stay on
 disk. [Cross-bot sessions](sessions.md#cross-bot-sessions) describes cross-bot child
 sessions, read, and search.

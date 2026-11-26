@@ -1,0 +1,273 @@
+package session
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"strings"
+	"unicode/utf8"
+	"uuid"
+
+	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/engine"
+)
+
+var (
+	// ErrQuestionClosed means the question is not open any more. The answer is not stored.
+	ErrQuestionClosed = errors.New("the question is closed")
+	// ErrQuestionInvalid means the question or its options do not fit the limits.
+	ErrQuestionInvalid = errors.New("invalid question")
+	// errQuestionOpen means the conversation has a question that is not settled yet.
+	errQuestionOpen = errors.New("a question is already open")
+)
+
+const (
+	maxQuestion = 1000
+	maxOption   = 200
+)
+
+// Question is the question that waits for the user in a session.
+type Question struct {
+	ID      string
+	Text    string
+	Options []string
+	// Status is "open", or "answered" while the answer waits in the queue.
+	Status string
+	// Answer is the text of an answered question.
+	Answer string
+	// Action is what control does when the owner approves ("archive"), or empty for a plain question.
+	Action string
+	// Outcome is the decision of control on an answered action question.
+	Outcome string
+}
+
+const answerPrefix = "Answer to: "
+
+func questionOf(row sqlc.Question) (Question, error) {
+	q := Question{ID: row.ID, Text: row.Text, Status: row.Status, Action: row.Action.String, Outcome: row.Outcome.String}
+	return q, json.Unmarshal([]byte(row.OptionsJson), &q.Options)
+}
+
+// currentQuestion returns the open or answered question of a session, or nil.
+func (s *Service) currentQuestion(ctx context.Context, sessionID int64) (*Question, error) {
+	row, err := s.q.GetCurrentQuestion(ctx, sessionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.questionView(ctx, row)
+}
+
+func (s *Service) questionView(ctx context.Context, row sqlc.Question) (*Question, error) {
+	q, err := questionOf(row)
+	if err != nil {
+		return nil, err
+	}
+	if row.Status == "answered" {
+		sub, err := s.q.GetSubmission(ctx, row.AnswerSubmissionID.String)
+		if err != nil {
+			return nil, err
+		}
+		q.Answer = strings.TrimSuffix(strings.TrimPrefix(sub.Content, answerPrefix+row.Text+"\n"), outcomeSeparator+row.Outcome.String)
+	}
+	return &q, nil
+}
+
+// ToolAskUser saves a question for the user. A replay of the same tool call returns the same
+// question. The source input must still run, the session must not be archived, and the session must
+// have no other question that waits.
+func (s *Service) ToolAskUser(ctx context.Context, r engine.TaskContext, a AskUserArgs) (QuestionInfo, error) {
+	return s.askQuestion(ctx, r, a, nil)
+}
+
+// NormalizeText is the one rule for text from a person: surrounding whitespace is not part of
+// the message. The HTTP handler stores the normalized text, and the approval check compares the
+// normalized text, so a channel that does not trim gives the same result as the web.
+func NormalizeText(s string) string { return strings.TrimSpace(s) }
+
+// askQuestion saves a question. An action question also needs a user input as its source, and the
+// action must be allowed now; control runs the action only when the owner approves it.
+func (s *Service) askQuestion(ctx context.Context, r engine.TaskContext, a AskUserArgs, action *questionAction) (QuestionInfo, error) {
+	// One line, so the answer wrapper "Answer to: <question>" has an unambiguous first line.
+	text := strings.Join(strings.Fields(a.Question), " ")
+	if text == "" || utf8.RuneCountInString(text) > maxQuestion || len(a.Options) < 2 || len(a.Options) > 4 {
+		return QuestionInfo{}, fmt.Errorf("%w: a question of 1 to %d characters and 2 to 4 options", ErrQuestionInvalid, maxQuestion)
+	}
+	options := make([]string, len(a.Options))
+	for i, option := range a.Options {
+		options[i] = NormalizeText(option)
+		if options[i] == "" || utf8.RuneCountInString(options[i]) > maxOption {
+			return QuestionInfo{}, fmt.Errorf("%w: each option has 1 to %d characters", ErrQuestionInvalid, maxOption)
+		}
+	}
+	encoded, err := json.Marshal(options)
+	if err != nil {
+		return QuestionInfo{}, err
+	}
+	// Stop, Clear and archive take the same writer before they read.
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	tx, q, err := s.writeTransaction(ctx)
+	if err != nil {
+		return QuestionInfo{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if prior, err := q.GetQuestionByOperation(ctx, r.Key); err == nil {
+		stored, err := questionOf(prior)
+		if err != nil {
+			return QuestionInfo{}, err
+		}
+		return QuestionInfo{ID: stored.ID, Text: stored.Text, Options: stored.Options}, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return QuestionInfo{}, err
+	}
+	conv, err := q.GetSessionByExecution(ctx, sqlc.GetSessionByExecutionParams{AgentID: r.AgentID, ExecutionID: sql.NullInt64{Int64: r.ConversationID, Valid: true}})
+	if err != nil {
+		return QuestionInfo{}, err
+	}
+	if !Writable(conv.ChannelKey) || conv.ParentID.Valid {
+		return QuestionInfo{}, fmt.Errorf("%w: only Main and top-level Web sessions ask the user", ErrQuestionInvalid)
+	}
+	if conv.ArchivedAt.Valid {
+		return QuestionInfo{}, fmt.Errorf("%w: the session is archived", ErrQuestionClosed)
+	}
+	source, err := liveSource(ctx, q, r)
+	if err != nil {
+		return QuestionInfo{}, err
+	}
+	if action != nil {
+		if err := action.allowed(ctx, q, r, source); err != nil {
+			return QuestionInfo{}, err
+		}
+	}
+	var queued int64
+	switch current, err := q.GetCurrentQuestion(ctx, conv.ID); {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return QuestionInfo{}, err
+	case current.Status == "answered" && current.AnswerSubmissionID.String == source.ID:
+		// The turn that runs the answer may ask the next question.
+		if err := q.ConsumeQuestion(ctx, sqlc.ConsumeQuestionParams{SubmissionID: sql.NullString{String: source.ID, Valid: true}, Now: sql.NullInt64{Int64: s.now().UnixMilli(), Valid: true}}); err != nil {
+			return QuestionInfo{}, err
+		}
+	default:
+		if action != nil || conv.ChannelKey != MainKey {
+			return QuestionInfo{}, errQuestionOpen
+		}
+		taskID, err := taskForInput(ctx, q, source.ID)
+		if err != nil {
+			return QuestionInfo{}, err
+		}
+		if taskID == "" {
+			return QuestionInfo{}, errQuestionOpen
+		}
+		queued = 1
+	}
+	id := uuid.NewV7().String()
+	params := sqlc.CreateQuestionParams{ID: id, AgentID: r.AgentID, SessionID: conv.ID, SourceSubmissionID: source.ID, ToolOperationKey: r.Key, Text: text, OptionsJson: string(encoded), CreatedAt: s.now().UnixMilli(), Queued: queued}
+	action.store(&params)
+	if err := q.CreateQuestion(ctx, params); err != nil {
+		return QuestionInfo{}, err
+	}
+	inputIDs := r.RunInputIDs
+	if len(inputIDs) == 0 {
+		inputIDs = []string{source.ID}
+	}
+	for _, inputID := range inputIDs {
+		if err := q.SetSubmissionExitAction(ctx, sqlc.SetSubmissionExitActionParams{ID: inputID, ExitAction: "ask_user"}); err != nil {
+			return QuestionInfo{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return QuestionInfo{}, err
+	}
+	s.signal(conv.ID)
+	return QuestionInfo{ID: id, Text: text, Options: options}, nil
+}
+
+// answerContent loads the open question for an answer inside the receipt transaction and returns
+// the content that the model reads. For an action question it also decides the action; see
+// decideAnswer.
+func answerContent(ctx context.Context, q *sqlc.Queries, agentID string, sessionID int64, questionID, answer, origin string) (answerDecision, error) {
+	row, err := q.GetQuestion(ctx, questionID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && (row.AgentID != agentID || row.SessionID != sessionID)) {
+		return answerDecision{}, ErrQuestionClosed
+	}
+	if err != nil {
+		return answerDecision{}, err
+	}
+	if row.Status != "open" || row.Queued != 0 && origin != "web" {
+		return answerDecision{}, ErrQuestionClosed
+	}
+	d := answerDecision{Content: answerPrefix + row.Text + "\n" + answer}
+	if row.Action.Valid {
+		return d, d.decide(ctx, q, row, answer, origin)
+	}
+	return d, nil
+}
+
+// reopenQuestion opens the question again when its answer was withdrawn before it ran.
+func reopenQuestion(ctx context.Context, q *sqlc.Queries, submissionID string) error {
+	_, err := q.ReopenQuestion(ctx, sql.NullString{String: submissionID, Valid: true})
+	return err
+}
+
+// renderQuestion is the channel text of a question. A platform that quotes (Telegram and Feishu)
+// tells the user to reply to the message; the others point to the web.
+func renderQuestion(q sqlc.Question, options []string, agentID string, main, quotable bool) string {
+	var b strings.Builder
+	b.WriteString(q.Text)
+	b.WriteString("\n")
+	for i, option := range options {
+		fmt.Fprintf(&b, "\n%c. %s", rune('A'+i), option)
+	}
+	path := fmt.Sprintf("/a/%s/s/%d", agentID, q.SessionID)
+	if main {
+		path = "/a/" + agentID
+	}
+	if quotable {
+		b.WriteString("\n\nReply to this message to answer, or answer in the dex web app: " + path)
+	} else {
+		b.WriteString("\n\nThis question is open. Answer it in the dex web app: " + path)
+	}
+	return b.String()
+}
+
+// withQuestion adds the question that this input asked to its answer. The channel reply outbox
+// sends the answer, so a channel user sees the question without a second delivery path.
+func (s *Service) withQuestion(ctx context.Context, id string, event engine.Outcome) (engine.Outcome, error) {
+	row, err := s.q.GetQuestionBySource(ctx, id)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && row.Status == "dismissed") || event.Status != "done" {
+		return event, nil
+	}
+	if err != nil {
+		return event, err
+	}
+	q, err := questionOf(row)
+	if err != nil {
+		return event, err
+	}
+	conv, err := s.q.GetSession(ctx, row.SessionID)
+	if err != nil {
+		return event, err
+	}
+	reply, err := s.q.GetSubmissionReply(ctx, id)
+	if err != nil {
+		return event, err
+	}
+	rendered := renderQuestion(row, q.Options, row.AgentID, conv.ChannelKey == MainKey, quotes(reply.Origin))
+	if event.Answer != "" {
+		rendered = event.Answer + "\n\n" + rendered
+	}
+	event.Answer = rendered
+	return event, nil
+}
+
+// quotes reports whether the platform of a channel peer returns the ID of a quoted message.
+func quotes(origin string) bool {
+	return strings.HasPrefix(origin, "telegram:") || strings.HasPrefix(origin, "feishu:")
+}

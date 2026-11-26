@@ -14,7 +14,7 @@ func TestUserWebSteerMovesChannelRunReplyToWeb(t *testing.T) {
 	e := newMainEntry(t, "telegram")
 	d := e.d
 	d.setModel(t, "bash")
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	conn := sessionDB(t, d)
 	run := newGatedRun(t, "channel")
 	e.send(run.command)
@@ -47,7 +47,7 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "spawn")
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	conn := sessionDB(t, d)
 	child := newGatedRun(t, "child")
 	d.send(t, main, childJSON(t, map[string]string{"title": "gated child", "message": child.command, "provider": "faux", "modelId": "bash"}))
@@ -67,7 +67,7 @@ func TestUserSteerCannotGrantBotAuthorityToChildResult(t *testing.T) {
 	child.open()
 	run.waitStarted(t)
 	var resultID, origin, kind string
-	if err := conn.QueryRowContext(t.Context(), "SELECT id, origin, kind FROM submissions WHERE conversation_id=? AND kind='session_result'", main).Scan(&resultID, &origin, &kind); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT id, origin, kind FROM submissions WHERE session_id=? AND kind='session_result'", main).Scan(&resultID, &origin, &kind); err != nil {
 		t.Fatal(err)
 	}
 	if origin != "task" || kind != "session_result" {

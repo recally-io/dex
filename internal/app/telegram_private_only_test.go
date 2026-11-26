@@ -15,11 +15,11 @@ func TestUserTelegramIgnoresNonPrivateMessagesAndButtons(t *testing.T) {
 
 	// When Telegram sends a group message, a group command, and a topic button.
 	f.mu.Lock()
-	for i, chatType := range []string{"group", "supergroup"} {
+	for i, sessionType := range []string{"group", "supergroup"} {
 		id := int64(i + 2)
 		f.updates = append(f.updates, map[string]any{"update_id": id, "message": map[string]any{
 			"message_id": id, "from": map[string]any{"id": 42},
-			"chat": map[string]any{"id": -100 - i, "type": chatType},
+			"chat": map[string]any{"id": -100 - i, "type": sessionType},
 			"text": []string{"ignored group input", "/clear"}[i],
 		}})
 	}

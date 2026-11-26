@@ -96,14 +96,14 @@ func TestUserManagesSSHRunnerAndExecutesBotRemotely(t *testing.T) {
 		t.Fatalf("directories home=%q want=%q", dirs.Home, sshFix.RemoteHome)
 	}
 
-	chatID := d.newSession(t).ID
-	out := taskTurn(t, d, chatID, `printf "%s|%s|%s" "$REMOTE_SSH_MARKER" "${HOST_PIENV_SECRET:-}" "${LOGIN_PIENV_SECRET:-}"`)
+	sessionID := d.newSession(t).ID
+	out := taskTurn(t, d, sessionID, `printf "%s|%s|%s" "$REMOTE_SSH_MARKER" "${HOST_PIENV_SECRET:-}" "${LOGIN_PIENV_SECRET:-}"`)
 	if out != "bash: ssh-fake-ok||" {
 		t.Fatalf("unexpected remote bash output: %q", out)
 	}
 
-	_ = taskTool(t, d, chatID, "write", map[string]any{"path": "hello.txt", "content": "from-pienv\n"})
-	delivered := deliverArtifact(t, d, chatID, "hello.txt")
+	_ = taskTool(t, d, sessionID, "write", map[string]any{"path": "hello.txt", "content": "from-pienv\n"})
+	delivered := deliverArtifact(t, d, sessionID, "hello.txt")
 	if delivered.Name != "hello.txt" {
 		t.Fatalf("delivered=%+v", delivered)
 	}
@@ -115,19 +115,19 @@ func TestUserManagesSSHRunnerAndExecutesBotRemotely(t *testing.T) {
 	// Remote background command and remote project path resolution.
 	conn := taskResultDB(t, dataDir)
 	d.setModel(t, "spawn")
-	bgStarted := bgStart(t, d, chatID, map[string]any{"command": `printf "%s\n" "$REMOTE_SSH_MARKER"`})
+	bgStarted := bgStart(t, d, sessionID, map[string]any{"command": `printf "%s\n" "$REMOTE_SSH_MARKER"`})
 	if bgStarted.OutputFile == "" {
 		t.Fatalf("missing remote background outputFile: %+v", bgStarted)
 	}
-	wakes := waitWakes(t, conn, chatID, 1)
+	wakes := waitWakes(t, conn, sessionID, 1)
 	if wakes[0].result.Event != "exited" || !strings.Contains(wakes[0].result.Output, "ssh-fake-ok") {
 		t.Fatalf("unexpected remote background wake: %+v", wakes[0].result)
 	}
 	remoteProject := filepath.Join(sshFix.RemoteHome, "remote-proj")
-	if projRes := taskTool(t, d, chatID, "set_project", map[string]any{"path": "~/remote-proj"}); strings.HasPrefix(projRes, "tool error:") {
+	if projRes := taskTool(t, d, sessionID, "set_project", map[string]any{"path": "~/remote-proj"}); strings.HasPrefix(projRes, "tool error:") {
 		t.Fatalf("set_project failed: %s", projRes)
 	}
-	assertProject(t, d, chatID, remoteProject)
+	assertProject(t, d, sessionID, remoteProject)
 	var recent struct {
 		Projects []string `json:"projects"`
 	}
@@ -137,10 +137,10 @@ func TestUserManagesSSHRunnerAndExecutesBotRemotely(t *testing.T) {
 	}
 
 	// Switching bot back to local allows deleting the environment.
-	// The turn returns its answer before the chat settles, and a busy chat blocks the switch.
-	eventually(t, "chat settled before switch", func() (bool, any) {
-		var info chatInfo
-		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", chatID), nil, &info)
+	// The turn returns its answer before the session settles, and a busy session blocks the switch.
+	eventually(t, "session settled before switch", func() (bool, any) {
+		var info sessionListItem
+		d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", sessionID), nil, &info)
 		return !info.Busy, info.Busy
 	})
 	defAgent.RunnerID = ""

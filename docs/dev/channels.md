@@ -15,7 +15,7 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   random code. The code expires after 10 minutes. `telegram_settings` stores
   the code and expiry. Pairing is available only while the allowlist is empty. One atomic SQLite
   update sets the owner as the only allowed user and clears the code.
-  Invalid or expired codes create no user or chat. A new link or settings
+  Invalid or expired codes create no user or session. A new link or settings
   change cancels the previous code. Manual user-ID entry remains available.
   An allowed user who repeats a pairing command receives an already-paired
   reply, including after a lost acknowledgement or restart.
@@ -48,7 +48,7 @@ so dex needs no public URL. To use webhooks, see [Inbound webhooks](#inbound-web
   A repeated update does not create another submission. An edited message creates
   a new correction input. It does not replace the earlier input or undo its actions.
   Reply, quote, and forward context cannot change sender authorization. Attachments
-  and forwarded or edited command text do not execute chat controls. Feedback
+  and forwarded or edited command text do not execute session controls. Feedback
   discards captions and forwarded text from its draft.
 - Goldmark renders one Rich Message for each text delivery. Lists preserve their markers. Raw HTML stays escaped. Markdown images keep linked alt text and do not fetch remote media. Long answers send an extract with a reference to Web, which keeps the full answer. Unknown responses retry the same message format.
 - Telegram refreshes native typing status every 4 seconds while an input is pending. `options.typing` can turn it off. Telegram does not send drafts or edit temporary answer messages. `options.silent` applies to new text and media. `options.reactions` is on by default for private chats.
@@ -104,7 +104,7 @@ server row binds the actor, account, private chat, confirmed message, conversati
 native ID, context-reset receipt, object, action and a 15-minute expiry. The claim
 transaction checks current authority and consumes the nonce with its durable command intent.
 Command processing and effect transactions use one read-only validity check
-(`chat.ValidateTelegramControl`); effects repeat it under the SQLite writer. It covers the
+(`session.ValidateTelegramControl`); effects repeat it under the SQLite writer. It covers the
 current grant, expiry, actor, message, object and context revision. A definite 400 or 403
 rejection of the final `answerCallbackQuery` does not hold the polling offset; network, 5xx
 and 429 errors retry the same update, and the consumed nonce cannot queue a second intent.
@@ -265,7 +265,7 @@ message bodies and channel credentials.
 
 The app owns a registry with one Manager per agent. Startup restores all agents' bots.
 Creating an agent adds its Manager. Shutdown stops all Managers before the database closes.
-Uploads use the bot's agent directory. Chat notifications
+Uploads use the bot's agent directory. Session notifications
 wake all Managers; each Manager reads only its agent's replies and commands. This fan-out
 is a limit: route notifications by agent if wakeups become costly.
 
@@ -285,7 +285,7 @@ each adapter through the inbound interface that adapter defines. The delivery
 package does not import concrete adapters. Telegram rich text, buttons, and
 files keep their shared frozen encoding; the adapter owns the wire format.
 
-`chat.Service.ReceivedSource` reports the global stored input fact. Channel
+`session.Service.ReceivedSource` reports the global stored input fact. Channel
 and platform adapters use it for duplicate input and attachment replay, including
 when a bot credential moves between agents. `LookupSource` returns the
 business-owned `SourceReceipt` for typing and upload cleanup. Its
@@ -301,10 +301,10 @@ same command by source key. They do not hold a Bot-wide command lock. A native r
 without setting `admitted_at`.
 
 A peer names a remote destination, such as `telegram:7`. Owner input from all
-channels enters the bot's agent `main` conversation with that peer as origin.
+channels enters the bot's agent `main` session with that peer as origin.
 Dex checks pairing at intake. The source receipt saves the account and peer for replies and labels the transcript.
-Channel input cannot select a Chat session. The Sessions list excludes
-per-peer conversations. Main and Chat are writable on the web. Automation
+Channel input cannot select a session. The Sessions list excludes
+per-peer sessions. Main and separate Web sessions are writable on the web. Automation
 transcripts have no web composer.
 
 `/clear`, `/new`, `/stop`, and `/help` use durable command
@@ -403,7 +403,7 @@ flags, and authorized notification destinations. They omit runtime error text,
 credentials, pairing codes, and login details. The transcript omits raw tool
 arguments. Argument errors do not echo rejected values.
 
-A live owner turn in a top-level Main or Chat session can use these tools.
+A live owner turn in a top-level Main or session can use these tools.
 Web and paired private input have the same owner access. A steer does not
 change that access. A child session or background turn cannot use these tools.
 
@@ -415,7 +415,7 @@ enter credentials, get a pairing link or code, or scan a login QR code.
 The change tool has no apply operation. It returns a link to a server-rendered
 review page. The page shows the stored operation, bot, and target. A same-origin
 POST from the owner surface applies that request. When dex requires sign-in,
-the review page requires the web session cookie. A chat message or a tool call
+the review page requires the web session cookie. A session message or a tool call
 cannot approve a request. The request belongs to its originating session and
 expires after 10 minutes. Control consumes it once and checks that the session,
 bots, and target are still valid. A notification destination must still map to

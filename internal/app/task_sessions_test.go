@@ -15,8 +15,8 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 	// Given a Task owned by the default Bot and a second Bot.
 	d := startDex(t, t.TempDir(), "")
 	coder := d.createCoder(t)
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, "/api/tasks", map[string]string{"assigneeBotId": "default", "title": "Ship login"}, &task, http.StatusCreated)
 	path := "/api/tasks/" + task.Id
@@ -25,7 +25,7 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 	// When Task inputs start a child in each Bot.
 	start := func(title, bot, taskID string) string {
 		t.Helper()
-		d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", main.ID), map[string]string{
+		d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID), map[string]string{
 			"id": uuid.NewV7().String(), "taskId": taskID, "text": "session_new " + taskJSON(t, map[string]string{
 				"title": title, "bot": bot, "message": "Work on login", "provider": "faux", "modelId": "echo",
 			}),
@@ -50,7 +50,7 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 	first, second := detail.Sessions[0], detail.Sessions[1]
 	if first.AgentId != "default" || first.Title != "Implement login" || !first.IsPrimary || first.LinkedAt == 0 ||
 		second.AgentId != coder.ID || second.AgentName != "Coder" || second.Title != "Review login" || second.IsPrimary || second.LinkedAt == 0 ||
-		detail.Task.PrimarySession == nil || detail.Task.PrimarySession.ConversationId != first.ConversationId {
+		detail.Task.PrimarySession == nil || detail.Task.PrimarySession.SessionId != first.SessionId {
 		t.Fatalf("unexpected session links: %+v, primary: %+v", detail.Sessions, detail.Task.PrimarySession)
 	}
 
@@ -58,7 +58,7 @@ func TestUserTracksSessionsFromTwoBotsOnOneTask(t *testing.T) {
 	child := start("Check login", "Coder", "")
 	var updated tasktools.TaskInfo
 	taskToolJSON(t, d, main.ID, "task_update", map[string]any{"id": task.Id, "session": child}, &updated)
-	if len(updated.Sessions) != 3 || updated.Session == nil || updated.Session.ID != fmt.Sprint(first.ConversationId) {
+	if len(updated.Sessions) != 3 || updated.Session == nil || updated.Session.ID != fmt.Sprint(first.SessionId) {
 		t.Fatalf("adding a child must keep the current primary and both links: %+v", updated)
 	}
 	taskToolJSON(t, d, main.ID, "task_update", map[string]any{"id": task.Id, "session": child, "primary": true}, &updated)

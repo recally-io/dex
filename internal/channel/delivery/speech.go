@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/speech"
 	"github.com/recally-io/dex/internal/upload"
 )
 
 // SpeechInput restores an unacknowledged upload. A credential move cannot transfer its ownership.
-func (m *Manager) SpeechInput(ctx context.Context, source string) (*chat.Message, bool, error) {
+func (m *Manager) SpeechInput(ctx context.Context, source string) (*session.Message, bool, error) {
 	row, err := m.q.GetTelegramEffect(ctx, "stt:"+source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, nil
@@ -30,14 +30,14 @@ func (m *Manager) SpeechInput(ctx context.Context, source string) (*chat.Message
 	if row.InputJson == "{}" {
 		return nil, false, nil
 	}
-	var msg chat.Message
+	var msg session.Message
 	if err := json.Unmarshal([]byte(row.InputJson), &msg); err != nil {
 		return nil, false, err
 	}
 	return &msg, false, nil
 }
 
-func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg chat.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (chat.Message, error) {
+func (m *Manager) Transcribe(ctx context.Context, peer, source string, msg session.Message, duration int, options speech.Options, resolve speech.Resolve, store *upload.Store) (session.Message, error) {
 	key := "stt:" + source
 	msg.SpeechSource = key
 	row, err := m.q.GetTelegramEffect(ctx, key)
@@ -167,7 +167,7 @@ func (m *Manager) FinishSpeechInput(ctx context.Context, source string, album bo
 	if effect.AgentID != m.agentID || effect.InputJson == "{}" {
 		return nil
 	}
-	receipt, err := m.chats.LookupSource(ctx, m.agentID, source)
+	receipt, err := m.sessions.LookupSource(ctx, m.agentID, source)
 	if err != nil {
 		return err
 	}
@@ -183,12 +183,12 @@ func (m *Manager) cleanupSpeechInputs(ctx context.Context, store *upload.Store) 
 		return err
 	}
 	for _, row := range rows {
-		receipt, err := m.chats.LookupSource(ctx, m.agentID, row.SourceKey)
+		receipt, err := m.sessions.LookupSource(ctx, m.agentID, row.SourceKey)
 		if err != nil {
 			return err
 		}
 		if receipt.ID == "" {
-			var msg chat.Message
+			var msg session.Message
 			if err := json.Unmarshal([]byte(row.InputJson), &msg); err != nil {
 				return err
 			}

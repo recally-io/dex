@@ -242,7 +242,7 @@ func TestUserUpgradesServerWithAutomaticBackupAndSafeWaitWhenBusy(t *testing.T) 
 	gateDir := t.TempDir()
 	started := filepath.Join(gateDir, "started")
 	release := filepath.Join(gateDir, "release")
-	id := d.newChat(t, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release))
+	id := d.newSessionWithMessage(t, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release))
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
 	eventually(t, "tool running", func() (bool, any) { _, err := os.Stat(started); return err == nil, err })
 
@@ -311,7 +311,7 @@ func TestUserCanRunWorkAfterServerUpgradeCannotReplaceBinary(t *testing.T) {
 	if status.LastError == nil || *status.LastError == "" || restarts.Load() != 0 {
 		t.Fatalf("unexpected upgrade result: %+v; restarts: %d", status, restarts.Load())
 	}
-	id := d.newChat(t, "echo still working")
+	id := d.newSessionWithMessage(t, "echo still working")
 	d.watch(t, id).until(t, "work after failed upgrade", answered("bash: still working"))
 }
 
@@ -330,7 +330,7 @@ func TestUserRestartsServerWhenIdleAndWaitsWhenBusy(t *testing.T) {
 	gateDir := t.TempDir()
 	started := filepath.Join(gateDir, "started")
 	release := filepath.Join(gateDir, "release")
-	d.newChat(t, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release))
+	d.newSessionWithMessage(t, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release))
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
 	eventually(t, "tool running", func() (bool, any) { _, err := os.Stat(started); return err == nil, err })
 
@@ -405,7 +405,7 @@ func TestUserForcesWaitingUpgradeWithoutRace(t *testing.T) {
 	gateDir := t.TempDir()
 	started := filepath.Join(gateDir, "started")
 	release := filepath.Join(gateDir, "release")
-	d.newChat(t, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release))
+	d.newSessionWithMessage(t, fmt.Sprintf("touch '%s'; while [ ! -f '%s' ]; do sleep 0.02; done; echo done", started, release))
 	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
 	eventually(t, "tool running", func() (bool, any) { _, err := os.Stat(started); return err == nil, err })
 

@@ -30,7 +30,7 @@ func TestUserTelegramAlbumBecomesOneNativeInput(t *testing.T) {
 	if !strings.Contains(answer, "caption one.txt") || !strings.Contains(answer, "caption two.txt") {
 		t.Fatalf("album split before native admission: %q", answer)
 	}
-	watch := d.watch(t, d.mainChat(t))
+	watch := d.watch(t, d.mainSession(t))
 	watch.until(t, "one native album input", func(tr *transcript) bool {
 		users := 0
 		for _, item := range tr.items {
@@ -55,7 +55,7 @@ func TestUserAnswersTelegramQuestionWithAlbumCaption(t *testing.T) {
 	d.setModel(t, "tool")
 	f.message(1, 42, 42, askJSON)
 	asked := f.next(t)
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	_ = d.awaitQuestion(t, main, "open")
 	d.setModel(t, "echo")
 	// When the user quotes the Question with an album and one exact option caption.
@@ -105,7 +105,7 @@ func TestUserTelegramAlbumOverflowKeepsTenFilesPerNativeInput(t *testing.T) {
 	d := startTelegram(t, f, t.TempDir(), 42)
 	f.albumFiles("large-album", 1, names...)
 	// When the input limit seals the first batch, every member still reaches one of the two native inputs.
-	watch := d.watch(t, d.mainChat(t))
+	watch := d.watch(t, d.mainSession(t))
 	watch.until(t, "eleven files in bounded native inputs", func(tr *transcript) bool {
 		counts := []int{}
 		total := 0

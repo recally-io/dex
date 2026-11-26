@@ -9,8 +9,8 @@ import (
 	"github.com/recally-io/dex/internal/agent"
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 	tasktools "github.com/recally-io/dex/internal/task/tools"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -31,13 +31,13 @@ func TestBuiltInToolSchemasEncodeValidJSONSchema(t *testing.T) {
 	const id = "bot"
 	runtime := engine.ExtensionRuntime{AgentID: id}
 	extensions := append(engine.BuiltInSchemaExtensions(),
-		chat.CheckExtension(id, nil), automation.ToolExtension(id, automation.ToolHandlers{}),
-		chat.SessionExtension(id, chat.SessionHandlers{}), chat.SessionReadExtension(id, chat.SessionHandlers{}),
-		chat.WorkLoopExtension(), artifact.Extension(runtime, nil), chat.FrontDeskExtension(),
-		chat.OutboxExtension(id, chat.OutboxTools{}), chat.ChildOutboxExtension(id, chat.OutboxTools{}), chat.MonitorExtension(runtime, chat.MonitorTools{}),
-		chat.AskUserExtension(id, nil), agent.BotReadExtension(id, agent.BotHandlers{}), agent.BotManageExtension(id, agent.BotHandlers{}),
+		session.CheckExtension(id, nil), automation.ToolExtension(id, automation.ToolHandlers{}),
+		session.Extension(id, session.Handlers{}), session.ReadExtension(id, session.Handlers{}),
+		session.WorkLoopExtension(), artifact.Extension(runtime, nil), session.FrontDeskExtension(),
+		session.OutboxExtension(id, session.OutboxTools{}), session.ChildOutboxExtension(id, session.OutboxTools{}), session.MonitorExtension(runtime, session.MonitorTools{}),
+		session.AskUserExtension(id, nil), agent.BotReadExtension(id, agent.BotHandlers{}), agent.BotManageExtension(id, agent.BotHandlers{}),
 		tasktools.TaskExtension(id, tasktools.TaskTools{Links: []tasktools.TaskLinkTool{link}}),
-		chat.ChildExtension(), chat.DreamMessageExtension(id, nil), chat.RoutineCheckInstructions(),
+		session.ChildExtension(), session.DreamMessageExtension(id, nil), session.RoutineCheckInstructions(),
 	)
 	extensions = append(extensions, agent.ChannelExtensions(id, agent.ChannelTools{})...)
 	count := 0

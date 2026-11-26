@@ -52,14 +52,14 @@ skinparam BackgroundColor #ffffff
 title dex: Board and Task storage
 top to bottom direction
 rectangle "Web UI\nBoard (/board)" as ui
-rectangle "Bot Tools\nMain, Chat, scoped Child" as tools
+rectangle "Bot Tools\nMain, Session, scoped Child" as tools
 rectangle "Sources (Plugins)\nGitHub / Email / Webhook" as plugins
 rectangle "External Agents\ndex task / Process" as ext
 package "dex control plane" as ctrl {
   rectangle "SSE Event Stream\n/api/tasks/events (Last-Event-ID)" as sse
   rectangle "internal/task\nCentral ACL + Auth Matrix\n6 statuses, derived Blocked, review" as core
   rectangle "Task wake delivery\nAt most one unadmitted wake per Main" as wake
-  rectangle "internal/chat + internal/engine\nPer-session delivery gate + PiG Harness" as runtime
+  rectangle "internal/session + internal/engine\nPer-session delivery gate + PiG Harness" as runtime
 }
 database "control.sqlite\ntasks and task_numbers (T-N)\ntask_entries (AUTOINCREMENT)\ntask_sessions, task_external_runs\ntask_dependencies" as cdb
 database "agents/<id>/state.sqlite\nNative PiG runs & transcripts" as adb

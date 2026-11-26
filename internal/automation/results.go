@@ -14,7 +14,7 @@ type Result struct {
 	AgentName      string `json:"agentName"`
 	AutomationID   string `json:"automationId"`
 	AutomationName string `json:"automationName"`
-	ChatID         int64  `json:"chatId"`
+	SessionID      int64  `json:"sessionId"`
 	Outcome        string `json:"outcome"`
 	Summary        string `json:"summary"`
 	CreatedAt      int64  `json:"createdAt"`
@@ -33,7 +33,7 @@ func (s *Service) Results(ctx context.Context, includeDismissed bool) ([]Result,
 	}
 	items := make([]Result, len(rows))
 	for i, r := range rows {
-		items[i] = Result{RunID: r.RunID, AgentID: r.AgentID, AgentName: r.AgentName, AutomationID: r.AutomationID, AutomationName: r.AutomationName, ChatID: r.ChatID, Outcome: r.Outcome, Summary: r.Summary, CreatedAt: r.CreatedAt, Read: r.ReadAt.Valid, Dismissed: r.DismissedAt.Valid, RunnerID: r.RunnerID, Cwd: r.Cwd}
+		items[i] = Result{RunID: r.RunID, AgentID: r.AgentID, AgentName: r.AgentName, AutomationID: r.AutomationID, AutomationName: r.AutomationName, SessionID: r.SessionID, Outcome: r.Outcome, Summary: r.Summary, CreatedAt: r.CreatedAt, Read: r.ReadAt.Valid, Dismissed: r.DismissedAt.Valid, RunnerID: r.RunnerID, Cwd: r.Cwd}
 	}
 	return items, nil
 }

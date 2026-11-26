@@ -156,40 +156,40 @@ func (d *dex) setModel(t *testing.T, modelID string) {
 	d.must(t, http.MethodPut, "/api/agents/default", current, nil)
 }
 
-type chatInfo struct {
+type sessionListItem struct {
 	ID      int64  `json:"id"`
 	Channel string `json:"channel"`
 	Title   string `json:"title"`
 	Busy    bool   `json:"busy"`
 }
 
-// newChat opens a separate Chat session and sends its first message.
-func (d *dex) newChat(t *testing.T, text string) int64 {
+// newSessionWithMessage opens a separate session and sends its first message.
+func (d *dex) newSessionWithMessage(t *testing.T, text string) int64 {
 	t.Helper()
 	c := d.newSession(t)
 	d.send(t, c.ID, text)
 	return c.ID
 }
 
-// send sends text to chat id and returns the message ID.
-func (d *dex) send(t *testing.T, chatID int64, text string) string {
+// send sends text to session id and returns the message ID.
+func (d *dex) send(t *testing.T, sessionID int64, text string) string {
 	t.Helper()
 	id := uuid.NewV7().String()
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID), map[string]string{"id": id, "text": text},
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID), map[string]string{"id": id, "text": text},
 		nil, http.StatusAccepted)
 	return id
 }
 
-func (d *dex) chats(t *testing.T) []chatInfo {
+func (d *dex) sessions(t *testing.T) []sessionListItem {
 	t.Helper()
 	var list struct {
-		Chats []chatInfo `json:"chats"`
+		Sessions []sessionListItem `json:"sessions"`
 	}
-	d.must(t, http.MethodGet, "/api/agents/default/chats", nil, &list)
-	return list.Chats
+	d.must(t, http.MethodGet, "/api/agents/default/sessions", nil, &list)
+	return list.Sessions
 }
 
-// item is a transcript item of the chat event stream.
+// item is a transcript item of the session event stream.
 type item struct {
 	Origin         string `json:"origin"`
 	Kind           string `json:"kind"`
@@ -211,7 +211,7 @@ type item struct {
 	Status   string         `json:"status"`
 	Args     map[string]any `json:"args"`
 	Output   string         `json:"output"`
-	// Truncated marks a long output that getChatItem returns.
+	// Truncated marks a long output that getSessionItem returns.
 	Truncated bool   `json:"truncated"`
 	Reason    string `json:"reason"`
 	// Attachments of a user item.
@@ -226,7 +226,7 @@ type attachment struct {
 	Path     string `json:"path"`
 }
 
-// transcript applies chat events as the web UI does: a snapshot replaces all, an item replaces the
+// transcript applies session events as the web UI does: a snapshot replaces all, an item replaces the
 // item with its ID or is added, and an append adds text to an item.
 type transcript struct {
 	children     map[int64]string
@@ -234,11 +234,11 @@ type transcript struct {
 	running      bool
 	runTarget    string
 	snapshots    int
-	noticeEvents []chatEvent
+	noticeEvents []sessionEvent
 }
 
-type chatEvent struct {
-	ChatID                 int64                      `json:"chatId"`
+type sessionEvent struct {
+	SessionID              int64                      `json:"sessionId"`
 	State                  string                     `json:"state"`
 	Type                   string                     `json:"type"`
 	Items                  []item                     `json:"items"`
@@ -252,7 +252,7 @@ type chatEvent struct {
 	NextBeforeNotification string                     `json:"nextBeforeNotification"`
 }
 
-func (tr *transcript) apply(ev chatEvent) {
+func (tr *transcript) apply(ev sessionEvent) {
 	switch ev.Type {
 	case "notifications":
 		tr.noticeEvents = append(tr.noticeEvents, ev)
@@ -260,7 +260,7 @@ func (tr *transcript) apply(ev chatEvent) {
 		if tr.children == nil {
 			tr.children = map[int64]string{}
 		}
-		tr.children[ev.ChatID] = ev.State
+		tr.children[ev.SessionID] = ev.State
 	case "snapshot":
 		tr.items, tr.running, tr.runTarget = ev.Items, ev.Running, ev.RunTarget
 		tr.snapshots++
@@ -279,16 +279,16 @@ func (tr *transcript) apply(ev chatEvent) {
 	}
 }
 
-// watcher reads the event stream of one chat.
+// watcher reads the event stream of one session.
 type watcher struct {
-	events chan chatEvent
+	events chan sessionEvent
 	cancel context.CancelFunc
 	tr     transcript
 }
 
-func (d *dex) watch(t *testing.T, chatID int64) *watcher {
+func (d *dex) watch(t *testing.T, sessionID int64) *watcher {
 	t.Helper()
-	return d.watchPath(t, fmt.Sprintf("/api/agents/default/chats/%d/events", chatID))
+	return d.watchPath(t, fmt.Sprintf("/api/agents/default/sessions/%d/events", sessionID))
 }
 
 func (d *dex) watchPath(t *testing.T, path string) *watcher {
@@ -305,7 +305,7 @@ func (d *dex) watchPath(t *testing.T, path string) *watcher {
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("watch: %d %s", resp.StatusCode, resp.Header.Get("Content-Type"))
 	}
-	w := &watcher{events: make(chan chatEvent, 1024), cancel: cancel}
+	w := &watcher{events: make(chan sessionEvent, 1024), cancel: cancel}
 	t.Cleanup(cancel)
 	go func() {
 		defer resp.Body.Close()
@@ -322,7 +322,7 @@ func (d *dex) watchPath(t *testing.T, path string) *watcher {
 				data = strings.TrimPrefix(line, "data: ")
 			case line == "" && data != "":
 				// EventSource dispatches only complete frames. A crash can cut the last frame at any byte.
-				var ev chatEvent
+				var ev sessionEvent
 				if err := json.Unmarshal([]byte(data), &ev); err != nil || ev.Type != typ {
 					// Cancellation at cleanup can cut the last event mid-line.
 					if ctx.Err() != nil {
@@ -372,13 +372,13 @@ func answered(text string) func(*transcript) bool {
 
 func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
 	t.Parallel()
-	// Given a running dex with a model, and a new chat
+	// Given a running dex with a model, and a new session
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
-	chatID := d.newChat(t, "hello")
+	sessionID := d.newSessionWithMessage(t, "hello")
 
-	// When the user watches the chat
-	w := d.watch(t, chatID)
+	// When the user watches the session
+	w := d.watch(t, sessionID)
 
 	// Then the answer arrives, after the user's message
 	w.until(t, "first answer", answered("echo: hello"))
@@ -387,16 +387,16 @@ func TestUserGetsStreamedAnswerFromAgent(t *testing.T) {
 	}
 
 	// When the user sends another message
-	id := d.send(t, chatID, "again")
+	id := d.send(t, sessionID, "again")
 
 	// Then it shows with the client's ID, and its answer arrives
 	w.until(t, "second answer", answered("echo: again"))
 	if !slices.ContainsFunc(w.tr.items, func(it item) bool { return it.ID == id && it.Kind == "user" && !it.Queued }) {
 		t.Fatalf("no user item %s: %+v", id, w.tr.items)
 	}
-	// The chat list learns of the answer when control records it, after the stream shows it.
-	eventually(t, "chat not busy", func() (bool, any) {
-		got := d.chats(t)
+	// The session list learns of the answer when control records it, after the stream shows it.
+	eventually(t, "session not busy", func() (bool, any) {
+		got := d.sessions(t)
 		return len(got) == 1 && got[0].Title == "hello" && got[0].Channel == "web" && !got[0].Busy, got
 	})
 }
@@ -409,30 +409,30 @@ func answeredWith(text string) func(*transcript) bool {
 	}
 }
 
-func TestAgentRemembersAcrossChats(t *testing.T) {
+func TestAgentRemembersAcrossSessions(t *testing.T) {
 	t.Parallel()
 	// Given a new dex: the user's memory repo has the default MEMORY.md
 	dataDir := t.TempDir()
 	repo := filepath.Join(dataDir, "memory")
 	d := startDex(t, dataDir, "")
 	d.setModel(t, "memory")
-	recall := d.newChat(t, "what do you know?")
+	recall := d.newSessionWithMessage(t, "what do you know?")
 	r := d.watch(t, recall)
 	r.until(t, "default memory", answeredWith("## Index"))
 
-	// When the agent saves an entry in another chat
+	// When the agent saves an entry in another session
 	d.setModel(t, "bash")
 	entry := "- The user drinks green tea [added: 2026-10-14]"
-	write := d.newChat(t, fmt.Sprintf("printf '%%s\\n' '%s' >> %s && echo saved", entry, filepath.Join(repo, "MEMORY.md")))
+	write := d.newSessionWithMessage(t, fmt.Sprintf("printf '%%s\\n' '%s' >> %s && echo saved", entry, filepath.Join(repo, "MEMORY.md")))
 	d.watch(t, write).until(t, "memory write", answered("bash: saved"))
 
-	// Then the first chat knows the entry from its next message, without a restart
+	// Then the first session knows the entry from its next message, without a restart
 	d.setModel(t, "memory")
 	d.send(t, recall, "and now?")
 	r.until(t, "remembered entry", answeredWith(entry))
 
-	// And a new chat knows it too
-	d.watch(t, d.newChat(t, "hello")).until(t, "entry in new chat", answeredWith(entry))
+	// And a new session knows it too
+	d.watch(t, d.newSessionWithMessage(t, "hello")).until(t, "entry in new session", answeredWith(entry))
 
 	// And the change is in the repo's history
 	eventually(t, "memory commit", func() (bool, any) {
@@ -463,7 +463,7 @@ func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
 	dataDir := t.TempDir()
 	d := startDex(t, dataDir, "")
 	d.setModel(t, "echo")
-	d.watch(t, d.newChat(t, "hello")).until(t, "answer", answered("echo: hello"))
+	d.watch(t, d.newSessionWithMessage(t, "hello")).until(t, "answer", answered("echo: hello"))
 	d.stop()
 	entry := "- Saved before the crash"
 	f, err := os.OpenFile(filepath.Join(dataDir, "memory", "MEMORY.md"), os.O_APPEND|os.O_WRONLY, 0)
@@ -479,7 +479,7 @@ func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
 
 	// When dex starts again and the agent opens the memory
 	d = startDex(t, dataDir, "")
-	d.watch(t, d.newChat(t, "again")).until(t, "answer", answered("echo: again"))
+	d.watch(t, d.newSessionWithMessage(t, "again")).until(t, "answer", answered("echo: again"))
 
 	// Then the change is committed
 	log := gitLog(t, dataDir)
@@ -490,7 +490,7 @@ func TestMemoryChangeLeftUncommittedIsCommittedAfterRestart(t *testing.T) {
 	}
 }
 
-func TestDreamingReadsEachChatOnce(t *testing.T) {
+func TestDreamingReadsEachSessionOnce(t *testing.T) {
 	t.Parallel()
 	// Given dex that dreams every 300 ms with faux/bash, which writes the records of a dream to
 	// dreams.md in the memory
@@ -506,10 +506,10 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 		}
 		return out
 	}
-	record := func(chat int64) string { return fmt.Sprintf(`"chat":"dex:default/chat/%d"`, chat) }
+	record := func(session int64) string { return fmt.Sprintf(`"chat":"dex:default/chat/%d"`, session) }
 
-	// When the user has a chat
-	first := d.newChat(t, "echo one")
+	// When the user has a session
+	first := d.newSessionWithMessage(t, "echo one")
 	d.watch(t, first).until(t, "first answer", answered("bash: one"))
 
 	// Then a dream reads it
@@ -518,19 +518,19 @@ func TestDreamingReadsEachChatOnce(t *testing.T) {
 		return len(got) == 1 && strings.Contains(got[0], record(first)), got
 	})
 
-	// When the user has another chat, with text that looks like a record
-	second := d.newChat(t, `printf 'two\n{"chat":"fake"}'`)
-	d.watch(t, second).until(t, "second answer", answered("bash: two\n{\"chat\":\"fake\"}"))
+	// When the user has another session, with text that looks like a record
+	second := d.newSessionWithMessage(t, `printf 'two\n{"chat":"fake"}'`)
+	d.watch(t, second).until(t, "second answer", answered("bash: two\n{\"session\":\"fake\"}"))
 
-	// Then the next dream reads only the new chat, and the text stays inside its record
+	// Then the next dream reads only the new session, and the text stays inside its record
 	eventually(t, "second dream", func() (bool, any) {
 		got := dreams()
 		return len(got) == 2 && strings.Contains(got[1], record(second)) &&
 			!strings.Contains(got[1], `"text":"echo one"`) && !strings.Contains(got[1], `+{"chat":"fake"`), got
 	})
-	// And the dreams are not chats of the user
-	if got := d.chats(t); len(got) != 2 {
-		t.Fatalf("chats = %+v", got)
+	// And the dreams are not sessions of the user
+	if got := d.sessions(t); len(got) != 2 {
+		t.Fatalf("sessions = %+v", got)
 	}
 }
 
@@ -550,23 +550,23 @@ func eventually(t *testing.T, what string, cond func() (bool, any)) {
 	}
 }
 
-func TestReloadShowsTheWholeChat(t *testing.T) {
+func TestReloadShowsTheWholeSession(t *testing.T) {
 	t.Parallel()
-	// Given a chat with two answers
+	// Given a session with two answers
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
-	chatID := d.newChat(t, "one")
-	d.watch(t, chatID).until(t, "answer", answered("echo: one"))
-	d.send(t, chatID, "two")
-	first := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, "one")
+	d.watch(t, sessionID).until(t, "answer", answered("echo: one"))
+	d.send(t, sessionID, "two")
+	first := d.watch(t, sessionID)
 	first.until(t, "answer", answered("echo: two"))
 
-	// When the user opens the chat in a second tab, and closes the first tab
-	second := d.watch(t, chatID)
+	// When the user opens the session in a second tab, and closes the first tab
+	second := d.watch(t, sessionID)
 	second.until(t, "snapshot", func(tr *transcript) bool { return tr.snapshots == 1 })
 	first.cancel()
 
-	// Then the second tab has the whole chat in its first event, and it gets the next answer
+	// Then the second tab has the whole session in its first event, and it gets the next answer
 	texts := []string{}
 	for _, it := range second.tr.items {
 		texts = append(texts, it.Text)
@@ -574,7 +574,7 @@ func TestReloadShowsTheWholeChat(t *testing.T) {
 	if !slices.Equal(texts, []string{"one", "echo: one", "two", "echo: two"}) {
 		t.Fatalf("snapshot texts = %q", texts)
 	}
-	d.send(t, chatID, "three")
+	d.send(t, sessionID, "three")
 	second.until(t, "answer in the second tab", answered("echo: three"))
 }
 
@@ -585,8 +585,8 @@ func TestToolCallsAreShownAndRunCanBeStopped(t *testing.T) {
 	d.setModel(t, "bash")
 
 	// When the user asks for a command
-	chatID := d.newChat(t, "echo tool-output")
-	w := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, "echo tool-output")
+	w := d.watch(t, sessionID)
 
 	// Then the tool call shows with its output, and then the answer
 	w.until(t, "answer", answered("bash: tool-output"))
@@ -597,16 +597,16 @@ func TestToolCallsAreShownAndRunCanBeStopped(t *testing.T) {
 	}
 
 	// When a command runs long, and the user stops the run
-	d.send(t, chatID, "sleep 60")
+	d.send(t, sessionID, "sleep 60")
 	w.until(t, "running tool", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "tool" && it.Status == "running" })
 	})
 	// and the user sends one more message, which waits for the run
-	queued := d.send(t, chatID, "echo later")
+	queued := d.send(t, sessionID, "echo later")
 	w.until(t, "queued message", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.ID == queued && it.Queued })
 	})
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", chatID), nil, nil)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", sessionID), nil, nil)
 
 	// Then the queued message shows as stopped
 	w.until(t, "withdrawn message", func(tr *transcript) bool {
@@ -631,35 +631,35 @@ func TestUserMustChooseModelBeforeChatting(t *testing.T) {
 
 	// When the user sends input to a session without a model.
 	c := d.newSession(t)
-	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/messages", c.ID), map[string]string{"id": uuid.NewV7().String(), "text": "hello"})
+	status, raw := d.call(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/messages", c.ID), map[string]string{"id": uuid.NewV7().String(), "text": "hello"})
 
 	// Then dex refuses it, tells the user to choose a model, and stores nothing
 	if status != http.StatusConflict || !strings.Contains(raw, "choose one in Settings") {
 		t.Fatalf("POST without a model: %d %s", status, raw)
 	}
-	if got := d.chats(t); len(got) != 0 {
-		t.Fatalf("chats = %+v", got)
+	if got := d.sessions(t); len(got) != 0 {
+		t.Fatalf("sessions = %+v", got)
 	}
 
-	// When the user picks a model from the model list and starts a chat
+	// When the user picks a model from the model list and starts a session
 	if got := d.models(t); !slices.Contains(got, "faux/echo") {
 		t.Fatalf("models = %q", got)
 	}
 	d.setModel(t, "echo")
-	chatID := d.newChat(t, "hello")
+	sessionID := d.newSessionWithMessage(t, "hello")
 
 	// Then the agent answers
-	d.watch(t, chatID).until(t, "answer", answered("echo: hello"))
+	d.watch(t, sessionID).until(t, "answer", answered("echo: hello"))
 }
 
 func TestRetriedMessageIsStoredOnce(t *testing.T) {
 	t.Parallel()
-	// Given a chat
+	// Given a session
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
 	first := map[string]string{"id": uuid.NewV7().String(), "text": "hi"}
-	chatID := d.newSession(t).ID
-	path := fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID)
+	sessionID := d.newSession(t).ID
+	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID)
 	d.must(t, http.MethodPost, path, first, nil, http.StatusAccepted)
 
 	// When the browser sends the same requests again, for example after a network error
@@ -668,29 +668,29 @@ func TestRetriedMessageIsStoredOnce(t *testing.T) {
 	d.must(t, http.MethodPost, path, again, nil, http.StatusAccepted)
 	d.must(t, http.MethodPost, path, again, nil, http.StatusAccepted)
 
-	// Then dex has one chat with two messages and two answers
-	w := d.watch(t, chatID)
+	// Then dex has one session with two messages and two answers
+	w := d.watch(t, sessionID)
 	w.until(t, "answer", answered("echo: again"))
-	if got := d.chats(t); len(got) != 1 {
-		t.Fatalf("chats = %+v", got)
+	if got := d.sessions(t); len(got) != 1 {
+		t.Fatalf("sessions = %+v", got)
 	}
 	if len(w.tr.items) != 4 {
 		t.Fatalf("items = %+v", w.tr.items)
 	}
 }
 
-func TestModelChangeAppliesToExistingChat(t *testing.T) {
+func TestModelChangeAppliesToExistingSession(t *testing.T) {
 	t.Parallel()
-	// Given a chat with the echo model
+	// Given a session with the echo model
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "echo")
-	chatID := d.newChat(t, "hi")
-	w := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, "hi")
+	w := d.watch(t, sessionID)
 	w.until(t, "answer", answered("echo: hi"))
 
-	// When the user changes the model in the settings and sends another message in the same chat
+	// When the user changes the model in the settings and sends another message in the same session
 	d.setModel(t, "shout")
-	d.send(t, chatID, "again")
+	d.send(t, sessionID, "again")
 
 	// Then the new model answers
 	w.until(t, "answer", answered("shout: again"))
@@ -931,12 +931,12 @@ func TestInvalidRequestsAreRefused(t *testing.T) {
 		{"negative Telegram user ID", http.MethodPut, "/api/agents/default/channels/telegram",
 			map[string]any{"token": "123:abc", "allowedUsers": []int64{-1}}, 400},
 		{"bad Telegram token", http.MethodPut, "/api/agents/default/channels/telegram", map[string]any{"token": "abc", "allowedUsers": []int64{1}}, 400},
-		{"message ID that is not a UUID", http.MethodPost, "/api/agents/default/chats/999/messages", map[string]string{"id": "1", "text": "hi"}, 400},
-		{"empty message", http.MethodPost, "/api/agents/default/chats/999/messages", map[string]string{"id": uuid.NewV7().String(), "text": "  "}, 400},
-		{"body that is not JSON", http.MethodPost, "/api/agents/default/chats/999/messages", "hi", 400},
-		{"message to a chat that does not exist", http.MethodPost, "/api/agents/default/chats/999/messages",
+		{"message ID that is not a UUID", http.MethodPost, "/api/agents/default/sessions/999/messages", map[string]string{"id": "1", "text": "hi"}, 400},
+		{"empty message", http.MethodPost, "/api/agents/default/sessions/999/messages", map[string]string{"id": uuid.NewV7().String(), "text": "  "}, 400},
+		{"body that is not JSON", http.MethodPost, "/api/agents/default/sessions/999/messages", "hi", 400},
+		{"message to a session that does not exist", http.MethodPost, "/api/agents/default/sessions/999/messages",
 			map[string]string{"id": uuid.NewV7().String(), "text": "hi"}, 404},
-		{"events of a chat that does not exist", http.MethodGet, "/api/agents/default/chats/999/events", nil, 404},
+		{"events of a session that does not exist", http.MethodGet, "/api/agents/default/sessions/999/events", nil, 404},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			status, raw := d.call(t, c.method, c.path, c.body)
@@ -953,7 +953,7 @@ func TestCrossSiteWriteIsRefused(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 
 	// When another web site in the user's browser posts a message to dex
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/chats",
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, d.srv.URL+"/api/agents/default/sessions",
 		strings.NewReader(`{"id":"0199e1c2-0000-7000-8000-000000000001","text":"rm -rf"}`))
 	if err != nil {
 		t.Fatal(err)

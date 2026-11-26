@@ -32,21 +32,6 @@ func (q *Queries) GetAutomationNotificationTarget(ctx context.Context, arg GetAu
 	return i, err
 }
 
-const getAutomationOutboxConversation = `-- name: GetAutomationOutboxConversation :one
-SELECT id FROM conversations
-WHERE agent_id = ? AND archived_at IS NULL AND parent_id IS NULL
-ORDER BY (channel_key = 'main') DESC, id
-LIMIT 1
-`
-
-// An owner for the Outbox FK only. This is not a source input or delivery route.
-func (q *Queries) GetAutomationOutboxConversation(ctx context.Context, agentID string) (int64, error) {
-	row := q.db.QueryRowContext(ctx, getAutomationOutboxConversation, agentID)
-	var id int64
-	err := row.Scan(&id)
-	return id, err
-}
-
 const getAutomationOutboxInfo = `-- name: GetAutomationOutboxInfo :one
 SELECT a.name, a.agent_id, t.account_id, t.peer
 FROM automation_runs r
@@ -76,6 +61,21 @@ func (q *Queries) GetAutomationOutboxInfo(ctx context.Context, id string) (GetAu
 		&i.Peer,
 	)
 	return i, err
+}
+
+const getAutomationOutboxSession = `-- name: GetAutomationOutboxSession :one
+SELECT id FROM sessions
+WHERE agent_id = ? AND archived_at IS NULL AND parent_id IS NULL
+ORDER BY (channel_key = 'main') DESC, id
+LIMIT 1
+`
+
+// An owner for the Outbox FK only. This is not a source input or delivery route.
+func (q *Queries) GetAutomationOutboxSession(ctx context.Context, agentID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getAutomationOutboxSession, agentID)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getPrimaryNotificationTarget = `-- name: GetPrimaryNotificationTarget :one

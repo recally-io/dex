@@ -37,7 +37,7 @@ func (q *Queries) ClearDefaultAutomationCwd(ctx context.Context, agentID string)
 }
 
 const clearDefaultSessionCwd = `-- name: ClearDefaultSessionCwd :exec
-UPDATE conversations SET cwd = '' WHERE agent_id = ? AND runner_id = ''
+UPDATE sessions SET cwd = '' WHERE agent_id = ? AND runner_id = ''
 `
 
 // Sessions that follow the Bot's Runner start in the new Runner's workspace.
@@ -48,9 +48,9 @@ func (q *Queries) ClearDefaultSessionCwd(ctx context.Context, agentID string) er
 
 const countDefaultSessionWork = `-- name: CountDefaultSessionWork :one
 SELECT
-    (SELECT count(*) FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+    (SELECT count(*) FROM submissions s JOIN sessions c ON c.id = s.session_id
      WHERE c.agent_id = ?1 AND c.runner_id = '' AND s.status = 'pending')
-    + (SELECT count(*) FROM background_commands b JOIN conversations c ON c.id = b.conversation_id
+    + (SELECT count(*) FROM background_commands b JOIN sessions c ON c.id = b.session_id
        WHERE c.agent_id = ?1 AND c.runner_id = '' AND b.state IN ('starting', 'running'))
 `
 
@@ -65,7 +65,7 @@ func (q *Queries) CountDefaultSessionWork(ctx context.Context, agentID string) (
 
 const countPendingAgent = `-- name: CountPendingAgent :one
 SELECT count(*)
-FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE c.agent_id = ? AND s.status = 'pending'
 `
 
@@ -197,14 +197,14 @@ func (q *Queries) GetRunner(ctx context.Context, id string) (Runner, error) {
 const lastAutomationRunRunner = `-- name: LastAutomationRunRunner :one
 SELECT r.runner_id FROM automation_runs r
 JOIN submissions s ON s.id = r.id
-WHERE s.conversation_id = ?
+WHERE s.session_id = ?
 ORDER BY s.created_at DESC, s.id DESC
 LIMIT 1
 `
 
 // The Runner of the newest run in an Automation Session.
-func (q *Queries) LastAutomationRunRunner(ctx context.Context, conversationID int64) (string, error) {
-	row := q.db.QueryRowContext(ctx, lastAutomationRunRunner, conversationID)
+func (q *Queries) LastAutomationRunRunner(ctx context.Context, sessionID int64) (string, error) {
+	row := q.db.QueryRowContext(ctx, lastAutomationRunRunner, sessionID)
 	var runner_id string
 	err := row.Scan(&runner_id)
 	return runner_id, err
@@ -280,18 +280,18 @@ func (q *Queries) ListRunners(ctx context.Context) ([]Runner, error) {
 	return items, nil
 }
 
-const retireAutomationChat = `-- name: RetireAutomationChat :exec
-UPDATE conversations SET channel_key = ?1 WHERE id = ?2
+const retireAutomationSession = `-- name: RetireAutomationSession :exec
+UPDATE sessions SET channel_key = ?1 WHERE id = ?2
 `
 
-type RetireAutomationChatParams struct {
+type RetireAutomationSessionParams struct {
 	ChannelKey string `json:"channel_key"`
 	ID         int64  `json:"id"`
 }
 
 // An Automation Session on another Runner stays readable but can no longer be reused.
-func (q *Queries) RetireAutomationChat(ctx context.Context, arg RetireAutomationChatParams) error {
-	_, err := q.db.ExecContext(ctx, retireAutomationChat, arg.ChannelKey, arg.ID)
+func (q *Queries) RetireAutomationSession(ctx context.Context, arg RetireAutomationSessionParams) error {
+	_, err := q.db.ExecContext(ctx, retireAutomationSession, arg.ChannelKey, arg.ID)
 	return err
 }
 
@@ -312,21 +312,21 @@ func (q *Queries) SetAgentRunnerSandboxID(ctx context.Context, arg SetAgentRunne
 	return err
 }
 
-const setChatRunner = `-- name: SetChatRunner :execrows
-UPDATE conversations SET runner_id = ?1, cwd = ''
-WHERE conversations.id = ?2 AND conversations.agent_id = ?3 AND conversations.execution_id IS NULL AND conversations.forked_from IS NULL
-  AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.conversation_id = conversations.id)
+const setSessionRunner = `-- name: SetSessionRunner :execrows
+UPDATE sessions SET runner_id = ?1, cwd = ''
+WHERE sessions.id = ?2 AND sessions.agent_id = ?3 AND sessions.execution_id IS NULL AND sessions.forked_from IS NULL
+  AND NOT EXISTS (SELECT 1 FROM submissions s WHERE s.session_id = sessions.id)
 `
 
-type SetChatRunnerParams struct {
+type SetSessionRunnerParams struct {
 	RunnerID string `json:"runner_id"`
 	ID       int64  `json:"id"`
 	AgentID  string `json:"agent_id"`
 }
 
 // Select a Session's Runner before its first message.
-func (q *Queries) SetChatRunner(ctx context.Context, arg SetChatRunnerParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, setChatRunner, arg.RunnerID, arg.ID, arg.AgentID)
+func (q *Queries) SetSessionRunner(ctx context.Context, arg SetSessionRunnerParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setSessionRunner, arg.RunnerID, arg.ID, arg.AgentID)
 	if err != nil {
 		return 0, err
 	}

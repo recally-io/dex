@@ -90,21 +90,21 @@ func (l *Ledger) queueWake(ctx context.Context, botID string, task sqlc.Task, re
 			}
 		}
 	}
-	if !slices.Contains(l.wakeConversations, main) {
-		l.wakeConversations = append(l.wakeConversations, main)
+	if !slices.Contains(l.wakeSessions, main) {
+		l.wakeSessions = append(l.wakeSessions, main)
 	}
 	return true, nil
 }
 
 func insertTaskWake(ctx context.Context, q *sqlc.Queries, main int64, content string, now int64) (string, error) {
 	id := "task-wake:" + uuid.NewV7().String()
-	return id, q.CreateTaskWake(ctx, sqlc.CreateTaskWakeParams{ID: id, ConversationID: main, Content: content, CreatedAt: now})
+	return id, q.CreateTaskWake(ctx, sqlc.CreateTaskWakeParams{ID: id, SessionID: main, Content: content, CreatedAt: now})
 }
 
 // RequeueTaskWake copies the latest stored payload after admission frees the slot.
 // The caller must pass the latest source row and use the same write transaction.
 func RequeueTaskWake(ctx context.Context, q *sqlc.Queries, source sqlc.Submission, now int64) error {
-	id, err := insertTaskWake(ctx, q, source.ConversationID, source.Content, now)
+	id, err := insertTaskWake(ctx, q, source.SessionID, source.Content, now)
 	if err != nil {
 		return err
 	}

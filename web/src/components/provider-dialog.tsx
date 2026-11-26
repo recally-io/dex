@@ -20,7 +20,7 @@ const examples = new Map([
 ]);
 
 const notes = new Map([
-  ["openai-completions", "Chat Completions. Works with local servers such as LM Studio or Ollama."],
+  ["openai-completions", "Session Completions. Works with local servers such as LM Studio or Ollama."],
   ["openai-responses", "OpenAI Responses API."],
   ["anthropic-messages", "Anthropic Messages API."],
 ]);

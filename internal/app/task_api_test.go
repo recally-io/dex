@@ -167,12 +167,12 @@ func TestUserReassignsBlockedTaskAndAnswersInOriginalMain(t *testing.T) {
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
 	coder := d.createCoder(t)
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
 	const tasks = "/api/tasks"
 	var task api.TaskSummary
 	d.must(t, http.MethodPost, tasks, map[string]string{"title": "Choose a fix", "assigneeBotId": "default"}, &task, http.StatusCreated)
-	path := fmt.Sprintf("/api/agents/default/chats/%d/messages", main.ID)
+	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID)
 	d.must(t, http.MethodPost, path, map[string]string{"id": uuid.NewV7().String(), "text": askJSON, "taskId": task.Id}, nil, http.StatusAccepted)
 	question := d.awaitQuestion(t, main.ID, "open")
 	d.awaitIdle(t, main.ID)
@@ -180,9 +180,9 @@ func TestUserReassignsBlockedTaskAndAnswersInOriginalMain(t *testing.T) {
 	// When the Owner changes the Assignee, the new Main gets one assigned wake.
 	taskPath := tasks + "/" + task.Key
 	d.must(t, http.MethodPatch, taskPath, map[string]string{"assigneeBotId": coder.ID}, &task)
-	var newMain chatInfo
-	d.must(t, http.MethodGet, "/api/agents/"+coder.ID+"/chats/main", nil, &newMain)
-	w := d.watchPath(t, fmt.Sprintf("/api/agents/%s/chats/%d/events", coder.ID, newMain.ID))
+	var newMain sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/"+coder.ID+"/sessions/main", nil, &newMain)
+	w := d.watchPath(t, fmt.Sprintf("/api/agents/%s/sessions/%d/events", coder.ID, newMain.ID))
 	w.until(t, "assigned wake on the new Main", func(tr *transcript) bool {
 		return slices.ContainsFunc(tr.items, func(it item) bool { return it.Kind == "task_wake" && it.Title == "Task wake" })
 	})
@@ -194,7 +194,7 @@ func TestUserReassignsBlockedTaskAndAnswersInOriginalMain(t *testing.T) {
 	var detail api.TaskDetail
 	d.must(t, http.MethodGet, taskPath, nil, &detail)
 	if len(detail.Blockers) != 1 || detail.Blockers[0].QueuePosition == nil || *detail.Blockers[0].QueuePosition != 1 ||
-		len(detail.Questions) != 1 || detail.Questions[0].ConversationId != main.ID ||
+		len(detail.Questions) != 1 || detail.Questions[0].SessionId != main.ID ||
 		!slices.ContainsFunc(detail.Entries, func(e api.TaskEntry) bool { return e.Kind == "assign" }) {
 		t.Fatalf("missing original question or assignment entry: %+v", detail)
 	}

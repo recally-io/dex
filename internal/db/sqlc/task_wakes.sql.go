@@ -34,21 +34,21 @@ func (q *Queries) CopyTaskWakeAssociation(ctx context.Context, arg CopyTaskWakeA
 }
 
 const createTaskWake = `-- name: CreateTaskWake :exec
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
+INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
 VALUES (?1, ?2, ?3, 'null', ?1, 'web', 'plugin', '', '', 'task_wake', 'pending', ?4, '{}')
 `
 
 type CreateTaskWakeParams struct {
-	ID             string `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
-	Content        string `json:"content"`
-	CreatedAt      int64  `json:"created_at"`
+	ID        string `json:"id"`
+	SessionID int64  `json:"session_id"`
+	Content   string `json:"content"`
+	CreatedAt int64  `json:"created_at"`
 }
 
 func (q *Queries) CreateTaskWake(ctx context.Context, arg CreateTaskWakeParams) error {
 	_, err := q.db.ExecContext(ctx, createTaskWake,
 		arg.ID,
-		arg.ConversationID,
+		arg.SessionID,
 		arg.Content,
 		arg.CreatedAt,
 	)
@@ -56,7 +56,7 @@ func (q *Queries) CreateTaskWake(ctx context.Context, arg CreateTaskWakeParams) 
 }
 
 const ensureTaskMain = `-- name: EnsureTaskMain :exec
-INSERT INTO conversations (agent_id, channel_key, title, created_at)
+INSERT INTO sessions (agent_id, channel_key, title, created_at)
 SELECT a.id, 'main', a.name, ?1 FROM agents a WHERE a.id = ?2 AND a.archived_at IS NULL
 ON CONFLICT (agent_id, channel_key) DO NOTHING
 `
@@ -72,7 +72,7 @@ func (q *Queries) EnsureTaskMain(ctx context.Context, arg EnsureTaskMainParams) 
 }
 
 const getTaskMain = `-- name: GetTaskMain :one
-SELECT c.id FROM conversations c JOIN agents a ON a.id = c.agent_id
+SELECT c.id FROM sessions c JOIN agents a ON a.id = c.agent_id
 WHERE c.agent_id = ? AND c.channel_key = 'main' AND c.archived_at IS NULL AND a.archived_at IS NULL
 `
 
@@ -84,15 +84,15 @@ func (q *Queries) GetTaskMain(ctx context.Context, agentID string) (int64, error
 }
 
 const getUnadmittedTaskWake = `-- name: GetUnadmittedTaskWake :one
-SELECT id, conversation_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_revoked, required_reply_id, stop_requested, producer, reply_channel, reply_peer, exit_action, kind FROM submissions WHERE conversation_id = ? AND kind = 'task_wake' AND status = 'pending' AND admitted_at IS NULL
+SELECT id, session_id, content, status, answer, reason, created_at, settled_at, source_key, attachments, origin, admitted_at, when_busy, parent_request_id, result_child_id, native_answer_id, channel_context, channel_revoked, required_reply_id, stop_requested, producer, reply_channel, reply_peer, exit_action, kind FROM submissions WHERE session_id = ? AND kind = 'task_wake' AND status = 'pending' AND admitted_at IS NULL
 `
 
-func (q *Queries) GetUnadmittedTaskWake(ctx context.Context, conversationID int64) (Submission, error) {
-	row := q.db.QueryRowContext(ctx, getUnadmittedTaskWake, conversationID)
+func (q *Queries) GetUnadmittedTaskWake(ctx context.Context, sessionID int64) (Submission, error) {
+	row := q.db.QueryRowContext(ctx, getUnadmittedTaskWake, sessionID)
 	var i Submission
 	err := row.Scan(
 		&i.ID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.Content,
 		&i.Status,
 		&i.Answer,

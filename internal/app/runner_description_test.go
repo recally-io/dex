@@ -28,7 +28,7 @@ func TestUserDescribesRunners(t *testing.T) {
 	if runner.Description != nil || runner.Runner == nil || runner.Runner.Online {
 		t.Fatalf("new Runner without description: %+v", runner)
 	}
-	chat := d.newSession(t).ID
+	session := d.newSession(t).ID
 	assertListed := func(want *string) {
 		t.Helper()
 		var settings, sessions struct {
@@ -39,7 +39,7 @@ func TestUserDescribesRunners(t *testing.T) {
 		}
 		d.must(t, http.MethodGet, settingsPath, nil, &settings)
 		d.must(t, http.MethodGet, "/api/agents/default/runners", nil, &sessions)
-		taskToolJSON(t, d, chat, "runner_list", map[string]any{}, &tool)
+		taskToolJSON(t, d, session, "runner_list", map[string]any{}, &tool)
 		for path, list := range map[string][]environment{"Settings": settings.Runners, "sessions": sessions.Runners, "tool": tool.Runners} {
 			found := false
 			for _, env := range list {

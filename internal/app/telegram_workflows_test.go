@@ -7,15 +7,15 @@ import (
 	"time"
 )
 
-func (f *fakeTelegram) callback(updateID, sender, chat, topic, remote int64, data string) {
+func (f *fakeTelegram) callback(updateID, sender, session, topic, remote int64, data string) {
 	f.lastCallback.Store(updateID)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	kind := "private"
-	if chat < 0 {
+	if session < 0 {
 		kind = "supergroup"
 	}
-	f.updates = append(f.updates, map[string]any{"update_id": updateID, "callback_query": map[string]any{"id": fmt.Sprint(updateID), "from": map[string]any{"id": sender}, "data": data, "message": map[string]any{"message_id": remote, "from": map[string]any{"id": 123, "is_bot": true}, "chat": map[string]any{"id": chat, "type": kind, "is_forum": topic > 0}, "message_thread_id": topic}}})
+	f.updates = append(f.updates, map[string]any{"update_id": updateID, "callback_query": map[string]any{"id": fmt.Sprint(updateID), "from": map[string]any{"id": sender}, "data": data, "message": map[string]any{"message_id": remote, "from": map[string]any{"id": 123, "is_bot": true}, "chat": map[string]any{"id": session, "type": kind, "is_forum": topic > 0}, "message_thread_id": topic}}})
 }
 
 func (f *fakeTelegram) button(t *testing.T, message int64, text string) string {

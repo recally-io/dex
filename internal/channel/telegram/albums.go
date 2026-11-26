@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/session"
 )
 
-func (b *Bot) submitInput(ctx context.Context, peer, source string, msg chat.Message, albumMember bool) error {
+func (b *Bot) submitInput(ctx context.Context, peer, source string, msg session.Message, albumMember bool) error {
 	if !albumMember {
 		return b.chats.Receive(ctx, peer, source, msg)
 	}

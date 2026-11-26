@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { CornerDownRight, MessagesSquare } from "lucide-react";
 import type { SessionResultItem, ToolItem } from "../../api/generated/types.gen";
-import { listChatsOptions } from "../../api/generated/@tanstack/react-query.gen";
+import { listSessionsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { useAgentId } from "../../lib/agent-scope";
 import { sessionAgentId } from "../../lib/sessions";
 import {
@@ -48,8 +48,8 @@ function ThreadOpen({
 
   return (
     <Link
-      to="/a/$agentId/c/$chatId"
-      params={{ agentId: thread.agentId ?? agentId, chatId: String(thread.chatId) }}
+      to="/a/$agentId/s/$sessionId"
+      params={{ agentId: thread.agentId ?? agentId, sessionId: String(thread.sessionId) }}
       className={className}
     >
       {children}
@@ -65,7 +65,7 @@ function useThreadData(call: ThreadCall) {
   return {
     thread,
     state: threadState(
-      thread ? context?.children?.[thread.chatId] : undefined,
+      thread ? context?.children?.[thread.sessionId] : undefined,
       context?.connection === "ready",
     ),
   };
@@ -173,11 +173,11 @@ export function ResultLine({ item }: { item: SessionResultItem }) {
   const agentId = useAgentId();
 
   const { data } = useQuery({
-    ...listChatsOptions({ path: { agentId } }),
+    ...listSessionsOptions({ path: { agentId } }),
     enabled: !!item.childSessionId,
   });
 
-  const child = data?.chats.find((chat) => chat.id === item.childSessionId);
+  const child = data?.sessions.find((session) => session.id === item.childSessionId);
   const done = !item.status || item.status === "done";
 
   const label = (
@@ -198,7 +198,7 @@ export function ResultLine({ item }: { item: SessionResultItem }) {
           <>
             {" · "}
             <ThreadOpen
-              thread={{ chatId: child.id, agentId: sessionAgentId(child, agentId) }}
+              thread={{ sessionId: child.id, agentId: sessionAgentId(child, agentId) }}
               className={link}
             >
               View session

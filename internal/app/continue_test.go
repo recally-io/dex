@@ -8,8 +8,8 @@ import (
 	"uuid"
 )
 
-func continuePath(chatID int64) string {
-	return fmt.Sprintf("/api/agents/default/chats/%d/continue", chatID)
+func continuePath(sessionID int64) string {
+	return fmt.Sprintf("/api/agents/default/sessions/%d/continue", sessionID)
 }
 
 func lastItem(tr *transcript) item {
@@ -31,19 +31,19 @@ func countKind(tr *transcript, kind string) int {
 
 func TestUserRetriesStoppedRunWithoutSendingTheMessageAgain(t *testing.T) {
 	t.Parallel()
-	// Given a chat whose run the user stopped in a tool step.
+	// Given a session whose run the user stopped in a tool step.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
-	chatID := d.newSession(t).ID
-	// A chat that never ran has nothing to continue.
-	d.must(t, http.MethodPost, continuePath(chatID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
+	sessionID := d.newSession(t).ID
+	// A session that never ran has nothing to continue.
+	d.must(t, http.MethodPost, continuePath(sessionID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
 	run := newGatedRun(t, "run")
-	d.send(t, chatID, run.command)
+	d.send(t, sessionID, run.command)
 	run.waitStarted(t)
-	w := d.watch(t, chatID)
+	w := d.watch(t, sessionID)
 	// A continue cannot start while the run is active.
-	d.must(t, http.MethodPost, continuePath(chatID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
-	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/chats/%d/abort", chatID), nil, nil)
+	d.must(t, http.MethodPost, continuePath(sessionID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, fmt.Sprintf("/api/agents/default/sessions/%d/abort", sessionID), nil, nil)
 	w.until(t, "stopped card", func(tr *transcript) bool {
 		last := lastItem(tr)
 		return !tr.running && last.Kind == "error" && last.Failure == "aborted"
@@ -51,7 +51,7 @@ func TestUserRetriesStoppedRunWithoutSendingTheMessageAgain(t *testing.T) {
 
 	// When the user retries, then the same run goes on from the stopped tool step.
 	id := uuid.NewV7().String()
-	d.must(t, http.MethodPost, continuePath(chatID), map[string]string{"id": id}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, continuePath(sessionID), map[string]string{"id": id}, nil, http.StatusAccepted)
 	w.until(t, "continued answer", func(tr *transcript) bool {
 		last := lastItem(tr)
 		return !tr.running && last.Kind == "assistant" && strings.HasPrefix(last.Text, "bash: ")
@@ -64,9 +64,9 @@ func TestUserRetriesStoppedRunWithoutSendingTheMessageAgain(t *testing.T) {
 	}
 
 	// When the client repeats the same continue, then nothing runs again.
-	d.must(t, http.MethodPost, continuePath(chatID), map[string]string{"id": id}, nil, http.StatusAccepted)
-	// When the user continues a complete answer, then the chat says there is nothing to continue.
-	d.must(t, http.MethodPost, continuePath(chatID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, continuePath(sessionID), map[string]string{"id": id}, nil, http.StatusAccepted)
+	// When the user continues a complete answer, then the session says there is nothing to continue.
+	d.must(t, http.MethodPost, continuePath(sessionID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
 	w.until(t, "nothing to continue", func(tr *transcript) bool {
 		last := lastItem(tr)
 		return !tr.running && last.Kind == "error" && last.Failure == "nothing_to_answer"
@@ -81,9 +81,9 @@ func TestUserRetriesFailedReplyWithAnotherModel(t *testing.T) {
 	// Given a reply that failed with a model error.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "spawn")
-	chatID := d.newSession(t).ID
-	d.send(t, chatID, "not json")
-	w := d.watch(t, chatID)
+	sessionID := d.newSession(t).ID
+	d.send(t, sessionID, "not json")
+	w := d.watch(t, sessionID)
 	w.until(t, "failed card", func(tr *transcript) bool {
 		last := lastItem(tr)
 		return !tr.running && last.Kind == "error" && last.Failure == "model_error"
@@ -91,7 +91,7 @@ func TestUserRetriesFailedReplyWithAnotherModel(t *testing.T) {
 
 	// When the user picks another model and retries, then the run answers the same message once.
 	d.setModel(t, "echo")
-	d.must(t, http.MethodPost, continuePath(chatID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
+	d.must(t, http.MethodPost, continuePath(sessionID), map[string]string{"id": uuid.NewV7().String()}, nil, http.StatusAccepted)
 	w.until(t, "continued answer", answered("echo: not json"))
 	if users := countKind(&w.tr, "user"); users != 1 {
 		t.Fatalf("the message was sent again: %d user items", users)

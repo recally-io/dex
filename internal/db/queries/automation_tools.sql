@@ -2,7 +2,7 @@
 SELECT * FROM automation_tool_operations WHERE key = ?;
 
 -- name: CreateAutomationToolOperation :exec
-INSERT INTO automation_tool_operations (key, agent_id, conversation_id, source_request_id, action, result)
+INSERT INTO automation_tool_operations (key, agent_id, session_id, source_request_id, action, result)
 VALUES (?, ?, ?, ?, ?, ?);
 
 -- name: LockAutomationTools :exec

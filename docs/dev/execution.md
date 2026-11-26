@@ -7,14 +7,14 @@ and transcript subscriptions and history.
 
 `internal/engine.Agents` owns one concrete execution service. Business code
 uses typed Go calls and `Ref{AgentID, ID}`. An execution ID names a PiG
-conversation, while a chat ID names a business record in `control.sqlite`.
-`conversations.execution_id` connects the two records.
+conversation, while a session ID names a business record in `control.sqlite`.
+`sessions.execution_id` connects the two records.
 
 - `Create` creates the execution conversation. `Submit` durably admits an
   input with a stable request ID and returns a `Submission`. `Submission.Wait`
   waits for the outcome. Canceling that wait does not cancel the execution.
 - `Abort`, `CheckIdle`, and `Reset` operate on one execution reference. Reset
-  uses a stable request ID. `Recover` registers child conversations that must
+  uses a stable request ID. `Recover` registers child sessions that must
   be isolated before Harness scheduling resumes.
 - `History(ctx, ref, before, limit)` returns typed `History`.
   `Detail(ctx, ref, entryID, itemID)` returns one item with its full output. `Watch(ctx, ref)`
@@ -54,7 +54,7 @@ completion. Use foreground `bash` for work that must finish in the current
 turn. Do not detach work with `&` or `nohup`. The `monitors` extension also
 provides [schedule Monitors](architecture.md#session-monitors).
 [`internal/background`](../../internal/background/background.go) owns the
-processes. [`internal/chat/background.go`](../../internal/chat/background.go)
+processes. [`internal/session/background.go`](../../internal/session/background.go)
 binds each command to its session. The Local executor owns a POSIX process
 group, so it can stop and sweep the group after the shell exits. Machine and
 Sandbox executors use the Session's selected Runner through its execution
@@ -131,7 +131,7 @@ Stop, restart and limits:
 - A stop of a session ends the process group of each of its commands. A stopped
   command sends no wake-up. A child session that keeps its run after a stop of
   the parent keeps its commands. Archiving a bot ends all its commands.
-  Archiving a chat does not.
+  Archiving a session does not.
 - A graceful shutdown (`App.Close`) stops the process group of every running
   command (SIGTERM, then SIGKILL after 5 s), stores `stopped` with reason
   `shutdown`, and stores an end wake-up that says dex shut down, so the agent
@@ -172,7 +172,7 @@ for lease and resume rules.
 ## Transcript subscriptions and history
 
 The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
-`Item` and `ChatEvent`.
+`Item` and `SessionEvent`.
 
 - The [Go projection](../../internal/engine/view.go) renders immutable native
   conversation revisions. Each revision includes entries, the live partial,
@@ -186,7 +186,7 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
 - Snapshots, events, and history pages leave out a done tool output or a
   committed thought longer than 2 KiB and set `truncated`. A thought keeps its
   first line. A failed call and a session call keep their output, because the
-  web shows them without a click. `GET .../chats/{chatId}/items/{itemId}?entry=`
+  web shows them without a click. `GET .../sessions/{sessionId}/items/{itemId}?entry=`
   returns the full item when the user opens the step.
 - A text-only increase sends `append`. Other item changes send `item`.
   Removal, reordering, a committed partial ID change, or a new history boundary
@@ -202,11 +202,11 @@ The HTTP contract is [`api/openapi.yaml`](../../api/openapi.yaml): schemas
 - A slow subscriber can buffer at most 256 frontend events. Overflow stops
   the watch so the browser can reconnect. Execution never waits for that reader.
   SSE sends a comment line every 15 s.
-- `live.Hub.Changed` only helps a stream attach when an empty business chat
+- `live.Hub.Changed` only helps a stream attach when an empty business session
   receives its first execution reference. The hub encodes typed engine events
   as JSON at the SSE boundary.
 
-`POST /api/agents/{agentId}/chats/{id}/messages/{messageId}/withdraw` removes one
+`POST /api/agents/{agentId}/sessions/{id}/messages/{messageId}/withdraw` removes one
 queued input. Under the Session delivery gate, `Agents.Withdraw` calls PiG's
 `Submission.Abort`. PiG decides: `aborted` means the input never runs, and
 `already_placed` means it runs, so dex answers 409. The control receipt settles
@@ -215,7 +215,7 @@ key, so a channel redelivery does not run it. It sets `delivered_at`, so the
 reply outbox sends nothing. A repeated call returns the same message. The
 withdrawal writes no `dex.withdrawn` entry, so Edit leaves no stale bubble.
 
-`POST /api/agents/{agentId}/chats/{id}/clear` uses the Session delivery gate and a SQLite writer
+`POST /api/agents/{agentId}/sessions/{id}/clear` uses the Session delivery gate and a SQLite writer
 transaction to check pending input and insert `context_reset` together. The
 engine also checks its active run and native Inbox. A refused request stores no reset.
 `Agents.Reset` submits a passive `pi.reset` entry with a stable request ID and
@@ -242,14 +242,14 @@ then for the queued summary. When no summary is placed, it writes a
 that Stop drops, or that a reset makes stale, counts as failed. A restart
 before the goroutine ends loses the note, not the compaction.
 
-`Chat.Fork` starts a new Chat from a writable session. `Agents.Fork` checks that
-the entry is visible from the source with `Conversation.Entries`, then calls
-`Conversation.Fork`. Without `before`, the entry must be an answer without tool
+`Session.Fork` starts a new Session from a writable session. `Agents.Fork` checks that
+the entry is visible from the source with `Session.Entries`, then calls
+`Session.Fork`. Without `before`, the entry must be an answer without tool
 calls, because a copied call would never get its result. With `before`, the
 copy ends at the previous visible entry; when there is none, the fork has no
 native conversation yet. The control row stores `forked_from` and copies the
-model, thinking level and project, so `EnsureEmptyChat` never reuses a fork and
-`ListChats` lists it before its first message. A fork copies committed entries
+model, thinking level and project, so `EnsureEmptySession` never reuses a fork and
+`ListSessions` lists it before its first message. A fork copies committed entries
 only, so a running source gives no live run, queue or failure. The native fork
 keeps the source configuration until the next admission configures it. Each
 request creates another fork; the web disables the action while one is pending.
@@ -259,8 +259,8 @@ A snapshot contains only the active native context. Reset and summary entries
 show dividers. A reset divider shows its handoff; a summary divider can expand
 the summary. `historyBefore` points
 to the head entry. The browser requests
-`GET /api/agents/{agentId}/chats/{id}/history?before=<entry ID>&limit=100` on demand. The engine
-reads `Conversation.Entries` before that exclusive cursor and returns items
+`GET /api/agents/{agentId}/sessions/{id}/history?before=<entry ID>&limit=100` on demand. The engine
+reads `Session.Entries` before that exclusive cursor and returns items
 in entry order with `nextBefore`. A page can extend to the previous assistant
 or input so a tool call keeps its result. Committed assistant block IDs use
 `e<entry ID>:<block index>`. User IDs remain submission IDs; tool IDs remain

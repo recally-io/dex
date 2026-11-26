@@ -38,8 +38,8 @@ type withdrawn struct {
 	Attachments []attachment `json:"attachments"`
 }
 
-func withdrawPath(chatID int64, id string) string {
-	return fmt.Sprintf("/api/agents/default/chats/%d/messages/%s/withdraw", chatID, id)
+func withdrawPath(sessionID int64, id string) string {
+	return fmt.Sprintf("/api/agents/default/sessions/%d/messages/%s/withdraw", sessionID, id)
 }
 
 func queuedItem(id string) func(*transcript) bool {
@@ -66,25 +66,25 @@ func receiptState(t *testing.T, conn *sql.DB, id string) (status, reason string,
 
 func TestUserWithdrawsQueuedMessageAndItNeverRuns(t *testing.T) {
 	t.Parallel()
-	// Given a chat that runs a gated command and a second message that waits in the native queue.
+	// Given a session that runs a gated command and a second message that waits in the native queue.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "bash")
 	conn := taskResultDB(t, dir)
-	chatID := d.newSession(t).ID
+	sessionID := d.newSession(t).ID
 	first := newGatedRun(t, "first")
-	d.send(t, chatID, first.command)
+	d.send(t, sessionID, first.command)
 	first.waitStarted(t)
 	ran := filepath.Join(t.TempDir(), "second-ran")
 	secondText := fmt.Sprintf("touch '%s'; echo second", ran)
-	secondID := d.send(t, chatID, secondText)
-	w := d.watch(t, chatID)
+	secondID := d.send(t, sessionID, secondText)
+	w := d.watch(t, sessionID)
 	w.until(t, "second message queued", queuedItem(secondID))
 
 	// When the user withdraws the queued message twice.
 	var once, twice withdrawn
-	d.must(t, http.MethodPost, withdrawPath(chatID, secondID), nil, &once)
-	d.must(t, http.MethodPost, withdrawPath(chatID, secondID), nil, &twice)
+	d.must(t, http.MethodPost, withdrawPath(sessionID, secondID), nil, &once)
+	d.must(t, http.MethodPost, withdrawPath(sessionID, secondID), nil, &twice)
 
 	// Then both calls return the text, and the queue no longer shows the message.
 	if once.ID != secondID || !strings.Contains(once.Text, "touch") || once.Text != twice.Text || twice.ID != secondID {
@@ -102,7 +102,7 @@ func TestUserWithdrawsQueuedMessageAndItNeverRuns(t *testing.T) {
 	// When the first run ends, then the withdrawn message never runs, and its receipt stays.
 	first.open()
 	w.until(t, "first answer", answered("bash: finished"))
-	d.send(t, chatID, "echo after")
+	d.send(t, sessionID, "echo after")
 	w.until(t, "later message runs", answered("bash: after"))
 	if _, err := os.Stat(ran); err == nil {
 		t.Fatal("the withdrawn message ran")
@@ -113,10 +113,10 @@ func TestUserWithdrawsQueuedMessageAndItNeverRuns(t *testing.T) {
 
 	// When the client retries the same request, then it does not run either. The same ID with
 	// another text is not a retry.
-	messages := fmt.Sprintf("/api/agents/default/chats/%d/messages", chatID)
+	messages := fmt.Sprintf("/api/agents/default/sessions/%d/messages", sessionID)
 	d.must(t, http.MethodPost, messages, map[string]string{"id": secondID, "text": secondText}, nil, http.StatusAccepted)
 	d.must(t, http.MethodPost, messages, map[string]string{"id": secondID, "text": "echo retried"}, nil, http.StatusConflict)
-	d.send(t, chatID, "echo last")
+	d.send(t, sessionID, "echo last")
 	w.until(t, "last message runs", answered("bash: last"))
 	if status, reason, _ := receiptState(t, conn, secondID); status != "unanswered" || reason != "withdrawn" {
 		t.Fatalf("receipt after retry: %s %s", status, reason)
@@ -128,18 +128,18 @@ func TestUserCannotWithdrawMessageThatStarted(t *testing.T) {
 	// Given a message whose run has started.
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "bash")
-	chatID := d.newSession(t).ID
+	sessionID := d.newSession(t).ID
 	run := newGatedRun(t, "run")
-	id := d.send(t, chatID, run.command)
+	id := d.send(t, sessionID, run.command)
 	run.waitStarted(t)
 
 	// When the user withdraws it, then dex answers 409 and the run continues.
-	d.must(t, http.MethodPost, withdrawPath(chatID, id), nil, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, withdrawPath(sessionID, id), nil, nil, http.StatusConflict)
 	run.open()
-	d.watch(t, chatID).until(t, "run finishes", answered("bash: finished"))
+	d.watch(t, sessionID).until(t, "run finishes", answered("bash: finished"))
 	// A finished message cannot be withdrawn either.
-	d.must(t, http.MethodPost, withdrawPath(chatID, id), nil, nil, http.StatusConflict)
-	d.must(t, http.MethodPost, withdrawPath(chatID, uuid.NewV7().String()), nil, nil, http.StatusNotFound)
+	d.must(t, http.MethodPost, withdrawPath(sessionID, id), nil, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, withdrawPath(sessionID, uuid.NewV7().String()), nil, nil, http.StatusNotFound)
 }
 
 func TestUserWithdrawnChannelMessageIsNotRunByRedelivery(t *testing.T) {
@@ -154,7 +154,7 @@ func TestUserWithdrawnChannelMessageIsNotRunByRedelivery(t *testing.T) {
 	run.waitStarted(t)
 	ran := filepath.Join(t.TempDir(), "second-ran")
 	f.message(2, 42, 7, fmt.Sprintf("touch '%s'; echo second", ran))
-	mainID := d.mainChat(t)
+	mainID := d.mainSession(t)
 	w := d.watch(t, mainID)
 	var queued string
 	w.until(t, "channel message queued", func(tr *transcript) bool {

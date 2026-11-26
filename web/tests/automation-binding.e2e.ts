@@ -17,7 +17,7 @@ describe("Automation session binding", () => {
     if (created.status !== 201) throw new Error(`Create bot fixture: ${created.status}`);
     const { id: agentId }: { id: string } = await created.json();
     const bot = `${origin}/api/agents/${agentId}`;
-    const session = await fetch(`${bot}/chats`, { method: "POST" });
+    const session = await fetch(`${bot}/sessions`, { method: "POST" });
 
     if (session.status !== 201) throw new Error(`Create target fixture: ${session.status}`);
     const { id }: { id: number } = await session.json();
@@ -43,13 +43,13 @@ describe("Automation session binding", () => {
     const {
       automations,
     }: {
-      automations: { name: string; session: string; targetConversationId?: number }[];
+      automations: { name: string; session: string; targetSessionId?: number }[];
     } = await response.json();
 
     await expect(overrides).toBe(0);
     await expect(automations.find((routine) => routine.name === "Routine browser check")).toMatchObject({
       session: "session",
-      targetConversationId: id,
+      targetSessionId: id,
     });
   });
 });

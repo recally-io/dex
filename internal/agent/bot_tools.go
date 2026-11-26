@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 // Patch changes the fields that are not nil.
@@ -110,10 +110,10 @@ func (s *Service) resolveBot(ctx context.Context, ref string) (Agent, error) {
 }
 
 // BotTools serves the bot tools. It owns the mapping from tool input to the same
-// service calls that the web uses; chat.Service checks the source of every call.
+// service calls that the web uses; session.Service checks the source of every call.
 type BotTools struct {
 	Agents     *Service
-	Chats      *chat.Service
+	Sessions   *session.Service
 	Extensions func(ctx context.Context, agentID string) (engine.ExtensionInfo, error)
 }
 
@@ -131,7 +131,7 @@ func (t *BotTools) Handlers() BotHandlers {
 }
 
 func (t *BotTools) list(ctx context.Context, c engine.TaskContext) ([]BotInfo, error) {
-	if err := t.Chats.ToolBotCaller(ctx, c, false); err != nil {
+	if err := t.Sessions.ToolBotCaller(ctx, c, false); err != nil {
 		return nil, err
 	}
 	agents, err := t.Agents.ListAgents(ctx)
@@ -159,7 +159,7 @@ func (t *BotTools) list(ctx context.Context, c engine.TaskContext) ([]BotInfo, e
 }
 
 func (t *BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (BotInfo, error) {
-	if err := t.Chats.ToolBotCaller(ctx, c, false); err != nil {
+	if err := t.Sessions.ToolBotCaller(ctx, c, false); err != nil {
 		return BotInfo{}, err
 	}
 	a, err := t.Agents.resolveBot(ctx, ref)
@@ -181,7 +181,7 @@ func (t *BotTools) get(ctx context.Context, c engine.TaskContext, ref string) (B
 }
 
 func (t *BotTools) create(ctx context.Context, c engine.TaskContext, p BotPatch) (BotInfo, error) {
-	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
+	if err := t.Sessions.ToolBotCaller(ctx, c, true); err != nil {
 		return BotInfo{}, err
 	}
 	created, err := t.Agents.CreateAgent(ctx, Patch{
@@ -193,7 +193,7 @@ func (t *BotTools) create(ctx context.Context, c engine.TaskContext, p BotPatch)
 }
 
 func (t *BotTools) update(ctx context.Context, c engine.TaskContext, p BotPatch) (BotInfo, error) {
-	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
+	if err := t.Sessions.ToolBotCaller(ctx, c, true); err != nil {
 		return BotInfo{}, err
 	}
 	target, err := t.Agents.resolveBot(ctx, p.Bot)
@@ -208,13 +208,13 @@ func (t *BotTools) update(ctx context.Context, c engine.TaskContext, p BotPatch)
 	return botInfo(updated), err
 }
 
-func (t *BotTools) archive(ctx context.Context, c engine.TaskContext, a BotDeleteArgs) (chat.QuestionInfo, error) {
-	if err := t.Chats.ToolBotCaller(ctx, c, true); err != nil {
-		return chat.QuestionInfo{}, err
+func (t *BotTools) archive(ctx context.Context, c engine.TaskContext, a BotDeleteArgs) (session.QuestionInfo, error) {
+	if err := t.Sessions.ToolBotCaller(ctx, c, true); err != nil {
+		return session.QuestionInfo{}, err
 	}
 	target, err := t.Agents.resolveBot(ctx, a.Bot)
 	if err != nil {
-		return chat.QuestionInfo{}, err
+		return session.QuestionInfo{}, err
 	}
-	return t.Chats.ToolAskArchive(ctx, c, target.ID, target.Name, a.Reason)
+	return t.Sessions.ToolAskArchive(ctx, c, target.ID, target.Name, a.Reason)
 }

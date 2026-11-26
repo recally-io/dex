@@ -211,12 +211,12 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 	if err != nil || !bytes.HasPrefix(ciphertext, []byte("age-encryption.org/v1")) || bytes.Contains(ciphertext, []byte("private-refresh-token")) {
 		t.Fatal("the grant is not encrypted")
 	}
-	chatID := d.newChat(t, `mcp__notes__read {}`)
-	w := d.watch(t, chatID)
+	sessionID := d.newSessionWithMessage(t, `mcp__notes__read {}`)
+	w := d.watch(t, sessionID)
 	w.until(t, "read with no token disclosure", answered("tool: read-only fixture [hidden]"))
 	// When the grant is revoked, dex stops calls and asks the owner to reauthorize.
 	revoked.Store(true)
-	d.send(t, chatID, `mcp__notes__read {}`)
+	d.send(t, sessionID, `mcp__notes__read {}`)
 	eventually(t, "reauthorize", func() (bool, any) {
 		_, body := d.call(t, http.MethodGet, "/api/agents/default/integrations", nil)
 		return strings.Contains(body, `"oauth":"reauthorize"`) && !strings.Contains(body, "private-refresh-token"), body
@@ -226,7 +226,7 @@ func TestUserAuthorizesRemoteMcpOAuth(t *testing.T) {
 	// When the resource changes while the browser is away, the old callback cannot exchange its code.
 	auth = start()
 	before := exchanges.Load()
-	d.send(t, chatID, `mcp_server_set {"name":"notes","level":"agent","config":{"type":"http","url":"`+origin+`/different","oauth":{"clientId":"notes-client","clientSecret":"vault:NOTES_OAUTH"}}}`)
+	d.send(t, sessionID, `mcp_server_set {"name":"notes","level":"agent","config":{"type":"http","url":"`+origin+`/different","oauth":{"clientId":"notes-client","clientSecret":"vault:NOTES_OAUTH"}}}`)
 	w.until(t, "changed MCP resource", answeredWith("Saved. The change applies"))
 	finish(browser, auth, auth.Query().Get("state"), "good", http.StatusBadRequest)
 	if exchanges.Load() != before {

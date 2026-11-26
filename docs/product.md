@@ -30,7 +30,7 @@ to read in an afternoon.
   entries and 1Password.
   The CLI manages the service address, data directory, and update policy.
 - Several agents for one owner, each with a name, primary model, thinking
-  level, optional fallback model, instructions, conversations, automations, and
+  level, optional fallback model, instructions, sessions, automations, and
   workspace directory. The API
   can create, list, read, and update agents. Each agent's API paths include its
   ID, including default. Global settings contain no
@@ -41,7 +41,7 @@ to read in an afternoon.
   bot's empty timeline. Providers stay global. Each agent has its own channels.
   When a bot's primary model is missing or fails before answering, dex switches
   to the bot's fallback model automatically.
-- Durable conversations: control stores each message before delivery. Saved
+- Durable sessions: control stores each message before delivery. Saved
   messages, reports, and execution records survive a restart. A restart does
   not attach an old CLI process or prove that its actions occurred once.
 - One main timeline per agent. The web opens it at `/a/{agentId}` and defaults to the Bot's
@@ -63,7 +63,7 @@ to read in an afternoon.
   Automations keeps its enabled count and failure mark. Bot settings keeps its
   instructions draft mark. On a phone, a Menu button holds these same actions.
   Main has no session settings button; Bot settings edits its default model and
-  thinking level. A writable Chat shows its project and one combined model
+  thinking level. A writable Session shows its project and one combined model
   and thinking control in the input toolbar. Both labels have width limits and truncate; they do
   not push the send or stop buttons out of the input. Unset values follow the bot.
   An unset project shows Bot working directory. The model picker has a provider
@@ -71,9 +71,9 @@ to read in an afternoon.
   screens, a provider selector replaces the sidebar. Model changes keep the
   picker open so that the user can set thinking next. A model without reasoning
   has no thinking choices. There is no separate settings row or toggle. Main cannot be archived.
-  The row menu and a right-click archive or restore a Chat. Archiving keeps the
-  messages, records and files; a child session's result still returns to the chat.
-  New session does not reuse an archived empty chat. The button at the top left of
+  The row menu and a right-click archive or restore a Session. Archiving keeps the
+  messages, records and files; a child session's result still returns to the session.
+  New session does not reuse an archived empty session. The button at the top left of
   the sidebar hides it. The first button of the page header then shows it
   again, with an orange dot when Board has attention items. The header shows the bot's
   avatar. On a phone, the menu button opens the sidebar as a drawer. It shows
@@ -90,7 +90,7 @@ to read in an afternoon.
 - Main answers short requests directly. It sends longer work to background
   execution and replies at once, so the user can keep writing while the work
   runs.
-- Each Chat and automation session runs one main agent loop that does the work itself.
+- Each Session and automation session runs one main agent loop that does the work itself.
   Skills, tools and the project directory provide capabilities.
   Internal background execution is limited to independent parallel work,
   long commands whose output would flood the context, and independent review.
@@ -121,18 +121,18 @@ to read in an afternoon.
   `/clear` clears main's context when main is idle. `/new` is an alias. A
   repeated command cannot clear again. A busy refusal leaves the context unchanged.
   `/stop` cancels the Main session, including pending input and background work
-  from every Main entry. Unrelated Chat and automation sessions stay outside that scope.
+  from every Main entry. Unrelated Session and automation sessions stay outside that scope.
   `/help` lists commands.
   Disconnecting a channel cancels its pending deliveries. Reconnecting the
   same account does not send old replies. They remain available on the web.
   Channels send final replies without drafts. Long replies send an extract and refer to Web for the full text. Pending deliveries resume after restart. A crash before the sender saves a Telegram receipt can duplicate one message. Bot settings
   show each channel's runtime status and setup.
-- Bots can publish files from Main, Chats, Automation runs, and child Sessions.
+- Bots can publish files from Main, Sessions, Automation runs, and child Sessions.
   `deliver_file` copies a file of at most 20 MiB to the Bot's artifact directory.
   The user can preview Markdown and safe raster images or download other files.
   A cross-Bot child can return its artifact URL to the parent. Telegram file
   delivery keeps an immutable byte snapshot in the Outbox. See [Files](dev/files.md).
-- In main and Chat sessions, the user can attach files and images (at most 10 per
+- In main and sessions, the user can attach files and images (at most 10 per
   message, 20 MB each). The agent reads them with its tools. Telegram
   input uses Main's model settings and saved project. Automations default to the agent's settings.
   Telegram accepts photos and
@@ -160,22 +160,22 @@ to read in an afternoon.
   failures recover without a settings change. Bot settings show runtime
   status. Saved Lark settings keep the Lark platform. Groups, threads and
   outbound media are not supported.
-- Monitors: bounded follow-ups to the same Main or Chat session. A prompt
+- Monitors: bounded follow-ups to the same Main or session. A prompt
   Monitor queues one or more scheduled prompts. A script Monitor uses the
   session's Bash access and queues a prompt when its check output changes.
   Session activity lists Monitors and the Outbox. The owner can cancel an
   active Monitor in a writable session. The panel does not list Processes;
   a writable session manages them with the `process_*` tools.
-- Automations: long-lived automation. In Main or a writable Chat, the
+- Automations: long-lived automation. In Main or a writable Session, the
   owner can ask the agent to list, create, inspect, update, pause, resume, or
   run an automation. The agent can read the 10 most recent run results and their
   transcript references. These tools use the current bot; they cannot manage another bot's
-  Automations. The tools require a user turn in Main or a top-level Chat.
+  Automations. The tools require a user turn in Main or a top-level Session.
   A partial update keeps fields that the owner did not change. Creation uses
   the current project directory unless the owner selects another directory.
   Replaying one tool call does not create another automation, start another run,
   or move the schedule again. There is no automation deletion tool.
-- Bot tools and archive. In Main or a top-level Chat, the Owner can ask a Bot
+- Bot tools and archive. In Main or a top-level Session, the Owner can ask a Bot
   to list, inspect, create, update, or archive Bots. Changes require a user
   turn. `bot_delete` requests confirmation. Only the archive option in a Web
   or paired channel answer can approve it. The default Bot, the asking Bot,
@@ -206,22 +206,22 @@ peer, such as `telegram:7`. A background result keeps the origin of its source
 input, also when that source is another result. Automation, internal execution,
 and memory consolidation use `automation`, `task`, and `dream`. Channel delivery
 uses the pairing saved with the source input, even if the result finishes after
-another input or a new pairing. Channel input cannot reach a separate Chat session.
+another input or a new pairing. Channel input cannot reach a separate session.
 
-The main chat shows the user's messages and the main agent's answers.
+The main session shows the user's messages and the main agent's answers.
 The thoughts and tool calls between two answers show as one collapsed row. While
 a tool runs, the row shows its command or path. The row opens by itself when a
 call fails. A channel message shows its channel and time below it. The composer
-does not repeat the sandbox warning; the empty chat shows it, and screen readers
+does not repeat the sandbox warning; the empty session shows it, and screen readers
 hear it with the composer.
-The web chat marks a delegation with the work's title. A returned result has
+The web session marks a delegation with the work's title. A returned result has
 a named label and a thin line that groups its replies and tool calls. The mark
 shows where the report belongs; it does not confirm that the work reached its goal.
-The chat does not show the internal report as input. The user opens the
+The session does not show the internal report as input. The user opens the
 child session to read its full work.
 Sessions in the bot header opens the full session list, newest activity first.
-The sidebar only switches bots. A child session is a Chat session with a parent. Its row shows "Started by"
-and the name of the parent: Main, or the title of a Chat, also when that Chat is
+The sidebar only switches bots. A child session is a session with a parent. Its row shows "Started by"
+and the name of the parent: Main, or the title of a Session, also when that Session is
 archived. The list has no task rows, no step preview, no Stop on a row, no Mark
 handled and no Completed group.
 A busy session shows a dot in the Sessions sidebar and a Running badge in All sessions. The
@@ -237,27 +237,27 @@ Named dispatch and results with a saved child Session ID open the child Session.
 A result shows that the child returned a report. It does not prove goal
 completion. The UI does not show progress percentages.
 
-`New session` in the bot header opens a writable Chat with its own model context.
+`New session` in the bot header opens a writable Session with its own model context.
 It copies the current session's project, or Main's project from a bot page,
 and opens the directory picker. The user can keep or change that directory.
-It reuses the newest empty Chat, so an abandoned click leaves no list row. The first message
-sets the title. Chat defaults to the bot's model settings and uses its instructions and shared memory.
+It reuses the newest empty Session, so an abandoned click leaves no list row. The first message
+sets the title. Session defaults to the bot's model settings and uses its instructions and shared memory.
 A saved session model or thinking level override applies from the next input.
-Chat does not read the main timeline's context. A child session started in Chat returns
-its result to that Chat. `/clear`, `/compact`, Stop and earlier messages work within
+Session does not read the main timeline's context. A child session started in Session returns
+its result to that Session. `/clear`, `/compact`, Stop and earlier messages work within
 the selected session. Other sessions cannot enable its Stop, except that the Stop of a parent covers
 the work that the parent sent to a child, as the Stop rule below says.
 Each finished answer shows Copy and, when it waits for no tool result, Fork
-from here. Each sent message shows Copy and Edit in new chat, which opens a fork
+from here. Each sent message shows Copy and Edit in new session, which opens a fork
 that ends before the message and puts the message text, without attachments,
-in the composer. A fork is a new Chat with the source's model, thinking level
+in the composer. A fork is a new Session with the source's model, thinking level
 and project. It does not run until the user sends a message, and it names its
 source. The source stays unchanged, and files on disk are not rolled back. A child
-session is a normal chat page with the normal composer and a link to its parent.
+session is a normal session page with the normal composer and a link to its parent.
 The user can send messages to it at any time, also while it runs: Enter steers
-the run, like in any Chat. The user can change its model and project. Its result
+the run, like in any Session. The user can change its model and project. Its result
 in the parent stays unchanged. Automation transcripts stay read-only.
-Main stays the default view. The header of a Chat session or a child session
+Main stays the default view. The header of a session or a child session
 names Main before its title. The header of an automation transcript names
 Automations before its title.
 
@@ -341,7 +341,7 @@ A queued message in the web shows Edit and Remove until its run starts. Remove
 withdraws it. Edit withdraws it and puts the text and files back in the box.
 A message that already started cannot be withdrawn, and the web says so.
 
-Main and Chat sessions have the `ask_user` tool. The agent asks one question
+Main and sessions have the `ask_user` tool. The agent asks one question
 with 2 to 4 options and the turn ends. The web shows a question card above the
 composer. The user picks an option or writes another answer. A plain message
 does not answer the question, and the question stays open. Session cancellation, Clear and
@@ -423,7 +423,7 @@ tab, but must stop it before the final answer.
 
 Dex loads skills from global, Bot, and Project directories. The narrowest
 level wins. Dex adds the Session's `<cwd>/AGENTS.md` after the Bot instructions.
-The project picker browses the selected Runner. Main and Chats can change
+The project picker browses the selected Runner. Main and Sessions can change
 project without clearing context. A child Session can inherit the parent's
 project if it runs on the same Runner.
 

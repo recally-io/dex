@@ -12,18 +12,18 @@ import (
 
 const consumeBackgroundWake = `-- name: ConsumeBackgroundWake :execrows
 DELETE FROM submissions
-WHERE id = ?1 AND conversation_id = ?2 AND status = 'pending' AND admitted_at IS NULL
+WHERE id = ?1 AND session_id = ?2 AND status = 'pending' AND admitted_at IS NULL
 `
 
 type ConsumeBackgroundWakeParams struct {
-	ID             string `json:"id"`
-	ConversationID int64  `json:"conversation_id"`
+	ID        string `json:"id"`
+	SessionID int64  `json:"session_id"`
 }
 
 // Removes an un-admitted pending background wake when background_wait observes the command's
 // terminal state in-turn, preventing a redundant post-turn wake.
 func (q *Queries) ConsumeBackgroundWake(ctx context.Context, arg ConsumeBackgroundWakeParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, consumeBackgroundWake, arg.ID, arg.ConversationID)
+	result, err := q.db.ExecContext(ctx, consumeBackgroundWake, arg.ID, arg.SessionID)
 	if err != nil {
 		return 0, err
 	}
@@ -32,7 +32,7 @@ func (q *Queries) ConsumeBackgroundWake(ctx context.Context, arg ConsumeBackgrou
 
 const countRunningBackgroundCommands = `-- name: CountRunningBackgroundCommands :one
 SELECT count(*) FROM background_commands b
-JOIN conversations c ON c.id = b.conversation_id
+JOIN sessions c ON c.id = b.session_id
 WHERE c.agent_id = ? AND b.state IN ('starting', 'running')
 `
 
@@ -44,7 +44,7 @@ func (q *Queries) CountRunningBackgroundCommands(ctx context.Context, agentID st
 }
 
 const createBackgroundCommand = `-- name: CreateBackgroundCommand :execrows
-INSERT INTO background_commands (id, call_key, conversation_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state)
+INSERT INTO background_commands (id, call_key, session_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, 'starting')
 ON CONFLICT DO NOTHING
 `
@@ -52,7 +52,7 @@ ON CONFLICT DO NOTHING
 type CreateBackgroundCommandParams struct {
 	ID               string        `json:"id"`
 	CallKey          string        `json:"call_key"`
-	ConversationID   int64         `json:"conversation_id"`
+	SessionID        int64         `json:"session_id"`
 	SourceRequestID  string        `json:"source_request_id"`
 	Wake             string        `json:"wake"`
 	Label            string        `json:"label"`
@@ -69,7 +69,7 @@ func (q *Queries) CreateBackgroundCommand(ctx context.Context, arg CreateBackgro
 	result, err := q.db.ExecContext(ctx, createBackgroundCommand,
 		arg.ID,
 		arg.CallKey,
-		arg.ConversationID,
+		arg.SessionID,
 		arg.SourceRequestID,
 		arg.Wake,
 		arg.Label,
@@ -86,11 +86,11 @@ func (q *Queries) CreateBackgroundCommand(ctx context.Context, arg CreateBackgro
 }
 
 const createBackgroundWake = `-- name: CreateBackgroundWake :execrows
-INSERT INTO submissions (id, conversation_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
-SELECT ?1, b.conversation_id, ?2, 'null', ?1, s.origin, 'scheduler', '', '', 'wake', 'pending', ?3, s.channel_context
+INSERT INTO submissions (id, session_id, content, attachments, source_key, origin, producer, reply_channel, reply_peer, kind, status, created_at, channel_context)
+SELECT ?1, b.session_id, ?2, 'null', ?1, s.origin, 'scheduler', '', '', 'wake', 'pending', ?3, s.channel_context
 FROM background_commands b
 JOIN submissions s ON s.id = b.source_request_id
-JOIN conversations c ON c.id = b.conversation_id
+JOIN sessions c ON c.id = b.session_id
 JOIN agents a ON a.id = c.agent_id
 WHERE b.id = ?4 AND a.archived_at IS NULL
 ON CONFLICT DO NOTHING
@@ -159,7 +159,7 @@ func (q *Queries) FinishBackgroundCommand(ctx context.Context, arg FinishBackgro
 }
 
 const getBackgroundCommand = `-- name: GetBackgroundCommand :one
-SELECT id, call_key, conversation_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state, exit_status, reason, ended_at FROM background_commands WHERE id = ?
+SELECT id, call_key, session_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state, exit_status, reason, ended_at FROM background_commands WHERE id = ?
 `
 
 func (q *Queries) GetBackgroundCommand(ctx context.Context, id string) (BackgroundCommand, error) {
@@ -168,7 +168,7 @@ func (q *Queries) GetBackgroundCommand(ctx context.Context, id string) (Backgrou
 	err := row.Scan(
 		&i.ID,
 		&i.CallKey,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.SourceRequestID,
 		&i.Wake,
 		&i.Label,
@@ -188,7 +188,7 @@ func (q *Queries) GetBackgroundCommand(ctx context.Context, id string) (Backgrou
 }
 
 const getBackgroundCommandByKey = `-- name: GetBackgroundCommandByKey :one
-SELECT id, call_key, conversation_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state, exit_status, reason, ended_at FROM background_commands WHERE call_key = ?
+SELECT id, call_key, session_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state, exit_status, reason, ended_at FROM background_commands WHERE call_key = ?
 `
 
 func (q *Queries) GetBackgroundCommandByKey(ctx context.Context, callKey string) (BackgroundCommand, error) {
@@ -197,7 +197,7 @@ func (q *Queries) GetBackgroundCommandByKey(ctx context.Context, callKey string)
 	err := row.Scan(
 		&i.ID,
 		&i.CallKey,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.SourceRequestID,
 		&i.Wake,
 		&i.Label,
@@ -217,11 +217,11 @@ func (q *Queries) GetBackgroundCommandByKey(ctx context.Context, callKey string)
 }
 
 const listBackgroundCommands = `-- name: ListBackgroundCommands :many
-SELECT id, call_key, conversation_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state, exit_status, reason, ended_at FROM background_commands WHERE conversation_id = ? ORDER BY process_started_at DESC, rowid DESC
+SELECT id, call_key, session_id, source_request_id, wake, label, command, cwd, output_path, timeout_ms, pid, pgid, process_started_at, state, exit_status, reason, ended_at FROM background_commands WHERE session_id = ? ORDER BY process_started_at DESC, rowid DESC
 `
 
-func (q *Queries) ListBackgroundCommands(ctx context.Context, conversationID int64) ([]BackgroundCommand, error) {
-	rows, err := q.db.QueryContext(ctx, listBackgroundCommands, conversationID)
+func (q *Queries) ListBackgroundCommands(ctx context.Context, sessionID int64) ([]BackgroundCommand, error) {
+	rows, err := q.db.QueryContext(ctx, listBackgroundCommands, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +232,7 @@ func (q *Queries) ListBackgroundCommands(ctx context.Context, conversationID int
 		if err := rows.Scan(
 			&i.ID,
 			&i.CallKey,
-			&i.ConversationID,
+			&i.SessionID,
 			&i.SourceRequestID,
 			&i.Wake,
 			&i.Label,
@@ -262,11 +262,11 @@ func (q *Queries) ListBackgroundCommands(ctx context.Context, conversationID int
 }
 
 const listRunningBackgroundIDs = `-- name: ListRunningBackgroundIDs :many
-SELECT id FROM background_commands WHERE conversation_id = ? AND state IN ('starting', 'running')
+SELECT id FROM background_commands WHERE session_id = ? AND state IN ('starting', 'running')
 `
 
-func (q *Queries) ListRunningBackgroundIDs(ctx context.Context, conversationID int64) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listRunningBackgroundIDs, conversationID)
+func (q *Queries) ListRunningBackgroundIDs(ctx context.Context, sessionID int64) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listRunningBackgroundIDs, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (q *Queries) ListRunningBackgroundIDs(ctx context.Context, conversationID i
 
 const listRunningBackgroundIDsByAgent = `-- name: ListRunningBackgroundIDsByAgent :many
 SELECT b.id FROM background_commands b
-JOIN conversations c ON c.id = b.conversation_id
+JOIN sessions c ON c.id = b.session_id
 WHERE c.agent_id = ? AND b.state IN ('starting', 'running')
 `
 

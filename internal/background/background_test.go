@@ -47,11 +47,11 @@ func newFixture(t *testing.T, limits background.Limits) *fixture {
 	if err := q.CreateAgentIfMissing(t.Context(), sqlc.CreateAgentIfMissingParams{ID: "bot", Name: "Bot", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
-	conv, err := q.EnsureConversation(t.Context(), sqlc.EnsureConversationParams{AgentID: "bot", ChannelKey: "chat:test", Title: "t", CreatedAt: 1})
+	conv, err := q.EnsureSession(t.Context(), sqlc.EnsureSessionParams{AgentID: "bot", ChannelKey: "chat:test", Title: "t", CreatedAt: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", ConversationID: conv.ID, Content: "run", Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: 1}); err != nil {
+	if _, err := q.CreateSubmission(t.Context(), sqlc.CreateSubmissionParams{ID: "source", SessionID: conv.ID, Content: "run", Attachments: "null", Origin: "web", Producer: "user", Kind: "message", CreatedAt: 1}); err != nil {
 		t.Fatal(err)
 	}
 	f := &fixture{t: t, dir: dir, conn: conn, q: q, conv: conv.ID, source: "source"}
@@ -69,7 +69,7 @@ func newFixture(t *testing.T, limits background.Limits) *fixture {
 func (f *fixture) params(command, wake string) background.StartParams {
 	f.nextKey++
 	return background.StartParams{
-		CallKey: fmt.Sprintf("bot/%d", f.nextKey), AgentID: "bot", ConversationID: f.conv, SourceRequestID: f.source,
+		CallKey: fmt.Sprintf("bot/%d", f.nextKey), AgentID: "bot", SessionID: f.conv, SourceRequestID: f.source,
 		Command: command, Wake: wake, DefaultCwd: f.dir, OutputDir: filepath.Join(f.dir, "out"), Env: map[string]string{"PATH": os.Getenv("PATH")},
 	}
 }
@@ -185,7 +185,7 @@ func TestAReplayAfterACrashBeforeTheProcessStartsNeverRunsTheCommand(t *testing.
 	f := newFixture(t, background.Limits{})
 	p := f.params("echo ran", background.WakeExit)
 	if _, err := f.q.CreateBackgroundCommand(t.Context(), sqlc.CreateBackgroundCommandParams{
-		ID: "crashed", CallKey: p.CallKey, ConversationID: f.conv, SourceRequestID: f.source, Wake: p.Wake, Label: "l", Command: p.Command,
+		ID: "crashed", CallKey: p.CallKey, SessionID: f.conv, SourceRequestID: f.source, Wake: p.Wake, Label: "l", Command: p.Command,
 		Cwd: f.dir, OutputPath: filepath.Join(f.dir, "out", "crashed.log"), ProcessStartedAt: 1,
 	}); err != nil {
 		t.Fatal(err)

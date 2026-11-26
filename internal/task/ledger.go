@@ -14,9 +14,9 @@ import (
 // must hold the writer before it reads a Task and abort the transaction on error.
 // Call Service.Notify only after the transaction commits.
 type Ledger struct {
-	q                 *sqlc.Queries
-	entryIDs          []int64
-	wakeConversations []int64
+	q            *sqlc.Queries
+	entryIDs     []int64
+	wakeSessions []int64
 }
 
 func NewLedger(q *sqlc.Queries) *Ledger { return &Ledger{q: q} }
@@ -218,17 +218,17 @@ func (l *Ledger) recordExternal(ctx context.Context, task sqlc.Task, content, ev
 
 // LinkSession links an authorized Session and, if requested, makes it primary.
 // It leaves a replay of an existing link and role unchanged.
-func (l *Ledger) LinkSession(ctx context.Context, actor Actor, task sqlc.Task, conversationID int64, promote bool, now int64) error {
-	exec, err := l.q.LinkTaskSession(ctx, sqlc.LinkTaskSessionParams{TaskID: task.ID, ConversationID: conversationID, LinkedAt: now})
+func (l *Ledger) LinkSession(ctx context.Context, actor Actor, task sqlc.Task, sessionID int64, promote bool, now int64) error {
+	exec, err := l.q.LinkTaskSession(ctx, sqlc.LinkTaskSessionParams{TaskID: task.ID, SessionID: sessionID, LinkedAt: now})
 	added := err == nil
 	if errors.Is(err, sql.ErrNoRows) {
-		exec, err = l.q.GetTaskSession(ctx, sqlc.GetTaskSessionParams{TaskID: task.ID, ConversationID: conversationID})
+		exec, err = l.q.GetTaskSession(ctx, sqlc.GetTaskSessionParams{TaskID: task.ID, SessionID: sessionID})
 	}
 	if err != nil {
 		return err
 	}
 	// A Task can link to a child after its first turn has already settled.
-	if err := l.q.ProjectTaskChildSession(ctx, conversationID); err != nil {
+	if err := l.q.ProjectTaskChildSession(ctx, sessionID); err != nil {
 		return err
 	}
 	changePrimary := promote && exec.IsPrimary == 0
@@ -244,10 +244,10 @@ func (l *Ledger) LinkSession(ctx context.Context, actor Actor, task sqlc.Task, c
 		}
 	}
 	meta, err := json.Marshal(struct {
-		ExecutionID    string `json:"executionID"`
-		ConversationID int64  `json:"conversationID"`
-		Primary        bool   `json:"primary"`
-	}{exec.ID, conversationID, changePrimary || exec.IsPrimary == 1})
+		ExecutionID string `json:"executionID"`
+		SessionID   int64  `json:"conversationID"`
+		Primary     bool   `json:"primary"`
+	}{exec.ID, sessionID, changePrimary || exec.IsPrimary == 1})
 	if err != nil {
 		return err
 	}

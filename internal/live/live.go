@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 const heartbeat = 15 * time.Second
@@ -23,22 +23,22 @@ type subscriber struct {
 
 // Hub routes reference and child-state notifications to each transcript connection.
 type Hub struct {
-	chats  *chat.Service
-	agents *engine.Agents
-	mu     sync.Mutex
-	byChat map[int64]map[*subscriber]struct{}
+	sessions  *session.Service
+	agents    *engine.Agents
+	mu        sync.Mutex
+	bySession map[int64]map[*subscriber]struct{}
 }
 
-func New(chats *chat.Service, agents *engine.Agents) *Hub {
-	return &Hub{chats: chats, agents: agents, byChat: map[int64]map[*subscriber]struct{}{}}
+func New(sessions *session.Service, agents *engine.Agents) *Hub {
+	return &Hub{sessions: sessions, agents: agents, bySession: map[int64]map[*subscriber]struct{}{}}
 }
 
-// Changed coalesces notifications for the chat and parents that observe this child.
-func (h *Hub) Changed(chatID int64) {
+// Changed coalesces notifications for the session and parents that observe this child.
+func (h *Hub) Changed(sessionID int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for sub := range h.byChat[chatID] {
-		sub.pending[chatID] = struct{}{}
+	for sub := range h.bySession[sessionID] {
+		sub.pending[sessionID] = struct{}{}
 		select {
 		case sub.signal <- struct{}{}:
 		default:
@@ -46,16 +46,16 @@ func (h *Hub) Changed(chatID int64) {
 	}
 }
 
-func (h *Hub) Open(ctx context.Context, agentID string, chatID int64) (io.ReadCloser, error) {
-	return h.open(ctx, agentID, chatID, false)
+func (h *Hub) Open(ctx context.Context, agentID string, sessionID int64) (io.ReadCloser, error) {
+	return h.open(ctx, agentID, sessionID, false)
 }
 
-func (h *Hub) OpenWeb(ctx context.Context, agentID string, chatID int64) (io.ReadCloser, error) {
-	return h.open(ctx, agentID, chatID, true)
+func (h *Hub) OpenWeb(ctx context.Context, agentID string, sessionID int64) (io.ReadCloser, error) {
+	return h.open(ctx, agentID, sessionID, true)
 }
 
-func (h *Hub) open(ctx context.Context, agentID string, chatID int64, web bool) (io.ReadCloser, error) {
-	c, err := h.chats.Get(ctx, agentID, chatID)
+func (h *Hub) open(ctx context.Context, agentID string, sessionID int64, web bool) (io.ReadCloser, error) {
+	c, err := h.sessions.Get(ctx, agentID, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ type streamReader struct {
 
 func (r *streamReader) Close() error { r.cancel(); return r.PipeReader.Close() }
 
-func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subscriber, writer io.Writer, web bool) error {
+func (h *Hub) serve(ctx context.Context, agentID string, c session.Session, sub *subscriber, writer io.Writer, web bool) error {
 	children := map[int64]string{}
 	states := map[int64]string{}
 	defer func() {
@@ -90,13 +90,13 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 		}
 	}()
 	send := func(event childEvent) error {
-		if states[event.ChatID] == event.State {
+		if states[event.SessionID] == event.State {
 			return nil
 		}
 		if err := writeJSONEvent(writer, "child", event); err != nil {
 			return err
 		}
-		states[event.ChatID] = event.State
+		states[event.SessionID] = event.State
 		return nil
 	}
 	observe := func(event engine.Event) error {
@@ -118,7 +118,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 				if _, ok := found[id]; !ok {
 					h.unsubscribe(id, sub)
 					delete(children, id)
-					if err := send(childEvent{Type: "child", ChatID: id, AgentID: bot, State: "unavailable"}); err != nil {
+					if err := send(childEvent{Type: "child", SessionID: id, AgentID: bot, State: "unavailable"}); err != nil {
 						return err
 					}
 					delete(states, id)
@@ -134,7 +134,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 			state, err := h.childState(ctx, c.ID, id, bot, nil)
 			if err != nil {
 				h.unsubscribe(id, sub)
-				if errors.Is(err, chat.ErrNotFound) {
+				if errors.Is(err, session.ErrNotFound) {
 					continue
 				}
 				return err
@@ -168,7 +168,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 		if watch != nil {
 			return nil
 		}
-		latest, err := h.chats.Get(ctx, agentID, c.ID)
+		latest, err := h.sessions.Get(ctx, agentID, c.ID)
 		if err != nil {
 			return err
 		}
@@ -196,14 +196,14 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 	}
 	var noticePosition int64
 	notifications := func(initial bool) error {
-		if !web || !chat.Writable(c.ChannelKey) || c.ParentID != 0 {
+		if !web || !session.Writable(c.ChannelKey) || c.ParentID != 0 {
 			return nil
 		}
 		limit := -1
 		if initial {
 			limit = 30
 		}
-		page, err := h.chats.TimelineNotifications(ctx, agentID, c.ID, "", noticePosition, limit)
+		page, err := h.sessions.TimelineNotifications(ctx, agentID, c.ID, "", noticePosition, limit)
 		if err != nil {
 			return err
 		}
@@ -214,7 +214,7 @@ func (h *Hub) serve(ctx context.Context, agentID string, c chat.Chat, sub *subsc
 		return writeJSONEvent(writer, "notifications", struct {
 			Type    string `json:"type"`
 			Initial bool   `json:"initial"`
-			chat.NotificationPage
+			session.NotificationPage
 		}{"notifications", initial, page})
 	}
 	if err := notifications(true); err != nil {
@@ -297,8 +297,8 @@ func writeJSONEvent(w io.Writer, kind string, event any) error {
 }
 
 // Detail returns the full tool output or thought of one committed item.
-func (h *Hub) Detail(ctx context.Context, agentID string, chatID, entryID int64, itemID string) (engine.Item, error) {
-	c, err := h.chats.Get(ctx, agentID, chatID)
+func (h *Hub) Detail(ctx context.Context, agentID string, sessionID, entryID int64, itemID string) (engine.Item, error) {
+	c, err := h.sessions.Get(ctx, agentID, sessionID)
 	if err != nil {
 		return engine.Item{}, err
 	}
@@ -308,8 +308,8 @@ func (h *Hub) Detail(ctx context.Context, agentID string, chatID, entryID int64,
 	return h.agents.Detail(ctx, engine.Ref{AgentID: agentID, ID: c.ExecutionID}, entryID, itemID)
 }
 
-func (h *Hub) History(ctx context.Context, agentID string, chatID, before int64, limit int) (engine.History, error) {
-	c, err := h.chats.Get(ctx, agentID, chatID)
+func (h *Hub) History(ctx context.Context, agentID string, sessionID, before int64, limit int) (engine.History, error) {
+	c, err := h.sessions.Get(ctx, agentID, sessionID)
 	if err != nil {
 		return engine.History{}, err
 	}

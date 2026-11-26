@@ -98,11 +98,11 @@ func TestUserOtherAgentWorksDuringSlowMCP(t *testing.T) {
 			d.setModel(t, "echo")
 			var beta apiAgent
 			d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Beta", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &beta, http.StatusCreated)
-			var alphaMain, betaMain chatInfo
-			d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &alphaMain)
-			d.must(t, http.MethodGet, "/api/agents/"+beta.ID+"/chats/main", nil, &betaMain)
-			alphaPath := fmt.Sprintf("/api/agents/default/chats/%d", alphaMain.ID)
-			betaPath := fmt.Sprintf("/api/agents/%s/chats/%d", beta.ID, betaMain.ID)
+			var alphaMain, betaMain sessionListItem
+			d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &alphaMain)
+			d.must(t, http.MethodGet, "/api/agents/"+beta.ID+"/sessions/main", nil, &betaMain)
+			alphaPath := fmt.Sprintf("/api/agents/default/sessions/%d", alphaMain.ID)
+			betaPath := fmt.Sprintf("/api/agents/%s/sessions/%d", beta.ID, betaMain.ID)
 			conn := sessionDB(t, d)
 			warmCtx, cancelWarm := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancelWarm()

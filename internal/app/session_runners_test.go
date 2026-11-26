@@ -22,7 +22,7 @@ type apiSessionRunner struct {
 	Status  string `json:"status"`
 }
 
-type apiChatRunner struct {
+type sessionRunnerSelection struct {
 	ID       int64  `json:"id"`
 	RunnerID string `json:"runnerId"`
 }
@@ -63,11 +63,11 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 		t.Fatalf("environments=%+v", listed.Runners)
 	}
 
-	// When a new chat selects remote-box, then bash, write, and deliver_file use the SSH host.
+	// When a new session selects remote-box, then bash, write, and deliver_file use the SSH host.
 	d.setModel(t, "bash")
 	remote := d.newSession(t).ID
-	var selected apiChatRunner
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", remote), map[string]any{"runnerId": remoteEnv.ID}, &selected)
+	var selected sessionRunnerSelection
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", remote), map[string]any{"runnerId": remoteEnv.ID}, &selected)
 	if selected.RunnerID != remoteEnv.ID {
 		t.Fatalf("selected=%+v", selected)
 	}
@@ -85,18 +85,18 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 		t.Fatalf("artifact=%q", body)
 	}
 
-	// Then a chat that selects nothing still runs on the bot's local environment.
+	// Then a session that selects nothing still runs on the bot's local environment.
 	d.setModel(t, "bash")
 	local := d.newSession(t).ID
 	if out := taskTurn(t, d, local, `printf %s "${REMOTE_SSH_MARKER:-local}"`); out != "bash: local" {
 		t.Fatalf("local bash=%q", out)
 	}
 
-	// A started chat keeps its environment. A missing environment is refused.
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", remote), map[string]any{"runnerId": ""}, nil, http.StatusConflict)
+	// A started session keeps its environment. A missing environment is refused.
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", remote), map[string]any{"runnerId": ""}, nil, http.StatusConflict)
 	fresh := d.newSession(t).ID
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", fresh), map[string]any{"runnerId": "missing"}, nil, http.StatusBadRequest)
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", fresh), map[string]any{"runnerId": sandbox.ID}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", fresh), map[string]any{"runnerId": "missing"}, nil, http.StatusBadRequest)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", fresh), map[string]any{"runnerId": sandbox.ID}, nil)
 	if out := taskTurn(t, d, fresh, `printf '%s:%s:%s' "${REMOTE_E2B_MARKER:-local}" "${DEX_DATA_DIR:-unset}" "$PWD"`); !strings.Contains(out, "e2b-fake-ok:unset:") || !strings.HasSuffix(out, "/home/user/workspace") {
 		t.Fatalf("sandbox bash=%q", out)
 	}
@@ -104,11 +104,11 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 	assertVaultCommand(t, d, fresh)
 
 	// Then skill discovery and synchronization use the sandbox, not the bot's local project.
-	d.must(t, http.MethodPut, chatPath(fresh, "settings"), map[string]string{"provider": "faux", "modelId": "section"}, nil)
+	d.must(t, http.MethodPut, sessionPath(fresh, "settings"), map[string]string{"provider": "faux", "modelId": "section"}, nil)
 	if out := taskTurn(t, d, fresh, "skills"); !strings.Contains(out, "/home/user/workspace/.dex/skills/dex/dex-shared/SKILL.md") || strings.Contains(out, "local-only") || strings.Contains(out, cfg.DataDir) {
 		t.Fatalf("sandbox skills=%q", out)
 	}
-	d.must(t, http.MethodPut, chatPath(fresh, "settings"), map[string]string{"provider": "faux", "modelId": "bash"}, nil)
+	d.must(t, http.MethodPut, sessionPath(fresh, "settings"), map[string]string{"provider": "faux", "modelId": "bash"}, nil)
 	if out := taskTurn(t, d, fresh, `test -f .dex/skills/dex/dex-shared/SKILL.md && printf synced`); out != "bash: synced" {
 		t.Fatalf("sandbox skill file=%q", out)
 	}
@@ -119,7 +119,7 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 		t.Fatalf("runner_list=%q", tool)
 	}
 
-	// When the local chat creates a child on remote-box, then the child runs there.
+	// When the local session creates a child on remote-box, then the child runs there.
 	var child childRef
 	toolJSON(t, callSessionTool(t, d, local, "session_new", map[string]any{"title": "Remote", "message": `printf %s "${REMOTE_SSH_MARKER:-local}"`, "provider": "faux", "modelId": "bash", "runnerId": remoteEnv.ID}), &child)
 	results := waitResults(t, sessionDB(t, d), local, 1)
@@ -134,7 +134,7 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 		t.Fatalf("sessions of the same bot created %d sandboxes", n)
 	}
 
-	// After a restart the chat still runs on remote-box.
+	// After a restart the session still runs on remote-box.
 	d.stop()
 	if n := fake.Counts().Killed; n != 1 {
 		t.Fatalf("closing the bot deleted %d override sandboxes", n)
@@ -145,7 +145,7 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 		t.Fatalf("bash after restart=%q", out)
 	}
 
-	// When the owner deletes remote-box, then the chat on it fails and never runs locally.
+	// When the owner deletes remote-box, then the session on it fails and never runs locally.
 	d.must(t, http.MethodDelete, "/api/settings/runners/"+remoteEnv.ID, nil, nil)
 	d.setModel(t, "bash")
 	if out := taskTurn(t, d, remote, `printf %s "${REMOTE_SSH_MARKER:-local}"`); !strings.Contains(out, "was removed") || out == "bash: local" {
@@ -153,7 +153,7 @@ func TestUserRunsSessionsInSelectedRunners(t *testing.T) {
 	}
 }
 
-// Given a local chat with a project, when the owner forks it to an SSH environment, then the fork
+// Given a local session with a project, when the owner forks it to an SSH environment, then the fork
 // keeps the history, starts in the SSH workspace, and tells the user and the bot that it moved.
 func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	sshFix := runnertest.NewFakeSSH(t)
@@ -180,40 +180,40 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	w.until(t, "source answer", answered("bash: local"))
 	entry := findItem(t, &w.tr, "assistant", "bash: local").EntryID
 
-	// When the target is a missing environment, then the fork fails and creates no chat.
-	chats := len(d.chats(t))
-	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "runnerId": "missing"}, nil, http.StatusBadRequest)
-	if n := len(d.chats(t)); n != chats {
-		t.Fatalf("refused forks created chats: %d, want %d", n, chats)
+	// When the target is a missing environment, then the fork fails and creates no session.
+	sessions := len(d.sessions(t))
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), map[string]any{"entryId": entry, "runnerId": "missing"}, nil, http.StatusBadRequest)
+	if n := len(d.sessions(t)); n != sessions {
+		t.Fatalf("refused forks created sessions: %d, want %d", n, sessions)
 	}
 
-	// When the owner forks to remote-box, then a retry returns the same chat, and the same ID for
+	// When the owner forks to remote-box, then a retry returns the same session, and the same ID for
 	// another environment is refused.
 	var created, again struct {
-		ChatID int64 `json:"chatId"`
+		SessionID int64 `json:"sessionId"`
 	}
-	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "runnerId": sandbox.ID}, &created, http.StatusCreated)
-	if out := taskTurn(t, d, created.ChatID, `printf %s "$REMOTE_E2B_MARKER"`); out != "bash: e2b-fake-ok" {
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), map[string]any{"entryId": entry, "runnerId": sandbox.ID}, &created, http.StatusCreated)
+	if out := taskTurn(t, d, created.SessionID, `printf %s "$REMOTE_E2B_MARKER"`); out != "bash: e2b-fake-ok" {
 		t.Fatalf("sandbox fork bash=%q", out)
 	}
 	body := map[string]any{"id": uuid.NewV7().String(), "entryId": entry, "runnerId": remoteEnv.ID}
-	d.must(t, http.MethodPost, chatPath(src, "fork"), body, &created, http.StatusCreated)
-	d.must(t, http.MethodPost, chatPath(src, "fork"), body, &again, http.StatusCreated)
-	if again.ChatID != created.ChatID {
-		t.Fatalf("fork retry=%d, want %d", again.ChatID, created.ChatID)
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), body, &created, http.StatusCreated)
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), body, &again, http.StatusCreated)
+	if again.SessionID != created.SessionID {
+		t.Fatalf("fork retry=%d, want %d", again.SessionID, created.SessionID)
 	}
-	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"id": body["id"], "entryId": entry, "runnerId": "local"}, nil, http.StatusConflict)
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), map[string]any{"id": body["id"], "entryId": entry, "runnerId": "local"}, nil, http.StatusConflict)
 
 	// Then the fork selects remote-box, has no project, and shows the notice once after the history.
 	var fork struct {
 		forkInfo
 		RunnerID string `json:"runnerId"`
 	}
-	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/chats/%d", created.ChatID), nil, &fork)
+	d.must(t, http.MethodGet, fmt.Sprintf("/api/agents/default/sessions/%d", created.SessionID), nil, &fork)
 	if fork.RunnerID != remoteEnv.ID || fork.Cwd != "" || fork.ForkedFrom == nil || fork.ForkedFrom.ID != src {
 		t.Fatalf("fork=%+v", fork)
 	}
-	notice := "This chat moved from `local` to `remote-box`. Chat history was kept. Files and background tasks were not moved. Check that the files you need exist before continuing."
+	notice := "This session moved from `local` to `remote-box`. Session history was kept. Files and background tasks were not moved. Check that the files you need exist before continuing."
 	fw := d.watch(t, fork.ID)
 	fw.until(t, "fork notice", func(tr *transcript) bool {
 		last := lastItem(tr)
@@ -221,7 +221,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	})
 
 	// When the user sends in the fork, then the bot gets the notice before the new message.
-	d.must(t, http.MethodPut, chatPath(fork.ID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.must(t, http.MethodPut, sessionPath(fork.ID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
 	d.send(t, fork.ID, "where am I")
 	want, err := json.Marshal([]string{marker, notice, "where am I"})
 	if err != nil {
@@ -230,7 +230,7 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	fw.until(t, "fork answer", answered("context: "+string(want)))
 
 	// Then the commands of the fork run on remote-box, and the source still runs locally.
-	d.must(t, http.MethodPut, chatPath(fork.ID, "settings"), map[string]string{"provider": "faux", "modelId": "bash"}, nil)
+	d.must(t, http.MethodPut, sessionPath(fork.ID, "settings"), map[string]string{"provider": "faux", "modelId": "bash"}, nil)
 	if out := taskTurn(t, d, fork.ID, marker); out != "bash: ssh-fake-ok" {
 		t.Fatalf("fork bash=%q", out)
 	}
@@ -239,14 +239,14 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 		t.Fatalf("source bash after fork=%q", out)
 	}
 
-	// When the owner forks to the environment that the chat runs in, then nothing moves.
-	d.must(t, http.MethodPost, chatPath(src, "fork"), map[string]any{"entryId": entry, "runnerId": "local"}, &created, http.StatusCreated)
-	same := d.watch(t, created.ChatID)
+	// When the owner forks to the environment that the session runs in, then nothing moves.
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), map[string]any{"entryId": entry, "runnerId": "local"}, &created, http.StatusCreated)
+	same := d.watch(t, created.SessionID)
 	same.until(t, "same environment fork", answered("bash: local"))
 	if n := countKind(&same.tr, "boundary"); n != 0 {
 		t.Fatalf("same environment fork has %d boundaries: %+v", n, same.tr.items)
 	}
-	assertProject(t, d, created.ChatID, project)
+	assertProject(t, d, created.SessionID, project)
 
 	// When the bot forks a child session to remote-box, then the forked child runs there.
 	var child childRef
@@ -259,28 +259,28 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 		t.Fatalf("forked child result=%+v", results[1])
 	}
 
-	// When the owner deletes remote-box, then a fork moves the chat on it back to local.
+	// When the owner deletes remote-box, then a fork moves the session on it back to local.
 	fw.until(t, "fork remote answer", answered("bash: ssh-fake-ok"))
 	remoteAnswer := findItem(t, &fw.tr, "assistant", "bash: ssh-fake-ok").EntryID
 	d.must(t, http.MethodDelete, "/api/settings/runners/"+remoteEnv.ID, nil, nil)
-	d.must(t, http.MethodPost, chatPath(fork.ID, "fork"), map[string]any{"entryId": remoteAnswer, "runnerId": "local"}, &created, http.StatusCreated)
-	rescued := d.watch(t, created.ChatID)
+	d.must(t, http.MethodPost, sessionPath(fork.ID, "fork"), map[string]any{"entryId": remoteAnswer, "runnerId": "local"}, &created, http.StatusCreated)
+	rescued := d.watch(t, created.SessionID)
 	rescued.until(t, "rescued notice", func(tr *transcript) bool {
 		last := lastItem(tr)
-		return last.Kind == "boundary" && last.Boundary == "runner" && strings.HasPrefix(last.Text, "This chat moved from `"+remoteEnv.ID+"` to `local`.")
+		return last.Kind == "boundary" && last.Boundary == "runner" && strings.HasPrefix(last.Text, "This session moved from `"+remoteEnv.ID+"` to `local`.")
 	})
-	rescuedID := created.ChatID
+	rescuedID := created.SessionID
 	if out := taskTurn(t, d, rescuedID, marker); out != "bash: local" {
 		t.Fatalf("rescued bash=%q", out)
 	}
 
-	// Then a retry of the first fork still returns its chat, although remote-box is gone.
-	d.must(t, http.MethodPost, chatPath(src, "fork"), body, &again, http.StatusCreated)
-	if again.ChatID != fork.ID {
-		t.Fatalf("fork retry after removal=%d, want %d", again.ChatID, fork.ID)
+	// Then a retry of the first fork still returns its session, although remote-box is gone.
+	d.must(t, http.MethodPost, sessionPath(src, "fork"), body, &again, http.StatusCreated)
+	if again.SessionID != fork.ID {
+		t.Fatalf("fork retry after removal=%d, want %d", again.SessionID, fork.ID)
 	}
 
-	// When the user forks the local chat at an answer before its move notice, then the fork gets
+	// When the user forks the local session at an answer before its move notice, then the fork gets
 	// its own notice, because that history last ran on remote-box.
 	rescued.until(t, "rescued local answer", func(tr *transcript) bool {
 		last := lastItem(tr)
@@ -288,43 +288,43 @@ func TestUserForksSessionToAnotherRunner(t *testing.T) {
 	})
 	afterMove := lastItem(&rescued.tr).EntryID
 	beforeMove := findItem(t, &rescued.tr, "assistant", "bash: ssh-fake-ok").EntryID
-	d.must(t, http.MethodPost, chatPath(rescuedID, "fork"), map[string]any{"entryId": beforeMove}, &created, http.StatusCreated)
-	back := "This chat moved from `" + remoteEnv.ID + "` to `local`. Chat history was kept. Files and background tasks were not moved. Check that the files you need exist before continuing."
-	second := d.watch(t, created.ChatID)
+	d.must(t, http.MethodPost, sessionPath(rescuedID, "fork"), map[string]any{"entryId": beforeMove}, &created, http.StatusCreated)
+	back := "This session moved from `" + remoteEnv.ID + "` to `local`. Session history was kept. Files and background tasks were not moved. Check that the files you need exist before continuing."
+	second := d.watch(t, created.SessionID)
 	second.until(t, "second fork notice", func(tr *transcript) bool {
 		last := lastItem(tr)
 		return countKind(tr, "boundary") == 2 && last.Kind == "boundary" && last.Boundary == "runner" && last.Text == back
 	})
-	d.must(t, http.MethodPut, chatPath(created.ChatID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
-	d.send(t, created.ChatID, "check")
+	d.must(t, http.MethodPut, sessionPath(created.SessionID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.send(t, created.SessionID, "check")
 	if want, err = json.Marshal([]string{marker, notice, "where am I", marker, back, "check"}); err != nil {
 		t.Fatal(err)
 	}
 	second.until(t, "second fork answer", answered("context: "+string(want)))
 
-	// When the user forks the local chat after its move notice, then no notice is added.
-	d.must(t, http.MethodPost, chatPath(rescuedID, "fork"), map[string]any{"entryId": afterMove}, &created, http.StatusCreated)
-	d.must(t, http.MethodPut, chatPath(created.ChatID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
-	d.send(t, created.ChatID, "check")
+	// When the user forks the local session after its move notice, then no notice is added.
+	d.must(t, http.MethodPost, sessionPath(rescuedID, "fork"), map[string]any{"entryId": afterMove}, &created, http.StatusCreated)
+	d.must(t, http.MethodPut, sessionPath(created.SessionID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.send(t, created.SessionID, "check")
 	if want, err = json.Marshal([]string{marker, notice, "where am I", marker, back, marker, "check"}); err != nil {
 		t.Fatal(err)
 	}
-	d.watch(t, created.ChatID).until(t, "third fork answer", answered("context: "+string(want)))
+	d.watch(t, created.SessionID).until(t, "third fork answer", answered("context: "+string(want)))
 
-	// When the user forks the local chat before both notices, then the oldest one tells where the
+	// When the user forks the local session before both notices, then the oldest one tells where the
 	// history ran. That was local, so no notice is added.
-	d.must(t, http.MethodPost, chatPath(rescuedID, "fork"), map[string]any{"entryId": entry}, &created, http.StatusCreated)
-	d.must(t, http.MethodPut, chatPath(created.ChatID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
-	d.send(t, created.ChatID, "check")
+	d.must(t, http.MethodPost, sessionPath(rescuedID, "fork"), map[string]any{"entryId": entry}, &created, http.StatusCreated)
+	d.must(t, http.MethodPut, sessionPath(created.SessionID, "settings"), map[string]string{"provider": "faux", "modelId": "context"}, nil)
+	d.send(t, created.SessionID, "check")
 	if want, err = json.Marshal([]string{marker, "check"}); err != nil {
 		t.Fatal(err)
 	}
-	d.watch(t, created.ChatID).until(t, "fourth fork answer", answered("context: "+string(want)))
+	d.watch(t, created.SessionID).until(t, "fourth fork answer", answered("context: "+string(want)))
 }
 
 // Given sessions that follow the bot's environment, when the owner changes that environment,
 // then running background work blocks the change, and after it the sessions drop the old cwd.
-// A chat that selects local explicitly stays local.
+// A session that selects local explicitly stays local.
 func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 	fake := runnertest.NewFakeE2B(t, "e2b_change_secret")
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), E2BAPIURL: fake.APIURL(), E2BEnvdURL: fake.EnvdURL()})
@@ -333,12 +333,12 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 		"name": "sandbox-b", "kind": "e2b", "config": map[string]any{"template": "base", "timeoutSeconds": 300}, "secret": "e2b_change_secret",
 	}, &created, http.StatusCreated)
 
-	chatID := newParent(t, d)
+	sessionID := newParent(t, d)
 	project := t.TempDir()
-	if out := taskTool(t, d, chatID, "set_project", map[string]any{"path": project}); strings.HasPrefix(out, "tool error:") {
+	if out := taskTool(t, d, sessionID, "set_project", map[string]any{"path": project}); strings.HasPrefix(out, "tool error:") {
 		t.Fatalf("set_project=%q", out)
 	}
-	bg := bgStart(t, d, chatID, map[string]any{"command": "sleep 30", "wake": "none"})
+	bg := bgStart(t, d, sessionID, map[string]any{"command": "sleep 30", "wake": "none"})
 	routine := func(name, runnerID string) routineRunner {
 		var r routineRunner
 		d.must(t, http.MethodPost, "/api/agents/default/automations", map[string]any{
@@ -356,18 +356,18 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil, http.StatusConflict)
 
 	pinned := d.newSession(t).ID
-	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/chats/%d/runner", pinned), map[string]any{"runnerId": "local"}, nil)
+	d.must(t, http.MethodPut, fmt.Sprintf("/api/agents/default/sessions/%d/runner", pinned), map[string]any{"runnerId": "local"}, nil)
 
 	var stopped bgInfo
-	toolJSON(t, callSessionTool(t, d, chatID, "process_stop", map[string]any{"id": bg.ID}), &stopped)
+	toolJSON(t, callSessionTool(t, d, sessionID, "process_stop", map[string]any{"id": bg.ID}), &stopped)
 	if stopped.State != "stopped" {
 		t.Fatalf("process_stop returned %+v", stopped)
 	}
 
 	// When PiG has accepted input that has not started, then the change fails too.
 	d.setModel(t, "bash")
-	d.send(t, chatID, "sleep 2")
-	queued := d.send(t, chatID, `printf %s "${REMOTE_E2B_MARKER:-local}"`)
+	d.send(t, sessionID, "sleep 2")
+	queued := d.send(t, sessionID, `printf %s "${REMOTE_E2B_MARKER:-local}"`)
 	db := sessionDB(t, d)
 	eventually(t, "admitted queued input", func() (bool, any) {
 		var admitted sql.NullInt64
@@ -383,7 +383,7 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 		return err == nil && n == 0, n
 	})
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
-	assertProject(t, d, chatID, "")
+	assertProject(t, d, sessionID, "")
 	// Then a routine that follows the bot drops its project, and a routine on local keeps it.
 	for _, want := range []routineRunner{{ID: following.ID}, {ID: pinnedRoutine.ID, RunnerID: "local", Cwd: project}} {
 		var got routineRunner
@@ -393,10 +393,10 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 		}
 	}
 	d.setModel(t, "bash")
-	if out := taskTurn(t, d, chatID, `printf %s "${REMOTE_E2B_MARKER:-local}"`); out != "bash: e2b-fake-ok" {
+	if out := taskTurn(t, d, sessionID, `printf %s "${REMOTE_E2B_MARKER:-local}"`); out != "bash: e2b-fake-ok" {
 		t.Fatalf("bash after change=%q", out)
 	}
-	// Then a chat that selects local explicitly stays local.
+	// Then a session that selects local explicitly stays local.
 	d.setModel(t, "bash")
 	if out := taskTurn(t, d, pinned, `printf %s "${REMOTE_E2B_MARKER:-local}"`); out != "bash: local" {
 		t.Fatalf("pinned bash after change=%q", out)
@@ -404,7 +404,7 @@ func TestUserChangesBotRunnerForFollowingSessions(t *testing.T) {
 }
 
 // Given a bot whose default SSH host is down, when the host comes back, then a
-// following chat can use it without a settings change or a manual reload.
+// following session can use it without a settings change or a manual reload.
 func TestUserRecoversBotDefaultRunnerAfterDialFailure(t *testing.T) {
 	ssh := runnertest.NewFakeSSH(t)
 	d := startDexWith(t, app.Config{DataDir: t.TempDir(), SSHProgram: ssh.SSHProgram})
@@ -419,7 +419,7 @@ func TestUserRecoversBotDefaultRunnerAfterDialFailure(t *testing.T) {
 	bot.Provider, bot.ModelID, bot.RunnerID = "faux", "bash", saved.ID
 	d.must(t, http.MethodPut, "/api/agents/default", bot, nil)
 	local := d.newSession(t).ID
-	d.must(t, http.MethodPut, chatPath(local, "runner"), map[string]string{"runnerId": "local"}, nil)
+	d.must(t, http.MethodPut, sessionPath(local, "runner"), map[string]string{"runnerId": "local"}, nil)
 	const marker = `printf '%s' "${REMOTE_SSH_MARKER:-local}"`
 	if got := taskTurn(t, d, local, marker); got != "bash: local" {
 		t.Fatalf("explicit local with default unreachable: %q", got)
@@ -446,20 +446,20 @@ func TestUserRecoversAnExpiredSandboxOverride(t *testing.T) {
 		"name": "Short lease", "kind": "e2b", "secret": "test-e2b-lease-secret", "config": map[string]any{"timeoutSeconds": 2},
 	}, &saved, http.StatusCreated)
 	d.setModel(t, "bash")
-	chat := d.newSession(t).ID
-	d.must(t, http.MethodPut, chatPath(chat, "runner"), map[string]string{"runnerId": saved.ID}, nil)
-	if got := taskTurn(t, d, chat, `printf %s "$REMOTE_E2B_MARKER" > marker; cat marker`); got != "bash: e2b-fake-ok" {
+	session := d.newSession(t).ID
+	d.must(t, http.MethodPut, sessionPath(session, "runner"), map[string]string{"runnerId": saved.ID}, nil)
+	if got := taskTurn(t, d, session, `printf %s "$REMOTE_E2B_MARKER" > marker; cat marker`); got != "bash: e2b-fake-ok" {
 		t.Fatalf("first sandbox command: %q", got)
 	}
 	eventually(t, "short commands renew the same sandbox", func() (bool, any) {
-		got := taskTurn(t, d, chat, `cat marker`)
+		got := taskTurn(t, d, session, `cat marker`)
 		counts := fake.Counts()
 		return got == "bash: e2b-fake-ok" && counts.Created == 1 && counts.Renewed+counts.Connected > 0, counts
 	})
 
 	fake.SimulateExpire("sbx-1")
 	eventually(t, "a fresh sandbox on the same selected environment", func() (bool, any) {
-		got := taskTurn(t, d, chat, `test ! -e marker && printf '%s' "$REMOTE_E2B_MARKER"`)
+		got := taskTurn(t, d, session, `test ! -e marker && printf '%s' "$REMOTE_E2B_MARKER"`)
 		counts := fake.Counts()
 		return got == "bash: e2b-fake-ok" && counts.Created == 2, fmt.Sprintf("%q %+v", got, counts)
 	})

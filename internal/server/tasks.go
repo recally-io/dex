@@ -85,7 +85,7 @@ func (h *handler) GetTask(ctx context.Context, req api.GetTaskRequestObject) (ap
 			options = []string{}
 		}
 		out.Questions[i] = api.TaskQuestion{
-			Id: q.ID, Text: q.Text, Options: options, Queued: q.Queued != 0, AgentId: q.AgentID, ConversationId: q.ConversationID,
+			Id: q.ID, Text: q.Text, Options: options, Queued: q.Queued != 0, AgentId: q.AgentID, SessionId: q.SessionID,
 		}
 	}
 	return out, nil
@@ -206,7 +206,7 @@ func taskSummary(row tasksvc.Summary) api.TaskSummary {
 
 func taskSession(s sqlc.ListTaskSessionsRow) api.TaskSession {
 	out := api.TaskSession{
-		ConversationId: s.ConversationID, AgentId: s.AgentID, AgentName: s.AgentName, Title: s.Title,
+		SessionId: s.SessionID, AgentId: s.AgentID, AgentName: s.AgentName, Title: s.Title,
 		IsPrimary: s.IsPrimary == 1, LinkedAt: s.LinkedAt, State: api.TaskSessionState(s.State),
 	}
 	if s.EndedAt.Valid {

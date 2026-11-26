@@ -25,7 +25,7 @@ import {
 import {
   addTaskDependency,
   createTaskEntry,
-  getMainChat,
+  getMainSession,
   removeTaskDependency,
   reviewTask,
   sendMessage,
@@ -68,7 +68,7 @@ import { Textarea } from "../components/ui/textarea";
 import { GitHubPullForm } from "../plugins/github/pull-form";
 import { invalidateTasks } from "../lib/task-stream";
 import { isClosed, nextStatuses, statusLabel } from "../lib/tasks";
-import { errorText, refreshChats } from "../lib/queries";
+import { errorText, refreshSessions } from "../lib/queries";
 import { newId } from "../lib/utils";
 
 class TaskConflict extends Error {}
@@ -586,11 +586,11 @@ function BlockerActionCard({ detail }: { detail: TaskDetail }) {
   const answer = useMutation({
     mutationFn: ({ question, text }: { question: TaskQuestion; text: string }) =>
       sendMessage({
-        path: { agentId: question.agentId, chatId: question.conversationId },
+        path: { agentId: question.agentId, sessionId: question.sessionId },
         body: { id: newId(), text, answersQuestionId: question.id },
         throwOnError: true,
       }),
-    onSuccess: (_, { question }) => Promise.all([invalidateTasks(client), refreshChats(question.agentId)]),
+    onSuccess: (_, { question }) => Promise.all([invalidateTasks(client), refreshSessions(question.agentId)]),
   });
 
   const waits = detail.blockers.filter((blocker) => blocker.kind === "wait");
@@ -684,7 +684,7 @@ function TaskContextCards({
               <ul className="divide-y divide-border/70">
                 {detail.sessions.map((session) => (
                   <li
-                    key={session.conversationId}
+                    key={session.sessionId}
                     className="flex flex-wrap items-center justify-between gap-2 py-2 text-[13px] first:pt-0 last:pb-0"
                   >
                     <div className="flex min-w-0 items-center gap-2">
@@ -697,8 +697,8 @@ function TaskContextCards({
                         }
                       />
                       <Link
-                        to="/a/$agentId/c/$chatId"
-                        params={{ agentId: session.agentId, chatId: String(session.conversationId) }}
+                        to="/a/$agentId/s/$sessionId"
+                        params={{ agentId: session.agentId, sessionId: String(session.sessionId) }}
                         className="truncate font-medium text-foreground hover:underline"
                       >
                         {session.title || "Untitled session"}
@@ -1132,9 +1132,9 @@ function ThreadComposer({ task, assigneeName }: { task: TaskSummary; assigneeNam
           : newId();
 
       pending.current = { id, text: message, agentId };
-      const main = await getMainChat({ path: { agentId }, throwOnError: true });
+      const main = await getMainSession({ path: { agentId }, throwOnError: true });
       await sendMessage({
-        path: { agentId, chatId: main.data.id },
+        path: { agentId, sessionId: main.data.id },
         body: { id, text: message, taskId: task.id },
         throwOnError: true,
       });

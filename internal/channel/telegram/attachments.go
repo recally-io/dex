@@ -9,8 +9,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/upload"
 )
 
@@ -27,7 +27,7 @@ type media struct {
 	IsVideo    bool   `json:"is_video"`
 }
 
-func (b *Bot) rejectAttachment(ctx context.Context, peer, source string, identity chat.ChannelContext, err error) error {
+func (b *Bot) rejectAttachment(ctx context.Context, peer, source string, identity session.ChannelContext, err error) error {
 	api, ok := errors.AsType[*apiError](err)
 	if errors.Is(err, upload.ErrTooLarge) || errors.Is(err, upload.ErrInvalidName) || (ok && api.Code == 400) {
 		return b.chats.QueueChannelNotice(ctx, peer, source, identity, "Cannot read this attachment. Send a supported file under 20 MB.")

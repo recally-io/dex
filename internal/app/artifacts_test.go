@@ -51,9 +51,9 @@ func readArtifact(t *testing.T, d *dex, agentID, name string) (http.Header, []by
 	return response.Header, body
 }
 
-func deliverArtifact(t *testing.T, d *dex, chatID int64, path string) deliveredArtifact {
+func deliverArtifact(t *testing.T, d *dex, sessionID int64, path string) deliveredArtifact {
 	t.Helper()
-	answer := taskTool(t, d, chatID, "deliver_file", map[string]string{"path": path})
+	answer := taskTool(t, d, sessionID, "deliver_file", map[string]string{"path": path})
 	var out deliveredArtifact
 	if !strings.HasPrefix(answer, "tool: ") {
 		t.Fatalf("delivery: %s", answer)
@@ -69,7 +69,7 @@ func TestUserManagesBotArtifactDirectory(t *testing.T) {
 	// Given a bot with a workspace source and its own artifacts directory.
 	data := t.TempDir()
 	d := startDex(t, data, "")
-	chat := d.newSession(t).ID
+	session := d.newSession(t).ID
 	source := filepath.Join(data, "agents", "default", "workspace", "report.md")
 	if err := os.MkdirAll(filepath.Dir(source), 0700); err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestUserManagesBotArtifactDirectory(t *testing.T) {
 	if err := os.WriteFile(source, []byte("# Original\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	item := deliverArtifact(t, d, chat, "report.md")
+	item := deliverArtifact(t, d, session, "report.md")
 	file := filepath.Join(data, "agents", "default", "artifacts", "report.md")
 	if _, err := os.Stat(file); err != nil {
 		t.Fatalf("delivery must create the named bot file: %v", err)
@@ -92,7 +92,7 @@ func TestUserManagesBotArtifactDirectory(t *testing.T) {
 		t.Fatalf("copied bytes=%q", body)
 	}
 	// When the bot repeats a delivery, it gets an explicit conflict instead of replacing a file.
-	_ = taskTool(t, d, chat, "deliver_file", map[string]string{"path": "report.md"})
+	_ = taskTool(t, d, session, "deliver_file", map[string]string{"path": "report.md"})
 	if _, body := readArtifact(t, d, "default", "report.md"); string(body) != "# Original\n" {
 		t.Fatalf("replaced bytes=%q", body)
 	}

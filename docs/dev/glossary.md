@@ -10,10 +10,10 @@ storage, and execution boundaries.
 - **Bot**: An assistant with its own model, instructions, skills, default
   Runner, Channels, and Automations. The API and storage use `agent` for this
   object. A Telegram bot token belongs to a Channel.
-- **Session**: A Bot's conversation and execution context. **Main** is shared
-  by Web and Channels. A **Chat** is a separate writable Session. A **child
-  Session** is a Chat with a parent, possibly in another Bot. A separate
-  Automation transcript is read-only.
+- **Session**: A Bot's transcript and execution context. **Main** is shared
+  by Web and Channels. The Owner can open a separate writable Web Session.
+  A **child Session** has a parent, possibly in another Bot. A separate
+  Automation Session is read-only.
 - **Task**: A work item with a stable key, status, and Timeline. The
   **Assignee** is the Bot responsible for it. A **Reviewer** can be the Owner
   or another Bot. Tasks can have subtasks, sibling dependencies, and linked
@@ -87,7 +87,7 @@ They do not share a runtime abstraction.
 | Concept                         | Web or tool surface                                  | API, storage, or engine                                                                                                   |
 | ------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | Bot                             | Bots; `bot_*`                                        | `/api/agents/*`, `agents`, `internal/agent`                                                                               |
-| Session                         | Sessions; `session_*`                                | `/api/agents/{id}/chats/*`, `conversations`, `internal/chat`                                                              |
+| Session                         | Sessions; `session_*`                                | `/api/agents/{id}/sessions/*`, `sessions`, `internal/session`                                                             |
 | Child result                    | Result mark                                          | `session_result` submission, `dex.session_result` native entry                                                            |
 | Monitor or Process wake         | Wake mark; `monitor_*`, `process_*`                  | `wake` submission, `dex.wake` native entry; `monitors`, `background_commands`                                             |
 | Task wake                       | Task wake mark                                       | `task_wake` submission, `dex.task_wake` native entry                                                                      |

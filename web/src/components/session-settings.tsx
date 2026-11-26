@@ -3,23 +3,23 @@ import { useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { AgentSettings as Settings } from "../lib/agent-scope";
 import { useAgentId } from "../lib/agent-scope";
-import type { Chat, ChatSettings, Model, ThinkingLevel } from "../api/generated/types.gen";
-import { setChatSettings } from "../api/generated/sdk.gen";
+import type { Session, SessionSettings, Model, ThinkingLevel } from "../api/generated/types.gen";
+import { setSessionSettings } from "../api/generated/sdk.gen";
 import { listModelsOptions } from "../api/generated/@tanstack/react-query.gen";
 import { findModel, thinkingNames } from "../lib/agent";
-import { refreshChats } from "../lib/queries";
-import { ChatActivity } from "./chat-activity";
-import { ChatRunner } from "./chat-runner";
-import { ChatProject } from "./chat-project";
+import { refreshSessions } from "../lib/queries";
+import { SessionActivity } from "./session-activity";
+import { SessionRunner } from "./session-runner";
+import { SessionProject } from "./session-project";
 import { ModelPicker } from "./model-picker";
 import { Button } from "./ui/button";
 
 // A change keeps the other field. null clears a field so that it follows the bot again.
 function changed(
-  own: ChatSettings,
+  own: SessionSettings,
   change: { model: Model | null } | { thinking: ThinkingLevel | null },
-): ChatSettings {
-  const next: ChatSettings = {};
+): SessionSettings {
+  const next: SessionSettings = {};
 
   const model =
     "model" in change ? change.model : own.modelId ? { provider: own.provider ?? "", id: own.modelId } : null;
@@ -38,11 +38,11 @@ function changed(
 
 // Task overrides apply from the next message. An unset field follows the bot.
 export function SessionSettings({
-  chat,
+  session,
   settings,
   started,
 }: {
-  chat: Chat;
+  session: Session;
   settings: Settings;
   started: boolean;
 }) {
@@ -50,18 +50,18 @@ export function SessionSettings({
   const models = useQuery(listModelsOptions());
   const saving = useRef(false);
   const [pending, setPending] = useState(false);
-  const own = chat.settings;
+  const own = session.settings;
   const bot = findModel(settings.agent.provider, settings.agent.modelId, models.data?.models);
   const effective = own.modelId ? findModel(own.provider ?? "", own.modelId, models.data?.models) : bot;
 
-  async function change(next: ChatSettings) {
+  async function change(next: SessionSettings) {
     if (saving.current) throw new Error("Session settings are saving. Try again.");
     saving.current = true;
     setPending(true);
 
     try {
-      await setChatSettings({ path: { agentId, chatId: chat.id }, body: next, throwOnError: true });
-      await refreshChats(agentId);
+      await setSessionSettings({ path: { agentId, sessionId: session.id }, body: next, throwOnError: true });
+      await refreshSessions(agentId);
     } finally {
       saving.current = false;
       setPending(false);
@@ -74,9 +74,9 @@ export function SessionSettings({
       aria-label="Task settings"
       className="flex min-w-0 items-center gap-0.5 overflow-hidden"
     >
-      <ChatRunner chat={chat} started={started} />
-      <ChatProject chatId={chat.id} cwd={chat.cwd} runnerId={chat.runnerId} />
-      <ChatActivity chatId={chat.id} writable={!chat.readOnly} />
+      <SessionRunner session={session} started={started} />
+      <SessionProject sessionId={session.id} cwd={session.cwd} runnerId={session.runnerId} />
+      <SessionActivity sessionId={session.id} writable={!session.readOnly} />
       <ModelPicker
         side="top"
         thinking={{

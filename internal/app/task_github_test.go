@@ -159,7 +159,7 @@ func pendingTaskAlerts(t *testing.T, dir string) []string {
 		t.Fatal(err)
 	}
 	defer conn.Close()
-	rows, err := conn.QueryContext(t.Context(), `SELECT s.content FROM submissions s JOIN conversations c ON c.id = s.conversation_id
+	rows, err := conn.QueryContext(t.Context(), `SELECT s.content FROM submissions s JOIN sessions c ON c.id = s.session_id
 WHERE c.channel_key = 'main' AND s.kind = 'task_wake' AND s.status = 'pending' ORDER BY s.created_at`)
 	if err != nil {
 		t.Fatal(err)

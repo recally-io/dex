@@ -72,8 +72,8 @@ func TestUserRevokingAChannelPermanentlyRejectsPendingNotifications(t *testing.T
 		`INSERT INTO telegram_settings (agent_id,token,allowed_users) VALUES ('a','123:secret','42')`,
 		`INSERT INTO automation_notification_targets (id,agent_id,platform,account_id,peer) VALUES ('t','a','telegram','123','telegram:42')`,
 		`INSERT INTO automations (id,agent_id,name,prompt,schedule,time_zone,session,enabled,created_at,updated_at,notification_route,notification_target_id) VALUES ('r','a','R','p','{}','UTC','reuse',1,1,1,'target','t')`,
-		`INSERT INTO conversations (id,agent_id,channel_key,created_at) VALUES (1,'a','automation:r',1)`,
-		`INSERT INTO outbox_messages (id,event_id,agent_id,conversation_id,kind,peer,channel_context,body,created_at) VALUES ('result','run','a',1,'automation','telegram:42','{"accountId":"123"}','text',1)`,
+		`INSERT INTO sessions (id,agent_id,channel_key,created_at) VALUES (1,'a','automation:r',1)`,
+		`INSERT INTO outbox_messages (id,event_id,agent_id,session_id,kind,peer,channel_context,body,created_at) VALUES ('result','run','a',1,'automation','telegram:42','{"accountId":"123"}','text',1)`,
 	} {
 		if _, err = conn.ExecContext(t.Context(), stmt); err != nil {
 			t.Fatal(err)

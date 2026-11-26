@@ -1,6 +1,6 @@
 -- name: CreateTelegramCallback :exec
 INSERT INTO telegram_callbacks (id, agent_id, source_id, ordinal, peer, channel_context,
-    conversation_id, execution_id, context_revision, label, object_id, action, expires_at)
+    session_id, execution_id, context_revision, label, object_id, action, expires_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source_id, ordinal) DO NOTHING;
 
@@ -20,10 +20,10 @@ WHERE id = @id AND consumed_at IS NULL AND expires_at > @now AND message_id <> '
 
 -- name: TelegramContextRevision :one
 SELECT CAST(coalesce((SELECT id FROM submissions
-WHERE conversation_id = @conversation_id AND kind = 'context_reset'
+WHERE session_id = @session_id AND kind = 'context_reset'
 ORDER BY rowid DESC LIMIT 1), '') AS TEXT);
 
 -- name: GetChildWorkflowSource :one
 SELECT s.* FROM submissions s
-WHERE s.conversation_id = @child_id AND s.parent_request_id IS NOT NULL
+WHERE s.session_id = @child_id AND s.parent_request_id IS NOT NULL
 ORDER BY s.rowid LIMIT 1;

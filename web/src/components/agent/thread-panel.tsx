@@ -2,11 +2,11 @@ import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ExternalLink, X } from "lucide-react";
-import type { Chat, HistoryPage, Item, ChildEvent } from "../../api/generated/types.gen";
+import type { Session, HistoryPage, Item, ChildEvent } from "../../api/generated/types.gen";
 import { listAgentsOptions } from "../../api/generated/@tanstack/react-query.gen";
 import { AgentContext, useAgentId } from "../../lib/agent-scope";
-import { mergeHistory } from "../../lib/chat-state";
-import { useChatStream } from "../../lib/chat-stream";
+import { mergeHistory } from "../../lib/session-state";
+import { useSessionStream } from "../../lib/session-stream";
 import { threadState, type ThreadRef } from "../../lib/threads";
 import { Failure, Loading } from "../feedback";
 import { IconButton } from "../icon-button";
@@ -26,8 +26,8 @@ export function ThreadPanel({ thread, onClose }: { thread: ThreadRef; onClose: (
   return (
     <AgentContext.Provider value={agentId}>
       <PanelBody
-        key={`${agentId}/${thread.chatId}`}
-        chatId={thread.chatId}
+        key={`${agentId}/${thread.sessionId}`}
+        sessionId={thread.sessionId}
         agentId={agentId}
         onClose={onClose}
       />
@@ -35,17 +35,25 @@ export function ThreadPanel({ thread, onClose }: { thread: ThreadRef; onClose: (
   );
 }
 
-function PanelBody({ chatId, agentId, onClose }: { chatId: number; agentId: string; onClose: () => void }) {
-  const { chat, state, setState, connection, reconnect } = useChatStream(chatId);
+function PanelBody({
+  sessionId,
+  agentId,
+  onClose,
+}: {
+  sessionId: number;
+  agentId: string;
+  onClose: () => void;
+}) {
+  const { session, state, setState, connection, reconnect } = useSessionStream(sessionId);
 
   return (
     <ThreadView
       agentId={agentId}
-      chatId={chatId}
-      chat={chat}
+      sessionId={sessionId}
+      session={session}
       items={state.items}
       running={state.running}
-      status={state.children?.[chatId]}
+      status={state.children?.[sessionId]}
       historyBefore={state.historyBefore}
       connection={connection}
       reconnect={() => reconnect.current?.()}
@@ -58,8 +66,8 @@ function PanelBody({ chatId, agentId, onClose }: { chatId: number; agentId: stri
 /** The panel without its stream. The page passes the items that the stream holds. */
 export function ThreadView({
   agentId,
-  chatId,
-  chat,
+  sessionId,
+  session,
   items,
   running,
   status,
@@ -70,8 +78,8 @@ export function ThreadView({
   onClose,
 }: {
   agentId: string;
-  chatId: number;
-  chat: { data?: Chat; error?: unknown; isError: boolean; isPending: boolean; refetch: () => void };
+  sessionId: number;
+  session: { data?: Session; error?: unknown; isError: boolean; isPending: boolean; refetch: () => void };
   items: Item[];
   running: boolean;
   status?: ChildEvent["state"];
@@ -113,13 +121,13 @@ export function ThreadView({
     >
       <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border py-2 pr-2 pl-4">
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-[14px] font-semibold">{chat.data?.title || "Session"}</h2>
+          <h2 className="truncate text-[14px] font-semibold">{session.data?.title || "Session"}</h2>
           <p className="truncate text-[12px] text-muted-foreground">{bot}</p>
         </div>
         <StateBadge state={statusState} />
         <Link
-          to="/a/$agentId/c/$chatId"
-          params={{ agentId, chatId: String(chatId) }}
+          to="/a/$agentId/s/$sessionId"
+          params={{ agentId, sessionId: String(sessionId) }}
           aria-label="Open as a session page"
           title="Open as a session page"
           className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -140,13 +148,13 @@ export function ThreadView({
         }}
       >
         <div className="flex flex-col gap-3 px-4 py-5">
-          {chat.isError ? (
+          {session.isError ? (
             <Failure
               title="Could not load this child session"
-              error={chat.error}
-              retry={() => void chat.refetch()}
+              error={session.error}
+              retry={() => void session.refetch()}
             />
-          ) : chat.isPending ? (
+          ) : session.isPending ? (
             <Loading />
           ) : (
             <>
@@ -157,8 +165,14 @@ export function ThreadView({
                   </button>
                 </Failure>
               ) : null}
-              <LoadEarlierButton chatId={chatId} before={historyBefore} onPage={onPage} />
-              <Transcript chatId={chatId} items={items} running={running} retry={() => {}} canRetry={false} />
+              <LoadEarlierButton sessionId={sessionId} before={historyBefore} onPage={onPage} />
+              <Transcript
+                sessionId={sessionId}
+                items={items}
+                running={running}
+                retry={() => {}}
+                canRetry={false}
+              />
             </>
           )}
         </div>

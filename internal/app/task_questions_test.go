@@ -13,9 +13,9 @@ func TestUserAnswersQueuedTaskQuestionsIndependently(t *testing.T) {
 	t.Parallel()
 	d := startDex(t, t.TempDir(), "")
 	d.setModel(t, "tool")
-	var main chatInfo
-	d.must(t, http.MethodGet, "/api/agents/default/chats/main", nil, &main)
-	path := fmt.Sprintf("/api/agents/default/chats/%d/messages", main.ID)
+	var main sessionListItem
+	d.must(t, http.MethodGet, "/api/agents/default/sessions/main", nil, &main)
+	path := fmt.Sprintf("/api/agents/default/sessions/%d/messages", main.ID)
 	const tasks = "/api/tasks"
 
 	ask := func(title string, text string, queued bool) (string, string) {

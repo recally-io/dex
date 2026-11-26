@@ -102,7 +102,7 @@ func TestUserSeesOnlyActionableAutomationResultsAcrossBots(t *testing.T) {
 	counts := map[string]int{}
 	for _, r := range rows {
 		counts[r.AgentID]++
-		if r.ChatID == 0 || r.Summary != "check result" || r.Read || r.Dismissed || r.AgentName == "" || r.AutomationName == "" || (r.Outcome != "changed" && r.Outcome != "failed") {
+		if r.SessionID == 0 || r.Summary != "check result" || r.Read || r.Dismissed || r.AgentName == "" || r.AutomationName == "" || (r.Outcome != "changed" && r.Outcome != "failed") {
 			t.Fatalf("invalid Automation result: %+v", r)
 		}
 	}

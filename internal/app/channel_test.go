@@ -32,10 +32,10 @@ func TestUserClearsChannelMainContextOnce(t *testing.T) {
 		t.Fatalf("replies: %q", got)
 	}
 
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("channel in Sessions: %+v", chats)
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("channel in Sessions: %+v", sessions)
 	}
-	d.watch(t, d.mainChat(t)).until(t, "answer after Clear", answered("echo: after"))
+	d.watch(t, d.mainSession(t)).until(t, "answer after Clear", answered("echo: after"))
 }
 
 func TestUserGetsUndeliveredTelegramReplyAfterRestart(t *testing.T) {
@@ -95,7 +95,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 	for !d.mainInfo(t).Busy {
 		select {
 		case <-deadline.C:
-			t.Fatal("chat did not become busy")
+			t.Fatal("session did not become busy")
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
@@ -121,7 +121,7 @@ func TestUserStopsCurrentChannelAnswer(t *testing.T) {
 
 func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 	t.Parallel()
-	// Given external channel chats in control storage.
+	// Given external channel sessions in control storage.
 	dir := t.TempDir()
 	d := startDex(t, dir, "")
 	d.setModel(t, "echo")
@@ -131,7 +131,7 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 	for _, platform := range []string{"telegram", "wechat", "feishu"} {
-		res, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (agent_id,channel_key,created_at) VALUES ('default',?,1)", platform+":owner/old")
+		res, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (agent_id,channel_key,created_at) VALUES ('default',?,1)", platform+":owner/old")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,15 +145,15 @@ func TestUserCannotWriteToAnyExternalChannelOnWeb(t *testing.T) {
 			if method == http.MethodPut {
 				suffix = "settings"
 			}
-			status, raw := d.call(t, method, fmt.Sprintf("/api/agents/default/chats/%d/%s", id, suffix), body)
+			status, raw := d.call(t, method, fmt.Sprintf("/api/agents/default/sessions/%d/%s", id, suffix), body)
 			if status != http.StatusForbidden {
 				t.Fatalf("%s %s: %d %s", platform, method, status, raw)
 			}
 		}
 	}
-	// Then Sessions excludes the old channel conversations.
-	if chats := d.chats(t); len(chats) != 0 {
-		t.Fatalf("old channels in Sessions: %+v", chats)
+	// Then Sessions excludes the old channel sessions.
+	if sessions := d.sessions(t); len(sessions) != 0 {
+		t.Fatalf("old channels in Sessions: %+v", sessions)
 	}
 }
 
@@ -161,7 +161,7 @@ func TestUserBlockedPeerDoesNotStopOtherReplies(t *testing.T) {
 	t.Parallel()
 	// Given a bot that one peer has blocked.
 	f := newFakeTelegram(t)
-	f.permanentChat.Store(7)
+	f.permanentSession.Store(7)
 	startTelegram(t, f, t.TempDir(), 42)
 	// When that peer and another peer each request an answer.
 	f.message(1, 42, 7, "cannot deliver")
@@ -174,7 +174,7 @@ func TestUserBlockedPeerDoesNotStopOtherReplies(t *testing.T) {
 
 func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	t.Parallel()
-	// Given a chat whose execution conversation no longer exists.
+	// Given a session whose execution conversation no longer exists.
 	f := newFakeTelegram(t)
 	dir := t.TempDir()
 	startTelegram(t, f, dir, 42)
@@ -188,10 +188,10 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	}
 	defer conn.Close()
 	var executionID int64
-	if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM conversations WHERE channel_key='main'").Scan(&executionID); err != nil {
+	if err := conn.QueryRowContext(t.Context(), "SELECT execution_id FROM sessions WHERE channel_key='main'").Scan(&executionID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET execution_id = 999999 WHERE channel_key = 'main'"); err != nil {
+	if _, err = conn.ExecContext(t.Context(), "UPDATE sessions SET execution_id = 999999 WHERE channel_key = 'main'"); err != nil {
 		t.Fatal(err)
 	}
 	// When /stop gets a permanent execution error, the command still has an answer.
@@ -200,7 +200,7 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 		t.Fatalf("stop reply: %q", got)
 	}
 	// Then the platform advances past /stop. Repair the test's missing execution reference.
-	if _, err = conn.ExecContext(t.Context(), "UPDATE conversations SET execution_id=? WHERE channel_key='main'", executionID); err != nil {
+	if _, err = conn.ExecContext(t.Context(), "UPDATE sessions SET execution_id=? WHERE channel_key='main'", executionID); err != nil {
 		t.Fatal(err)
 	}
 	f.message(3, 42, 8, "after failed stop")
@@ -209,9 +209,9 @@ func TestUserFailedStopDoesNotBlockLaterChannelReplies(t *testing.T) {
 	}
 }
 
-func TestUserStopsExistingChannelChatDuringMaintenance(t *testing.T) {
+func TestUserStopsExistingChannelSessionDuringMaintenance(t *testing.T) {
 	t.Parallel()
-	// Given a chat whose execution conversation already exists and admission is closed.
+	// Given a session whose execution conversation already exists and admission is closed.
 	f := newFakeTelegram(t)
 	d := startTelegram(t, f, t.TempDir(), 42)
 	f.message(1, 42, 7, "initial")

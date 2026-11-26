@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/recally-io/dex/internal/api"
-	"github.com/recally-io/dex/internal/chat"
+	"github.com/recally-io/dex/internal/session"
 )
 
 func (h *handler) ListAutomations(ctx context.Context, _ api.ListAutomationsRequestObject) (api.ListAutomationsResponseObject, error) {
@@ -22,8 +22,8 @@ func (h *handler) ListAutomationTargets(ctx context.Context, _ api.ListAutomatio
 	}
 	targets := make([]api.AutomationTarget, 0, len(rows))
 	for _, row := range rows {
-		if chat.AutomationTargetEligible(row, agentID(ctx)) {
-			targets = append(targets, api.AutomationTarget{Id: row.ID, Title: row.Title, Main: row.ChannelKey == chat.MainKey})
+		if session.AutomationTargetEligible(row, agentID(ctx)) {
+			targets = append(targets, api.AutomationTarget{Id: row.ID, Title: row.Title, Main: row.ChannelKey == session.MainKey})
 		}
 	}
 	return api.ListAutomationTargets200JSONResponse{Targets: targets}, nil

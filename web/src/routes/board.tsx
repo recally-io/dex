@@ -105,7 +105,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
                   <QuestionRow
                     key={`${session.agentId}:${session.id}:${question.id}`}
                     agent={botOf(session.agentId)}
-                    chat={session}
+                    session={session}
                     questionId={question.id}
                     text={question.text}
                     options={question.options}
@@ -114,7 +114,7 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
                 {taskReviews.map((task) => (
                   <TaskReviewRow key={task.key} task={task} agent={botOf(task.assigneeBotId)} />
                 ))}
-                {setup.map(({ agentId, id, name, targetConversationId }) => {
+                {setup.map(({ agentId, id, name, targetSessionId }) => {
                   const agent = botOf(agentId);
 
                   return (
@@ -129,11 +129,11 @@ export function BoardPage({ bot, onBotChange }: { bot?: string; onBotChange: (bo
                           </p>
                         </div>
                       </div>
-                      {targetConversationId ? (
+                      {targetSessionId ? (
                         <Link
                           className={buttonVariants({ variant: "secondary", size: "sm" })}
-                          to="/a/$agentId/c/$chatId"
-                          params={{ agentId, chatId: String(targetConversationId) }}
+                          to="/a/$agentId/s/$sessionId"
+                          params={{ agentId, sessionId: String(targetSessionId) }}
                         >
                           Configure session model
                         </Link>

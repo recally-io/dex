@@ -61,7 +61,7 @@ progress, taking `VACUUM INTO` hot backups of `control.sqlite` in
 `<dataDir>/backups/` before upgrading or on demand, capturing recent `slog`
 records in an in-memory ring buffer, and waiting on the maintenance lease before
 shutting down HTTP/App cleanly and re-execing the binary in place via
-`syscall.Exec`. `chat.Service` owns a two-minute maintenance lease.
+`syscall.Exec`. `session.Service` owns a two-minute maintenance lease.
 The engine closes admission and checks active operations, durable work, and
 pending settlement and memory commits. A busy check releases the gate and
 refuses maintenance. A global gate orders receipt commits, message withdrawal,
@@ -92,13 +92,13 @@ pending and reconcile when discovery finishes. Direct history, reload, and
 model checks that need discovery return `503`. SSE clients reconnect.
 Shutdown cancels discovery and waits for its work to end. Startup failure and
 shutdown use one cleanup path. Cleanup stops scheduler jobs and channel bots
-before the chat consumer, then closes execution resources and business storage.
+before the session consumer, then closes execution resources and business storage.
 
 See [service commands and recovery](../../README.md#run-and-manage-dex).
 
 ## Data ownership
 
-`control.sqlite` holds business facts: settings, agents, conversations, input
+`control.sqlite` holds business facts: settings, agents, sessions, input
 receipts, channel pairings, the Webhook Queue (`channel_webhook_queue`), the Outbox,
 Tasks and their ledger (`tasks` and `task_entries`),
 and plugin tables. Core migrations own
@@ -117,14 +117,14 @@ each agent execution store. Run one dex process per data directory.
 
 Source: [message-flow.puml](../assets/src/message-flow.puml)
 
-1. The browser opens `GET /api/agents/{agentId}/chats/main`, then sends
-   `POST /api/agents/{agentId}/chats/{id}/messages` with a client UUID.
-   `chat.Service.Send` rejects ordinary input when no model is selected.
+1. The browser opens `GET /api/agents/{agentId}/sessions/main`, then sends
+   `POST /api/agents/{agentId}/sessions/{sessionId}/messages` with a client UUID.
+   `session.Service.Send` rejects ordinary input when no model is selected.
    It records the input intent and origin in `control.sqlite`.
-2. The chat service creates an execution conversation on first use and stores
+2. The session service creates an execution conversation on first use and stores
    its reference. It calls `Agents.Submit` with the UUID as the stable native
    request ID. PiG commits admission before it returns a handle. Only then
-   does the chat service set `admitted_at` on the business receipt.
+   does the session service set `admitted_at` on the business receipt.
 3. If admission or the receipt write fails, reconciliation retries the same
    request ID. A pending receipt alone does not prove native admission and
    must not suppress that retry. Each Session has an independent delivery gate
@@ -141,7 +141,7 @@ Source: [message-flow.puml](../assets/src/message-flow.puml)
 4. The engine runs the model and tools. Each browser subscription receives
    typed transcript events through `live.Hub`. Queued input comes from the
    native Inbox, not from a second control transcript.
-5. The chat service waits on the native handle and stores the outcome in the
+5. The session service waits on the native handle and stores the outcome in the
    business receipt. The same transaction queues eligible final replies for the
    channel input's destination. Each Outbox row delivers one platform message.
    `notify_user` and Automation alerts queue messages without waiting for a
@@ -155,8 +155,8 @@ represent the same Owner. Disconnecting a channel ends its reply route. It
 does not remove the authority of an input that Dex already accepted. See
 [Pairing and pending deliveries](channels.md#pairing-and-pending-deliveries).
 
-A fork request can carry a UUID. Control commits its receipt with the new Chat.
-A retry with the same source and boundary returns that Chat; a mismatch returns
+A fork request can carry a UUID. Control commits its receipt with the new Session.
+A retry with the same source and boundary returns that Session; a mismatch returns
 `409`. A concurrent retry can create an extra native conversation before control
 rejects its receipt. That conversation has no control reference and is invisible.
 
@@ -167,7 +167,7 @@ native entry IDs. It is limited to 4 KiB, including up to 1 KiB of manual compac
 instructions. It does not copy tool output, thinking, or attachments. Compaction
 does not delete entries from session history or change who can read them.
 
-Manual compact with a UUID runs at most once per ID. Control records the chat and
+Manual compact with a UUID runs at most once per ID. Control records the session and
 instructions before the native call. The native transaction commits a request
 record with the compaction task. Every retry calls native admission again, so a
 control receipt alone cannot suppress a task that did not commit. A synchronous
@@ -175,7 +175,7 @@ failure can be retried with the same ID. A crash after native commit does not
 create a second task. The control receipt also prevents reuse across agents.
 
 A client retry with the same UUID reuses the input intent and native admission.
-The chat, input kind, text, attachments and send mode must match the first request.
+The session, input kind, text, attachments and send mode must match the first request.
 An omitted mode is the same as `followUp`. A mismatch returns `409`.
 The two stores do not share a transaction. Stable request IDs and receipt
 reconciliation cover the gap between their commits.
@@ -187,7 +187,7 @@ Each subsystem has its own document. This overview gives only the boundaries.
 | Document                                              | Covers                                                                 |
 | ----------------------------------------------------- | ---------------------------------------------------------------------- |
 | [Agents](agents.md)                                   | Agents and the HTTP API, settings, memory, and bot tools               |
-| [Sessions](sessions.md)                               | Main, Chats, child sessions, internal delegation, and Runner selection |
+| [Sessions](sessions.md)                               | Main, Web sessions, child sessions, internal delegation, and Runners   |
 | [Tasks](tasks.md)                                     | Board, the Task ledger, access rules, Sources, and external runs       |
 | [Plugins](plugins.md)                                 | Optional Task sources: GitHub, Webhook, email, and the plugin boundary |
 | [Execution](execution.md)                             | The native engine boundary, background commands, and transcripts       |
@@ -281,9 +281,9 @@ error, run the server by hand. Remote HTTP MCP connections can use
 grants in private vault files and sends bearer tokens only to the authorized
 MCP endpoint.
 
-Every chat reads the memory, including Telegram chats of each allowed user.
+Every session reads the memory, including Telegram chats of each allowed user.
 A memory entry can carry a prompt injection from a web page or a file to
-later chats; the rules tell the agent that memory is data, not instructions,
+later sessions; the rules tell the agent that memory is data, not instructions,
 and git history shows each change.
 
 Control does not log the Telegram token. Bot API errors drop the request URL,
@@ -302,9 +302,9 @@ user and have the same access to the control files as that user.
 ## Limits
 
 - Harnesses stay open until shutdown or reload of that agent.
-- The memory repo is local; dex does not pull or push. Two chats that change
+- The memory repo is local; dex does not pull or push. Two sessions that change
   the memory at the same time can land in one commit, under the source of
-  the chat that settles first.
+  the session that settles first.
 - An MCP server that drops its connection stays down until a reload.
 - dex does not delete uploads. A file that the user removes before sending,
   or that a message never uses, stays in `workspace/uploads/`. The files are
@@ -335,7 +335,7 @@ it is not the source of execution state.
 
 Keep one transcript projection in the engine. History, snapshots, and live
 events use durable entries and the native Inbox. The live hub owns transport
-and empty-chat attachment, with no second transcript or execution model.
+and empty-session attachment, with no second transcript or execution model.
 The Web client also displays [explicit Web notifications](sessions.md#web-notifications).
 That projection does not write native entries.
 
@@ -347,7 +347,7 @@ Do not remove these cases to reduce the test file size. The schedule iterator te
 
 The scheduler reads due rows in `control.sqlite` (`monitors`).
 
-Main and writable Chats, including child Sessions, can set Monitors and start Processes.
+Main and writable Sessions, including child Sessions, can set Monitors and start Processes.
 Dreams have neither tool group. Both groups use the same `monitors` extension.
 `monitor_list` lists only scheduled and check Monitors in the calling session.
 `monitor_cancel` accepts the `schedule-` ID from the tool or the raw ID from

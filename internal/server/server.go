@@ -25,12 +25,12 @@ import (
 	"github.com/recally-io/dex/internal/api"
 	"github.com/recally-io/dex/internal/artifact"
 	"github.com/recally-io/dex/internal/automation"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/engine"
 	"github.com/recally-io/dex/internal/live"
 	"github.com/recally-io/dex/internal/plugin"
 	"github.com/recally-io/dex/internal/runner"
+	"github.com/recally-io/dex/internal/session"
 	"github.com/recally-io/dex/internal/settings"
 	"github.com/recally-io/dex/internal/sysops"
 	tasksvc "github.com/recally-io/dex/internal/task"
@@ -40,7 +40,7 @@ import (
 
 // Config holds what the handler serves.
 type Config struct {
-	Chats       *chat.Service
+	Sessions    *session.Service
 	Automations *automation.Service
 	Tasks       *tasksvc.Service
 	TaskEvents  *tasksvc.Broker
@@ -87,8 +87,8 @@ var machineInstaller []byte
 // errInvalid is a request that the handler refuses with 400.
 var errInvalid = errors.New("invalid request")
 
-// errReadOnly is a message to a chat that the web UI cannot write to.
-var errReadOnly = errors.New("this session is read-only; send messages in main, a Chat session, or a child session")
+// errReadOnly is a message to a session that the web UI cannot write to.
+var errReadOnly = errors.New("this session is read-only; send messages in Main, a separate Web session, or a child session")
 
 // New returns the handler for the API under /api/ and the web UI at /. The API requires
 // cfg.Token when it is set. It refuses cross-site writes, so a web page in the user's browser
@@ -115,7 +115,7 @@ func New(cfg Config) http.Handler {
 			status := http.StatusInternalServerError
 			switch {
 			case errors.Is(err, settings.ErrInvalid), errors.Is(err, agent.ErrInvalid), errors.Is(err, errInvalid), errors.Is(err, automation.ErrInvalid), errors.Is(err, sysops.ErrInvalid),
-				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, chat.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, chat.ErrRejected), errors.Is(err, chat.ErrProjectInvalid), errors.Is(err, chat.ErrRunnerInvalid):
+				errors.Is(err, artifact.ErrInvalidName), errors.Is(err, upload.ErrInvalidName), errors.Is(err, session.ErrQuestionInvalid), errors.Is(err, engine.ErrInvalidInput), errors.Is(err, session.ErrRejected), errors.Is(err, session.ErrProjectInvalid), errors.Is(err, session.ErrRunnerInvalid):
 				status = http.StatusBadRequest
 			case errors.Is(err, tasksvc.ErrTaskToken):
 				status = http.StatusUnauthorized
@@ -127,11 +127,11 @@ func New(cfg Config) http.Handler {
 				status = http.StatusRequestEntityTooLarge
 			case errors.Is(err, engine.ErrModelsPending):
 				status = http.StatusServiceUnavailable
-			case errors.Is(err, errReadOnly), errors.Is(err, chat.ErrNotArchivable), errors.Is(err, chat.ErrProjectForbidden), errors.Is(err, chat.ErrSettingsForbidden), errors.Is(err, tasksvc.ErrForbidden):
+			case errors.Is(err, errReadOnly), errors.Is(err, session.ErrNotArchivable), errors.Is(err, session.ErrProjectForbidden), errors.Is(err, session.ErrSettingsForbidden), errors.Is(err, tasksvc.ErrForbidden):
 				status = http.StatusForbidden
-			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, chat.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
+			case os.IsNotExist(err), errors.Is(err, sql.ErrNoRows), errors.Is(err, agent.ErrNotFound), errors.Is(err, settings.ErrNotFound), errors.Is(err, session.ErrNotFound), errors.Is(err, automation.ErrNotFound), errors.Is(err, upload.ErrNotFound), errors.Is(err, db.ErrAgentArchived), errors.Is(err, engine.ErrItemNotFound):
 				status = http.StatusNotFound
-			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, chat.ErrMessageID), errors.Is(err, chat.ErrResetID), errors.Is(err, chat.ErrOperationID), errors.Is(err, chat.ErrNoModel), errors.Is(err, chat.ErrMaintenanceBusy), errors.Is(err, chat.ErrConversationBusy), errors.Is(err, chat.ErrAlreadyStarted), errors.Is(err, chat.ErrQuestionClosed), errors.Is(err, chat.ErrTaskConflict), errors.Is(err, chat.ErrRunnerLocked), errors.Is(err, agent.ErrRunnerBusy), errors.Is(err, chat.ErrNothingToContinue), errors.Is(err, chat.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
+			case errors.Is(err, settings.ErrConflict), errors.Is(err, agent.ErrCredentialInUse), errors.Is(err, session.ErrMessageID), errors.Is(err, session.ErrResetID), errors.Is(err, session.ErrOperationID), errors.Is(err, session.ErrNoModel), errors.Is(err, session.ErrMaintenanceBusy), errors.Is(err, session.ErrSessionBusy), errors.Is(err, session.ErrAlreadyStarted), errors.Is(err, session.ErrQuestionClosed), errors.Is(err, session.ErrTaskConflict), errors.Is(err, session.ErrRunnerLocked), errors.Is(err, agent.ErrRunnerBusy), errors.Is(err, session.ErrNothingToContinue), errors.Is(err, session.ErrNothingToCompact), errors.Is(err, engine.ErrBusy), errors.Is(err, engine.ErrRunnerResetting), errors.Is(err, engine.ErrMaintenance), errors.Is(err, engine.ErrStaleRunTarget):
 				status = http.StatusConflict
 			default:
 				slog.Error("api", "err", err)
@@ -304,13 +304,13 @@ func (h *handler) GetHealth(ctx context.Context, _ api.GetHealthRequestObject) (
 func (h *handler) AcquireMaintenance(ctx context.Context, _ api.AcquireMaintenanceRequestObject) (api.AcquireMaintenanceResponseObject, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if err := h.Chats.AcquireMaintenance(ctx); err != nil {
+	if err := h.Sessions.AcquireMaintenance(ctx); err != nil {
 		return nil, err
 	}
 	return api.AcquireMaintenance200JSONResponse(ok), nil
 }
 func (h *handler) ReleaseMaintenance(ctx context.Context, _ api.ReleaseMaintenanceRequestObject) (api.ReleaseMaintenanceResponseObject, error) {
-	if err := h.Chats.ReleaseMaintenance(ctx); err != nil {
+	if err := h.Sessions.ReleaseMaintenance(ctx); err != nil {
 		return nil, err
 	}
 	return api.ReleaseMaintenance200JSONResponse(ok), nil
@@ -355,29 +355,29 @@ func (h *handler) DeleteVault(ctx context.Context, req api.DeleteVaultRequestObj
 	return api.DeleteVault200JSONResponse(ok), err
 }
 func (h *handler) ReloadBotIntegrations(ctx context.Context, _ api.ReloadBotIntegrationsRequestObject) (api.ReloadBotIntegrationsResponseObject, error) {
-	if err := h.Chats.ReloadExtensions(ctx, agentID(ctx)); err != nil {
+	if err := h.Sessions.ReloadExtensions(ctx, agentID(ctx)); err != nil {
 		return nil, err
 	}
 	out, err := h.integrationView(ctx)
 	return api.ReloadBotIntegrations200JSONResponse(out), err
 }
 
-func chatView(c chat.Chat) api.Chat {
-	out := api.Chat{
-		Id: c.ID, Channel: api.ChatChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
-		Cwd: c.Cwd, RunnerId: optional(c.RunnerID), Settings: c.Settings, Main: c.ChannelKey == chat.MainKey, ReadOnly: !c.Writable,
+func sessionView(c session.Session) api.Session {
+	out := api.Session{
+		Id: c.ID, Channel: api.SessionChannelWeb, Title: c.Title, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Busy: c.Busy,
+		Cwd: c.Cwd, RunnerId: optional(c.RunnerID), Settings: c.Settings, Main: c.ChannelKey == session.MainKey, ReadOnly: !c.Writable,
 	}
 	if strings.HasPrefix(c.ChannelKey, "telegram:") {
-		out.Channel = api.ChatChannelTelegram
+		out.Channel = api.SessionChannelTelegram
 	}
 	if strings.HasPrefix(c.ChannelKey, "wechat:") {
-		out.Channel = api.ChatChannelWechat
+		out.Channel = api.SessionChannelWechat
 	}
 	if strings.HasPrefix(c.ChannelKey, "feishu:") {
-		out.Channel = api.ChatChannelFeishu
+		out.Channel = api.SessionChannelFeishu
 	}
-	if id, ok := automation.ChatAutomation(c.ChannelKey); ok {
-		out.Channel, out.AutomationId = api.ChatChannelAutomation, &id
+	if id, ok := automation.SessionAutomation(c.ChannelKey); ok {
+		out.Channel, out.AutomationId = api.SessionChannelAutomation, &id
 	}
 	if c.ArchivedAt != 0 {
 		out.ArchivedAt = &c.ArchivedAt
@@ -395,15 +395,15 @@ func chatView(c chat.Chat) api.Chat {
 		out.ParentAgentId, out.ParentAgentName = &c.ParentAgentID, &c.ParentAgentName
 	}
 	if o := c.ForkedFrom; o != nil {
-		out.ForkedFrom = &api.ChatOrigin{Id: o.ID, Title: o.Title, Main: o.Main}
+		out.ForkedFrom = &api.SessionOrigin{Id: o.ID, Title: o.Title, Main: o.Main}
 	}
 	if q := c.Question; q != nil {
-		out.Question = &api.ChatQuestion{Id: q.ID, Text: q.Text, Options: q.Options, Status: api.ChatQuestionStatus(q.Status)}
+		out.Question = &api.SessionQuestion{Id: q.ID, Text: q.Text, Options: q.Options, Status: api.SessionQuestionStatus(q.Status)}
 		if q.Answer != "" {
 			out.Question.Answer = &q.Answer
 		}
 		if q.Action != "" {
-			action := api.ChatQuestionAction(q.Action)
+			action := api.SessionQuestionAction(q.Action)
 			out.Question.Action = &action
 		}
 		if q.Outcome != "" {
@@ -413,45 +413,45 @@ func chatView(c chat.Chat) api.Chat {
 	return out
 }
 
-func (h *handler) ArchiveChat(ctx context.Context, req api.ArchiveChatRequestObject) (api.ArchiveChatResponseObject, error) {
-	c, err := h.Chats.SetArchived(ctx, agentID(ctx), req.ChatId, true)
+func (h *handler) ArchiveSession(ctx context.Context, req api.ArchiveSessionRequestObject) (api.ArchiveSessionResponseObject, error) {
+	c, err := h.Sessions.SetArchived(ctx, agentID(ctx), req.SessionId, true)
 	if err != nil {
 		return nil, err
 	}
-	return api.ArchiveChat200JSONResponse(chatView(c)), nil
+	return api.ArchiveSession200JSONResponse(sessionView(c)), nil
 }
 
-func (h *handler) UnarchiveChat(ctx context.Context, req api.UnarchiveChatRequestObject) (api.UnarchiveChatResponseObject, error) {
-	c, err := h.Chats.SetArchived(ctx, agentID(ctx), req.ChatId, false)
+func (h *handler) UnarchiveSession(ctx context.Context, req api.UnarchiveSessionRequestObject) (api.UnarchiveSessionResponseObject, error) {
+	c, err := h.Sessions.SetArchived(ctx, agentID(ctx), req.SessionId, false)
 	if err != nil {
 		return nil, err
 	}
-	return api.UnarchiveChat200JSONResponse(chatView(c)), nil
+	return api.UnarchiveSession200JSONResponse(sessionView(c)), nil
 }
 
-func (h *handler) ListChats(ctx context.Context, _ api.ListChatsRequestObject) (api.ListChatsResponseObject, error) {
-	return h.listChats(ctx, agentID(ctx))
+func (h *handler) ListSessions(ctx context.Context, _ api.ListSessionsRequestObject) (api.ListSessionsResponseObject, error) {
+	return h.listSessions(ctx, agentID(ctx))
 }
 
-func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats200JSONResponse, error) {
-	chats, err := h.Chats.List(ctx, agentID)
+func (h *handler) listSessions(ctx context.Context, agentID string) (api.ListSessions200JSONResponse, error) {
+	sessions, err := h.Sessions.List(ctx, agentID)
 	if err != nil {
-		return api.ListChats200JSONResponse{}, err
+		return api.ListSessions200JSONResponse{}, err
 	}
-	out := api.ListChats200JSONResponse{Chats: make([]api.Chat, len(chats))}
+	out := api.ListSessions200JSONResponse{Sessions: make([]api.Session, len(sessions))}
 	// The list has no execution ID. Only a busy session needs one, to tell the web UI that it stalled.
 	var refs []engine.Ref
 	refOf := map[int]engine.Ref{}
-	for i, c := range chats {
-		out.Chats[i] = chatView(c)
+	for i, c := range sessions {
+		out.Sessions[i] = sessionView(c)
 		if !c.Busy {
 			continue
 		}
 		// A child in another bot belongs to that bot.
 		owner := cmp.Or(c.AgentID, agentID)
-		full, err := h.Chats.Get(ctx, owner, c.ID)
+		full, err := h.Sessions.Get(ctx, owner, c.ID)
 		if err != nil {
-			return api.ListChats200JSONResponse{}, err
+			return api.ListSessions200JSONResponse{}, err
 		}
 		if full.ExecutionID > 0 {
 			refOf[i] = engine.Ref{AgentID: owner, ID: full.ExecutionID}
@@ -460,35 +460,35 @@ func (h *handler) listChats(ctx context.Context, agentID string) (api.ListChats2
 	}
 	activities := h.Engine.Activity(refs)
 	for i, ref := range refOf {
-		out.Chats[i].LastActivityAt = activities[ref].LastActivityAt
-		out.Chats[i].ToolStartedAt = activities[ref].ToolStartedAt
+		out.Sessions[i].LastActivityAt = activities[ref].LastActivityAt
+		out.Sessions[i].ToolStartedAt = activities[ref].ToolStartedAt
 	}
 	return out, nil
 }
 
-func (h *handler) GetChat(ctx context.Context, req api.GetChatRequestObject) (api.GetChatResponseObject, error) {
-	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
+func (h *handler) GetSession(ctx context.Context, req api.GetSessionRequestObject) (api.GetSessionResponseObject, error) {
+	c, err := h.Sessions.Get(ctx, agentID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return api.GetChat200JSONResponse(chatView(c)), nil
+	return api.GetSession200JSONResponse(sessionView(c)), nil
 }
 
 // message validates a message from the client. The text can be empty when the message has an
 // attachment.
-func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Message, error) {
+func (h *handler) message(ctx context.Context, in api.MessageInput) (session.Message, error) {
 	id, err := uuid.Parse(in.Id)
 	if err != nil {
-		return chat.Message{}, errors.Join(errInvalid, errors.New("the message ID must be a UUID"))
+		return session.Message{}, errors.Join(errInvalid, errors.New("the message ID must be a UUID"))
 	}
 	var ids []string
 	if in.Attachments != nil {
 		ids = *in.Attachments
 	}
 	if len(ids) > maxAttachments {
-		return chat.Message{}, errors.Join(errInvalid, errors.New("a message can have at most 10 attachments"))
+		return session.Message{}, errors.Join(errInvalid, errors.New("a message can have at most 10 attachments"))
 	}
-	m := chat.Message{ID: id.String(), Content: chat.NormalizeText(in.Text)}
+	m := session.Message{ID: id.String(), Content: session.NormalizeText(in.Text)}
 	if in.TaskId != nil {
 		m.TaskID = *in.TaskId
 	}
@@ -497,35 +497,35 @@ func (h *handler) message(ctx context.Context, in api.MessageInput) (chat.Messag
 	}
 	if in.Mode != nil {
 		if !in.Mode.Valid() {
-			return chat.Message{}, errors.Join(errInvalid, errors.New("the mode must be followUp, steer or reject"))
+			return session.Message{}, errors.Join(errInvalid, errors.New("the mode must be followUp, steer or reject"))
 		}
 		m.WhenBusy = string(*in.Mode)
 	}
 	if (m.Content == "" && len(ids) == 0) || utf8.RuneCountInString(m.Content) > maxMessage {
-		return chat.Message{}, errors.Join(errInvalid, errors.New("the message must have 1 to 32000 characters"))
+		return session.Message{}, errors.Join(errInvalid, errors.New("the message must have 1 to 32000 characters"))
 	}
 	for i, uploadID := range ids {
 		if slices.Contains(ids[:i], uploadID) {
-			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("the attachment %q is in the message twice", uploadID))
+			return session.Message{}, errors.Join(errInvalid, fmt.Errorf("the attachment %q is in the message twice", uploadID))
 		}
 		a, err := h.uploads(ctx).Get(uploadID)
 		if errors.Is(err, upload.ErrNotFound) {
-			return chat.Message{}, errors.Join(errInvalid, fmt.Errorf("no upload %q; upload the file again", uploadID))
+			return session.Message{}, errors.Join(errInvalid, fmt.Errorf("no upload %q; upload the file again", uploadID))
 		}
 		if err != nil {
-			return chat.Message{}, err
+			return session.Message{}, err
 		}
 		m.Attachments = append(m.Attachments, a)
 	}
 	return m, nil
 }
 
-func (h *handler) CreateChat(ctx context.Context, _ api.CreateChatRequestObject) (api.CreateChatResponseObject, error) {
-	c, err := h.Chats.Create(ctx, agentID(ctx))
+func (h *handler) CreateAgentSession(ctx context.Context, _ api.CreateAgentSessionRequestObject) (api.CreateAgentSessionResponseObject, error) {
+	c, err := h.Sessions.Create(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return api.CreateChat201JSONResponse(chatView(c)), nil
+	return api.CreateAgentSession201JSONResponse(sessionView(c)), nil
 }
 
 func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObject) (api.SendMessageResponseObject, error) {
@@ -536,21 +536,21 @@ func (h *handler) SendMessage(ctx context.Context, req api.SendMessageRequestObj
 	if err != nil {
 		return nil, err
 	}
-	c, err := h.writableChat(ctx, req.ChatId)
+	c, err := h.writableSession(ctx, req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := h.Chats.Send(ctx, agentID(ctx), c.ChannelKey, m); err != nil {
+	if _, err := h.Sessions.Send(ctx, agentID(ctx), c.ChannelKey, m); err != nil {
 		return nil, err
 	}
 	return api.SendMessage202JSONResponse{SubmissionId: m.ID}, nil
 }
 
 func (h *handler) WithdrawMessage(ctx context.Context, req api.WithdrawMessageRequestObject) (api.WithdrawMessageResponseObject, error) {
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	m, err := h.Chats.Withdraw(ctx, agentID(ctx), req.ChatId, req.MessageId)
+	m, err := h.Sessions.Withdraw(ctx, agentID(ctx), req.SessionId, req.MessageId)
 	if err != nil {
 		return nil, err
 	}
@@ -561,41 +561,41 @@ func (h *handler) WithdrawMessage(ctx context.Context, req api.WithdrawMessageRe
 	return out, nil
 }
 
-// writableChat returns chat id, or errReadOnly for a chat that the web UI cannot write to.
-func (h *handler) writableChat(ctx context.Context, id int64) (chat.Chat, error) {
-	c, err := h.Chats.Get(ctx, agentID(ctx), id)
+// writableSession returns session id, or errReadOnly for a session that the web UI cannot write to.
+func (h *handler) writableSession(ctx context.Context, id int64) (session.Session, error) {
+	c, err := h.Sessions.Get(ctx, agentID(ctx), id)
 	if err != nil {
-		return chat.Chat{}, err
+		return session.Session{}, err
 	}
 	if !c.Writable {
-		return chat.Chat{}, errReadOnly
+		return session.Session{}, errReadOnly
 	}
 	return c, nil
 }
 
-func (h *handler) SetChatProject(ctx context.Context, req api.SetChatProjectRequestObject) (api.SetChatProjectResponseObject, error) {
+func (h *handler) SetSessionProject(ctx context.Context, req api.SetSessionProjectRequestObject) (api.SetSessionProjectResponseObject, error) {
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if _, err := h.Chats.SetProject(ctx, agentID(ctx), req.ChatId, req.Body.Cwd); err != nil {
+	if _, err := h.Sessions.SetProject(ctx, agentID(ctx), req.SessionId, req.Body.Cwd); err != nil {
 		return nil, err
 	}
-	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
+	c, err := h.Sessions.Get(ctx, agentID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return api.SetChatProject200JSONResponse(chatView(c)), nil
+	return api.SetSessionProject200JSONResponse(sessionView(c)), nil
 }
 
-func (h *handler) SetChatRunner(ctx context.Context, req api.SetChatRunnerRequestObject) (api.SetChatRunnerResponseObject, error) {
+func (h *handler) SetSessionRunner(ctx context.Context, req api.SetSessionRunnerRequestObject) (api.SetSessionRunnerResponseObject, error) {
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	c, err := h.Chats.SetRunner(ctx, agentID(ctx), req.ChatId, strings.TrimSpace(req.Body.RunnerId))
+	c, err := h.Sessions.SetRunner(ctx, agentID(ctx), req.SessionId, strings.TrimSpace(req.Body.RunnerId))
 	if err != nil {
 		return nil, err
 	}
-	return api.SetChatRunner200JSONResponse(chatView(c)), nil
+	return api.SetSessionRunner200JSONResponse(sessionView(c)), nil
 }
 
 func (h *handler) ListAgentRunners(ctx context.Context, _ api.ListAgentRunnersRequestObject) (api.ListAgentRunnersResponseObject, error) {
@@ -606,18 +606,18 @@ func (h *handler) ListAgentRunners(ctx context.Context, _ api.ListAgentRunnersRe
 	return api.ListAgentRunners200JSONResponse{Runners: list}, nil
 }
 
-func (h *handler) SetChatSettings(ctx context.Context, req api.SetChatSettingsRequestObject) (api.SetChatSettingsResponseObject, error) {
+func (h *handler) SetSessionSettings(ctx context.Context, req api.SetSessionSettingsRequestObject) (api.SetSessionSettingsResponseObject, error) {
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	if err := h.Chats.SetChat(ctx, agentID(ctx), req.ChatId, *req.Body); err != nil {
+	if err := h.Sessions.SetSession(ctx, agentID(ctx), req.SessionId, *req.Body); err != nil {
 		return nil, err
 	}
-	c, err := h.Chats.Get(ctx, agentID(ctx), req.ChatId)
+	c, err := h.Sessions.Get(ctx, agentID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return api.SetChatSettings200JSONResponse(chatView(c)), nil
+	return api.SetSessionSettings200JSONResponse(sessionView(c)), nil
 }
 
 // CreateUpload stores the first part named file. The browser sends the file's base name.
@@ -726,18 +726,18 @@ func (h *handler) GetArtifact(ctx context.Context, req api.GetArtifactRequestObj
 	return api.GetArtifact200AsteriskResponse{Body: f, ContentType: contentType, ContentLength: a.Size, Headers: api.GetArtifact200ResponseHeaders{ContentDisposition: &disposition, XContentTypeOptions: &nosniff}}, nil
 }
 
-func (h *handler) AbortChat(ctx context.Context, req api.AbortChatRequestObject) (api.AbortChatResponseObject, error) {
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+func (h *handler) AbortSession(ctx context.Context, req api.AbortSessionRequestObject) (api.AbortSessionResponseObject, error) {
+	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Stop(ctx, agentID(ctx), req.ChatId, req.Params.RunTarget); err != nil {
+	if err := h.Sessions.Stop(ctx, agentID(ctx), req.SessionId, req.Params.RunTarget); err != nil {
 		return nil, err
 	}
-	return api.AbortChat200JSONResponse{Status: api.OkStatusOk}, nil
+	return api.AbortSession200JSONResponse{Status: api.OkStatusOk}, nil
 }
 
-func (h *handler) ListChatMonitors(ctx context.Context, req api.ListChatMonitorsRequestObject) (api.ListChatMonitorsResponseObject, error) {
-	monitors, err := h.Chats.ListMonitors(ctx, agentID(ctx), req.ChatId)
+func (h *handler) ListSessionMonitors(ctx context.Context, req api.ListSessionMonitorsRequestObject) (api.ListSessionMonitorsResponseObject, error) {
+	monitors, err := h.Sessions.ListMonitors(ctx, agentID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -745,27 +745,27 @@ func (h *handler) ListChatMonitors(ctx context.Context, req api.ListChatMonitors
 	for i, t := range monitors {
 		out[i] = monitorResponse(t)
 	}
-	return api.ListChatMonitors200JSONResponse{Monitors: out}, nil
+	return api.ListSessionMonitors200JSONResponse{Monitors: out}, nil
 }
 
-func (h *handler) CancelChatMonitor(ctx context.Context, req api.CancelChatMonitorRequestObject) (api.CancelChatMonitorResponseObject, error) {
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+func (h *handler) CancelSessionMonitor(ctx context.Context, req api.CancelSessionMonitorRequestObject) (api.CancelSessionMonitorResponseObject, error) {
+	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	t, err := h.Chats.CancelMonitor(ctx, agentID(ctx), req.ChatId, req.MonitorId)
+	t, err := h.Sessions.CancelMonitor(ctx, agentID(ctx), req.SessionId, req.MonitorId)
 	if err != nil {
 		return nil, err
 	}
-	return api.CancelChatMonitor200JSONResponse(monitorResponse(t)), nil
+	return api.CancelSessionMonitor200JSONResponse(monitorResponse(t)), nil
 }
 
-func monitorResponse(t chat.MonitorInfo) api.Monitor {
+func monitorResponse(t session.MonitorInfo) api.Monitor {
 	// This endpoint serves schedules only and keeps their existing IDs.
 	return api.Monitor{Id: strings.TrimPrefix(t.ID, "schedule-"), DueAt: t.DueAt, TimeZone: t.TimeZone, Prompt: t.Prompt, State: api.MonitorState(t.State), ChainDepth: t.ChainDepth, CreatedAt: t.CreatedAt, Mode: api.MonitorMode(t.Mode), MaxRuns: t.MaxRuns, Runs: t.Runs, ExpiresAt: t.ExpiresAt, Outcome: t.Outcome}
 }
 
-func (h *handler) ListChatOutbox(ctx context.Context, req api.ListChatOutboxRequestObject) (api.ListChatOutboxResponseObject, error) {
-	rows, err := h.Chats.ListOutbox(ctx, agentID(ctx), req.ChatId)
+func (h *handler) ListSessionOutbox(ctx context.Context, req api.ListSessionOutboxRequestObject) (api.ListSessionOutboxResponseObject, error) {
+	rows, err := h.Sessions.ListOutbox(ctx, agentID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
@@ -785,15 +785,15 @@ func (h *handler) ListChatOutbox(ctx context.Context, req api.ListChatOutboxRequ
 			DeliveredAt: r.DeliveredAt,
 		}
 	}
-	return api.ListChatOutbox200JSONResponse{Messages: out}, nil
+	return api.ListSessionOutbox200JSONResponse{Messages: out}, nil
 }
 
-func (h *handler) WatchChat(ctx context.Context, req api.WatchChatRequestObject) (api.WatchChatResponseObject, error) {
-	body, err := h.Live.OpenWeb(ctx, agentID(ctx), req.ChatId)
+func (h *handler) WatchSession(ctx context.Context, req api.WatchSessionRequestObject) (api.WatchSessionResponseObject, error) {
+	body, err := h.Live.OpenWeb(ctx, agentID(ctx), req.SessionId)
 	if err != nil {
 		return nil, err
 	}
-	return api.WatchChat200TexteventStreamResponse{Body: body}, nil
+	return api.WatchSession200TexteventStreamResponse{Body: body}, nil
 }
 
 func (h *handler) GetSettings(ctx context.Context, _ api.GetSettingsRequestObject) (api.GetSettingsResponseObject, error) {
@@ -989,12 +989,12 @@ func (h *handler) DeleteWechat(ctx context.Context, _ api.DeleteWechatRequestObj
 	return api.DeleteWechat200JSONResponse(ok), nil
 }
 
-func (h *handler) GetMainChat(ctx context.Context, _ api.GetMainChatRequestObject) (api.GetMainChatResponseObject, error) {
-	c, err := h.Chats.Main(ctx, agentID(ctx))
+func (h *handler) GetMainSession(ctx context.Context, _ api.GetMainSessionRequestObject) (api.GetMainSessionResponseObject, error) {
+	c, err := h.Sessions.Main(ctx, agentID(ctx))
 	if err != nil {
 		return nil, err
 	}
-	return api.GetMainChat200JSONResponse(chatView(c)), nil
+	return api.GetMainSession200JSONResponse(sessionView(c)), nil
 }
 
 func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestObject) (api.ClearContextResponseObject, error) {
@@ -1005,20 +1005,20 @@ func (h *handler) ClearContext(ctx context.Context, req api.ClearContextRequestO
 	if err != nil {
 		return nil, errors.Join(errInvalid, err)
 	}
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
 	handoff := strings.TrimSpace(deref(req.Body.Handoff))
 	if utf8.RuneCountInString(handoff) > maxMessage {
 		return nil, errors.Join(errInvalid, errors.New("the handoff must have at most 32000 characters"))
 	}
-	if err := h.Chats.Clear(ctx, agentID(ctx), req.ChatId, id.String(), "web", handoff); err != nil {
+	if err := h.Sessions.Clear(ctx, agentID(ctx), req.SessionId, id.String(), "web", handoff); err != nil {
 		return nil, err
 	}
 	return api.ClearContext202JSONResponse{SubmissionId: id.String()}, nil
 }
 
-func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObject) (api.CompactChatResponseObject, error) {
+func (h *handler) CompactSession(ctx context.Context, req api.CompactSessionRequestObject) (api.CompactSessionResponseObject, error) {
 	instructions, requestID := "", ""
 	if req.Body != nil {
 		instructions = strings.TrimSpace(deref(req.Body.Instructions))
@@ -1033,20 +1033,20 @@ func (h *handler) CompactChat(ctx context.Context, req api.CompactChatRequestObj
 	if utf8.RuneCountInString(instructions) > maxMessage {
 		return nil, errors.Join(errInvalid, errors.New("the instructions must have at most 32000 characters"))
 	}
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Compact(ctx, agentID(ctx), req.ChatId, instructions, requestID); err != nil {
+	if err := h.Sessions.Compact(ctx, agentID(ctx), req.SessionId, instructions, requestID); err != nil {
 		return nil, err
 	}
-	return api.CompactChat202Response{}, nil
+	return api.CompactSession202Response{}, nil
 }
 
-func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (api.ForkChatResponseObject, error) {
+func (h *handler) ForkSession(ctx context.Context, req api.ForkSessionRequestObject) (api.ForkSessionResponseObject, error) {
 	if req.Body == nil || req.Body.EntryId <= 0 {
 		return nil, errInvalid
 	}
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
 	requestID := ""
@@ -1061,14 +1061,14 @@ func (h *handler) ForkChat(ctx context.Context, req api.ForkChatRequestObject) (
 	if req.Body.RunnerId != nil {
 		runnerID = *req.Body.RunnerId
 	}
-	fork, err := h.Chats.Fork(ctx, agentID(ctx), req.ChatId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID, runnerID)
+	fork, err := h.Sessions.Fork(ctx, agentID(ctx), req.SessionId, req.Body.EntryId, req.Body.Before != nil && *req.Body.Before, requestID, runnerID)
 	if err != nil {
 		return nil, err
 	}
-	return api.ForkChat201JSONResponse{ChatId: fork.ID}, nil
+	return api.ForkSession201JSONResponse{SessionId: fork.ID}, nil
 }
 
-func (h *handler) ContinueChat(ctx context.Context, req api.ContinueChatRequestObject) (api.ContinueChatResponseObject, error) {
+func (h *handler) ContinueSession(ctx context.Context, req api.ContinueSessionRequestObject) (api.ContinueSessionResponseObject, error) {
 	if req.Body == nil {
 		return nil, errInvalid
 	}
@@ -1076,21 +1076,21 @@ func (h *handler) ContinueChat(ctx context.Context, req api.ContinueChatRequestO
 	if err != nil {
 		return nil, errors.Join(errInvalid, err)
 	}
-	if _, err := h.writableChat(ctx, req.ChatId); err != nil {
+	if _, err := h.writableSession(ctx, req.SessionId); err != nil {
 		return nil, err
 	}
-	if err := h.Chats.Continue(ctx, agentID(ctx), req.ChatId, id.String()); err != nil {
+	if err := h.Sessions.Continue(ctx, agentID(ctx), req.SessionId, id.String()); err != nil {
 		return nil, err
 	}
-	return api.ContinueChat202JSONResponse{SubmissionId: id.String()}, nil
+	return api.ContinueSession202JSONResponse{SubmissionId: id.String()}, nil
 }
 
-func (h *handler) GetChatItem(ctx context.Context, req api.GetChatItemRequestObject) (api.GetChatItemResponseObject, error) {
-	item, err := h.Live.Detail(ctx, agentID(ctx), req.ChatId, req.Params.Entry, req.ItemId)
+func (h *handler) GetSessionItem(ctx context.Context, req api.GetSessionItemRequestObject) (api.GetSessionItemResponseObject, error) {
+	item, err := h.Live.Detail(ctx, agentID(ctx), req.SessionId, req.Params.Entry, req.ItemId)
 	if err != nil {
 		return nil, err
 	}
-	var out api.GetChatItem200JSONResponse
+	var out api.GetSessionItem200JSONResponse
 	raw, err := json.Marshal(item)
 	if err == nil {
 		err = json.Unmarshal(raw, &out)
@@ -1098,7 +1098,7 @@ func (h *handler) GetChatItem(ctx context.Context, req api.GetChatItemRequestObj
 	return out, err
 }
 
-func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequestObject) (api.GetChatHistoryResponseObject, error) {
+func (h *handler) GetSessionHistory(ctx context.Context, req api.GetSessionHistoryRequestObject) (api.GetSessionHistoryResponseObject, error) {
 	limit := 100
 	if req.Params.Limit != nil {
 		limit = *req.Params.Limit
@@ -1109,9 +1109,9 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 		return nil, errInvalid
 	}
 	agent := agentID(ctx)
-	out := api.GetChatHistory200JSONResponse{Items: []api.Item{}}
+	out := api.GetSessionHistory200JSONResponse{Items: []api.Item{}}
 	if before != nil {
-		page, err := h.Live.History(ctx, agent, req.ChatId, *before, limit)
+		page, err := h.Live.History(ctx, agent, req.SessionId, *before, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -1122,11 +1122,11 @@ func (h *handler) GetChatHistory(ctx context.Context, req api.GetChatHistoryRequ
 		if err := json.Unmarshal(raw, &out); err != nil {
 			return nil, err
 		}
-	} else if _, err := h.Chats.Get(ctx, agent, req.ChatId); err != nil {
+	} else if _, err := h.Sessions.Get(ctx, agent, req.SessionId); err != nil {
 		return nil, err
 	}
 	if beforeNotice != nil {
-		page, err := h.Chats.TimelineNotifications(ctx, agent, req.ChatId, *beforeNotice, 0, limit)
+		page, err := h.Sessions.TimelineNotifications(ctx, agent, req.SessionId, *beforeNotice, 0, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -1154,7 +1154,7 @@ func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRe
 			return nil, err
 		}
 	}
-	listing, err := h.Chats.ListDirectories(ctx, id, deref(req.Params.RunnerId), req.Params.Path)
+	listing, err := h.Sessions.ListDirectories(ctx, id, deref(req.Params.RunnerId), req.Params.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -1162,7 +1162,7 @@ func (h *handler) ListDirectories(ctx context.Context, req api.ListDirectoriesRe
 }
 
 func (h *handler) ListRecentProjects(ctx context.Context, req api.ListRecentProjectsRequestObject) (api.ListRecentProjectsResponseObject, error) {
-	projects, err := h.Chats.RecentProjects(ctx, agentID(ctx), deref(req.Params.RunnerId))
+	projects, err := h.Sessions.RecentProjects(ctx, agentID(ctx), deref(req.Params.RunnerId))
 	if err != nil {
 		return nil, err
 	}

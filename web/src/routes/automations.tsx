@@ -90,8 +90,8 @@ function useAutomationUpdate(automation: Automation) {
           schedule: automation.schedule,
           timeZone: automation.timeZone,
           session: automation.session,
-          targetConversationId:
-            (patch.session ?? automation.session) === "session" ? automation.targetConversationId : undefined,
+          targetSessionId:
+            (patch.session ?? automation.session) === "session" ? automation.targetSessionId : undefined,
           enabled: automation.enabled,
           cwd: automation.cwd,
           // A PUT replaces the automation, so an omitted environment would make it follow the bot.
@@ -204,7 +204,7 @@ function AutomationsSection() {
         ) : (
           <Empty title="No automations yet">
             {noModel
-              ? "Choose a bot model first. Automations use the same model as every chat."
+              ? "Choose a bot model first. Automations use the same model as every session."
               : "Create one to run a prompt every few minutes, every day, on some weekdays, or once."}
           </Empty>
         )}
@@ -232,14 +232,14 @@ function ReplyComposer({
   const start = useContinueResult();
 
   const reply = () => {
-    if (!run.chatId) return;
+    if (!run.sessionId) return;
 
     start.mutate({
       result: {
         agentId,
         automationName: automation.name,
         runId: run.id,
-        chatId: run.chatId,
+        sessionId: run.sessionId,
         summary,
         outcome,
         runnerId: run.runnerId,
@@ -274,10 +274,10 @@ function ReplyComposer({
       />
       <div className="flex flex-wrap items-center gap-2">
         <span className="flex-1 text-[11px] text-muted-foreground">
-          Opens a normal chat. The automation and its instructions do not change.
+          Opens a normal session. The automation and its instructions do not change.
         </span>
         <Button size="sm" disabled={start.isPending} onClick={reply}>
-          {start.isPending ? "Starting…" : "Start chat"}
+          {start.isPending ? "Starting…" : "Start session"}
         </Button>
       </div>
       {start.isError ? <Failure title="Could not start session" error={start.error} /> : null}
@@ -341,7 +341,7 @@ function RunBlock({
       {run.notificationNote ? <p className="text-xs text-muted-foreground">{run.notificationNote}</p> : null}
       {run.status !== "running" ? (
         <div className="flex flex-wrap items-center gap-2">
-          {run.chatId ? (
+          {run.sessionId ? (
             <Button size="sm" variant="outline" disabled={replying} onClick={() => setReplying(true)}>
               Reply in a new session
             </Button>
@@ -356,10 +356,10 @@ function RunBlock({
               Mark handled
             </Button>
           ) : null}
-          {run.chatId ? (
+          {run.sessionId ? (
             <Link
-              to="/a/$agentId/c/$chatId"
-              params={{ agentId, chatId: String(run.chatId) }}
+              to="/a/$agentId/s/$sessionId"
+              params={{ agentId, sessionId: String(run.sessionId) }}
               className="ml-auto text-[12px] font-medium text-primary hover:underline"
             >
               Run transcript
@@ -505,7 +505,7 @@ export function AutomationPage({ automationId }: { automationId: string }) {
   const blocked =
     automation.data?.session === "session"
       ? attention.data?.automations.find((item) => item.id === automationId)?.setup
-        ? "Choose an available session model first."
+        ? "Choose an available chat model first."
         : undefined
       : model && !model.ok
         ? "Choose an available bot model first."
@@ -597,10 +597,10 @@ export function AutomationPage({ automationId }: { automationId: string }) {
             >
               <span className="text-muted-foreground">Run now</span>
               <RunPill run={latestRun} />
-              {latestRun.chatId ? (
+              {latestRun.sessionId ? (
                 <Link
-                  to="/a/$agentId/c/$chatId"
-                  params={{ agentId, chatId: String(latestRun.chatId) }}
+                  to="/a/$agentId/s/$sessionId"
+                  params={{ agentId, sessionId: String(latestRun.sessionId) }}
                   className="font-medium text-primary hover:underline"
                 >
                   Run transcript

@@ -45,7 +45,7 @@ func (q *Queries) ConsumeTelegramCallback(ctx context.Context, arg ConsumeTelegr
 
 const createTelegramCallback = `-- name: CreateTelegramCallback :exec
 INSERT INTO telegram_callbacks (id, agent_id, source_id, ordinal, peer, channel_context,
-    conversation_id, execution_id, context_revision, label, object_id, action, expires_at)
+    session_id, execution_id, context_revision, label, object_id, action, expires_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(source_id, ordinal) DO NOTHING
 `
@@ -57,7 +57,7 @@ type CreateTelegramCallbackParams struct {
 	Ordinal         int64  `json:"ordinal"`
 	Peer            string `json:"peer"`
 	ChannelContext  string `json:"channel_context"`
-	ConversationID  int64  `json:"conversation_id"`
+	SessionID       int64  `json:"session_id"`
 	ExecutionID     int64  `json:"execution_id"`
 	ContextRevision string `json:"context_revision"`
 	Label           string `json:"label"`
@@ -74,7 +74,7 @@ func (q *Queries) CreateTelegramCallback(ctx context.Context, arg CreateTelegram
 		arg.Ordinal,
 		arg.Peer,
 		arg.ChannelContext,
-		arg.ConversationID,
+		arg.SessionID,
 		arg.ExecutionID,
 		arg.ContextRevision,
 		arg.Label,
@@ -86,8 +86,8 @@ func (q *Queries) CreateTelegramCallback(ctx context.Context, arg CreateTelegram
 }
 
 const getChildWorkflowSource = `-- name: GetChildWorkflowSource :one
-SELECT s.id, s.conversation_id, s.content, s.status, s.answer, s.reason, s.created_at, s.settled_at, s.source_key, s.attachments, s.origin, s.admitted_at, s.when_busy, s.parent_request_id, s.result_child_id, s.native_answer_id, s.channel_context, s.channel_revoked, s.required_reply_id, s.stop_requested, s.producer, s.reply_channel, s.reply_peer, s.exit_action, s.kind FROM submissions s
-WHERE s.conversation_id = ?1 AND s.parent_request_id IS NOT NULL
+SELECT s.id, s.session_id, s.content, s.status, s.answer, s.reason, s.created_at, s.settled_at, s.source_key, s.attachments, s.origin, s.admitted_at, s.when_busy, s.parent_request_id, s.result_child_id, s.native_answer_id, s.channel_context, s.channel_revoked, s.required_reply_id, s.stop_requested, s.producer, s.reply_channel, s.reply_peer, s.exit_action, s.kind FROM submissions s
+WHERE s.session_id = ?1 AND s.parent_request_id IS NOT NULL
 ORDER BY s.rowid LIMIT 1
 `
 
@@ -96,7 +96,7 @@ func (q *Queries) GetChildWorkflowSource(ctx context.Context, childID int64) (Su
 	var i Submission
 	err := row.Scan(
 		&i.ID,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.Content,
 		&i.Status,
 		&i.Answer,
@@ -125,7 +125,7 @@ func (q *Queries) GetChildWorkflowSource(ctx context.Context, childID int64) (Su
 }
 
 const getTelegramCallback = `-- name: GetTelegramCallback :one
-SELECT id, agent_id, source_id, ordinal, peer, channel_context, conversation_id, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE id = ?
+SELECT id, agent_id, source_id, ordinal, peer, channel_context, session_id, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE id = ?
 `
 
 func (q *Queries) GetTelegramCallback(ctx context.Context, id string) (TelegramCallback, error) {
@@ -138,7 +138,7 @@ func (q *Queries) GetTelegramCallback(ctx context.Context, id string) (TelegramC
 		&i.Ordinal,
 		&i.Peer,
 		&i.ChannelContext,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.ExecutionID,
 		&i.ContextRevision,
 		&i.Label,
@@ -152,7 +152,7 @@ func (q *Queries) GetTelegramCallback(ctx context.Context, id string) (TelegramC
 }
 
 const getTelegramCallbackSlot = `-- name: GetTelegramCallbackSlot :one
-SELECT id, agent_id, source_id, ordinal, peer, channel_context, conversation_id, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE source_id = ? AND ordinal = ?
+SELECT id, agent_id, source_id, ordinal, peer, channel_context, session_id, execution_id, context_revision, label, object_id, "action", message_id, expires_at, consumed_at FROM telegram_callbacks WHERE source_id = ? AND ordinal = ?
 `
 
 type GetTelegramCallbackSlotParams struct {
@@ -170,7 +170,7 @@ func (q *Queries) GetTelegramCallbackSlot(ctx context.Context, arg GetTelegramCa
 		&i.Ordinal,
 		&i.Peer,
 		&i.ChannelContext,
-		&i.ConversationID,
+		&i.SessionID,
 		&i.ExecutionID,
 		&i.ContextRevision,
 		&i.Label,
@@ -185,12 +185,12 @@ func (q *Queries) GetTelegramCallbackSlot(ctx context.Context, arg GetTelegramCa
 
 const telegramContextRevision = `-- name: TelegramContextRevision :one
 SELECT CAST(coalesce((SELECT id FROM submissions
-WHERE conversation_id = ?1 AND kind = 'context_reset'
+WHERE session_id = ?1 AND kind = 'context_reset'
 ORDER BY rowid DESC LIMIT 1), '') AS TEXT)
 `
 
-func (q *Queries) TelegramContextRevision(ctx context.Context, conversationID int64) (string, error) {
-	row := q.db.QueryRowContext(ctx, telegramContextRevision, conversationID)
+func (q *Queries) TelegramContextRevision(ctx context.Context, sessionID int64) (string, error) {
+	row := q.db.QueryRowContext(ctx, telegramContextRevision, sessionID)
 	var column_1 string
 	err := row.Scan(&column_1)
 	return column_1, err

@@ -13,7 +13,7 @@ func TestUserReadsSafeLiveToolsOfChildInAnotherBot(t *testing.T) {
 	t.Parallel()
 	// Given a child in another bot that prints its private environment and keeps running.
 	bots := startBots(t)
-	parent := bots.chat("default")
+	parent := bots.session("default")
 	started := filepath.Join(t.TempDir(), "started")
 	child := parent.newChild(map[string]any{
 		"bot": bots.b.ID, "title": "wait", "provider": "faux", "modelId": "bash",

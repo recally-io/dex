@@ -41,9 +41,9 @@ func TestUserTelegramSilentOrStoppedInputDoesNotBlockFollowingReply(t *testing.T
 	t.Parallel()
 	for _, scenario := range []struct{ name, release string }{
 		{"revoked", "UPDATE submissions SET channel_revoked=1 WHERE source_key='telegram:123:1'"},
-		{"delivered", `INSERT INTO outbox_messages (id, event_id, agent_id, conversation_id, source_submission_id, kind, peer, status, created_at, delivered_at)
+		{"delivered", `INSERT INTO outbox_messages (id, event_id, agent_id, session_id, source_submission_id, kind, peer, status, created_at, delivered_at)
 SELECT s.id, 'reply:' || c.agent_id || ':' || s.id, c.agent_id, c.id, s.id, 'reply', s.origin, 'sent', s.created_at, 1
-FROM submissions s JOIN conversations c ON c.id = s.conversation_id WHERE s.source_key='telegram:123:1'`},
+FROM submissions s JOIN sessions c ON c.id = s.session_id WHERE s.source_key='telegram:123:1'`},
 		{"unanswered", "BEGIN IMMEDIATE; DROP TRIGGER hold_first_outcome; UPDATE submissions SET status='unanswered', answer=NULL, reason='stopped' WHERE source_key='telegram:123:1'; COMMIT"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {

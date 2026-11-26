@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/recally-io/dex/internal/channel"
-	"github.com/recally-io/dex/internal/chat"
 	"github.com/recally-io/dex/internal/db"
 	"github.com/recally-io/dex/internal/db/sqlc"
 	"github.com/recally-io/dex/internal/engine"
+	"github.com/recally-io/dex/internal/session"
 )
 
 const (
@@ -25,13 +25,13 @@ const (
 
 type reactionWatch struct {
 	peer, id string
-	source   chat.ChannelContext
+	source   session.ChannelContext
 	native   atomic.Pointer[engine.Submission]
 }
 
 // TrackReaction is called only for a new, committed input. No stored inputs or
 // reaction requests are replayed on restart. Under load, drop new observations.
-func (m *Manager) TrackReaction(peer, id string, source chat.ChannelContext) {
+func (m *Manager) TrackReaction(peer, id string, source session.ChannelContext) {
 	// A correction uses an existing platform message. Do not reset its prior status.
 	if source.Edited {
 		return
@@ -240,7 +240,7 @@ func (m *Manager) reactionAllowed(ctx context.Context, platform string, watch *r
 	if err != nil || !enabled {
 		return false
 	}
-	allowed, err := m.chats.TelegramInputAllowed(ctx, m.agentID, watch.peer, watch.source)
+	allowed, err := m.sessions.TelegramInputAllowed(ctx, m.agentID, watch.peer, watch.source)
 	return err == nil && allowed
 }
 

@@ -44,21 +44,21 @@ func TestUserAutomationNotifiesWhenItCannotStart(t *testing.T) {
 	f := newFakeTelegram(t)
 	f.failSend.Store(true)
 	d := startTelegram(t, f, t.TempDir(), 42)
-	main := d.mainChat(t)
+	main := d.mainSession(t)
 	d.must(t, http.MethodPut, "/api/agents/default/notification-targets", map[string]any{"targetId": telegramRoutineTarget(t, d)}, nil)
 	d.setModel(t, "")
 	id, _ := createFailureRoutine(t, d, "default", "")
 	conn := sessionDB(t, d)
 	// When the bot has no configured model, two Run Now requests both end before admission.
 	first, second := d.runNow(t, id), d.runNow(t, id)
-	if first.Status != "skipped" || second.Status != "skipped" || first.ChatID != 0 || second.ChatID != 0 {
-		t.Fatalf("expected two skips without a routine chat: %+v, %+v", first, second)
+	if first.Status != "skipped" || second.Status != "skipped" || first.SessionID != 0 || second.SessionID != 0 {
+		t.Fatalf("expected two skips without a routine session: %+v, %+v", first, second)
 	}
 	// Then only the first run queues a message, with the existing Main only as its Outbox owner.
 	var peer, status, body string
 	var conversation int64
 	var source sql.NullString
-	if err := conn.QueryRowContext(t.Context(), `SELECT peer, status, body, conversation_id, source_submission_id FROM outbox_messages WHERE id=?`, "automation:"+first.ID).Scan(&peer, &status, &body, &conversation, &source); err != nil {
+	if err := conn.QueryRowContext(t.Context(), `SELECT peer, status, body, session_id, source_submission_id FROM outbox_messages WHERE id=?`, "automation:"+first.ID).Scan(&peer, &status, &body, &conversation, &source); err != nil {
 		t.Fatalf("first skipped run did not queue its alert: %v", err)
 	}
 	if peer != "telegram:42" || status != "pending" || !strings.Contains(body, "the bot has no model") || conversation != main || source.Valid {
@@ -71,7 +71,7 @@ func TestUserAutomationNotifiesWhenItCannotStart(t *testing.T) {
 		t.Fatal("the channel fixture did not see a delivery attempt")
 	}
 	var n int
-	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE conversation_id = ?`, main).Scan(&n); err != nil || n != 0 {
+	if err := conn.QueryRowContext(t.Context(), `SELECT count(*) FROM submissions WHERE session_id = ?`, main).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("Main received %d inputs: %v", n, err)
 	}
 	w := d.watch(t, main)
@@ -80,7 +80,7 @@ func TestUserAutomationNotifiesWhenItCannotStart(t *testing.T) {
 		t.Fatalf("Routine alert leaked into Main: %+v", w.tr.noticeEvents)
 	}
 	var outbox api.OutboxMessageList
-	d.must(t, http.MethodGet, chatPath(main, "outbox"), nil, &outbox)
+	d.must(t, http.MethodGet, sessionPath(main, "outbox"), nil, &outbox)
 	if !slices.ContainsFunc(outbox.Messages, func(m api.OutboxMessage) bool {
 		return m.Id == "automation:"+first.ID && m.Body == body && m.Status == api.OutboxMessageStatusPending
 	}) {
@@ -107,7 +107,7 @@ func TestUserAutomationFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing
 	body["session"] = "reuse"
 	conn := sessionDB(t, d)
 	var alertIDs []string
-	var routineChat int64
+	var routineSession int64
 	for _, step := range []struct {
 		outcome, summary, key    string
 		alert, businessDuplicate bool
@@ -130,12 +130,12 @@ func TestUserAutomationFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing
 		assertAutomationOutbox(t, conn, run.ID, step.alert)
 		if step.alert {
 			alertIDs = append(alertIDs, run.ID)
-			routineChat = run.ChatID
+			routineSession = run.SessionID
 		}
 	}
 	// The owner can review the pending deliveries from their read-only Routine transcript.
 	var outbox api.OutboxMessageList
-	d.must(t, http.MethodGet, chatPath(routineChat, "outbox"), nil, &outbox)
+	d.must(t, http.MethodGet, sessionPath(routineSession, "outbox"), nil, &outbox)
 	for _, id := range alertIDs {
 		if !slices.ContainsFunc(outbox.Messages, func(m api.OutboxMessage) bool {
 			return m.Id == "automation:"+id && m.Status == api.OutboxMessageStatusPending
@@ -143,7 +143,7 @@ func TestUserAutomationFailureAlertsCompareOnlyThePreviousFinishedRun(t *testing
 			t.Fatalf("Routine Outbox did not show pending alert %s: %+v", id, outbox)
 		}
 	}
-	// Pending failure alerts do not replace each other even in a reused chat.
+	// Pending failure alerts do not replace each other even in a reused session.
 	for _, id := range alertIDs {
 		var status string
 		if err := conn.QueryRowContext(t.Context(), `SELECT status FROM outbox_messages WHERE id=?`, "automation:"+id).Scan(&status); err != nil || status != "pending" {

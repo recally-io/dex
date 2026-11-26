@@ -113,7 +113,7 @@ func TestUserListsRecentAgentProjects(t *testing.T) {
 	}
 	var b apiAgent
 	d.must(t, http.MethodPost, "/api/agents", map[string]string{"name": "Other", "provider": "faux", "modelId": "echo", "thinkingLevel": "off"}, &b, http.StatusCreated)
-	if _, err := conn.ExecContext(t.Context(), "INSERT INTO conversations (agent_id,channel_key,created_at,cwd) VALUES (?, 'chat:other', 999, ?)", b.ID, other); err != nil {
+	if _, err := conn.ExecContext(t.Context(), "INSERT INTO sessions (agent_id,channel_key,created_at,cwd) VALUES (?, 'chat:other', 999, ?)", b.ID, other); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(deleted); err != nil {
