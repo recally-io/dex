@@ -261,6 +261,8 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
   const name = `Hub ${Date.now()}`;
   const id = await createBot(dex, name);
   const serverName = `hub_${Date.now() % 100000}`;
+  // Holds the status read after a save. The finally block opens it even when a step fails.
+  const statusGate = Promise.withResolvers<void>();
 
   try {
     // Given the hub opened for an unknown Bot, then it asks for a Bot and shows no Bot settings.
@@ -335,11 +337,35 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
     await expect(dialog.getByLabel("Client secret vault name", { exact: true })).toHaveValue("not a name");
     await dialog.getByLabel("Client secret vault name", { exact: true }).fill("");
     await advanced.tap();
-    await dialog.getByRole("button", "Add server", { exact: true }).tap();
 
-    // Then the next action is authorization. Saving does not claim a connection.
+    // While the status read after the save is slow, the dialog confirms the save and waits for
+    // the read. It makes no claim from the list cached before the save.
+    const statusPath = `**/api/bots/${id}/integrations`;
+    let holdStatus = true;
+
+    await browser.route(statusPath, async (route) => {
+      if (holdStatus && route.request.method === "GET") await statusGate.promise;
+
+      await route.continue();
+    });
+    await dialog.getByRole("button", "Add server", { exact: true }).tap();
     added = screen.getByRole("dialog", `Added ${serverName}`);
+    await expect(
+      added.getByText(`Saved for ${name}. Other Bots do not change.`, { exact: true }),
+    ).toBeVisible();
+    await expect(added.getByText("Checking server status…", { exact: true })).toBeVisible();
+    await expect(added.getByText(/is idle/)).toHaveCount(0);
+    await expect(added.getByText("Not authorized", { exact: true })).toHaveCount(0);
+    await expect(added.getByRole("button", "Authorize", { exact: true })).toHaveCount(0);
+    holdStatus = false;
+    statusGate.resolve();
+    await browser.unroute(statusPath);
+
+    // Then the read lists the stored server, and the next action is authorization. Saving does
+    // not claim a connection.
+    await expect(added.getByText("Checking server status…", { exact: true })).toHaveCount(0);
     await expect(added.getByText("Not authorized", { exact: true })).toBeVisible();
+    await expect(added.getByText(/is idle/)).toHaveCount(0);
     await expect(added.getByText("Connected", { exact: true })).toHaveCount(0);
 
     // When the owner authorizes from the dialog while the start is slow, then the dialog stays
@@ -391,6 +417,7 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
     await expect(screen.getByRole("heading", "MCP servers", { exact: true })).toBeVisible();
     await expect(screen.getByText(serverName, { exact: true })).toHaveCount(0);
   } finally {
+    statusGate.resolve();
     await fetch(`${dex}/api/bots/${id}`, { method: "DELETE" });
     server.close();
   }

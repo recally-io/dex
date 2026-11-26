@@ -118,6 +118,9 @@ function McpServersForBot({ bot }: { bot: Bot }) {
 
 type Auth = "none" | "oauth";
 
+/** A saved declaration. savedAt tells a status read after the save from the list cached before it. */
+type Added = { name: string; auth: Auth; savedAt: number };
+
 const authOptions = [
   { value: "none", label: "No authentication" },
   { value: "oauth", label: "Browser OAuth" },
@@ -134,7 +137,7 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
   const [clientId, setClientId] = useState("");
   const [secretName, setSecretName] = useState("");
   const [scope, setScope] = useState("");
-  const [added, setAdded] = useState<{ name: string; auth: Auth }>();
+  const [added, setAdded] = useState<Added>();
   const advancedId = useId();
 
   const secret = secretName.trim();
@@ -158,7 +161,11 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
     ...createMcpServerMutation(),
     onSuccess: (_, request) => {
       // The POST decides the outcome. The status read that follows can fail on its own.
-      setAdded({ name: request.body.name, auth: request.body.oauth ? "oauth" : "none" });
+      setAdded({
+        name: request.body.name,
+        auth: request.body.oauth ? "oauth" : "none",
+        savedAt: Date.now(),
+      });
       void client.invalidateQueries({ queryKey: getBotIntegrationsQueryKey({ path: { botId } }) });
     },
   });
@@ -336,15 +343,7 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
  * declarations: it names the next action and does not claim a live connection. A busy Bot lists
  * the declaration only once it is idle. A failed read says so and offers a retry, not a guess.
  */
-function AddedMcpServer({
-  bot,
-  added,
-  onClose,
-}: {
-  bot: Bot;
-  added: { name: string; auth: Auth };
-  onClose: () => void;
-}) {
+function AddedMcpServer({ bot, added, onClose }: { bot: Bot; added: Added; onClose: () => void }) {
   const botId = bot.id!;
   const integrations = useQuery(getBotIntegrationsOptions({ path: { botId } }));
 
@@ -410,8 +409,6 @@ function AddedMcpServer({
             {`Open ${bot.name} Integrations`}
           </Link>
         </Failure>
-      ) : integrations.isPending ? (
-        <Loading />
       ) : server ? (
         <>
           <div className="flex flex-wrap items-center gap-2">
@@ -428,6 +425,11 @@ function AddedMcpServer({
             <Failure error={authorize.error} title="Could not start authorization" />
           ) : null}
         </>
+      ) : integrations.dataUpdatedAt < added.savedAt ? (
+        // No list read since the save, or none at all. Wait for it before any idle or auth guidance.
+        <p role="status" className="text-[12.5px] text-muted-foreground">
+          Checking server status…
+        </p>
       ) : (
         <Note>
           {`The server appears under MCP servers when ${bot.name} is idle.${added.auth === "oauth" ? " Authorize it there." : ""}`}
