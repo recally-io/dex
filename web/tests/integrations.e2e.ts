@@ -342,10 +342,31 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
     await expect(added.getByText("Not authorized", { exact: true })).toBeVisible();
     await expect(added.getByText("Connected", { exact: true })).toHaveCount(0);
 
-    // When the owner authorizes from the dialog, then the existing callback returns to Bot Integrations.
+    // When the owner authorizes from the dialog while the start is slow, then the dialog stays
+    // open: Done, Escape, the backdrop, and a second Authorize do nothing until it answers.
+    const startPath = `**/api/bots/${id}/integrations/mcp/${serverName}/oauth`;
+    const held = Promise.withResolvers<void>();
+    let starts = 0;
+
+    await browser.route(startPath, async (route) => {
+      starts += 1;
+      await held.promise;
+      await route.continue();
+    });
     await added.getByRole("button", "Authorize", { exact: true }).tap();
+    await expect(added.getByRole("button", "Starting…", { exact: true })).toBeDisabled();
+    await expect(added.getByRole("button", "Done", { exact: true })).toBeDisabled();
+    await added.press("Escape");
+    await screen.tapAt({ x: 8, y: 8 });
+    await expect(added).toBeVisible();
+    await expect(added.getByRole("button", "Starting…", { exact: true })).toBeDisabled();
+
+    // Then the existing callback returns to Bot Integrations after one start.
+    held.resolve();
     await expect(screen.getByRole("button", "Reauthorize", { exact: true })).toBeVisible();
     expect(new URL(await browser.url()).pathname).toBe(`/b/${id}/integrations`);
+    expect(starts).toBe(1);
+    await browser.unroute(startPath);
 
     // A grant alone is not a live connection: this Bot has not started yet.
     const row = screen
@@ -372,5 +393,78 @@ test("adds a custom OAuth MCP server to the selected Bot only", async ({ app, br
   } finally {
     await fetch(`${dex}/api/bots/${id}`, { method: "DELETE" });
     server.close();
+  }
+});
+
+test("keeps a saved MCP server confirmed when its status cannot load", async ({ app, browser, screen }) => {
+  await app.open("/");
+
+  const dex = new URL(await browser.url()).origin;
+  const name = `Status ${Date.now()}`;
+  const id = await createBot(dex, name);
+  const serverName = `status_${Date.now() % 100000}`;
+  let creates = 0;
+  let failStatus = false;
+
+  try {
+    // Given a Bot whose status read can be made to fail. The server is never contacted.
+    await browser.route(`**/api/bots/${id}/integrations/mcp`, async (route) => {
+      if (route.request.method === "POST") creates += 1;
+
+      await route.continue();
+    });
+    await browser.route(`**/api/bots/${id}/integrations`, async (route) => {
+      if (failStatus && route.request.method === "GET") {
+        await route.fulfill({ status: 500, json: { error: "status read failed in the test" } });
+
+        return;
+      }
+
+      await route.continue();
+    });
+    await app.open(`/integrations?bot=${id}`);
+    await expect(screen.getByRole("heading", "MCP servers", { exact: true })).toBeVisible();
+
+    // When the owner adds an OAuth server, and the status read after the save fails.
+    await screen.getByRole("button", "Add MCP server", { exact: true }).tap();
+
+    const dialog = screen.getByRole("dialog", "Add MCP server");
+
+    await dialog.getByLabel("Name", { exact: true }).fill(serverName);
+    await dialog.getByLabel("Server URL", { exact: true }).fill("http://127.0.0.1:9/mcp");
+    await dialog.getByRole("button", "Browser OAuth", { exact: true }).tap();
+    failStatus = true;
+    await dialog.getByRole("button", "Add server", { exact: true }).tap();
+
+    // Then the dialog still confirms the save, says that the status is unknown, and makes no
+    // claim about the connection or the Bot being idle.
+    const added = screen.getByRole("dialog", `Added ${serverName}`);
+
+    await expect(
+      added.getByText(`Saved for ${name}. Other Bots do not change.`, { exact: true }),
+    ).toBeVisible();
+    await expect(added.getByText("Could not load the server status", { exact: true })).toBeVisible();
+    await expect(added.getByText(/is idle/)).toHaveCount(0);
+    await expect(added.getByText("Starts with the bot", { exact: true })).toHaveCount(0);
+    await expect(added.getByText("Not authorized", { exact: true })).toHaveCount(0);
+    await expect(added.getByRole("button", "Authorize", { exact: true })).toHaveCount(0);
+    // The way to authorize stays clear: the Bot's Integrations page lists the server.
+    await expect(added.getByRole("link", `Open ${name} Integrations`, { exact: true })).toHaveAttribute(
+      "href",
+      `/b/${id}/integrations`,
+    );
+
+    // When the read works again and the owner retries, then the stored server and its next action
+    // show, without a second save.
+    failStatus = false;
+    await added.getByRole("button", "Try again", { exact: true }).tap();
+    await expect(added.getByText("Not authorized", { exact: true })).toBeVisible();
+    await expect(added.getByRole("button", "Authorize", { exact: true })).toBeEnabled();
+    expect(creates).toBe(1);
+    await added.getByRole("button", "Done", { exact: true }).tap();
+    await expect(screen.getByRole("dialog", `Added ${serverName}`)).toHaveCount(0);
+    await expect(screen.getByText(serverName, { exact: true })).toBeVisible();
+  } finally {
+    await fetch(`${dex}/api/bots/${id}`, { method: "DELETE" });
   }
 });

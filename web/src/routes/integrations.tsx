@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import {
   createMcpServerMutation,
@@ -85,7 +86,7 @@ export function IntegrationsPage({
       {selected ? (
         <BotContext.Provider key={selected.id} value={selected.id!}>
           <WithChannels>{(settings) => <ChannelsSection settings={settings} />}</WithChannels>
-          <IntegrationCatalog section="integrations" addAction={<AddMcpServer bot={selected} />} />
+          <McpServersForBot bot={selected} />
         </BotContext.Provider>
       ) : null}
       <SourceSettings caption="Sources send events to this whole Dex instance, for every Bot. Changes apply when Dex starts again." />
@@ -93,16 +94,24 @@ export function IntegrationsPage({
   );
 }
 
-/** Adds a remote Streamable HTTP server to one Bot. It takes no headers or static tokens. */
-function AddMcpServer({ bot }: { bot: Bot }) {
-  const [open, setOpen] = useState(false);
+/**
+ * The Bot's MCP servers with an Add action. The dialog is mounted here, outside the list, so a
+ * failed status read that replaces the list does not close a dialog that holds a saved result.
+ */
+function McpServersForBot({ bot }: { bot: Bot }) {
+  const [adding, setAdding] = useState(false);
 
   return (
     <>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        <Plus aria-hidden /> Add MCP server
-      </Button>
-      {open ? <AddMcpServerDialog bot={bot} onClose={() => setOpen(false)} /> : null}
+      <IntegrationCatalog
+        section="integrations"
+        addAction={
+          <Button size="sm" onClick={() => setAdding(true)}>
+            <Plus aria-hidden /> Add MCP server
+          </Button>
+        }
+      />
+      {adding ? <AddMcpServerDialog bot={bot} onClose={() => setAdding(false)} /> : null}
     </>
   );
 }
@@ -147,9 +156,10 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
 
   const save = useMutation({
     ...createMcpServerMutation(),
-    onSuccess: async (_, request) => {
-      await client.invalidateQueries({ queryKey: getBotIntegrationsQueryKey({ path: { botId } }) });
+    onSuccess: (_, request) => {
+      // The POST decides the outcome. The status read that follows can fail on its own.
       setAdded({ name: request.body.name, auth: request.body.oauth ? "oauth" : "none" });
+      void client.invalidateQueries({ queryKey: getBotIntegrationsQueryKey({ path: { botId } }) });
     },
   });
 
@@ -322,8 +332,9 @@ function AddMcpServerDialog({ bot, onClose }: { bot: Bot; onClose: () => void })
 }
 
 /**
- * The result of a save, read from the Bot's stored declarations. It names the next action and
- * does not claim a live connection. A busy Bot lists the declaration only once it is idle.
+ * The result of a save. The title confirms the POST. The status comes from the Bot's stored
+ * declarations: it names the next action and does not claim a live connection. A busy Bot lists
+ * the declaration only once it is idle. A failed read says so and offers a retry, not a guess.
  */
 function AddedMcpServer({
   bot,
@@ -352,7 +363,11 @@ function AddedMcpServer({
       onClose={onClose}
       footer={
         <>
-          <Button variant={canAuthorize ? "secondary" : "default"} onClick={onClose}>
+          <Button
+            variant={canAuthorize ? "secondary" : "default"}
+            disabled={authorize.isPending}
+            onClick={onClose}
+          >
             Done
           </Button>
           {canAuthorize ? (
@@ -372,7 +387,30 @@ function AddedMcpServer({
         </>
       }
     >
-      {integrations.isPending ? (
+      {authorize.isPending ? (
+        <p role="status" className="text-[12.5px] text-muted-foreground">
+          Starting browser authorization…
+        </p>
+      ) : integrations.isError ? (
+        <Failure
+          title="Could not load the server status"
+          error={integrations.error}
+          retry={() => void integrations.refetch()}
+        >
+          <p>
+            {added.auth === "oauth"
+              ? "The server is saved. Try again to authorize it here, or authorize it on the Bot page."
+              : "The server is saved. Try again, or check it on the Bot page."}
+          </p>
+          <Link
+            to="/b/$botId/integrations"
+            params={{ botId }}
+            className="mt-1 inline-block text-foreground underline"
+          >
+            {`Open ${bot.name} Integrations`}
+          </Link>
+        </Failure>
+      ) : integrations.isPending ? (
         <Loading />
       ) : server ? (
         <>

@@ -1485,6 +1485,27 @@ export type Skill = {
 };
 
 /**
+ * A remote Streamable HTTP declaration for one Bot. It takes no headers or static tokens. The server decodes it strictly.
+ *
+ */
+export type McpServerInput = {
+    name: string;
+    url: string;
+    /**
+     * Browser authorization. An empty object discovers the provider and registers a client.
+     *
+     */
+    oauth?: {
+        clientId?: string;
+        /**
+         * A vault:NAME reference. Dex rejects a secret value.
+         */
+        clientSecret?: string;
+        scope?: string;
+    };
+};
+
+/**
  * An MCP server from control storage. Plain environment and header values are not returned. Vault references are returned as written.
  *
  */
@@ -5883,18 +5904,7 @@ export type GetBotIntegrationsResponses = {
 export type GetBotIntegrationsResponse = GetBotIntegrationsResponses[keyof GetBotIntegrationsResponses];
 
 export type CreateMcpServerData = {
-    body: {
-        name: string;
-        url: string;
-        oauth?: {
-            clientId?: string;
-            /**
-             * A vault:NAME reference. Dex rejects a secret value.
-             */
-            clientSecret?: string;
-            scope?: string;
-        };
-    };
+    body: McpServerInput;
     path: {
         botId: string;
     };

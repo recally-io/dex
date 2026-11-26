@@ -2148,7 +2148,7 @@ export const getBotIntegrationsOptions = (options: Options<GetBotIntegrationsDat
 });
 
 /**
- * Adds a Bot-level Streamable HTTP MCP declaration. It never replaces a declaration: a Bot-level or Dex-level declaration with the same name answers 409. The URL must use HTTPS, or HTTP on loopback, and must not contain user information, a query, or a fragment. The request takes no headers or static tokens. Use OAuth and authorize the connection in the browser. A client secret must be a vault:NAME reference. Dex does not contact the server here. The bot reloads when it is idle.
+ * Adds a Bot-level Streamable HTTP MCP declaration. It never replaces a declaration: a Bot-level or Dex-level declaration with the same name answers 409. The URL must use HTTPS, or HTTP on loopback, and must not contain user information, a query, or a fragment. The request takes no headers or static tokens. Use OAuth and authorize the connection in the browser. A client secret must be a vault:NAME reference. Dex does not contact the server here. The bot reloads when it is idle. Unknown fields, also inside oauth, answer 400 and store nothing.
  *
  */
 export const createMcpServerMutation = (options?: Partial<Options<CreateMcpServerData>>): UseMutationOptions<CreateMcpServerResponse, CreateMcpServerError, Options<CreateMcpServerData>> => {

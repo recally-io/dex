@@ -112,12 +112,18 @@ func TestUserAddsCustomRemoteMcpServerToOneBotFromWeb(t *testing.T) {
 	if status, _ := send(http.MethodPost, create, oauthBody, cross); status != http.StatusForbidden {
 		t.Fatalf("cross-site POST: %d", status)
 	}
+	// Authentication runs before the body is read, so a malformed request without the token is 401.
+	headerBody := `{"name":"bad","url":"https://mcp.example.test/mcp","headers":{"Authorization":"Bearer ` + secretValue + `"}}`
+	if status, _ := send(http.MethodPost, create, headerBody, nil); status != http.StatusUnauthorized {
+		t.Fatalf("POST with an unknown field and without a token: %d", status)
+	}
 	if _, ok := servers("default")["notes"]; ok {
 		t.Fatal("a refused request stored a declaration")
 	}
 
 	// When the request has credentials in the URL, a query, a fragment, plain HTTP to a public
-	// host, a plaintext client secret, or an invalid name, then Dex refuses it without echoing it.
+	// host, a plaintext client secret, an invalid name, or a field that the API does not define,
+	// then Dex refuses it with a generic error, stores nothing, and does not echo it.
 	for _, body := range []string{
 		`{"name":"bad","url":"https://user:` + secretValue + `@mcp.example.test/mcp"}`,
 		`{"name":"bad","url":"https://mcp.example.test/mcp?token=` + secretValue + `"}`,
@@ -132,13 +138,25 @@ func TestUserAddsCustomRemoteMcpServerToOneBotFromWeb(t *testing.T) {
 			t.Fatalf("POST %s: %d %s, want 400", body, status, raw)
 		}
 	}
+	// Unknown fields are refused, not dropped: Dex would not send the authentication they name.
+	for _, body := range []string{
+		headerBody,
+		`{"name":"bad","url":"https://mcp.example.test/mcp","token":"` + secretValue + `"}`,
+		`{"name":"bad","url":"https://mcp.example.test/mcp","oauth":{"clientId":"c","accessToken":"` + secretValue + `"}}`,
+		`{"name":"bad","url":"https://mcp.example.test/mcp","oauth":{"headers":{"Authorization":"Bearer ` + secretValue + `"}}}`,
+	} {
+		status, raw := send(http.MethodPost, create, body, owner)
+		if status != http.StatusBadRequest || !strings.Contains(raw, `"the request is not valid"`) {
+			t.Fatalf("POST %s: %d %s, want 400 with the generic error", body, status, raw)
+		}
+	}
 	if _, ok := servers("default")["bad"]; ok {
 		t.Fatal("an invalid request stored a declaration")
 	}
 
 	// When the owner adds a public server to the other Bot first, and then adds an OAuth server
 	// with the same name to the default Bot.
-	expect(http.MethodPost, "/api/bots/"+other.ID+"/integrations/mcp", `{"name":"notes","url":"`+remote.URL+`/mcp","headers":{"Authorization":"Bearer `+secretValue+`"}}`, http.StatusCreated)
+	expect(http.MethodPost, "/api/bots/"+other.ID+"/integrations/mcp", `{"name":"notes","url":"`+remote.URL+`/mcp"}`, http.StatusCreated)
 	expect(http.MethodPost, create, oauthBody, http.StatusCreated)
 
 	// Then the default Bot lists a Bot-level OAuth declaration that still needs authorization.
@@ -151,7 +169,7 @@ func TestUserAddsCustomRemoteMcpServerToOneBotFromWeb(t *testing.T) {
 	if got.Scope != "agent" || got.Overrides || got.Transport != "http" || got.OAuth != "authorize" || got.State == "connected" || len(got.Tools) != 0 {
 		t.Fatalf("default notes = %+v", got)
 	}
-	// The other Bot keeps its own public declaration. The posted header is not stored.
+	// The other Bot keeps its own public declaration and sends no Authorization header.
 	var mine createdServer
 	eventually(t, "other notes connection", func() (bool, any) {
 		mine = servers(other.ID)["notes"]
@@ -168,7 +186,7 @@ func TestUserAddsCustomRemoteMcpServerToOneBotFromWeb(t *testing.T) {
 		t.Fatalf("other notes = %+v", mine)
 	}
 	if leaked.Load() {
-		t.Fatal("Dex sent a header that the create request posted")
+		t.Fatal("Dex sent an Authorization header to a public server")
 	}
 	if _, ok := servers(other.ID)["shared"]; !ok {
 		t.Fatal("the other Bot lost the inherited Dex declaration")

@@ -183,18 +183,26 @@ func (s *MCPStore) remove(ctx context.Context, botID, name string) error {
 var ErrMCPServerExists = errors.New("an MCP server with this name exists for this bot or for Dex")
 
 // MCPServerInput is a remote Streamable HTTP declaration that the owner adds from the web UI.
-// It has no headers or environment, so it cannot hold a static token.
+// It has no headers or environment, so it cannot hold a static token. The API uses it as the
+// request body, so the JSON tags match the McpServerInput schema.
 type MCPServerInput struct {
-	Name  string
-	URL   string
-	OAuth *MCPOAuthInput
+	Name  string         `json:"name"`
+	URL   string         `json:"url"`
+	OAuth *MCPOAuthInput `json:"oauth,omitzero"`
 }
 
 // MCPOAuthInput selects browser authorization. ClientSecret is a vault:NAME reference.
 type MCPOAuthInput struct {
-	ClientID     string
-	ClientSecret string
-	Scope        string
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+}
+
+// UnmarshalJSON refuses unknown members, also inside oauth. A dropped field such as headers
+// would save a connection without the authentication that the caller asked for.
+func (in *MCPServerInput) UnmarshalJSON(data []byte) error {
+	type plain MCPServerInput
+	return json.Unmarshal(data, (*plain)(in), json.RejectUnknownMembers(true))
 }
 
 // CreateMCPServer adds a Bot-level declaration and never replaces or masks a stored one.

@@ -175,7 +175,10 @@ a declaration. The same name at the bot level or at the dex level returns 409,
 so a Web add cannot mask an inherited server. The store lock orders the check
 and the insert against all other declaration writes. The URL must use HTTPS,
 or HTTP on loopback, without user information, a query, or a fragment. The
-request takes no headers or environment, so it cannot store a static token. It
+request takes no headers or environment, so it cannot store a static token.
+The body type decodes strictly: an unknown field, also inside `oauth`, returns
+the generic 400 and stores nothing, so a caller never gets a save without the
+authentication that it sent. It
 does not contact the server. A server that needs sign-in uses browser
 authorization below.
 

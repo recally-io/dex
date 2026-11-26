@@ -336,20 +336,8 @@ func (h *handler) CreateMcpServer(ctx context.Context, req api.CreateMcpServerRe
 	if req.Body == nil {
 		return nil, errInvalid
 	}
-	in := engine.MCPServerInput{Name: req.Body.Name, URL: req.Body.Url}
-	if o := req.Body.Oauth; o != nil {
-		in.OAuth = &engine.MCPOAuthInput{}
-		if o.ClientId != nil {
-			in.OAuth.ClientID = *o.ClientId
-		}
-		if o.ClientSecret != nil {
-			in.OAuth.ClientSecret = *o.ClientSecret
-		}
-		if o.Scope != nil {
-			in.OAuth.Scope = *o.Scope
-		}
-	}
-	if err := h.Engine.CreateMCPServer(ctx, botID(ctx), in); err != nil {
+	// The body type decodes strictly, so unknown fields never reach this point.
+	if err := h.Engine.CreateMCPServer(ctx, botID(ctx), *req.Body); err != nil {
 		return nil, err
 	}
 	return api.CreateMcpServer201JSONResponse(ok), nil

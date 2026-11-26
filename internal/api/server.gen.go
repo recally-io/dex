@@ -1707,6 +1707,9 @@ type McpServerState string
 // McpServerTransport Absent for a bot entry that only turns off a global server.
 type McpServerTransport string
 
+// McpServerInput A remote Streamable HTTP declaration for one Bot. It takes no headers or static tokens. The server decodes it strictly.
+type McpServerInput = engine.MCPServerInput
+
 // MessageInput defines model for MessageInput.
 type MessageInput struct {
 	// AnswersQuestionId The ID of the open question that this message answers. dex answers 409 when the question is closed. A message without this field never closes a question.
@@ -2875,19 +2878,6 @@ type PollWechatLoginJSONBody struct {
 	VerifyCode *string `json:"verifyCode,omitempty"`
 }
 
-// CreateMcpServerJSONBody defines parameters for CreateMcpServer.
-type CreateMcpServerJSONBody struct {
-	Name  string `json:"name"`
-	Oauth *struct {
-		ClientId *string `json:"clientId,omitempty"`
-
-		// ClientSecret A vault:NAME reference. Dex rejects a secret value.
-		ClientSecret *string `json:"clientSecret,omitempty"`
-		Scope        *string `json:"scope,omitempty"`
-	} `json:"oauth,omitempty"`
-	Url string `json:"url"`
-}
-
 // StartMcpOAuthJSONBody defines parameters for StartMcpOAuth.
 type StartMcpOAuthJSONBody struct {
 	// Scope Shared across dex or scoped to one bot.
@@ -3134,7 +3124,7 @@ type SetTelegramJSONRequestBody = TelegramInput
 type PollWechatLoginJSONRequestBody PollWechatLoginJSONBody
 
 // CreateMcpServerJSONRequestBody defines body for CreateMcpServer for application/json ContentType.
-type CreateMcpServerJSONRequestBody CreateMcpServerJSONBody
+type CreateMcpServerJSONRequestBody = McpServerInput
 
 // StartMcpOAuthJSONRequestBody defines body for StartMcpOAuth for application/json ContentType.
 type StartMcpOAuthJSONRequestBody StartMcpOAuthJSONBody
